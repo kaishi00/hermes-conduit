@@ -1050,6 +1050,11 @@ final class URLSessionWebSocketTransport: HermesWebSocketTransport {
 
 // MARK: - HermesClient
 
+/// Holds `HermesClient.SendWatch` for the answer being sent.
+enum AuthorityAnswerSend {
+    @TaskLocal static var watch: HermesClient.SendWatch?
+}
+
 @MainActor
 final class HermesClient: ObservableObject {
 
@@ -1120,15 +1125,36 @@ final class HermesClient: ObservableObject {
     /// usual reason to retry; prompt ids are unique, so one server's never
     /// reads as another's. Main-actor isolated with the class, like every
     /// other member here. An entry ends with its retry's answer or refusal;
-    /// past 256 never retried, the record starts over from the newest (a retry that old
-    /// reads as no longer active, as it would without one).
-    @MainActor private static var unconfirmedAuthorityAnswers: Set<String> = []
-    private var unconfirmedAuthorityAnswers: Set<String> {
+    /// past 256 never retried, the oldest goes first (a retry that old reads
+    /// as it would without one).
+    @MainActor private static var unconfirmedAuthorityAnswers = UnconfirmedAnswers()
+    private var unconfirmedAuthorityAnswers: UnconfirmedAnswers {
         get { Self.unconfirmedAuthorityAnswers }
-        set {
-            Self.unconfirmedAuthorityAnswers = newValue.count > 256
-                ? newValue.subtracting(Self.unconfirmedAuthorityAnswers) : newValue
+        set { Self.unconfirmedAuthorityAnswers = newValue }
+    }
+
+    /// The ids in `unconfirmedAuthorityAnswers`, oldest first.
+    struct UnconfirmedAnswers {
+        static let limit = 256
+        private(set) var ids: [String] = []
+
+        mutating func insert(_ id: String) {
+            ids.removeAll { $0 == id }
+            ids.append(id)
+            if ids.count > Self.limit { ids.removeFirst(ids.count - Self.limit) }
         }
+
+        @discardableResult
+        mutating func remove(_ id: String) -> String? {
+            guard let index = ids.firstIndex(of: id) else { return nil }
+            return ids.remove(at: index)
+        }
+    }
+
+    /// Set around an answer's `rpc` so a send the socket refused (the frame
+    /// never went out) isn't recorded as an answer that may have been taken.
+    @MainActor final class SendWatch {
+        var unwritten = false
     }
     private var closedIntentionally = false
     private var receiveTask: Task<Void, Never>?
@@ -2120,6 +2146,7 @@ final class HermesClient: ObservableObject {
         let body = try JSONEncoder().encode(request)
         logger.notice("Sending RPC id \(id) method \(method, privacy: .public)")
 
+        let sendWatch = AuthorityAnswerSend.watch
         return try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
                 guard !Task.isCancelled else {
@@ -2152,6 +2179,7 @@ final class HermesClient: ObservableObject {
                         Task { @MainActor in
                             if let pending = self?.pending.removeValue(forKey: id) {
                                 pending.timer?.invalidate()
+                                sendWatch?.unwritten = true
                                 pending.continuation.resume(throwing: error)
                             }
                         }
@@ -3466,6 +3494,7 @@ final class HermesClient: ObservableObject {
             let result: AnyCodable
             // Cancelled before anything was written: nothing to remember.
             try Task.checkCancellation()
+            let sendWatch = SendWatch()
             do {
                 var params: [String: Any] = [
                     "session_id": prompt.sessionId,
@@ -3475,7 +3504,10 @@ final class HermesClient: ObservableObject {
                 ]
                 // Named as the approval answer names it: a bot chat's own profile.
                 if let profile, !profile.isEmpty { params["profile"] = profile }
-                result = try await rpc("clarify.respond", params: params)
+                let sent = params
+                result = try await AuthorityAnswerSend.$watch.withValue(sendWatch) {
+                    try await self.rpc("clarify.respond", params: sent)
+                }
             } catch let error as RpcError {
                 if error.reason == "stale_generation" {
                     // The turn that asked has ended: Hermes no longer waits.
@@ -3491,8 +3523,9 @@ final class HermesClient: ObservableObject {
                 // Never written: nothing was taken.
                 throw HermesError.notConnected
             } catch {
-                // No word back: it may have been taken.
-                unconfirmedAuthorityAnswers.insert(requestId)
+                // No word back: it may have been taken, unless the socket
+                // refused the frame.
+                if !sendWatch.unwritten { unconfirmedAuthorityAnswers.insert(requestId) }
                 throw error
             }
             let retried = unconfirmedAuthorityAnswers.remove(requestId) != nil
@@ -3676,8 +3709,12 @@ final class HermesClient: ObservableObject {
             let result: AnyCodable
             // Cancelled before anything was written: nothing to remember.
             try Task.checkCancellation()
+            let sendWatch = SendWatch()
             do {
-                result = try await rpc("approval.respond", params: params)
+                let sent = params
+                result = try await AuthorityAnswerSend.$watch.withValue(sendWatch) {
+                    try await self.rpc("approval.respond", params: sent)
+                }
             } catch let error as RpcError {
                 if error.reason == "stale_generation" {
                     // The turn that asked has ended: nothing to approve.
@@ -3693,8 +3730,9 @@ final class HermesClient: ObservableObject {
                 // Never written: nothing was taken.
                 throw HermesError.notConnected
             } catch {
-                // No word back: it may have been taken.
-                unconfirmedAuthorityAnswers.insert(trimmedRequestId)
+                // No word back: it may have been taken, unless the socket
+                // refused the frame.
+                if !sendWatch.unwritten { unconfirmedAuthorityAnswers.insert(trimmedRequestId) }
                 throw error
             }
             let retried = unconfirmedAuthorityAnswers.remove(trimmedRequestId) != nil

@@ -2398,6 +2398,33 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testAuthorityAnswerTheSocketRefusedIsNotReadAsTakenOnRetry() async throws {
+        let (client, socket) = try await authorityClient()
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": [
+                "type": "approval.request", "session_id": "sess-1", "execution_generation": 7,
+                "payload": ["prompt_id": "p-unsent-7", "execution_generation": 7, "command": "rm z"]
+            ]
+        ], to: socket)
+        // The socket refuses the frame: it never went out.
+        socket.failsNextSend = URLError(.networkConnectionLost)
+        do {
+            _ = try await client.respondToApprovalOutcome(sessionId: "sess-1", requestId: "p-unsent-7", choice: "once")
+            XCTFail("A refused send throws")
+        } catch {}
+        // Another surface answered meanwhile: not ours.
+        let count = socket.sentTexts.count
+        let retry = Task<HermesClient.ApprovalResponseOutcome, Error> {
+            try await client.respondToApprovalOutcome(sessionId: "sess-1", requestId: "p-unsent-7", choice: "once")
+        }
+        try await answerRequest(on: socket, after: count, method: "approval.respond",
+                                result: ["status": "already_resolved", "prompt_id": "p-unsent-7"])
+        let retried = try await awaitResult(of: retry, "the retried approval")
+        XCTAssertEqual(retried, .answeredElsewhere)
+        client.disconnect()
+    }
+
     func testAuthorityRetryOnANewClientReadsAPromptItsChatNoLongerListsAsNoLongerActive() async throws {
         let (client, socket) = try await authorityClient()
         try await deliverFrame([
@@ -4023,12 +4050,19 @@ private final class FakeSocket: HermesWebSocket {
             sentTexts.append(text)
             onSend?()
         }
-        if holdsSendCompletion {
+        if let error = failsNextSend {
+            failsNextSend = nil
+            completionHandler(error)
+        } else if holdsSendCompletion {
             heldSendCompletions.append(completionHandler)
         } else {
             completionHandler(nil)
         }
     }
+
+    /// Fails the next send's completion with this error: the frame never
+    /// went out.
+    var failsNextSend: Error?
 
     func finishHeldSends() {
         holdsSendCompletion = false
