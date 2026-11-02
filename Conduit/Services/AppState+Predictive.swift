@@ -337,7 +337,7 @@ extension AppState {
 
     /// One check: asks whether Hermes wants a turn, with what Conduit
     /// measured, and sends the hidden turn or waits as Hermes asked.
-    private func checkPredictiveFollowUp(for anchor: PredictiveStore.Anchor) async {
+    func checkPredictiveFollowUp(for anchor: PredictiveStore.Anchor) async {
         guard predictiveAnchor == anchor, predictiveFollowUp.anchor == anchor,
               Predictive.followUpEnabled(),
               predictive.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
