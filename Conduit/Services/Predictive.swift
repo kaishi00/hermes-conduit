@@ -416,7 +416,8 @@ struct PredictiveFollowUpState {
     /// The reply the checks are for; another reply starts over.
     var anchor: PredictiveStore.Anchor?
     var checks = 0
-    /// Hermes said "not again", the checks ran out, or one failed.
+    /// Hermes said "not again", the checks ran out, or one failed in a way
+    /// that won't change for this reply (a busy host is asked again).
     var stopped = false
     /// When the next check is due, as Hermes asked; nil: the first wait.
     var nextCheck: Date?
