@@ -266,28 +266,33 @@ extension VoiceConversationControllerTests {
         _ = await supervisor.startJob(instructions: "check the backups", profile: nil, callsModel: false, fromWatch: true)
         XCTAssertEqual(fake.kept.last?.3, true)
         // The bot it was made on, even if the profile switches while its session is made.
-        fake.parksCreate = true
-        let started = Task { await supervisor.startJob(instructions: "check the disks", profile: nil, callsModel: false, fromWatch: true) }
-        await fake.createParked.waitUntil(1)
-        fake.activeProfile = "nahida"
-        fake.releaseCreate()
+        // (Each case on a supervisor of its own: three jobs at once is the most.)
+        let (parked, parkedFake) = makeSupervisor()
+        parkedFake.parksCreate = true
+        let started = Task { await parked.startJob(instructions: "check the disks", profile: nil, callsModel: false, fromWatch: true) }
+        await parkedFake.createParked.waitUntil(1)
+        parkedFake.activeProfile = "nahida"
+        parkedFake.releaseCreate()
         _ = await started.value
-        XCTAssertEqual(fake.kept.last?.0, "default")
+        XCTAssertEqual(parkedFake.kept.map(\.0), ["default"])
         // A Watch call's job that names a profile is filed under that bot.
-        fake.profileTargets = ["furina": .other("furina")]
-        _ = await supervisor.startJob(instructions: "check the logs", profile: "furina", callsModel: false, fromWatch: true)
-        XCTAssertEqual(fake.kept.last?.0, "furina")
-        XCTAssertEqual(fake.kept.last?.3, true)
+        let (named, namedFake) = makeSupervisor()
+        namedFake.profileTargets = ["furina": .other("furina")]
+        _ = await named.startJob(instructions: "check the logs", profile: "furina", callsModel: false, fromWatch: true)
+        XCTAssertEqual(namedFake.kept.map(\.0), ["furina"])
+        XCTAssertEqual(namedFake.kept.last?.3, true)
         // A start Hermes didn't take isn't kept.
-        let keptBefore = fake.kept.count
-        fake.submitError = HermesError.timeout("prompt.submit")
-        _ = await supervisor.performVoiceCommand(.start(instructions: "check the weather"))
-        XCTAssertEqual(fake.kept.count, keptBefore)
+        let (refused, refusedFake) = makeSupervisor()
+        refusedFake.submitError = HermesError.timeout("prompt.submit")
+        _ = await refused.performVoiceCommand(.start(instructions: "check the weather"))
+        XCTAssertTrue(refusedFake.kept.isEmpty)
         // A lost acknowledgement after Hermes started its turn: it's kept.
-        fake.onSubmit = { id in supervisor.observe(.messageStart(sessionId: id)) }
-        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
-        XCTAssertEqual(fake.kept.count, keptBefore + 1)
-        XCTAssertEqual(fake.kept.last?.2, "check the router")
+        let (lost, lostFake) = makeSupervisor()
+        lostFake.submitError = HermesError.timeout("prompt.submit")
+        lostFake.onSubmit = { id in lost.observe(.messageStart(sessionId: id)) }
+        _ = await lost.performVoiceCommand(.start(instructions: "check the router"))
+        XCTAssertEqual(lostFake.kept.count, 1)
+        XCTAssertEqual(lostFake.kept.last?.2, "check the router")
     }
 
     func testJobsStartedInALiveCallAreAnchoredToItsTranscript() async {
