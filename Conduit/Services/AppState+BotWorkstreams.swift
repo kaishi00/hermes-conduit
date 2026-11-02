@@ -173,6 +173,41 @@ extension AppState {
         )
     }
 
+    /// Whether the host's plugin serves Edit Bot > Work.
+    var servesBotWorkSettings: Bool { notifierPlugin.reports(BotWorkSettingsClient.capability) }
+
+    func botWorkSettingsClient(profile: String) -> BotWorkSettingsClient {
+        BotWorkSettingsClient(
+            profile: profile,
+            parameter: notifierPlugin.dashboardProfileParameter,
+            request: { [weak self] path, method, body in
+                guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+                return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: 30_000)
+            }
+        )
+    }
+
+    /// A bot's work settings, or nil when they couldn't be read.
+    func loadBotWorkSettings(profile: String) async -> BotWorkSettings? {
+        guard servesBotWorkSettings, isConnected else { return nil }
+        return try? await botWorkSettingsClient(profile: profile).load()
+    }
+
+    /// Saves the user's change to a bot's work settings; the settings as the
+    /// plugin keeps them now, or nil when it didn't save. Turning the
+    /// coordinator on or off shows in the Bot Chat on its next read.
+    func saveBotWorkSettings(_ settings: BotWorkSettings, from old: BotWorkSettings,
+                             profile: String) async -> BotWorkSettings? {
+        let change = settings.change(from: old)
+        guard !change.isEmpty else { return settings }
+        guard servesBotWorkSettings, isConnected,
+              let saved = try? await botWorkSettingsClient(profile: profile).save(change) else { return nil }
+        if saved.policy != old.policy {
+            Task { await refreshBotWork(profile: profile) }
+        }
+        return saved
+    }
+
     /// A bot's work as read. The open chat's title reads it too (a
     /// workstream's chat takes its task's title), and the chat screen
     /// watches only AppState, so it's told when that changes.

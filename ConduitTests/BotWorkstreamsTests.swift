@@ -393,4 +393,55 @@ extension BotModeTests {
         XCTAssertNil(BotWorkCall.parse(toolName: "terminal", input: #"{"command": "ls"}"#, output: nil))
         XCTAssertNil(BotWorkCall.parse(toolName: "tool_call", input: #"{"name": "terminal"}"#, output: nil))
     }
+
+    // Edit Bot > Work (M3)
+
+    func testWorkSettingsReadAsThePluginGivesThem() throws {
+        let settings = try XCTUnwrap(BotWorkSettings(response: [
+            "ok": true, "policy": "lookups", "max_running": 3, "max_running_limit": 6, "after_restart": "ask",
+            "workstream_approvals": "off", "chat_approvals": "smart", "unavailable": "",
+        ]))
+        XCTAssertEqual(settings.policy, .lookups)
+        XCTAssertEqual(settings.maxRunning, 3)
+        XCTAssertEqual(settings.afterRestart, .ask)
+        XCTAssertEqual(settings.approvals, .off)
+        XCTAssertEqual(settings.chatApprovals, "smart")
+        XCTAssertNil(settings.unavailable)
+        XCTAssertTrue(settings.isOn)
+        // Out of range from an older plugin: held to what the page can show.
+        let clamped = try XCTUnwrap(BotWorkSettings(response: ["ok": true, "policy": "off", "max_running": 9,
+                                                              "max_running_limit": 6, "unavailable": "plugin host"]))
+        XCTAssertEqual(clamped.maxRunning, 6)
+        XCTAssertFalse(clamped.isOn)
+        XCTAssertEqual(clamped.approvals, .chats)
+        XCTAssertEqual(clamped.unavailable, "plugin host")
+        XCTAssertNil(BotWorkSettings(response: ["ok": true, "policy": "maybe", "max_running": 2]))
+        XCTAssertNil(BotWorkSettings(response: ["ok": false, "policy": "strict", "max_running": 2]))
+    }
+
+    func testAWorkSettingsChangeSendsOnlyWhatChanged() {
+        let old = BotWorkSettings()
+        XCTAssertTrue(old.change(from: old).isEmpty)
+        var new = old
+        new.approvals = .ask
+        new.maxRunning = 4
+        let change = new.change(from: old)
+        XCTAssertEqual(change["workstream_approvals"] as? String, "ask")
+        XCTAssertEqual(change["max_running"] as? Int, 4)
+        XCTAssertEqual(change.count, 2)
+    }
+
+    func testTheApprovalsCaptionSaysWhenHermesWontAsk() {
+        var settings = BotWorkSettings(approvals: .ask, chatApprovals: "manual")
+        let asks = BotWorkSettingsView.approvalsCaption(settings, botName: "Furina")
+        XCTAssertTrue(asks.contains("Furina"))
+        settings.chatApprovals = "off"
+        let off = BotWorkSettingsView.approvalsCaption(settings, botName: "Furina")
+        XCTAssertNotEqual(asks, off)
+        XCTAssertTrue(off.contains("Hermes"))
+        let sameAsChats = BotWorkSettingsView.approvalsCaption(
+            BotWorkSettings(approvals: .chats, chatApprovals: "off"), botName: "Furina")
+        XCTAssertNotEqual(sameAsChats, BotWorkSettingsView.approvalsCaption(
+            BotWorkSettings(approvals: .chats, chatApprovals: "manual"), botName: "Furina"))
+    }
 }

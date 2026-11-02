@@ -99,6 +99,7 @@ struct BotEditorSheet: View {
                     Text(AppLocalization.string("Description"))
                 }
                 personalitySection
+                workSection
                 advancedSection
             }
             .navigationTitle(isCreating ? AppLocalization.string("New Bot") : AppLocalization.string("Edit Bot"))
@@ -399,6 +400,24 @@ struct BotEditorSheet: View {
             Text(isCreating
                 ? AppLocalization.string("Optional. Leave empty to start from a short identity built from the name and description.")
                 : AppLocalization.string("Saved as the bot's SOUL.md."))
+        }
+    }
+
+    /// Edit Bot > Work: how the bot's Bot Chat coordinates its work, kept
+    /// by the plugin and saved as it's changed there. Only for a bot that
+    /// exists, on a plugin that serves it.
+    @ViewBuilder
+    private var workSection: some View {
+        if let bot = editedBot, appState.servesBotWorkSettings {
+            Section {
+                NavigationLink {
+                    BotWorkSettingsView(profile: bot.name, botName: bot.displayLabel)
+                } label: {
+                    Text(AppLocalization.string("Work"))
+                }
+            } footer: {
+                Text(AppLocalization.string("How \(bot.displayLabel) hands tasks to workstreams and keeps track of them in its Bot Chat."))
+            }
         }
     }
 
