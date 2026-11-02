@@ -2846,7 +2846,7 @@ Classic voice, and its calls speak with their live voices.
 - A pick in Settings is per language (all its regions; Chinese by script, as replies are told apart: Simplified, and Traditional with Cantonese voices, so a Hong Kong pick speaks Traditional replies) and per device, not per profile: voices are installed per device. A picked voice that's deleted goes back to automatic.
 - The reply's language comes from its first sentence long enough to tell; until then ("OK.") it's the app's.
 - A voice downloaded or deleted while Conduit runs is used from the next sentence (iOS's voices-changed notice), and Settings reads the list again when it opens or Conduit comes back from iPhone Settings.
-- With no Enhanced or Premium voice for a language, Settings says replies use a basic one and where to download one. A pick in the app's language plays the speaking test.
+- With no Enhanced or Premium voice for a language, Settings says replies use a basic one and where to download one; when only screen-reader voices are installed, it says that instead, since that's why they sound robotic. A pick in the app's language plays the speaking test.
 
 **Open gaps**
 - None known.

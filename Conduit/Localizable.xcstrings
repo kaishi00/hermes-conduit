@@ -1,6 +1,88 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Only a screen-reader voice for %@ is installed on this iPhone, so replies sound robotic. To download a natural one, search iPhone Settings for “Voices”; it shows up here once it's done.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Für %@ ist auf diesem iPhone nur eine Bildschirmleser-Stimme installiert, daher klingen Antworten roboterhaft. Suche zum Laden einer natürlichen Stimme in den iPhone-Einstellungen nach „Stimmen“; sobald sie fertig ist, erscheint sie hier."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone solo tiene una voz de lector de pantalla para %@, así que las respuestas suenan robóticas. Para descargar una natural, busca «Voces» en Ajustes del iPhone; aparecerá aquí cuando termine."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet iPhone n'a qu'une voix de lecteur d'écran pour %@, les réponses sonnent donc robotiques. Pour télécharger une voix naturelle, cherche « Voix » dans Réglages ; elle apparaîtra ici une fois prête."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone ini hanya punya suara pembaca layar untuk %@, jadi balasan terdengar seperti robot. Untuk mengunduh suara yang alami, cari “Suara” di Pengaturan iPhone; suara itu muncul di sini setelah selesai."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Su questo iPhone c'è solo una voce per lettore di schermo per %@, quindi le risposte suonano robotiche. Per scaricarne una naturale, cerca “Voci” in Impostazioni; comparirà qui appena pronta."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このiPhoneには%@のスクリーンリーダー用の声しかないため、返信はロボットのような声になります。自然な声をダウンロードするには、iPhoneの「設定」で「声」を検索してください。完了するとここに表示されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 iPhone에는 %@ 화면 읽기용 음성만 있어 답장이 로봇처럼 들립니다. 자연스러운 음성을 다운로드하려면 iPhone 설정에서 '음성'을 검색하세요. 완료되면 여기에 표시됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ten iPhone ma dla języka %@ tylko głos czytnika ekranu, więc odpowiedzi brzmią jak robot. Aby pobrać naturalny głos, wyszukaj „Głosy” w Ustawieniach iPhone’a; pojawi się tutaj po pobraniu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone só tem uma voz de leitor de tela para %@, então as respostas soam robóticas. Para baixar uma natural, busque “Vozes” nos Ajustes do iPhone; ela aparece aqui quando terminar."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "На этом iPhone для языка «%@» есть только голос для чтения с экрана, поэтому ответы звучат как робот. Чтобы загрузить естественный голос, найдите «Голоса» через поиск в Настройках iPhone; он появится здесь, когда загрузится."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu iPhone'da %@ için yalnızca ekran okuyucu sesi var, bu yüzden yanıtlar robot gibi duyuluyor. Doğal bir ses indirmek için iPhone Ayarlar'da “Sesler” diye arayın; bittiğinde burada görünür."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 只有%@的屏幕阅读器声音，所以回复听起来像机器人。要下载自然的声音，请在 iPhone 的“设置”中搜索“声音”，下载完成后会显示在这里。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這部 iPhone 只有%@的螢幕閱讀器聲音，因此回覆聽起來像機器人。要下載自然的聲音，請在 iPhone 的「設定」中搜尋「聲音」，完成後會顯示在這裡。"
+          }
+        }
+      }
+    },
     "No voice for %@ is installed on this iPhone yet. To download one, search iPhone Settings for “Voices”.": {
       "localizations": {
         "de": {

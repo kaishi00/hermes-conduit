@@ -44,6 +44,10 @@ struct IPhoneVoiceSettingsView: View {
                 Text(AppLocalization.string("No voice for \(languageName(language)) is installed on this iPhone yet. To download one, search iPhone Settings for “Voices”."))
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
+            } else if loaded, candidates.allSatisfy(\.isScreenReaderVoice) {
+                Text(AppLocalization.string("Only a screen-reader voice for \(languageName(language)) is installed on this iPhone, so replies sound robotic. To download a natural one, search iPhone Settings for “Voices”; it shows up here once it's done."))
+                    .scaledFont(.caption)
+                    .foregroundStyle(.orange)
             } else if loaded, !candidates.contains(where: \.isNatural) {
                 Text(AppLocalization.string("This iPhone has no Enhanced or Premium voice for \(languageName(language)) yet, so replies use a basic one. To download one, search iPhone Settings for “Voices”; it shows up here once it's done."))
                     .scaledFont(.caption)
