@@ -2802,14 +2802,16 @@ and Read Aloud speak through Hermes's speech stream or the user's speech
 server.
 
 **Siblings:** the Hermes speech stream · the speech-server speech stream ·
-the one-shot fallback a Hermes stream falls back to before any audio · the
-speech-server transcription stream (listening, not speaking)
+the one-shot fallback a Hermes stream falls back to before any audio, and
+this iPhone's voice it falls back to (see iPhone voice) · the speech-server
+transcription stream (listening, not speaking)
 
 **Code**
 - Hermes speech: `Conduit/Voice/HermesVoiceGateway.swift` (HermesSpeechStream: pathLostError, armFinishIdleTimeout, socketWentSilent, the fallback)
 - Speech server: `Conduit/Voice/SpeechServerSpeech.swift` (SpeechServerSpeechStream)
 - Listening: `Conduit/Voice/SpeechServerTranscription.swift`
 - Keepalive: `Conduit/Voice/VoiceSocketKeepalive.swift`
+- The iPhone fallback: `Conduit/Voice/OnDeviceSpeech.swift` (FallbackSpeechStream)
 
 **Rulings**
 - A dead Hermes speech stream is reported as a lost connection, not a timeout: "Lost the connection to Hermes speech." "Timed out" is only for a live stream that went quiet after some audio (2026-10-24, from #980's review, #1190). The speech-server speech stream can't tell yet (Open gaps); listening on a speech server says "Lost the connection to your speech server." when a send fails or the server closes early.
@@ -2818,7 +2820,38 @@ speech-server transcription stream (listening, not speaking)
 **Open gaps**
 - The speech-server speech stream has no keepalive, so a dead path there shows as "Your speech server stopped speaking." after its idle timeout.
 
-**Checked:** 2026-10-24, at #1208, carried in #1229.
+**Checked:** 2026-11-02, #1664 (the iPhone fallback's voice is the iPhone voice entry's); 2026-10-24, at #1208, carried in #1229.
+
+## iPhone voice
+
+Which of iOS's own voices speaks a reply when Settings > Voice > Assistant
+speech is On this iPhone: Classic voice, Read Aloud, and a Hermes voice that
+fails before any audio, all through one on-device speech stream.
+
+**Siblings:** Classic voice on the phone and in CarPlay (the car plays the
+phone's audio) · Read Aloud, in chats and group rooms · the Hermes speech
+fallback (see Speech stream failures) · Settings' speaking test · Assistant
+speech's captions · docs/VOICE_SETTINGS.md. Not the Apple Watch: it has no
+Classic voice, and its calls speak with their live voices.
+
+**Code**
+- Picking the voice: `Conduit/Voice/IPhoneVoices.swift` (best, pick, installed, the pick per language)
+- Speaking: `Conduit/Voice/OnDeviceSpeech.swift` (SystemSpeechSynthesizer.voice(for:), OnDeviceSpeechStream's reply language)
+- Settings: `Conduit/Views/IPhoneVoiceSettingsView.swift`, in `Conduit/Views/VoiceSettingsView.swift` (iPhoneVoiceDetail)
+- Tests: `ConduitTests/OnDeviceSpeechTests.swift`
+
+**Rulings**
+- Siri's own voices aren't offered: iOS never lists them to apps (WWDC20 session 10022), and private ones would fail App Review. Settings says so and points to Premium voices, the closest there is (2026-11-02, from a tester's report of a robotic voice).
+- Automatic picks, for the reply's language: any voice but iOS 17's screen-reader voices (Eloquence: Eddy, Flo…), then Mandarin over Cantonese for Traditional Chinese (a reply recognized as Cantonese the other way round), then Premium, then Enhanced, then iOS's default for the language, the exact language, the iPhone's region, and the name, so the pick never follows iOS's list order. Screen-reader voices are used, and listed in Settings, only when a language has nothing else or the user picked one, which stays until they change it; novelty voices and Personal Voice never.
+- A pick in Settings is per language (all its regions; Chinese by script, as replies are told apart: Simplified, and Traditional with Cantonese voices, so a Hong Kong pick speaks Traditional replies) and per device, not per profile: voices are installed per device. A picked voice that's deleted goes back to automatic.
+- The reply's language comes from its first sentence long enough to tell; until then ("OK.") it's the app's.
+- A voice downloaded or deleted while Conduit runs is used from the next sentence (iOS's voices-changed notice), and Settings reads the list again when it opens or Conduit comes back from iPhone Settings.
+- With no Enhanced or Premium voice for a language, Settings says replies use a basic one and where to download one; when only screen-reader voices are installed, it says that instead, since that's why they sound robotic. A pick in the app's language plays the speaking test.
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-02, #1664 (new entry: a reply recognized as Cantonese, or a Cantonese system language, speaks with a Cantonese voice, and a Chinese script named outright wins over the region; automatic skips screen-reader voices, a pick per language, newly downloaded voices used at once; review: Automatic clears a deleted pick, screen-reader voices listed only when alone, Chinese kept apart by script, screen-reader voices below any other, an app in Traditional Chinese falls back to Traditional, Mandarin over Cantonese unpicked, a short opening sentence no longer fixes the reply's language).
 
 ## Providers and keys
 

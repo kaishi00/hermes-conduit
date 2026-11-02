@@ -8,12 +8,28 @@ or Local Live), see [Use your own voice server](OWN_VOICE_SERVER.md).
 
 ## Where TTS requests run
 
-All speech synthesis is relayed through the user's Hermes host: Conduit calls
+Speech from a Hermes voice provider is relayed through the user's Hermes host: Conduit calls
 `/api/audio/speak-stream` (streamed PCM) on the Hermes server and falls back
 to `/api/audio/speak` (whole-file) when streaming is unavailable. Conduit
 never talks to TTS providers directly, and it never uses Hermes'
 `voice.client_direct` credential hand-off — provider API keys remain on the
 Hermes host, where Conduit can only see whether each key is set.
+
+## Speaking on this iPhone
+
+With Assistant speech set to On this iPhone (the default without a working
+Hermes voice), Classic voice and Read Aloud speak with iOS's own voices, on
+the device. Conduit uses the best voice installed for the reply's language:
+Premium, then Enhanced, then iOS's default voice. Screen-reader voices
+(Eddy, Flo and the like) are used only when nothing else is installed, and
+Settings says so then, since they're why a reply sounds robotic;
+novelty voices and Personal Voice never. Under
+Assistant speech you can pick the voice for each language instead; the pick
+is kept on this device for every profile. Siri's own voices can't be used:
+iOS doesn't offer them to apps. Premium voices are the closest: search iPhone Settings for "Voices" to
+download them (Accessibility > Read & Speak > Voices on iOS 26, Spoken
+Content before it).
+A voice downloaded while Conduit runs is used from the next sentence.
 
 ## Custom OpenAI-compatible endpoints
 
