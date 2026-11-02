@@ -33825,7 +33825,8 @@ final class AppState: ObservableObject {
             // Hermes' defaults, so thinking set to Off stays off.
             displayPreferences = storedDisplayPreferences(dashboardID: activeDashboardID, profile: profile)
                 ?? ProfileDisplayPreferences()
-            profileTimeZoneSetting = nil
+            // A zone saved while the read was out is still the one on screen.
+            if zoneRevision == timeZoneWriteRevision { profileTimeZoneSetting = nil }
         }
     }
 
