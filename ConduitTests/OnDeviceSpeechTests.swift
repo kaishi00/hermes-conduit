@@ -142,6 +142,10 @@ extension HermesVoiceGatewayTimeoutTests {
         let mandarinTW = iPhoneVoice("meijia", "Meijia", "zh-TW")
         let cantonese = iPhoneVoice("sinji", "Sinji", "zh-HK")
         let chinese = [mandarinCN, mandarinTW, cantonese]
+        XCTAssertEqual(OnDeviceSpeechStream.speechLanguage(of: Locale(identifier: "zh-Hant")), "zh-TW")
+        XCTAssertEqual(OnDeviceSpeechStream.speechLanguage(of: Locale(identifier: "zh-HK")), "zh-TW")
+        XCTAssertEqual(OnDeviceSpeechStream.speechLanguage(of: Locale(identifier: "zh-Hans")), "zh-CN")
+        XCTAssertEqual(OnDeviceSpeechStream.speechLanguage(of: Locale(identifier: "de-AT")), "de")
         XCTAssertEqual(IPhoneVoices.pick(chinese, wanted: "zh-TW", chosen: "sinji", region: "US", systemDefault: nil), cantonese)
         XCTAssertEqual(IPhoneVoices.pick(chinese, wanted: "zh-TW", chosen: nil, region: "US", systemDefault: nil), mandarinTW)
         XCTAssertEqual(IPhoneVoices.pick(chinese, wanted: "zh-CN", chosen: "sinji", region: "US", systemDefault: nil), mandarinCN)

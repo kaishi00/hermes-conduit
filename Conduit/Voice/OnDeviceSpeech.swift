@@ -204,8 +204,19 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
     }
 
     nonisolated static var appLanguage: String? {
-        let locale = AppLanguage.current.locale ?? Locale(identifier: Locale.preferredLanguages.first ?? "en")
-        return locale.language.languageCode?.identifier
+        speechLanguage(of: AppLanguage.current.locale ?? Locale(identifier: Locale.preferredLanguages.first ?? "en"))
+    }
+
+    /// A locale's language as speech picks voices by it: the language code,
+    /// and for Chinese its script, as language(of:) tells replies apart, so
+    /// an app in Traditional Chinese speaks short replies with a Traditional
+    /// voice.
+    nonisolated static func speechLanguage(of locale: Locale) -> String? {
+        guard let code = locale.language.languageCode?.identifier else { return nil }
+        guard code == "zh" else { return code }
+        let traditional = locale.language.script?.identifier == "Hant"
+            || ["TW", "HK", "MO"].contains(locale.language.region?.identifier ?? "")
+        return traditional ? "zh-TW" : "zh-CN"
     }
 }
 

@@ -2599,7 +2599,7 @@ Classic voice, and its calls speak with their live voices.
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-02, #1664 (new entry: automatic skips screen-reader voices, a pick per language, newly downloaded voices used at once; review: Automatic clears a deleted pick, screen-reader voices listed only when alone, Chinese kept apart by script, screen-reader voices below any other).
+**Checked:** 2026-11-02, #1664 (new entry: automatic skips screen-reader voices, a pick per language, newly downloaded voices used at once; review: Automatic clears a deleted pick, screen-reader voices listed only when alone, Chinese kept apart by script, screen-reader voices below any other, an app in Traditional Chinese falls back to Traditional).
 
 ## Profile config saves
 
