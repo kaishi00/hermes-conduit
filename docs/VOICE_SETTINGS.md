@@ -20,8 +20,9 @@ Hermes host, where Conduit can only see whether each key is set.
 With Assistant speech set to On this iPhone (the default without a working
 Hermes voice), Classic voice and Read Aloud speak with iOS's own voices, on
 the device. Conduit uses the best voice installed for the reply's language:
-Premium, then Enhanced, then iOS's default voice, never the screen-reader
-voices (Eddy, Flo and the like), novelty voices or Personal Voice. Under
+Premium, then Enhanced, then iOS's default voice, screen-reader voices
+(Eddy, Flo and the like) only when nothing else is installed, and never
+novelty voices or Personal Voice. Under
 Assistant speech you can pick the voice for each language instead; the pick
 is kept on this device for every profile. Siri's own voices can't be used:
 iOS doesn't offer them to apps. Premium voices are the closest: search iPhone Settings for "Voices" to

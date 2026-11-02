@@ -19,6 +19,8 @@ struct IPhoneVoiceSettingsView: View {
     @State private var voices: [IPhoneVoiceOption] = []
     @State private var language = Self.appLanguageKey
     @State private var chosen: String?
+    /// Nothing is said about missing voices before the list is read.
+    @State private var loaded = false
 
     private static let automaticID = "automatic"
     private static var appLanguageKey: String { IPhoneVoices.languageKey(OnDeviceSpeechStream.appLanguage ?? "en") }
@@ -38,7 +40,7 @@ struct IPhoneVoiceSettingsView: View {
                     Text("Speaks with").foregroundStyle(.secondary)
                 }
             }
-            if !candidates.contains(where: \.isNatural) {
+            if loaded, !candidates.contains(where: \.isNatural) {
                 Text(AppLocalization.string("This iPhone has no Enhanced or Premium voice for \(languageName(language)) yet, so replies use a basic one. To download one, search iPhone Settings for “Voices”; it shows up here once it's done."))
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
@@ -57,11 +59,14 @@ struct IPhoneVoiceSettingsView: View {
         IPhoneVoices.forgetInstalled()
         voices = IPhoneVoices.installed()
         chosen = IPhoneVoices.chosenVoice(for: language)
+        loaded = true
     }
 
     private func pick(_ id: String) {
         let identifier = id == Self.automaticID ? nil : id
-        guard identifier != shownChosen else { return }
+        // Against the saved pick, not the shown one: Automatic over a deleted
+        // voice still clears it, so a later download doesn't bring it back.
+        guard identifier != chosen else { return }
         IPhoneVoices.setChosenVoice(identifier, for: language)
         chosen = identifier
         if language == Self.appLanguageKey { onPickedAppLanguageVoice?() }
@@ -100,7 +105,11 @@ struct IPhoneVoiceSettingsView: View {
         let automaticTitle = automatic.map { AppLocalization.string("Automatic (\(title(for: $0)))") }
             ?? AppLocalization.string("Automatic")
         let regions = Set(candidates.map(\.language))
-        let listed = candidates.sorted { left, right in
+        // Screen-reader voices are listed only when nothing else is installed.
+        let offered = candidates.contains(where: { !$0.isScreenReaderVoice })
+            ? candidates.filter { !$0.isScreenReaderVoice || $0.id == shownChosen }
+            : candidates
+        let listed = offered.sorted { left, right in
             if left.quality != right.quality { return left.quality > right.quality }
             return left.name.localizedCompare(right.name) == .orderedAscending
         }

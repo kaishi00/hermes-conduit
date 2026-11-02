@@ -2591,7 +2591,7 @@ Classic voice, and its calls speak with their live voices.
 
 **Rulings**
 - Siri's own voices aren't offered: iOS never lists them to apps (WWDC20 session 10022), and private ones would fail App Review. Settings says so and points to Premium voices, the closest there is (2026-11-02, from a tester's report of a robotic voice).
-- Automatic picks, for the reply's language: Premium, then Enhanced, then any voice but iOS 17's screen-reader voices (Eloquence: Eddy, Flo…), then iOS's default for the language, the exact language, the iPhone's region, and the name, so the pick never follows iOS's list order. Novelty voices and Personal Voice are never used.
+- Automatic picks, for the reply's language: Premium, then Enhanced, then any voice but iOS 17's screen-reader voices (Eloquence: Eddy, Flo…), then iOS's default for the language, the exact language, the iPhone's region, and the name, so the pick never follows iOS's list order. Screen-reader voices are used, and listed in Settings, only when a language has nothing else; novelty voices and Personal Voice never.
 - A pick in Settings is per language (all its regions) and per device, not per profile: voices are installed per device. A picked voice that's deleted goes back to automatic.
 - A voice downloaded or deleted while Conduit runs is used from the next sentence (iOS's voices-changed notice), and Settings reads the list again when it opens or Conduit comes back from iPhone Settings.
 - With no Enhanced or Premium voice for a language, Settings says replies use a basic one and where to download one. A pick in the app's language plays the speaking test.
@@ -2599,7 +2599,7 @@ Classic voice, and its calls speak with their live voices.
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-02, #1664 (new entry: automatic skips screen-reader voices, a pick per language, newly downloaded voices used at once).
+**Checked:** 2026-11-02, #1664 (new entry: automatic skips screen-reader voices, a pick per language, newly downloaded voices used at once; review: Automatic clears a deleted pick, screen-reader voices listed only when alone).
 
 ## Profile config saves
 
