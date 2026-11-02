@@ -230,6 +230,12 @@ extension AppState {
     /// nil when the chat isn't a workstream's.
     func sendCallRequestToWorkstream(_ thread: VoiceThreadTarget, _ request: String) async -> String? {
         let ids = Set([thread.runtimeSessionID, thread.storedSessionID ?? ""].filter { !$0.isEmpty })
+        let bot = thread.profile ?? activeProfile
+        if botWork.workstream(forSession: ids) == nil, botWork.snapshot(bot) == nil {
+            // Its bot's work isn't read yet (just after a launch): read it
+            // before the request becomes a job of its own.
+            await refreshBotWork(profile: bot)
+        }
         guard let (profile, item) = botWork.workstream(forSession: ids) else { return nil }
         let words = request.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !words.isEmpty else { return "There were no words to pass on." }
