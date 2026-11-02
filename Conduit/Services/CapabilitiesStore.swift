@@ -845,9 +845,13 @@ final class CapabilitiesStore {
     /// Sets a catalog connector's keys in the profile's `.env`, where its
     /// config reads them (`${VAR}`); the config stays as it is. Only the
     /// variables its catalog entry declares are written.
+    /// A switch to another dashboard or profile mid-save stops it: the
+    /// keys left aren't sent to the Hermes the user switched to.
     func setConnectorKeys(_ name: String, _ values: [String: String]) async throws {
+        let token = generation
         let declared = Set(connectorCatalog.first { $0.name == name }?.requiredEnv.map(\.name) ?? [])
         for (key, value) in values.sorted(by: { $0.key < $1.key }) where declared.contains(key) {
+            guard token == generation else { throw CapabilitiesStoreError.profileChanged }
             _ = try await request(scoped("/api/env"), method: "PUT", body: scopedBody(["key": key, "value": value]))
         }
     }

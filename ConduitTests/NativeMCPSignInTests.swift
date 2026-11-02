@@ -144,6 +144,35 @@ final class NativeMCPSignInTests: XCTestCase {
         }
     }
 
+    /// A failed poll is tried again and a success resets the count; three
+    /// in a row end the sign-in and cancel Hermes' flow.
+    func testAPollThatFailsIsRetriedUntilThreeFailInARow() async {
+        for failuresBeforeAnswer in [1, 3] {
+            var polls = 0
+            let cancelled = failuresBeforeAnswer < BotMcpSetup.pollFailureLimit ? nil : expectation(description: "flow cancelled")
+            let outcome = await NativeMCPSignIn.run(profile: "original", name: "server", rpc: { action, _ in
+                switch action {
+                case "start": return self.started()
+                case "callback": return AnyCodable(["ok": true])
+                case "poll":
+                    polls += 1
+                    if polls <= failuresBeforeAnswer { throw URLError(.timedOut) }
+                    return AnyCodable(["status": "approved"])
+                case "cancel": cancelled?.fulfill(); return AnyCodable(["ok": true])
+                default: XCTFail("Unexpected \(action)"); return AnyCodable([:])
+                }
+            }, isCurrent: { true }, open: { _ in }, loopback: loopback())
+            if failuresBeforeAnswer < BotMcpSetup.pollFailureLimit {
+                if case .signedIn = outcome {} else { XCTFail("One failed poll is retried, got \(outcome)") }
+                XCTAssertEqual(polls, 2)
+            } else {
+                if case .failed = outcome {} else { XCTFail("Three failed polls end it, got \(outcome)") }
+                XCTAssertEqual(polls, 3, "no poll after the third failure")
+                if let cancelled { await fulfillment(of: [cancelled], timeout: 2) }
+            }
+        }
+    }
+
     func testRealPhoneListenerRejectsWrongStateThenRelaysTheValidCallback() async {
         let browserReturned = expectation(description: "browser callback returned")
         var browserTask: Task<Void, Never>?

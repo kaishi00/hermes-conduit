@@ -493,8 +493,6 @@ extension KanbanTests {
         XCTAssertEqual(store.plugins.first { $0.name == "Weather" }?.isEnabled, true)
     }
 
-    /// Opening a server from the Connectors list cancels the list's tests;
-    /// a test already sent still lands, and isn't shown as interrupted (#1570).
     /// A catalog connector's keys go to the profile's .env, only the
     /// variables its entry declares, never its config.
     func testAConnectorKeyIsSetInTheProfileEnvOnly() async throws {
@@ -530,6 +528,38 @@ extension KanbanTests {
         XCTAssertEqual(writes.first?.body?["profile"] as? String, "work")
     }
 
+    /// A switch to another profile between two keys stops the save: the
+    /// key left isn't written to the profile switched to.
+    func testAConnectorKeySaveStopsWhenTheProfileChanges() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [["name": "jira", "transport": "http", "url": "https://j", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [
+                ["name": "jira", "description": "Issues", "auth_type": "api_key", "installed": true,
+                 "required_env": [["name": "JIRA_EMAIL", "prompt": "Email", "required": true],
+                                  ["name": "JIRA_TOKEN", "prompt": "Token", "required": true]]],
+            ]],
+            "/api/env": ["ok": true],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        await store.loadConnectors()
+        requester.calls.removeAll()
+        requester.beforeAnswering = { path in
+            if path == "/api/env" { store.configure(requester: requester, profile: "home") }
+        }
+        do {
+            try await store.setConnectorKeys("jira", ["JIRA_EMAIL": "me@example.com", "JIRA_TOKEN": "tok"])
+            XCTFail("the save stops at the switch")
+        } catch {
+            XCTAssertEqual(error as? CapabilitiesStoreError, .profileChanged)
+        }
+        let writes = requester.calls.filter { $0.method == "PUT" }
+        XCTAssertEqual(writes.map { $0.body?["key"] as? String }, ["JIRA_EMAIL"])
+        XCTAssertFalse(writes.contains { $0.body?["profile"] as? String == "home" })
+    }
+
+    /// Opening a server from the Connectors list cancels the list's tests;
+    /// a test already sent still lands, and isn't shown as interrupted (#1570).
     func testAConnectorTestFinishesWhenTheListThatStartedItGoesAway() async {
         let requester = CapabilityMockRequester(responses: [
             "/api/mcp/servers": ["servers": [
