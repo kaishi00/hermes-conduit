@@ -1441,8 +1441,6 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 $0.storedSessionID = ids.storedID
             }
             onJobSessionCreated?([runtimeID, ids.storedID].compactMap { $0 }.filter { !$0.isEmpty })
-            backend.keepInRegistry(botProfile, ids.storedID.flatMap { $0.isEmpty ? nil : $0 } ?? runtimeID,
-                                   job.title, instructions, fromWatch)
             await backend.setTitle(runtimeID, job.title)
             guard startIsCurrent(job.id, generation: generation) else {
                 return await abandonStart(job, sessionID: runtimeID, generation: generation)
@@ -1465,6 +1463,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             if case .failed = self.job(job.id)?.status {
                 return failedStartReply(job.id)
             }
+            // Hermes took the request: the job is kept in its bot's work
+            // registry. A start that failed or was abandoned isn't.
+            backend.keepInRegistry(botProfile, ids.storedID.flatMap { $0.isEmpty ? nil : $0 } ?? runtimeID,
+                                   job.title, request, fromWatch)
             if self.job(job.id)?.status == .starting {
                 update(job.id) { $0.status = .running }
             }

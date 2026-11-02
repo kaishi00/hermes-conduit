@@ -271,6 +271,15 @@ extension VoiceConversationControllerTests {
         fake.releaseCreate()
         _ = await started.value
         XCTAssertEqual(fake.kept.last?.0, "default")
+        // A Watch call's job that names a profile is filed under that bot.
+        _ = await supervisor.startJob(instructions: "check the logs", profile: "furina", callsModel: false, fromWatch: true)
+        XCTAssertEqual(fake.kept.last?.0, "furina")
+        XCTAssertEqual(fake.kept.last?.3, true)
+        // A start Hermes didn't take isn't kept.
+        let keptBefore = fake.kept.count
+        fake.submitError = HermesError.timeout("prompt.submit")
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the weather"))
+        XCTAssertEqual(fake.kept.count, keptBefore)
     }
 
     func testJobsStartedInALiveCallAreAnchoredToItsTranscript() async {

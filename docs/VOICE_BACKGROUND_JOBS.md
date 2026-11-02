@@ -29,12 +29,16 @@ a job. At most three jobs run at once.
   prompt, and corrections sent as `(voice) <words>`): typing into it brings
   it back for good, and a failed, stopped or pinned job stays listed.
 - On the `bot-workstreams` branches, a host whose plugin keeps bot work
-  (`work-adopt`) is also told of each job right after its session is made, so
+  (`work-adopt`) is also told of each job once Hermes takes its request, so
   the job shows in its bot's Work panel as a call's ("From a voice call" or
   "From a Watch call"), journaled, and waiting for the user after a Hermes
   restart. It's one small request off the job's path, beside the session the
-  job makes anyway; nothing is saved mid-call, and how results come back is
-  unchanged. Watch relay jobs are kept by the plugin itself as they start.
+  job makes anyway; the call and its results aren't saved mid-call, and how
+  results come back is unchanged. (That reads the "no writes to the host
+  mid-call" ruling as covering saves of the call and its results; the feature
+  map's "Job results during calls" asks Eric to confirm.) A start that fails
+  or is abandoned isn't kept. Watch relay jobs are kept by the plugin itself
+  as they start.
 - During a live call, the call screen shows each job the call started: the
   latest above the captions, and every one in the transcript panel where it
   started (`VoiceJobCallAnchor`). Tapping one shows its status and, once it
