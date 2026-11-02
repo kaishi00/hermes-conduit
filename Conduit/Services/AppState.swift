@@ -32385,7 +32385,8 @@ final class AppState: ObservableObject {
             let merged = orderedProfiles(profiles + [activeProfile, "default"])
             profiles = merged
             persistKnownProfiles(merged)
-            return false
+            // A list sent after this one was read and taken meanwhile.
+            return read <= profileListReadCommitted
         }
     }
 
