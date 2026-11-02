@@ -33751,6 +33751,9 @@ final class AppState: ObservableObject {
     /// Counts display saves that landed, so a config read sent before one
     /// doesn't put the older choice back.
     private var displayPreferencesWriteRevision = 0
+    /// The same for time-zone saves, which come back in that config read
+    /// too but are counted apart, so a display save doesn't cost the zone.
+    private var timeZoneWriteRevision = 0
 
     /// The reads every connection makes, sent with its ticket rather than
     /// each after the step before it: the profile list, the chat list's
@@ -33790,6 +33793,7 @@ final class AppState: ObservableObject {
         guard let owner = currentDashboardRuntimeOwner() else { return }
         let dashboardTicketBridge = owner.bridge
         let revision = displayPreferencesWriteRevision
+        let zoneRevision = timeZoneWriteRevision
         do {
             let config = try await startupReads.read(
                 dashboardPath("/api/config", profile: profile),
@@ -33798,10 +33802,12 @@ final class AppState: ObservableObject {
             )
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return }
             let display = config["display"] as? [String: Any] ?? [:]
-            // A display or time-zone save that landed while this read was out
-            // is newer.
+            // A time-zone or display save that landed while this read was
+            // out is newer, each for its own setting.
+            if zoneRevision == timeZoneWriteRevision {
+                profileTimeZoneSetting = (profile, config[ProfileTimeZone.configKey] as? String ?? "")
+            }
             guard revision == displayPreferencesWriteRevision else { return }
-            profileTimeZoneSetting = (profile, config[ProfileTimeZone.configKey] as? String ?? "")
             let reasoning = ReasoningDisplayMode(display: display)
             displayPreferences = ProfileDisplayPreferences(
                 showReasoning: reasoning == .show,
@@ -34182,11 +34188,8 @@ final class AppState: ObservableObject {
                     self?.setProfileSettingValue(value, in: &config, key: key)
                 }
             }
-            // The time zone comes back in the same config read as the display
-            // settings, so its save also voids an early or in-flight read.
-            if reasoning != nil || key.hasPrefix("display.") || key == ProfileTimeZone.configKey {
-                displayPreferencesWriteRevision &+= 1
-            }
+            if reasoning != nil || key.hasPrefix("display.") { displayPreferencesWriteRevision &+= 1 }
+            if key == ProfileTimeZone.configKey { timeZoneWriteRevision &+= 1 }
             // The write landed on its own profile; what's mirrored on screen
             // must still be that dashboard's and profile's.
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return true }
