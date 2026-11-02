@@ -2339,7 +2339,7 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
-    func testAuthorityRetryAfterNoWordBackReadsItsOwnAnswerAsTaken() async throws {
+    func testAuthorityRetryAfterNoWordBackReadsAsNoLongerActiveNotAnotherSurfaces() async throws {
         let (client, socket) = try await authorityClient()
         try await deliverFrame([
             "jsonrpc": "2.0", "method": "event",
@@ -2360,7 +2360,8 @@ final class HermesClientTests: XCTestCase {
             _ = try await lost.value
             XCTFail("A cancelled answer throws")
         } catch {}
-        // The retry hears already_resolved: that was this client's answer.
+        // The retry hears already_resolved: this client's answer or a
+        // timeout's, never another surface's.
         count = socket.sentTexts.count
         let retry = Task<HermesClient.ApprovalResponseOutcome, Error> {
             try await client.respondToApprovalOutcome(sessionId: "sess-1", requestId: "p-retry-4", choice: "once")
@@ -2368,7 +2369,7 @@ final class HermesClientTests: XCTestCase {
         try await answerRequest(on: socket, after: count, method: "approval.respond",
                                 result: ["status": "already_resolved", "prompt_id": "p-retry-4"])
         let retried = try await awaitResult(of: retry, "the retried approval")
-        XCTAssertEqual(retried, .accepted, "Our own earlier answer isn't another surface's")
+        XCTAssertEqual(retried, .ended, "Neither approved nor another surface's")
 
         try await deliverFrame([
             "jsonrpc": "2.0", "method": "event",
@@ -2394,7 +2395,7 @@ final class HermesClientTests: XCTestCase {
         try await answerRequest(on: socket, after: count, method: "clarify.respond",
                                 result: ["status": "already_resolved", "prompt_id": "c-retry-4"])
         let retriedAnswer = try await awaitResult(of: retryAnswer, "the retried answer")
-        XCTAssertEqual(retriedAnswer, .accepted(remaining: []))
+        XCTAssertEqual(retriedAnswer, .ended)
         client.disconnect()
     }
 

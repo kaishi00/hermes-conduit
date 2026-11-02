@@ -1117,10 +1117,9 @@ final class HermesClient: ObservableObject {
     /// with the fences; a socket handoff carries it over (`adoptSocket`).
     private var authorityPromptSessions: [String: String] = [:]
     /// Prompts this client sent an answer for that came back with neither a
-    /// status nor a refusal (the socket dropped, a timeout). If the answer
-    /// was taken, a retry hears `already_resolved`, which is then our own
-    /// answer, not another surface's; and if the chat's resume no longer
-    /// lists the prompt, it was most likely ours that settled it. Shared by
+    /// status nor a refusal (the socket dropped, a timeout). A retry that
+    /// then hears `already_resolved` may be our own answer or a timeout's,
+    /// so it reads as no longer active rather than another surface's. Shared by
     /// every client, since a reconnect builds a new one and a drop is the
     /// usual reason to retry; prompt ids are unique, so one server's never
     /// reads as another's. Main-actor isolated with the class, like every
@@ -3356,8 +3355,9 @@ final class HermesClient: ObservableObject {
     func cancel(_ sessionId: String, profile: String? = nil) async throws {
         // Nil: no turn is running, so there is nothing to stop.
         _ = try await turnControl("session.interrupt", sessionId: sessionId, profile: profile)
-        // Stopped: a send now starts a turn of its own, even if the stopped
-        // turn's end never reaches this socket.
+        // Stopped: the stopped turn ends right after, and a send then starts
+        // as soon as it does, so it reads as a turn of its own rather than
+        // waiting on an end this socket may never see.
         authorityRunningSessions.remove(sessionId)
     }
 
@@ -3533,9 +3533,10 @@ final class HermesClient: ObservableObject {
             authorityPromptSessions.removeValue(forKey: requestId)
             switch result.objectValue?["status"]?.stringValue?.lowercased() {
             case "resolved": return .accepted(remaining: [])
-            // Another surface answered first, so this answer wasn't taken;
-            // after an earlier send that got no word back, it was ours.
-            case "already_resolved": return retried ? .accepted(remaining: []) : .answeredElsewhere
+            // Another surface answered first, so this answer wasn't taken.
+            // After an earlier send that got no word back, it may have been
+            // ours or a timeout's: nothing says which, so no longer active.
+            case "already_resolved": return retried ? .ended : .answeredElsewhere
             // Any other word isn't a timeout either: no longer active.
             default: return .ended
             }
@@ -3740,8 +3741,10 @@ final class HermesClient: ObservableObject {
             authorityPromptSessions.removeValue(forKey: trimmedRequestId)
             switch result.objectValue?["status"]?.stringValue?.lowercased() {
             case "resolved": return .accepted
-            // After an earlier send that got no word back, it was ours.
-            case "already_resolved": return retried ? .accepted : .answeredElsewhere
+            // After an earlier send that got no word back, it may have been
+            // ours or a timeout's (denied, the turn going on): nothing says
+            // which, so no longer active rather than approved or another's.
+            case "already_resolved": return retried ? .ended : .answeredElsewhere
             // Any other word isn't a timeout either: no longer active.
             default: return .ended
             }
