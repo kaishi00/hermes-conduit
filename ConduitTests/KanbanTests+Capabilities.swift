@@ -566,6 +566,48 @@ extension KanbanTests {
         XCTAssertEqual(store.probes["linear"]?.ok, true)
     }
 
+    /// A save that fails after its first key still reruns a test running on
+    /// the old key: the key Hermes took is the one the server now reads.
+    func testAConnectorKeySaveThatFailsPartWayRunsARunningTestAgain() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [["name": "jira", "transport": "http", "url": "https://j", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [
+                ["name": "jira", "description": "Issues", "auth_type": "api_key", "installed": true,
+                 "required_env": [["name": "JIRA_EMAIL", "prompt": "Email", "required": true],
+                                  ["name": "JIRA_TOKEN", "prompt": "Token", "required": true]]],
+            ]],
+            "/api/env": ["ok": true],
+            "/api/mcp/servers/jira/test": ["ok": true],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        await store.loadConnectors()
+        requester.calls.removeAll()
+        var held: CheckedContinuation<Void, Never>?
+        var writes = 0
+        requester.beforeAnswering = { path in
+            if path == "/api/env" {
+                writes += 1
+                if writes == 2 { requester.failures["PUT /api/env"] = URLError(.timedOut) }
+                return
+            }
+            guard path == "/api/mcp/servers/jira/test", held == nil else { return }
+            await withCheckedContinuation { held = $0 }
+        }
+        let test = Task { await store.probe("jira") }
+        while held == nil { await Task.yield() }
+        var saved: [String] = []
+        do {
+            try await store.setConnectorKeys("jira", ["JIRA_EMAIL": "me@example.com", "JIRA_TOKEN": "token"]) { saved.append($0) }
+            XCTFail("the second key's write fails")
+        } catch {}
+        XCTAssertEqual(saved, ["JIRA_EMAIL"], "only the key Hermes took is saved")
+        held?.resume()
+        await test.value
+        let tests = requester.calls.filter { $0.path.hasPrefix("/api/mcp/servers/jira/test") }
+        XCTAssertEqual(tests.count, 2, "tested again on the key that was saved")
+    }
+
     /// A switch to another profile between two keys stops the save: the
     /// key left isn't written to the profile switched to.
     func testAConnectorKeySaveStopsWhenTheProfileChanges() async throws {

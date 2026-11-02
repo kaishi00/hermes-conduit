@@ -862,8 +862,9 @@ final class CapabilitiesStore {
         for (key, value) in values.sorted(by: { $0.key < $1.key }) where declared.contains(key) {
             guard token == generation else { throw CapabilitiesStoreError.profileChanged }
             _ = try await request(scoped("/api/env"), method: "PUT", body: scopedBody(["key": key, "value": value]))
-            // A test already running read the old key: it runs again.
-            probeEpochs[name, default: 0] &+= 1
+            // A test already running read the old key: it runs again. A write
+            // that lands after a switch leaves the new profile's tests alone.
+            if token == generation { probeEpochs[name, default: 0] &+= 1 }
             saved(key)
         }
     }
