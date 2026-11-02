@@ -290,14 +290,6 @@ struct ConnectorKeysSection: View {
     @State private var saving = false
     @State private var note: String?
 
-    /// Whether a save tests the server: only while it's on as the save
-    /// ends, read then, since it may have been turned on or off meanwhile
-    /// (a test starts it on the host).
-    /// A save that failed part way tests only when a key was taken.
-    static func testsAfterSave(_ name: String, in servers: [ConnectorServer], savedAny: Bool = true) -> Bool {
-        savedAny && servers.first { $0.name == name }?.enabled == true
-    }
-
     /// The keys a catalog entry signs in with, or nil when it takes none
     /// (an OAuth server signs in instead).
     static func fields(_ entry: ConnectorCatalogEntry) -> [ConnectorCatalogEntry.EnvField]? {
@@ -372,14 +364,14 @@ struct ConnectorKeysSection: View {
                 Haptics.success()
                 // The fields come back before the test, which can take a while.
                 saving = false
-                if Self.testsAfterSave(name, in: store.servers) { await store.probe(name) }
+                await store.testAfterKeySave(name, generation: generation)
             } catch {
                 guard store.generation == generation else { return }
                 note = UserFacingError.message(for: error)
                 saving = false
                 // Keys Hermes took before the failure are tested too, so the
                 // page doesn't keep the old key's result.
-                if Self.testsAfterSave(name, in: store.servers, savedAny: savedAny) { await store.probe(name) }
+                await store.testAfterKeySave(name, savedAny: savedAny, generation: generation)
             }
         }
     }

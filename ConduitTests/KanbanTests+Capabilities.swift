@@ -526,16 +526,46 @@ extension KanbanTests {
         XCTAssertEqual(writes.first?.body?["key"] as? String, "LINEAR_API_KEY")
         XCTAssertEqual(writes.first?.body?["value"] as? String, "lin-key")
         XCTAssertEqual(writes.first?.body?["profile"] as? String, "work")
+    }
 
-        // A save tests the server only if it's on as the save ends.
-        XCTAssertTrue(ConnectorKeysSection.testsAfterSave("linear", in: store.servers))
-        var turnedOff = store.servers
-        turnedOff[0].enabled = false
-        XCTAssertFalse(ConnectorKeysSection.testsAfterSave("linear", in: turnedOff), "turned off meanwhile")
-        XCTAssertFalse(ConnectorKeysSection.testsAfterSave("gone", in: store.servers))
-        // A save that failed part way tests only if a key was taken.
-        XCTAssertTrue(ConnectorKeysSection.testsAfterSave("linear", in: store.servers, savedAny: true))
-        XCTAssertFalse(ConnectorKeysSection.testsAfterSave("linear", in: store.servers, savedAny: false), "nothing saved")
+    /// After a key save the list is read again from the host, and the server
+    /// is tested only if that read says it's on: a switch turned on another
+    /// device meanwhile counts, and a read that fails tests nothing.
+    func testAKeySaveTestsTheServerOnlyIfTheHostSaysItsOn() async throws {
+        let on: [String: Any] = ["servers": [["name": "linear", "transport": "http", "url": "https://l", "enabled": true]]]
+        let off: [String: Any] = ["servers": [["name": "linear", "transport": "http", "url": "https://l", "enabled": false]]]
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": on,
+            "/api/mcp/catalog": ["entries": []],
+            "/api/mcp/servers/linear/test": ["ok": true],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        await store.loadConnectors()
+        func tests() -> Int { requester.calls.filter { $0.path.hasPrefix("/api/mcp/servers/linear/test") }.count }
+
+        requester.calls.removeAll()
+        await store.testAfterKeySave("linear")
+        XCTAssertEqual(tests(), 1, "on as the save ends")
+
+        requester.calls.removeAll()
+        await store.testAfterKeySave("linear", savedAny: false)
+        XCTAssertTrue(requester.calls.isEmpty, "a save that took no key reads and tests nothing")
+
+        // Turned off elsewhere: the phone's list still says on.
+        requester.responses["/api/mcp/servers"] = off
+        requester.calls.removeAll()
+        await store.testAfterKeySave("linear")
+        XCTAssertEqual(tests(), 0, "turned off on another device meanwhile")
+        XCTAssertEqual(store.servers.first?.enabled, false)
+
+        // A read that fails tests nothing, even where the list showed it on.
+        requester.responses["/api/mcp/servers"] = on
+        await store.loadConnectors()
+        requester.failures["/api/mcp/servers"] = URLError(.timedOut)
+        requester.calls.removeAll()
+        await store.testAfterKeySave("linear")
+        XCTAssertEqual(tests(), 0, "no test on a list that couldn't be read again")
     }
 
     /// A test already running when a key is saved read the old key: it runs

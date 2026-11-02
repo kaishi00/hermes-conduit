@@ -869,6 +869,20 @@ final class CapabilitiesStore {
         }
     }
 
+    /// After a key save, the server is tested only if it's on: the list is
+    /// read again from the host first, as Edit Server's save reads it, so a
+    /// switch turned on another device meanwhile counts. A read that fails
+    /// tests nothing, so the old result stays rather than the server being
+    /// started on a stale list; a save that took no key tests nothing.
+    func testAfterKeySave(_ name: String, savedAny: Bool = true, generation token: Int? = nil) async {
+        let token = token ?? generation
+        guard savedAny, token == generation else { return }
+        let reloaded = await loadConnectors()
+        guard reloaded, token == generation,
+              servers.first(where: { $0.name == name })?.enabled == true else { return }
+        await probe(name)
+    }
+
     // MARK: Plugins
 
     func loadPlugins() async {
