@@ -361,6 +361,8 @@ struct VoiceBackgroundJobBackend {
     /// Whether the open chat shows more than one message waiting on its
     /// reply, so the latest turn's prompt can't be told.
     var threadAwaitsSeveralPrompts: @MainActor (_ thread: VoiceThreadTarget) -> Bool = { _ in false }
+    /// The chat's transcript when it's open on this device, nil otherwise.
+    var openThreadMessages: @MainActor (_ thread: VoiceThreadTarget) -> [ChatMessage]? = { _ in nil }
     /// The user's earlier chats that match `query`, best first, for a call
     /// asked to find one: on `profile`, or the one in use when nil.
     var searchChats: @MainActor (_ query: String, _ profile: String?) async throws -> [VoiceChatMatch] = { _, _ in
@@ -2401,6 +2403,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Only events addressed to a job session change anything.
     func observe(_ event: StreamEvent) {
         guard let sessionID = Self.sessionID(for: event) else { return }
+        if case .messageStart = event { noteTurnStart(sessionID) }
         guard let index = Self.observingIndex(in: jobs, sessionID: sessionID) else {
             noteUnownedChatTurn(event, sessionID: sessionID)
             return
@@ -2538,7 +2541,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             guard lastUnidentifiedChatReply != reply else { return }
         }
         rememberChatTurn(messageID, reply: reply)
-        let asked = askedFor(thread)
+        let asked = turnAsked.removeValue(forKey: sessionID) ?? askedFor(thread)
         // A Bot Chat's turn nobody asked for is its coordinator reporting
         // work (the plugin's work update): the call speaks it, as it speaks
         // a job's result (Eric 2026-11-02, "Bot Chat calls only").
@@ -2779,9 +2782,47 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     func noteChatReport(_ reply: String, sessionID: String) -> Bool {
         let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
         let thread = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
-        guard !text.isEmpty, backend.isBotChat(thread), askedFor(thread) == .nobody else { return false }
-        queueWorkUpdate(text)
-        return true
+        let asked = turnAsked.removeValue(forKey: sessionID) ?? askedFor(thread)
+        guard !text.isEmpty, backend.isBotChat(thread), asked == .nobody else { return false }
+        return queueWorkUpdate(text)
+    }
+
+    /// Who asked for each Bot Chat turn under way, taken when it started:
+    /// by its end, a message typed while it ran (Hermes runs it next) sits
+    /// unanswered in the transcript and would pass for its prompt.
+    private var turnAsked: [String: AskedFor] = [:]
+    /// The last message a Bot Chat's turn took as its prompt, by session.
+    private var lastTakenPrompt: [String: String] = [:]
+
+    /// A Bot Chat turn starts: it answers the first message no earlier turn
+    /// took, or nobody (the plugin's hidden work update). Not open on this
+    /// device: unknown here, and its end falls back to `askedFor`.
+    private func noteTurnStart(_ sessionID: String) {
+        let thread = liveThread.flatMap { backend.threadOwnsSession($0, sessionID) ? $0 : nil }
+            ?? VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
+        guard backend.isBotChat(thread), let messages = backend.openThreadMessages(thread) else {
+            turnAsked[sessionID] = nil
+            return
+        }
+        func words(_ message: ChatMessage) -> String { message.content.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let prompts = messages.indices.filter { messages[$0].role == .user }
+        let firstNew: Int
+        if let taken = lastTakenPrompt[sessionID], let index = prompts.last(where: { words(messages[$0]) == taken }) {
+            firstNew = index + 1
+        } else {
+            firstNew = messages.lastIndex(where: { $0.role == .assistant }).map { $0 + 1 } ?? messages.startIndex
+        }
+        // Everything above it is taken, whoever this turn answers.
+        if let taken = prompts.last(where: { $0 < firstNew }) { lastTakenPrompt[sessionID] = words(messages[taken]) }
+        guard let next = prompts.first(where: { $0 >= firstNew }) else {
+            turnAsked[sessionID] = .nobody
+            return
+        }
+        let message = messages[next]
+        lastTakenPrompt[sessionID] = words(message)
+        let prompt = AppState.liveVoiceTypedPrompt(message)
+        turnAsked[sessionID] = prompt.isEmpty ? .unknown
+            : prompt.hasPrefix(Self.threadTurnText(for: "")) ? .voice : .typed(prompt)
     }
 
     /// Who asked for the chat's latest turn, from its open transcript: a
@@ -2803,11 +2844,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         return prompt.hasPrefix(Self.threadTurnText(for: "")) ? .voice : .typed(prompt)
     }
 
-    private func queueWorkUpdate(_ reply: String) {
+    @discardableResult
+    private func queueWorkUpdate(_ reply: String) -> Bool {
         // Said as is in every mode: links read as their text, emoji and
         // narrated actions dropped, as Classic speaks them.
         let reply = SpokenTextFilter.filter(Self.linkTextOnly(reply)).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !reply.isEmpty else { return }
+        guard !reply.isEmpty else { return false }
         let clipped = reply.count > Self.maximumChatContextReplyCharacters
             ? String(reply.prefix(Self.maximumChatContextReplyCharacters)) + "…" : reply
         workUpdates.append((UUID(), clipped))
@@ -2815,6 +2857,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             workUpdates.removeFirst(workUpdates.count - Self.maximumPendingChatContext)
         }
         onNoticePending?()
+        return true
     }
 
     /// Markdown links (a work update's `[Open W3](conduit://…)`) as their text.

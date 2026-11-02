@@ -1091,12 +1091,10 @@ final class VoiceConversationController: ObservableObject {
         if case .completed(_, let content, _) = event, isVoiceSessionActive, !isAwaitingVoiceAssistant,
            expectedAssistantSessionIDs.contains(sessionID), let backgroundJobs {
             let reply = (content ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !reply.isEmpty, reply != lastOwnReply {
-                let spoken = SpokenTextFilter.filter(reply).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !spoken.isEmpty, backgroundJobs.noteChatReport(spoken, sessionID: sessionID) {
-                    lastOwnReply = reply  // a replay of it isn't said twice
-                    deliverPendingBackgroundJobNoticeIfIdle()
-                }
+            // The supervisor filters it for speech, as for every mode.
+            if !reply.isEmpty, reply != lastOwnReply, backgroundJobs.noteChatReport(reply, sessionID: sessionID) {
+                lastOwnReply = reply  // a replay of it isn't said twice
+                deliverPendingBackgroundJobNoticeIfIdle()
             }
             return
         }

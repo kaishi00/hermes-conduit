@@ -112,6 +112,7 @@ final class FakeVoiceJobBackend {
     var threadPrompt: String?
     var botChat = false
     var severalPrompts = false
+    var openMessages: [ChatMessage]?
     private(set) var threadSubmissions: [(String, String)] = []
     /// Follow-ups put into a running turn (#451): what each carried, and
     /// Hermes' answers to the next ones (taken in turn; none left means
@@ -223,7 +224,8 @@ final class FakeVoiceJobBackend {
             },
             latestThreadPrompt: { [self] _ in self.threadPrompt },
             isBotChat: { [self] _ in self.botChat },
-            threadAwaitsSeveralPrompts: { [self] _ in self.severalPrompts }
+            threadAwaitsSeveralPrompts: { [self] _ in self.severalPrompts },
+            openThreadMessages: { [self] _ in self.openMessages }
         )
     }
 
@@ -1382,6 +1384,36 @@ extension VoiceConversationControllerTests {
         supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "u5", content: "Both done.", reasoning: nil))
         XCTAssertEqual(supervisor.pendingChatContext.count, 3)
         XCTAssertNil(supervisor.takePendingNotice())
+    }
+
+    /// GLM on #1667: who asked is taken as each turn starts. A message typed
+    /// while the work update ran waits in the transcript at its end, and the
+    /// work update's own reply sits above that message's reply.
+    func testABotChatTurnsPromptIsTakenWhenItStarts() {
+        func message(_ id: String, _ role: MessageRole, _ text: String) -> ChatMessage {
+            ChatMessage(id: id, role: role, content: text, rawContent: nil, timestamp: "", author: nil, attachments: nil)
+        }
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.botChat = true
+        fake.openMessages = [message("q1", .user, "check the disk"), message("a1", .assistant, "On it.")]
+        supervisor.observe(.messageStart(sessionId: "rt-chat"))  // the hidden work update
+        fake.openMessages?.append(message("q2", .user, "hi"))
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "w1", content: "W1: 7.6 GB free.", reasoning: nil))
+        XCTAssertEqual(supervisor.takePendingNotice(), .speak("W1: 7.6 GB free."), "said, though hi waits")
+        fake.openMessages?.append(message("a2", .assistant, "W1: 7.6 GB free."))
+
+        supervisor.observe(.messageStart(sessionId: "rt-chat"))  // hi's turn
+        fake.openMessages?.append(message("a3", .assistant, "Hello."))
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "h1", content: "Hello.", reasoning: nil))
+        XCTAssertNil(supervisor.takePendingNotice(), "hi's reply stays quiet")
+        XCTAssertEqual(supervisor.pendingChatContext.count, 1)
+
+        // Classic takes the same answer from the supervisor.
+        supervisor.observe(.messageStart(sessionId: "rt-chat"))  // another work update
+        fake.openMessages?.append(message("q3", .user, "and the logs?"))
+        XCTAssertTrue(supervisor.noteChatReport("W2: logs rotated.", sessionID: "rt-chat"))
+        supervisor.observe(.messageStart(sessionId: "rt-chat"))
+        XCTAssertFalse(supervisor.noteChatReport("Rotated last night.", sessionID: "rt-chat"), "the typed one's reply")
     }
 
     func testAReplayedCompletionIsNotedOnce() {
@@ -3262,7 +3294,9 @@ final class FakeVoiceBackgroundJobs: VoiceBackgroundJobHandling {
     private(set) var reports: [String] = []
 
     func noteChatReport(_ reply: String, sessionID: String) -> Bool {
-        guard botChats.contains(sessionID) else { return false }
+        // As the supervisor says it: filtered for speech.
+        let reply = SpokenTextFilter.filter(reply).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard botChats.contains(sessionID), !reply.isEmpty else { return false }
         reports.append(reply)
         pending.append(.speak(reply))
         return true
