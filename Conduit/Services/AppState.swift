@@ -4699,6 +4699,7 @@ final class AppState: ObservableObject {
             saveLedger: { [weak self] saved in
                 self?.saveVoiceJobLedger(saved)
             },
+            ledgerKey: { [weak self] in self?.voiceJobLedgerKey },
             openThreadMessages: { [weak self] thread in
                 guard let self, self.isOpenChat(thread) else { return nil }
                 return self.messages
@@ -4879,6 +4880,8 @@ final class AppState: ObservableObject {
     /// ledger never overwrites the next dashboard's or profile's.
     func saveVoiceJobLedger(_ saved: [SavedVoiceJob]) {
         guard let key = voiceJobLedgerRestoredKey, key == voiceJobLedgerKey else { return }
+        // Only this ledger's jobs: another profile's stay in its own.
+        let saved = saved.filter { $0.ledgerKey == nil || $0.ledgerKey == key }
         if saved.isEmpty {
             defaults.removeObject(forKey: key)
         } else if let data = try? JSONEncoder().encode(saved) {

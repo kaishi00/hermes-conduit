@@ -28,6 +28,7 @@ struct SavedVoiceJob: Codable, Equatable {
     var number: Int
     var callsBackWhenDone: Bool
     var callChatIDs: [String]
+    var ledgerKey: String?
 
     init?(_ job: VoiceBackgroundJob) {
         guard let runtimeID = job.runtimeSessionID, !runtimeID.isEmpty else { return nil }
@@ -49,6 +50,7 @@ struct SavedVoiceJob: Codable, Equatable {
         number = job.number
         callsBackWhenDone = job.callsBackWhenDone
         callChatIDs = job.callChatIDs
+        ledgerKey = job.ledgerKey
     }
 
     /// The job as the ledger takes it back: running until the poll or an
@@ -79,6 +81,7 @@ struct SavedVoiceJob: Codable, Equatable {
         // Hermes' watch for a call back lapsed with the run that asked.
         job.callsBackWhenDone = false
         job.callChatIDs = callChatIDs
+        job.ledgerKey = ledgerKey
         job.isRestored = true
         return job
     }

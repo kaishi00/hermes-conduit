@@ -190,6 +190,9 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     var callChatIDs: [String] = []
     /// Brought back from the saved ledger after the app was closed (M5b).
     var isRestored = false
+    /// The saved ledger it belongs to (the dashboard and profile it was
+    /// made on), so a profile change doesn't file it under the next one.
+    var ledgerKey: String?
 
     func owns(sessionID: String) -> Bool {
         guard !sessionID.isEmpty else { return false }
@@ -369,6 +372,8 @@ struct VoiceBackgroundJobBackend {
     /// Keeps the ledger's background jobs across a relaunch (M5b): called
     /// with every change, on the main actor.
     var saveLedger: @MainActor (_ jobs: [SavedVoiceJob]) -> Void = { _ in }
+    /// The ledger a job made now belongs to.
+    var ledgerKey: @MainActor () -> String? = { nil }
     /// The chat's transcript when it's open on this device, nil otherwise.
     var openThreadMessages: @MainActor (_ thread: VoiceThreadTarget) -> [ChatMessage]? = { _ in nil }
     /// The user's earlier chats that match `query`, best first, for a call
@@ -1461,6 +1466,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         var anchored = job
         anchored.callAnchor = currentCallAnchor
         anchored.callChatIDs = liveThread.map { [$0.runtimeSessionID, $0.storedSessionID ?? ""].filter { !$0.isEmpty } } ?? []
+        anchored.ledgerKey = backend.ledgerKey()
         markNewCallbackJob(&anchored)
         lastJobNumber += 1
         anchored.number = lastJobNumber
@@ -3180,7 +3186,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// How many saved jobs a relaunch brings back, newest first.
     static let maximumSavedJobs = 12
-    /// A settled job nobody heard is dropped this long after it started.
+    /// A job is no longer taken back this long after it started.
     static let savedJobMaximumAge: TimeInterval = 24 * 60 * 60
 
     private func scheduleLedgerSave() {
@@ -3216,7 +3222,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         var added = false
         for entry in saved {
             guard var job = entry.job else { continue }
-            if !job.status.isActive, now.timeIntervalSince(job.startedAt) > Self.savedJobMaximumAge { continue }
+            // A day on, a job's turn is long over: its chat has the rest.
+            if now.timeIntervalSince(job.startedAt) > Self.savedJobMaximumAge { continue }
             guard !jobs.contains(where: { $0.id == job.id || ($0.runtimeSessionID != nil && $0.runtimeSessionID == job.runtimeSessionID) })
             else { continue }
             // Its number as the user heard it, unless this run gave it out.

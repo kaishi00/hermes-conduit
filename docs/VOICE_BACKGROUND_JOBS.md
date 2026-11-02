@@ -154,7 +154,7 @@ reply pending or playing):
   comes back to that profile, it follows the jobs again and reads the
   replies of any that finished meanwhile. Only a later call kept with the
   same chat as the job's own call says those results. A finished job that
-  nobody heard is dropped a day after it started. Thread turns and the
+  nobody heard, or one still running, is no longer taken back a day after it started. Thread turns and the
   request whose chat a call took aren't kept.
 - Voice still suspends when the app goes to the background. Background audio
   and a GPT-Live transport are later phases.
