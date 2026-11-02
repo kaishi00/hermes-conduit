@@ -37,6 +37,10 @@ final class BotWorkStore: ObservableObject {
     private(set) var workstreamSessionIDs: Set<String> = []
     /// Bots whose list is being read, so two views showing it share one read.
     private var reading: Set<String> = []
+    /// Bots a call's request already read the work of before deciding it
+    /// isn't a workstream's: once each, so a host whose list won't load
+    /// doesn't hold every later request up.
+    var callPreReads: Set<String> = []
     private var rereads: Set<String> = []
     /// Bumped by a server change (every bot) and by an action (its bot), so
     /// a list read before either never lands over what came after it.
@@ -232,7 +236,8 @@ extension AppState {
     func sendCallRequestToWorkstream(_ thread: VoiceThreadTarget, _ request: String) async -> String? {
         let ids = Set([thread.runtimeSessionID, thread.storedSessionID ?? ""].filter { !$0.isEmpty })
         let bot = thread.profile ?? activeProfile
-        if botWork.workstream(forSession: ids) == nil, botWork.snapshot(bot) == nil {
+        if botWork.workstream(forSession: ids) == nil, botWork.snapshot(bot) == nil,
+           botWork.callPreReads.insert(bot).inserted {
             // Its bot's work isn't read yet (just after a launch): read it
             // before the request becomes a job of its own.
             await refreshBotWork(profile: bot)
