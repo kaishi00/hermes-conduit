@@ -200,10 +200,9 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         // the case): the fresh player holds its place until resume().
         let holdPause = isPaused
         if interruptedStandaloneStream { throw CancellationError() }
-        // A conversation carries on from where it was, as it does when the
+        // The stream carries on from where it was, as it does when the
         // change is seen first (engineConfigurationChanged).
-        if format != nil, !engine.isRunning,
-           !(Self.resumesOnConfigurationChange(intent: ownershipIntent, streaming: isStreaming) && resumeOnFreshEngine()) {
+        if format != nil, !engine.isRunning, !(isStreaming && resumeOnFreshEngine()) {
             stop()
         }
         if format == nil {
@@ -519,12 +518,14 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
 
     /// A route change can stop the rendering engine under a live lease
     /// (AirPods disconnect, dock/undock, the call screen's Speaker button).
-    /// A conversation's reply carries on from where it was on a fresh
-    /// engine: dropping it cut the assistant off mid-sentence, and Classic
-    /// voice took the empty queue for the end of its reply. Standalone
-    /// speech settles instead of leaving buffers undrained and ownership
-    /// claimed by audio that can never play. Changes from replaced engines
-    /// are not this stream's.
+    /// A stream's speech carries on from where it was on a fresh engine:
+    /// dropping it cut a conversation's assistant off mid-sentence, and
+    /// Classic voice took the empty queue for the end of its reply. Read
+    /// Aloud used to settle here, but its speech stream kept sending, so the
+    /// next chunk started a new stream and the queued middle of the reply
+    /// was never heard (#1641). An encoded clip, or a fresh engine that
+    /// won't start, settles. Changes from replaced engines are not this
+    /// stream's.
     private func engineConfigurationChanged(generation: UInt64) {
         guard Self.settlesOnConfigurationChange(
             from: generation,
@@ -532,22 +533,16 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             holdsLease: lease != nil,
             engineRunning: engine.isRunning
         ) else { return }
-        if Self.resumesOnConfigurationChange(intent: ownershipIntent, streaming: isStreaming),
-           resumeOnFreshEngine() {
+        if isStreaming, resumeOnFreshEngine() {
             return
         }
         stop()
     }
 
-    /// A PCM stream is playing, not an encoded clip.
+    /// A PCM stream is playing, not an encoded clip: only a stream plays on
+    /// from a fresh engine. Encoded clips play on AVAudioPlayer, which
+    /// follows the route by itself.
     private var isStreaming: Bool { format != nil && encodedPlayer == nil }
-
-    /// Internal for tests: whether a stopped engine's stream plays on
-    /// instead of settling. Conversations only; encoded clips play on
-    /// AVAudioPlayer, which follows the route by itself.
-    nonisolated static func resumesOnConfigurationChange(intent: VoiceAudioIntent, streaming: Bool) -> Bool {
-        intent == .conversationPlayback && streaming
-    }
 
     /// Rebuilds the stream's graph and schedules what hadn't played yet,
     /// keeping the lease, the drain waiters and a pause. The buffer that was
@@ -562,7 +557,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         do {
             try startFreshGraph(format: format, stretchedTo: timePitch.map(\.rate))
         } catch {
-            voicePlaybackLogger.error("Conversation playback couldn't come back after a route change: \(LogRedaction.describing(error), privacy: .public)")
+            voicePlaybackLogger.error("Playback couldn't come back after a route change: \(LogRedaction.describing(error), privacy: .public)")
             return false
         }
         player.play()
@@ -581,7 +576,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             }
         }
         if !unplayed.isEmpty {
-            voicePlaybackLogger.notice("Conversation playback moved to a new route with \(unplayed.count, privacy: .public) chunks still to play")
+            voicePlaybackLogger.notice("Playback (\(String(describing: self.ownershipIntent), privacy: .public)) moved to a new route with \(unplayed.count, privacy: .public) chunks still to play")
         }
         return true
     }

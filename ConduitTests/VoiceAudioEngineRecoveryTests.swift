@@ -705,7 +705,10 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertTrue(try XCTUnwrap(engines.last).isRunning)
     }
 
-    func testStandaloneSpeechStillSettlesOnARouteChange() throws {
+    /// Read Aloud kept a route change's unplayed audio too: settling it
+    /// let the next chunk start a new stream, so the queued middle of the
+    /// reply was skipped and its end was read (#1641).
+    func testReadAloudCarriesOnAfterARouteChangeStopsTheEngine() throws {
         var engines: [AVAudioEngine] = []
         let service = AVSpeechPlaybackService(
             coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()),
@@ -723,16 +726,9 @@ extension VoiceAudioSessionCoordinatorTests {
         try XCTUnwrap(engines.last).stop()
         _ = try service.enqueuePCM16(chunk, sampleRate: 24_000)
 
-        XCTAssertEqual(service.pendingBuffers, 1, "Read Aloud starts over as before")
-        XCTAssertNotEqual(service.playbackGeneration, generation)
-    }
-
-    func testOnlyConversationStreamsPlayOnAfterARouteChange() {
-        typealias Service = AVSpeechPlaybackService
-        XCTAssertTrue(Service.resumesOnConfigurationChange(intent: .conversationPlayback, streaming: true))
-        XCTAssertFalse(Service.resumesOnConfigurationChange(intent: .conversationPlayback, streaming: false),
-                       "an encoded clip's player follows the route by itself")
-        XCTAssertFalse(Service.resumesOnConfigurationChange(intent: .standalonePlayback, streaming: true))
+        XCTAssertEqual(service.pendingBuffers, 3, "nothing queued was dropped")
+        XCTAssertEqual(service.playbackGeneration, generation, "the same stream, so Read Aloud's drain still waits")
+        XCTAssertTrue(try XCTUnwrap(engines.last).isRunning)
     }
 }
 
