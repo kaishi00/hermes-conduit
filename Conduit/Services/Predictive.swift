@@ -90,6 +90,7 @@ enum Predictive {
 
     /// A draft shorter than this says too little to guess from.
     static let minimumDraftCharacters = 3
+
     /// The plugin takes a draft of at most this many characters, counted
     /// as Python counts them (Unicode scalars, not the graphemes Swift's
     /// `count` gives: one family emoji is 1 Character but 7 scalars).

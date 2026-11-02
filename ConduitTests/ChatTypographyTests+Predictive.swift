@@ -210,6 +210,32 @@ extension ChatTypographyTests {
         XCTAssertNil(state.predictiveFollowUpTurn)
     }
 
+    /// A draft over the plugin's limit is never asked about, by ⋯ > Refresh
+    /// either; one at the limit is (issue 1670).
+    @MainActor
+    func testADraftOverThePluginsLimitIsNeverAskedAbout() {
+        let defaults = makeScratchDefaults("PredictiveDraftLimitTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.predictiveSender = { _ in [:] }
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        XCTAssertNotNil(state.predictiveAnchor)
+
+        let over = String(repeating: "a", count: Predictive.maximumDraftScalars + 1)
+        state.predictive.draftChanged(over)
+        state.refreshPredictions()
+        XCTAssertNil(state.predictiveDraftAsked, "a draft over the limit isn't asked about")
+
+        let atLimit = String(repeating: "a", count: Predictive.maximumDraftScalars)
+        state.predictive.draftChanged(atLimit)
+        state.refreshPredictions()
+        XCTAssertEqual(state.predictiveDraftAsked?.draft, atLimit, "one at the limit is")
+    }
+
     /// A system notice merged into the last row anchors no guesses and no
     /// follow-up clock.
     @MainActor
