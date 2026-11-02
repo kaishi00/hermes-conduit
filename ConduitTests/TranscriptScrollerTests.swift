@@ -1943,6 +1943,29 @@ final class TranscriptScrollerTests: XCTestCase {
         withExtendedLifetime(surface) {}
     }
 
+    /// Text alone doesn't make it the same message: a stored row id that
+    /// differs says it's a new one (the same words sent again).
+    func testTheSameTextUnderADifferentStoredRowArmsTheHold() {
+        let (scroller, surface) = makeScroller()
+        scroller.holdsRepliesAtStart = { true }
+        let stored = Self.messages(0..<10).enumerated().map { index, message -> ChatMessage in
+            var row = message
+            row.rowId = 100 + index
+            return row
+        }
+        scroller.transcriptChanged(messages: stored, transcriptRevision: 2, viewportTransitionGeneration: 1)
+        XCTAssertFalse(scroller.replyHoldArmed)
+
+        var resent = stored
+        let userIndex = resent.lastIndex(where: { $0.role == .user })!
+        var newRow = resent[userIndex].withID("resent")
+        newRow.rowId = 500
+        resent[userIndex] = newRow
+        scroller.transcriptChanged(messages: resent, transcriptRevision: 3, viewportTransitionGeneration: 1)
+        XCTAssertTrue(scroller.replyHoldArmed)
+        withExtendedLifetime(surface) {}
+    }
+
     func testOpeningAChatDoesNotArmTheHold() {
         let (scroller, surface) = makeScroller()
         scroller.holdsRepliesAtStart = { true }

@@ -316,9 +316,10 @@ final class TranscriptScroller: ObservableObject {
     /// The user message the latest turn answers, by id, so a new one (a
     /// turn started on another device) arms the hold.
     private var latestUserRowID: String?
-    /// Its text, so the same message under a new id isn't taken for a new
-    /// one.
+    /// Its text and stored row id, so the same message under a new id isn't
+    /// taken for a new one.
     private var latestUserRowText: String?
+    private var latestUserStoredRowID: Int?
     /// A group room's new member message the hold stops at the start of
     /// (`roomTranscriptChanged`): the message itself goes to the top, where
     /// a chat's stop puts the user's message above its reply.
@@ -673,6 +674,7 @@ final class TranscriptScroller: ObservableObject {
         replyHoldArmed = false
         latestUserRowID = nil
         latestUserRowText = nil
+        latestUserStoredRowID = nil
         if replyStartLandingGeneration == nil || replyStartLandingGeneration != viewportTransitionGeneration {
             replyStartLandingPending = false
         }
@@ -886,6 +888,7 @@ final class TranscriptScroller: ObservableObject {
         let userRowID = targets[userIndex].id
         latestUserRowID = userRowID
         latestUserRowText = targets[userIndex].message.content
+        latestUserStoredRowID = targets[userIndex].message.rowId
         replyHoldArmed = true
         // The reply is already there: no room under it.
         replyRoomArmed = false
@@ -1348,15 +1351,24 @@ final class TranscriptScroller: ObservableObject {
     private func noteLatestUserRow(arming: Bool) {
         let latestTarget = targetCache.targets.last(where: { $0.message.role == .user })
         let latest = latestTarget?.id
+        let previousText = latestUserRowText
+        let previousStoredRowID = latestUserStoredRowID
+        // Kept current under the same id too: a row whose text fills in
+        // later is compared by what it says now.
+        latestUserRowText = latestTarget?.message.content
+        latestUserStoredRowID = latestTarget?.message.rowId ?? (latest == latestUserRowID ? previousStoredRowID : nil)
         guard latest != latestUserRowID else { return }
         let previous = latestUserRowID
-        let previousText = latestUserRowText
         latestUserRowID = latest
-        latestUserRowText = latestTarget?.message.content
         // No user message left to stop under (the transcript was cleared).
         if latest == nil { replyHoldArmed = false }
+        // The same message: the old row is gone, the text is the same, and
+        // no stored row id says they differ.
+        let storedRowsDiffer = previousStoredRowID != nil && latestTarget?.message.rowId != nil
+            && previousStoredRowID != latestTarget?.message.rowId
         let rekeyed = previous.map { !targetIDs.contains($0) } == true
             && latestTarget?.message.content == previousText
+            && !storedRowsDiffer
         if arming, previous != nil, latest != nil, !rekeyed {
             replyHoldArmed = true
             replyRoomArmed = true
