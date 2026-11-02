@@ -176,7 +176,7 @@ struct UsageSettingsDetail: View {
 
     private func totalsSection(_ report: UsageReport) -> some View {
         ConduitSettingsSection(title: AppLocalization.string("Totals"), symbol: "sum", tint: .conduitAccent) {
-            if report.totals.sessions == 0 && report.totals.total == 0 {
+            if report.totals.sessions == 0 && report.totals.allTokens == 0 {
                 Text("No usage in this period.")
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
