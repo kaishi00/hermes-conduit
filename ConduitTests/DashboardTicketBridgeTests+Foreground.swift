@@ -92,7 +92,8 @@ extension DashboardTicketBridgeTests {
         var sentWithoutPage = 0
         bridge.loadWithoutPageForTesting = { request in
             sentWithoutPage += 1
-            let response = HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!
+            let url = try XCTUnwrap(request.url)
+            let response = try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 401, httpVersion: nil, headerFields: nil))
             return (Data(#"{"detail":"Unauthorized"}"#.utf8), response)
         }
         addTeardownBlock { @MainActor in bridge.invalidate() }

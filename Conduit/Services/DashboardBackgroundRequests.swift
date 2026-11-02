@@ -268,10 +268,12 @@ extension DashboardTicketBridge {
     /// issued to requests sent without the page.
     func cookiesForRequestsWithoutPage() async -> [HTTPCookie] {
         var cookies = DashboardCookiePersistence.mirroredCookies(dashboardID: dashboardID)
-        // WebKit's store may hold a newer cookie than the mirror, but when the
-        // mirror already holds one a slow store mustn't hold the request up
-        // long: on screen it answers in milliseconds.
-        let webKitWait: Duration = cookies.isEmpty ? .seconds(2) : .milliseconds(500)
+        // WebKit's store may hold a newer cookie than the mirror, but on
+        // screen, when the mirror already holds one, a slow store mustn't hold
+        // the request up long: it answers in milliseconds there, and a 401 goes
+        // on to the page. Off screen nothing can retry through the page, so it
+        // gets the full wait.
+        let webKitWait: Duration = cookies.isEmpty || !webViewCanRun() ? .seconds(2) : .milliseconds(500)
         if let webKit = await webKitCookies(timeout: webKitWait) {
             cookies += webKit
         }

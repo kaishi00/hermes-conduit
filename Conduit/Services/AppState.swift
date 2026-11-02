@@ -19624,13 +19624,16 @@ final class AppState: ObservableObject {
         HermesCallTrace.shared.note("Connection: \(label)", since: startedAt, error: error)
     }
 
-    private func mintChatResumeTicket(for connection: HermesConnection) async throws -> String {
+    /// `readsFor` names the profile the connection will open on, when it
+    /// isn't the active one yet (a profile switch), so the early reads are
+    /// its own.
+    private func mintChatResumeTicket(for connection: HermesConnection, readsFor profile: String? = nil) async throws -> String {
         if let mintTicket = chatResumeLifecycleOperations.mintTicket {
             return try await mintTicket(connection.baseUrl)
         }
         prepareDashboardBridge(for: connection.baseUrl)
         guard let dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        sendStartupReads(profile: activeProfile)
+        sendStartupReads(profile: profile ?? activeProfile)
         let startedAt = Date()
         let signposter = ResponsivenessSignposts.signposter
         let minting = signposter.beginInterval("Ticket mint", id: signposter.makeSignpostID())
@@ -31941,7 +31944,7 @@ final class AppState: ObservableObject {
             var mintError: Error?
             if socketToKeepForProfileSwitch(within: savedConnection) == nil {
                 do {
-                    sparedCallTicket = try await mintChatResumeTicket(for: savedConnection)
+                    sparedCallTicket = try await mintChatResumeTicket(for: savedConnection, readsFor: profile)
                 } catch {
                     mintError = error
                 }
@@ -32052,7 +32055,7 @@ final class AppState: ObservableObject {
             } else if let sparedCallTicket {
                 ticket = sparedCallTicket
             } else {
-                ticket = try await mintChatResumeTicket(for: savedConnection)
+                ticket = try await mintChatResumeTicket(for: savedConnection, readsFor: profile)
             }
             guard widgetLease?.isCurrent != false else {
                 // Nothing has changed over yet: the previous profile keeps
