@@ -630,9 +630,9 @@ final class AppStateChatResumeTests: XCTestCase {
         )
     }
 
-    /// Rows are lined up as a diff lines them up: a repeated text added at
-    /// the end is a new row, older history added at the top is new rows and
-    /// doesn't take the shown rows' ids, an id still used by a rebuilt row
+    /// Rows are lined up from the newest back, then from the oldest: a
+    /// repeated text added at the end is a new row, older history added at
+    /// the top is new rows and doesn't take the shown rows' ids, an id still used by a rebuilt row
     /// goes to no other, and another role or text is another message.
     func testKeptRowIDsLineUpTheRowsAndStayUnique() {
         func row(_ id: String, _ role: MessageRole, _ text: String) -> ChatMessage {
@@ -650,6 +650,24 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(
             AppState.keepingRowIDs(from: tail, in: whole, durableIDs: []).map(\.id),
             ["0", "1", "x", "900"]
+        )
+        // One repeated message shown, several rebuilt: the newest takes its id.
+        XCTAssertEqual(
+            AppState.keepingRowIDs(
+                from: [row("900", .user, "continue")],
+                in: [row("0", .user, "continue"), row("1", .assistant, "On it"), row("2", .user, "continue")],
+                durableIDs: []
+            ).map(\.id),
+            ["0", "1", "900"]
+        )
+        // The chat's own notes don't break the lining up.
+        XCTAssertEqual(
+            AppState.keepingRowIDs(
+                from: [row("a", .user, "yes"), row("slash-1", .system, "Commands"), row("b", .assistant, "Done")],
+                in: [row("0", .user, "yes"), row("1", .assistant, "Done")],
+                durableIDs: []
+            ).map(\.id),
+            ["a", "b"]
         )
         // "a" is still a row of the rebuilt transcript: nothing else takes it.
         XCTAssertEqual(
