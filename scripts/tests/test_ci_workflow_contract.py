@@ -142,6 +142,31 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn("unit-shards", self._workflow_text(),
                          "the unit shards run in nightly.yml, not on every PR")
 
+    def test_a_pr_run_never_waits_for_its_superseded_run(self):
+        """A PR from this repository gets a concurrency group of its own run,
+        and its plan job cancels the PR's older runs first, so the new run
+        never waits for a cancelled Smoke job to wind down (Eric, 2026-11-02).
+        A fork PR, whose token can't cancel, keeps cancel-in-progress per PR;
+        a push keeps a group per commit, so every merge gets a full run."""
+        text = self._workflow_text()
+        same_repo = ("github.event_name == 'pull_request' && "
+                     "github.event.pull_request.head.repo.full_name == github.repository")
+        self.assertIn(
+            f"group: ci-${{{{ github.workflow }}}}-${{{{ ({same_repo}) && format('run-{{0}}', github.run_id)"
+            " || github.event.pull_request.number || github.sha }}", text)
+        self.assertIn("cancel-in-progress: true", text)
+        plan = self._job_text("plan")
+        self.assertIn("actions: write", plan)
+        first_step = plan.index("- name: Cancel this PR's older runs")
+        self.assertLess(first_step, plan.index("- uses: actions/checkout"),
+                        "the cancel runs before anything else in the run")
+        self.assertIn(f"if: {same_repo}", plan)
+        self.assertIn(".run_number < $GITHUB_RUN_NUMBER", plan,
+                      "only older runs, so two runs never cancel each other")
+        self.assertIn('.head_repository.full_name == \\"$GITHUB_REPOSITORY\\"', plan,
+                      "never a fork's run on a branch of the same name")
+        self.assertIn('actions/runs/$id/cancel', plan)
+
     # --- the plan job owns every test-to-run mapping -----------------------
 
     def test_plan_job_selects_the_smoke_suite_and_nothing_else(self):
