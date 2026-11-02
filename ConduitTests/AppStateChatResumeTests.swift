@@ -582,6 +582,258 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(AppState.keepingLocalNotes(from: once, in: rows).map(\.id), once.map(\.id))
     }
 
+    /// A refresh that brings the same messages from the other source
+    /// (Hermes' stored rows, or a resume numbering its rows by position)
+    /// keeps the ids the transcript drew them under, so it doesn't draw and
+    /// measure every row again or take the latest user message for a new
+    /// turn (#1648). New rows keep their own ids.
+    func testRowsFromTheOtherSourceKeepTheirIDs() {
+        func row(_ id: String, _ role: MessageRole, _ text: String, tool: ToolActivity? = nil) -> ChatMessage {
+            ChatMessage(id: id, role: role, content: text, timestamp: "2026-09-13T08:00:00Z", tool: tool)
+        }
+        let call = ToolActivity(id: "call_1", name: "terminal", input: nil, output: nil, status: .complete)
+        let stored = [
+            row("12308", .user, "Show me the table"),
+            row("12309-reasoning", .reasoning, "Thinking"),
+            row("12309", .assistant, "| a | b |"),
+            row("12310", .tool, "", tool: call)
+        ]
+        let resumed = [
+            row("0", .user, "Show me the table"),
+            row("1-reasoning", .reasoning, "Thinking"),
+            row("1", .assistant, "| a | b |"),
+            row("2", .tool, "", tool: call),
+            row("3", .user, "And a chart")
+        ]
+
+        XCTAssertEqual(
+            AppState.keepingRowIDs(from: stored, in: resumed, durableIDs: []).map(\.id),
+            ["12308", "12309-reasoning", "12309", "12310", "3"]
+        )
+        // A kept row keeps what only the shown one knew.
+        var reacted = stored[0]
+        reacted.rowId = 12308
+        reacted.stepDuration = 2
+        let kept = AppState.keepingRowIDs(from: [reacted], in: [resumed[0]], durableIDs: [])
+        XCTAssertEqual(kept.map(\.id), ["12308"])
+        XCTAssertEqual(kept[0].rowId, 12308)
+        XCTAssertEqual(kept[0].stepDuration, 2)
+        // An optimistic row's id isn't carried: Hermes hasn't stored it.
+        XCTAssertEqual(
+            AppState.keepingRowIDs(from: [row("local-1", .user, "Show me the table")], in: [resumed[0]], durableIDs: []).map(\.id),
+            ["0"]
+        )
+        // Hermes' stored ids, which the delivery checks look up, win (the
+        // map entry's open gap: on a gateway with no `row_id`, the rows a
+        // live turn drew before Hermes stored them are re-keyed once).
+        XCTAssertEqual(
+            AppState.keepingRowIDs(from: resumed, in: stored, durableIDs: Set(stored.map(\.id))).map(\.id),
+            stored.map(\.id)
+        )
+    }
+
+    /// A message pairs when each list holds it once, in order: a repeated
+    /// text keeps its own ids (which copy is which can't be told, above all
+    /// against a stored page a few rows behind), older history added at the
+    /// top is new rows, rows that differ between matching ones leave those
+    /// matching, an id still used by a rebuilt row goes to no other, and
+    /// another role or text is another message.
+    func testKeptRowIDsLineUpTheRowsAndStayUnique() {
+        func row(_ id: String, _ role: MessageRole, _ text: String) -> ChatMessage {
+            ChatMessage(id: id, role: role, content: text, timestamp: "2026-09-13T08:00:00Z")
+        }
+        let previous = [row("a", .user, "yes"), row("b", .assistant, "Done"), row("c", .user, "yes"), row("d", .assistant, "Done")]
+        let rebuilt = [row("0", .user, "yes"), row("1", .assistant, "Done"), row("2", .user, "yes"), row("3", .assistant, "Done"), row("4", .user, "yes")]
+        XCTAssertEqual(
+            AppState.keepingRowIDs(from: previous, in: rebuilt, durableIDs: []).map(\.id),
+            ["0", "1", "2", "3", "4"]
+        )
+        // A tail shown, the whole chat rebuilt: "Done" pairs, the repeated
+        // "continue" doesn't.
+        let tail = [row("x", .assistant, "Done"), row("900", .user, "continue")]
+        let whole = [row("0", .user, "continue"), row("1", .assistant, "Earlier"), row("2", .assistant, "Done"), row("3", .user, "continue")]
+        XCTAssertEqual(
+            AppState.keepingRowIDs(from: tail, in: whole, durableIDs: []).map(\.id),
+            ["0", "1", "x", "3"]
+        )
+        // One copy shown, two rebuilt (a stored page behind the resume): the
+        // shown id goes to neither, so the new copy never takes the old one's.
+        XCTAssertEqual(
+            AppState.keepingRowIDs(
+                from: [row("900", .user, "continue")],
+                in: [row("0", .user, "continue"), row("1", .assistant, "On it"), row("2", .user, "continue")],
+                durableIDs: []
+            ).map(\.id),
+            ["0", "1", "2"]
+        )
+        // Rows that differ between matching ones leave those matching.
+        XCTAssertEqual(
+            AppState.keepingRowIDs(
+                from: [row("a", .user, "A"), row("b", .assistant, "B'"), row("c", .user, "C"), row("d", .assistant, "D'"), row("e", .user, "E")],
+                in: [row("0", .user, "A"), row("1", .assistant, "B"), row("2", .user, "C"), row("3", .assistant, "D"), row("4", .user, "E")],
+                durableIDs: []
+            ).map(\.id),
+            ["a", "1", "c", "3", "e"]
+        )
+        // A live turn's whole resume against the stored page read with it:
+        // the stored rows take their ids, the older history and the turn's
+        // newest row, not stored yet, keep theirs.
+        XCTAssertEqual(
+            AppState.keepingRowIDs(
+                from: [row("12308.0", .user, "Show me the table"), row("12309.0", .assistant, "| a | b |")],
+                in: [row("0", .user, "Hi"), row("1", .assistant, "Hello"), row("2", .user, "Show me the table"), row("3", .assistant, "| a | b |"), row("4", .assistant, "Working")],
+                durableIDs: []
+            ).map(\.id),
+            ["0", "1", "12308.0", "12309.0", "4"]
+        )
+        // The chat's own notes don't break the lining up.
+        XCTAssertEqual(
+            AppState.keepingRowIDs(
+                from: [row("a", .user, "yes"), row("slash-1", .system, "Commands"), row("b", .assistant, "Done")],
+                in: [row("0", .user, "yes"), row("1", .assistant, "Done")],
+                durableIDs: []
+            ).map(\.id),
+            ["a", "b"]
+        )
+        // "a" is still a row of the rebuilt transcript: nothing else takes it.
+        XCTAssertEqual(
+            AppState.keepingRowIDs(from: [row("a", .user, "yes")], in: [row("0", .user, "yes"), row("a", .assistant, "Other")], durableIDs: []).map(\.id),
+            ["0", "a"]
+        )
+        XCTAssertEqual(
+            AppState.keepingRowIDs(from: previous, in: [row("0", .assistant, "yes")], durableIDs: []).map(\.id),
+            ["0"]
+        )
+        // The same text at another time is another message ("thanks" sent
+        // again an hour later); times spelled differently but agreeing, or
+        // not said, still pair.
+        let earlier = ChatMessage(id: "12308.0", role: .user, content: "thanks", timestamp: "2026-09-13T08:00:00Z")
+        XCTAssertEqual(
+            AppState.keepingRowIDs(
+                from: [earlier],
+                in: [ChatMessage(id: "0", role: .user, content: "thanks", timestamp: "2026-09-13T09:00:00Z")],
+                durableIDs: []
+            ).map(\.id),
+            ["0"]
+        )
+        XCTAssertEqual(
+            AppState.keepingRowIDs(
+                from: [earlier],
+                in: [ChatMessage(id: "0", role: .user, content: "thanks", timestamp: "1789286400.0")],
+                durableIDs: []
+            ).map(\.id),
+            ["12308.0"]
+        )
+        XCTAssertEqual(
+            AppState.keepingRowIDs(
+                from: [earlier],
+                in: [ChatMessage(id: "0", role: .user, content: "thanks", timestamp: "")],
+                durableIDs: []
+            ).map(\.id),
+            ["12308.0"]
+        )
+        // Times neither can read match only when spelled the same.
+        XCTAssertTrue(MessageTimestampFormatter.sameMoment("09:00", "09:00"))
+        XCTAssertFalse(MessageTimestampFormatter.sameMoment("09:00", "10:00"))
+        XCTAssertFalse(MessageTimestampFormatter.sameMoment("09:00", "2026-09-13T09:00:00Z"))
+        XCTAssertTrue(MessageTimestampFormatter.sameMoment("", "09:00"))
+        // Positional ids on both sides with the window moved by a row: an id
+        // the shown transcript used for another row isn't swapped in (the
+        // map entry's open gap).
+        XCTAssertEqual(
+            AppState.keepingRowIDs(
+                from: [row("0", .user, "R0"), row("1", .assistant, "R1")],
+                in: [row("0", .assistant, "R1"), row("1", .user, "R2")],
+                durableIDs: []
+            ).map(\.id),
+            ["0", "1"]
+        )
+    }
+
+    /// A live turn's resume rows read with Hermes' stored rows: the stored
+    /// ones take the stored rows' ids, the turn's newest keeps its own, and
+    /// no stored rows leaves the resume as it came (reconcile's live-turn
+    /// branch).
+    func testALiveTurnsResumeRowsTakeTheStoredRowsIDs() {
+        func row(_ id: String, _ role: MessageRole, _ text: String) -> ChatMessage {
+            ChatMessage(id: id, role: role, content: text, timestamp: "2026-09-13T08:00:00Z")
+        }
+        let resume = SessionResumeResult(
+            sessionId: "chat-a",
+            storedSessionId: "stored-a",
+            messages: [row("0", .user, "Show me the table"), row("1", .assistant, "| a | b |"), row("2", .assistant, "Working")],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(true)])
+        )
+        let stored = [row("12308.0", .user, "Show me the table"), row("12309.0", .assistant, "| a | b |")]
+        let kept = AppState.keepingStoredRowIDs(resume, from: stored)
+        XCTAssertEqual(kept.messages.map(\.id), ["12308.0", "12309.0", "2"])
+        XCTAssertEqual(kept.sessionId, "chat-a")
+        XCTAssertEqual(kept.storedSessionId, "stored-a")
+        XCTAssertEqual(AppState.keepingStoredRowIDs(resume, from: []).messages.map(\.id), ["0", "1", "2"])
+    }
+
+    /// Where a reconcile takes its rows from: a live turn's resume keeps the
+    /// stored rows' ids, a settled one shows the stored rows, a resume with
+    /// no rows shows the stored ones even mid-turn, and rows of another
+    /// chat, or none stored, leave the resume as it came.
+    func testAReconcileTakesALiveTurnsRowsFromTheResumeWithStoredIDs() {
+        let row = ChatMessage(id: "0", role: .user, content: "Hi", timestamp: "2026-09-13T08:00:00Z")
+        let stored = [row.withID("12308.0")]
+        func resume(_ messages: [ChatMessage], live: Bool) -> SessionResumeResult {
+            SessionResumeResult(
+                sessionId: "chat-a",
+                messages: messages,
+                snapshot: SessionRuntimeSnapshot(object: [:], inflight: .bool(live))
+            )
+        }
+        XCTAssertTrue(resume([row], live: true).snapshot.hasLiveProjection)
+        XCTAssertEqual(
+            AppState.reconcileRowsSource(transcriptMatches: true, storedMessages: stored, result: resume([row], live: true)),
+            .resumeKeepingStoredIDs
+        )
+        XCTAssertEqual(
+            AppState.reconcileRowsSource(transcriptMatches: true, storedMessages: stored, result: resume([row], live: false)),
+            .stored
+        )
+        XCTAssertEqual(
+            AppState.reconcileRowsSource(transcriptMatches: true, storedMessages: stored, result: resume([], live: true)),
+            .stored
+        )
+        XCTAssertEqual(
+            AppState.reconcileRowsSource(transcriptMatches: false, storedMessages: stored, result: resume([row], live: true)),
+            .resume
+        )
+        XCTAssertEqual(
+            AppState.reconcileRowsSource(transcriptMatches: true, storedMessages: [], result: resume([row], live: true)),
+            .resume
+        )
+        XCTAssertEqual(
+            AppState.reconcileRowsSource(transcriptMatches: true, storedMessages: nil, result: resume([row], live: false)),
+            .resume
+        )
+    }
+
+    /// Through a resume of the same chat: the rows keep their ids.
+    func testAResumeOfTheSameChatKeepsTheRowsIDs() {
+        let harness = makeHarness()
+        let appState = harness.appState
+        appState.sessions = [session("chat-a")]
+        appState.activeSessionId = "chat-a"
+        appState.messages = [
+            ChatMessage(id: "12308", role: .user, content: "Hi", timestamp: "2026-09-13T08:00:00Z"),
+            ChatMessage(id: "12309", role: .assistant, content: "```swift\nlet a = 1\n```", timestamp: "2026-09-13T08:00:01Z")
+        ]
+        XCTAssertTrue(appState.applyChatResume(SessionResumeResult(
+            sessionId: "chat-a",
+            messages: [
+                ChatMessage(id: "0", role: .user, content: "Hi", timestamp: "2026-09-13T08:00:00Z"),
+                ChatMessage(id: "1", role: .assistant, content: "```swift\nlet a = 1\n```", timestamp: "2026-09-13T08:00:01Z")
+            ],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        )))
+        XCTAssertEqual(appState.messages.map(\.id), ["12308", "12309"])
+    }
+
     /// Carried notes keep their order even when some of the rows they
     /// followed are gone: those go at the end, and no later note lands
     /// above an earlier one.

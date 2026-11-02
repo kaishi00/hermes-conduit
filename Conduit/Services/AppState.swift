@@ -10443,6 +10443,165 @@ final class AppState: ObservableObject {
         restoredPendingDecisionCardsAwaitingConfirmation = nil
     }
 
+    /// A transcript of the same chat rebuilt from the gateway's rows, with
+    /// each message `previous` already showed under another id taking that
+    /// id back (#1648). Hermes' stored rows carry their database ids, and a
+    /// resume's rows take the same ids from their `row_id`
+    /// (MessageNormalizer), but a gateway that sends no `row_id` numbers its
+    /// resume rows by position ("0", "1-reasoning", ...): a refresh that
+    /// switched source then re-keyed every row, so the transcript drew and
+    /// measured them all again from guesses, lost the reader's place, and
+    /// took a re-keyed latest user message for a new turn. A message pairs
+    /// by its role, text and tool call when each list holds it once and
+    /// their times, where both say one, agree. The same pairing gives a
+    /// live turn's resume rows the ids of the stored rows read with them
+    /// (`keepingStoredRowIDs`), so on such a gateway only the rows Hermes
+    /// hasn't stored yet are drawn under positional ids. A row whose id
+    /// `durableIDs` holds keeps it: the delivery checks, the graft of a
+    /// refreshed page onto older history and the merge of newer stored rows
+    /// all find rows by Hermes' stored ids. An id never goes to a row while
+    /// another row of the rebuilt transcript still has it, and an optimistic
+    /// row's id is never carried.
+    static func keepingRowIDs(
+        from previous: [ChatMessage],
+        in rebuilt: [ChatMessage],
+        durableIDs: Set<String>
+    ) -> [ChatMessage] {
+        let previousIDs = Set(previous.map(\.id))
+        let rebuiltIDs = Set(rebuilt.map(\.id))
+        // Nothing re-keyed: every rebuilt row is new or already shown.
+        guard rebuilt.contains(where: { !previousIDs.contains($0.id) }),
+              previous.contains(where: { !rebuiltIDs.contains($0.id) }) else { return rebuilt }
+        struct Signature: Hashable {
+            let role: MessageRole
+            let content: String
+            let tool: String?
+        }
+        func signature(_ message: ChatMessage) -> Signature {
+            let tool = message.tool.map { tool in
+                tool.id.flatMap { $0.isEmpty ? nil : $0 } ?? tool.name
+            }
+            return Signature(role: message.role, content: message.content, tool: tool)
+        }
+        // Only a message both lists hold once pairs: a text repeated ("yes",
+        // "continue") can't tell which copy is which, above all against a
+        // stored page a few rows behind the resume, so its copies keep their
+        // own ids. Pairs keep their order: the longest run of them rising in
+        // both lists stays, so a row moved out of order doesn't pair.
+        var previousCount: [Signature: Int] = [:]
+        var previousIndex: [Signature: Int] = [:]
+        for (index, message) in previous.enumerated() {
+            let key = signature(message)
+            previousCount[key, default: 0] += 1
+            previousIndex[key] = index
+        }
+        var rebuiltCount: [Signature: Int] = [:]
+        for message in rebuilt { rebuiltCount[signature(message), default: 0] += 1 }
+        var candidates: [(rebuilt: Int, previous: Int)] = []
+        for (index, message) in rebuilt.enumerated() {
+            let key = signature(message)
+            guard rebuiltCount[key] == 1, previousCount[key] == 1,
+                  let shownIndex = previousIndex[key],
+                  MessageTimestampFormatter.sameMoment(previous[shownIndex].timestamp, message.timestamp) else { continue }
+            candidates.append((rebuilt: index, previous: shownIndex))
+        }
+        let pairs = Self.risingRun(candidates)
+        var result = rebuilt
+        for pair in pairs {
+            let shown = previous[pair.previous]
+            let message = rebuilt[pair.rebuilt]
+            // An optimistic row's id (`local-`) stays its own: the delivery
+            // and steer checks read it as a row Hermes hasn't stored yet.
+            guard message.id != shown.id,
+                  !shown.id.hasPrefix("local-"),
+                  !previousIDs.contains(message.id),
+                  !durableIDs.contains(message.id),
+                  !rebuiltIDs.contains(shown.id) else { continue }
+            var kept = message.withID(shown.id)
+            // What only the shown row knew: its stored row (reactions and
+            // rewinds address it) and a step's measured time.
+            kept.rowId = kept.rowId ?? shown.rowId
+            kept.stepDuration = kept.stepDuration ?? shown.stepDuration
+            result[pair.rebuilt] = kept
+        }
+        return result
+    }
+
+
+    /// A live turn's resume rows, read with Hermes' stored rows of the same
+    /// chat (`stored`): the ones Hermes has stored take those rows' ids, so
+    /// the turn's end, when the stored rows take over, doesn't re-key the
+    /// chat on a gateway whose resume rows don't name their stored rows
+    /// (`row_id`) (#1648).
+    static func keepingStoredRowIDs(
+        _ result: SessionResumeResult,
+        from stored: [ChatMessage]
+    ) -> SessionResumeResult {
+        guard !stored.isEmpty else { return result }
+        return SessionResumeResult(
+            sessionId: result.sessionId,
+            storedSessionId: result.storedSessionId,
+            messages: keepingRowIDs(from: stored, in: result.messages, durableIDs: []),
+            snapshot: result.snapshot
+        )
+    }
+
+    /// Where a reconcile's rows come from.
+    enum ReconcileRowsSource: Equatable {
+        /// Hermes' stored rows (a settled turn, or a resume with no rows).
+        case stored
+        /// The resume's rows, a live turn's, with the stored ones keeping
+        /// the stored rows' ids (`keepingStoredRowIDs`, #1648).
+        case resumeKeepingStoredIDs
+        /// The resume's rows as they came: no stored rows of this chat.
+        case resume
+    }
+
+    /// A compact resume ships no persisted transcript, so the REST rows are
+    /// the durable base even while a turn is live: the in-flight projection
+    /// rides on top through the streaming bubble, matching Desktop's
+    /// cache-as-base rendering. A resume that carried messages keeps the
+    /// historical precedence where a live projection wins over the REST
+    /// read, its stored rows keeping their ids.
+    static func reconcileRowsSource(
+        transcriptMatches: Bool,
+        storedMessages: [ChatMessage]?,
+        result: SessionResumeResult
+    ) -> ReconcileRowsSource {
+        guard transcriptMatches, let storedMessages else { return .resume }
+        let resumeCarriedTranscript = !result.messages.isEmpty
+        if (!storedMessages.isEmpty || !resumeCarriedTranscript)
+            && (!result.snapshot.hasLiveProjection || !resumeCarriedTranscript) {
+            return .stored
+        }
+        return storedMessages.isEmpty ? .resume : .resumeKeepingStoredIDs
+    }
+
+    /// The longest run of `pairs` (in rebuilt order) whose shown index rises
+    /// too, by patience sorting.
+    private static func risingRun(_ pairs: [(rebuilt: Int, previous: Int)]) -> [(rebuilt: Int, previous: Int)] {
+        // tails[k]: the index in `pairs` ending the best run of length k + 1
+        // found so far; links[i]: the pair before pairs[i] in its run.
+        var tails: [Int] = []
+        var links = [Int](repeating: -1, count: pairs.count)
+        for (index, pair) in pairs.enumerated() {
+            var low = 0, high = tails.count
+            while low < high {
+                let middle = (low + high) / 2
+                if pairs[tails[middle]].previous < pair.previous { low = middle + 1 } else { high = middle }
+            }
+            if low > 0 { links[index] = tails[low - 1] }
+            if low == tails.count { tails.append(index) } else { tails[low] = index }
+        }
+        var run: [(rebuilt: Int, previous: Int)] = []
+        var cursor = tails.last ?? -1
+        while cursor >= 0 {
+            run.append(pairs[cursor])
+            cursor = links[cursor]
+        }
+        return run.reversed()
+    }
+
     /// The chat's own notes (slash command output, /btw and /background
     /// answers), which Hermes never stores, carried from `previous` into a
     /// transcript of the same chat rebuilt from the gateway's rows. Each goes
@@ -17352,16 +17511,12 @@ final class AppState: ObservableObject {
                     )
                 )
             }
-            // A compact resume ships no persisted transcript, so the REST rows
-            // are the durable base even while a turn is live: the in-flight
-            // projection rides on top through the streaming bubble, matching
-            // Desktop's cache-as-base rendering. A resume that carried
-            // messages keeps the historical precedence where a live projection
-            // wins over the REST read.
-            let resumeCarriedTranscript = !result.messages.isEmpty
-            let shouldUsePersistedTranscript = transcriptMatches
-                && (transcript.map { !$0.messages.isEmpty || !resumeCarriedTranscript } ?? false)
-                && (!result.snapshot.hasLiveProjection || !resumeCarriedTranscript)
+            // Stored rows or the resume's (reconcileRowsSource).
+            let rowsSource = Self.reconcileRowsSource(
+                transcriptMatches: transcriptMatches,
+                storedMessages: transcript?.messages,
+                result: result
+            )
             let priorWindowForGraft = priorWindowOwnsThisConversation(
                 priorWindow,
                 requestedSessionId: sessionId,
@@ -17371,7 +17526,7 @@ final class AppState: ObservableObject {
             ) ? priorWindow : nil
             let presentationResult: SessionResumeResult
             var graftedBackfilledPrefix = false
-            if let transcript, shouldUsePersistedTranscript {
+            if let transcript, rowsSource == .stored {
                 // A re-reconciliation replaces only the newest page. Keep
                 // everything "Load earlier messages" already backfilled by
                 // re-anchoring the refreshed tail onto the older prefix;
@@ -17393,6 +17548,10 @@ final class AppState: ObservableObject {
                     snapshot: result.snapshot
                 )
                 graftedBackfilledPrefix = grafted.grafted
+            } else if let transcript, rowsSource == .resumeKeepingStoredIDs {
+                // A live turn's rows come from the resume; the ones Hermes
+                // has stored keep the stored rows' ids (#1648).
+                presentationResult = Self.keepingStoredRowIDs(result, from: transcript.messages)
             } else {
                 presentationResult = result
             }
@@ -18064,7 +18223,12 @@ final class AppState: ObservableObject {
         let isSameChat = previousSessionID.map {
             !chatOwnSessionIDs(for: $0).union([$0]).isDisjoint(with: resumedIDs)
         } ?? false
-        let rebuilt = isSameChat ? Self.keepingLocalNotes(from: previousMessages, in: restored) : restored
+        // The same messages from the other source (Hermes' stored rows or a
+        // resume's) keep the ids they're drawn under (#1648).
+        let rekeyed = isSameChat
+            ? Self.keepingRowIDs(from: previousMessages, in: restored, durableIDs: durablePersistedRowIDs)
+            : restored
+        let rebuilt = isSameChat ? Self.keepingLocalNotes(from: previousMessages, in: rekeyed) : rekeyed
         messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: rebuilt, sessionId: result.sessionId), sessionId: result.sessionId)
         if result.snapshot.running == false {
             sessionPresentationCache.removePendingTools(
@@ -31028,6 +31192,8 @@ final class AppState: ObservableObject {
     ///
     /// Keep the envelope merge and id-key order in sync with
     /// `MessageNormalizer.normalizeMessages`, which consumes the same rows.
+    /// A row's `row_id` comes first, as in the normalizer; `/messages` rows
+    /// carry `id` itself.
     nonisolated static func durablePersistedRowID(from rawRow: Any) -> String? {
         guard let envelope = rawRow as? [String: Any] else { return nil }
         // Same envelope merge as normalizeMessages: `message` / `payload` /
@@ -31041,6 +31207,13 @@ final class AppState: ObservableObject {
         var obj = envelope
         for (key, value) in nested {
             obj[key] = value
+        }
+        // A row naming its stored row (`row_id`) has that row's id first,
+        // as the normalizer gives it.
+        if let rowID = obj["row_id"] as? NSNumber,
+           CFGetTypeID(rowID) != CFBooleanGetTypeID(),
+           let exactRowID = Int(exactly: rowID.doubleValue), exactRowID > 0 {
+            return String(Double(exactRowID))
         }
         for key in ["id", "message_id"] {
             switch obj[key] {
