@@ -1523,7 +1523,7 @@ struct ComposerBar: View, Equatable {
             endInput(keepingFocus: isFocused || isShowingFullEditor, fromFullEditor: isShowingFullEditor)
             isShowingFullEditor = false
             Haptics.warning()
-            Task { await appState.cancelCurrent() }
+            Task { await appState.cancelCurrent(stopsWorkstream: true) }
         } else {
             submit()
         }
