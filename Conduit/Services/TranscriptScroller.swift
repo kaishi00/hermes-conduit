@@ -316,6 +316,9 @@ final class TranscriptScroller: ObservableObject {
     /// The user message the latest turn answers, by id, so a new one (a
     /// turn started on another device) arms the hold.
     private var latestUserRowID: String?
+    /// Its text, so the same message under a new id isn't taken for a new
+    /// one.
+    private var latestUserRowText: String?
     /// A group room's new member message the hold stops at the start of
     /// (`roomTranscriptChanged`): the message itself goes to the top, where
     /// a chat's stop puts the user's message above its reply.
@@ -669,6 +672,7 @@ final class TranscriptScroller: ObservableObject {
         // stays.
         replyHoldArmed = false
         latestUserRowID = nil
+        latestUserRowText = nil
         if replyStartLandingGeneration == nil || replyStartLandingGeneration != viewportTransitionGeneration {
             replyStartLandingPending = false
         }
@@ -881,6 +885,7 @@ final class TranscriptScroller: ObservableObject {
         guard mode == .following, !isUserScrolling, restoration == nil else { return }
         let userRowID = targets[userIndex].id
         latestUserRowID = userRowID
+        latestUserRowText = targets[userIndex].message.content
         replyHoldArmed = true
         // The reply is already there: no room under it.
         replyRoomArmed = false
@@ -1336,15 +1341,23 @@ final class TranscriptScroller: ObservableObject {
 
     /// Follows the transcript's latest user message. A new one in a live
     /// transcript (a turn started on another device, or a send's row) arms
-    /// the hold; the first transcript of a conversation only names it.
+    /// the hold; the first transcript of a conversation only names it, and
+    /// so does the same message under a new id: the last one gone from the
+    /// rows and its text the same, as when a refresh brings the chat from
+    /// Hermes' stored rows after a resume's (#1648).
     private func noteLatestUserRow(arming: Bool) {
-        let latest = targetCache.targets.last(where: { $0.message.role == .user })?.id
+        let latestTarget = targetCache.targets.last(where: { $0.message.role == .user })
+        let latest = latestTarget?.id
         guard latest != latestUserRowID else { return }
         let previous = latestUserRowID
+        let previousText = latestUserRowText
         latestUserRowID = latest
+        latestUserRowText = latestTarget?.message.content
         // No user message left to stop under (the transcript was cleared).
         if latest == nil { replyHoldArmed = false }
-        if arming, previous != nil, latest != nil {
+        let rekeyed = previous.map { !targetIDs.contains($0) } == true
+            && latestTarget?.message.content == previousText
+        if arming, previous != nil, latest != nil, !rekeyed {
             replyHoldArmed = true
             replyRoomArmed = true
         }

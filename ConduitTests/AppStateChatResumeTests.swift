@@ -610,6 +610,19 @@ final class AppStateChatResumeTests: XCTestCase {
             AppState.keepingRowIDs(from: stored, in: resumed, durableIDs: []).map(\.id),
             ["12308", "12309-reasoning", "12309", "12310", "3"]
         )
+        // A kept row keeps what only the shown one knew.
+        var reacted = stored[0]
+        reacted.rowId = 12308
+        reacted.stepDuration = 2
+        let kept = AppState.keepingRowIDs(from: [reacted], in: [resumed[0]], durableIDs: [])
+        XCTAssertEqual(kept.map(\.id), ["12308"])
+        XCTAssertEqual(kept[0].rowId, 12308)
+        XCTAssertEqual(kept[0].stepDuration, 2)
+        // An optimistic row's id isn't carried: Hermes hasn't stored it.
+        XCTAssertEqual(
+            AppState.keepingRowIDs(from: [row("local-1", .user, "Show me the table")], in: [resumed[0]], durableIDs: []).map(\.id),
+            ["0"]
+        )
         // Hermes' stored ids, which the delivery checks look up, win.
         XCTAssertEqual(
             AppState.keepingRowIDs(from: resumed, in: stored, durableIDs: Set(stored.map(\.id))).map(\.id),

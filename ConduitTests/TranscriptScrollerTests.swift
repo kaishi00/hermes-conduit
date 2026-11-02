@@ -1918,6 +1918,31 @@ final class TranscriptScrollerTests: XCTestCase {
         XCTAssertEqual(scroller.mode, .browsing)
     }
 
+    /// The same latest user message under a new id (a refresh bringing
+    /// the chat from Hermes' stored rows after a resume's) isn't a new turn:
+    /// it doesn't arm the hold (#1648). A new message with the same text,
+    /// the last one still there, does.
+    func testTheLatestUserMessageUnderANewIDDoesNotArmTheHold() {
+        let (scroller, surface) = makeScroller()
+        scroller.holdsRepliesAtStart = { true }
+        let rekeyed = Self.messages(0..<10).map { $0.withID("stored-\($0.id)") }
+        scroller.transcriptChanged(
+            messages: rekeyed,
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertFalse(scroller.replyHoldArmed)
+
+        let again = ChatMessage(id: "m10", role: .user, content: "Message 8", timestamp: "2026-01-01T00:00:00Z")
+        scroller.transcriptChanged(
+            messages: rekeyed + [again],
+            transcriptRevision: 3,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertTrue(scroller.replyHoldArmed)
+        withExtendedLifetime(surface) {}
+    }
+
     func testOpeningAChatDoesNotArmTheHold() {
         let (scroller, surface) = makeScroller()
         scroller.holdsRepliesAtStart = { true }

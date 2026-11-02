@@ -10436,8 +10436,12 @@ final class AppState: ObservableObject {
     /// them up, so rows added at either end (a new turn, older history)
     /// stay new and a repeated text pairs with its own neighbours. A row
     /// whose id `durableIDs` holds (Hermes' stored id, which the delivery
-    /// checks look up) keeps it, and an id never goes to a row while another
-    /// row of the rebuilt transcript still has it.
+    /// checks look up) keeps it, so on such a gateway the rows a turn drew
+    /// from a resume are re-keyed once its stored rows arrive (the scroller
+    /// doesn't take the re-keyed latest user message for a new turn,
+    /// TranscriptScroller.noteLatestUserRow). An id never goes to a row
+    /// while another row of the rebuilt transcript still has it, and an
+    /// optimistic row's id is never carried.
     static func keepingRowIDs(
         from previous: [ChatMessage],
         in rebuilt: [ChatMessage],
@@ -10476,11 +10480,19 @@ final class AppState: ObservableObject {
             let shown = previous[previousIndex]
             previousIndex += 1
             let message = rebuilt[index]
+            // An optimistic row's id (`local-`) stays its own: the delivery
+            // and steer checks read it as a row Hermes hasn't stored yet.
             guard message.id != shown.id,
+                  !shown.id.hasPrefix("local-"),
                   !previousIDs.contains(message.id),
                   !durableIDs.contains(message.id),
                   !rebuiltIDs.contains(shown.id) else { continue }
-            result[index] = message.withID(shown.id)
+            var kept = message.withID(shown.id)
+            // What only the shown row knew: its stored row (reactions and
+            // rewinds address it) and a step's measured time.
+            kept.rowId = kept.rowId ?? shown.rowId
+            kept.stepDuration = kept.stepDuration ?? shown.stepDuration
+            result[index] = kept
         }
         return result
     }
