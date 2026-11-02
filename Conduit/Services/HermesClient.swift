@@ -174,8 +174,25 @@ struct RpcError: Decodable, Error, LocalizedError, Sendable {
     /// Hermes' one-line explanation from `data.detail`, e.g. what to use
     /// instead of a command `slash.exec` refuses.
     var detail: String? = nil
+    /// The keys the session authority's contract check named in
+    /// `data.fields` (unknown or missing ones), e.g. `["cols", "source"]`.
+    var fields: [String]? = nil
+    /// The session's current fences, which the session authority sends
+    /// with a `revision_conflict` so the client can retry once without a
+    /// read (`data.revision`, `data.execution_generation`).
+    var revision: Int? = nil
+    var executionGeneration: Int? = nil
+    /// The request Hermes refused, set when its answer comes back.
+    var method: String? = nil
 
-    var errorDescription: String? { message }
+    /// A bare refusal token ("invalid_params") tells nobody what failed,
+    /// so the text names the request and the keys Hermes named (#1618).
+    /// Hermes' own sentences ("session not found") are shown as they are.
+    var errorDescription: String? {
+        guard let method, !message.contains(" ") else { return message }
+        let named = ([message] + (fields ?? [])).joined(separator: ", ")
+        return AppLocalization.string("Hermes refused \(method) (\(named))")
+    }
 
     /// Hermes refused the send because another live surface (Hermes
     /// Desktop, a terminal) owns this chat.
@@ -183,9 +200,12 @@ struct RpcError: Decodable, Error, LocalizedError, Sendable {
 
     /// Hermes' contract check refused a key this gateway doesn't know
     /// (`4000 invalid params for <method>: <key>: Extra inputs are not
-    /// permitted`). Nothing ran, so the request is safe to resend without it.
+    /// permitted`), or the session authority's contract check did (`4001`,
+    /// reason `invalid_params`, the key in `data.fields`). Nothing ran, so the
+    /// request is safe to resend without it.
     func refusesUnknownParam(_ key: String) -> Bool {
-        code == 4000 && message.contains("invalid params") && message.contains(key)
+        if code == 4001, reason == "invalid_params" { return fields?.contains(key) ?? false }
+        return code == 4000 && message.contains("invalid params") && message.contains(key)
     }
 }
 
@@ -202,11 +222,19 @@ extension RpcError {
             code = number.intValue
         }
         let data = AnyCodable(optionalJSONObject: object["data"])
+        self.init(code: code, message: message, data: data?.objectValue)
+    }
+
+    /// `data`'s reason, detail, fields and fences.
+    private init(code: Int?, message: String, data: [String: AnyCodable]?) {
         self.init(
             code: code,
             message: message,
-            reason: data?.objectValue?["reason"]?.stringValue,
-            detail: data?.objectValue?["detail"]?.stringValue
+            reason: data?["reason"]?.stringValue,
+            detail: data?["detail"]?.stringValue,
+            fields: data?["fields"]?.arrayValue?.compactMap(\.stringValue),
+            revision: HermesClient.exactIntValue(data?["revision"]),
+            executionGeneration: HermesClient.exactIntValue(data?["execution_generation"])
         )
     }
 
@@ -216,8 +244,7 @@ extension RpcError {
         self.init(
             code: try container.decodeIfPresent(Int.self, forKey: .code),
             message: try container.decode(String.self, forKey: .message),
-            reason: data?.objectValue?["reason"]?.stringValue,
-            detail: data?.objectValue?["detail"]?.stringValue
+            data: data?.objectValue
         )
     }
 }
@@ -748,6 +775,11 @@ struct SessionCompressResult {
 struct SessionBranchMessage {
     let role: MessageRole
     let content: String
+    /// Hermes' durable row id, when the transcript has it: the session
+    /// authority branches through a row rather than from copied text.
+    var rowId: Int? = nil
+    /// The chat's newest message, which needs no row to branch through.
+    var isNewest = false
 }
 
 /// The end of a delegate agent's live transcript, from `subagent.tail`.
@@ -876,6 +908,8 @@ enum SessionRedirectOutcome: Equatable {
 private struct PendingRequest {
     let continuation: CheckedContinuation<AnyCodable, Error>
     let timer: Timer?
+    /// What was asked, so a refusal can name it.
+    var method: String = ""
 }
 
 // MARK: - WebSocket seam
@@ -1016,6 +1050,11 @@ final class URLSessionWebSocketTransport: HermesWebSocketTransport {
 
 // MARK: - HermesClient
 
+/// Holds `HermesClient.SendWatch` for the answer being sent.
+enum AuthorityAnswerSend {
+    @TaskLocal static var watch: HermesClient.SendWatch?
+}
+
 @MainActor
 final class HermesClient: ObservableObject {
 
@@ -1056,6 +1095,66 @@ final class HermesClient: ObservableObject {
     /// Window-owned request ids that arrived while `capabilityReplyPending`:
     /// declined (or not) once the reply says whether declines are counted.
     private var deferredWindowOwnedDeclines: [String] = []
+    /// This socket's session verbs are answered by Hermes' session
+    /// authority: the gateway's own listener, which serves the Webapp
+    /// (`hermes webapp`) and the native clients, says so in its
+    /// `gateway.ready` (`session_authority: true`). `hermes dashboard`
+    /// answers them with its TUI gateway instead. The two take different
+    /// shapes for the same verbs, so each request is built for the one
+    /// this socket reached (#1618).
+    private(set) var speaksSessionAuthority = false
+    /// The authority's fences per session id, from snapshots, events and
+    /// refusals: `execution_generation` names the running turn a steer,
+    /// interrupt or answer is for; `revision` is what a `session.mutate`
+    /// expects.
+    private var executionGenerations: [String: Int] = [:]
+    private var sessionRevisions: [String: Int] = [:]
+    /// An open approval or clarify prompt's id → its session and the turn
+    /// that asked, which the authority's answers name.
+    private var authorityPrompts: [String: (sessionId: String, generation: Int)] = [:]
+    /// A prompt's session, so an answer to a card whose prompt this socket
+    /// can't name knows which chat to read it from. `connect()` clears it
+    /// with the fences; a socket handoff carries it over (`adoptSocket`).
+    private var authorityPromptSessions: [String: String] = [:]
+    /// Prompts this client sent an answer for that came back with neither a
+    /// status nor a refusal (the socket dropped, a timeout). A retry that
+    /// then hears `already_resolved` may be our own answer or a timeout's,
+    /// so it reads as no longer active rather than another surface's. Shared by
+    /// every client, since a reconnect builds a new one and a drop is the
+    /// usual reason to retry; prompt ids are unique, so one server's never
+    /// reads as another's. Main-actor isolated with the class, like every
+    /// other member here. An entry ends with its retry's answer or refusal;
+    /// past 256 never retried, the oldest goes first (a retry that old reads
+    /// as it would without one).
+    @MainActor private static var unconfirmedAuthorityAnswers = UnconfirmedAnswers()
+    private var unconfirmedAuthorityAnswers: UnconfirmedAnswers {
+        get { Self.unconfirmedAuthorityAnswers }
+        set { Self.unconfirmedAuthorityAnswers = newValue }
+    }
+
+    /// The ids in `unconfirmedAuthorityAnswers`, oldest first.
+    struct UnconfirmedAnswers {
+        static let limit = 256
+        private(set) var ids: [String] = []
+
+        mutating func insert(_ id: String) {
+            ids.removeAll { $0 == id }
+            ids.append(id)
+            if ids.count > Self.limit { ids.removeFirst(ids.count - Self.limit) }
+        }
+
+        @discardableResult
+        mutating func remove(_ id: String) -> String? {
+            guard let index = ids.firstIndex(of: id) else { return nil }
+            return ids.remove(at: index)
+        }
+    }
+
+    /// Set around an answer's `rpc` so a send the socket refused (the frame
+    /// never went out) isn't recorded as an answer that may have been taken.
+    @MainActor final class SendWatch {
+        var unwritten = false
+    }
     private var closedIntentionally = false
     private var receiveTask: Task<Void, Never>?
     private var socketHasOpened = false
@@ -1228,6 +1327,14 @@ final class HermesClient: ObservableObject {
         backendCountsDeclines = false
         capabilityReplyPending = false
         deferredWindowOwnedDeclines = []
+        speaksSessionAuthority = false
+        executionGenerations = [:]
+        sessionRevisions = [:]
+        authorityPrompts = [:]
+        authorityPromptSessions = [:]
+        // A token binds the session's revision on the old socket's server.
+        modelConfirmTokens = [:]
+        authorityRunningSessions = []
 
         closedIntentionally = false
         socketHasOpened = false
@@ -1300,6 +1407,15 @@ final class HermesClient: ObservableObject {
         // The gateway already has this socket's capabilities.
         advertisedSocket = predecessor.advertisedSocket
         backendCountsDeclines = predecessor.backendCountsDeclines
+        // The same socket, so the same server and the same fences.
+        speaksSessionAuthority = predecessor.speaksSessionAuthority
+        executionGenerations.merge(predecessor.executionGenerations) { mine, _ in mine }
+        sessionRevisions.merge(predecessor.sessionRevisions) { mine, _ in mine }
+        authorityPrompts.merge(predecessor.authorityPrompts) { mine, _ in mine }
+        authorityPromptSessions.merge(predecessor.authorityPromptSessions) { mine, _ in mine }
+        // A confirm token belongs to the socket, which stays the same.
+        modelConfirmTokens.merge(predecessor.modelConfirmTokens) { mine, _ in mine }
+        authorityRunningSessions.formUnion(predecessor.authorityRunningSessions)
         // Server requests still open on the socket come here, so a later
         // request.cancel still withdraws their cards.
         openServerRequestIDs.formUnion(predecessor.openServerRequestIDs)
@@ -1691,7 +1807,8 @@ final class HermesClient: ObservableObject {
             }
             logger.notice("Received RPC response id \(id)")
             pending.timer?.invalidate()
-            if let error = json.error {
+            if var error = json.error {
+                error.method = pending.method
                 pending.continuation.resume(throwing: error)
             } else {
                 pending.continuation.resume(returning: json.result ?? .null)
@@ -1702,8 +1819,10 @@ final class HermesClient: ObservableObject {
         // Handle stream event notification
         if json.method == "event", let params = json.params {
             let eventObject = params.objectValue
+            noteAuthorityFences(fromEvent: eventObject)
             switch eventObject?["type"]?.stringValue {
             case "gateway.ready":
+                speaksSessionAuthority = eventObject?["payload"]?.objectValue?["session_authority"]?.boolValue == true
                 advertiseClientCapabilities()
             case "request.cancel":
                 // Bookkeeping only: the request is closed whatever the
@@ -1711,6 +1830,8 @@ final class HermesClient: ObservableObject {
                 let payload = eventObject?["payload"]?.objectValue
                 if let id = payload?["id"]?.stringValue {
                     openServerRequestIDs.remove(id)
+                    authorityPrompts.removeValue(forKey: id)
+                    authorityPromptSessions.removeValue(forKey: id)
                     if let session = clarifySessions.removeValue(forKey: id),
                        (eventObject?["session_id"]?.stringValue ?? "").isEmpty,
                        var patched = eventObject {
@@ -2024,6 +2145,7 @@ final class HermesClient: ObservableObject {
         let body = try JSONEncoder().encode(request)
         logger.notice("Sending RPC id \(id) method \(method, privacy: .public)")
 
+        let sendWatch = AuthorityAnswerSend.watch
         return try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
                 guard !Task.isCancelled else {
@@ -2041,7 +2163,7 @@ final class HermesClient: ObservableObject {
                     }
                 }
 
-                pending[id] = PendingRequest(continuation: continuation, timer: timer)
+                pending[id] = PendingRequest(continuation: continuation, timer: timer, method: method)
 
                 // Hermes' established React Native client uses WebSocket text
                 // frames (`socket.send(JSON.stringify(...))`). The gateway accepts
@@ -2056,6 +2178,7 @@ final class HermesClient: ObservableObject {
                         Task { @MainActor in
                             if let pending = self?.pending.removeValue(forKey: id) {
                                 pending.timer?.invalidate()
+                                sendWatch?.unwritten = true
                                 pending.continuation.resume(throwing: error)
                             }
                         }
@@ -2098,6 +2221,186 @@ final class HermesClient: ObservableObject {
             params["profile"] = profile
         }
         return params.isEmpty ? nil : params
+    }
+
+    // MARK: - The session authority's shapes (#1618)
+
+    /// One request as a server takes it: the authority has verbs of its
+    /// own for some (`session.mutate` renames), so the method can change
+    /// with the shape.
+    private struct GatewayRequest {
+        let method: String
+        let params: [String: Any]?
+    }
+
+    /// Sends the request `build` makes for the server this socket reached.
+    /// A request built before the socket's `gateway.ready` was read went in
+    /// the dashboard's shape; the authority refuses that shape before it
+    /// runs anything (an unknown key, a missing id, a verb it doesn't
+    /// have), so a refusal that came back once the socket proved to be the
+    /// authority's goes again, once, in the authority's shape.
+    private func shapedRPC(
+        timeout: TimeInterval = requestTimeout,
+        _ build: (_ authority: Bool) throws -> GatewayRequest
+    ) async throws -> AnyCodable {
+        let authority = speaksSessionAuthority
+        let request = try build(authority)
+        do {
+            return try await rpc(request.method, params: request.params, timeout: timeout)
+        } catch let error as RpcError where !authority && speaksSessionAuthority {
+            logger.notice("Resending \(request.method, privacy: .public) in the session authority's shape after \(error.message, privacy: .public)")
+            let reshaped = try build(true)
+            return try await rpc(reshaped.method, params: reshaped.params, timeout: timeout)
+        }
+    }
+
+    /// A fence only moves forward: a replayed event can't take it back.
+    private func noteAuthorityFences(sessionId: String?, generation: Int?, revision: Int?) {
+        guard let sessionId, !sessionId.isEmpty else { return }
+        if let generation {
+            executionGenerations[sessionId] = max(generation, executionGenerations[sessionId] ?? generation)
+        }
+        if let revision {
+            sessionRevisions[sessionId] = max(revision, sessionRevisions[sessionId] ?? revision)
+        }
+    }
+
+    /// Every authority event names its session's running turn; an approval
+    /// or clarify prompt is remembered by id for its answer.
+    private func noteAuthorityFences(fromEvent event: [String: AnyCodable]?) {
+        guard speaksSessionAuthority, let event,
+              let sessionId = event["session_id"]?.stringValue else { return }
+        noteAuthorityFences(
+            sessionId: sessionId,
+            generation: Self.exactIntValue(event["execution_generation"]),
+            revision: nil
+        )
+        switch event["type"]?.stringValue {
+        case "approval.request", "clarify.request":
+            notePrompt(event["payload"]?.objectValue, sessionId: sessionId,
+                       askingGeneration: Self.exactIntValue(event["execution_generation"]))
+        case "message.start":
+            authorityRunningSessions.insert(sessionId)
+        case "message.complete":
+            // The authority ends every turn with it, a failed one included
+            // (its error card rides on it, run_turn_runner); it sends no
+            // turn-ending `error` event.
+            authorityRunningSessions.remove(sessionId)
+        default:
+            break
+        }
+    }
+
+    /// Chats this socket saw a turn start in and not yet end, kept from
+    /// the stream and from snapshots' `running`. The authority admits a
+    /// send into a running turn as the next turn, with the same receipt
+    /// as an idle send, so this is what tells the two apart.
+    private var authorityRunningSessions: Set<String> = []
+
+    private func notePrompt(_ prompt: [String: AnyCodable]?, sessionId: String, askingGeneration: Int? = nil) {
+        guard let prompt, let id = prompt["prompt_id"]?.stringValue, !id.isEmpty else { return }
+        authorityPromptSessions[id] = sessionId
+        // Only the turn that asked (the prompt's own generation, else its
+        // event's): a cached earlier turn's would be refused as stale and
+        // read as ended. Without either, its answer reads the chat's resume.
+        guard let generation = Self.exactIntValue(prompt["execution_generation"]) ?? askingGeneration else { return }
+        authorityPrompts[id] = (sessionId: sessionId, generation: generation)
+    }
+
+    /// A snapshot (`session.create`, `session.resume`, `session.mutate`)
+    /// carries both fences, and a resume the prompts still open.
+    private func noteAuthorityFences(fromSnapshot object: [String: AnyCodable], sessionId: String) {
+        guard speaksSessionAuthority else { return }
+        let ids = Set([sessionId, object["session_id"]?.stringValue, object["stored_session_id"]?.stringValue]
+            .compactMap { $0 }.filter { !$0.isEmpty })
+        let running = object["running"]?.boolValue
+        for id in ids {
+            noteAuthorityFences(
+                sessionId: id,
+                generation: Self.exactIntValue(object["execution_generation"]),
+                revision: Self.exactIntValue(object["revision"])
+            )
+            if running == true { authorityRunningSessions.insert(id) }
+            if running == false { authorityRunningSessions.remove(id) }
+        }
+        guard let prompts = object["prompts"]?.arrayValue else { return }
+        // A resume lists every prompt Hermes still waits on in the chat: one
+        // it no longer lists was answered elsewhere or its turn ended.
+        // Only a prompt the snapshot could have listed: one a later turn
+        // asked while the resume was on its way stays, and so does one the
+        // snapshot's own turn asked while it still runs, since its event can
+        // land after Hermes took the snapshot and before the reply. A kept
+        // prompt Hermes no longer waits on still reads right when answered.
+        let listed = Set(prompts.compactMap { $0.objectValue?["prompt_id"]?.stringValue })
+        let snapshotGeneration = Self.exactIntValue(object["execution_generation"])
+        for (id, prompt) in authorityPrompts where ids.contains(prompt.sessionId) && !listed.contains(id)
+            && snapshotGeneration.map({ prompt.generation < $0 || (prompt.generation == $0 && running == false) }) == true {
+            authorityPrompts.removeValue(forKey: id)
+        }
+        for prompt in prompts {
+            // A listed prompt is the running turn's when it names none.
+            notePrompt(prompt.objectValue, sessionId: object["session_id"]?.stringValue ?? sessionId,
+                       askingGeneration: running == true ? snapshotGeneration : nil)
+        }
+    }
+
+    /// A `session.mutate` on the authority: fenced by the session's
+    /// revision, and by its turn generation for what changes the
+    /// conversation or its run (branch, compress, a model or folder pick),
+    /// which Hermes refuses without one.
+    /// A `revision_conflict` or `stale_generation` refusal carries the
+    /// current fences, so it goes again once with them, as Hermes' own
+    /// clients do.
+    private func authorityMutation(
+        sessionId: String,
+        operation: String,
+        payload: [String: Any],
+        fencesGeneration: Bool = false,
+        profile: String? = nil,
+        timeout: TimeInterval = requestTimeout
+    ) async throws -> AnyCodable {
+        func params() -> [String: Any] {
+            var params: [String: Any] = [
+                "session_id": sessionId,
+                "request_id": UUID().uuidString.lowercased(),
+                "operation": operation,
+                "payload": payload,
+                "expected_revision": sessionRevisions[sessionId] ?? 0
+            ]
+            if fencesGeneration { params["expected_generation"] = executionGenerations[sessionId] ?? 0 }
+            if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                params["profile"] = profile
+            }
+            return params
+        }
+        let result: AnyCodable
+        do {
+            result = try await rpc("session.mutate", params: params(), timeout: timeout)
+        } catch let error as RpcError where ["revision_conflict", "stale_generation"].contains(error.reason ?? "")
+            && (error.revision != nil || error.executionGeneration != nil) {
+            if let revision = error.revision { sessionRevisions[sessionId] = revision }
+            if let generation = error.executionGeneration { executionGenerations[sessionId] = generation }
+            result = try await rpc("session.mutate", params: params(), timeout: timeout)
+        }
+        if let object = result.objectValue {
+            noteAuthorityFences(
+                sessionId: sessionId,
+                generation: Self.exactIntValue(object["execution_generation"]),
+                revision: Self.exactIntValue(object["revision"])
+            )
+        }
+        return result
+    }
+
+    /// A control of the running turn (steer, redirect, interrupt) on the
+    /// authority, which names the turn by its generation.
+    private func authorityControl(_ method: String, sessionId: String, text: String? = nil) -> GatewayRequest {
+        var params: [String: Any] = [
+            "session_id": sessionId,
+            "execution_generation": executionGenerations[sessionId] ?? 0
+        ]
+        if let text { params["text"] = text }
+        return GatewayRequest(method: method, params: params)
     }
 
     // MARK: - API Methods
@@ -2146,19 +2449,21 @@ final class HermesClient: ObservableObject {
 
     /// Creates the bot's ONE forever chat: born hidden, titled "Bot Chat",
     /// and always following the profile's CURRENT model/provider config.
-    /// Older gateways ignore the unknown `hidden`/`follow_profile_config`
-    /// params (upstream behavior). The stored row is lazy until the eager
+    /// Older dashboards ignore the unknown `hidden`/`follow_profile_config`
+    /// params (upstream behavior); the gateway's session authority takes
+    /// both (probed, #1631). The stored row is lazy until the eager
     /// `session.title` write lands.
     func createBotChatSession(profile: String) async throws -> (sessionId: String, storedSessionId: String?) {
-        let result = try await rpc("session.create", params: [
-            "cols": 96,
-            "source": "desktop",
-            "profile": profile,
-            "title": BotMode.canonicalChatTitle,
-            "hidden": true,
-            "follow_profile_config": true
-        ])
+        let result = try await shapedRPC { authority in
+            GatewayRequest(method: "session.create", params: Self.createParams([
+                "profile": profile,
+                "title": BotMode.canonicalChatTitle,
+                "hidden": true,
+                "follow_profile_config": true
+            ], authority: authority))
+        }
         let object = result.objectValue ?? [:]
+        if let id = object["session_id"]?.stringValue { noteAuthorityFences(fromSnapshot: object, sessionId: id) }
         let sessionId = object["session_id"]?.stringValue?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !sessionId.isEmpty else { throw HermesError.invalidResponse }
@@ -2370,11 +2675,23 @@ final class HermesClient: ObservableObject {
     /// folder the gateway actually stored.
     @discardableResult
     func moveSessionWorkspace(_ sessionKey: String, cwd: String) async throws -> String {
-        let result = try await rpc("session.workspace.move", params: [
-            "session_key": sessionKey,
-            "cwd": cwd
-        ])
-        let moved = result.objectValue?["cwd"]?.stringValue?
+        var result: AnyCodable?
+        // The authority has no `session.workspace.move`: the move is a
+        // `workspace` mutation of the session's folder.
+        if !speaksSessionAuthority {
+            do {
+                result = try await rpc("session.workspace.move", params: [
+                    "session_key": sessionKey,
+                    "cwd": cwd
+                ])
+            } catch is RpcError where speaksSessionAuthority {}
+        }
+        if result == nil {
+            result = try await authorityMutation(
+                sessionId: sessionKey, operation: "workspace", payload: ["cwd": cwd], fencesGeneration: true
+            )
+        }
+        let moved = result?.objectValue?["cwd"]?.stringValue?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return moved.isEmpty ? cwd : moved
     }
@@ -2490,10 +2807,6 @@ final class HermesClient: ObservableObject {
         ]
         if omitMessages {
             params["omit_messages"] = true
-        } else {
-            // The transcript without the copy of every picture stored in
-            // it (#652); a gateway without the flag ignores it.
-            params["inline_images"] = false
         }
         // A bot chat lives in the bot profile's state.db; the gateway's
         // `session.resume` reads the `profile` param to open that store
@@ -2502,12 +2815,29 @@ final class HermesClient: ObservableObject {
         if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             params["profile"] = profile
         }
-        let result = try await rpc(
-            "session.resume",
-            params: params,
-            timeout: Self.resumeTimeout(omitMessages: omitMessages)
-        )
+        let result = try await shapedRPC(timeout: Self.resumeTimeout(omitMessages: omitMessages)) { authority in
+            var shaped = params
+            if !omitMessages && !authority {
+                // The transcript without the copy of every picture stored
+                // in it (#652); a gateway without the flag ignores it, and
+                // the authority refuses it.
+                shaped["inline_images"] = false
+            }
+            return GatewayRequest(method: "session.resume", params: shaped)
+        }
         let object = result.objectValue ?? [:]
+        noteAuthorityFences(fromSnapshot: object, sessionId: sessionId)
+        if speaksSessionAuthority {
+            // The authority's open questions come back in `prompts`, in the
+            // live event's shape: shown again like the live event.
+            // (`approval.pending` lists its approvals, by the same ids.)
+            let promptSession = object["session_id"]?.stringValue ?? sessionId
+            for prompt in object["prompts"]?.arrayValue ?? [] {
+                guard let payload = prompt.objectValue, payload["kind"]?.stringValue == "clarify",
+                      let clarify = MessageNormalizer.clarifyActivity(from: payload) else { continue }
+                onEvent?(.clarify(sessionId: promptSession, activity: clarify))
+            }
+        }
         for id in Self.openRequestIDs(in: object["open_requests"]) {
             openServerRequestIDs.insert(id)
         }
@@ -2613,26 +2943,53 @@ final class HermesClient: ObservableObject {
         )
     }
 
+    /// The session authority keeps no profile-wide busy mode: each client
+    /// applies its own (Conduit steers, redirects or queues by itself), so
+    /// on it the mode stays on the phone.
+    struct BusyInputModeKeptOnPhone: Error {}
+
     func busyInputMode() async throws -> BusyInputMode {
-        let result = try await rpc("config.set", params: ["key": "busy", "value": "status"])
+        guard !speaksSessionAuthority else { throw BusyInputModeKeptOnPhone() }
+        let result: AnyCodable
+        do {
+            result = try await rpc("config.set", params: ["key": "busy", "value": "status"])
+        } catch is RpcError where speaksSessionAuthority {
+            throw BusyInputModeKeptOnPhone()
+        }
         let value = result.objectValue?["value"]?.stringValue?.lowercased()
         return BusyInputMode.fromGatewayValue(value)
     }
 
     func setBusyInputMode(_ mode: BusyInputMode) async throws {
+        guard !speaksSessionAuthority else { return }
         // Saved in the profile config, so it queues with the other saves.
-        _ = try await ProfileConfigWriteQueue.runThrowing { [self] in
-            try await rpc("config.set", params: ["key": "busy", "value": mode.rawValue])
+        do {
+            _ = try await ProfileConfigWriteQueue.runThrowing { [self] in
+                try await rpc("config.set", params: ["key": "busy", "value": mode.rawValue])
+            }
+        } catch is RpcError where speaksSessionAuthority {}
+    }
+
+    /// `session.create`'s params for the server this socket reached. The
+    /// dashboard takes Desktop's window shape (`cols`, `source: desktop`);
+    /// the authority takes its own create fields only: `gui` is Desktop's
+    /// surface there, the effort is `reasoning` and Fast is the `fast`
+    /// service tier. `profile` routes on both.
+    nonisolated static func createParams(_ params: [String: Any], authority: Bool) -> [String: Any] {
+        guard authority else {
+            return params.merging(["cols": 96, "source": "desktop"]) { mine, _ in mine }
         }
+        var shaped = params
+        shaped["source"] = "gui"
+        if let effort = shaped.removeValue(forKey: "reasoning_effort") { shaped["reasoning"] = effort }
+        if let fast = shaped.removeValue(forKey: "fast") as? Bool, fast { shaped["service_tier"] = "fast" }
+        return shaped
     }
 
     /// `inProfile` creates the session in another profile on the same
     /// gateway (a voice job addressed to a bot); nil uses the client's own.
     func createSession(model: String? = nil, provider: String? = nil, reasoningEffort: String? = nil, fast: Bool? = nil, cwd: String? = nil, inProfile: String? = nil) async throws -> (sessionId: String, storedSessionId: String?, profile: String?) {
-        var params: [String: Any] = [
-            "cols": 96,
-            "source": "desktop"
-        ]
+        var params: [String: Any] = [:]
         // Keep this explicit instead of relying solely on the generic RPC
         // scope. Hermes Desktop does the same: a global gateway can otherwise
         // create an unscoped session in its launch/default profile.
@@ -2646,9 +3003,12 @@ final class HermesClient: ObservableObject {
         if let reasoningEffort { params["reasoning_effort"] = reasoningEffort }
         if let fast, fast { params["fast"] = true }
         if let cwd, !cwd.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { params["cwd"] = cwd }
-        let result = try await rpc("session.create", params: params)
+        let result = try await shapedRPC { authority in
+            GatewayRequest(method: "session.create", params: Self.createParams(params, authority: authority))
+        }
         let object = result.objectValue ?? [:]
         let sid = object["session_id"]?.stringValue ?? ""
+        noteAuthorityFences(fromSnapshot: object, sessionId: sid)
         let stored = object["stored_session_id"]?.stringValue
         let profile = object["profile"]?.stringValue ?? object["profile_id"]?.stringValue
         return (sid, stored, profile)
@@ -2663,6 +3023,9 @@ final class HermesClient: ObservableObject {
         title: String,
         cwd: String?
     ) async throws -> (sessionId: String, storedSessionId: String?, profile: String?) {
+        if speaksSessionAuthority {
+            return try await authorityBranch(parentSessionId: parentSessionId, messages: messages, title: title)
+        }
         var params: [String: Any] = [
             "cols": 96,
             "source": "desktop",
@@ -2685,6 +3048,32 @@ final class HermesClient: ObservableObject {
         )
     }
 
+    /// The authority branches a stored chat in place (`session.mutate`
+    /// `branch`), keeping its rows through the selected reply's own row,
+    /// rather than taking a copy of the history from the client.
+    private func authorityBranch(
+        parentSessionId: String,
+        messages: [SessionBranchMessage],
+        title: String
+    ) async throws -> (sessionId: String, storedSessionId: String?, profile: String?) {
+        var payload: [String: Any] = ["title": title]
+        if let rowId = messages.last?.rowId {
+            payload["through_message_id"] = rowId
+        } else if !(messages.last?.isNewest ?? false) {
+            // Without the reply's row the branch would keep everything
+            // after it too: reopening the chat reads the rows' ids.
+            throw BranchPointUnknownError()
+        }
+        let result = try await authorityMutation(
+            sessionId: parentSessionId, operation: "branch", payload: payload, fencesGeneration: true
+        )
+        let object = result.objectValue ?? [:]
+        guard let sessionId = object["branched_session_id"]?.stringValue, !sessionId.isEmpty else {
+            throw HermesError.invalidResponse
+        }
+        return (sessionId, sessionId, nil)
+    }
+
     func setSessionTitle(_ sessionId: String, title: String, profile: String? = nil) async throws {
         var params: [String: Any] = [
             "session_id": sessionId,
@@ -2697,7 +3086,14 @@ final class HermesClient: ObservableObject {
         if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             params["profile"] = profile
         }
-        _ = try await rpc("session.title", params: params)
+        // The authority has no `session.title`: a rename is a mutation.
+        if !speaksSessionAuthority {
+            do {
+                _ = try await rpc("session.title", params: params)
+                return
+            } catch is RpcError where speaksSessionAuthority {}
+        }
+        _ = try await authorityMutation(sessionId: sessionId, operation: "rename", payload: ["title": title], profile: profile)
     }
 
     /// Reads the gateway's current title without guessing from the local
@@ -2708,7 +3104,10 @@ final class HermesClient: ObservableObject {
         if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             params["profile"] = profile
         }
-        let result = try await rpc("session.title", params: params)
+        // The authority has no `session.title`: its `session.info` names it.
+        let result = try await shapedRPC { authority in
+            GatewayRequest(method: authority ? "session.info" : "session.title", params: params)
+        }
         let title = result.objectValue?["title"]?.stringValue?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return (title?.isEmpty == false) ? title : nil
@@ -2814,12 +3213,27 @@ final class HermesClient: ObservableObject {
             guard !gatewayRefusesQueued else { throw QueueUnsupportedError() }
             params["queued"] = true
         }
+        // The authority admits a prompt by its own id, one per call: this
+        // call's own resends (a refused key, a reshape) reuse it, so one
+        // Hermes already admitted is that admission again, never a second
+        // copy. A send the user makes again is a new call with a new id.
+        let submissionID = UUID().uuidString.lowercased()
+        var sentToAuthority = false
+        // Read before sending: an idle send's own turn can start before
+        // its receipt comes back.
+        let joinsRunningTurn = authorityRunningSessions.contains(sessionId)
         // An older Hermes refuses one unknown key at a time: each optional
         // key it refuses goes, and the prompt is resent, until it's taken.
         var answer: AnyCodable?
         while answer == nil {
             do {
-                answer = try await rpc("prompt.submit", params: params, timeout: Self.promptSubmitTimeout)
+                let current = params
+                answer = try await shapedRPC(timeout: Self.promptSubmitTimeout) { authority in
+                    sentToAuthority = authority
+                    var shaped = current
+                    if authority { shaped["submission_id"] = submissionID }
+                    return GatewayRequest(method: "prompt.submit", params: shaped)
+                }
             } catch let error as RpcError where params["voice_turn"] != nil && error.refusesUnknownParam("voice_turn") {
                 gatewayRefusesVoiceTurn = true
                 params.removeValue(forKey: "voice_turn")
@@ -2838,6 +3252,21 @@ final class HermesClient: ObservableObject {
             }
         }
         let result = answer ?? AnyCodable.null
+        // Read by the server that answered: a send built before the ready was
+        // read but taken by the authority is still its admission receipt.
+        if sentToAuthority || speaksSessionAuthority {
+            // An admission receipt: `queued` is its place in the session's
+            // line whether a turn runs or not. The authority has no busy
+            // policy of its own: a send into a running turn waits for the
+            // next one, so it reads as held, like a Queue send.
+            noteAuthorityFences(
+                sessionId: sessionId,
+                generation: Self.exactIntValue(result.objectValue?["execution_generation"]),
+                revision: nil
+            )
+            // A Queue send into a chat this socket saw idle starts at once.
+            return joinsRunningTurn ? .queued : .accepted
+        }
         return PromptSubmissionOutcome(
             gatewayStatus: result.objectValue?["status"]?.stringValue
         )
@@ -2864,6 +3293,15 @@ final class HermesClient: ObservableObject {
 
     /// A hidden prompt on a Hermes without `display_kind`.
     struct HiddenPromptUnsupportedError: Error {}
+
+    /// A branch on the authority names its reply by the row id Hermes gave
+    /// it; a reply whose id never arrived (its completion missed in the
+    /// background) gets it when the chat is read again.
+    struct BranchPointUnknownError: LocalizedError {
+        var errorDescription: String? {
+            AppLocalization.string("Open the chat again to branch from this reply.")
+        }
+    }
 
     /// Queue on a Hermes without `prompt.submit`'s `queued` key.
     struct QueueUnsupportedError: LocalizedError {
@@ -2898,28 +3336,73 @@ final class HermesClient: ObservableObject {
         return rows.compactMap { LiveSessionStatus(from: $0.objectValue ?? [:]) }
     }
 
-    func steer(_ sessionId: String, text: String) async throws {
-        let result = try await rpc("session.steer", params: [
-            "session_id": sessionId,
-            "text": text
-        ])
-        if result.objectValue?["status"]?.stringValue == "rejected" {
+    /// `profile` is the chat's own (a bot chat's), for the authority's
+    /// stale-turn read; nil is the client's.
+    func steer(_ sessionId: String, text: String, profile: String? = nil) async throws {
+        guard let result = try await turnControl("session.steer", sessionId: sessionId, text: text, profile: profile),
+              result.objectValue?["status"]?.stringValue != "rejected" else {
             throw HermesError.steerRejected
         }
     }
 
-    func redirect(_ sessionId: String, text: String) async throws -> SessionRedirectOutcome {
-        let result = try await rpc("session.redirect", params: [
-            "session_id": sessionId,
-            "text": text
-        ])
+    func redirect(_ sessionId: String, text: String, profile: String? = nil) async throws -> SessionRedirectOutcome {
+        guard let result = try await turnControl("session.redirect", sessionId: sessionId, text: text, profile: profile) else {
+            return .rejected
+        }
         return SessionRedirectOutcome(gatewayStatus: result.objectValue?["status"]?.stringValue)
     }
 
-    func cancel(_ sessionId: String) async throws {
-        _ = try await rpc("session.interrupt", params: [
-            "session_id": sessionId
-        ])
+    func cancel(_ sessionId: String, profile: String? = nil) async throws {
+        // Nil: no turn is running, so there is nothing to stop.
+        _ = try await turnControl("session.interrupt", sessionId: sessionId, profile: profile)
+        // Stopped: the stopped turn ends right after, and a send then starts
+        // as soon as it does, so it reads as a turn of its own rather than
+        // waiting on an end this socket may never see.
+        authorityRunningSessions.remove(sessionId)
+    }
+
+    /// A steer, redirect or interrupt of the running turn. The authority
+    /// names the turn by its generation; one it doesn't know as running
+    /// (`stale_generation`) is read again from the session, and the
+    /// control goes once more if a turn still runs. Nil when none does:
+    /// the turn ended first, the dashboard's `rejected`.
+    private func turnControl(
+        _ method: String, sessionId: String, text: String? = nil, profile: String? = nil
+    ) async throws -> AnyCodable? {
+        func dashboardRequest() -> GatewayRequest {
+            var params: [String: Any] = ["session_id": sessionId]
+            if let text { params["text"] = text }
+            return GatewayRequest(method: method, params: params)
+        }
+        do {
+            return try await shapedRPC { [self] authority in
+                authority ? authorityControl(method, sessionId: sessionId, text: text) : dashboardRequest()
+            }
+        } catch let error as RpcError where error.reason == "stale_generation" {
+            // A bot chat is only found under its own profile.
+            let snapshot = try await resumeSessionObject(sessionId, omitMessages: true, profile: profile)
+            guard snapshot["running"]?.boolValue == true else {
+                authorityRunningSessions.remove(sessionId)
+                return nil
+            }
+            // The authority's word on the running turn, even below what this
+            // socket had: the control names it as Hermes does.
+            guard let generation = Self.exactIntValue(snapshot["execution_generation"]) else {
+                // A turn runs but the chat doesn't name it: sending the
+                // refused turn again would read as no turn running. The
+                // refusal stands, and the chat still reads as running.
+                throw error
+            }
+            executionGenerations[sessionId] = generation
+            do {
+                let request = authorityControl(method, sessionId: sessionId, text: text)
+                return try await rpc(request.method, params: request.params)
+            } catch let error as RpcError where error.reason == "stale_generation" {
+                // No turn runs after all: a send there starts one, not held.
+                authorityRunningSessions.remove(sessionId)
+                return nil
+            }
+        }
     }
 
     /// Outcome of `clarify.respond`. Batch questions report the gateway's
@@ -2933,8 +3416,19 @@ final class HermesClient: ObservableObject {
     enum ClarifyResponseOutcome: Equatable {
         case accepted(remaining: [String]?)
         case expired
+        /// The session authority's `already_resolved`: another surface
+        /// answered first, so this answer wasn't taken.
+        case answeredElsewhere
+        /// The session authority no longer waits on it: the turn that asked
+        /// ended (`stale_generation`) or the chat no longer lists it. Not a
+        /// timeout, so it isn't told as one.
+        case ended
 
-        var isExpired: Bool { self == .expired }
+        /// Hermes no longer waits on it, whatever the reason.
+        var isExpired: Bool {
+            if case .accepted = self { return false }
+            return true
+        }
 
         /// True only on an explicit `remaining: []` — the gateway's own
         /// confirmation that every question is resolved. An omitted
@@ -2942,7 +3436,7 @@ final class HermesClient: ObservableObject {
         var requestCompleted: Bool {
             switch self {
             case .accepted(let remaining): return remaining?.isEmpty == true
-            case .expired: return false
+            case .expired, .answeredElsewhere, .ended: return false
             }
         }
     }
@@ -2956,14 +3450,96 @@ final class HermesClient: ObservableObject {
     func respondToClarification(
         requestId: String,
         answer: String,
-        questionId: String? = nil
+        questionId: String? = nil,
+        sessionId: String? = nil,
+        profile: String? = nil
     ) async throws -> ClarifyResponseOutcome {
-        if isServerRequestID(requestId) {
+        // A prompt the authority asked is answered there, even if a resume
+        // also listed its id among `open_requests`.
+        if isServerRequestID(requestId), authorityPrompts[requestId] == nil {
             return try await respondToClarifyServerRequest(
                 requestId: requestId,
                 answer: answer,
                 questionId: questionId
             )
+        }
+        var authorityPrompt = authorityPrompts[requestId]
+        if authorityPrompt == nil, speaksSessionAuthority,
+           let sessionId = authorityPromptSessions[requestId] ?? sessionId, !sessionId.isEmpty {
+            // A card this socket never saw asked (shown before a reconnect):
+            // the chat's resume lists the prompts Hermes still waits on, with
+            // the turn that asked. One it no longer lists was answered or
+            // ended.
+            // A bot chat is only found under its own profile.
+            _ = try await resumeSessionObject(sessionId, omitMessages: true, profile: profile)
+            authorityPrompt = authorityPrompts[requestId]
+            if authorityPrompt == nil {
+                // Nothing says whose answer settled it, even one of ours that
+                // got no word back: a turn that keeps running may have gone
+                // on without it.
+                unconfirmedAuthorityAnswers.remove(requestId)
+                return .ended
+            }
+        }
+        if authorityPrompt == nil, speaksSessionAuthority,
+           !requestId.hasPrefix(PushNotificationService.relayRequestPrefix) {
+            // Neither seen asked nor in a chat it could be read from: the
+            // authority refuses the dashboard's shape, and nothing here
+            // says it still waits.
+            return .ended
+        }
+        if let prompt = authorityPrompt {
+            // The authority asks one question per prompt and names the
+            // turn that asked; its answer settles that prompt.
+            let result: AnyCodable
+            // Cancelled before anything was written: nothing to remember.
+            try Task.checkCancellation()
+            let sendWatch = SendWatch()
+            do {
+                var params: [String: Any] = [
+                    "session_id": prompt.sessionId,
+                    "execution_generation": prompt.generation,
+                    "prompt_id": requestId,
+                    "answer": answer
+                ]
+                // Named as the approval answer names it: a bot chat's own profile.
+                if let profile, !profile.isEmpty { params["profile"] = profile }
+                let sent = params
+                result = try await AuthorityAnswerSend.$watch.withValue(sendWatch) {
+                    try await self.rpc("clarify.respond", params: sent)
+                }
+            } catch let error as RpcError {
+                if error.reason == "stale_generation" {
+                    // The turn that asked has ended: Hermes no longer waits.
+                    unconfirmedAuthorityAnswers.remove(requestId)
+                    authorityPrompts.removeValue(forKey: requestId)
+                    authorityPromptSessions.removeValue(forKey: requestId)
+                    return .ended
+                }
+                // Refused outright: nothing was taken.
+                unconfirmedAuthorityAnswers.remove(requestId)
+                throw error
+            } catch HermesError.notConnected {
+                // Never written: nothing was taken.
+                throw HermesError.notConnected
+            } catch {
+                // No word back: it may have been taken, unless the socket
+                // refused the frame.
+                if !sendWatch.unwritten { unconfirmedAuthorityAnswers.insert(requestId) }
+                throw error
+            }
+            let retried = unconfirmedAuthorityAnswers.remove(requestId) != nil
+            authorityPrompts.removeValue(forKey: requestId)
+            authorityPromptSessions.removeValue(forKey: requestId)
+            switch result.objectValue?["status"]?.stringValue?.lowercased() {
+            case "resolved": return .accepted(remaining: [])
+            // Another surface answered first, so this answer wasn't taken.
+            // After an earlier send that got no word back, it may have been
+            // ours or a timeout's: nothing says which, so no longer active.
+            case "already_resolved": return retried ? .ended : .answeredElsewhere
+            // Any other word isn't a timeout either: no longer active.
+            default: return .ended
+            }
         }
         var params: [String: Any] = [
             "request_id": requestId,
@@ -2972,7 +3548,17 @@ final class HermesClient: ObservableObject {
         if let questionId, !questionId.isEmpty {
             params["question_id"] = questionId
         }
-        let result = try await rpc("clarify.respond", params: params)
+        let result: AnyCodable
+        let builtForDashboard = !speaksSessionAuthority
+        do {
+            result = try await rpc("clarify.respond", params: params)
+        } catch is RpcError where builtForDashboard && speaksSessionAuthority {
+            // Sent before the ready was read, to the authority, which refuses
+            // this shape before anything runs: answer it in its own.
+            return try await respondToClarification(
+                requestId: requestId, answer: answer, questionId: questionId, sessionId: sessionId, profile: profile
+            )
+        }
         let status = result.objectValue?["status"]?.stringValue?.lowercased()
         if status == "expired" {
             return .expired
@@ -3063,17 +3649,116 @@ final class HermesClient: ObservableObject {
         clarifySessions.removeValue(forKey: requestId)
     }
 
+    /// What became of an approval answer.
+    enum ApprovalResponseOutcome: Equatable {
+        case accepted
+        /// Nothing waits on it any more (timed out, or its turn ended).
+        case noLongerWaiting
+        /// The session authority's `already_resolved`: another surface
+        /// answered first.
+        case answeredElsewhere
+        /// The session authority no longer waits on it: the turn that asked
+        /// ended, or the chat no longer lists it. Not a timeout.
+        case ended
+    }
+
     func respondToApproval(
         sessionId: String,
         requestId: String? = nil,
         choice: String,
         profile: String? = nil
     ) async throws -> Bool {
+        try await respondToApprovalOutcome(
+            sessionId: sessionId, requestId: requestId, choice: choice, profile: profile
+        ) == .accepted
+    }
+
+    func respondToApprovalOutcome(
+        sessionId: String,
+        requestId: String? = nil,
+        choice: String,
+        profile: String? = nil
+    ) async throws -> ApprovalResponseOutcome {
+        let trimmedRequestId = requestId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if speaksSessionAuthority, let trimmedRequestId, !trimmedRequestId.isEmpty {
+            // The authority names the prompt and the turn that asked;
+            // `already_resolved` is another surface's answer. A card this
+            // socket didn't see asked (shown before a reconnect) reads its
+            // prompt from the chat's resume, which lists the ones Hermes
+            // still waits on; one it no longer lists was answered or ended.
+            var cached = authorityPrompts[trimmedRequestId]
+            if cached == nil {
+                _ = try await resumeSessionObject(
+                    authorityPromptSessions[trimmedRequestId] ?? sessionId, omitMessages: true, profile: profile
+                )
+                cached = authorityPrompts[trimmedRequestId]
+            }
+            guard let prompt = cached else {
+                // Nothing says whose answer settled it, even one of ours that
+                // got no word back: an approval that timed out is denied and
+                // the turn goes on, so a running turn doesn't make it ours.
+                unconfirmedAuthorityAnswers.remove(trimmedRequestId)
+                return .ended
+            }
+            var params: [String: Any] = [
+                "session_id": prompt.sessionId,
+                "execution_generation": prompt.generation,
+                "prompt_id": trimmedRequestId,
+                "choice": choice
+            ]
+            if let profile, !profile.isEmpty { params["profile"] = profile }
+            let result: AnyCodable
+            // Cancelled before anything was written: nothing to remember.
+            try Task.checkCancellation()
+            let sendWatch = SendWatch()
+            do {
+                let sent = params
+                result = try await AuthorityAnswerSend.$watch.withValue(sendWatch) {
+                    try await self.rpc("approval.respond", params: sent)
+                }
+            } catch let error as RpcError {
+                if error.reason == "stale_generation" {
+                    // The turn that asked has ended: nothing to approve.
+                    unconfirmedAuthorityAnswers.remove(trimmedRequestId)
+                    authorityPrompts.removeValue(forKey: trimmedRequestId)
+                    authorityPromptSessions.removeValue(forKey: trimmedRequestId)
+                    return .ended
+                }
+                // Refused outright: nothing was taken.
+                unconfirmedAuthorityAnswers.remove(trimmedRequestId)
+                throw error
+            } catch HermesError.notConnected {
+                // Never written: nothing was taken.
+                throw HermesError.notConnected
+            } catch {
+                // No word back: it may have been taken, unless the socket
+                // refused the frame.
+                if !sendWatch.unwritten { unconfirmedAuthorityAnswers.insert(trimmedRequestId) }
+                throw error
+            }
+            let retried = unconfirmedAuthorityAnswers.remove(trimmedRequestId) != nil
+            authorityPrompts.removeValue(forKey: trimmedRequestId)
+            authorityPromptSessions.removeValue(forKey: trimmedRequestId)
+            switch result.objectValue?["status"]?.stringValue?.lowercased() {
+            case "resolved": return .accepted
+            // After an earlier send that got no word back, it may have been
+            // ours or a timeout's (denied, the turn going on): nothing says
+            // which, so no longer active rather than approved or another's.
+            case "already_resolved": return retried ? .ended : .answeredElsewhere
+            // Any other word isn't a timeout either: no longer active.
+            default: return .ended
+            }
+        }
+        if speaksSessionAuthority {
+            // The authority names every approval it asks; a card without an
+            // id asks nothing it still waits on (AppState fills a waiting
+            // one's id from `approval.pending`, which lists the same ids).
+            return .ended
+        }
         var params: [String: Any] = [
             "choice": choice,
             "session_id": sessionId
         ]
-        let trimmedRequestId = requestId?.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasRequestId = trimmedRequestId?.isEmpty == false
         if let trimmedRequestId, hasRequestId {
             params["request_id"] = trimmedRequestId
@@ -3081,7 +3766,17 @@ final class HermesClient: ObservableObject {
         if let profile, !profile.isEmpty {
             params["profile"] = profile
         }
-        let result = try await rpc("approval.respond", params: params)
+        let result: AnyCodable
+        let builtForDashboard = !speaksSessionAuthority
+        do {
+            result = try await rpc("approval.respond", params: params)
+        } catch is RpcError where builtForDashboard && speaksSessionAuthority {
+            // Sent before the ready was read, to the authority, which refuses
+            // this shape before anything runs: answer it in its own.
+            return try await respondToApprovalOutcome(
+                sessionId: sessionId, requestId: requestId, choice: choice, profile: profile
+            )
+        }
         // Current Hermes reports the number of queue entries resolved. Older
         // gateways omitted the field after a successful response to legacy
         // requestless approval calls.
@@ -3092,7 +3787,7 @@ final class HermesClient: ObservableObject {
             if hasRequestId {
                 throw HermesError.invalidResponse
             }
-            return true
+            return .accepted
         }
         guard let resolved = Self.exactIntValue(rawResolved), resolved >= 0 else {
             throw HermesError.invalidResponse
@@ -3102,7 +3797,7 @@ final class HermesClient: ObservableObject {
             // a card that is no longer pending.
             approvalQueueIDs = approvalQueueIDs.filter { $0.value.queueID != trimmedRequestId }
         }
-        return resolved > 0
+        return resolved > 0 ? .accepted : .noLongerWaiting
     }
 
     /// Returns every unresolved approval for one live Hermes session. Current
@@ -3223,15 +3918,59 @@ final class HermesClient: ObservableObject {
     /// context) comes back as `confirm_required` and nothing is applied until
     /// the client repeats the call with `confirm_expensive_model`.
     func setModel(_ sessionId: String, model: String, provider: String, confirmed: Bool = false) async throws -> ModelSwitchOutcome {
+        if speaksSessionAuthority {
+            return try await authorityModelPick(sessionId, model: model, provider: provider, confirmed: confirmed)
+        }
         var params: [String: Any] = [
             "key": "model",
             "session_id": sessionId,
             "value": "\(model) --provider \(provider) --session"
         ]
         if confirmed { params["confirm_expensive_model"] = true }
-        let result = try await rpc("config.set", params: params)
+        let result: AnyCodable
+        do {
+            result = try await rpc("config.set", params: params)
+        } catch is RpcError where speaksSessionAuthority {
+            return try await authorityModelPick(sessionId, model: model, provider: provider, confirmed: confirmed)
+        }
         return ModelSwitchOutcome(from: result, requestedModel: model)
     }
+
+    /// The authority's model pick (`config.set model` is refused there:
+    /// `use_session_mutation_model`). A model it flags answers with a
+    /// `confirm` token instead of switching; the confirmed pick sends that
+    /// token back, and only that exact token applies it.
+    private func authorityModelPick(
+        _ sessionId: String,
+        model: String,
+        provider: String,
+        confirmed: Bool
+    ) async throws -> ModelSwitchOutcome {
+        var payload: [String: Any] = ["model": model, "provider": provider]
+        let key = "\(sessionId)\n\(model)\n\(provider)"
+        if confirmed, let token = modelConfirmTokens[key] { payload["confirm"] = token }
+        let result = try await authorityMutation(
+            sessionId: sessionId, operation: "model", payload: payload, fencesGeneration: true
+        )
+        let object = result.objectValue ?? [:]
+        let confirmRequired = object["confirm_required"]?.boolValue == true
+        if confirmRequired, let token = object["confirm"]?.stringValue {
+            modelConfirmTokens[key] = token
+        } else {
+            modelConfirmTokens.removeValue(forKey: key)
+        }
+        return ModelSwitchOutcome(
+            // A pick waiting on confirmation names its resolved target as
+            // `target_model`, and has no `model` until it applies.
+            model: object["model"]?.stringValue ?? object["target_model"]?.stringValue ?? model,
+            confirmRequired: confirmRequired,
+            confirmMessage: object["confirm_message"]?.stringValue ?? "",
+            deferred: object["deferred"]?.boolValue ?? false
+        )
+    }
+
+    /// The authority's `confirm` token per session, model and provider.
+    private var modelConfirmTokens: [String: String] = [:]
 
     func setReasoning(_ sessionId: String, effort: String) async throws {
         _ = try await rpc("config.set", params: [
@@ -3333,6 +4072,13 @@ final class HermesClient: ObservableObject {
             params["profile"] = profile
         }
         let result = try await rpc("session.mutate", params: params)
+        // The authority's rewind moves both fences, which the next steer,
+        // answer or mutation names.
+        noteAuthorityFences(
+            sessionId: sessionId,
+            generation: Self.exactIntValue(result.objectValue?["execution_generation"]),
+            revision: Self.exactIntValue(result.objectValue?["revision"])
+        )
         return SessionRewindReceipt(result: result)
     }
 
@@ -3360,7 +4106,19 @@ final class HermesClient: ObservableObject {
         if let trimmedTopic, !trimmedTopic.isEmpty {
             params["focus_topic"] = trimmedTopic
         }
-        let result = try await rpc("session.compress", params: params, timeout: timeout)
+        // The authority has no `session.compress`: a compression is a
+        // mutation, with the topic as `focus`.
+        if !speaksSessionAuthority {
+            do {
+                let result = try await rpc("session.compress", params: params, timeout: timeout)
+                return SessionCompressResult(from: result)
+            } catch is RpcError where speaksSessionAuthority {}
+        }
+        var payload: [String: Any] = [:]
+        if let trimmedTopic, !trimmedTopic.isEmpty { payload["focus"] = trimmedTopic }
+        let result = try await authorityMutation(
+            sessionId: sessionId, operation: "compress", payload: payload, fencesGeneration: true, timeout: timeout
+        )
         return SessionCompressResult(from: result)
     }
 
@@ -3400,10 +4158,13 @@ final class HermesClient: ObservableObject {
     /// and the client is expected to recover by resuming the STORED session
     /// id. Hermes Desktop classifies the same condition by the
     /// `/session not found/i` message. Timeouts, busy rejections, connection
-    /// loss, and compression failures are never in this class.
+    /// loss, and compression failures are never in this class. The session
+    /// authority answers its refusals with 4001 too, each naming its
+    /// `data.reason`: only `not_found` means the session is gone, so an
+    /// `invalid_params` or `permission_denied` shows as the refusal it is.
     static func isSessionNotFoundError(_ error: Error) -> Bool {
         if let rpcError = error as? RpcError {
-            if rpcError.code == 4001 { return true }
+            if rpcError.code == 4001, rpcError.reason == nil || rpcError.reason == "not_found" { return true }
             return rpcError.message.lowercased().contains("session not found")
         }
         let message = (error as? LocalizedError)?.errorDescription
@@ -4838,7 +5599,9 @@ enum MessageNormalizer {
     /// wire generation. Returns nil for payloads with no request id or no
     /// answerable question — deliberately dropped, never half-presented.
     static func clarifyActivity(from payload: [String: AnyCodable]) -> ClarifyActivity? {
-        let requestIDCandidates = ["request_id", "requestId", "id"]
+        // `prompt_id` first: the session authority's clarify prompt, which
+        // its answer and the cached prompt name.
+        let requestIDCandidates = ["prompt_id", "request_id", "requestId", "id"]
             .compactMap { payload[$0]?.stringValue }
         let requestId = requestIDCandidates
             .first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
@@ -4983,7 +5746,9 @@ enum MessageNormalizer {
     ) -> ApprovalActivity? {
         let normalizedSessionId = sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedSessionId.isEmpty else { return nil }
-        let requestId = ["request_id", "requestId"]
+        // `prompt_id` first: the session authority's approval prompt, which
+        // its answer and the cached prompt name.
+        let requestId = ["prompt_id", "request_id", "requestId"]
             .compactMap { payload[$0]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
 

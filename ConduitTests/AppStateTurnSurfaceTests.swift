@@ -122,6 +122,31 @@ final class AppStateTurnSurfaceTests: XCTestCase {
         XCTAssertEqual(recorder.events.last, "prompt rt-failed Hello")
     }
 
+    func testARefusedSendDiscardsItsReport() async throws {
+        let recorder = TurnSurfaceRecorder()
+        recorder.sendError = RpcError(code: 4001, message: "invalid_params")
+        let harness = makeHarness(recorder: recorder)
+        openChat("rt-refused", in: harness)
+
+        _ = await harness.appState.submitComposer(text: "yes")
+
+        for _ in 0..<50 where recorder.discards.isEmpty { await Task.yield() }
+        XCTAssertEqual(recorder.discards, ["rt-refused \(recorder.digests.first ?? "?")"],
+                       "No turn of it is coming: the same words from another client mustn't take its line")
+    }
+
+    func testASendWhoseReplyWasLostKeepsItsReport() async {
+        let recorder = TurnSurfaceRecorder()
+        recorder.sendError = URLError(.networkConnectionLost)
+        let harness = makeHarness(recorder: recorder)
+        openChat("rt-lost", in: harness)
+
+        _ = await harness.appState.submitComposer(text: "yes")
+
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(recorder.discards, [], "It may have started: its turn still takes the line")
+    }
+
     func testOnlyAPluginThatReportsTheCapabilityTakesReports() {
         var plugin = NotifierPluginStatus()
         XCTAssertFalse(TurnSurface.isTaken(by: plugin), "Nothing reported yet")
@@ -143,6 +168,7 @@ final class AppStateTurnSurfaceTests: XCTestCase {
         let operations = ChatResumeLifecycleOperations(
             sendPrompt: { _, sessionID, text in
                 recorder?.events.append("prompt \(sessionID) \(text)")
+                if let error = recorder?.sendError { throw error }
                 return .accepted
             }
         )
@@ -158,6 +184,9 @@ final class AppStateTurnSurfaceTests: XCTestCase {
         )
         if let recorder {
             appState.turnSurfaceSender = { body in try await recorder.report(body) }
+            appState.turnSurfaceDiscarder = { body in
+                recorder.discards.append("\(body["session_id"] as? String ?? "?") \(body["text_sha256"] as? String ?? "?")")
+            }
         }
         return (appState, defaults)
     }
@@ -189,6 +218,8 @@ private final class TurnSurfaceRecorder {
     var digests: [String] = []
     var reportDelay: Duration?
     var reportError: Error?
+    var sendError: Error?
+    var discards: [String] = []
 
     func report(_ body: [String: Any]) async throws {
         if let reportDelay { try await Task.sleep(for: reportDelay) }

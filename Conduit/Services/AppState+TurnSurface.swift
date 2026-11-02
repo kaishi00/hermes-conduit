@@ -40,4 +40,24 @@ extension AppState {
             upload.cancel()
         }
     }
+
+    /// Forgets the report for `text` in `runtimeSessionID` after its send
+    /// failed: no turn of it is coming, so the same words sent from another
+    /// client there would take its line. Not after a send whose reply was
+    /// only lost (it may have started). Never waited on; a plugin without
+    /// the route keeps the report until it goes stale.
+    func discardTurnSurface(runtimeSessionID: String, text: String, after error: Error) {
+        guard !Self.isAmbiguousPromptDelivery(error) else { return }
+        let body = TurnSurface.discardBody(runtimeSessionID: runtimeSessionID, text: text)
+        if let turnSurfaceDiscarder {
+            Task { @MainActor in _ = try? await turnSurfaceDiscarder(body) }
+            return
+        }
+        guard notifierPlugin.reports(TurnSurface.discardCapability),
+              let bridge = dashboardTicketBridge else { return }
+        Task { @MainActor in
+            _ = try? await bridge.requestJSON(path: TurnSurface.discardPath, method: "POST", body: body,
+                                              timeoutMilliseconds: TurnSurface.timeoutMilliseconds)
+        }
+    }
 }

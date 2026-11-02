@@ -60,9 +60,11 @@ final class LocalLiveTurnRunner {
         /// Answers one question of the clarify the followed reply waits on
         /// (`questionID` nil for a single question; `answer` nil leaves one
         /// of a form blank); the card as it stands after, or nil when
-        /// Hermes didn't take it.
-        var respondToClarify: @MainActor (_ clarify: ClarifyActivity, _ questionID: String?, _ answer: String?) async -> ClarifyActivity?
-            = { _, _, _ in nil }
+        /// Hermes didn't take it. `sessionID` and `profile` are the reply's
+        /// chat, where the session authority reads a question this socket
+        /// never saw asked.
+        var respondToClarify: @MainActor (_ clarify: ClarifyActivity, _ questionID: String?, _ answer: String?, _ sessionID: String?, _ profile: String?) async -> ClarifyActivity?
+            = { _, _, _, _, _ in nil }
     }
 
     var onDelta: (@MainActor (_ turnID: String, _ text: String) -> Void)?
@@ -203,7 +205,7 @@ final class LocalLiveTurnRunner {
         // next question.
         if let clarify = reply?.waitingQuestion, let question = HermesCallWaiting(clarify: clarify)?.openQuestion {
             let value = HermesCallWaiting.answerValue(for: words, question: question)
-            if let after = await backend.respondToClarify(clarify, clarify.questions.count == 1 ? nil : question.id, value) {
+            if let after = await backend.respondToClarify(clarify, clarify.questions.count == 1 ? nil : question.id, value, reply?.runtimeID, reply?.profile) {
                 guard reply?.waitingQuestion?.requestId == clarify.requestId else { return }
                 if let next = HermesCallWaiting(clarify: after)?.openQuestion {
                     reply?.waitingQuestion = after

@@ -3141,6 +3141,8 @@ final class AppState: ObservableObject {
     var submissionTurnSurface: (text: String, surface: TurnSurface)?
     /// Seam for tests: takes the plugin's turn-surface reports.
     var turnSurfaceSender: (([String: Any]) async throws -> Void)?
+    /// Seam for tests: takes the discards of failed sends' reports.
+    var turnSurfaceDiscarder: (([String: Any]) async throws -> Void)?
     /// What the host holds as on screen for this device (ChatOnScreen.swift).
     var chatOnScreenTracker = ChatOnScreen.Tracker()
     /// Renews the hold while the open chat's turn runs.
@@ -4476,11 +4478,17 @@ final class AppState: ObservableObject {
                     ?? AppLocalization.string("Hermes could not send this to the chat."))
             }
             await self.reportTurnSurface(self.messageTurnSurface(spoken: true), runtimeSessionID: chat.runtimeID, text: text)?.value
-            let outcome = try await self.sendCallPromptTakingOver(
-                runtimeID: chat.runtimeID, otherSessionIDs: [], profile: chat.profile,
-                stillWanted: self.localLiveTurns.currentTurnCheck()
-            ) {
-                try await client.sendPrompt(chat.runtimeID, text: text, surface: AppState.spokenPromptSurface, voiceTurn: true)
+            let outcome: PromptSubmissionOutcome
+            do {
+                outcome = try await self.sendCallPromptTakingOver(
+                    runtimeID: chat.runtimeID, otherSessionIDs: [], profile: chat.profile,
+                    stillWanted: self.localLiveTurns.currentTurnCheck()
+                ) {
+                    try await client.sendPrompt(chat.runtimeID, text: text, surface: AppState.spokenPromptSurface, voiceTurn: true)
+                }
+            } catch {
+                self.discardTurnSurface(runtimeSessionID: chat.runtimeID, text: text, after: error)
+                throw error
             }
             switch outcome {
             case .accepted:
@@ -4503,9 +4511,11 @@ final class AppState: ObservableObject {
             guard let self else { return false }
             return (try? await self.respondToApprovalByVoice(approval, choice: choice, profile: profile)) ?? false
         },
-        respondToClarify: { [weak self] clarify, questionID, answer in
+        respondToClarify: { [weak self] clarify, questionID, answer, sessionID, profile in
             guard let self else { return nil }
-            return try? await self.respondToClarifyByVoice(clarify, questionID: questionID, answer: answer)
+            return try? await self.respondToClarifyByVoice(
+                clarify, questionID: questionID, answer: answer, sessionID: sessionID, profile: profile
+            )
         }
     ))
 
@@ -4798,7 +4808,7 @@ final class AppState: ObservableObject {
             cancel: { [weak self] sessionID in
                 guard let self else { throw HermesError.notConnected }
                 let client = try await self.clientForVoiceRequest()
-                try await client.cancel(sessionID)
+                try await client.cancel(sessionID, profile: self.presentationProfile(for: sessionID))
             },
             liveSessions: { [weak self] targetProfile in
                 guard let self else { throw HermesError.notConnected }
@@ -4851,9 +4861,11 @@ final class AppState: ObservableObject {
                 guard let self else { throw HermesError.notConnected }
                 return try await self.respondToApprovalByVoice(approval, choice: choice, profile: profile)
             },
-            respondToClarify: { [weak self] clarify, questionID, answer in
+            respondToClarify: { [weak self] clarify, questionID, answer, sessionID, profile in
                 guard let self else { throw HermesError.notConnected }
-                return try await self.respondToClarifyByVoice(clarify, questionID: questionID, answer: answer)
+                return try await self.respondToClarifyByVoice(
+                    clarify, questionID: questionID, answer: answer, sessionID: sessionID, profile: profile
+                )
             }
         ))
         supervisor.callbacks = self.makeHermesCallbackBackend()
@@ -9477,23 +9489,31 @@ final class AppState: ObservableObject {
         let target = runtimeID.isEmpty ? thread.runtimeSessionID : runtimeID
         // Alongside the read below, so it adds no wait between the read and the send.
         let surfaceReport = reportTurnSurface(messageTurnSurface(spoken: true), runtimeSessionID: target, text: text)
-        // Re-read right before the send: a turn running there (typed on
-        // another device) is waited for. A failed read fails the send rather
-        // than risk steering it.
-        let rows = try await client.activeSessions(inProfile: thread.profile)
-        if rows.contains(where: { row in
-            (row.runtimeSessionId == target || thread.owns(sessionID: row.runtimeSessionId)
-                || thread.owns(sessionID: row.storedSessionId)) && row.isRunning
-        }) {
-            throw VoiceThreadBusyError()
-        }
-        await surfaceReport?.value
-        let outcome = try await sendCallPromptTakingOver(
-            runtimeID: target, otherSessionIDs: [thread.runtimeSessionID, thread.storedSessionID].compactMap { $0 },
-            profile: thread.profile,
-            stillWanted: stillWanted
-        ) {
-            try await client.sendPrompt(target, text: text)
+        let outcome: PromptSubmissionOutcome
+        do {
+            // Re-read right before the send: a turn running there (typed on
+            // another device) is waited for. A failed read fails the send rather
+            // than risk steering it.
+            let rows = try await client.activeSessions(inProfile: thread.profile)
+            if rows.contains(where: { row in
+                (row.runtimeSessionId == target || thread.owns(sessionID: row.runtimeSessionId)
+                    || thread.owns(sessionID: row.storedSessionId)) && row.isRunning
+            }) {
+                throw VoiceThreadBusyError()
+            }
+            await surfaceReport?.value
+            outcome = try await sendCallPromptTakingOver(
+                runtimeID: target, otherSessionIDs: [thread.runtimeSessionID, thread.storedSessionID].compactMap { $0 },
+                profile: thread.profile,
+                stillWanted: stillWanted
+            ) {
+                try await client.sendPrompt(target, text: text)
+            }
+        } catch {
+            // Nothing of it was sent, or Hermes refused it: its report waits for no turn.
+            await surfaceReport?.value
+            discardTurnSurface(runtimeSessionID: target, text: text, after: error)
+            throw error
         }
         switch outcome {
         case .accepted:
@@ -9521,7 +9541,7 @@ final class AppState: ObservableObject {
             if let redirect = chatResumeLifecycleOperations.redirect {
                 outcome = try await redirect(client, sessionID, text)
             } else {
-                outcome = try await client.redirect(sessionID, text: text)
+                outcome = try await client.redirect(sessionID, text: text, profile: presentationProfile(for: sessionID))
             }
             switch outcome {
             case .redirected:
@@ -9539,7 +9559,7 @@ final class AppState: ObservableObject {
                 if let steer = chatResumeLifecycleOperations.steer {
                     try await steer(client, sessionID, text)
                 } else {
-                    try await client.steer(sessionID, text: text)
+                    try await client.steer(sessionID, text: text, profile: presentationProfile(for: sessionID))
                 }
             } catch HermesError.steerRejected {
                 return .notRunning
@@ -9561,7 +9581,7 @@ final class AppState: ObservableObject {
             if let steer = chatResumeLifecycleOperations.steer {
                 try await steer(client, sessionID, text)
             } else {
-                try await client.steer(sessionID, text: text)
+                try await client.steer(sessionID, text: text, profile: presentationProfile(for: sessionID))
             }
         } catch let error as RpcError where Self.isUnsupportedSteer(code: error.code, message: error.message) {
             // Method not found: the words never arrived, so redirecting them is safe.
@@ -25553,7 +25573,12 @@ final class AppState: ObservableObject {
             let content = (message.role == .user ? message.rawContent : nil) ?? message.content
             let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return nil }
-            return SessionBranchMessage(role: message.role, content: trimmed)
+            return SessionBranchMessage(
+                role: message.role,
+                content: trimmed,
+                rowId: message.rowId,
+                isNewest: message.id == messages.last?.id
+            )
         }
         guard !prefix.isEmpty else {
             errorMessage = AppLocalization.string("There is no message history to branch from.")
@@ -27451,6 +27476,11 @@ final class AppState: ObservableObject {
             }
             return true
         } catch {
+            // No turn of it is coming: the same words sent from another
+            // client there mustn't take its line.
+            if surfaceReport != nil {
+                discardTurnSurface(runtimeSessionID: sessionId, text: promptText, after: error)
+            }
             // Images staged for a Queue that didn't land would ride on a
             // later turn. One Hermes took was already claimed by it, so
             // taking it back then changes nothing.
@@ -27684,7 +27714,7 @@ final class AppState: ObservableObject {
     /// reached Hermes and the turn may already be running — so the
     /// authoritative registry probe decides, and unknown future `HermesError`
     /// cases fail toward the probe rather than toward a blind retry.
-    private static func isAmbiguousPromptDelivery(_ error: Error) -> Bool {
+    static func isAmbiguousPromptDelivery(_ error: Error) -> Bool {
         switch error {
         case HermesError.notConnected:
             return false
@@ -29746,7 +29776,7 @@ final class AppState: ObservableObject {
             if let steer = chatResumeLifecycleOperations.steer {
                 try await steer(client, sessionId, outboundText)
             } else {
-                try await client.steer(sessionId, text: outboundText)
+                try await client.steer(sessionId, text: outboundText, profile: presentationProfile(for: sessionId))
             }
             // A successful steer proves Hermes applied the session's busy
             // policy — the session was RUNNING when the steer landed. That is
@@ -29816,7 +29846,7 @@ final class AppState: ObservableObject {
             if let redirect = chatResumeLifecycleOperations.redirect {
                 outcome = try await redirect(client, sessionId, outboundText)
             } else {
-                outcome = try await client.redirect(sessionId, text: outboundText)
+                outcome = try await client.redirect(sessionId, text: outboundText, profile: presentationProfile(for: sessionId))
             }
             switch outcome {
             case .redirected, .queued:
@@ -30035,7 +30065,7 @@ final class AppState: ObservableObject {
             if let interrupt = chatResumeLifecycleOperations.interrupt {
                 try await interrupt(client, sessionId)
             } else {
-                try await client.cancel(sessionId)
+                try await client.cancel(sessionId, profile: presentationProfile(for: sessionId))
             }
             guard isCurrentOrAliasedComposerSubmission(currentContext) else { return false }
             return true
@@ -30202,7 +30232,12 @@ final class AppState: ObservableObject {
                 // Only gateway-minted qids may address a question. A locally
                 // synthesized id (legacy scalar card) rides the request-level
                 // respond shape every gateway generation accepts.
-                questionId: question.isSyntheticID ? nil : question.id
+                questionId: question.isSyntheticID ? nil : question.id,
+                // The card is in the open chat: on the session authority its
+                // resume names a prompt this socket didn't see asked (#1618),
+                // under the chat's own profile (a bot chat's).
+                sessionId: activeSessionId,
+                profile: presentationProfile(for: activeSessionId)
             )
             guard profile == activeProfile, self.client === client else { return nil }
             applyClarifyResponseOutcome(
@@ -30219,6 +30254,10 @@ final class AppState: ObservableObject {
                 // Older gateways report expiry as RPC 4009 instead of the
                 // typed `expired` status — same teardown either way.
                 expireClarifyRequest(requestId: requestId)
+            } else if HermesClient.isSessionNotFoundError(error) {
+                // The chat's runtime is gone (reaped, or re-opened elsewhere),
+                // as the approval card reads it: nothing waits on this answer.
+                applyClarifyResponseOutcome(.ended, requestId: requestId, questionId: question.id, answer: wireAnswer)
             } else {
                 markClarifyQuestionError(
                     requestId: requestId,
@@ -32376,17 +32415,17 @@ final class AppState: ObservableObject {
             }
         }
         do {
-            let accepted: Bool
+            let outcome: HermesClient.ApprovalResponseOutcome
             if let respondToApproval = chatResumeLifecycleOperations.respondToApproval {
-                accepted = try await respondToApproval(
+                outcome = try await respondToApproval(
                     client,
                     current.sessionId,
                     answeredRequestId,
                     choice,
                     conversationProfile
-                )
+                ) ? .accepted : .noLongerWaiting
             } else {
-                accepted = try await client.respondToApproval(
+                outcome = try await client.respondToApprovalOutcome(
                     sessionId: current.sessionId,
                     requestId: answeredRequestId,
                     choice: choice,
@@ -32402,12 +32441,22 @@ final class AppState: ObservableObject {
                 schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
                 return
             }
-            if accepted {
+            switch outcome {
+            case .accepted:
                 messages[updatedIndex].approval?.status = choice == "deny" ? .rejected : .approved
-            } else {
+            case .noLongerWaiting:
                 messages[updatedIndex].approval?.status = .expired
                 messages[updatedIndex].approval?.choice = nil
                 messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
+            case .ended:
+                // Its turn ended (stopped, or the chat moved on): not a timeout.
+                messages[updatedIndex].approval?.status = .expired
+                messages[updatedIndex].approval?.choice = nil
+                messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active.")
+            case .answeredElsewhere:
+                messages[updatedIndex].approval?.status = .expired
+                messages[updatedIndex].approval?.choice = nil
+                messages[updatedIndex].approval?.error = AppLocalization.string("This approval was answered elsewhere.")
             }
             cacheMessagePresentation()
             schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
@@ -35913,6 +35962,11 @@ final class AppState: ObservableObject {
     /// may claim Hermes timed out; an interrupt or closed session must not.
     private static func clarifyExpiredNotice(for questionCount: Int, reason: String?) -> String {
         guard let reason, reason != "timeout" else { return clarifyExpiredNotice(for: questionCount) }
+        if reason == "answered_elsewhere" {
+            return questionCount > 1
+                ? AppLocalization.string("These questions were answered elsewhere.")
+                : AppLocalization.string("This question was answered elsewhere.")
+        }
         return questionCount > 1
             ? AppLocalization.string("These questions are no longer active.")
             : AppLocalization.string("This question is no longer active.")
@@ -35968,14 +36022,18 @@ final class AppState: ObservableObject {
         guard let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
               var activity = messages[index].clarify else { return }
         switch outcome {
-        case .expired:
+        case .expired, .answeredElsewhere, .ended:
             activity.isExpired = true
             for questionIndex in activity.questions.indices
             where activity.questions[questionIndex].status != .answered {
                 activity.questions[questionIndex].status = .expired
                 activity.questions[questionIndex].error = nil
             }
-            activity.error = Self.clarifyExpiredNotice(for: activity.questions.count)
+            // Only a timeout may say Hermes timed it out; another surface's
+            // answer, or a turn that ended, says the question is no longer active.
+            activity.error = outcome == .expired
+                ? Self.clarifyExpiredNotice(for: activity.questions.count)
+                : Self.clarifyExpiredNotice(for: activity.questions.count, reason: outcome == .answeredElsewhere ? "answered_elsewhere" : "ended")
         case .accepted(let remaining):
             // A late accepted outcome can never resurrect an expired request.
             guard !activity.isExpired,

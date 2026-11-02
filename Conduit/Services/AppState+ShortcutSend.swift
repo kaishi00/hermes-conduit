@@ -84,7 +84,12 @@ extension AppState {
                 // take it (still synchronizing): Hermes takes it, queues it or
                 // joins the turn running.
                 await self.reportTurnSurface(.shortcut, runtimeSessionID: runtimeID, text: text)?.value
-                return try await self.sendShortcutPrompt(runtimeID, text: text)
+                do {
+                    return try await self.sendShortcutPrompt(runtimeID, text: text)
+                } catch {
+                    self.discardTurnSurface(runtimeSessionID: runtimeID, text: text, after: error)
+                    throw error
+                }
             },
             liveSessions: { [weak self] profile in
                 guard let self, let client = self.client else { throw HermesError.notConnected }
