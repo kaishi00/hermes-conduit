@@ -354,6 +354,9 @@ struct SessionCatalogCache {
     private(set) var loadedFullHistoryKeys = Set<String>()
     private(set) var fullHistoryLoadedAt: [String: Date] = [:]
     private(set) var mutationGeneration: UInt64 = 0
+    /// Bumped by every committed listing, so an early chat-list answer
+    /// isn't taken over a newer one another load committed meanwhile.
+    private(set) var commits: UInt64 = 0
 
     func sessions(forKey key: String) -> [SessionSummary] {
         sessionsByKey[key] ?? []
@@ -413,6 +416,7 @@ struct SessionCatalogCache {
         at generation: UInt64
     ) -> Bool {
         guard generation == mutationGeneration else { return false }
+        commits &+= 1
         sessionsByKey[liveKey] = liveSessions
         if let cronSessions {
             sessionsByKey[cronKey] = cronSessions
@@ -14082,6 +14086,9 @@ final class AppState: ObservableObject {
         widgetLease: WidgetLaunchLease? = nil
     ) async {
         guard widgetLease?.isCurrent != false else { return }
+        // Early reads its connect didn't take (or that a restore given up
+        // left) end with it.
+        defer { startupReads.clear() }
         do {
             let ticket = try await mintChatResumeTicket(for: HermesConnection(baseUrl: baseURL, ticket: ""))
             // A dashboard switch made meanwhile owns the flow.
@@ -14180,6 +14187,10 @@ final class AppState: ObservableObject {
                 )
             }
         }
+        // The early reads are this connection's steps' alone: what any other
+        // screen reads after the connection settled (a pull to refresh, the
+        // profile list after a new bot) is read fresh.
+        defer { startupReads.clear() }
         guard automaticChatResumeWorkIsCurrent(
             automaticWorkToken,
             reconnectOperationID: transportOperationID
@@ -14211,6 +14222,9 @@ final class AppState: ObservableObject {
         continueConnectionTimeline("sign-in")
         noteConnectionStep("Connecting")
         prepareDashboardBridge(for: conn.baseUrl)
+        if chatResumeLifecycleOperations.connectClient == nil {
+            sendStartupReads(profile: profile)
+        }
 
         let previousClient = client
         let client = makeClient(connection: conn, profile: profile)
@@ -15390,6 +15404,9 @@ final class AppState: ObservableObject {
     /// sign-in screen, while any other connect failure schedules a reconnect.
     private func restoreSavedConnection(_ saved: HermesConnection, switchGeneration: UInt64? = nil, widgetLease: WidgetLaunchLease? = nil) async {
         guard widgetLease?.isCurrent != false else { return }
+        // Early reads its connect didn't take (or that a restore given up
+        // left) end with it.
+        defer { startupReads.clear() }
         if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
             return
         }
@@ -15786,6 +15803,8 @@ final class AppState: ObservableObject {
                 guard let self, let bridge, self.dashboardTicketBridge === bridge else { return }
                 self.noteConnectionStep(event)
             }
+            // Early reads through the bridge this replaces are no one's now.
+            startupReads.clear()
             dashboardTicketBridge = bridge
         } else if let bridge = dashboardTicketBridge, bridge.requiresSignIn {
             // The same dashboard's page settled on sign-in, and a connection
@@ -19385,6 +19404,8 @@ final class AppState: ObservableObject {
             return true
         }
         defer {
+            // Its early reads are its own steps', as connect's are.
+            startupReads.clear()
             finishAutomaticReconnectOperation(
                 id: automaticOperationID,
                 restoringBaseline: !handedOffAutomaticIntent
@@ -19615,12 +19636,17 @@ final class AppState: ObservableObject {
         HermesCallTrace.shared.note("Connection: \(label)", since: startedAt, error: error)
     }
 
-    private func mintChatResumeTicket(for connection: HermesConnection) async throws -> String {
+    /// `readsFor` names the profile the connection will open on, when it
+    /// isn't the active one yet (a profile switch), so the early reads are
+    /// its own.
+    private func mintChatResumeTicket(for connection: HermesConnection, readsFor profile: String? = nil) async throws -> String {
         if let mintTicket = chatResumeLifecycleOperations.mintTicket {
             return try await mintTicket(connection.baseUrl)
         }
         prepareDashboardBridge(for: connection.baseUrl)
         guard let dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        // A switch never reads the profile list, so it doesn't send it.
+        sendStartupReads(profile: profile ?? activeProfile, includingProfiles: profile == nil)
         let startedAt = Date()
         let signposter = ResponsivenessSignposts.signposter
         let minting = signposter.beginInterval("Ticket mint", id: signposter.makeSignpostID())
@@ -31683,7 +31709,11 @@ final class AppState: ObservableObject {
 
         for page in 0..<maximumPages {
             let offset = page * 200
-            let response = try await bridge.requestJSON(path: profileSessionsPath(profile, offset: offset))
+            let response = try await startupReads.read(
+                profileSessionsPath(profile, offset: offset),
+                through: bridge,
+                fence: startupReadFence(for: bridge, chatList: true)
+            )
             let batch = response["sessions"] as? [Any] ?? []
             let normalizedBatch = await dashboardOwnedSessions(batch, profile: profile)
             sessions += normalizedBatch
@@ -31912,6 +31942,9 @@ final class AppState: ObservableObject {
         let signposter = ResponsivenessSignposts.signposter
         let switching = signposter.beginInterval("Profile switch", id: signposter.makeSignpostID())
         defer { signposter.endInterval("Profile switch", switching) }
+        // The early reads the switch's ticket sent are its own steps'; what
+        // they didn't take is dropped when it ends, as connect's are.
+        defer { startupReads.clear() }
         let target = profile.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !target.isEmpty, target != activeProfile, let savedConnection = connection else {
             return false
@@ -31927,7 +31960,7 @@ final class AppState: ObservableObject {
             var mintError: Error?
             if socketToKeepForProfileSwitch(within: savedConnection) == nil {
                 do {
-                    sparedCallTicket = try await mintChatResumeTicket(for: savedConnection)
+                    sparedCallTicket = try await mintChatResumeTicket(for: savedConnection, readsFor: profile)
                 } catch {
                     mintError = error
                 }
@@ -32038,7 +32071,7 @@ final class AppState: ObservableObject {
             } else if let sparedCallTicket {
                 ticket = sparedCallTicket
             } else {
-                ticket = try await mintChatResumeTicket(for: savedConnection)
+                ticket = try await mintChatResumeTicket(for: savedConnection, readsFor: profile)
             }
             guard widgetLease?.isCurrent != false else {
                 // Nothing has changed over yet: the previous profile keeps
@@ -32253,7 +32286,7 @@ final class AppState: ObservableObject {
             if let profileDiscoveryLoaderOverride {
                 response = try await profileDiscoveryLoaderOverride()
             } else {
-                response = try await bridge.requestJSON(path: "/api/profiles")
+                response = try await startupReads.read("/api/profiles", through: bridge, fence: startupReadFence(for: bridge))
             }
             // Commit gate, same identity pattern as the dashboard catalog
             // loader: a bridge swapped mid-request (server change, re-login,
@@ -33719,13 +33752,50 @@ final class AppState: ObservableObject {
     /// doesn't put the older choice back.
     private var displayPreferencesWriteRevision = 0
 
+    /// The reads every connection makes, sent with its ticket rather than
+    /// each after the step before it: the profile list, the chat list's
+    /// newest page and the display settings. Each step takes its answer
+    /// through `startupReads.read`, or reads again when something changed
+    /// since. Only through a saved dashboard's bridge, whose own stores hold
+    /// its session; never through the page.
+    let startupReads = StartupReads()
+
+    func sendStartupReads(profile: String, includingProfiles: Bool = true) {
+        guard let bridge = dashboardTicketBridge,
+              bridge.readsWithoutThePageFirst || bridge.usesNativeOAuth else { return }
+        let chatList = profileSessionsPath(profile)
+        startupReads.send(
+            (includingProfiles ? ["/api/profiles"] : []) + [chatList, dashboardPath("/api/config", profile: profile)],
+            through: bridge,
+            fence: { path in self.startupReadFence(for: bridge, chatList: path == chatList) }
+        )
+    }
+
+    /// What an early read must still match to be used: no write through the
+    /// dashboard, chat list change or display save since it was sent.
+    /// The chat list's own read also needs no listing committed since: one
+    /// another load committed meanwhile is newer than the early answer.
+    private func startupReadFence(for bridge: DashboardTicketBridge, chatList: Bool = false) -> StartupReads.Fence {
+        StartupReads.Fence(
+            writes: bridge.writesSent,
+            catalog: sessionCatalogCache.mutationGeneration,
+            display: displayPreferencesWriteRevision,
+            listings: chatList ? sessionCatalogCache.commits : 0,
+            writesOut: bridge.writesOut
+        )
+    }
+
     private func loadProfileDisplayPreferences() async {
         let profile = activeProfile
         guard let owner = currentDashboardRuntimeOwner() else { return }
         let dashboardTicketBridge = owner.bridge
         let revision = displayPreferencesWriteRevision
         do {
-            let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
+            let config = try await startupReads.read(
+                dashboardPath("/api/config", profile: profile),
+                through: dashboardTicketBridge,
+                fence: startupReadFence(for: dashboardTicketBridge)
+            )
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return }
             let display = config["display"] as? [String: Any] ?? [:]
             profileTimeZoneSetting = (profile, config[ProfileTimeZone.configKey] as? String ?? "")

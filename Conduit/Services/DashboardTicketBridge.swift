@@ -782,6 +782,27 @@ final class DashboardTicketBridge: NSObject {
     /// background (driving with CarPlay, a locked phone) requests go out
     /// natively with the page's cookies instead (#378). Test seam.
     var webViewCanRun: @MainActor () -> Bool = { PhoneScenePresence.isInForeground }
+    /// Whether reads and the ticket go out without the page while it runs
+    /// too. Only a saved dashboard's own stores say whether it holds a
+    /// session: a bridge built before its dashboard is saved (the login
+    /// screen, tests) shares WebKit's and URLSession's default stores, so it
+    /// keeps the page.
+    var readsWithoutThePageFirst: Bool { dashboardID != nil }
+    /// Requests that change something on the dashboard, counted as each
+    /// starts and as it ends, so a read sent before one or while it was out
+    /// isn't shown after it (StartupReads).
+    private(set) var writesSent = 0
+    /// Writes started and not yet ended. An early read sent while one is out
+    /// may predate it, so it isn't taken (StartupReads).
+    private(set) var writesOut = 0
+    func noteWriteStarted() {
+        writesSent += 1
+        writesOut += 1
+    }
+    func noteWriteEnded() {
+        writesSent += 1
+        writesOut = max(0, writesOut - 1)
+    }
     /// Cookies the dashboard set on requests sent without the page, newest
     /// last, so a rotated session cookie is the one sent next.
     var backgroundIssuedCookies: [HTTPCookie] = []
@@ -1027,15 +1048,29 @@ final class DashboardTicketBridge: NSObject {
         return try await requestAuthorizer.mintTicket()
     }
 
-    /// Cookie mode's ticket: through the dashboard page, or natively with the
-    /// page's cookies while the page cannot run.
+    /// Cookie mode's ticket: natively with the page's cookies, as the
+    /// socket's upgrade already goes, so a launch doesn't wait for WebKit
+    /// and the page's load first. Through the page, with its retries, while
+    /// no store holds a cookie yet or when the native ticket was refused as
+    /// signed out and the page can run: a cookie the stores held may be
+    /// older than the one WebKit's page holds, so one native 401 doesn't
+    /// end a durable session.
     private func mintCookieTicket() async throws -> String {
-        if !webViewCanRun() {
-            let response = try await requestJSONWithoutPage(path: "/api/auth/ws-ticket", method: "POST")
-            guard let ticket = response["ticket"] as? String, !ticket.isEmpty else {
-                throw DashboardTicketBridgeError.requestFailed(DashboardTicketBridgeError.noSessionTicketDetail)
+        if !webViewCanRun() || readsWithoutThePageFirst {
+            do {
+                let response = try await requestJSONWithoutPage(path: "/api/auth/ws-ticket", method: "POST")
+                guard let ticket = response["ticket"] as? String, !ticket.isEmpty else {
+                    throw DashboardTicketBridgeError.requestFailed(DashboardTicketBridgeError.noSessionTicketDetail)
+                }
+                return ticket
+            } catch DashboardTicketBridgeError.notReady where webViewCanRun() && !isInvalidated {
+                // No cookie in any store yet: the page's own retries below.
+            } catch DashboardTicketBridgeError.signInRequired where webViewCanRun() && !isInvalidated {
+                // Refused as signed out: the page's reload-and-retry decides.
+            } catch DashboardTicketBridgeError.http(let status, _) where status == 0 && webViewCanRun() && !isInvalidated {
+                // Never answered (a stalled link): the page's retries, as a
+                // ticket had before it went natively.
             }
-            return ticket
         }
         // Retry twice on the two recoverable failures, then let the final
         // attempt's error propagate to the caller unchanged:
@@ -1161,6 +1196,14 @@ final class DashboardTicketBridge: NSObject {
         maxResponseBytes: Int,
         readsOnly: Bool
     ) async throws -> [String: Any] {
+        let isRead = readsOnly || ["GET", "HEAD"].contains(method.uppercased())
+        // Counted when it starts and again when it ends, so a read sent while
+        // it was out is never taken for one sent after it (StartupReads).
+        // A ticket changes nothing a read shows, so it doesn't void the
+        // reads sent with it.
+        let countsAsWrite = !isRead && path != "/api/auth/ws-ticket"
+        if countsAsWrite { noteWriteStarted() }
+        defer { if countsAsWrite { noteWriteEnded() } }
         if let nativeOAuthSession {
             guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
             return try await nativeOAuthSession.requestJSON(
@@ -1171,14 +1214,27 @@ final class DashboardTicketBridge: NSObject {
                 maxResponseBytes: maxResponseBytes
             )
         }
-        if !webViewCanRun() {
-            return try await requestJSONWithoutPage(
-                path: path,
-                method: method,
-                body: body,
-                timeoutMilliseconds: timeoutMilliseconds,
-                maxResponseBytes: maxResponseBytes
-            )
+        // Reads go out natively with the page's cookies whenever a store
+        // holds one, so they don't wait for WebKit and the page's load, and
+        // their answers aren't copied through a script on the main actor.
+        // Writes keep the page while it runs: a switch leaves a page write
+        // waiting for its answer, so the caller learns whether the old
+        // dashboard took the change.
+        if !webViewCanRun() || (isRead && readsWithoutThePageFirst) {
+            do {
+                return try await requestJSONWithoutPage(
+                    path: path,
+                    method: method,
+                    body: body,
+                    timeoutMilliseconds: timeoutMilliseconds,
+                    maxResponseBytes: maxResponseBytes
+                )
+            } catch DashboardTicketBridgeError.notReady where webViewCanRun() && !isInvalidated {
+                // No cookie in any store yet: through the page.
+            } catch DashboardTicketBridgeError.signInRequired where webViewCanRun() && !isInvalidated {
+                // Refused as signed out: the page, whose landing decides, as
+                // for the ticket.
+            }
         }
         try await waitUntilReady()
 
