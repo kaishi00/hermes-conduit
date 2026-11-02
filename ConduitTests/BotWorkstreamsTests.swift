@@ -95,6 +95,23 @@ extension BotModeTests {
         XCTAssertFalse(snapshot.sessionIDs.contains(session))
     }
 
+    /// A dropped adopt goes once more, and not after a switch to another dashboard.
+    @MainActor
+    func testADroppedAdoptIsSentOnceMoreOnItsOwnDashboard() async {
+        struct Dropped: Error {}
+        var failures = 0
+        var sent = await AppState.adoptOnce(stillCurrent: { true }, send: { throw Dropped() }, wait: {},
+                                            failed: { _, _ in failures += 1 })
+        XCTAssertEqual(sent, 2)
+        XCTAssertEqual(failures, 2)
+        sent = await AppState.adoptOnce(stillCurrent: { true }, send: {}, wait: {}, failed: { _, _ in })
+        XCTAssertEqual(sent, 1)
+        var current = true
+        sent = await AppState.adoptOnce(stillCurrent: { current }, send: { throw Dropped() },
+                                        wait: { current = false }, failed: { _, _ in })
+        XCTAssertEqual(sent, 1, "switched dashboards before the retry")
+    }
+
     /// A call's job is sent to its bot's registry only where the plugin keeps bot work.
     func testACallsJobIsKeptOnlyWhereThePluginKeepsBotWork() {
         let keeps = NotifierPluginStatus(state: .reported(version: "0.130.0", capabilities: [BotWorkstreamsClient.adoptCapability]))

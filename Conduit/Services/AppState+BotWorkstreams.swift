@@ -188,20 +188,37 @@ extension AppState {
         let dashboard = activeDashboardID
         // The panel's next read shows it.
         Task { @MainActor [weak self] in
-            // Once more after a short wait: a dropped request would leave
-            // the job out of the panel for good. Only on the dashboard the
-            // job was made on: the client's transport reads the current one.
-            for attempt in 0..<2 {
-                guard let self, self.activeDashboardID == dashboard else { return }
-                do {
-                    _ = try await client.adopt(sessionID: sessionID, title: title, via: via, goal: instructions)
-                    return
-                } catch {
-                    botWorkLogger.notice("Keeping a voice job in its bot's work registry failed (try \(attempt + 1, privacy: .public)): \(String(describing: type(of: error)), privacy: .public) \(String(describing: error))")
-                    if attempt == 0 { try? await Task.sleep(for: .seconds(3)) }
+            await AppState.adoptOnce(
+                stillCurrent: { self != nil && self?.activeDashboardID == dashboard },
+                send: { _ = try await client.adopt(sessionID: sessionID, title: title, via: via, goal: instructions) },
+                wait: { try? await Task.sleep(for: .seconds(3)) },
+                failed: { attempt, error in
+                    botWorkLogger.notice("Keeping a voice job in its bot's work registry failed (try \(attempt, privacy: .public)): \(String(describing: type(of: error)), privacy: .public) \(String(describing: error))")
                 }
+            )
+        }
+    }
+
+    /// Sends a voice job's adopt, and once more after `wait` if that one
+    /// fails: a dropped request would leave the job out of the panel for
+    /// good. Only while `stillCurrent` (the dashboard the job was made on;
+    /// the client's transport reads the current one). How many were sent.
+    @discardableResult
+    static func adoptOnce(stillCurrent: () -> Bool, send: () async throws -> Void, wait: () async -> Void,
+                          failed: (Int, Error) -> Void) async -> Int {
+        var sent = 0
+        for attempt in 1...2 {
+            guard stillCurrent() else { return sent }
+            sent += 1
+            do {
+                try await send()
+                return sent
+            } catch {
+                failed(attempt, error)
+                if attempt == 1 { await wait() }
             }
         }
+        return sent
     }
 
     /// The call a job is kept as ("phone" or "watch"), or nil when none is
