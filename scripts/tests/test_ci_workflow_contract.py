@@ -165,6 +165,9 @@ class WorkflowContractTests(unittest.TestCase):
                       "only older runs, so two runs never cancel each other")
         self.assertIn('.head_repository.full_name == \\"$GITHUB_REPOSITORY\\"', plan,
                       "never a fork's run on a branch of the same name")
+        self.assertIn('(.pull_requests | length) == 1 and .pull_requests[0].number == $PR_NUMBER'
+                      ' and .pull_requests[0].base.ref == \\"$BASE_REF\\"', plan,
+                      "only this PR's runs: a branch with PRs into main and linked-rooms runs for each")
         self.assertIn('actions/runs/$id/cancel', plan)
 
     # --- the plan job owns every test-to-run mapping -----------------------

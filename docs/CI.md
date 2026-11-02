@@ -199,6 +199,8 @@ allows **5 concurrent macOS jobs** per account, and in CI v4 waiting for one
 was the main bottleneck. A PR run now uses **1** (`smoke`), and
 a PR's newer run cancels its superseded ones, which leaves room for the
 next push. The newer run's plan job cancels them (Cancel this PR's older runs),
+(only runs whose one PR is this one, number and base, so a branch with PRs
+into both `main` and `linked-rooms` never cancels the other PR's run),
 and each PR run has a concurrency group of its own, so it starts at once
 instead of waiting the 3.5 minutes a cancelled Smoke job takes to wind down
 (2026-11-02); a fork PR, whose token can't cancel runs, keeps one group per PR

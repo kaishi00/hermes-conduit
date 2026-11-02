@@ -96,18 +96,23 @@ jobs:
         # (see concurrency above), so this run starts at once and cancels the
         # PR's older runs here; they wind down beside it. Older only (a lower
         # run number) and from this repository's branch, never a fork's of the
-        # same name, so two runs never cancel each other. Best effort: a
-        # failed lookup leaves the older run going, which costs runner time,
-        # not correctness.
+        # same name, so two runs never cancel each other. Only a run whose one
+        # PR is this one (number and base): a branch with PRs into both main
+        # and linked-rooms (whose copy of this workflow shares its path) runs
+        # for each, and a run that lists both PRs is left alone. Best effort:
+        # a failed lookup leaves the older run going, which costs runner
+        # time, not correctness.
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -uo pipefail
           older=$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
             -f event=pull_request -f branch="$HEAD_REF" -f per_page=30 \
-            --jq ".workflow_runs[] | select(.status != \"completed\" and .run_number < $GITHUB_RUN_NUMBER and .head_repository.full_name == \"$GITHUB_REPOSITORY\") | .id") \
+            --jq ".workflow_runs[] | select(.status != \"completed\" and .run_number < $GITHUB_RUN_NUMBER and .head_repository.full_name == \"$GITHUB_REPOSITORY\" and (.pull_requests | length) == 1 and .pull_requests[0].number == $PR_NUMBER and .pull_requests[0].base.ref == \"$BASE_REF\") | .id") \
             || { echo "::warning::could not list this PR's older runs"; exit 0; }
           for id in $older; do
             gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/cancel" >/dev/null \
