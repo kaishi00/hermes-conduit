@@ -794,7 +794,8 @@ Where the voice comes out, who owns the audio session, and what mutes what.
 
 **Siblings:** Classic · Gemini, Qwen, Grok and Local Live (default and
 echo-cancelling audio) · GPT-Live (WebRTC) · calls from Hermes (CallKit's
-Speaker button) · CarPlay · AirPods and Bluetooth · Read Aloud · the call
+Speaker button) · CarPlay · AirPods and Bluetooth · Read Aloud · the Voice
+settings speech test · the call
 screen's Mute and Silence · the minimised call bar · a Watch-answered call
 kept on the iPhone's headset (the Watch's Mute and End)
 
@@ -804,7 +805,8 @@ kept on the iPhone's headset (the Watch's Mute and End)
 - Live audio: `Conduit/Voice/GPTLive/GPTLiveAudioLink.swift`, `Conduit/Voice/GeminiLive/LiveVoiceEchoCancellingAudio.swift`, `Conduit/Voice/EchoCancellingVoiceConversationAudio.swift`
 - Mute and Silence: `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Views/MinimisedLiveVoiceBar.swift`, `Conduit/Voice/HeadsetMicrophoneMute.swift`
 - A Watch answer kept on the iPhone's headset: `Conduit/Voice/HermesNativeCalls.swift` (keepsWatchAnswer, muteOnWatch, inAppMuteChanged), `Conduit/Services/AppState+HermesCalls.swift` (nativeCallVoiceMuted), `ConduitWatch/HermesWatchCalls.swift` (phoneCallMuted)
-- Read Aloud: `Conduit/Voice/MessageReadAloudController.swift`, `Conduit/Views/ReadAloudPlayerBar.swift`
+- Read Aloud: `Conduit/Voice/MessageReadAloudController.swift` (routeChanged), `Conduit/Views/ReadAloudPlayerBar.swift`
+- Speech test: `Conduit/Voice/VoiceConversationController.swift` (runSpeechTest)
 - Background time: `Conduit/Services/BackgroundTaskHold.swift` (HermesNativeCalls' muteOnWatch)
 
 **Rulings**
@@ -813,7 +815,7 @@ kept on the iPhone's headset (the Watch's Mute and End)
 - Silence mutes the assistant's voice apart from the microphone; its speech is dropped, not held, and job news waits for unmute (2026-10-09, #488).
 - An alarm or phone call pauses a live call, which comes back when the audio does (2026-10-04, #380).
 - A call from Hermes answered on the Watch plays on the iPhone's headset when one is on there (AirPods, wired, never the car's); the Watch's Mute and End control it like a phone call's, and a mute from any of Conduit's own controls reaches the Watch (Eric 2026-10-24, #1225).
-- A route change mid-reply (AirPods, Speaker, a dock) never drops speech: a conversation's reply, Read Aloud and the speech test play on from where they were on a fresh engine; only an encoded clip (which follows the route itself) or an engine that won't start again settles (2026-11-02, issue 1641, #1650).
+- A route change mid-reply (AirPods, Speaker, a dock) never drops speech: a conversation's reply, Read Aloud and the speech test play on from where they were on a fresh engine; an encoded clip follows the route itself, and a fresh engine that won't start ends Read Aloud rather than restarting past the dropped audio (Eric 2026-11-02, from issue 1641, #1650).
 - Headphones taken out (AirPods back in the case, a cable pulled) pause Read Aloud, as iOS media does, instead of reading on from the speaker; Resume carries on. Live calls and Classic keep talking, like a phone call (Eric 2026-11-02, #1650).
 
 **Open gaps**

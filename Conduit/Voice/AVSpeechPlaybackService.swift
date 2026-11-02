@@ -193,17 +193,17 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     }
 
     func enqueuePCM16(_ data: Data, sampleRate: Double) throws -> Int {
-        // A configuration change stops the engine before its deferred
-        // settle runs; buffers scheduled onto a stopped player never
-        // complete. Treat that as a stream boundary and restart now.
-        // A paused stream stays paused across that restart (AirPods back in
-        // the case): the fresh player holds its place until resume().
+        // A configuration change can stop the engine before its deferred
+        // handler runs; buffers scheduled onto a stopped player never
+        // complete. The stream carries on from its queued buffers on a
+        // fresh engine now, as it does when the change is seen first
+        // (engineConfigurationChanged), and a paused stream stays paused
+        // there until resume(). A fresh engine that won't start settles.
         let holdPause = isPaused
         if interruptedStandaloneStream { throw CancellationError() }
-        // The stream carries on from where it was, as it does when the
-        // change is seen first (engineConfigurationChanged).
         if format != nil, !engine.isRunning, !(isStreaming && resumeOnFreshEngine()) {
-            stop()
+            settleLostEngine(wasStreaming: isStreaming)
+            if interruptedStandaloneStream { throw CancellationError() }
         }
         if format == nil {
             try start(sampleRate: sampleRate)
@@ -536,7 +536,18 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         if isStreaming, resumeOnFreshEngine() {
             return
         }
+        settleLostEngine(wasStreaming: isStreaming)
+    }
+
+    /// Settles a stream whose engine stopped and couldn't come back. Read
+    /// Aloud's speech stream would keep sending, and its next chunk would
+    /// start a new stream past the audio just dropped (#1641), so it ends
+    /// as after a phone call. A conversation's next chunk starts afresh.
+    private func settleLostEngine(wasStreaming: Bool) {
         stop()
+        if wasStreaming, ownershipIntent == .standalonePlayback {
+            interruptedStandaloneStream = true
+        }
     }
 
     /// A PCM stream is playing, not an encoded clip: only a stream plays on
