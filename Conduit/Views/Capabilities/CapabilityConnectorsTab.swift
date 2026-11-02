@@ -697,6 +697,11 @@ struct ConnectorDetailPage: View {
                 },
                 open: { browser = BotMcpBrowserPage(url: $0) }
             )
+            // A sign-in Hermes took is kept for the MCP page while Conduit is
+            // on the same Hermes, even if this page moved on meanwhile.
+            if outcome == .signedIn, let runtimeOwner, appState.ownsDashboardRuntime(runtimeOwner), appState.client === client {
+                appState.keepMcpSignedIn(profile: profile, name: name, on: runtimeOwner)
+            }
             // An old task must not close a newer browser or clear its wait.
             guard signInID == id, !Task.isCancelled,
                   store.generation == generation, store.serves(owner),
@@ -709,7 +714,6 @@ struct ConnectorDetailPage: View {
             case .signedIn:
                 message = AppLocalization.string("Signed in.")
                 Haptics.success()
-                appState.keepMcpSignedIn(profile: profile, name: name, on: runtimeOwner)
                 await store.probe(name)
             case .cancelled: break
             case .failed(let problem): message = problem
