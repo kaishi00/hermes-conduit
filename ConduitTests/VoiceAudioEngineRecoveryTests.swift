@@ -844,6 +844,9 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertThrowsError(try service.enqueuePCM16(chunk, sampleRate: 24_000), "later chunks are refused too")
         XCTAssertEqual(service.pendingBuffers, 0)
         XCTAssertFalse(service.isPlaying)
+        XCTAssertThrowsError(try service.finish(), "the reply didn't play out, so it can't finish as played") { error in
+            XCTAssertTrue(error is CancellationError)
+        }
     }
 }
 

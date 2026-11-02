@@ -297,6 +297,10 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         // An odd tail is invalid PCM16 and is intentionally discarded rather
         // than shifted into the next response.
         remainder.removeAll(keepingCapacity: true)
+        // Standalone speech that a phone call or a lost route ended after
+        // its last chunk didn't play out: Read Aloud settles as it would on
+        // a refused chunk, and the speech test can't report a pass.
+        if interruptedStandaloneStream { throw CancellationError() }
         isFinishing = true
     }
 
