@@ -535,6 +535,37 @@ extension KanbanTests {
         XCTAssertFalse(ConnectorKeysSection.testsAfterSave("gone", in: store.servers))
     }
 
+    /// A test already running when a key is saved read the old key: it runs
+    /// again once it's done, on the saved key.
+    func testAConnectorTestRunningWhenAKeyIsSavedRunsAgain() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [["name": "linear", "transport": "http", "url": "https://l", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [
+                ["name": "linear", "description": "Issues", "auth_type": "api_key", "installed": true,
+                 "required_env": [["name": "LINEAR_API_KEY", "prompt": "Linear API key", "required": true]]],
+            ]],
+            "/api/env": ["ok": true],
+            "/api/mcp/servers/linear/test": ["ok": true],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        await store.loadConnectors()
+        requester.calls.removeAll()
+        var held: CheckedContinuation<Void, Never>?
+        requester.beforeAnswering = { path in
+            guard path == "/api/mcp/servers/linear/test", held == nil else { return }
+            await withCheckedContinuation { held = $0 }
+        }
+        let test = Task { await store.probe("linear") }
+        while held == nil { await Task.yield() }
+        try await store.setConnectorKeys("linear", ["LINEAR_API_KEY": "new-key"])
+        held?.resume()
+        await test.value
+        let tests = requester.calls.filter { $0.path.hasPrefix("/api/mcp/servers/linear/test") }
+        XCTAssertEqual(tests.count, 2, "tested again after the key was saved")
+        XCTAssertEqual(store.probes["linear"]?.ok, true)
+    }
+
     /// A switch to another profile between two keys stops the save: the
     /// key left isn't written to the profile switched to.
     func testAConnectorKeySaveStopsWhenTheProfileChanges() async throws {
