@@ -4799,6 +4799,37 @@ README (Connecting, Architecture) · the website's FAQ
 
 **Checked:** 2026-11-01, #1631 with notifier #504 (the plugin's chat features ported to the authority: turn surface, Predictions, Watch jobs, a Watch call's Local Live chat, Pulse's turns; Desktop views ruled; each checked on the canary); 2026-11-01, #1631 (seeded; issue #1618; probed against the 2026-11-01 canary; unseen prompts and the model confirm closed; the other socket verbs, the hidden turn, sends into a running turn and other profiles probed).
 
+## Where a message was sent (turn surface)
+
+Just before a send, Conduit tells the notifier plugin where in Conduit the
+message came from (iPhone, iPad, Mac, Vision Pro, CarPlay, a Shortcut) and
+whether it was typed or spoken, with the hash of the exact text; that turn
+gets one line of context saying so (#888). A send that failed drops its
+report.
+
+**Siblings:** the composer's sends (typed, dictated, a caller's surface such
+as a live call's request) · a live voice call's turn into the open chat ·
+a call's request into an existing chat · a Shortcut's send · the plugin's
+own Watch jobs and call chats (they name the Watch themselves) · the line
+and its hints the model reads (`notifier/turn_surface.py`: FORM_HINT,
+SPOKEN_HINT) · the gateway's own listener (Two Hermes servers) · the
+notifier README's "Where a message was sent"
+
+**Code**
+- The report and discard: `Conduit/Services/TurnSurface.swift`, `Conduit/Services/AppState+TurnSurface.swift` (reportTurnSurface, discardTurnSurface)
+- Send sites: `Conduit/Services/AppState.swift` (performComposerSubmission's report and its catch, the live call's chat turn, the call request into an existing chat), `Conduit/Services/AppState+ShortcutSend.swift` (the Shortcut's send)
+- Plugin: `notifier/turn_surface.py` (record, take, discard, record_for_authority, discard_digest_for_authority, note), `notifier/dashboard/api/chats.py` (record_turn_surface, discard_turn_surface)
+- Tests: `ConduitTests/AppStateTurnSurfaceTests.swift`, `notifier/tests/test_turn_surface.py`
+
+**Rulings**
+- A send waits for the report at most `TurnSurface.wait`, then goes anyway; a report that misses its send is cancelled, so it can't label the next turn (#888).
+- Every send site that reports drops its report when the send fails (refused, or never sent: a busy chat, a failed read), so the same words sent from another client in that chat don't take its line; a send whose reply was only lost keeps it, since its turn may have started. A plugin without `turn-surface-discard` keeps the report until it goes stale (2026-11-02, #1631, notifier #504).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-02, #1631 (entry seeded with the discard; notifier #504).
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays

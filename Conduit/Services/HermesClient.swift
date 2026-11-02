@@ -1122,7 +1122,7 @@ final class HermesClient: ObservableObject {
     /// other member here. An entry ends with its retry's answer or refusal;
     /// past 256 never retried, the record starts over from the newest (a retry that old
     /// reads as no longer active, as it would without one).
-    private static var unconfirmedAuthorityAnswers: Set<String> = []
+    @MainActor private static var unconfirmedAuthorityAnswers: Set<String> = []
     private var unconfirmedAuthorityAnswers: Set<String> {
         get { Self.unconfirmedAuthorityAnswers }
         set {
@@ -3437,7 +3437,7 @@ final class HermesClient: ObservableObject {
         }
         var authorityPrompt = authorityPrompts[requestId]
         if authorityPrompt == nil, speaksSessionAuthority,
-           let sessionId = sessionId ?? authorityPromptSessions[requestId], !sessionId.isEmpty {
+           let sessionId = authorityPromptSessions[requestId] ?? sessionId, !sessionId.isEmpty {
             // A card this socket never saw asked (shown before a reconnect):
             // the chat's resume lists the prompts Hermes still waits on, with
             // the turn that asked. One it no longer lists was answered or
