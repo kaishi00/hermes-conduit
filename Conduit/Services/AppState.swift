@@ -35972,6 +35972,11 @@ final class AppState: ObservableObject {
     /// may claim Hermes timed out; an interrupt or closed session must not.
     private static func clarifyExpiredNotice(for questionCount: Int, reason: String?) -> String {
         guard let reason, reason != "timeout" else { return clarifyExpiredNotice(for: questionCount) }
+        if reason == "answered_elsewhere" {
+            return questionCount > 1
+                ? AppLocalization.string("These questions were answered elsewhere.")
+                : AppLocalization.string("This question was answered elsewhere.")
+        }
         return questionCount > 1
             ? AppLocalization.string("These questions are no longer active.")
             : AppLocalization.string("This question is no longer active.")
@@ -36038,7 +36043,7 @@ final class AppState: ObservableObject {
             // answer, or a turn that ended, says the question is no longer active.
             activity.error = outcome == .expired
                 ? Self.clarifyExpiredNotice(for: activity.questions.count)
-                : Self.clarifyExpiredNotice(for: activity.questions.count, reason: outcome == .answeredElsewhere ? "resolved" : "ended")
+                : Self.clarifyExpiredNotice(for: activity.questions.count, reason: outcome == .answeredElsewhere ? "answered_elsewhere" : "ended")
         case .accepted(let remaining):
             // A late accepted outcome can never resurrect an expired request.
             guard !activity.isExpired,
