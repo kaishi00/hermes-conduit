@@ -307,6 +307,80 @@ extension GroupChatModelsTests {
         XCTAssertFalse(again.changesSavedCeiling(picking: ["vision", "web"]))
     }
 
+    // MARK: - MCP servers (notifier #500)
+
+    private func peopleSetupAnswerWithServers(saved: [String] = []) -> [String: Any] {
+        var answer = peopleSetupAnswer()
+        answer["mcp_servers"] = saved
+        let offered: [[String: Any]] = [["id": "github"], ["id": "notes"], ["id": ""], ["name": "mail"]]
+        answer["mcp_choices"] = offered
+        return answer
+    }
+
+    func testRoomSetupReadsTheMCPServersTheCeilingNames() throws {
+        let state = try RoomSetupClient.parseState(peopleSetupAnswerWithServers(saved: ["github"]))
+        XCTAssertEqual(state.mcpServers, ["github"])
+        // Rows without an id are left out.
+        XCTAssertEqual(state.mcpChoices, ["github", "notes"])
+        // A plugin before 0.125 has neither: no servers, and none to offer.
+        let older = try RoomSetupClient.parseState(peopleSetupAnswer())
+        XCTAssertEqual(older.mcpServers, [])
+        XCTAssertNil(older.mcpChoices)
+        XCTAssertNil(older.mcpServersToSave(picking: ["github"]))
+        XCTAssertFalse(older.changesSavedCeiling(picking: ["vision", "web"], servers: ["github"]))
+    }
+
+    func testSetUpPostsTheMCPServersPickedOnlyWhenTheyChange() throws {
+        let state = try RoomSetupClient.parseState(peopleSetupAnswerWithServers(saved: ["github"]))
+        XCTAssertNil(state.mcpServersToSave(picking: ["github"]))
+        XCTAssertNil(state.mcpServersToSave(picking: nil))
+        XCTAssertEqual(state.mcpServersToSave(picking: ["notes", "github"]), ["github", "notes"])
+        // None is a choice too: no_mcp is back.
+        XCTAssertEqual(state.mcpServersToSave(picking: []), [])
+        // A server the plugin doesn't offer (turned off since) isn't posted.
+        XCTAssertEqual(state.mcpServersToSave(picking: ["notes", "off"]), ["notes"])
+    }
+
+    func testChangingTheMCPServersOfASavedCeilingAsksFirst() throws {
+        var answer = peopleSetupAnswerWithServers(saved: ["github"])
+        answer["ready"] = true
+        answer["needs"] = [String]()
+        answer["changes"] = [String]()
+        let ready = try RoomSetupClient.parseState(answer)
+        XCTAssertFalse(ready.changesSavedCeiling(picking: ["vision", "web"], servers: ["github"]))
+        XCTAssertTrue(ready.changesSavedCeiling(picking: ["vision", "web"], servers: []))
+        XCTAssertTrue(ready.changesSavedCeiling(picking: ["vision", "web"], servers: ["github", "notes"]))
+        // A first setup saves a ceiling whatever is picked.
+        let first = try RoomSetupClient.parseState(peopleSetupAnswerWithServers())
+        XCTAssertFalse(first.changesSavedCeiling(picking: ["web"], servers: ["github"]))
+    }
+
+    @MainActor
+    func testRoomSetupPostsTheMCPServers() async throws {
+        var bodies: [[String: Any]?] = []
+        let client = RoomSetupClient { _, _, body in
+            bodies.append(body)
+            return self.peopleSetupAnswerWithServers()
+        }
+        _ = try await client.setUp(profile: "furina", ceiling: nil, mcpServers: ["github"])
+        _ = try await client.setUp(profile: "furina", ceiling: nil, mcpServers: [])
+        _ = try await client.setUp(profile: "furina", ceiling: ["web"])
+        XCTAssertEqual(bodies[0]?["mcp_servers"] as? [String], ["github"])
+        XCTAssertNil(bodies[0]?["ceiling"])
+        XCTAssertEqual(bodies[1]?["mcp_servers"] as? [String], [])
+        // Without them, the saved ones stay.
+        XCTAssertNil(bodies[2]?["mcp_servers"])
+    }
+
+    func testReadySaysWhichMCPServersRoomsMayUse() throws {
+        let none = try RoomSetupClient.parseState(peopleSetupAnswerWithServers())
+        XCTAssertNil(PeopleSettingsText.mcpServers(none, profileName: "Furina"))
+        let two = try RoomSetupClient.parseState(peopleSetupAnswerWithServers(saved: ["github", "notes"]))
+        let list = ["github", "notes"].formatted(.list(type: .and).locale(AppLocalization.formattingLocale))
+        XCTAssertEqual(PeopleSettingsText.mcpServers(two, profileName: "Furina"),
+                       AppLocalization.string("MCP servers too: \(list), in rooms whose Custom choice names their tools."))
+    }
+
     @MainActor
     func testRoomSetupResultReadsTheRestart() async throws {
         var answer = peopleSetupAnswer()

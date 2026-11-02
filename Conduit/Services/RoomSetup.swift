@@ -60,6 +60,13 @@ struct RoomSetupState: Equatable {
     /// room choices can turn on.
     let ceiling: [String]
     let choices: [Choice]
+    /// The profile's MCP servers the ceiling names (notifier #500, plugin
+    /// 0.125+): none unless the owner picks some. Their tools still run only
+    /// where a room's Custom choice names them.
+    let mcpServers: [String]
+    /// The profile's enabled MCP servers the ceiling can name, or nil from a
+    /// plugin that can't name any.
+    let mcpChoices: [String]?
     /// The profile's approval mode (`manual`, `smart`, `off`).
     let approvals: String?
 
@@ -80,8 +87,21 @@ struct RoomSetupState: Equatable {
     /// saved before. Each room pins its members' tools when it starts
     /// (designs/cross-owner-agents, decision 13), so the agent then stops
     /// answering in rooms already started.
-    func changesSavedCeiling(picking picked: Set<String>) -> Bool {
-        picked != Set(ceiling) && !changes.contains("ceiling")
+    func changesSavedCeiling(picking picked: Set<String>, servers: Set<String>? = nil) -> Bool {
+        (picked != Set(ceiling) || changesServers(servers)) && !changes.contains("ceiling")
+    }
+
+    /// The MCP servers a setup posts for the ones picked, or nil to keep the
+    /// saved ones (and on a plugin that can't name any). A saved one Hermes
+    /// turned off isn't offered, and a POST naming it is refused.
+    func mcpServersToSave(picking servers: Set<String>?) -> [String]? {
+        guard let choices = mcpChoices, changesServers(servers), let servers else { return nil }
+        return choices.filter(servers.contains)
+    }
+
+    private func changesServers(_ servers: Set<String>?) -> Bool {
+        guard mcpChoices != nil, let servers else { return false }
+        return servers != Set(mcpServers)
     }
 }
 
@@ -126,12 +146,15 @@ struct RoomSetupClient {
         try Self.parseState(try await request(scopedPath(profile), "GET", nil))
     }
 
-    /// Sets the profile up with `ceiling`, or the one it has when nil;
-    /// `interrupt` restarts the gateway even while chats run on it.
-    func setUp(profile: String, ceiling: [String]?, interrupt: Bool = false) async throws -> RoomSetupResult {
+    /// Sets the profile up with `ceiling` and `mcpServers`, or the ones it
+    /// has when nil; `interrupt` restarts the gateway even while chats run
+    /// on it.
+    func setUp(profile: String, ceiling: [String]?, mcpServers: [String]? = nil,
+               interrupt: Bool = false) async throws -> RoomSetupResult {
         let path = scopedPath(profile)
         var body: [String: Any] = ["interrupt": interrupt]
         if let ceiling { body["ceiling"] = ceiling }
+        if let mcpServers { body["mcp_servers"] = mcpServers }
         let response = try await request(path, "POST", body)
         let state = try Self.parseState(response)
         var restart: RoomSetupResult.Restart?
@@ -180,6 +203,10 @@ struct RoomSetupClient {
             ),
             ceiling: ceiling,
             choices: choices,
+            mcpServers: (response["mcp_servers"] as? [Any] ?? []).compactMap { $0 as? String }.filter { !$0.isEmpty },
+            mcpChoices: (response["mcp_choices"] as? [Any]).map { rows in
+                rows.compactMap { ($0 as? [String: Any])?["id"] as? String }.filter { !$0.isEmpty }
+            },
             approvals: response["approvals"] as? String
         )
     }

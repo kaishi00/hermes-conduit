@@ -21159,6 +21159,88 @@
         }
       }
     },
+    "Off unless you turn one on. A server's tools then work only in rooms whose Custom choice names them, and its own approvals still apply." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus, solange du keinen einschaltest. Die Werkzeuge eines Servers funktionieren dann nur in Räumen, deren Auswahl „Eigene“ sie nennt, und seine eigenen Freigaben gelten weiter."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apagados salvo que actives alguno. Las herramientas de un servidor solo funcionan entonces en las salas cuya opción Personalizado las nombra, y sus propias aprobaciones siguen aplicándose."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Désactivés tant que vous n'en activez pas un. Les outils d'un serveur ne marchent alors que dans les salons dont le choix Personnalisé les nomme, et ses propres approbations s'appliquent toujours."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mati kecuali Anda menyalakannya. Alat sebuah server lalu hanya bekerja di ruang yang pilihan Kustom-nya menyebutnya, dan persetujuan server itu sendiri tetap berlaku."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spenti finché non ne attivi uno. Gli strumenti di un server funzionano poi solo nelle stanze la cui scelta Personalizzato li nomina, e le sue approvazioni restano valide."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オンにしない限りオフです。オンにしたサーバーのツールは、カスタムでそのツールを指定したグループでのみ使われ、サーバー自身の承認もそのまま適用されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "켜기 전에는 꺼져 있어요. 켠 서버의 도구는 사용자 지정에서 그 도구를 고른 방에서만 쓰이고, 서버 자체의 승인도 그대로 적용돼요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wyłączone, dopóki któregoś nie włączysz. Narzędzia serwera działają wtedy tylko w pokojach, w których wybór Własny je wymienia, a jego własne zatwierdzenia nadal obowiązują."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desligados a menos que você ligue algum. As ferramentas de um servidor então só funcionam nas salas cuja escolha Personalizado as nomeia, e as aprovações dele continuam valendo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выключены, пока вы не включите какой-нибудь. Инструменты сервера тогда работают только в комнатах, где выбор «Свой» их называет, и его собственные подтверждения по-прежнему действуют."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Siz açmadıkça kapalıdır. Bir sunucunun araçları o zaman yalnızca Özel seçimi onları adlandıran odalarda çalışır ve sunucunun kendi onayları geçerli kalır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "除非你打开，否则保持关闭。打开后，服务器的工具只在“自定义”选择中列出它们的群聊里可用，服务器自己的审批也照常生效。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "除非你開啟，否則保持關閉。開啟後，伺服器的工具只在「自訂」選擇中列出它們的群組裡可用，伺服器自己的審批也照常生效。"
+          }
+        }
+      }
+    },
     "Off: wake pauses while another app plays music or a podcast, and listens again once it stops. On: wake keeps listening, but iOS may play that audio in mono or cut it out briefly." : {
       "localizations" : {
         "de" : {
@@ -272232,6 +272314,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "最少使用優先"
+          }
+        }
+      }
+    },
+    "MCP servers rooms may let %@ use" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP-Server, die Räume %@ nutzen lassen dürfen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Servidores MCP que las salas pueden dejar usar a %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serveurs MCP que les salons peuvent laisser %@ utiliser"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server MCP yang boleh dipakai %@ di ruang"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server MCP che le stanze possono lasciare usare a %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "グループで%@に使わせてよいMCPサーバー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "방에서 %@이(가) 쓸 수 있는 MCP 서버"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serwery MCP, których pokoje mogą pozwolić używać profilowi %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Servidores MCP que as salas podem deixar %@ usar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP-серверы, которые комнаты могут разрешить %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odaların %@ adlı ajana kullandırabileceği MCP sunucuları"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群聊可以让 %@ 使用的 MCP 服务器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群組可以讓 %@ 使用的 MCP 伺服器"
+          }
+        }
+      }
+    },
+    "MCP servers too: %@, in rooms whose Custom choice names their tools." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auch MCP-Server: %@, in Räumen, deren Auswahl „Eigene“ ihre Werkzeuge nennt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "También servidores MCP: %@, en las salas cuya opción Personalizado nombra sus herramientas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Des serveurs MCP aussi : %@, dans les salons dont le choix Personnalisé nomme leurs outils."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Juga server MCP: %@, di ruang yang pilihan Kustom-nya menyebut alatnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anche server MCP: %@, nelle stanze la cui scelta Personalizzato ne nomina gli strumenti."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCPサーバーも使えます: %@（カスタムでそのツールを指定したグループのみ）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP 서버도: %@, 사용자 지정에서 그 도구를 고른 방에서만요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Także serwery MCP: %@, w pokojach, w których wybór Własny wymienia ich narzędzia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Também servidores MCP: %@, nas salas cuja escolha Personalizado nomeia as ferramentas deles."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "А также MCP-серверы: %@, в комнатах, где выбор «Свой» называет их инструменты."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP sunucuları da: %@, Özel seçimi araçlarını adlandıran odalarda."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还有 MCP 服务器：%@，仅在“自定义”选择中列出其工具的群聊里。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "還有 MCP 伺服器：%@，僅在「自訂」選擇中列出其工具的群組裡。"
           }
         }
       }
