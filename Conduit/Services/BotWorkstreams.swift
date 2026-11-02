@@ -369,6 +369,115 @@ final class BotWorkstreamsClient {
     }
 }
 
+/// A bot's work settings as Edit Bot > Work shows them: whether its Bot
+/// Chat coordinates work at all, what it may do itself, how many
+/// workstreams run at once, what a restart does, and what its workstreams
+/// ask approval for. Kept by the plugin, so every device shows the same.
+struct BotWorkSettings: Equatable {
+    enum Policy: String, CaseIterable {
+        case off, strict, lookups
+    }
+
+    enum AfterRestart: String, CaseIterable {
+        case `continue`, ask
+    }
+
+    enum Approvals: String, CaseIterable {
+        /// As the bot's chats ask, by its approval mode in Hermes.
+        case chats
+        /// The user's own go-ahead before a step that can't be undone.
+        case ask
+        /// Nothing asked: Hermes' approvals are off in each workstream.
+        case off
+    }
+
+    var policy: Policy
+    var maxRunning: Int
+    var maxRunningLimit: Int
+    var afterRestart: AfterRestart
+    var approvals: Approvals
+    /// The bot's approval mode in Hermes ("manual", "smart" or "off").
+    var chatApprovals: String
+    /// Why workstreams can't run on this Hermes, as the plugin says it.
+    var unavailable: String?
+
+    var isOn: Bool { policy != .off }
+
+    init(policy: Policy = .strict, maxRunning: Int = 2, maxRunningLimit: Int = 6,
+         afterRestart: AfterRestart = .continue, approvals: Approvals = .chats,
+         chatApprovals: String = "manual", unavailable: String? = nil) {
+        self.policy = policy
+        self.maxRunning = maxRunning
+        self.maxRunningLimit = maxRunningLimit
+        self.afterRestart = afterRestart
+        self.approvals = approvals
+        self.chatApprovals = chatApprovals
+        self.unavailable = unavailable
+    }
+
+    init?(response: [String: Any]) {
+        guard response["ok"] as? Bool == true,
+              let policy = (response["policy"] as? String).flatMap(Policy.init(rawValue:)),
+              let maxRunning = response["max_running"] as? Int else { return nil }
+        let limit = max(response["max_running_limit"] as? Int ?? maxRunning, 1)
+        self.init(
+            policy: policy,
+            maxRunning: min(max(maxRunning, 1), limit),
+            maxRunningLimit: limit,
+            afterRestart: (response["after_restart"] as? String).flatMap(AfterRestart.init(rawValue:)) ?? .continue,
+            approvals: (response["workstream_approvals"] as? String).flatMap(Approvals.init(rawValue:)) ?? .chats,
+            chatApprovals: (response["chat_approvals"] as? String) ?? "manual",
+            unavailable: (response["unavailable"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        )
+    }
+
+    /// The plugin's body for what differs from `old`; empty when nothing does.
+    func change(from old: BotWorkSettings) -> [String: Any] {
+        var body: [String: Any] = [:]
+        if policy != old.policy { body["policy"] = policy.rawValue }
+        if maxRunning != old.maxRunning { body["max_running"] = maxRunning }
+        if afterRestart != old.afterRestart { body["after_restart"] = afterRestart.rawValue }
+        if approvals != old.approvals { body["workstream_approvals"] = approvals.rawValue }
+        return body
+    }
+}
+
+/// Edit Bot > Work's reads and saves, through the host's notifier plugin,
+/// named like the Work panel's (`?conduit_profile=`).
+final class BotWorkSettingsClient {
+    static let capability = "bot-work-settings"
+    static let path = "/api/plugins/conduit_push/workstreams/settings"
+
+    private let profile: String
+    private let parameter: String
+    private let request: BotWorkstreamsClient.Request
+
+    init(profile: String, parameter: String, request: @escaping BotWorkstreamsClient.Request) {
+        self.profile = profile
+        self.parameter = parameter
+        self.request = request
+    }
+
+    private var route: String { DashboardPath.withProfile(Self.path, profile: profile, parameter: parameter) }
+
+    @MainActor
+    func load() async throws -> BotWorkSettings {
+        guard let settings = BotWorkSettings(response: try await request(route, "GET", nil)) else {
+            throw BotWorkstreamsClient.Failure.malformed
+        }
+        return settings
+    }
+
+    /// Saves `change` (the plugin's field names); the settings as they are now.
+    @MainActor
+    func save(_ change: [String: Any]) async throws -> BotWorkSettings {
+        guard let settings = BotWorkSettings(response: try await request(route, "POST", change)) else {
+            throw BotWorkstreamsClient.Failure.malformed
+        }
+        return settings
+    }
+}
+
 /// A Bot Chat's work tool call, as its transcript card shows it ("Started
 /// W3: Login bug", "Asked Nahida"). A model behind Tool Search calls the
 /// tools through `tool_call`, which names the tool and its arguments.
