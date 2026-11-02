@@ -2289,7 +2289,9 @@ final class HermesClient: ObservableObject {
             authorityPrompts.removeValue(forKey: id)
         }
         for prompt in prompts {
-            notePrompt(prompt.objectValue, sessionId: object["session_id"]?.stringValue ?? sessionId)
+            // A listed prompt is the running turn's when it names none.
+            notePrompt(prompt.objectValue, sessionId: object["session_id"]?.stringValue ?? sessionId,
+                       askingGeneration: running == true ? snapshotGeneration : nil)
         }
     }
 
@@ -3201,7 +3203,9 @@ final class HermesClient: ObservableObject {
             }
         }
         let result = answer ?? AnyCodable.null
-        if sentToAuthority {
+        // Read by the server that answered: a send built before the ready was
+        // read but taken by the authority is still its admission receipt.
+        if sentToAuthority || speaksSessionAuthority {
             // An admission receipt: `queued` is its place in the session's
             // line whether a turn runs or not. The authority has no busy
             // policy of its own: a send into a running turn waits for the
