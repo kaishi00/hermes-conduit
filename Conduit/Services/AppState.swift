@@ -4694,6 +4694,9 @@ final class AppState: ObservableObject {
                 let afterReply = self.messages.lastIndex(where: { $0.role == .assistant }).map { $0 + 1 } ?? self.messages.startIndex
                 return self.messages[afterReply...].filter { $0.role == .user && !$0.isSteer }.count > 1
             },
+            saveLedger: { [weak self] saved in
+                self?.saveVoiceJobLedger(saved)
+            },
             openThreadMessages: { [weak self] thread in
                 guard let self, self.isOpenChat(thread) else { return nil }
                 return self.messages
@@ -4860,8 +4863,39 @@ final class AppState: ObservableObject {
                 await self?.loadSessions(forceRefresh: true)
             }
         }
+        self.scheduleVoiceJobLedgerRestore()
         return supervisor
     }()
+
+    /// Where the voice jobs' ledger is kept for this dashboard and profile
+    /// (M5b): a relaunch follows the jobs a call left running.
+    var voiceJobLedgerKey: String {
+        "conduit.voiceJobLedger.\(activeDashboardID?.uuidString ?? "none").\(activeProfile)"
+    }
+
+    /// Saves only into the ledger this run brought back: a boundary's empty
+    /// ledger never overwrites the next dashboard's or profile's.
+    func saveVoiceJobLedger(_ saved: [SavedVoiceJob]) {
+        guard let key = voiceJobLedgerRestoredKey, key == voiceJobLedgerKey else { return }
+        if saved.isEmpty {
+            defaults.removeObject(forKey: key)
+        } else if let data = try? JSONEncoder().encode(saved) {
+            defaults.set(data, forKey: key)
+        }
+    }
+
+    /// After whatever boundary is under way settles, takes back the active
+    /// dashboard and profile's saved jobs.
+    func scheduleVoiceJobLedgerRestore() {
+        voiceJobLedgerRestoredKey = nil
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let key = self.voiceJobLedgerKey
+            guard self.voiceJobLedgerRestoredKey != key else { return }
+            self.voiceJobLedgerRestoredKey = key
+            self.voiceBackgroundJobSupervisor.restore(SavedVoiceJob.decode(self.defaults.data(forKey: key)))
+        }
+    }
     /// Logical identity of a Voice conversation suspended by an app lifecycle
     /// transition (scene backgrounded / device locked). Identity only: it
     /// never holds audio resources, gateway or transport references, session
@@ -5311,6 +5345,8 @@ final class AppState: ObservableObject {
     private var presentationCacheFlushTask: Task<Void, Never>?
     /// Session-list refresh after a Voice background job creates its chat.
     private var voiceJobSessionListRefreshTask: Task<Void, Never>?
+    /// The saved ledger this run took back (M5b), the only one it saves into.
+    private var voiceJobLedgerRestoredKey: String?
     /// Monotonic fence for deferred presentation-cache writes. Bumped when
     /// the active profile identity changes so a coalesced flush scheduled
     /// under one profile can never land in another profile's namespace.
@@ -7496,7 +7532,9 @@ final class AppState: ObservableObject {
         // A Watch call to Gemini belongs to the outgoing connection too: it
         // ends here, before its jobs' news goes back to the supervisor.
         WatchVoiceLink.shared.direct.connectionRetiring(in: self)
+        voiceJobLedgerRestoredKey = nil  // before the reset's empty ledger
         voiceBackgroundJobSupervisor.reset()
+        scheduleVoiceJobLedgerRestore()
         voiceJobSessionListRefreshTask?.cancel()
         voiceJobSessionListRefreshTask = nil
     }
