@@ -2599,7 +2599,7 @@ Classic voice, and its calls speak with their live voices.
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-02, #PRNUM.
+**Checked:** 2026-11-02, #1664 (new entry: automatic skips screen-reader voices, a pick per language, newly downloaded voices used at once).
 
 ## Profile config saves
 
