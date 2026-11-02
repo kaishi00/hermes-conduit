@@ -33751,6 +33751,9 @@ final class AppState: ObservableObject {
     /// Counts display saves that landed, so a config read sent before one
     /// doesn't put the older choice back.
     private var displayPreferencesWriteRevision = 0
+    /// The same for time-zone saves, which come back in that config read
+    /// too but are counted apart, so a display save doesn't cost the zone.
+    private var timeZoneWriteRevision = 0
 
     /// The reads every connection makes, sent with its ticket rather than
     /// each after the step before it: the profile list, the chat list's
@@ -33790,6 +33793,7 @@ final class AppState: ObservableObject {
         guard let owner = currentDashboardRuntimeOwner() else { return }
         let dashboardTicketBridge = owner.bridge
         let revision = displayPreferencesWriteRevision
+        let zoneRevision = timeZoneWriteRevision
         do {
             let config = try await startupReads.read(
                 dashboardPath("/api/config", profile: profile),
@@ -33798,8 +33802,11 @@ final class AppState: ObservableObject {
             )
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return }
             let display = config["display"] as? [String: Any] ?? [:]
-            profileTimeZoneSetting = (profile, config[ProfileTimeZone.configKey] as? String ?? "")
-            // A display save that landed while this read was out is newer.
+            // A time-zone or display save that landed while this read was
+            // out is newer, each for its own setting.
+            if zoneRevision == timeZoneWriteRevision {
+                profileTimeZoneSetting = (profile, config[ProfileTimeZone.configKey] as? String ?? "")
+            }
             guard revision == displayPreferencesWriteRevision else { return }
             let reasoning = ReasoningDisplayMode(display: display)
             displayPreferences = ProfileDisplayPreferences(
@@ -33818,7 +33825,8 @@ final class AppState: ObservableObject {
             // Hermes' defaults, so thinking set to Off stays off.
             displayPreferences = storedDisplayPreferences(dashboardID: activeDashboardID, profile: profile)
                 ?? ProfileDisplayPreferences()
-            profileTimeZoneSetting = nil
+            // A zone saved while the read was out is still the one on screen.
+            if zoneRevision == timeZoneWriteRevision { profileTimeZoneSetting = nil }
         }
     }
 
@@ -34185,6 +34193,9 @@ final class AppState: ObservableObject {
             // The write landed on its own profile; what's mirrored on screen
             // must still be that dashboard's and profile's.
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return true }
+            // Only the zone on screen voids a settings read's zone: one saved
+            // for a profile switched away from leaves the new one's read alone.
+            if key == ProfileTimeZone.configKey { timeZoneWriteRevision &+= 1 }
             if key == ProfileTimeZone.configKey, let zone = value.textValue {
                 profileTimeZoneSetting = (profile, zone)
             }
