@@ -31143,9 +31143,8 @@ final class AppState: ObservableObject {
     ///
     /// Keep the envelope merge and id-key order in sync with
     /// `MessageNormalizer.normalizeMessages`, which consumes the same rows.
-    /// This covers `/messages` rows only, which carry `id` itself; the
-    /// normalizer also reads a resume row's `row_id` after `id` and
-    /// `message_id`, spelled as this renders a stored row's `id`.
+    /// A row's `row_id` comes first, as in the normalizer; `/messages` rows
+    /// carry `id` itself.
     nonisolated static func durablePersistedRowID(from rawRow: Any) -> String? {
         guard let envelope = rawRow as? [String: Any] else { return nil }
         // Same envelope merge as normalizeMessages: `message` / `payload` /
@@ -31159,6 +31158,13 @@ final class AppState: ObservableObject {
         var obj = envelope
         for (key, value) in nested {
             obj[key] = value
+        }
+        // A row naming its stored row (`row_id`) has that row's id first,
+        // as the normalizer gives it.
+        if let rowID = obj["row_id"] as? NSNumber,
+           CFGetTypeID(rowID) != CFBooleanGetTypeID(),
+           rowID.doubleValue > 0, rowID.doubleValue == rowID.doubleValue.rounded() {
+            return String(rowID.doubleValue)
         }
         for key in ["id", "message_id"] {
             switch obj[key] {
