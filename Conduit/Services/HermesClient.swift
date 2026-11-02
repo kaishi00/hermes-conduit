@@ -1114,9 +1114,16 @@ final class HermesClient: ObservableObject {
     /// Prompts this client sent an answer for that came back with neither a
     /// status nor a refusal (the socket dropped, a timeout). If the answer
     /// was taken, a retry hears `already_resolved`, which is then our own
-    /// answer, not another surface's. Kept across reconnects, since a drop
-    /// is the usual reason to retry.
-    private var unconfirmedAuthorityAnswers: Set<String> = []
+    /// answer, not another surface's; and if the chat's resume no longer
+    /// lists the prompt, it was most likely ours that settled it. Shared by
+    /// every client, since a reconnect builds a new one and a drop is the
+    /// usual reason to retry; prompt ids are unique, so one server's never
+    /// reads as another's.
+    private static var unconfirmedAuthorityAnswers: Set<String> = []
+    private var unconfirmedAuthorityAnswers: Set<String> {
+        get { Self.unconfirmedAuthorityAnswers }
+        set { Self.unconfirmedAuthorityAnswers = newValue }
+    }
     private var closedIntentionally = false
     private var receiveTask: Task<Void, Never>?
     private var socketHasOpened = false
@@ -3419,7 +3426,10 @@ final class HermesClient: ObservableObject {
             // A bot chat is only found under its own profile.
             _ = try await resumeSessionObject(sessionId, omitMessages: true, profile: profile)
             authorityPrompt = authorityPrompts[requestId]
-            if authorityPrompt == nil { return .ended }
+            if authorityPrompt == nil {
+                // Our earlier send that got no word back most likely settled it.
+                return unconfirmedAuthorityAnswers.remove(requestId) != nil ? .accepted(remaining: []) : .ended
+            }
         }
         if authorityPrompt == nil, speaksSessionAuthority,
            !requestId.hasPrefix(PushNotificationService.relayRequestPrefix) {
@@ -3612,7 +3622,10 @@ final class HermesClient: ObservableObject {
                 )
                 cached = authorityPrompts[trimmedRequestId]
             }
-            guard let prompt = cached else { return .ended }
+            guard let prompt = cached else {
+                // Our earlier send that got no word back most likely settled it.
+                return unconfirmedAuthorityAnswers.remove(trimmedRequestId) != nil ? .accepted : .ended
+            }
             var params: [String: Any] = [
                 "session_id": prompt.sessionId,
                 "execution_generation": prompt.generation,
