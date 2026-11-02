@@ -268,13 +268,37 @@ private struct ProviderRow: View {
     }
 }
 
+/// A key section kept by a build that didn't count sign-ins: which key the
+/// profile uses waits for Hermes, and a read that fails says so.
+private struct KeyWaitingForHermes: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @ObservedObject var service: ProviderSettingsService
+    let retry: Bool
+
+    var body: some View {
+        if service.loadFailed {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(AppLocalization.string("Could not load providers."))
+                    .scaledFont(.footnote).foregroundStyle(.secondary)
+                if retry {
+                    Button(AppLocalization.string("Try Again")) { Task { await service.reload() } }
+                        .scaledFont(.subheadline.weight(.semibold))
+                        .tint(.conduitAccent)
+                }
+            }
+        } else {
+            ProgressView().frame(maxWidth: .infinity).accessibilityLabel(AppLocalization.string("Loading…"))
+        }
+    }
+}
+
 /// The words for a provider's state, kept in one place.
 enum ProviderText {
     static func status(_ entry: ProviderEntry) -> String {
         switch entry.status {
         case .customEndpoint: return AppLocalization.string("Custom endpoint")
         case .signedIn: return AppLocalization.string("Signed in")
-        case .sharedKey: return AppLocalization.string("Shared key")
+        case .sharedKey: return entry.keyUseUnknown ? AppLocalization.string("Connected") : AppLocalization.string("Shared key")
         case .ownKey: return AppLocalization.string("This profile's own key")
         case .oldCopy: return AppLocalization.string("Old copy of the shared key")
         case .mainProfileOnly: return AppLocalization.string("Saved for the main profile only")
@@ -479,7 +503,11 @@ private struct ProviderConnectPage: View {
                 }
                 if let key = entry.key {
                     ConduitSettingsSection(title: AppLocalization.string("API key"), symbol: "key", tint: .conduitAura) {
-                        ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: onConnected)
+                        if key.signInsKnown {
+                            ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: onConnected)
+                        } else {
+                            KeyWaitingForHermes(service: service, retry: true)
+                        }
                     }
                 }
                 ProviderSettingsRows(service: service, entry: entry)
@@ -548,11 +576,19 @@ struct ProviderDetailPage: View {
                 }
                 if let key = entry.key {
                     ConduitSettingsSection(title: AppLocalization.string("API key"), symbol: "key", tint: .conduitAura) {
-                        ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: {},
-                                          keyRemovable: context.catalogAnswered && context.usageAnswered && !runsDefault(entry),
-                                          usage: context.usage(entry))
+                        // A summary kept by an older build doesn't count
+                        // sign-ins, so which key the profile uses waits
+                        // for Hermes.
+                        if key.signInsKnown {
+                            ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: {},
+                                              keyRemovable: context.catalogAnswered && context.usageAnswered && !runsDefault(entry),
+                                              usage: context.usage(entry))
+                        } else {
+                            // The page's Try Again is above.
+                            KeyWaitingForHermes(service: service, retry: false)
+                        }
                     }
-                    if key.keysInUse > 1, let order = context.keyOrder, KeyOrder.settingKey(for: entry.id) != nil {
+                    if key.signInsKnown, key.keysInUse > 1, let order = context.keyOrder, KeyOrder.settingKey(for: entry.id) != nil {
                         KeyOrderSection(entry: entry, keys: key.keysInUse, signIns: key.signInsInUse, access: order)
                     }
                 }

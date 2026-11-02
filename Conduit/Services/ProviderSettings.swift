@@ -47,6 +47,10 @@ struct ProviderEntry: Identifiable, Equatable {
         /// Sign-ins in this profile's own pool (not the main one's): with
         /// them Hermes uses that pool, not the shared key.
         var profileSignIns = 0
+        /// False for a summary kept by a build that didn't count sign-ins:
+        /// its counts and key state may leave one out, so the page waits
+        /// for Hermes before showing them.
+        var signInsKnown = true
         /// Where to get a key.
         var signupURL: String?
         /// `vars` are other providers' variables this one also reads: a
@@ -193,9 +197,19 @@ struct ProviderEntry: Identifiable, Equatable {
 
     var keyState: KeyAccess.State { key?.state(onMainProfile: onMainProfile) ?? .none }
 
+    /// Kept by a build that didn't count sign-ins, on a profile with no
+    /// key rows of its own: Hermes uses keys or sign-ins, but whether its
+    /// own sign-in or the shared key isn't known until Hermes answers.
+    var keyUseUnknown: Bool {
+        guard let key, !key.signInsKnown, !onMainProfile else { return false }
+        return key.profileRows.isEmpty && key.keysInUse > 0
+    }
+
     var status: Status {
         if endpoint != nil { return .customEndpoint }
         if account?.signedIn == true { return .signedIn }
+        // Connected either way; ProviderText names it without saying which.
+        if keyUseUnknown { return .sharedKey }
         switch keyState {
         case .shared: return .sharedKey
         case .own: return .ownKey
@@ -506,6 +520,7 @@ enum ProviderCatalog {
                 entry.key?.heldVars = access["vars_held"] as? [String] ?? []
                 entry.key?.borrowedOnly = access["borrowed_only"] as? Bool ?? false
                 entry.key?.profileSignIns = access["profile_sign_ins"] as? Int ?? 0
+                entry.key?.signInsKnown = access["sign_ins_in_use"] != nil
                 entry.key?.sharedRows = (access["shared_rows"] as? [[String: Any]] ?? []).compactMap(poolRow)
                 entry.key?.profileRows = (access["profile_rows"] as? [[String: Any]] ?? []).compactMap(poolRow)
             }
