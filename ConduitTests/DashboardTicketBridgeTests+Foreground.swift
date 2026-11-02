@@ -230,8 +230,9 @@ extension DashboardTicketBridgeTests {
         reads.send(["/api/profiles"], through: held.bridge, fence: fence(), now: sentAt)
         reads.send(["/api/profiles"], through: held.bridge, fence: fence(), now: sentAt.addingTimeInterval(1))
         try await held.waitForRequests(1)
-        for _ in 0..<20 { await Task.yield() }
+        try await Task.sleep(for: .milliseconds(200))
         XCTAssertEqual(held.sent.count, 1)
+        XCTAssertEqual(reads.waitingPaths, ["/api/profiles"])
     }
 
     /// An early read that couldn't go out without the page (no session
