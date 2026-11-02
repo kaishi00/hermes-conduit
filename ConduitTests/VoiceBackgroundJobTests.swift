@@ -272,6 +272,7 @@ extension VoiceConversationControllerTests {
         _ = await started.value
         XCTAssertEqual(fake.kept.last?.0, "default")
         // A Watch call's job that names a profile is filed under that bot.
+        fake.profileTargets = ["furina": .other("furina")]
         _ = await supervisor.startJob(instructions: "check the logs", profile: "furina", callsModel: false, fromWatch: true)
         XCTAssertEqual(fake.kept.last?.0, "furina")
         XCTAssertEqual(fake.kept.last?.3, true)

@@ -1,4 +1,7 @@
 import Foundation
+import OSLog
+
+private let botWorkLogger = Logger(subsystem: "com.milim.relay", category: "BotWork")
 
 /// Each bot's work as Conduit last read it, by bot profile, for the Bot
 /// Chat's Work strip and panel and a workstream's bar. It opens on the
@@ -184,7 +187,17 @@ extension AppState {
         let client = botWorkClient(profile: bot)
         // The panel's next read shows it.
         Task { @MainActor in
-            _ = try? await client.adopt(sessionID: sessionID, title: title, via: via, goal: instructions)
+            // Once more after a short wait: a dropped request would leave
+            // the job out of the panel for good.
+            for attempt in 0..<2 {
+                do {
+                    _ = try await client.adopt(sessionID: sessionID, title: title, via: via, goal: instructions)
+                    return
+                } catch {
+                    botWorkLogger.notice("Keeping a voice job in its bot's work registry failed (try \(attempt + 1, privacy: .public)): \(String(describing: error), privacy: .public)")
+                    if attempt == 0 { try? await Task.sleep(for: .seconds(3)) }
+                }
+            }
         }
     }
 

@@ -95,8 +95,7 @@ extension BotModeTests {
         XCTAssertFalse(snapshot.sessionIDs.contains(session))
     }
 
-    /// Pin, Resolve and Reopen: what the plugin offers, and the list as
-    /// each leaves it before the next read.
+    /// A call's job is sent to its bot's registry only where the plugin keeps bot work.
     func testACallsJobIsKeptOnlyWhereThePluginKeepsBotWork() {
         let keeps = NotifierPluginStatus(state: .reported(version: "0.130.0", capabilities: [BotWorkstreamsClient.adoptCapability]))
         let older = NotifierPluginStatus(state: .reported(version: "0.120.0", capabilities: ["work"]))
@@ -107,6 +106,8 @@ extension BotModeTests {
         XCTAssertNil(AppState.voiceJobAdoptVia(plugin: NotifierPluginStatus(state: .unknown), sessionID: "s1", fromWatch: false))
     }
 
+    /// Pin, Resolve and Reopen: what the plugin offers, and the list as
+    /// each leaves it before the next read.
     func testFilingWorkMovesItBetweenTheLists() throws {
         var response = workResponse()
         response["resolved_count"] = 4
