@@ -10431,10 +10431,10 @@ final class AppState: ObservableObject {
     /// resume rows by position ("0", "1-reasoning", ...): a refresh that
     /// switched source then re-keyed every row, so the transcript drew and
     /// measured them all again from guesses, lost the reader's place, and
-    /// took a re-keyed latest user message for a new turn. The two lists
-    /// are lined up by each row's role, text and tool call. The same pairing
-    /// gives a live turn's resume rows the ids of the stored rows read with
-    /// them (reconcile), so on such a gateway only the rows Hermes hasn't
+    /// took a re-keyed latest user message for a new turn. A message pairs
+    /// by its role, text and tool call when each list holds it once. The
+    /// same pairing gives a live turn's resume rows the ids of the stored
+    /// rows read with them (reconcile), so on such a gateway only the rows Hermes hasn't
     /// stored yet are drawn under positional ids. A row whose id
     /// `durableIDs` holds keeps it: the delivery checks, the graft of a
     /// refreshed page onto older history and the merge of newer stored rows
@@ -10462,63 +10462,28 @@ final class AppState: ObservableObject {
             }
             return Signature(role: message.role, content: message.content, tool: tool)
         }
-        // Lined up as the longest run of rows the two lists share in order,
-        // a repeated text pairing with its newest copy: rows added at either
-        // end or between (a new turn, older history, the chat's own notes,
-        // saved review cards) stay unpaired. A list too long to line up
-        // that way pairs only the rows the two share at each end.
-        // Each signature as a number, so lining up compares numbers.
-        var codes: [Signature: Int] = [:]
-        func code(_ message: ChatMessage) -> Int {
+        // Only a message both lists hold once pairs: a text repeated ("yes",
+        // "continue") can't tell which copy is which, above all against a
+        // stored page a few rows behind the resume, so its copies keep their
+        // own ids. Pairs keep their order: the longest run of them rising in
+        // both lists stays, so a row moved out of order doesn't pair.
+        var previousCount: [Signature: Int] = [:]
+        var previousIndex: [Signature: Int] = [:]
+        for (index, message) in previous.enumerated() {
             let key = signature(message)
-            if let known = codes[key] { return known }
-            codes[key] = codes.count
-            return codes.count - 1
+            previousCount[key, default: 0] += 1
+            previousIndex[key] = index
         }
-        let previousCodes = previous.map(code)
-        let rebuiltCodes = rebuilt.map(code)
-        let rebuiltCount = rebuilt.count, shownCount = previous.count
-        var pairs: [(rebuilt: Int, previous: Int)] = []
-        if rebuiltCount * shownCount <= 2_000_000 {
-            // lengths[i * width + j]: the longest shared run of the first i
-            // rebuilt rows and the first j shown rows.
-            let width = shownCount + 1
-            var lengths = [Int32](repeating: 0, count: (rebuiltCount + 1) * width)
-            for i in 0..<rebuiltCount {
-                for j in 0..<shownCount {
-                    lengths[(i + 1) * width + j + 1] = rebuiltCodes[i] == previousCodes[j]
-                        ? lengths[i * width + j] + 1
-                        : max(lengths[i * width + j + 1], lengths[(i + 1) * width + j])
-                }
-            }
-            // From the newest back, so a repeated text pairs with its
-            // newest copy.
-            var i = rebuiltCount, j = shownCount
-            while i > 0, j > 0 {
-                if rebuiltCodes[i - 1] == previousCodes[j - 1] {
-                    pairs.append((rebuilt: i - 1, previous: j - 1))
-                    i -= 1
-                    j -= 1
-                } else if lengths[(i - 1) * width + j] >= lengths[i * width + j - 1] {
-                    i -= 1
-                } else {
-                    j -= 1
-                }
-            }
-        } else {
-            let common = min(shownCount, rebuiltCount)
-            var suffix = 0
-            while suffix < common,
-                  previousCodes[shownCount - 1 - suffix] == rebuiltCodes[rebuiltCount - 1 - suffix] {
-                suffix += 1
-            }
-            var prefix = 0
-            while prefix < common - suffix, previousCodes[prefix] == rebuiltCodes[prefix] {
-                prefix += 1
-            }
-            pairs = (0..<prefix).map { (rebuilt: $0, previous: $0) }
-                + (0..<suffix).map { (rebuilt: rebuiltCount - 1 - $0, previous: shownCount - 1 - $0) }
+        var rebuiltCount: [Signature: Int] = [:]
+        for message in rebuilt { rebuiltCount[signature(message), default: 0] += 1 }
+        var candidates: [(rebuilt: Int, previous: Int)] = []
+        for (index, message) in rebuilt.enumerated() {
+            let key = signature(message)
+            guard rebuiltCount[key] == 1, previousCount[key] == 1,
+                  let shownIndex = previousIndex[key] else { continue }
+            candidates.append((rebuilt: index, previous: shownIndex))
         }
+        let pairs = Self.risingRun(candidates)
         var result = rebuilt
         for pair in pairs {
             let shown = previous[pair.previous]
@@ -10538,6 +10503,31 @@ final class AppState: ObservableObject {
             result[pair.rebuilt] = kept
         }
         return result
+    }
+
+    /// The longest run of `pairs` (in rebuilt order) whose shown index rises
+    /// too, by patience sorting.
+    private static func risingRun(_ pairs: [(rebuilt: Int, previous: Int)]) -> [(rebuilt: Int, previous: Int)] {
+        // tails[k]: the index in `pairs` ending the best run of length k + 1
+        // found so far; links[i]: the pair before pairs[i] in its run.
+        var tails: [Int] = []
+        var links = [Int](repeating: -1, count: pairs.count)
+        for (index, pair) in pairs.enumerated() {
+            var low = 0, high = tails.count
+            while low < high {
+                let middle = (low + high) / 2
+                if pairs[tails[middle]].previous < pair.previous { low = middle + 1 } else { high = middle }
+            }
+            if low > 0 { links[index] = tails[low - 1] }
+            if low == tails.count { tails.append(index) } else { tails[low] = index }
+        }
+        var run: [(rebuilt: Int, previous: Int)] = []
+        var cursor = tails.last ?? -1
+        while cursor >= 0 {
+            run.append(pairs[cursor])
+            cursor = links[cursor]
+        }
+        return run.reversed()
     }
 
     /// The chat's own notes (slash command output, /btw and /background

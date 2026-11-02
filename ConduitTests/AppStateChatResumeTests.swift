@@ -630,11 +630,12 @@ final class AppStateChatResumeTests: XCTestCase {
         )
     }
 
-    /// Rows are lined up as the longest run the two lists share in order: a
-    /// repeated text added at the end is a new row, older history added at
-    /// the top is new rows and doesn't take the shown rows' ids, rows that
-    /// differ between matching ones leave those matching, an id still used by a rebuilt row
-    /// goes to no other, and another role or text is another message.
+    /// A message pairs when each list holds it once, in order: a repeated
+    /// text keeps its own ids (which copy is which can't be told, above all
+    /// against a stored page a few rows behind), older history added at the
+    /// top is new rows, rows that differ between matching ones leave those
+    /// matching, an id still used by a rebuilt row goes to no other, and
+    /// another role or text is another message.
     func testKeptRowIDsLineUpTheRowsAndStayUnique() {
         func row(_ id: String, _ role: MessageRole, _ text: String) -> ChatMessage {
             ChatMessage(id: id, role: role, content: text, timestamp: "2026-09-13T08:00:00Z")
@@ -643,23 +644,25 @@ final class AppStateChatResumeTests: XCTestCase {
         let rebuilt = [row("0", .user, "yes"), row("1", .assistant, "Done"), row("2", .user, "yes"), row("3", .assistant, "Done"), row("4", .user, "yes")]
         XCTAssertEqual(
             AppState.keepingRowIDs(from: previous, in: rebuilt, durableIDs: []).map(\.id),
-            ["a", "b", "c", "d", "4"]
+            ["0", "1", "2", "3", "4"]
         )
-        // A tail shown, the whole chat rebuilt: the older "continue" stays new.
+        // A tail shown, the whole chat rebuilt: "Done" pairs, the repeated
+        // "continue" doesn't.
         let tail = [row("x", .assistant, "Done"), row("900", .user, "continue")]
         let whole = [row("0", .user, "continue"), row("1", .assistant, "Earlier"), row("2", .assistant, "Done"), row("3", .user, "continue")]
         XCTAssertEqual(
             AppState.keepingRowIDs(from: tail, in: whole, durableIDs: []).map(\.id),
-            ["0", "1", "x", "900"]
+            ["0", "1", "x", "3"]
         )
-        // One repeated message shown, several rebuilt: the newest takes its id.
+        // One copy shown, two rebuilt (a stored page behind the resume): the
+        // shown id goes to neither, so the new copy never takes the old one's.
         XCTAssertEqual(
             AppState.keepingRowIDs(
                 from: [row("900", .user, "continue")],
                 in: [row("0", .user, "continue"), row("1", .assistant, "On it"), row("2", .user, "continue")],
                 durableIDs: []
             ).map(\.id),
-            ["0", "1", "900"]
+            ["0", "1", "2"]
         )
         // Rows that differ between matching ones leave those matching.
         XCTAssertEqual(
