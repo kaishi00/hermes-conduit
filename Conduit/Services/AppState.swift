@@ -14086,6 +14086,9 @@ final class AppState: ObservableObject {
         widgetLease: WidgetLaunchLease? = nil
     ) async {
         guard widgetLease?.isCurrent != false else { return }
+        // Early reads its connect didn't take (or that a restore given up
+        // left) end with it.
+        defer { startupReads.clear() }
         do {
             let ticket = try await mintChatResumeTicket(for: HermesConnection(baseUrl: baseURL, ticket: ""))
             // A dashboard switch made meanwhile owns the flow.
@@ -15401,6 +15404,9 @@ final class AppState: ObservableObject {
     /// sign-in screen, while any other connect failure schedules a reconnect.
     private func restoreSavedConnection(_ saved: HermesConnection, switchGeneration: UInt64? = nil, widgetLease: WidgetLaunchLease? = nil) async {
         guard widgetLease?.isCurrent != false else { return }
+        // Early reads its connect didn't take (or that a restore given up
+        // left) end with it.
+        defer { startupReads.clear() }
         if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
             return
         }
@@ -19639,7 +19645,8 @@ final class AppState: ObservableObject {
         }
         prepareDashboardBridge(for: connection.baseUrl)
         guard let dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        sendStartupReads(profile: profile ?? activeProfile)
+        // A switch never reads the profile list, so it doesn't send it.
+        sendStartupReads(profile: profile ?? activeProfile, includingProfiles: profile == nil)
         let startedAt = Date()
         let signposter = ResponsivenessSignposts.signposter
         let minting = signposter.beginInterval("Ticket mint", id: signposter.makeSignpostID())
@@ -33753,12 +33760,12 @@ final class AppState: ObservableObject {
     /// its session; never through the page.
     let startupReads = StartupReads()
 
-    func sendStartupReads(profile: String) {
+    func sendStartupReads(profile: String, includingProfiles: Bool = true) {
         guard let bridge = dashboardTicketBridge,
               bridge.readsWithoutThePageFirst || bridge.usesNativeOAuth else { return }
         let chatList = profileSessionsPath(profile)
         startupReads.send(
-            ["/api/profiles", chatList, dashboardPath("/api/config", profile: profile)],
+            (includingProfiles ? ["/api/profiles"] : []) + [chatList, dashboardPath("/api/config", profile: profile)],
             through: bridge,
             fence: { path in self.startupReadFence(for: bridge, chatList: path == chatList) }
         )
