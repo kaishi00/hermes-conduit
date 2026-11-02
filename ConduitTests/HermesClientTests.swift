@@ -1931,6 +1931,36 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testAuthorityResendAfterAnUnansweredSendKeepsItsSubmissionID() async throws {
+        let (client, socket) = try await authorityClient()
+        socket.failsNextSend = URLError(.networkConnectionLost)
+        do {
+            _ = try await client.sendPrompt("sess-resend", text: "Book it")
+            XCTFail("A send the socket dropped throws")
+        } catch {}
+        let dropped = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        let firstID = try XCTUnwrap((dropped["params"] as? [String: Any])?["submission_id"] as? String)
+
+        // The same words again: the same admission, if Hermes took the first.
+        var count = socket.sentTexts.count
+        let again = Task<PromptSubmissionOutcome, Error> { try await client.sendPrompt("sess-resend", text: "Book it") }
+        let resent = try await answerRequest(on: socket, after: count, method: "prompt.submit",
+                                             result: ["status": "queued", "sequence": 1])
+        XCTAssertEqual(resent["submission_id"] as? String, firstID)
+        _ = try await awaitResult(of: again, "the resend")
+
+        // Answered: the next send of the same words is a new message.
+        count = socket.sentTexts.count
+        let next = Task<PromptSubmissionOutcome, Error> { try await client.sendPrompt("sess-resend", text: "Book it") }
+        let fresh = try await answerRequest(on: socket, after: count, method: "prompt.submit",
+                                            result: ["status": "queued", "sequence": 2])
+        XCTAssertNotEqual(fresh["submission_id"] as? String, firstID)
+        _ = try await awaitResult(of: next, "the next send")
+        client.disconnect()
+    }
+
     func testAuthorityBotChatCreateKeepsHiddenAndFollowsTheProfile() async throws {
         // Probed on the canary (notifier upstream test_bot_chat_create_and_redirect_in_conduits_shapes):
         // the authority's create takes hidden and follow_profile_config.

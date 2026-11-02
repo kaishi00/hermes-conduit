@@ -3250,11 +3250,15 @@ final class HermesClient: ObservableObject {
             guard !gatewayRefusesQueued else { throw QueueUnsupportedError() }
             params["queued"] = true
         }
-        // The authority admits a prompt by its own id, one per call: this
-        // call's own resends (a refused key, a reshape) reuse it, so one
-        // Hermes already admitted is that admission again, never a second
-        // copy. A send the user makes again is a new call with a new id.
-        let submissionID = UUID().uuidString.lowercased()
+        // The authority admits a prompt by its own id: this call's own
+        // resends (a refused key, a reshape) reuse it, and so does the
+        // user's next send of the same words in that chat after one whose
+        // reply never came back, so one Hermes already admitted is that
+        // admission again, never a second copy. Any other send is new.
+        let unanswered = Self.unansweredSubmissions[sessionId]
+        let submissionID = unanswered?.text == text && !hidden
+            ? unanswered!.id : UUID().uuidString.lowercased()
+        if !hidden { Self.unansweredSubmissions[sessionId] = (text: text, id: submissionID) }
         // The chat's staged images go with its next message, as the
         // dashboard sends its own held ones; a hidden turn isn't the
         // user's message.
@@ -3294,9 +3298,18 @@ final class HermesClient: ObservableObject {
                 // the user's own message.
                 gatewayRefusesHiddenPrompts = true
                 throw HiddenPromptUnsupportedError()
+            } catch let error as RpcError {
+                // Refused: Hermes admitted nothing under that id.
+                if !hidden, Self.unansweredSubmissions[sessionId]?.id == submissionID {
+                    Self.unansweredSubmissions.removeValue(forKey: sessionId)
+                }
+                throw error
             }
         }
         let result = answer ?? AnyCodable.null
+        if !hidden, Self.unansweredSubmissions[sessionId]?.id == submissionID {
+            Self.unansweredSubmissions.removeValue(forKey: sessionId)
+        }
         // Read by the server that answered: a send built before the ready was
         // read but taken by the authority is still its admission receipt.
         if sentToAuthority || speaksSessionAuthority {
@@ -4257,6 +4270,10 @@ final class HermesClient: ObservableObject {
     /// `prompt.submit`'s `attachments` names them. Shared by every client,
     /// like the dashboard's own list, so a reconnect between staging and
     /// sending keeps them.
+    /// Per chat, the last send whose reply never came back (a timeout, a
+    /// dropped socket) or that hasn't answered yet: its words and the
+    /// `submission_id` it went with. A refusal or a receipt clears it.
+    @MainActor private static var unansweredSubmissions: [String: (text: String, id: String)] = [:]
     @MainActor private static var authorityStagedImages: [String: [[String: String]]] = [:]
 
     /// Takes back an image staged with `attachImage` before any prompt
