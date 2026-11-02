@@ -286,11 +286,16 @@ struct ConnectorKeysSection: View {
     let name: String
     let fields: [ConnectorCatalogEntry.EnvField]
     let store: CapabilitiesStore
-    /// A server turned off isn't tested (a test starts it on the host).
-    let testsAfterSave: Bool
     @State private var drafts: [String: String] = [:]
     @State private var saving = false
     @State private var note: String?
+
+    /// Whether a save tests the server: only while it's on as the save
+    /// ends, read then, since it may have been turned on or off meanwhile
+    /// (a test starts it on the host).
+    static func testsAfterSave(_ name: String, in servers: [ConnectorServer]) -> Bool {
+        servers.first { $0.name == name }?.enabled == true
+    }
 
     /// The keys a catalog entry signs in with, or nil when it takes none
     /// (an OAuth server signs in instead).
@@ -360,10 +365,7 @@ struct ConnectorKeysSection: View {
                 drafts = [:]
                 note = AppLocalization.string("Key saved")
                 Haptics.success()
-                // Read again: the server may have been turned off meanwhile.
-                if testsAfterSave, store.servers.first(where: { $0.name == name })?.enabled == true {
-                    await store.probe(name)
-                }
+                if Self.testsAfterSave(name, in: store.servers) { await store.probe(name) }
             } catch {
                 guard store.generation == generation else { return }
                 note = UserFacingError.message(for: error)
@@ -447,7 +449,7 @@ struct ConnectorDetailPage: View {
                     }
                 }
                 if !server.isFromPlugin, let entry = catalogEntry, let fields = ConnectorKeysSection.fields(entry) {
-                    ConnectorKeysSection(name: name, fields: fields, store: store, testsAfterSave: server.enabled)
+                    ConnectorKeysSection(name: name, fields: fields, store: store)
                 }
                 toolsSection(server, state: state)
                 if !server.isFromPlugin {

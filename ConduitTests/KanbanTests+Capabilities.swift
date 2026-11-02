@@ -526,6 +526,13 @@ extension KanbanTests {
         XCTAssertEqual(writes.first?.body?["key"] as? String, "LINEAR_API_KEY")
         XCTAssertEqual(writes.first?.body?["value"] as? String, "lin-key")
         XCTAssertEqual(writes.first?.body?["profile"] as? String, "work")
+
+        // A save tests the server only if it's on as the save ends.
+        XCTAssertTrue(ConnectorKeysSection.testsAfterSave("linear", in: store.servers))
+        var turnedOff = store.servers
+        turnedOff[0].enabled = false
+        XCTAssertFalse(ConnectorKeysSection.testsAfterSave("linear", in: turnedOff), "turned off meanwhile")
+        XCTAssertFalse(ConnectorKeysSection.testsAfterSave("gone", in: store.servers))
     }
 
     /// A switch to another profile between two keys stops the save: the
