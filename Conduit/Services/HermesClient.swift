@@ -3324,6 +3324,9 @@ final class HermesClient: ObservableObject {
     func cancel(_ sessionId: String, profile: String? = nil) async throws {
         // Nil: no turn is running, so there is nothing to stop.
         _ = try await turnControl("session.interrupt", sessionId: sessionId, profile: profile)
+        // Stopped: a send now starts a turn of its own, even if the stopped
+        // turn's end never reaches this socket.
+        authorityRunningSessions.remove(sessionId)
     }
 
     /// A steer, redirect or interrupt of the running turn. The authority
@@ -3419,7 +3422,9 @@ final class HermesClient: ObservableObject {
         sessionId: String? = nil,
         profile: String? = nil
     ) async throws -> ClarifyResponseOutcome {
-        if isServerRequestID(requestId) {
+        // A prompt the authority asked is answered there, even if a resume
+        // also listed its id among `open_requests`.
+        if isServerRequestID(requestId), authorityPrompts[requestId] == nil {
             return try await respondToClarifyServerRequest(
                 requestId: requestId,
                 answer: answer,
