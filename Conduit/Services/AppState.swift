@@ -19398,6 +19398,8 @@ final class AppState: ObservableObject {
             return true
         }
         defer {
+            // Its early reads are its own steps', as connect's are.
+            startupReads.clear()
             finishAutomaticReconnectOperation(
                 id: automaticOperationID,
                 restoringBaseline: !handedOffAutomaticIntent
@@ -31933,6 +31935,9 @@ final class AppState: ObservableObject {
         let signposter = ResponsivenessSignposts.signposter
         let switching = signposter.beginInterval("Profile switch", id: signposter.makeSignpostID())
         defer { signposter.endInterval("Profile switch", switching) }
+        // The early reads the switch's ticket sent are its own steps'; what
+        // they didn't take is dropped when it ends, as connect's are.
+        defer { startupReads.clear() }
         let target = profile.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !target.isEmpty, target != activeProfile, let savedConnection = connection else {
             return false
