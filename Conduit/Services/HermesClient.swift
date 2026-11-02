@@ -2254,7 +2254,10 @@ final class HermesClient: ObservableObject {
                        askingGeneration: Self.exactIntValue(event["execution_generation"]))
         case "message.start":
             authorityRunningSessions.insert(sessionId)
-        case "message.complete", "error":
+        case "message.complete":
+            // The authority ends every turn with it, a failed one included
+            // (its error card rides on it, run_turn_runner); it sends no
+            // turn-ending `error` event.
             authorityRunningSessions.remove(sessionId)
         default:
             break
