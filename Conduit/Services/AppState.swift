@@ -38811,6 +38811,11 @@ final class AppState: ObservableObject {
         dashboardTicketBridge = bridge
     }
 
+    /// Test-only: the connection's display settings read.
+    func loadProfileDisplayPreferencesForTesting() async {
+        await loadProfileDisplayPreferences()
+    }
+
     /// Test-only: what the host's notifier plugin reported serving.
     func setNotifierPluginStateForTesting(_ state: NotifierPluginStatus.State) {
         notifierPlugin.state = state
