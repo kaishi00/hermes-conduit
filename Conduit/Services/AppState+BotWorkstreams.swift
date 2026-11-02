@@ -253,6 +253,11 @@ extension AppState {
         }
         let words = request.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !words.isEmpty else { return "There were no words to pass on." }
+        // Another action on it is on its way (a Stop or Reply from the Work
+        // panel): nothing was sent, so a retry can't send it twice.
+        guard !botWork.isActing(item.ref, profile: profile) else {
+            return "This workstream is busy with another action, so that wasn't passed on yet. Say so, and offer to try again in a moment."
+        }
         guard await actOnWorkstream(item, profile: profile, action: .send, text: words) else {
             return "Hermes couldn't pass that to this workstream just now. Say so, and offer to try again."
         }
