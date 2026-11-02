@@ -7,7 +7,7 @@ final class NativeMCPSignInTests: XCTestCase {
     private func started(redirect: String = "http://127.0.0.1:45678/callback") -> AnyCodable {
         var url = URLComponents(string: "https://provider.example/authorize")!
         url.queryItems = [URLQueryItem(name: "redirect_uri", value: redirect), URLQueryItem(name: "state", value: "expected")]
-        return AnyCodable(["session_id": "flow", "auth_url": url.url!.absoluteString])
+        return AnyCodable(jsonObject: ["session_id": "flow", "auth_url": url.url!.absoluteString])
     }
 
     private func loopback(stopped: @escaping () -> Void = {}) -> NativeMCPSignIn.Loopback {
@@ -36,9 +36,9 @@ final class NativeMCPSignInTests: XCTestCase {
                     XCTAssertEqual(params["state"] as? String, "expected")
                     XCTAssertEqual(params["code"] as? String, "test-code")
                     XCTAssertEqual(params["iss"] as? String, "https://provider.example")
-                    return AnyCodable(["ok": true])
-                case "poll": return AnyCodable(["status": "approved"])
-                default: XCTFail("Approved flow must not be cancelled"); return AnyCodable([:])
+                    return AnyCodable(jsonObject: ["ok": true])
+                case "poll": return AnyCodable(jsonObject: ["status": "approved"])
+                default: XCTFail("Approved flow must not be cancelled"); return AnyCodable(jsonObject: [:])
                 }
             }, isCurrent: { true }, open: { _ in opened = true }, loopback: loopback(stopped: { stopped = true })
         )
@@ -57,7 +57,7 @@ final class NativeMCPSignInTests: XCTestCase {
                 XCTAssertEqual(params["profile"] as? String, "original")
                 XCTAssertEqual(params["session_id"] as? String, "flow")
                 cancelled.fulfill()
-                return AnyCodable(["ok": true])
+                return AnyCodable(jsonObject: ["ok": true])
             }, isCurrent: { true }, open: { _ in XCTFail("Wrong redirect must not open") },
             loopback: loopback(stopped: { stopped = true })
         )
@@ -75,10 +75,10 @@ final class NativeMCPSignInTests: XCTestCase {
                 profile: "original", name: "server", rpc: { action, params in
                     actions.append(action)
                     XCTAssertEqual(params["profile"] as? String, "original")
-                    if action == "cancel" { cancelled.fulfill(); return AnyCodable(["ok": true]) }
+                    if action == "cancel" { cancelled.fulfill(); return AnyCodable(jsonObject: ["ok": true]) }
                     if action == switchedAt { current = false }
                     if action == "start" { return self.started() }
-                    return AnyCodable(["ok": true, "status": "approved"])
+                    return AnyCodable(jsonObject: ["ok": true, "status": "approved"])
                 }, isCurrent: { current }, open: { _ in
                     XCTAssertNotEqual(switchedAt, "start", "A late start must not open Safari")
                 }, loopback: loopback()
@@ -101,7 +101,7 @@ final class NativeMCPSignInTests: XCTestCase {
                 if action == "cancel" {
                     XCTAssertEqual(params["session_id"] as? String, "flow")
                     cancelled.fulfill()
-                    return AnyCodable(["ok": true])
+                    return AnyCodable(jsonObject: ["ok": true])
                 }
                 XCTAssertEqual(action, "start")
                 await withCheckedContinuation { reply = $0; starting.fulfill() }
@@ -128,9 +128,9 @@ final class NativeMCPSignInTests: XCTestCase {
             let outcome = await NativeMCPSignIn.run(profile: "original", name: "server", rpc: { action, _ in
                 switch action {
                 case "start": return self.started()
-                case "callback": return AnyCodable(["ok": false, "error_message": "Access denied"])
-                case "cancel": cancelled.fulfill(); return AnyCodable(["ok": true])
-                default: XCTFail("Failed callback must not poll"); return AnyCodable([:])
+                case "callback": return AnyCodable(jsonObject: ["ok": false, "error_message": "Access denied"])
+                case "cancel": cancelled.fulfill(); return AnyCodable(jsonObject: ["ok": true])
+                default: XCTFail("Failed callback must not poll"); return AnyCodable(jsonObject: [:])
                 }
             }, isCurrent: { true }, open: { _ in }, loopback: NativeMCPSignIn.Loopback(
                 start: { 45678 }, expect: { _ in }, callback: {
@@ -153,13 +153,13 @@ final class NativeMCPSignInTests: XCTestCase {
             let outcome = await NativeMCPSignIn.run(profile: "original", name: "server", rpc: { action, _ in
                 switch action {
                 case "start": return self.started()
-                case "callback": return AnyCodable(["ok": true])
+                case "callback": return AnyCodable(jsonObject: ["ok": true])
                 case "poll":
                     polls += 1
                     if polls <= failuresBeforeAnswer { throw URLError(.timedOut) }
-                    return AnyCodable(["status": "approved"])
-                case "cancel": cancelled?.fulfill(); return AnyCodable(["ok": true])
-                default: XCTFail("Unexpected \(action)"); return AnyCodable([:])
+                    return AnyCodable(jsonObject: ["status": "approved"])
+                case "cancel": cancelled?.fulfill(); return AnyCodable(jsonObject: ["ok": true])
+                default: XCTFail("Unexpected \(action)"); return AnyCodable(jsonObject: [:])
                 }
             }, isCurrent: { true }, open: { _ in }, loopback: loopback())
             if failuresBeforeAnswer < BotMcpSetup.pollFailureLimit {
@@ -183,9 +183,9 @@ final class NativeMCPSignInTests: XCTestCase {
             case "callback":
                 XCTAssertEqual(params["code"] as? String, "test-code")
                 XCTAssertEqual(params["state"] as? String, "expected")
-                return AnyCodable(["ok": true])
-            case "poll": return AnyCodable(["status": "approved"])
-            default: XCTFail("Unexpected cancel"); return AnyCodable([:])
+                return AnyCodable(jsonObject: ["ok": true])
+            case "poll": return AnyCodable(jsonObject: ["status": "approved"])
+            default: XCTFail("Unexpected cancel"); return AnyCodable(jsonObject: [:])
             }
         }, isCurrent: { true }, open: { url in
             guard let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
@@ -219,7 +219,7 @@ final class NativeMCPSignInTests: XCTestCase {
         var stopped = false
         let task = Task {
             await NativeMCPSignIn.run(profile: "original", name: "server", rpc: { action, _ in
-                if action == "cancel" { cancelled.fulfill(); return AnyCodable(["ok": true]) }
+                if action == "cancel" { cancelled.fulfill(); return AnyCodable(jsonObject: ["ok": true]) }
                 XCTAssertEqual(action, "start")
                 return self.started()
             }, isCurrent: { true }, open: { _ in }, loopback: NativeMCPSignIn.Loopback(
