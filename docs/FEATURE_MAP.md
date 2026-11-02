@@ -3140,7 +3140,7 @@ into the composer" (done) · Watch and CarPlay (not needed, no composer
 dictation)
 
 **Code**
-- Store and retry policy: `Conduit/Voice/DictationClipStore.swift` (DictationClipStore, DictationUploadRetry; its isTransient also decides which reconnect renewals retry quietly, see Reconnecting to Hermes)
+- Store and retry policy: `Conduit/Voice/DictationClipStore.swift` (DictationClipStore, DictationUploadRetry; its isTransient also decides which reconnect renewals retry quietly, see Reconnecting to Hermes, and which Predictive follow-up checks are asked again, see Predictions)
 - What the composer offers: `Conduit/Voice/DictationClipInbox.swift` (keep, release, delivered, retry; AppState.restoreRetriedDictation)
 - The recognizer: `Conduit/Voice/DictationRecognizers.swift` (HermesDictationRecognizer keepRecording, upload, cancel, deliver)
 - Wiring: `Conduit/Voice/ComposerDictationService.swift` (clipInbox, makeRecognizer clips), `Conduit/ConduitApp.swift` (load at launch), `Conduit/Services/AppState+PendingSend.swift` (ComposerRestoreRequest.dictationClipID)
@@ -3159,7 +3159,7 @@ dictation)
 - A recording is written when the dictation stops, not while it runs: Conduit ending mid-dictation still loses it.
 - Recordings over about 9 minutes exceed the host's 25 MB transcription limit once base64-encoded, so their upload and Retry fail the same way.
 
-**Checked:** 2026-11-01, #1628 (its retry rule also decides which reconnect renewals retry quietly, so a change to it reaches Reconnecting to Hermes); 2026-10-27, at #1385.
+**Checked:** 2026-11-02, #1672 (its retry rule also decides which Predictive follow-up checks are asked again; Code); 2026-11-01, #1628 (its retry rule also decides which reconnect renewals retry quietly, so a change to it reaches Reconnecting to Hermes); 2026-10-27, at #1385.
 
 ## Chats top bar and search
 
@@ -4205,7 +4205,7 @@ Helper models (the fast model is the Conduit predictions slot)
 
 **Code**
 - Model and store: `Conduit/Services/Predictive.swift` (Predictive, PredictiveStore, PredictiveComposerRequest, PredictiveFollowUpState)
-- Asking and the follow-up clock: `Conduit/Services/AppState+Predictive.swift`, fed by `Conduit/Services/AppState+ChatOnScreen.swift` (updateChatOnScreen) and the settled, failed or interrupted turn in `Conduit/Services/AppState.swift`; cleared when the open dashboard signs out, is removed or connects to a different server by forgetPredictiveState in `Conduit/Services/AppState.swift` (wipeOfflineChatCache, prepareChatResumeForConnection; predictiveGeneration drops answers asked before it), and a follow-up's wait by every connect, same server included (prepareChatResumeForConnection, reconnectForRetry, stopWaitingForPredictiveFollowUp); another client's message (noteUserMessageElsewhere) is noted for the wait
+- Asking and the follow-up clock: `Conduit/Services/AppState+Predictive.swift` (which failed checks are asked again: DictationUploadRetry.isTransient in `Conduit/Voice/DictationClipStore.swift`, shared with dictation uploads and reconnect renewals), fed by `Conduit/Services/AppState+ChatOnScreen.swift` (updateChatOnScreen) and the settled, failed or interrupted turn in `Conduit/Services/AppState.swift`; cleared when the open dashboard signs out, is removed or connects to a different server by forgetPredictiveState in `Conduit/Services/AppState.swift` (wipeOfflineChatCache, prepareChatResumeForConnection; predictiveGeneration drops answers asked before it), and a follow-up's wait by every connect, same server included (prepareChatResumeForConnection, reconnectForRetry, stopWaitingForPredictiveFollowUp); another client's message (noteUserMessageElsewhere) is noted for the wait
 - The hidden turn: `Conduit/Services/HermesClient.swift` (sendPrompt, `hidden`; a gateway refusing `display_kind` is remembered and gets no more follow-ups)
 - Row and tag: `Conduit/Views/Components/PredictiveRow.swift`, placed in `Conduit/Views/ChatView.swift` (bottomBar, MessageBubble), its reasons in `Conduit/Views/ChatRowState.swift`
 - Composer: `Conduit/Views/Components/ComposerBar.swift` (applyPredictiveRequest, predictiveDraftChanged), `Conduit/Views/Components/ComposerUpdates.swift`
@@ -4220,7 +4220,7 @@ Helper models (the fast model is the Conduit predictions slot)
 - A chip that sends shows its whole message, never cut short with an ellipsis: past about 250 pt it wraps onto more lines, and the row grows with it, so reply chips are rounded rectangles rather than capsules. A guess over 200 characters is dropped, never shortened. Continuations, which only add to the draft, stay one line (Michel, #1431; accepted by Eric 2026-10-28, #1455).
 - Suggested replies are asked once per reply, when it settles on screen or its chat is opened. A draft is asked about after the chosen pause, once per draft, and its answer counts for 4 s; typing folds the row to a ✦ button (2026-10-25, #1242).
 - Hermes follows up only while the chat is on screen, settled and unwritten: first check after the chosen wait, then when Hermes asks (held to 30 s–15 min), at most 4 checks per reply, and at most one hidden turn per message the user sends. Conduit measures every duration and sends it (2026-10-25, Michel, #1242).
-- A check the host can't answer for a while (a guess for the chat still running, 429; too many on the host, 503; too slow, 504; another 5xx, a timeout, no connection) is asked again 30 s later, within the reply's 4 checks; one that won't change for the reply (the chat closed on the host, 404; a bad request; a sign-in) ends its checks. Guesses aren't asked again: Refresh is there for them (2026-11-02, #1672, issue #1669).
+- A check the host can't answer for a while (a guess for the chat still running, 429; too many on the host, 503; too slow, 504; another 5xx but 501, a 408, a timeout, no connection, the dashboard still connecting or switched meanwhile: DictationUploadRetry.isTransient) is asked again 30 s later, within the reply's 4 checks; a check comes no sooner than the chosen wait from when the chat was last idle again (written in, or back on screen), even one Hermes or a busy host set sooner; one that won't change for the reply (the chat closed on the host, 404; a bad request; a sign-in) ends its checks. Guesses aren't asked again: Refresh is there for them (2026-11-02, #1672, issue #1669).
 - On screen means not covered by the sidebar or a room, with Conduit in front. A paused draft's question and a follow-up's hidden turn check it again just before they are sent (2026-10-26, #1281).
 - A follow-up's reply holds the chat on screen for pushes even when nobody touched the phone in the last two minutes (2026-10-25, #1242).
 - A guess never notifies: `/predict`'s fork runs under the chat's session id, and the plugin keeps its turn from sending a push or moving the Live Activity on a Hermes that runs plugin hooks for forks (2026-10-29, Michel, #1495 carrying #1489, notifier #464 carrying #462; see Notifications).

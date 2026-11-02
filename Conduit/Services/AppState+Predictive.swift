@@ -316,14 +316,21 @@ extension AppState {
               // A follow-up still waiting its turn here: another can't be
               // told from it.
               predictiveFollowUpTurn?.sessionID != anchor.sessionID else { return }
-        let due = predictiveFollowUp.nextCheck
-            ?? predictiveFollowUp.idleSince.addingTimeInterval(TimeInterval(Predictive.followUpDelay()))
+        let due = predictiveFollowUpDue
         predictiveFollowUpTask?.cancel()
         predictiveFollowUpTask = Task { [weak self] in
             let wait = max(0, due.timeIntervalSinceNow)
             do { try await Task.sleep(for: .seconds(wait)) } catch { return }
             await self?.checkPredictiveFollowUp(for: anchor)
         }
+    }
+
+    /// When the next check is due: the chosen wait from when the chat was
+    /// last idle again, or the time Hermes (or a busy host) set, whichever is
+    /// later, so writing or coming back meanwhile starts the wait over.
+    var predictiveFollowUpDue: Date {
+        let idleDue = predictiveFollowUp.idleSince.addingTimeInterval(TimeInterval(Predictive.followUpDelay()))
+        return predictiveFollowUp.nextCheck.map { max($0, idleDue) } ?? idleDue
     }
 
     func stopPredictiveFollowUpClock() {

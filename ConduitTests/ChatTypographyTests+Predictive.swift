@@ -266,6 +266,19 @@ extension ChatTypographyTests {
             XCTAssertNotNil(state.predictiveFollowUpTask, "the next check is on the clock: \(error)")
             state.stopPredictiveFollowUpClock()
         }
+        // Writing meanwhile starts the idle time over: the retry waits the
+        // chosen time from when the composer is empty again.
+        state.predictiveSender = { _ in throw DashboardTicketBridgeError.http(status: 429, detail: "") }
+        state.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor)
+        await state.checkPredictiveFollowUp(for: anchor)
+        XCTAssertNotNil(state.predictiveFollowUp.nextCheck)
+        state.predictiveDraftChanged("Actually")
+        state.predictiveDraftChanged("")
+        XCTAssertFalse(state.predictiveFollowUp.stopped)
+        XCTAssertGreaterThan(TimeInterval(Predictive.followUpDelay()), TimeInterval(Predictive.askAgainRange.lowerBound))
+        XCTAssertEqual(state.predictiveFollowUpDue.timeIntervalSinceNow, TimeInterval(Predictive.followUpDelay()),
+                       accuracy: 5, "the chosen wait applies again, not the sooner retry")
+        state.stopPredictiveFollowUpClock()
         // The reply's last check isn't followed by another.
         state.predictiveSender = { _ in throw DashboardTicketBridgeError.http(status: 429, detail: "") }
         state.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor, checks: Predictive.maximumChecks - 1)
