@@ -394,8 +394,8 @@ caught. `SmokeSelectionTests` asserts they never enter the smoke set, and
 
 ### Cost
 
-CI v5: one macOS job per PR run or push run (one build, one boot, two test
-invocations, plus a UI retry when needed), against CI v4's three (each with
+CI v5: one macOS job per PR run or push run (one build, one boot, and the
+unit invocation; a push adds the UI invocation and its retry when needed), against CI v4's three (each with
 its own build and boot, ~18 minutes of wall clock per run). The full unit
 suite's macOS minutes moved to the nightly run, which spends them once a day
 instead of on every push.
