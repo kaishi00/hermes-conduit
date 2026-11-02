@@ -295,6 +295,19 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(lostFake.kept.last?.2, "check the router")
     }
 
+    /// Bot workstreams M5: a call's job stopped from its bot's Work panel
+    /// (the plugin interrupted it) is cancelled for the call, not finished.
+    func testAJobStoppedFromTheWorkPanelIsCancelledNotFinished() async {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check why my server went down"))
+        _ = await supervisor.performVoiceCommand(.start(instructions: "summarize today's email"))
+        XCTAssertFalse(supervisor.stoppedFromWorkPanel(sessionID: "st-unknown"))
+        XCTAssertTrue(supervisor.stoppedFromWorkPanel(sessionID: "st-1"))
+        XCTAssertTrue(fake.cancelled.isEmpty, "the plugin already interrupted it")
+        XCTAssertFalse(supervisor.backgroundJobs.contains { $0.owns(sessionID: "st-1") && $0.status != .cancelled })
+        XCTAssertEqual(supervisor.backgroundJobs.filter { $0.status.isActive }.count, 1, "the other job runs on")
+    }
+
     func testJobsStartedInALiveCallAreAnchoredToItsTranscript() async {
         let (supervisor, _) = makeSupervisor()
         var lines: [VoiceConversationTranscriptEntry]? = nil

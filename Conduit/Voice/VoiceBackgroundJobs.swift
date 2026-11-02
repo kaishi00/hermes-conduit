@@ -2192,6 +2192,29 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         return (summary + failures).joined(separator: " ")
     }
 
+    /// A call's job the user stopped from its bot's Work panel (M5): the
+    /// plugin already interrupted its session, so its running request is
+    /// cancelled here, never left for polling to settle as finished. True
+    /// when one was.
+    @discardableResult
+    func stoppedFromWorkPanel(sessionID: String) -> Bool {
+        let stopped = jobs.filter { $0.status.isActive && $0.owns(sessionID: sessionID)
+            && ($0.isThreadTurn ? $0.threadTurnSubmitted : $0.requestSent) }
+        guard !stopped.isEmpty else { return false }
+        for job in stopped {
+            update(job.id) {
+                $0.status = .cancelled
+                $0.outcomeDelivered = true
+            }
+            callbackJobMayHaveSettled(job.id)
+        }
+        // The chat is free: the call's turns waiting on it go in (#1250).
+        if stopped.contains(where: \.isCallChat) { pumpThreadTurns() }
+        stopPollingIfIdle()
+        pruneSettledJobs()
+        return true
+    }
+
     /// Cancels one active job. Returns what to say, or nil when no active
     /// job has that id.
     func cancel(jobID: UUID) async -> String? {

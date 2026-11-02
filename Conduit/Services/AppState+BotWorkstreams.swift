@@ -338,6 +338,11 @@ extension AppState {
                     botWork.fileResolved(updated, profile: profile)
                 }
             }
+            // A call's job stopped here is stopped for its call too, not
+            // settled as finished when its session goes quiet.
+            if action == .stop, !item.fromCall.isEmpty {
+                voiceBackgroundJobSupervisor.stoppedFromWorkPanel(sessionID: item.sessionID)
+            }
             Haptics.success()
             // The buttons free up now; the list is read again behind them.
             Task { await refreshBotWork(profile: profile, afterAction: true) }
