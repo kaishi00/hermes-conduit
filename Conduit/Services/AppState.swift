@@ -354,6 +354,9 @@ struct SessionCatalogCache {
     private(set) var loadedFullHistoryKeys = Set<String>()
     private(set) var fullHistoryLoadedAt: [String: Date] = [:]
     private(set) var mutationGeneration: UInt64 = 0
+    /// Bumped by every committed listing, so an early chat-list answer
+    /// isn't taken over a newer one another load committed meanwhile.
+    private(set) var commits: UInt64 = 0
 
     func sessions(forKey key: String) -> [SessionSummary] {
         sessionsByKey[key] ?? []
@@ -413,6 +416,7 @@ struct SessionCatalogCache {
         at generation: UInt64
     ) -> Bool {
         guard generation == mutationGeneration else { return false }
+        commits &+= 1
         sessionsByKey[liveKey] = liveSessions
         if let cronSessions {
             sessionsByKey[cronKey] = cronSessions
@@ -31699,7 +31703,7 @@ final class AppState: ObservableObject {
             let response = try await startupReads.read(
                 profileSessionsPath(profile, offset: offset),
                 through: bridge,
-                fence: startupReadFence(for: bridge)
+                fence: startupReadFence(for: bridge, chatList: true)
             )
             let batch = response["sessions"] as? [Any] ?? []
             let normalizedBatch = await dashboardOwnedSessions(batch, profile: profile)
@@ -33747,20 +33751,24 @@ final class AppState: ObservableObject {
     func sendStartupReads(profile: String) {
         guard let bridge = dashboardTicketBridge,
               bridge.readsWithoutThePageFirst || bridge.usesNativeOAuth else { return }
+        let chatList = profileSessionsPath(profile)
         startupReads.send(
-            ["/api/profiles", profileSessionsPath(profile), dashboardPath("/api/config", profile: profile)],
+            ["/api/profiles", chatList, dashboardPath("/api/config", profile: profile)],
             through: bridge,
-            fence: startupReadFence(for: bridge)
+            fence: { path in self.startupReadFence(for: bridge, chatList: path == chatList) }
         )
     }
 
     /// What an early read must still match to be used: no write through the
     /// dashboard, chat list change or display save since it was sent.
-    private func startupReadFence(for bridge: DashboardTicketBridge) -> StartupReads.Fence {
+    /// The chat list's own read also needs no listing committed since: one
+    /// another load committed meanwhile is newer than the early answer.
+    private func startupReadFence(for bridge: DashboardTicketBridge, chatList: Bool = false) -> StartupReads.Fence {
         StartupReads.Fence(
             writes: bridge.writesSent,
             catalog: sessionCatalogCache.mutationGeneration,
-            display: displayPreferencesWriteRevision
+            display: displayPreferencesWriteRevision,
+            listings: chatList ? sessionCatalogCache.commits : 0
         )
     }
 

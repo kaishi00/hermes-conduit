@@ -1186,8 +1186,11 @@ final class DashboardTicketBridge: NSObject {
         let isRead = readsOnly || ["GET", "HEAD"].contains(method.uppercased())
         // Counted when it starts and again when it ends, so a read sent while
         // it was out is never taken for one sent after it (StartupReads).
-        if !isRead { noteWriteSent() }
-        defer { if !isRead { noteWriteSent() } }
+        // A ticket changes nothing a read shows, so it doesn't void the
+        // reads sent with it.
+        let countsAsWrite = !isRead && path != "/api/auth/ws-ticket"
+        if countsAsWrite { noteWriteSent() }
+        defer { if countsAsWrite { noteWriteSent() } }
         if let nativeOAuthSession {
             guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
             return try await nativeOAuthSession.requestJSON(

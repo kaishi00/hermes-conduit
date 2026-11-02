@@ -17,11 +17,13 @@ import Foundation
 final class StartupReads {
     /// What the early answers were read under. A step takes one only while
     /// nothing has changed since it was sent: no write through the
-    /// dashboard, no change to the chat list, no display setting saved.
+    /// dashboard, no chat removed, no display setting saved, and for the
+    /// chat list, no newer listing committed.
     struct Fence: Equatable {
         let writes: Int
         let catalog: UInt64
         let display: Int
+        var listings: UInt64 = 0
     }
 
     /// An answer, carried from the early read to the step that takes it.
@@ -51,6 +53,11 @@ final class StartupReads {
     /// waiting from an earlier connection. The same reads sent through the
     /// same bridge moments ago aren't sent again.
     func send(_ paths: [String], through bridge: DashboardTicketBridge, fence: Fence, now: Date = Date()) {
+        send(paths, through: bridge, fence: { _ in fence }, now: now)
+    }
+
+    /// `send`, with each path's fence of its own.
+    func send(_ paths: [String], through bridge: DashboardTicketBridge, fence: (String) -> Fence, now: Date = Date()) {
         if self.bridge === bridge, let lastSent, lastSent.paths == paths,
            now.timeIntervalSince(lastSent.at) < Self.resendAfter {
             return
@@ -63,7 +70,7 @@ final class StartupReads {
             // load it. One that can't go out without it is sent again by its
             // step, the usual way.
             let task = Task { @MainActor in Answer(json: try await bridge.readWithoutPage(path: path)) }
-            entries[path] = Entry(task: task, fence: fence, sentAt: now)
+            entries[path] = Entry(task: task, fence: fence(path), sentAt: now)
         }
     }
 

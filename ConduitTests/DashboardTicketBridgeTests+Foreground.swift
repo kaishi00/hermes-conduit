@@ -209,6 +209,13 @@ extension DashboardTicketBridgeTests {
         )
         reads.clear()
 
+        reads.send(["/g"], through: held.bridge, fence: { _ in StartupReads.Fence(writes: 0, catalog: 0, display: 0, listings: 0) }, now: sentAt)
+        XCTAssertNil(
+            reads.take("/g", through: held.bridge, fence: StartupReads.Fence(writes: 0, catalog: 0, display: 0, listings: 1), now: sentAt),
+            "a newer chat list committed since"
+        )
+        reads.clear()
+
         reads.send(["/f"], through: held.bridge, fence: fence(), now: sentAt)
         XCTAssertNotNil(reads.take("/f", through: held.bridge, fence: fence(), now: sentAt.addingTimeInterval(1)))
     }
