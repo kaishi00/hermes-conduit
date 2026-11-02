@@ -139,6 +139,7 @@ final class BotWorkStore: ObservableObject {
     }
 
     func beginReading(_ profile: String) -> Bool { reading.insert(profile).inserted }
+    func isReading(_ profile: String) -> Bool { reading.contains(profile) }
     func endReading(_ profile: String) { reading.remove(profile) }
     /// An action asked for a read while one was on its way, which its mark
     /// will drop: the read under way goes again when it's done.
@@ -245,6 +246,14 @@ extension AppState {
             // Its bot's work isn't read yet (just after a launch): read it
             // before the request becomes a job of its own.
             await refreshBotWork(profile: bot)
+        }
+        // A read already under way (the launch's own): its answer, not a
+        // job, decides, for up to five seconds.
+        var waited = 0
+        while botWork.workstream(forSession: ids) == nil, botWork.snapshot(bot) == nil,
+              botWork.isReading(bot), waited < 50 {
+            try? await Task.sleep(for: .milliseconds(100))
+            waited += 1
         }
         guard let (profile, item) = botWork.workstream(forSession: ids) else {
             // A workstream's chat whose row isn't loaded (an older resolved
