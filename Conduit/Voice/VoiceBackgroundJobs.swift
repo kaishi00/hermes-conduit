@@ -355,6 +355,14 @@ struct VoiceBackgroundJobBackend {
     /// The message the user typed for the chat's latest turn, when Conduit
     /// can see it (the chat is open). Nil otherwise.
     var latestThreadPrompt: @MainActor (_ thread: VoiceThreadTarget) -> String? = { _ in nil }
+    /// Whether the attached chat is a bot's Bot Chat, whose coordinator
+    /// reports its workstreams there in turns of its own.
+    var isBotChat: @MainActor (_ thread: VoiceThreadTarget) -> Bool = { _ in false }
+    /// Whether the open chat shows more than one message waiting on its
+    /// reply, so the latest turn's prompt can't be told.
+    var threadAwaitsSeveralPrompts: @MainActor (_ thread: VoiceThreadTarget) -> Bool = { _ in false }
+    /// The chat's transcript when it's open on this device, nil otherwise.
+    var openThreadMessages: @MainActor (_ thread: VoiceThreadTarget) -> [ChatMessage]? = { _ in nil }
     /// The user's earlier chats that match `query`, best first, for a call
     /// asked to find one: on `profile`, or the one in use when nil.
     var searchChats: @MainActor (_ query: String, _ profile: String?) async throws -> [VoiceChatMatch] = { _, _ in
@@ -425,6 +433,10 @@ protocol VoiceBackgroundJobHandling: AnyObject {
     /// Removes and returns the next update the voice conversation should
     /// deliver, or nil when nothing is pending.
     func takePendingNotice() -> VoiceBackgroundJobNotice?
+    /// A turn in Classic's own chat it didn't ask for ended with `reply`
+    /// (already flattened for speech). True when it's a Bot Chat's
+    /// coordinator reporting work, queued to be spoken as a notice.
+    func noteChatReport(_ reply: String, sessionID: String) -> Bool
 }
 
 @MainActor
@@ -1895,6 +1907,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// among them, and any job update.
     func dropPendingNotices() {
         chatNotes.removeAll()
+        workUpdates.removeAll()
+        workUpdatesOut.removeAll()
         callChatPrompts.removeAll()
         // Each take consumes a notice; the cap only guards the loop, far
         // above what the job limits (3 running, 10 settled) can queue.
@@ -1915,6 +1929,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         callChatClaim = nil
         callChatClosedCallID = liveCallID
         chatNotes.removeAll()
+        workUpdates.removeAll()
+        workUpdatesOut.removeAll()
         callChatPrompts.removeAll()
         screenshotNotesHeard.removeAll()
         notedChatTurns.removeAll()
@@ -2373,6 +2389,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         screenCards.removeAll()
         threadTargets.removeAll()
         chatNotes.removeAll()
+        workUpdates.removeAll()
+        workUpdatesOut.removeAll()
         callChatPrompts.removeAll()
         screenshotNotesHeard.removeAll()
         notedChatTurns.removeAll()
@@ -2385,6 +2403,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Only events addressed to a job session change anything.
     func observe(_ event: StreamEvent) {
         guard let sessionID = Self.sessionID(for: event) else { return }
+        if case .messageStart = event { noteTurnStart(sessionID) }
         guard let index = Self.observingIndex(in: jobs, sessionID: sessionID) else {
             noteUnownedChatTurn(event, sessionID: sessionID)
             return
@@ -2522,9 +2541,18 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             guard lastUnidentifiedChatReply != reply else { return }
         }
         rememberChatTurn(messageID, reply: reply)
+        let asked = turnAsked.removeValue(forKey: sessionID) ?? askedFor(thread)
+        // A Bot Chat's turn nobody asked for is its coordinator reporting
+        // work (the plugin's work update): the call speaks it, as it speaks
+        // a job's result (Eric 2026-11-02, "Bot Chat calls only").
+        if asked == .nobody, backend.isBotChat(thread) {
+            lastCallResult = nil
+            queueWorkUpdate(reply)
+            return
+        }
         // A voice request's own text is never passed off as typed.
-        var prompt = backend.latestThreadPrompt(thread)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let typed = prompt, typed.isEmpty || typed.hasPrefix(Self.threadTurnText(for: "")) { prompt = nil }
+        var prompt: String?
+        if case .typed(let typed) = asked { prompt = typed }
         // The chat replied after any job result: a read-back reads the chat.
         lastCallResult = nil
         queueChatNote(ChatNote(text: Self.chatContextPrompt(typed: prompt, reply: reply)))
@@ -2698,6 +2726,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
         defer { pruneSettledJobs() }
         guard let item = takeNotice(withReason: false) else { return nil }
+        workUpdatesOut[item.jobID] = nil
         // Spoken at once: no confirmation follows.
         if let job = job(item.jobID) { noteResultReported(job) }
         return item.notice
@@ -2744,14 +2773,122 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// A notice taken with `takePendingNoticeForJob` went out.
     func noticeSent(jobID: UUID) {
+        workUpdatesOut[jobID] = nil
         guard releaseInFlight(jobID) else { return }
         if let job = job(jobID) { noteResultReported(job) }
         pruneSettledJobs()
     }
 
+    func noteChatReport(_ reply: String, sessionID: String) -> Bool {
+        let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        let thread = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
+        let asked = turnAsked.removeValue(forKey: sessionID) ?? askedFor(thread)
+        guard !text.isEmpty, backend.isBotChat(thread), asked == .nobody else { return false }
+        return queueWorkUpdate(text)
+    }
+
+    /// Who asked for each Bot Chat turn under way, taken when it started:
+    /// by its end, a message typed while it ran (Hermes runs it next) sits
+    /// unanswered in the transcript and would pass for its prompt.
+    private var turnAsked: [String: AskedFor] = [:]
+    /// The last message a Bot Chat's turn took as its prompt, by session:
+    /// its words and which time they were sent ("yes" twice is two prompts).
+    private var lastTakenPrompt: [String: (words: String, occurrence: Int)] = [:]
+
+    /// A Bot Chat turn starts: it answers the first message no earlier turn
+    /// took, or nobody (the plugin's hidden work update). Not open on this
+    /// device: unknown here, and its end falls back to `askedFor`.
+    private func noteTurnStart(_ sessionID: String) {
+        let thread = liveThread.flatMap { backend.threadOwnsSession($0, sessionID) ? $0 : nil }
+            ?? VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
+        guard backend.isBotChat(thread), let messages = backend.openThreadMessages(thread) else {
+            // Turns it can't see may answer what's typed meanwhile: once it
+            // opens again, the transcript's last reply is where it starts.
+            turnAsked[sessionID] = nil
+            lastTakenPrompt[sessionID] = nil
+            return
+        }
+        func words(_ message: ChatMessage) -> String { message.content.trimmingCharacters(in: .whitespacesAndNewlines) }
+        // A steer goes into the turn under way: never a turn's prompt.
+        let prompts = messages.indices.filter { messages[$0].role == .user && !messages[$0].isSteer }
+        func taking(_ index: Int) -> (words: String, occurrence: Int) {
+            let text = words(messages[index])
+            return (text, prompts.filter { $0 <= index && words(messages[$0]) == text }.count)
+        }
+        let firstNew: Int
+        if let taken = lastTakenPrompt[sessionID],
+           let index = prompts.filter({ words(messages[$0]) == taken.words }).dropFirst(taken.occurrence - 1).first {
+            firstNew = index + 1
+        } else {
+            firstNew = messages.lastIndex(where: { $0.role == .assistant }).map { $0 + 1 } ?? messages.startIndex
+        }
+        // Everything above it is taken, whoever this turn answers.
+        if let taken = prompts.last(where: { $0 < firstNew }) { lastTakenPrompt[sessionID] = taking(taken) }
+        guard let next = prompts.first(where: { $0 >= firstNew }) else {
+            turnAsked[sessionID] = .nobody
+            return
+        }
+        let message = messages[next]
+        lastTakenPrompt[sessionID] = taking(next)
+        let prompt = AppState.liveVoiceTypedPrompt(message)
+        turnAsked[sessionID] = prompt.isEmpty ? .unknown
+            : prompt.hasPrefix(Self.threadTurnText(for: "")) ? .voice : .typed(prompt)
+    }
+
+    /// Who asked for the chat's latest turn, from its open transcript: a
+    /// message typed there, a voice request, or nobody (the plugin's hidden
+    /// work-update turn never shows), or not known (several messages wait
+    /// on replies: something typed, so it stays quiet).
+    enum AskedFor: Equatable {
+        case nobody
+        case unknown
+        case voice
+        case typed(String)
+    }
+
+    private func askedFor(_ thread: VoiceThreadTarget) -> AskedFor {
+        guard let prompt = backend.latestThreadPrompt(thread)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !prompt.isEmpty else {
+            return backend.threadAwaitsSeveralPrompts(thread) ? .unknown : .nobody
+        }
+        return prompt.hasPrefix(Self.threadTurnText(for: "")) ? .voice : .typed(prompt)
+    }
+
+    @discardableResult
+    private func queueWorkUpdate(_ reply: String) -> Bool {
+        // Said as is in every mode: links read as their text, emoji and
+        // narrated actions dropped, as Classic speaks them.
+        let reply = SpokenTextFilter.filter(Self.linkTextOnly(reply)).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !reply.isEmpty else { return false }
+        let clipped = reply.count > Self.maximumChatContextReplyCharacters
+            ? String(reply.prefix(Self.maximumChatContextReplyCharacters)) + "…" : reply
+        workUpdates.append((UUID(), clipped))
+        if workUpdates.count > Self.maximumPendingChatContext {
+            workUpdates.removeFirst(workUpdates.count - Self.maximumPendingChatContext)
+        }
+        onNoticePending?()
+        return true
+    }
+
+    /// Markdown links (a work update's `[Open W3](conduit://…)`) as their text.
+    static func linkTextOnly(_ text: String) -> String {
+        text.replacingOccurrences(of: #"\[([^\]\n]+)\]\([^)\s]+\)"#, with: "$1", options: .regularExpression)
+    }
+
+    /// A Bot Chat call's coordinator reports, oldest first, waiting to be
+    /// spoken; and those handed out but not yet sent, so one that never
+    /// reached the user is spoken again.
+    private var workUpdates: [(id: UUID, text: String)] = []
+    private var workUpdatesOut: [UUID: String] = [:]
+
     /// `withReason` adds Hermes' reason to a failure's notice: not for one
     /// spoken as is, where a raw provider error would be read out.
     private func takeNotice(withReason: Bool) -> (notice: VoiceBackgroundJobNotice, jobID: UUID)? {
+        if !workUpdates.isEmpty {
+            let update = workUpdates.removeFirst()
+            workUpdatesOut[update.id] = update.text
+            return (.speak(update.text), update.id)
+        }
         for index in jobs.indices {
             let job = jobs[index]
             // A thread turn its call let go of is never announced, nor the
@@ -2837,6 +2974,15 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// A notice taken with `takePendingNoticeForJob` never reached the user:
     /// make it pending again.
     func returnUndeliveredNotice(jobID: UUID) {
+        if let text = workUpdatesOut.removeValue(forKey: jobID) {
+            releaseInFlight(jobID)
+            workUpdates.insert((jobID, text), at: 0)
+            if workUpdates.count > Self.maximumPendingChatContext {
+                workUpdates.removeFirst(workUpdates.count - Self.maximumPendingChatContext)
+            }
+            noticeMayBePending()
+            return
+        }
         releaseInFlight(jobID)
         update(jobID) { job in
             if job.status == .needsInput {
