@@ -69,6 +69,14 @@ enum PeopleSettingsText {
         return AppLocalization.string("Rooms may let \(profileName) use \(list).")
     }
 
+    /// The MCP servers rooms may let the profile's agent use, or nil with none.
+    static func mcpServers(_ state: RoomSetupState, profileName: String) -> String? {
+        // A chosen one Hermes turned off runs no tools, so Ready doesn't name it.
+        guard !state.mcpServersInUse.isEmpty else { return nil }
+        let list = state.mcpServersInUse.formatted(.list(type: .and).locale(AppLocalization.formattingLocale))
+        return AppLocalization.string("MCP servers too: \(list), in rooms whose Custom choice names their tools.")
+    }
+
     /// Four fingerprint words, as both sides read them out.
     static func words(_ words: [String]) -> String {
         words.joined(separator: " · ")
@@ -642,6 +650,8 @@ struct RoomSetupSection: View {
     @State private var state: RoomSetupState?
     @State private var loadedKey: String?
     @State private var picked: Set<String> = []
+    /// The MCP servers picked, on a plugin that can name them.
+    @State private var pickedServers: Set<String> = []
     @State private var editing = false
     /// A Set up is on its way, for this profile or the one shown before:
     /// one at a time, as the plugin does them.
@@ -762,9 +772,15 @@ struct RoomSetupSection: View {
             Text(verbatim: PeopleSettingsText.tools(state, profileName: profileName))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            if let servers = PeopleSettingsText.mcpServers(state, profileName: profileName) {
+                Text(verbatim: servers)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
             Button(AppLocalization.string("Change")) {
                 Haptics.selection()
                 picked = Set(state.ceiling)
+                pickedServers = Set(state.mcpServers)
                 outcome = nil
                 editing = true
             }
@@ -796,6 +812,7 @@ struct RoomSetupSection: View {
                 if editing {
                     Button(AppLocalization.string("Cancel")) {
                         picked = Set(state.ceiling)
+                        pickedServers = Set(state.mcpServers)
                         editing = false
                     }
                     .buttonStyle(.settings)
@@ -806,10 +823,11 @@ struct RoomSetupSection: View {
                         .controlSize(.small)
                 }
                 Button(editing ? AppLocalization.string("Save") : AppLocalization.string("Set up")) {
-                    if state.changesSavedCeiling(picking: picked) { confirmsChange = true } else { setUp() }
+                    if state.changesSavedCeiling(picking: picked, servers: pickedServers) { confirmsChange = true } else { setUp() }
                 }
                 .buttonStyle(.settingsPrimary)
-                .disabled(working || (editing && picked == Set(state.ceiling)))
+                .disabled(working || (editing && picked == Set(state.ceiling)
+                    && state.mcpServersToSave(picking: pickedServers) == nil))
             }
         }
     }
@@ -842,6 +860,28 @@ struct RoomSetupSection: View {
             Text(AppLocalization.string("Each room's choices work within these. Tools added later, by a plugin, an MCP server or a Hermes update, stay out of rooms until you add them here."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if let servers = state.mcpChoices, !servers.isEmpty {
+                Text(AppLocalization.string("MCP servers rooms may let \(profileName) use"))
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.top, 6)
+                ForEach(servers, id: \.self) { server in
+                    Toggle(isOn: Binding(
+                        get: { pickedServers.contains(server) },
+                        set: { on in
+                            Haptics.selection()
+                            if on { pickedServers.insert(server) } else { pickedServers.remove(server) }
+                        }
+                    )) {
+                        Text(verbatim: server)
+                            .font(.subheadline)
+                    }
+                    .tint(.conduitAccent)
+                    .disabled(working)
+                }
+                Text(AppLocalization.string("Off unless you turn one on. A server's tools then work only in rooms whose Custom choice names them, and its own approvals still apply."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -877,7 +917,10 @@ struct RoomSetupSection: View {
         state = read
         loadedKey = key
         refreshError = nil
-        if first || !editing { picked = Set(read.ceiling) }
+        if first || !editing {
+            picked = Set(read.ceiling)
+            pickedServers = Set(read.mcpServers)
+        }
     }
 
     /// Saves the tools picked when they changed, and sets up whatever else
@@ -886,12 +929,14 @@ struct RoomSetupSection: View {
         guard let state = shown, !working else { return }
         let key = key
         let ceiling = state.ceilingToSave(picking: picked)
+        let servers = state.mcpServersToSave(picking: pickedServers)
         working = true
         outcome = nil
         Task {
             defer { working = false }
             do {
-                let result = try await appState.roomSetupClient.setUp(profile: profile, ceiling: ceiling, interrupt: interrupt)
+                let result = try await appState.roomSetupClient.setUp(profile: profile, ceiling: ceiling, mcpServers: servers,
+                                                                      interrupt: interrupt)
                 guard key == currentKey else { return }
                 Haptics.success()
                 editing = false
