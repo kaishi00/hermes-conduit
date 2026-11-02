@@ -36,6 +36,8 @@ extension HermesClientTests {
         XCTAssertEqual(report.totals.output, 300)
         XCTAssertEqual(report.totals.cacheRead, 50)
         XCTAssertEqual(report.totals.reasoning, 0)
+        // Input, output and cache reads; reasoning is inside output already.
+        XCTAssertEqual(report.totals.allTokens, 2350)
         XCTAssertEqual(report.totals.sessions, 3)
         XCTAssertEqual(report.totals.apiCalls, 7)
         XCTAssertEqual(report.totals.cost, 0.03, accuracy: 0.0001)

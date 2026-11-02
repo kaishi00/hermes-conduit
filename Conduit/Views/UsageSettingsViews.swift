@@ -185,6 +185,7 @@ struct UsageSettingsDetail: View {
                     label: report.costIsEstimate ? AppLocalization.string("Estimated cost") : AppLocalization.string("Cost"),
                     value: money(report.cost)
                 )
+                SettingsMetricRow(label: AppLocalization.string("Total tokens"), value: tokens(report.totals.allTokens))
                 SettingsMetricRow(label: AppLocalization.string("Input"), value: tokens(report.totals.input))
                 SettingsMetricRow(label: AppLocalization.string("Output"), value: tokens(report.totals.output))
                 if report.totals.cacheRead > 0 {
