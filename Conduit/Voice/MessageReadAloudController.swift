@@ -220,9 +220,10 @@ final class MessageReadAloudController: ObservableObject {
         let generation = operationGeneration
         pausedStopTask = Task { [weak self] in
             try? await Task.sleep(for: delay)
+            // Also when the service settled under the pause (a route change
+            // whose engine wouldn't start): the reply can't sound again.
             guard !Task.isCancelled, let self,
-                  self.isCurrent(generation), self.isPaused,
-                  self.playback.isPaused else { return }
+                  self.isCurrent(generation), self.isPaused else { return }
             self.stop()
         }
         return true
