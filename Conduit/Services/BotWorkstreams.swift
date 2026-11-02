@@ -368,8 +368,8 @@ final class BotWorkstreamsClient {
         answers.kept(Self.keptRoute).flatMap { BotWorkSnapshot(response: $0, profile: profile) }
     }
 
-    /// Keeps a voice call's job in the bot's registry (M5), right after the
-    /// job's session was made: the Work panel lists it as a call's. `via`
+    /// Keeps a voice call's job in the bot's registry (M5), once Hermes takes
+    /// the job's request: the Work panel lists it as a call's. `via`
     /// is "phone" or "watch". The row, or nil when the plugin kept none.
     @MainActor
     func adopt(sessionID: String, title: String, via: String, goal: String) async throws -> BotWorkItem? {

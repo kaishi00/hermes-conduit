@@ -251,7 +251,7 @@ extension VoiceConversationControllerTests {
     }
 
     /// Bot workstreams M5: the job is kept in its bot's registry by its
-    /// stored id, before its task goes in; the runtime id when Hermes names no other.
+    /// stored id, once Hermes takes its request; the runtime id when Hermes names no other.
     func testAStartedJobIsKeptInItsBotsWorkRegistry() async {
         let (supervisor, fake) = makeSupervisor()
         _ = await supervisor.performVoiceCommand(.start(instructions: "check why my server went down"))

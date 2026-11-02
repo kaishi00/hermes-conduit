@@ -2039,7 +2039,7 @@ it stays in the chat lists under Voice Jobs and its chat stays a Voice Jobs
 chat (no workstream title, Back or Stop routing), its turns keeping their push and
 Lock Screen progress, the bot's memory and other bots open to it, and after a
 restart always left for the user; `POST /workstreams/adopt` and the
-`work-adopt` capability, which the phone calls after making a job's session · Bots and Tasks
+`work-adopt` capability, which the phone calls once Hermes takes a job's request · Bots and Tasks
 screens (not built)
 
 **Code**
