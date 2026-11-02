@@ -562,10 +562,13 @@ extension KanbanTests {
         // A read that fails tests nothing, even where the list showed it on.
         requester.responses["/api/mcp/servers"] = on
         await store.loadConnectors()
+        await store.probe("linear")
+        XCTAssertNotNil(store.probes["linear"])
         requester.failures["/api/mcp/servers"] = URLError(.timedOut)
         requester.calls.removeAll()
         await store.testAfterKeySave("linear")
         XCTAssertEqual(tests(), 0, "no test on a list that couldn't be read again")
+        XCTAssertNil(store.probes["linear"], "the old key's result isn't kept")
     }
 
     /// A test already running when a key is saved read the old key: it runs
