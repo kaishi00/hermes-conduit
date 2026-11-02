@@ -299,6 +299,9 @@ struct VoiceBackgroundJobBackend {
     /// Watch call's job on the phone.
     var keepInRegistry: @MainActor (_ profile: String?, _ sessionID: String, _ title: String,
                                     _ instructions: String, _ fromWatch: Bool) -> Void = { _, _, _, _, _ in }
+    /// The active profile, read as a job without one is made, so a switch
+    /// while its session is made can't file it under another bot.
+    var activeProfile: @MainActor () -> String? = { nil }
     var submit: @MainActor (_ sessionID: String, _ text: String) async throws -> Void
     var cancel: @MainActor (_ sessionID: String) async throws -> Void
     /// The live runtimes of `profile` (nil: the active profile).
@@ -1422,6 +1425,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         defer { if callChatClaim?.jobID == job.id { callChatClaim = nil } }
         let generation = generation
         var createdSessionID: String?
+        // The bot the job is made on, before the wait for its session.
+        let botProfile = profile ?? backend.activeProfile()
         do {
             let ids = try await backend.createSession(profile, callsModel && profile != nil)
             createdSessionID = ids.runtimeID.isEmpty ? nil : ids.runtimeID
@@ -1436,7 +1441,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 $0.storedSessionID = ids.storedID
             }
             onJobSessionCreated?([runtimeID, ids.storedID].compactMap { $0 }.filter { !$0.isEmpty })
-            backend.keepInRegistry(profile, ids.storedID.flatMap { $0.isEmpty ? nil : $0 } ?? runtimeID,
+            backend.keepInRegistry(botProfile, ids.storedID.flatMap { $0.isEmpty ? nil : $0 } ?? runtimeID,
                                    job.title, instructions, fromWatch)
             await backend.setTitle(runtimeID, job.title)
             guard startIsCurrent(job.id, generation: generation) else {

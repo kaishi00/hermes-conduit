@@ -670,7 +670,7 @@ private struct BotWorkRow: View {
               systemImage: item.fromCall == "watch" ? "applewatch" : "waveform")
             .scaledFont(.caption)
             .foregroundStyle(.secondary)
-            .lineLimit(1)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     /// The branch its own worktree is on, to merge once it's done. The

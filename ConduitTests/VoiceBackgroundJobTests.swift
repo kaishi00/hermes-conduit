@@ -86,6 +86,7 @@ final class FakeVoiceJobBackend {
     private(set) var titles: [(String, String)] = []
     /// Each job kept in its bot's work registry: profile, session, title, whether a Watch call's.
     private(set) var kept: [(String?, String, String, Bool)] = []
+    var activeProfile: String? = "default"
     private(set) var submissions: [(String, String)] = []
     private(set) var cancelled: [String] = []
     /// The attached chat: whether a turn runs there, what was sent to it,
@@ -144,6 +145,7 @@ final class FakeVoiceJobBackend {
             },
             setTitle: { [self] id, title in self.titles.append((id, title)) },
             keepInRegistry: { [self] profile, id, title, _, fromWatch in self.kept.append((profile, id, title, fromWatch)) },
+            activeProfile: { [self] in self.activeProfile },
             submit: { [self] id, text in
                 self.submissions.append((id, text))
                 self.onSubmit?(id)
@@ -254,13 +256,21 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.kept.map(\.1), ["st-1"])
         XCTAssertEqual(fake.kept.first?.2, "check why my server went down")
         XCTAssertEqual(fake.kept.first?.3, false)
-        XCTAssertNil(fake.kept.first?.0 ?? nil)
+        XCTAssertEqual(fake.kept.first?.0, "default")
         fake.storedIDs = false
         _ = await supervisor.performVoiceCommand(.start(instructions: "summarize today's email"))
         XCTAssertEqual(fake.kept.map(\.1), ["st-1", "rt-2"])
         // A Watch call's job is the Watch's, whichever profile it names.
         _ = await supervisor.startJob(instructions: "check the backups", profile: nil, callsModel: false, fromWatch: true)
         XCTAssertEqual(fake.kept.last?.3, true)
+        // The bot it was made on, even if the profile switches while its session is made.
+        fake.parksCreate = true
+        let started = Task { await supervisor.startJob(instructions: "check the disks", profile: nil, callsModel: false, fromWatch: true) }
+        await fake.createParked.waitUntil(1)
+        fake.activeProfile = "nahida"
+        fake.releaseCreate()
+        _ = await started.value
+        XCTAssertEqual(fake.kept.last?.0, "default")
     }
 
     func testJobsStartedInALiveCallAreAnchoredToItsTranscript() async {

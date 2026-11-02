@@ -4626,6 +4626,7 @@ final class AppState: ObservableObject {
                 self?.keepVoiceJobInRegistry(profile: targetProfile, sessionID: sessionID, title: title,
                                              instructions: instructions, fromWatch: fromWatch)
             },
+            activeProfile: { [weak self] in self?.activeProfile },
             submit: { [weak self] sessionID, text in
                 guard let self else { throw HermesError.notConnected }
                 let client = try await self.clientForVoiceRequest()
