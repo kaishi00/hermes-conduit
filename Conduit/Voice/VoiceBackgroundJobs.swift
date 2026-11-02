@@ -2802,7 +2802,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let thread = liveThread.flatMap { backend.threadOwnsSession($0, sessionID) ? $0 : nil }
             ?? VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
         guard backend.isBotChat(thread), let messages = backend.openThreadMessages(thread) else {
+            // Turns it can't see may answer what's typed meanwhile: once it
+            // opens again, the transcript's last reply is where it starts.
             turnAsked[sessionID] = nil
+            lastTakenPrompt[sessionID] = nil
             return
         }
         func words(_ message: ChatMessage) -> String { message.content.trimmingCharacters(in: .whitespacesAndNewlines) }

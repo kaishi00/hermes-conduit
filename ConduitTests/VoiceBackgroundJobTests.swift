@@ -1428,6 +1428,14 @@ extension VoiceConversationControllerTests {
         fake.openMessages?.append(message("a7", .assistant, "Done again."))
         supervisor.observe(.messageStart(sessionId: "rt-chat"))
         XCTAssertTrue(supervisor.noteChatReport("W3: tests pass.", sessionID: "rt-chat"), "then a work update")
+
+        // Closed meanwhile: turns typed elsewhere answered what came after.
+        fake.openMessages = nil
+        supervisor.observe(.messageStart(sessionId: "rt-chat"))
+        fake.openMessages = [message("q1", .user, "yes"), message("a1", .assistant, "Done."),
+                             message("q2", .user, "ship it"), message("a2", .assistant, "Shipped.")]
+        supervisor.observe(.messageStart(sessionId: "rt-chat"))
+        XCTAssertTrue(supervisor.noteChatReport("W4: deployed.", sessionID: "rt-chat"), "reopened: said")
     }
 
     func testAReplayedCompletionIsNotedOnce() {
