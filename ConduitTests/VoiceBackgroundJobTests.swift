@@ -110,6 +110,7 @@ final class FakeVoiceJobBackend {
     private(set) var replyReads: [VoiceThreadTarget] = []
     /// What the user typed for the chat's latest turn, as the open chat shows it.
     var threadPrompt: String?
+    var botChat = false
     private(set) var threadSubmissions: [(String, String)] = []
     /// Follow-ups put into a running turn (#451): what each carried, and
     /// Hermes' answers to the next ones (taken in turn; none left means
@@ -219,7 +220,8 @@ final class FakeVoiceJobBackend {
                 self.onLatestReply?()
                 return self.threadReply
             },
-            latestThreadPrompt: { [self] _ in self.threadPrompt }
+            latestThreadPrompt: { [self] _ in self.threadPrompt },
+            isBotChat: { [self] _ in self.botChat }
         )
     }
 
@@ -1300,6 +1302,40 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(supervisor.pendingChatContext.isEmpty, "an ended call drops what it never heard")
         supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Later.", reasoning: nil))
         XCTAssertTrue(supervisor.pendingChatContext.isEmpty)
+    }
+
+    /// Classic hands a supervisor a Bot Chat turn it didn't ask for.
+    func testTheSupervisorTakesAClassicBotChatReport() {
+        let (supervisor, fake) = makeThreadSupervisor()
+        XCTAssertFalse(supervisor.noteChatReport("Done.", sessionID: "rt-bot"), "not a Bot Chat")
+        fake.botChat = true
+        XCTAssertTrue(supervisor.noteChatReport("  Still 7.6 GB free. ", sessionID: "rt-bot"))
+        XCTAssertEqual(supervisor.takePendingNotice(), .speak("Still 7.6 GB free."))
+        XCTAssertFalse(supervisor.noteChatReport("   ", sessionID: "rt-bot"))
+    }
+
+    /// Eric 2026-11-02: a Bot Chat call speaks its coordinator's report on
+    /// a workstream (the plugin's work update), not as quiet context.
+    func testABotChatCallSpeaksItsCoordinatorsWorkUpdate() {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.botChat = true
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "u1", content: "Still 7.6 GB free.", reasoning: nil))
+        XCTAssertTrue(supervisor.pendingChatContext.isEmpty, "not background")
+        guard let item = supervisor.takePendingNoticeForJob() else { return XCTFail("no notice") }
+        XCTAssertEqual(item.notice, .speak("Still 7.6 GB free."))
+        supervisor.returnUndeliveredNotice(jobID: item.jobID)
+        XCTAssertEqual(supervisor.takePendingNotice(), .speak("Still 7.6 GB free."), "one that never reached the user goes again")
+        XCTAssertNil(supervisor.takePendingNotice())
+
+        fake.threadPrompt = "Work update from your workstreams."
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "u2", content: "W50 found it.", reasoning: nil))
+        XCTAssertEqual(supervisor.takePendingNotice(), .speak("W50 found it."))
+
+        // Something the user typed in the Bot Chat stays quiet (#363).
+        fake.threadPrompt = "hi"
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "u3", content: "Hello.", reasoning: nil))
+        XCTAssertEqual(supervisor.pendingChatContext.count, 1)
+        XCTAssertNil(supervisor.takePendingNotice())
     }
 
     func testAReplayedCompletionIsNotedOnce() {
@@ -3174,6 +3210,17 @@ final class FakeVoiceBackgroundJobs: VoiceBackgroundJobHandling {
         takeCount += 1
         return pending.isEmpty ? nil : pending.removeFirst()
     }
+
+    /// Chats whose unasked turns count as a Bot Chat's reports.
+    var botChats: Set<String> = []
+    private(set) var reports: [String] = []
+
+    func noteChatReport(_ reply: String, sessionID: String) -> Bool {
+        guard botChats.contains(sessionID) else { return false }
+        reports.append(reply)
+        pending.append(.speak(reply))
+        return true
+    }
 }
 
 @MainActor
@@ -3254,6 +3301,26 @@ extension VoiceConversationControllerTests {
         await capture.waitUntilStartCount(2)
 
         XCTAssertEqual(gateway.stream?.appended, ["The server is fine."], "the hand-back reply is spoken like any turn")
+    }
+
+    /// Eric 2026-11-02: a Classic call in a Bot Chat says the coordinator's
+    /// report on a workstream, a turn it didn't ask for, filtered for speech.
+    func testClassicSaysABotChatsReportItDidntAskFor() async {
+        let jobs = FakeVoiceBackgroundJobs()
+        jobs.botChats = ["session"]
+        let (controller, _, gateway, spy) = makeJobController(jobs: jobs)
+
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+        controller.receiveAssistantEvent(.completed(sessionID: "elsewhere", content: "Not this chat."))
+        controller.receiveAssistantEvent(.completed(sessionID: "session", content: "Still 7.6 GB free. 💾"))
+        await gateway.waitUntilSpeechAppended(1)
+
+        XCTAssertEqual(jobs.reports, ["Still 7.6 GB free."])
+        XCTAssertEqual(gateway.stream?.appended, ["Still 7.6 GB free."])
+        XCTAssertTrue(spy.texts.isEmpty, "no turn of its own")
+        controller.receiveAssistantEvent(.completed(sessionID: "session", content: "Still 7.6 GB free. 💾"))
+        XCTAssertEqual(jobs.reports.count, 1, "a replay isn't said twice")
     }
 
     func testFailedHandBackSubmissionSpeaksTheFallback() async {

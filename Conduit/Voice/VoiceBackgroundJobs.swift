@@ -355,6 +355,9 @@ struct VoiceBackgroundJobBackend {
     /// The message the user typed for the chat's latest turn, when Conduit
     /// can see it (the chat is open). Nil otherwise.
     var latestThreadPrompt: @MainActor (_ thread: VoiceThreadTarget) -> String? = { _ in nil }
+    /// Whether the attached chat is a bot's Bot Chat, whose coordinator
+    /// reports its workstreams there in turns of its own.
+    var isBotChat: @MainActor (_ thread: VoiceThreadTarget) -> Bool = { _ in false }
     /// The user's earlier chats that match `query`, best first, for a call
     /// asked to find one: on `profile`, or the one in use when nil.
     var searchChats: @MainActor (_ query: String, _ profile: String?) async throws -> [VoiceChatMatch] = { _, _ in
@@ -425,6 +428,10 @@ protocol VoiceBackgroundJobHandling: AnyObject {
     /// Removes and returns the next update the voice conversation should
     /// deliver, or nil when nothing is pending.
     func takePendingNotice() -> VoiceBackgroundJobNotice?
+    /// A turn in Classic's own chat it didn't ask for ended with `reply`
+    /// (already flattened for speech). True when it's a Bot Chat's
+    /// coordinator reporting work, queued to be spoken as a notice.
+    func noteChatReport(_ reply: String, sessionID: String) -> Bool
 }
 
 @MainActor
@@ -1895,6 +1902,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// among them, and any job update.
     func dropPendingNotices() {
         chatNotes.removeAll()
+        workUpdates.removeAll()
+        workUpdatesOut.removeAll()
         callChatPrompts.removeAll()
         // Each take consumes a notice; the cap only guards the loop, far
         // above what the job limits (3 running, 10 settled) can queue.
@@ -1915,6 +1924,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         callChatClaim = nil
         callChatClosedCallID = liveCallID
         chatNotes.removeAll()
+        workUpdates.removeAll()
+        workUpdatesOut.removeAll()
         callChatPrompts.removeAll()
         screenshotNotesHeard.removeAll()
         notedChatTurns.removeAll()
@@ -2373,6 +2384,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         screenCards.removeAll()
         threadTargets.removeAll()
         chatNotes.removeAll()
+        workUpdates.removeAll()
+        workUpdatesOut.removeAll()
         callChatPrompts.removeAll()
         screenshotNotesHeard.removeAll()
         notedChatTurns.removeAll()
@@ -2525,6 +2538,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         // A voice request's own text is never passed off as typed.
         var prompt = backend.latestThreadPrompt(thread)?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let typed = prompt, typed.isEmpty || typed.hasPrefix(Self.threadTurnText(for: "")) { prompt = nil }
+        // A Bot Chat's turn nobody typed is its coordinator reporting work
+        // (the plugin's work update): the call speaks it, as it speaks a
+        // job's result (Eric 2026-11-02, "Bot Chat calls only").
+        if backend.isBotChat(thread), prompt == nil || prompt?.hasPrefix(Self.workUpdatePrefix) == true {
+            lastCallResult = nil
+            queueWorkUpdate(reply)
+            return
+        }
         // The chat replied after any job result: a read-back reads the chat.
         lastCallResult = nil
         queueChatNote(ChatNote(text: Self.chatContextPrompt(typed: prompt, reply: reply)))
@@ -2698,6 +2719,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
         defer { pruneSettledJobs() }
         guard let item = takeNotice(withReason: false) else { return nil }
+        workUpdatesOut[item.jobID] = nil
         // Spoken at once: no confirmation follows.
         if let job = job(item.jobID) { noteResultReported(job) }
         return item.notice
@@ -2744,6 +2766,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// A notice taken with `takePendingNoticeForJob` went out.
     func noticeSent(jobID: UUID) {
+        workUpdatesOut[jobID] = nil
         guard releaseInFlight(jobID) else { return }
         if let job = job(jobID) { noteResultReported(job) }
         pruneSettledJobs()
@@ -2751,7 +2774,36 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// `withReason` adds Hermes' reason to a failure's notice: not for one
     /// spoken as is, where a raw provider error would be read out.
+    func noteChatReport(_ reply: String, sessionID: String) -> Bool {
+        let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, backend.isBotChat(VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: ""))
+        else { return false }
+        queueWorkUpdate(text)
+        return true
+    }
+
+    private func queueWorkUpdate(_ reply: String) {
+        let clipped = reply.count > Self.maximumChatContextReplyCharacters
+            ? String(reply.prefix(Self.maximumChatContextReplyCharacters)) + "…" : reply
+        workUpdates.append((UUID(), clipped))
+        onNoticePending?()
+    }
+
+    /// How the plugin's work-update turn opens in a Bot Chat.
+    static let workUpdatePrefix = "Work update from "
+
+    /// A Bot Chat call's coordinator reports, oldest first, waiting to be
+    /// spoken; and those handed out but not yet sent, so one that never
+    /// reached the user is spoken again.
+    private var workUpdates: [(id: UUID, text: String)] = []
+    private var workUpdatesOut: [UUID: String] = [:]
+
     private func takeNotice(withReason: Bool) -> (notice: VoiceBackgroundJobNotice, jobID: UUID)? {
+        if !workUpdates.isEmpty {
+            let update = workUpdates.removeFirst()
+            workUpdatesOut[update.id] = update.text
+            return (.speak(update.text), update.id)
+        }
         for index in jobs.indices {
             let job = jobs[index]
             // A thread turn its call let go of is never announced, nor the
@@ -2837,6 +2889,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// A notice taken with `takePendingNoticeForJob` never reached the user:
     /// make it pending again.
     func returnUndeliveredNotice(jobID: UUID) {
+        if let text = workUpdatesOut.removeValue(forKey: jobID) {
+            releaseInFlight(jobID)
+            workUpdates.insert((jobID, text), at: 0)
+            noticeMayBePending()
+            return
+        }
         releaseInFlight(jobID)
         update(jobID) { job in
             if job.status == .needsInput {

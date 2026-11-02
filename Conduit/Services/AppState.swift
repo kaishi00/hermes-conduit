@@ -4684,6 +4684,11 @@ final class AppState: ObservableObject {
                       let message = Self.liveVoiceUnansweredPrompt(in: self.messages) else { return nil }
                 return Self.liveVoiceTypedPrompt(message)
             },
+            isBotChat: { [weak self] thread in
+                guard let self else { return false }
+                return [thread.runtimeSessionID, thread.storedSessionID ?? ""]
+                    .contains { !$0.isEmpty && self.botConversationProfile(for: $0) != nil }
+            },
             searchChats: { [weak self] query, profile in
                 guard let self else { throw HermesError.notConnected }
                 return try await self.searchChatsForVoice(query, profile: profile)

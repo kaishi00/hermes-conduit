@@ -141,6 +141,9 @@ final class VoiceConversationController: ObservableObject {
     /// Keeps a persona's emoji and *narrated actions* out of speech; the
     /// transcript still shows the full reply.
     private var spokenTextFilter = SpokenTextFilter()
+    /// The last reply this conversation took as its own turn's (or said
+    /// as a Bot Chat's report), so its replay isn't said again.
+    private var lastOwnReply: String?
     private var isDrainingSpeech = false
     private var speechStream: VoiceSpeechStream?
     private var assistantFinished = false
@@ -1083,6 +1086,20 @@ final class VoiceConversationController: ObservableObject {
             sessionID = id
         }
         if routePromotedSteerReply(event, sessionID: sessionID) { return }
+        // A turn in this chat Classic didn't ask for: in a Bot Chat, its
+        // coordinator reporting work (Eric 2026-11-02), said when it's quiet.
+        if case .completed(_, let content, _) = event, isVoiceSessionActive, !isAwaitingVoiceAssistant,
+           expectedAssistantSessionIDs.contains(sessionID), let backgroundJobs {
+            let reply = (content ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !reply.isEmpty, reply != lastOwnReply {
+                let spoken = SpokenTextFilter.filter(reply).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !spoken.isEmpty, backgroundJobs.noteChatReport(spoken, sessionID: sessionID) {
+                    lastOwnReply = reply  // a replay of it isn't said twice
+                    deliverPendingBackgroundJobNoticeIfIdle()
+                }
+            }
+            return
+        }
         guard isVoiceSessionActive,
               isAwaitingVoiceAssistant,
               expectedAssistantSessionIDs.contains(sessionID) else { return }
@@ -1156,6 +1173,7 @@ final class VoiceConversationController: ObservableObject {
             assistantFinished = true
             isAwaitingVoiceAssistant = false
             awaitedAssistantResponseStarted = false
+            lastOwnReply = content?.trimmingCharacters(in: .whitespacesAndNewlines)
             endApprovalNotice()
             if steerSentThisTurn {
                 promotedSteerReplyDeadline = Date().addingTimeInterval(promotedSteerReplyWindow)
