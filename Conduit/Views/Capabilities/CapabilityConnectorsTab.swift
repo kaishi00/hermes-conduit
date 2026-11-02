@@ -351,7 +351,7 @@ struct ConnectorKeysSection: View {
         Task {
             defer { saving = false }
             do {
-                try await store.setConnectorKeys(name, values)
+                try await store.setConnectorKeys(name, values, generation: generation)
                 guard store.generation == generation else { return }
                 drafts = [:]
                 note = AppLocalization.string("Key saved")

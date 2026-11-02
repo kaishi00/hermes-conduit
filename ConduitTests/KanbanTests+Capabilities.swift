@@ -558,6 +558,31 @@ extension KanbanTests {
         XCTAssertFalse(writes.contains { $0.body?["profile"] as? String == "home" })
     }
 
+    /// A save pressed before a switch writes nothing on the profile switched to.
+    func testAConnectorKeySavePressedBeforeASwitchWritesNothing() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [["name": "linear", "transport": "http", "url": "https://l", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [
+                ["name": "linear", "description": "Issues", "auth_type": "api_key", "installed": true,
+                 "required_env": [["name": "LINEAR_API_KEY", "prompt": "Linear API key", "required": true]]],
+            ]],
+            "/api/env": ["ok": true],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        let pressed = store.generation
+        store.configure(requester: requester, profile: "home")
+        await store.loadConnectors()
+        requester.calls.removeAll()
+        do {
+            try await store.setConnectorKeys("linear", ["LINEAR_API_KEY": "lin-key"], generation: pressed)
+            XCTFail("a save from before the switch is turned down")
+        } catch {
+            XCTAssertEqual(error as? CapabilitiesStoreError, .profileChanged)
+        }
+        XCTAssertTrue(requester.calls.filter { $0.method == "PUT" }.isEmpty)
+    }
+
     /// Opening a server from the Connectors list cancels the list's tests;
     /// a test already sent still lands, and isn't shown as interrupted (#1570).
     func testAConnectorTestFinishesWhenTheListThatStartedItGoesAway() async {
