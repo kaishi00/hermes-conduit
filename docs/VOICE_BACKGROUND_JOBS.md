@@ -148,8 +148,14 @@ reply pending or playing):
 
 ## Limits of this phase
 
-- The job ledger is in memory. Jobs keep running on the server across app
-  restarts, sign-out, and profile switches, but Voice stops following them.
+- Jobs keep running on the server across app restarts, sign-out, and
+  profile switches. On the `bot-workstreams` branch (M5b), the phone keeps
+  its job list for each workspace and profile. After a relaunch, or when it
+  comes back to that profile, it follows the jobs again and reads the
+  replies of any that finished meanwhile. Only a later call kept with the
+  same chat as the job's own call says those results. A finished job that
+  nobody heard, or one still running, is no longer taken back a day after it started. Thread turns and the
+  request whose chat a call took aren't kept.
 - Voice still suspends when the app goes to the background. Background audio
   and a GPT-Live transport are later phases.
 

@@ -185,6 +185,14 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// Hermes calls the user about this job's outcome after its call
     /// (#449), so no later voice conversation announces it as well.
     var calledAbout = false
+    /// The ids of the chat its call was kept with, if any (M5b): a job
+    /// brought back after a relaunch is said only to a call in that chat.
+    var callChatIDs: [String] = []
+    /// Brought back from the saved ledger after the app was closed (M5b).
+    var isRestored = false
+    /// The saved ledger it belongs to (the dashboard and profile it was
+    /// made on), so a profile change doesn't file it under the next one.
+    var ledgerKey: String?
 
     func owns(sessionID: String) -> Bool {
         guard !sessionID.isEmpty else { return false }
@@ -361,6 +369,11 @@ struct VoiceBackgroundJobBackend {
     /// Whether the open chat shows more than one message waiting on its
     /// reply, so the latest turn's prompt can't be told.
     var threadAwaitsSeveralPrompts: @MainActor (_ thread: VoiceThreadTarget) -> Bool = { _ in false }
+    /// Keeps the ledger's background jobs across a relaunch (M5b): called
+    /// with every change, on the main actor.
+    var saveLedger: @MainActor (_ jobs: [SavedVoiceJob]) -> Void = { _ in }
+    /// The ledger a job made now belongs to.
+    var ledgerKey: @MainActor () -> String? = { nil }
     /// The chat's transcript when it's open on this device, nil otherwise.
     var openThreadMessages: @MainActor (_ thread: VoiceThreadTarget) -> [ChatMessage]? = { _ in nil }
     /// The user's earlier chats that match `query`, best first, for a call
@@ -496,7 +509,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// is deduped only against an immediate repeat.
     private var lastUnidentifiedChatReply: String?
 
-    @Published private(set) var jobs: [VoiceBackgroundJob] = []
+    @Published private(set) var jobs: [VoiceBackgroundJob] = [] {
+        didSet { scheduleLedgerSave() }
+    }
+    private var ledgerSaveScheduled = false
 
     /// Whether a job the liveness poll settles has its final reply read
     /// from its chat first, so the call hears the result instead of a
@@ -1449,6 +1465,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         )
         var anchored = job
         anchored.callAnchor = currentCallAnchor
+        anchored.callChatIDs = liveThread.map { [$0.runtimeSessionID, $0.storedSessionID ?? ""].filter { !$0.isEmpty } } ?? []
+        anchored.ledgerKey = backend.ledgerKey()
         markNewCallbackJob(&anchored)
         lastJobNumber += 1
         anchored.number = lastJobNumber
@@ -2895,6 +2913,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             // request whose chat an ended call took (#1250).
             if job.isDetachedThreadTurn { continue }
             if job.isThreadTurn, job.outcomeDelivered || liveThread == nil { continue }
+            // One an earlier run of the app left: said only to a call in its
+            // call's chat (M5b).
+            if job.isRestored, !restoredJobBelongsToThisCall(job) { continue }
             if job.status == .needsInput, !job.inputRequestDelivered {
                 jobs[index].inputRequestDelivered = true
                 return (.speak(Self.waitingNotice(for: job)), job.id)
@@ -3089,7 +3110,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 settledThreadTurns.append(job.id)
                 continue
             }
-            if readsRepliesWhenSettling || liveCallReadsReplies, !job.isThreadTurn, job.result == nil {
+            if readsRepliesWhenSettling || liveCallReadsReplies || job.isRestored, !job.isThreadTurn, job.result == nil {
                 settledJobs.append(job.id)
                 continue
             }
@@ -3159,6 +3180,71 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             noticeMayBePending()
             pumpThreadTurns()
         }
+    }
+
+    // MARK: Saved ledger (M5b)
+
+    /// How many saved jobs a relaunch brings back, newest first.
+    static let maximumSavedJobs = 12
+    /// A job is no longer taken back this long after it started.
+    static let savedJobMaximumAge: TimeInterval = 24 * 60 * 60
+
+    private func scheduleLedgerSave() {
+        guard !ledgerSaveScheduled else { return }
+        ledgerSaveScheduled = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.ledgerSaveScheduled = false
+            self.backend.saveLedger(self.savedLedger())
+        }
+    }
+
+    /// The jobs a relaunch should get back: background jobs in sessions of
+    /// their own still running, or settled with an outcome nobody heard.
+    func savedLedger() -> [SavedVoiceJob] {
+        let kept = jobs.filter { job in
+            guard !job.isThreadTurn, !job.isDetachedThreadTurn, !job.isCallChat, !job.continuesChat,
+                  !(job.runtimeSessionID ?? "").isEmpty, job.requestSent || job.isRestored else { return false }
+            if job.status.isActive { return true }
+            return !job.outcomeDelivered && !job.calledAbout
+        }
+        // Running ones always, then the newest settled ones in what's left.
+        let running = kept.filter { $0.status.isActive }
+        let settled = kept.filter { !$0.status.isActive }.suffix(max(0, Self.maximumSavedJobs - running.count))
+        let ids = Set((running + settled).map(\.id))
+        return kept.filter { ids.contains($0.id) }.compactMap { SavedVoiceJob($0) }
+    }
+
+    /// Brings back what an earlier run saved. A job already in the ledger
+    /// (by its session) stays as it is; the poll settles the rest, reading
+    /// their replies from their chats.
+    func restore(_ saved: [SavedVoiceJob], now: Date = Date()) {
+        var added = false
+        for entry in saved {
+            guard var job = entry.job else { continue }
+            // A day on, a job's turn is long over: its chat has the rest.
+            if now.timeIntervalSince(job.startedAt) > Self.savedJobMaximumAge { continue }
+            guard !jobs.contains(where: { $0.id == job.id || ($0.runtimeSessionID != nil && $0.runtimeSessionID == job.runtimeSessionID) })
+            else { continue }
+            // Its number as the user heard it, unless this run gave it out.
+            if job.number <= 0 || jobs.contains(where: { $0.number == job.number }) {
+                lastJobNumber += 1
+                job.number = lastJobNumber
+            }
+            lastJobNumber = max(lastJobNumber, job.number)
+            jobs.append(job)
+            added = true
+        }
+        guard added else { return }
+        startPollingIfNeeded()
+        noticeMayBePending()
+    }
+
+    /// A job an earlier run left is said to a live call kept with the chat
+    /// its own call was kept with, and to no other call.
+    private func restoredJobBelongsToThisCall(_ job: VoiceBackgroundJob) -> Bool {
+        guard let liveThread, !job.callChatIDs.isEmpty else { return false }
+        return job.callChatIDs.contains { backend.threadOwnsSession(liveThread, $0) }
     }
 
     // MARK: Helpers

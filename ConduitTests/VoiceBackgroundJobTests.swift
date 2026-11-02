@@ -702,6 +702,54 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.jobs.first { $0.profile == "fam" }?.status, .running, "no read is not absence")
     }
 
+    /// M5b: a relaunched phone gets back the jobs a call left running, and
+    /// follows them on.
+    func testARelaunchGetsBackTheJobsItLeftRunning() async {
+        let (supervisor, _) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "check the router")
+        let saved = supervisor.savedLedger()
+        XCTAssertEqual(saved.map(\.runtimeSessionID), ["rt-1"])
+        XCTAssertEqual(saved.first?.state, .running)
+        let decoded = SavedVoiceJob.decode(try? JSONEncoder().encode(saved))
+        XCTAssertEqual(decoded, saved, "kept as JSON")
+
+        // The next run takes it back, once, and the poll reads its reply.
+        let (relaunched, relaunchedFake) = makeSupervisor()
+        relaunched.restore(decoded)
+        relaunched.restore(decoded)
+        XCTAssertEqual(relaunched.jobs.count, 1)
+        XCTAssertEqual(relaunched.jobs.first?.status, .running)
+        XCTAssertEqual(relaunched.jobs.first?.title, supervisor.jobs.first?.title)
+        XCTAssertEqual(relaunched.jobs.first?.number, supervisor.jobs.first?.number, "the number the user heard")
+        relaunchedFake.liveRows = [LiveSessionStatus(runtimeSessionId: "rt-1", storedSessionId: "st-1", status: "idle")]
+        relaunchedFake.threadReply = "The router is fine."
+        await relaunched.pollOnce()
+        XCTAssertEqual(relaunched.jobs.first?.status, .finished)
+        XCTAssertEqual(relaunched.jobs.first?.result, "The router is fine.")
+        XCTAssertEqual(relaunched.savedLedger().first?.state, .finished, "still kept until a call says it")
+    }
+
+    /// M5b: a job brought back is said only to a call kept with its call's
+    /// chat; a settled one nobody heard goes after a day.
+    func testARestoredJobIsSaidOnlyInItsCallsChat() {
+        let (supervisor, _) = makeSupervisor()
+        var job = VoiceBackgroundJob(id: UUID(), title: "Router", instructions: "check the router",
+                                     runtimeSessionID: "rt-9", status: .finished, result: "Fine.", startedAt: Date())
+        job.callChatIDs = ["st-chat"]
+        guard let saved = SavedVoiceJob(job) else { return XCTFail("not kept") }
+        let old = VoiceBackgroundJob(id: UUID(), title: "Old", instructions: "old", runtimeSessionID: "rt-8",
+                                 status: .finished, result: "Old.", startedAt: Date().addingTimeInterval(-2 * 24 * 3600))
+        supervisor.restore([saved, SavedVoiceJob(old)!])
+        XCTAssertEqual(supervisor.jobs.map(\.title), ["Router"], "a day-old settled job is dropped")
+
+        XCTAssertNil(supervisor.takePendingNotice(), "no call")
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-other", storedSessionID: "st-other", title: "Other")
+        XCTAssertNil(supervisor.takePendingNotice(), "another chat's call")
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")
+        guard case .submit? = supervisor.takePendingNotice() else { return XCTFail("its chat's call hears it") }
+        XCTAssertTrue(supervisor.savedLedger().isEmpty, "heard: no longer kept")
+    }
+
     func testAnotherProfilesJobIsNeverSettledByAbsence() async {
         let (supervisor, fake) = makeSupervisor()
         fake.profileTargets = ["fam": .other("fam")]
