@@ -499,6 +499,7 @@ describes it
 
 **Code**
 - Keeping the row: `Conduit/Services/AppState.swift` (newChatAwaitingListing, set in createAndReconcileSession for createNewSession; newChatRowAwaitingListing and settleNewChatAwaitingListing, in loadSessions and syncSession's catalog; chatListListedIDs; knownProjectID; loadProjectSessions, quiet when a newer read cancels it), `Conduit/Services/ChatSync.swift` (NewChatAwaitingListing)
+- The create, for either server: `Conduit/Services/HermesClient.swift` (createSession, createParams)
 - Project page: `Conduit/Views/V2/V2ProjectPage.swift` (lanes, the task keyed on chatListCatalogGeneration)
 - Tests: `ConduitTests/SessionRenameTests.swift` (testANewChatStaysListedWhileOpenUntilHermesListsIt, testANewChatLeftEmptyLeavesTheList, testANewChatBelongsToTheProjectItStartedIn, testANewChatGoesOnTopOfItsFoldersLaneOnAProjectPage)
 
@@ -512,7 +513,7 @@ describes it
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, added at #1456.
+**Checked:** 2026-11-02, #1631 (every create goes through createSession, which on the gateway's own listener sends `source: gui`, `reasoning` and `service_tier` and no `cols`; a folder's `cwd` is within its create fields, checked against the canary's session_policy; see Two Hermes servers); 2026-10-28, added at #1456.
 
 ## Chat open elsewhere
 
@@ -4746,7 +4747,7 @@ resend, /undo, /retry), the Model sheet's list and pick and Move to project · t
 mode in Settings · Predictions' hidden follow-up turn · side agents (/btw,
 /background, which step summaries use), a delegate's steer and stop, Context,
 Stop all processes, the side-agent list and tail, and a skill or plugin slash
-command (`command.dispatch`) · Bot Chat's open and create (Bot Chat lookup) and its chats in other profiles · Linked Rooms' notes into a room chat (through Pulse's send) · reactions, slash commands, attachments and the list verbs (not needed: probed, the same shapes) · scheduled jobs (REST first, so neither socket verb is needed) ·
+command (`command.dispatch`) · every new chat's create (New Chat, a project's new chat in its folder, the widget's and Shortcut's New Chat and Shortcut send, Pulse's chat, voice-job chats; A new chat in the list) · Bot Chat's open and create (Bot Chat lookup) and its chats in other profiles · Linked Rooms' notes into a room chat (through Pulse's send) · reactions, slash commands, attachments and the list verbs (not needed: probed, the same shapes) · scheduled jobs (REST first, so neither socket verb is needed) ·
 the notifier's upstream contract leg (notifier/upstream/test_gateway_listener.py)
 and its routes, which the listener serves since it mounts the dashboard ·
 the plugin's features that read or drive a chat on the host: turn surface
@@ -4758,7 +4759,7 @@ setting every turn) · the notifier's CHANGELOG ·
 README (Connecting, Architecture) · the website's FAQ
 
 **Code**
-- Telling them apart and each shape: `Conduit/Services/HermesClient.swift` (speaksSessionAuthority from `gateway.ready`, the "session authority's shapes" section: shapedRPC, authorityMutation, authorityControl, noteAuthorityFences; createParams, sendPrompt, turnControl, respondToApproval and respondToApprovalOutcome, respondToClarification, setSessionTitle, sessionTitle, authorityBranch, setModel, authorityModelPick, compressSession, moveSessionWorkspace, busyInputMode, resumeSessionObject, rewindSession, rewindSnapshot; the switches that stay on config.set: setReasoning, setSpeed, setSessionYolo; the verbs that keep the dashboard's shape: steerSubagent, interruptSubagent, startSideAgent, stopProcesses, contextBreakdown)
+- Telling them apart and each shape: `Conduit/Services/HermesClient.swift` (speaksSessionAuthority from `gateway.ready`, the "session authority's shapes" section: shapedRPC, authorityMutation, authorityControl, noteAuthorityFences; createSession and createParams, sendPrompt, turnControl, respondToApproval and respondToApprovalOutcome, respondToClarification, setSessionTitle, sessionTitle, authorityBranch, setModel, authorityModelPick, compressSession, moveSessionWorkspace, busyInputMode, resumeSessionObject, rewindSession, rewindSnapshot; the switches that stay on config.set: setReasoning, setSpeed, setSessionYolo; the verbs that keep the dashboard's shape: steerSubagent, interruptSubagent, startSideAgent, stopProcesses, contextBreakdown)
 - Kept across a reconnect or handoff: `Conduit/Services/HermesClient.swift` (connect, adoptSocket, the `request.cancel` bookkeeping)
 - The refusal's words: `Conduit/Services/HermesClient.swift` (RpcError.errorDescription)
 - Branch rows: `Conduit/Services/AppState.swift` (branchFromAssistantMessage)
