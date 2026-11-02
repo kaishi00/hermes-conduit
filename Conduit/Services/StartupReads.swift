@@ -58,7 +58,7 @@ final class StartupReads {
         cancelWaiting()
         self.bridge = bridge
         lastSent = (paths, now)
-        for path in paths where entries[path] == nil {
+        for path in paths {
             // Never through the page: an early read doesn't wait for it or
             // load it. One that can't go out without it is sent again by its
             // step, the usual way.
@@ -71,10 +71,14 @@ final class StartupReads {
     /// step may use: none sent, sent through another bridge, sent before a
     /// change (`fence`), or too old.
     func take(_ path: String, through bridge: DashboardTicketBridge, fence: Fence, now: Date = Date()) -> Task<Answer, Error>? {
-        guard let entry = entries.removeValue(forKey: path),
-              self.bridge === bridge,
+        guard let entry = entries.removeValue(forKey: path) else { return nil }
+        guard self.bridge === bridge,
               entry.fence == fence,
-              now.timeIntervalSince(entry.sentAt) < Self.lifetime else { return nil }
+              now.timeIntervalSince(entry.sentAt) < Self.lifetime else {
+            // Not this step's: stop it rather than let it run out unread.
+            entry.task.cancel()
+            return nil
+        }
         return entry.task
     }
 
