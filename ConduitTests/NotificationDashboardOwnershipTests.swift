@@ -699,7 +699,7 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertFalse(AppState.catalogListsSession("runtime-1", in: []))
     }
 
-    func testOnlyAnAnsweredCallWhoseChatIsListedSkipsTheFullListRead() {
+    func testOnlyACallsOpenWhoseChatIsListedSkipsTheFullListRead() {
         let catalog = [listedRow("runtime-1", stored: "durable-1")]
         let call = HermesCallRequest(id: "call-1", kind: .done, title: nil, sessionIDs: ["durable-1"])
         func target(_ id: String, call: HermesCallRequest?) -> ConduitNotificationTarget {
@@ -708,5 +708,8 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertFalse(AppState.notificationOpenNeedsAuthoritativeRead(target: target("durable-1", call: call), catalog: catalog))
         XCTAssertTrue(AppState.notificationOpenNeedsAuthoritativeRead(target: target("unseen", call: call), catalog: catalog), "a call whose chat the list lacks reads it again")
         XCTAssertTrue(AppState.notificationOpenNeedsAuthoritativeRead(target: target("durable-1", call: nil), catalog: catalog), "a plain notification always reads it again")
+        let missed = HermesCallRequest(id: "call-2", kind: .done, title: nil, sessionIDs: ["runtime-1"])
+        XCTAssertFalse(AppState.notificationOpenNeedsAuthoritativeRead(target: target("runtime-1", call: missed), catalog: catalog),
+                       "a tapped call notification (body, Talk or missed) has the same person waiting on the voice")
     }
 }
