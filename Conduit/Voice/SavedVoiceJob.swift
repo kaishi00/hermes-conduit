@@ -53,7 +53,7 @@ struct SavedVoiceJob: Codable, Equatable {
 
     /// The job as the ledger takes it back: running until the poll or an
     /// event settles it (a question it waited on is asked again by Hermes'
-    /// own events), its outcome not yet heard.
+    /// own events), its outcome not yet heard, and no call back asked.
     var job: VoiceBackgroundJob? {
         let status: VoiceBackgroundJob.Status
         switch state {
@@ -76,7 +76,8 @@ struct SavedVoiceJob: Codable, Equatable {
         )
         job.number = number
         job.requestSent = true
-        job.callsBackWhenDone = callsBackWhenDone
+        // Hermes' watch for a call back lapsed with the run that asked.
+        job.callsBackWhenDone = false
         job.callChatIDs = callChatIDs
         job.isRestored = true
         return job

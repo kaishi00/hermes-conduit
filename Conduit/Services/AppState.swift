@@ -698,6 +698,8 @@ final class AppState: ObservableObject {
         didSet {
             refreshActiveChatScrollSessionIdentity()
             if oldValue != activeProfile {
+                // Its own saved voice jobs, if no boundary already took them.
+                if voiceJobLedgerRestoredKey != nil { scheduleVoiceJobLedgerRestore() }
                 composerNotice = nil
                 restoreDisplayPreferences()
                 restoreBusyInputMode()

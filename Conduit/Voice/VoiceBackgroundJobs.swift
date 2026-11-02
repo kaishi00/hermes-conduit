@@ -3202,7 +3202,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             if job.status.isActive { return true }
             return !job.outcomeDelivered && !job.calledAbout
         }
-        return kept.suffix(Self.maximumSavedJobs).compactMap { SavedVoiceJob($0) }
+        // Running ones always, then the newest settled ones in what's left.
+        let running = kept.filter { $0.status.isActive }
+        let settled = kept.filter { !$0.status.isActive }.suffix(max(0, Self.maximumSavedJobs - running.count))
+        let ids = Set((running + settled).map(\.id))
+        return kept.filter { ids.contains($0.id) }.compactMap { SavedVoiceJob($0) }
     }
 
     /// Brings back what an earlier run saved. A job already in the ledger
@@ -3210,13 +3214,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// their replies from their chats.
     func restore(_ saved: [SavedVoiceJob], now: Date = Date()) {
         var added = false
-        for entry in saved.suffix(Self.maximumSavedJobs) {
+        for entry in saved {
             guard var job = entry.job else { continue }
             if !job.status.isActive, now.timeIntervalSince(job.startedAt) > Self.savedJobMaximumAge { continue }
             guard !jobs.contains(where: { $0.id == job.id || ($0.runtimeSessionID != nil && $0.runtimeSessionID == job.runtimeSessionID) })
             else { continue }
-            lastJobNumber += 1
-            job.number = lastJobNumber
+            // Its number as the user heard it, unless this run gave it out.
+            if job.number <= 0 || jobs.contains(where: { $0.number == job.number }) {
+                lastJobNumber += 1
+                job.number = lastJobNumber
+            }
+            lastJobNumber = max(lastJobNumber, job.number)
             jobs.append(job)
             added = true
         }

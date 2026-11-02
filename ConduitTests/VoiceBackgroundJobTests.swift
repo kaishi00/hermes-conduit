@@ -720,6 +720,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(relaunched.jobs.count, 1)
         XCTAssertEqual(relaunched.jobs.first?.status, .running)
         XCTAssertEqual(relaunched.jobs.first?.title, supervisor.jobs.first?.title)
+        XCTAssertEqual(relaunched.jobs.first?.number, supervisor.jobs.first?.number, "the number the user heard")
         relaunchedFake.liveRows = [LiveSessionStatus(runtimeSessionId: "rt-1", storedSessionId: "st-1", status: "idle")]
         relaunchedFake.threadReply = "The router is fine."
         await relaunched.pollOnce()
