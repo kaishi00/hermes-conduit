@@ -104,6 +104,7 @@ final class BotWorkStore: ObservableObject {
         acting = []
         reading = []
         rereads = []
+        callPreReads = []  // another server's bots: read again there
         epoch += 1
     }
 
