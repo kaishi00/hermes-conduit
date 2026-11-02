@@ -592,6 +592,17 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(supervisor.callScreenCards(supervisor.liveCallID).isEmpty, "A later call shows only its own cards")
     }
 
+    /// A Bot Chat call's job that names the call's own bot is its own job too.
+    func testABotChatCallsJobNamingItsOwnBotKeepsItsVoiceJobModel() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.profileTargets = ["furina": .other("furina")]
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-bot", storedSessionID: "st-bot",
+                                                      title: "Bot Chat", profile: "furina"))
+        _ = await supervisor.performVoiceCommand(.start(instructions: "for Furina, check the backups"))
+        XCTAssertEqual(fake.createdProfiles, ["furina"])
+        XCTAssertEqual(fake.createdCallsModel, [true])
+    }
+
     func testLeadingProfileNameRoutesTheJobToThatProfile() async {
         let (supervisor, fake) = makeSupervisor()
         fake.profileTargets = ["fam": .other("fam")]

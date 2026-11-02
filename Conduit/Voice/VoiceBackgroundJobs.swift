@@ -1414,14 +1414,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let instructions: String
         let profile: String?
         let profileLabel: String?
-        // A job on the call's own bot (no profile named) keeps the voice-job
+        // A job on the call's own bot (unnamed, or naming it) keeps the voice-job
         // model chosen for that bot, as an unnamed job on the phone's does.
         var callsOwnModel = callsModel
         switch routed {
         case .run(let task, let target, let label):
             // A Bot Chat call's job runs on its bot, as the coordinator's own.
             (instructions, profile, profileLabel) = (task, target ?? liveThread?.profile, label)
-            if target == nil { callsOwnModel = true }
+            if target == nil || target == liveThread?.profile { callsOwnModel = true }
         case .unknown(let spokenProfile):
             // A named target that isn't a known profile is never guessed at.
             return AppLocalization.string("I don't know a profile or bot called \(spokenProfile), so I didn't start the job.")
