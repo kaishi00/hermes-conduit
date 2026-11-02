@@ -173,6 +173,21 @@ extension AppState {
         )
     }
 
+    /// A voice call's job kept in its bot's registry (M5), so the Work
+    /// panel lists it as a call's. Best effort, off the job's path: a
+    /// plugin without the route, or a bot whose work is off, keeps none.
+    func keepVoiceJobInRegistry(profile: String?, sessionID: String, title: String, instructions: String,
+                                fromWatch: Bool) {
+        guard notifierPlugin.reports(BotWorkstreamsClient.adoptCapability), !sessionID.isEmpty else { return }
+        let bot = profile ?? activeProfile
+        let client = botWorkClient(profile: bot)
+        // The panel's next read shows it.
+        Task { @MainActor in
+            _ = try? await client.adopt(sessionID: sessionID, title: title, via: fromWatch ? "watch" : "phone",
+                                        goal: instructions)
+        }
+    }
+
     /// Whether the host's plugin serves Edit Bot > Work.
     var servesBotWorkSettings: Bool { notifierPlugin.reports(BotWorkSettingsClient.capability) }
 

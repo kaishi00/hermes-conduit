@@ -79,6 +79,10 @@ struct BotWorkItem: Identifiable, Equatable {
     /// Its git worktree's branch, for the user to merge; empty when it
     /// works in the folder itself.
     let branch: String
+    /// A voice call's job (Bot workstreams M5): "phone" or "watch", the
+    /// call that started it and tells the user its result; empty for the
+    /// bot's own work.
+    let fromCall: String
 
     var id: String { ref }
 
@@ -108,6 +112,7 @@ struct BotWorkItem: Identifiable, Equatable {
         isPinned = row["pinned"] as? Bool ?? false
         isUncertain = row["uncertain"] as? Bool ?? false
         branch = (row["branch"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        fromCall = ["phone", "watch"].contains(row["from_call"] as? String ?? "") ? row["from_call"] as? String ?? "" : ""
         actions = (row["actions"] as? [String] ?? []).compactMap(Action.init(rawValue:))
         manage = (row["manage"] as? [String] ?? []).compactMap(Action.init(rawValue:))
         if let asked = row["approval"] as? [String: Any], let requestID = asked["request_id"] as? String,
@@ -301,6 +306,8 @@ struct BotWorkSnapshot: Equatable {
 /// secondary bot to a plugin host without the session API).
 final class BotWorkstreamsClient {
     static let capability = "bot-workstreams"
+    /// The plugin keeps a voice call's jobs too (`POST /workstreams/adopt`).
+    static let adoptCapability = "work-adopt"
     static let path = "/api/plugins/conduit_push/workstreams"
 
     typealias Request = WorkspaceFilesClient.Request
@@ -356,6 +363,19 @@ final class BotWorkstreamsClient {
     @MainActor
     func kept(in answers: KeptAnswers) -> BotWorkSnapshot? {
         answers.kept(Self.keptRoute).flatMap { BotWorkSnapshot(response: $0, profile: profile) }
+    }
+
+    /// Keeps a voice call's job in the bot's registry (M5), right after the
+    /// job's session was made: the Work panel lists it as a call's. `via`
+    /// is "phone" or "watch". The row, or nil when the plugin kept none.
+    @MainActor
+    func adopt(sessionID: String, title: String, via: String, goal: String) async throws -> BotWorkItem? {
+        let path = DashboardPath.withProfile("\(Self.path)/adopt", profile: profile, parameter: parameter)
+        let body: [String: Any] = ["session_id": sessionID, "title": title, "via": via,
+                                   "goal": String(goal.prefix(2_000))]
+        let response = try await request(path, "POST", body)
+        guard response["ok"] as? Bool == true else { throw Failure.malformed }
+        return (response["work"] as? [String: Any]).flatMap(BotWorkItem.init(row:))
     }
 
     /// The user's action on a workstream; the row as it is now.

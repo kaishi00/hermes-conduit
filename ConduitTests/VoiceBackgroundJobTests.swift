@@ -84,6 +84,8 @@ final class FakeVoiceJobBackend {
     /// Profiles whose liveSessions read throws.
     var failingLiveProfiles: Set<String> = []
     private(set) var titles: [(String, String)] = []
+    /// Each job kept in its bot's work registry: profile, session, title, whether a Watch call's.
+    private(set) var kept: [(String?, String, String, Bool)] = []
     private(set) var submissions: [(String, String)] = []
     private(set) var cancelled: [String] = []
     /// The attached chat: whether a turn runs there, what was sent to it,
@@ -141,6 +143,7 @@ final class FakeVoiceJobBackend {
                 return ("rt-\(self.created)", self.storedIDs ? "st-\(self.created)" : nil)
             },
             setTitle: { [self] id, title in self.titles.append((id, title)) },
+            keepInRegistry: { [self] profile, id, title, _, fromWatch in self.kept.append((profile, id, title, fromWatch)) },
             submit: { [self] id, text in
                 self.submissions.append((id, text))
                 self.onSubmit?(id)
@@ -241,6 +244,20 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(fake.submissions.first?.1.hasSuffix("check why my server went down") == true)
         XCTAssertEqual(supervisor.jobs.map(\.status), [.running])
         XCTAssertNil(supervisor.takePendingNotice(), "a running job has nothing to hand back")
+    }
+
+    /// Bot workstreams M5: the job is kept in its bot's registry by its
+    /// stored id, before its task goes in; the runtime id when Hermes names no other.
+    func testAStartedJobIsKeptInItsBotsWorkRegistry() async {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check why my server went down"))
+        XCTAssertEqual(fake.kept.map(\.1), ["st-1"])
+        XCTAssertEqual(fake.kept.first?.2, "check why my server went down")
+        XCTAssertEqual(fake.kept.first?.3, false)
+        XCTAssertNil(fake.kept.first?.0 ?? nil)
+        fake.storedIDs = false
+        _ = await supervisor.performVoiceCommand(.start(instructions: "summarize today's email"))
+        XCTAssertEqual(fake.kept.map(\.1), ["st-1", "rt-2"])
     }
 
     func testJobsStartedInALiveCallAreAnchoredToItsTranscript() async {

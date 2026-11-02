@@ -68,8 +68,7 @@ extension BotModeTests {
         XCTAssertEqual(snapshot.replacing(try XCTUnwrap(BotWorkItem(row: ["ref": "W9", "kind": "workstream"]))), snapshot)
     }
 
-    /// Pin, Resolve and Reopen: what the plugin offers, and the list as
-    /// each leaves it before the next read.
+    /// A workstream's worktree branch, for the user to merge.
     func testAWorkstreamsWorktreeBranchIsShown() throws {
         let branched = try XCTUnwrap(BotWorkItem(row: ["ref": "W3", "kind": "workstream", "status": "done",
                                                         "branch": " hermes-subagent/subagent-work-default-w3-ab12 "]))
@@ -77,6 +76,17 @@ extension BotModeTests {
         XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "W4", "kind": "workstream"])).branch, "")
     }
 
+    /// A voice call's job is marked as the call's; anything else is the bot's own.
+    func testACallsJobIsMarkedAsTheCalls() throws {
+        let job = try XCTUnwrap(BotWorkItem(row: ["ref": "W5", "kind": "workstream", "status": "running",
+                                                   "from_call": "watch"]))
+        XCTAssertEqual(job.fromCall, "watch")
+        XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "W6", "kind": "workstream", "from_call": "car"])).fromCall, "")
+        XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "W7", "kind": "workstream"])).fromCall, "")
+    }
+
+    /// Pin, Resolve and Reopen: what the plugin offers, and the list as
+    /// each leaves it before the next read.
     func testFilingWorkMovesItBetweenTheLists() throws {
         var response = workResponse()
         response["resolved_count"] = 4

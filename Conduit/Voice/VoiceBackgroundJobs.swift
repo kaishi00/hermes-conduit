@@ -293,6 +293,12 @@ struct VoiceBackgroundJobBackend {
     /// profile's voice-job model rather than its chat model (#1564).
     var createSession: @MainActor (_ profile: String?, _ callsModel: Bool) async throws -> (runtimeID: String, storedID: String?)
     var setTitle: @MainActor (_ sessionID: String, _ title: String) async -> Void
+    /// Keeps the job in its bot's work registry (Bot workstreams M5), so
+    /// the Work panel lists it as a call's and a restart leaves it for the
+    /// user. Fire and forget: the job never waits on it. `fromWatch`: a
+    /// Watch call's job on the phone.
+    var keepInRegistry: @MainActor (_ profile: String?, _ sessionID: String, _ title: String,
+                                    _ instructions: String, _ fromWatch: Bool) -> Void = { _, _, _, _, _ in }
     var submit: @MainActor (_ sessionID: String, _ text: String) async throws -> Void
     var cancel: @MainActor (_ sessionID: String) async throws -> Void
     /// The live runtimes of `profile` (nil: the active profile).
@@ -1428,6 +1434,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 $0.storedSessionID = ids.storedID
             }
             onJobSessionCreated?([runtimeID, ids.storedID].compactMap { $0 }.filter { !$0.isEmpty })
+            backend.keepInRegistry(profile, ids.storedID.flatMap { $0.isEmpty ? nil : $0 } ?? runtimeID,
+                                   job.title, instructions, callsModel)
             await backend.setTitle(runtimeID, job.title)
             guard startIsCurrent(job.id, generation: generation) else {
                 return await abandonStart(job, sessionID: runtimeID, generation: generation)
