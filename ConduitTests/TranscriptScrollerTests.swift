@@ -1984,6 +1984,23 @@ final class TranscriptScrollerTests: XCTestCase {
         withExtendedLifetime(surface) {}
     }
 
+    /// A send's own row taken over by its stored row is the same message
+    /// even when the phone's clock and Hermes' differ.
+    func testASendsStoredRowAtAnotherClockDoesNotArmTheHoldAgain() {
+        let (scroller, surface) = makeScroller()
+        scroller.holdsRepliesAtStart = { true }
+        let shown = Self.messages(0..<9)
+        let sent = ChatMessage(id: "local-send", role: .user, content: "Message 9", timestamp: "2026-01-01T00:00:00Z")
+        scroller.transcriptChanged(messages: shown + [sent], transcriptRevision: 2, viewportTransitionGeneration: 1)
+        XCTAssertFalse(scroller.replyHoldArmed)
+
+        var stored = sent.withID("12500.0")
+        stored.timestamp = "2026-01-01T00:00:40Z"
+        scroller.transcriptChanged(messages: shown + [stored], transcriptRevision: 4, viewportTransitionGeneration: 1)
+        XCTAssertFalse(scroller.replyHoldArmed)
+        withExtendedLifetime(surface) {}
+    }
+
     /// A send's own row is new even with the words of the message it
     /// replaces: a retry takes the last message away and sends it again.
     func testASendRepeatingARemovedMessageArmsTheHold() {

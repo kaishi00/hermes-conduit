@@ -1379,7 +1379,10 @@ final class TranscriptScroller: ObservableObject {
             && previous.map { !targetIDs.contains($0) } == true
             && latestTarget?.message.content == previousText
             && !storedRowsDiffer
-            && MessageTimestampFormatter.sameMoment(previousTime ?? "", latestTarget?.message.timestamp ?? "")
+            // A send's own row carries the phone's clock, its stored row
+            // Hermes', so their times aren't compared.
+            && (previous?.hasPrefix("local-") == true
+                || MessageTimestampFormatter.sameMoment(previousTime ?? "", latestTarget?.message.timestamp ?? ""))
         if arming, previous != nil, latest != nil, !rekeyed {
             replyHoldArmed = true
             replyRoomArmed = true
