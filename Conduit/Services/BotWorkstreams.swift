@@ -79,6 +79,16 @@ struct BotWorkItem: Identifiable, Equatable {
     /// Its git worktree's branch, for the user to merge; empty when it
     /// works in the folder itself.
     let branch: String
+    /// A voice call's job (Bot workstreams M5): "phone" or "watch", the
+    /// call that started it and tells the user its result; empty for the
+    /// bot's own work.
+    let fromCall: String
+    /// The bot's own workstream a call kept with its Bot Chat started
+    /// ("phone" or "watch"); empty otherwise. The phone follows its job, so
+    /// a Stop here stops the call's job too.
+    let startedInCall: String
+    /// The call that started it, either way: the card's "From a voice call".
+    var call: String { fromCall.isEmpty ? startedInCall : fromCall }
 
     var id: String { ref }
 
@@ -108,6 +118,9 @@ struct BotWorkItem: Identifiable, Equatable {
         isPinned = row["pinned"] as? Bool ?? false
         isUncertain = row["uncertain"] as? Bool ?? false
         branch = (row["branch"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        fromCall = ["phone", "watch"].contains(row["from_call"] as? String ?? "") ? row["from_call"] as? String ?? "" : ""
+        startedInCall = fromCall.isEmpty && ["phone", "watch"].contains(row["call"] as? String ?? "")
+            ? row["call"] as? String ?? "" : ""
         actions = (row["actions"] as? [String] ?? []).compactMap(Action.init(rawValue:))
         manage = (row["manage"] as? [String] ?? []).compactMap(Action.init(rawValue:))
         if let asked = row["approval"] as? [String: Any], let requestID = asked["request_id"] as? String,
@@ -272,13 +285,16 @@ struct BotWorkSnapshot: Equatable {
     var recent: [BotWorkItem] { items.filter { !$0.isActive && !$0.isPinned } }
 
     /// Every workstream's chat, so lists and search leave them to the bot.
+    /// Not a call's job's: it stays listed under Voice Jobs.
     var sessionIDs: Set<String> {
-        Set(items.compactMap { $0.kind == .workstream && !$0.sessionID.isEmpty ? $0.sessionID : nil })
+        Set(items.compactMap { $0.kind == .workstream && $0.fromCall.isEmpty && !$0.sessionID.isEmpty ? $0.sessionID : nil })
             .union(knownSessionIDs)
     }
 
+    /// The workstream a chat is. A call's job isn't one: its chat stays a
+    /// Voice Jobs chat, with its own title, Back and Stop.
     func item(forSession ids: Set<String>) -> BotWorkItem? {
-        items.first { $0.kind == .workstream && ids.contains($0.sessionID) }
+        items.first { $0.kind == .workstream && $0.fromCall.isEmpty && ids.contains($0.sessionID) }
     }
 
     /// The words under the Bot Chat's title ("2 working · 1 needs you"),
@@ -301,6 +317,9 @@ struct BotWorkSnapshot: Equatable {
 /// secondary bot to a plugin host without the session API).
 final class BotWorkstreamsClient {
     static let capability = "bot-workstreams"
+    /// The plugin keeps a voice call's jobs too (`POST /workstreams/adopt`).
+    static let adoptCapability = "work-adopt"
+    static let callEndedCapability = "work-call-ended"
     static let path = "/api/plugins/conduit_push/workstreams"
 
     typealias Request = WorkspaceFilesClient.Request
@@ -356,6 +375,35 @@ final class BotWorkstreamsClient {
     @MainActor
     func kept(in answers: KeptAnswers) -> BotWorkSnapshot? {
         answers.kept(Self.keptRoute).flatMap { BotWorkSnapshot(response: $0, profile: profile) }
+    }
+
+    /// Keeps a voice call's job in the bot's registry (M5), once Hermes takes
+    /// the job's request: the Work panel lists it as a call's. `via`
+    /// is "phone" or "watch". The row, or nil when the plugin kept none.
+    @MainActor
+    func adopt(sessionID: String, title: String, via: String, goal: String, chat: String? = nil,
+               result: String? = nil, call: String? = nil) async throws -> BotWorkItem? {
+        let path = DashboardPath.withProfile("\(Self.path)/adopt", profile: profile, parameter: parameter)
+        var body: [String: Any] = ["session_id": sessionID, "title": title, "via": via,
+                                   "goal": String(goal.prefix(2_000))]
+        // The chat the call is kept with: the Bot Chat's makes it the coordinator's own.
+        if let chat, !chat.isEmpty { body["chat"] = chat }
+        // A turn that ended before it was kept: the row settles with its reply.
+        if let result { body["result"] = String(result.prefix(8_000)) }
+        // The call's own id: its end releases only its own hold.
+        if let call, !call.isEmpty { body["call"] = call }
+        let response = try await request(path, "POST", body)
+        guard response["ok"] as? Bool == true else { throw Failure.malformed }
+        return (response["work"] as? [String: Any]).flatMap(BotWorkItem.init(row:))
+    }
+
+    /// A call kept with `chat` ended: a Bot Chat's held updates go out.
+    func callEnded(chat: String, call: String? = nil) async throws {
+        let path = DashboardPath.withProfile("\(Self.path)/call-ended", profile: profile, parameter: parameter)
+        var body: [String: Any] = ["chat": chat]
+        if let call, !call.isEmpty { body["call"] = call }
+        let response = try await request(path, "POST", body)
+        guard response["ok"] as? Bool == true else { throw Failure.malformed }
     }
 
     /// The user's action on a workstream; the row as it is now.

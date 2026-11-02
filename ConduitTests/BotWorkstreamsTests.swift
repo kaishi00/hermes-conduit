@@ -68,8 +68,7 @@ extension BotModeTests {
         XCTAssertEqual(snapshot.replacing(try XCTUnwrap(BotWorkItem(row: ["ref": "W9", "kind": "workstream"]))), snapshot)
     }
 
-    /// Pin, Resolve and Reopen: what the plugin offers, and the list as
-    /// each leaves it before the next read.
+    /// A workstream's worktree branch, for the user to merge.
     func testAWorkstreamsWorktreeBranchIsShown() throws {
         let branched = try XCTUnwrap(BotWorkItem(row: ["ref": "W3", "kind": "workstream", "status": "done",
                                                         "branch": " hermes-subagent/subagent-work-default-w3-ab12 "]))
@@ -77,6 +76,64 @@ extension BotModeTests {
         XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "W4", "kind": "workstream"])).branch, "")
     }
 
+    /// A voice call's job is marked as the call's; anything else is the bot's own.
+    func testACallsJobIsMarkedAsTheCalls() throws {
+        let job = try XCTUnwrap(BotWorkItem(row: ["ref": "W5", "kind": "workstream", "status": "running",
+                                                   "from_call": "watch"]))
+        XCTAssertEqual(job.fromCall, "watch")
+        XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "W6", "kind": "workstream", "from_call": "car"])).fromCall, "")
+        XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "W7", "kind": "workstream"])).fromCall, "")
+        // A Bot Chat call's own workstream: the app row's `call` (the tool row's `started_in_call`).
+        let own = try XCTUnwrap(BotWorkItem(row: ["ref": "W8", "kind": "workstream", "status": "running", "call": "phone"]))
+        XCTAssertEqual(own.startedInCall, "phone")
+        XCTAssertEqual(own.fromCall, "")
+        // Its chat stays a Voice Jobs chat, not a workstream's.
+        var response = workResponse()
+        var rows = response["work"] as? [[String: Any]] ?? []
+        rows[0]["from_call"] = "phone"
+        response["work"] = rows
+        let snapshot = try XCTUnwrap(BotWorkSnapshot(response: response, profile: "furina"))
+        let session = try XCTUnwrap(rows[0]["session_id"] as? String)
+        XCTAssertNil(snapshot.item(forSession: [session]))
+        // And it stays in the Chats list and search.
+        XCTAssertFalse(snapshot.sessionIDs.contains(session))
+    }
+
+    /// A dropped adopt goes once more, and not after a switch to another dashboard.
+    @MainActor
+    func testADroppedAdoptIsSentOnceMoreOnItsOwnDashboard() async {
+        struct Dropped: Error {}
+        var failures = 0
+        var sent = await AppState.adoptOnce(stillCurrent: { true }, send: { throw Dropped() }, wait: {},
+                                            failed: { _, _ in failures += 1 })
+        XCTAssertEqual(sent, 2)
+        XCTAssertEqual(failures, 2)
+        sent = await AppState.adoptOnce(stillCurrent: { true }, send: {}, wait: {}, failed: { _, _ in })
+        XCTAssertEqual(sent, 1)
+        var current = true
+        sent = await AppState.adoptOnce(stillCurrent: { current }, send: { throw Dropped() },
+                                        wait: { current = false }, failed: { _, _ in })
+        XCTAssertEqual(sent, 1, "switched dashboards before the retry")
+        let here = UUID()
+        XCTAssertTrue(AppState.sameDashboard(madeOn: here, now: here, appAlive: true))
+        XCTAssertFalse(AppState.sameDashboard(madeOn: here, now: UUID(), appAlive: true), "another dashboard")
+        XCTAssertFalse(AppState.sameDashboard(madeOn: here, now: nil, appAlive: true), "no dashboard")
+        XCTAssertFalse(AppState.sameDashboard(madeOn: here, now: here, appAlive: false), "the app is gone")
+    }
+
+    /// A call's job is sent to its bot's registry only where the plugin keeps bot work.
+    func testACallsJobIsKeptOnlyWhereThePluginKeepsBotWork() {
+        let keeps = NotifierPluginStatus(state: .reported(version: "0.130.0", capabilities: [BotWorkstreamsClient.adoptCapability]))
+        let older = NotifierPluginStatus(state: .reported(version: "0.120.0", capabilities: ["work"]))
+        XCTAssertEqual(AppState.voiceJobAdoptVia(plugin: keeps, sessionID: "s1", fromWatch: false), "phone")
+        XCTAssertEqual(AppState.voiceJobAdoptVia(plugin: keeps, sessionID: "s1", fromWatch: true), "watch")
+        XCTAssertNil(AppState.voiceJobAdoptVia(plugin: keeps, sessionID: "", fromWatch: false))
+        XCTAssertNil(AppState.voiceJobAdoptVia(plugin: older, sessionID: "s1", fromWatch: false))
+        XCTAssertNil(AppState.voiceJobAdoptVia(plugin: NotifierPluginStatus(state: .unknown), sessionID: "s1", fromWatch: false))
+    }
+
+    /// Pin, Resolve and Reopen: what the plugin offers, and the list as
+    /// each leaves it before the next read.
     func testFilingWorkMovesItBetweenTheLists() throws {
         var response = workResponse()
         response["resolved_count"] = 4

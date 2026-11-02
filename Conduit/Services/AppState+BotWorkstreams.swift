@@ -1,4 +1,7 @@
 import Foundation
+import OSLog
+
+private let botWorkLogger = Logger(subsystem: "com.milim.relay", category: "BotWork")
 
 /// Each bot's work as Conduit last read it, by bot profile, for the Bot
 /// Chat's Work strip and panel and a workstream's bar. It opens on the
@@ -34,6 +37,12 @@ final class BotWorkStore: ObservableObject {
     private(set) var workstreamSessionIDs: Set<String> = []
     /// Bots whose list is being read, so two views showing it share one read.
     private var reading: Set<String> = []
+    /// When a call's request last read a bot's work before deciding it isn't
+    /// a workstream's: again only after a minute while it still hasn't
+    /// loaded, so a host whose list won't load doesn't hold every request up
+    /// and one failed read isn't the last.
+    var callPreReads: [String: Date] = [:]
+    static let callPreReadRetry: TimeInterval = 60
     private var rereads: Set<String> = []
     /// Bumped by a server change (every bot) and by an action (its bot), so
     /// a list read before either never lands over what came after it.
@@ -97,6 +106,7 @@ final class BotWorkStore: ObservableObject {
         acting = []
         reading = []
         rereads = []
+        callPreReads = [:]  // another server's bots: read again there
         epoch += 1
     }
 
@@ -129,6 +139,7 @@ final class BotWorkStore: ObservableObject {
     }
 
     func beginReading(_ profile: String) -> Bool { reading.insert(profile).inserted }
+    func isReading(_ profile: String) -> Bool { reading.contains(profile) }
     func endReading(_ profile: String) { reading.remove(profile) }
     /// An action asked for a read while one was on its way, which its mark
     /// will drop: the read under way goes again when it's done.
@@ -149,7 +160,7 @@ final class BotWorkStore: ObservableObject {
         }
         // A resolved one, opened from the Resolved list.
         for (profile, list) in resolvedLists {
-            if let item = list.items.first(where: { $0.kind == .workstream && ids.contains($0.sessionID) }) {
+            if let item = list.items.first(where: { $0.kind == .workstream && $0.fromCall.isEmpty && ids.contains($0.sessionID) }) {
                 return (profile, item)
             }
         }
@@ -171,6 +182,136 @@ extension AppState {
                 return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: 30_000)
             }
         )
+    }
+
+    /// A voice call's job kept in its bot's registry (M5), so the Work
+    /// panel lists it as a call's. Best effort, off the job's path: a
+    /// plugin without the route, or a bot whose work is off, keeps none.
+    func keepVoiceJobInRegistry(profile: String?, sessionID: String, title: String, instructions: String,
+                                fromWatch: Bool, callChat: String? = nil, endedWith: String? = nil,
+                                call: String? = nil) {
+        guard let via = Self.voiceJobAdoptVia(plugin: notifierPlugin, sessionID: sessionID, fromWatch: fromWatch)
+        else { return }
+        let bot = profile ?? activeProfile
+        let client = botWorkClient(profile: bot)
+        let dashboard = activeDashboardID
+        Task { @MainActor [weak self] in
+            var kept = false
+            _ = await AppState.adoptOnce(
+                stillCurrent: { AppState.sameDashboard(madeOn: dashboard, now: self?.activeDashboardID, appAlive: self != nil) },
+                send: { _ = try await client.adopt(sessionID: sessionID, title: title, via: via, goal: instructions,
+                                                   chat: callChat, result: endedWith, call: call)
+                        kept = true },
+                wait: { try? await Task.sleep(for: .seconds(3)) },
+                failed: { attempt, error in
+                    botWorkLogger.notice("Keeping a voice job in its bot's work registry failed (try \(attempt, privacy: .public)): \(String(describing: type(of: error)), privacy: .public) \(String(describing: error))")
+                }
+            )
+            // The Work panel shows it now rather than at its next read.
+            if kept { await self?.refreshBotWork(profile: bot) }
+        }
+    }
+
+    /// A call that kept a job with `chat` ended: the bot's plugin sends what
+    /// its Bot Chat's call held (Classic never saves its turns with the
+    /// chat, so this is its only end). Best effort, on the dashboard in use.
+    func voiceCallLeftChat(profile: String?, chat: String, call: String? = nil) {
+        guard notifierPlugin.reports(BotWorkstreamsClient.callEndedCapability), !chat.isEmpty else { return }
+        let client = botWorkClient(profile: profile ?? activeProfile)
+        let dashboard = activeDashboardID
+        Task { @MainActor [weak self] in
+            _ = await AppState.adoptOnce(
+                stillCurrent: { AppState.sameDashboard(madeOn: dashboard, now: self?.activeDashboardID, appAlive: self != nil) },
+                send: { try await client.callEnded(chat: chat, call: call) },
+                wait: { try? await Task.sleep(for: .seconds(3)) },
+                failed: { attempt, error in
+                    botWorkLogger.notice("Telling the bot's work a call ended failed (try \(attempt, privacy: .public)): \(String(describing: type(of: error)), privacy: .public)")
+                }
+            )
+        }
+    }
+
+    /// A request from a call kept with one of a bot's workstreams' chats
+    /// (Eric 2026-11-02): it goes into the workstream's own session through
+    /// its bot's plugin, which takes it as an interrupt while the
+    /// workstream works and as its next turn otherwise; no job session is
+    /// made. What to tell the call (for the live model, not localized), or
+    /// nil when the chat isn't a workstream's.
+    func sendCallRequestToWorkstream(_ thread: VoiceThreadTarget, _ request: String) async -> String? {
+        let ids = Set([thread.runtimeSessionID, thread.storedSessionID ?? ""].filter { !$0.isEmpty })
+        let bot = thread.profile ?? activeProfile
+        if botWork.workstream(forSession: ids) == nil, botWork.snapshot(bot) == nil,
+           botWork.callPreReads[bot].map({ Date().timeIntervalSince($0) >= BotWorkStore.callPreReadRetry }) ?? true {
+            botWork.callPreReads[bot] = Date()
+            // Its bot's work isn't read yet (just after a launch): read it
+            // before the request becomes a job of its own.
+            await refreshBotWork(profile: bot)
+        }
+        // A read already under way (the launch's own): its answer, not a
+        // job, decides, for up to five seconds.
+        var waited = 0
+        while botWork.workstream(forSession: ids) == nil, botWork.snapshot(bot) == nil,
+              botWork.isReading(bot), waited < 50 {
+            try? await Task.sleep(for: .milliseconds(100))
+            waited += 1
+        }
+        guard let (profile, item) = botWork.workstream(forSession: ids) else {
+            // A workstream's chat whose row isn't loaded (an older resolved
+            // one): still no job of its own.
+            guard botWork.workstreamSessionIDs.isDisjoint(with: ids) else {
+                return "This workstream isn't loaded right now, so that wasn't passed on. Say so, and suggest opening it from the Work panel."
+            }
+            return nil
+        }
+        let words = request.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty else { return "There were no words to pass on." }
+        // Another action on it is on its way (a Stop or Reply from the Work
+        // panel): nothing was sent, so a retry can't send it twice.
+        guard !botWork.isActing(item.ref, profile: profile) else {
+            return "This workstream is busy with another action, so that wasn't passed on yet. Say so, and offer to try again in a moment."
+        }
+        guard await actOnWorkstream(item, profile: profile, action: .send, text: words) else {
+            return "Hermes couldn't pass that to this workstream just now. Say so, and offer to try again."
+        }
+        return Self.workstreamCallSent
+    }
+
+    /// What a workstream's call is told once its request went in.
+    static let workstreamCallSent = "Sent to this workstream, in its own session: if it was working, Hermes takes this as an interrupt and keeps its work so far; otherwise it starts on it now. Its reply shows in the workstream's chat and its bot's Work panel, not on this call, so don't guess it."
+
+    /// Sends a voice job's adopt, and once more after `wait` if that one
+    /// fails: a dropped request would leave the job out of the panel for
+    /// good. Only while `stillCurrent` (the dashboard the job was made on;
+    /// the client's transport reads the current one). How many were sent.
+    @discardableResult
+    static func adoptOnce(stillCurrent: () -> Bool, send: () async throws -> Void, wait: () async -> Void,
+                          failed: (Int, Error) -> Void) async -> Int {
+        var sent = 0
+        for attempt in 1...2 {
+            guard stillCurrent() else { return sent }
+            sent += 1
+            do {
+                try await send()
+                return sent
+            } catch {
+                failed(attempt, error)
+                if attempt == 1 { await wait() }
+            }
+        }
+        return sent
+    }
+
+    /// Whether an adopt still goes to the dashboard its job was made on:
+    /// never once the app moved to another, or is gone.
+    nonisolated static func sameDashboard(madeOn: UUID?, now: UUID?, appAlive: Bool) -> Bool {
+        appAlive && now == madeOn
+    }
+
+    /// The call a job is kept as ("phone" or "watch"), or nil when none is
+    /// sent: a plugin that doesn't keep bot work (`work-adopt`), or no session.
+    nonisolated static func voiceJobAdoptVia(plugin: NotifierPluginStatus, sessionID: String, fromWatch: Bool) -> String? {
+        guard plugin.reports(BotWorkstreamsClient.adoptCapability), !sessionID.isEmpty else { return nil }
+        return fromWatch ? "watch" : "phone"
     }
 
     /// Whether the host's plugin serves Edit Bot > Work.
@@ -274,8 +415,14 @@ extension AppState {
         do {
             let updated = try await botWorkClient(profile: profile).act(ref: item.ref, action: action, text: text,
                                                                          requestID: requestID)
-            // After a server change the row isn't this server's.
-            guard botWork.mark(profile).epoch == mark.epoch else { return false }
+            // A call's job stopped here is stopped for its call too, not
+            // settled as finished when its session goes quiet: the stop went
+            // in, even if the server changed meanwhile.
+            if action == .stop, !item.call.isEmpty {
+                voiceBackgroundJobSupervisor.stoppedFromWorkPanel(sessionID: item.sessionID)
+            }
+            // After a server change the row isn't this server's (the plugin did it all the same).
+            guard botWork.mark(profile).epoch == mark.epoch else { return true }
             botWork.noteAction(profile)
             if let updated {
                 whileKeepingTitle {

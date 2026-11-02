@@ -4582,8 +4582,9 @@ final class AppState: ObservableObject {
                 if let targetProfile {
                     // A job on another profile or bot runs on that profile's
                     // own model: this profile's voice-job model is not its.
-                    // A Watch call's own job on that profile uses its voice-job
-                    // model, as the call's relay jobs do (#1564).
+                    // A call's own job on that profile (a Watch call's, or a
+                    // Bot Chat call's on its bot) uses its voice-job model, as
+                    // the call's relay jobs do (#1564).
                     var options: (model: String?, provider: String?, reasoningEffort: String?) = (nil, nil, nil)
                     if callsModel {
                         options = self.watchCallJobSession(self.loadVoiceProfilePreferences(profile: targetProfile), profile: targetProfile)
@@ -4597,7 +4598,7 @@ final class AppState: ObservableObject {
                     if let returnedProfile = created.profile, !self.profilesMatch(returnedProfile, targetProfile) {
                         throw HermesError.invalidResponse
                     }
-                    return (created.sessionId, created.storedSessionId)
+                    return (created.sessionId, created.storedSessionId, targetProfile)
                 }
                 // Same model/provider as a composer-created chat, and the
                 // same refusal when Hermes lands it in another profile.
@@ -4616,12 +4617,24 @@ final class AppState: ObservableObject {
                 if let returnedProfile = created.profile, !self.profilesMatch(returnedProfile, profile) {
                     throw HermesError.invalidResponse
                 }
-                return (created.sessionId, created.storedSessionId)
+                return (created.sessionId, created.storedSessionId, profile)
             },
             setTitle: { [weak self] sessionID, title in
                 guard let client = try? await self?.clientForVoiceRequest() else { return }
                 try? await client.setSessionTitle(sessionID, title: title)
             },
+            keepInRegistry: { [weak self] targetProfile, sessionID, title, instructions, fromWatch, callChat, endedWith, call in
+                self?.keepVoiceJobInRegistry(profile: targetProfile, sessionID: sessionID, title: title,
+                                             instructions: instructions, fromWatch: fromWatch, callChat: callChat,
+                                             endedWith: endedWith, call: call)
+            },
+            sendToCallWorkstream: { [weak self] thread, request in
+                await self?.sendCallRequestToWorkstream(thread, request)
+            },
+            callLeftChat: { [weak self] profile, chat, call in
+                self?.voiceCallLeftChat(profile: profile, chat: chat, call: call)
+            },
+            activeProfile: { [weak self] in self?.activeProfile },
             submit: { [weak self] sessionID, text in
                 guard let self else { throw HermesError.notConnected }
                 let client = try await self.clientForVoiceRequest()

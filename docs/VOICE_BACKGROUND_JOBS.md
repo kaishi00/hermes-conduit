@@ -28,12 +28,28 @@ a job. At most three jobs run at once.
   listing it under its call. That holds while only voice has used it (its
   prompt, and corrections sent as `(voice) <words>`): typing into it brings
   it back for good, and a failed, stopped or pinned job stays listed.
+- On the `bot-workstreams` branches, a host whose plugin keeps bot work
+  (`work-adopt`) is also told of each job once Hermes takes its request, so
+  the job shows in its bot's Work panel as a call's ("From a voice call" or
+  "From a Watch call"), journaled, and waiting for the user after a Hermes
+  restart. It's a write to the host during the call, one small request off
+  the job's path beside the session the job makes anyway; how results come
+  back is unchanged. Eric ruled (2026-11-02) that the "no writes to the
+  host mid-call" ruling allows it (feature map, "Job results during
+  calls"). A start that fails
+  or is abandoned isn't kept. Watch relay jobs are kept by the plugin itself
+  as they start.
+- Also on those branches (Eric 2026-11-02): a call kept with the Bot Chat
+  runs its jobs on that bot, as the coordinator's own workstreams, and the
+  coordinator reports each in the Bot Chat once the call is saved. A call
+  kept with a workstream's chat makes no jobs at all: every request goes to
+  the workstream through its plugin, interrupting it while it works.
 - During a live call, the call screen shows each job the call started: the
   latest above the captions, and every one in the transcript panel where it
   started (`VoiceJobCallAnchor`). Tapping one shows its status and, once it
   finishes, its full final reply over the call, with **Open chat** to leave
-  for the job's chat. The reply is already on the phone, so nothing is
-  written to the host mid-call (mid-call saves stalled Gemini Live, PR #281).
+  for the job's chat. The reply is already on the phone, so showing it
+  saves nothing to the host mid-call (mid-call saves stalled Gemini Live, PR #281).
 - Gemini Live and Grok Live also have a `show_on_screen` tool (title and
   Markdown) for anything better seen than heard: tables, Mermaid charts
   (`xychart-beta`, `pie`), steps, image and web links. The card opens over

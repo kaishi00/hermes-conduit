@@ -639,6 +639,9 @@ private struct BotWorkRow: View {
                     .scaledFont(.footnote)
                     .foregroundStyle(item.needsYou ? Color.orange : Color.secondary)
                     .lineLimit(expanded ? nil : 1)
+                if !item.call.isEmpty {
+                    fromCallLine
+                }
                 if !item.result.isEmpty {
                     Text(BotWorkLook.rendered(item.result))
                         .scaledFont(.footnote)
@@ -660,14 +663,24 @@ private struct BotWorkRow: View {
         .contentShape(Rectangle())
     }
 
-    /// The branch its own worktree is on, to merge once it's done.
+    /// A voice call's job: the call tells the user what it found.
+    private var fromCallLine: some View {
+        Label(item.call == "watch" ? AppLocalization.string("From a Watch call")
+                  : AppLocalization.string("From a voice call"),
+              systemImage: item.call == "watch" ? "applewatch" : "waveform")
+            .scaledFont(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// The branch its own worktree is on, to merge once it's done. The
+    /// whole name wraps, at any text size; Copy Branch copies it.
     private var branchLine: some View {
         Label {
             Text(verbatim: item.branch)
                 .scaledFont(.footnote.monospaced())
                 .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
         } icon: {
             Image(systemName: "arrow.triangle.branch")
                 .scaledFont(.footnote)
