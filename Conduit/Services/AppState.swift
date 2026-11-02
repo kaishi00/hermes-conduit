@@ -3116,6 +3116,8 @@ final class AppState: ObservableObject {
     var submissionTurnSurface: (text: String, surface: TurnSurface)?
     /// Seam for tests: takes the plugin's turn-surface reports.
     var turnSurfaceSender: (([String: Any]) async throws -> Void)?
+    /// Seam for tests: takes the discards of failed sends' reports.
+    var turnSurfaceDiscarder: (([String: Any]) async throws -> Void)?
     /// What the host holds as on screen for this device (ChatOnScreen.swift).
     var chatOnScreenTracker = ChatOnScreen.Tracker()
     /// Renews the hold while the open chat's turn runs.
@@ -4451,11 +4453,17 @@ final class AppState: ObservableObject {
                     ?? AppLocalization.string("Hermes could not send this to the chat."))
             }
             await self.reportTurnSurface(self.messageTurnSurface(spoken: true), runtimeSessionID: chat.runtimeID, text: text)?.value
-            let outcome = try await self.sendCallPromptTakingOver(
-                runtimeID: chat.runtimeID, otherSessionIDs: [], profile: chat.profile,
-                stillWanted: self.localLiveTurns.currentTurnCheck()
-            ) {
-                try await client.sendPrompt(chat.runtimeID, text: text, surface: AppState.spokenPromptSurface, voiceTurn: true)
+            let outcome: PromptSubmissionOutcome
+            do {
+                outcome = try await self.sendCallPromptTakingOver(
+                    runtimeID: chat.runtimeID, otherSessionIDs: [], profile: chat.profile,
+                    stillWanted: self.localLiveTurns.currentTurnCheck()
+                ) {
+                    try await client.sendPrompt(chat.runtimeID, text: text, surface: AppState.spokenPromptSurface, voiceTurn: true)
+                }
+            } catch {
+                self.discardTurnSurface(runtimeSessionID: chat.runtimeID, text: text, after: error)
+                throw error
             }
             switch outcome {
             case .accepted:
@@ -9456,23 +9464,31 @@ final class AppState: ObservableObject {
         let target = runtimeID.isEmpty ? thread.runtimeSessionID : runtimeID
         // Alongside the read below, so it adds no wait between the read and the send.
         let surfaceReport = reportTurnSurface(messageTurnSurface(spoken: true), runtimeSessionID: target, text: text)
-        // Re-read right before the send: a turn running there (typed on
-        // another device) is waited for. A failed read fails the send rather
-        // than risk steering it.
-        let rows = try await client.activeSessions(inProfile: thread.profile)
-        if rows.contains(where: { row in
-            (row.runtimeSessionId == target || thread.owns(sessionID: row.runtimeSessionId)
-                || thread.owns(sessionID: row.storedSessionId)) && row.isRunning
-        }) {
-            throw VoiceThreadBusyError()
-        }
-        await surfaceReport?.value
-        let outcome = try await sendCallPromptTakingOver(
-            runtimeID: target, otherSessionIDs: [thread.runtimeSessionID, thread.storedSessionID].compactMap { $0 },
-            profile: thread.profile,
-            stillWanted: stillWanted
-        ) {
-            try await client.sendPrompt(target, text: text)
+        let outcome: PromptSubmissionOutcome
+        do {
+            // Re-read right before the send: a turn running there (typed on
+            // another device) is waited for. A failed read fails the send rather
+            // than risk steering it.
+            let rows = try await client.activeSessions(inProfile: thread.profile)
+            if rows.contains(where: { row in
+                (row.runtimeSessionId == target || thread.owns(sessionID: row.runtimeSessionId)
+                    || thread.owns(sessionID: row.storedSessionId)) && row.isRunning
+            }) {
+                throw VoiceThreadBusyError()
+            }
+            await surfaceReport?.value
+            outcome = try await sendCallPromptTakingOver(
+                runtimeID: target, otherSessionIDs: [thread.runtimeSessionID, thread.storedSessionID].compactMap { $0 },
+                profile: thread.profile,
+                stillWanted: stillWanted
+            ) {
+                try await client.sendPrompt(target, text: text)
+            }
+        } catch {
+            // Nothing of it was sent, or Hermes refused it: its report waits for no turn.
+            await surfaceReport?.value
+            discardTurnSurface(runtimeSessionID: target, text: text, after: error)
+            throw error
         }
         switch outcome {
         case .accepted:
@@ -27491,6 +27507,11 @@ final class AppState: ObservableObject {
             }
             return true
         } catch {
+            // No turn of it is coming: the same words sent from another
+            // client there mustn't take its line.
+            if surfaceReport != nil {
+                discardTurnSurface(runtimeSessionID: sessionId, text: promptText, after: error)
+            }
             // Images staged for a Queue that didn't land would ride on a
             // later turn. One Hermes took was already claimed by it, so
             // taking it back then changes nothing.
@@ -27724,7 +27745,7 @@ final class AppState: ObservableObject {
     /// reached Hermes and the turn may already be running — so the
     /// authoritative registry probe decides, and unknown future `HermesError`
     /// cases fail toward the probe rather than toward a blind retry.
-    private static func isAmbiguousPromptDelivery(_ error: Error) -> Bool {
+    static func isAmbiguousPromptDelivery(_ error: Error) -> Bool {
         switch error {
         case HermesError.notConnected:
             return false
