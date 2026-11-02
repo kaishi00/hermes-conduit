@@ -708,6 +708,11 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertFalse(AppState.notificationOpenNeedsAuthoritativeRead(target: target("durable-1", call: call), catalog: catalog))
         XCTAssertTrue(AppState.notificationOpenNeedsAuthoritativeRead(target: target("unseen", call: call), catalog: catalog), "a call whose chat the list lacks reads it again")
         XCTAssertTrue(AppState.notificationOpenNeedsAuthoritativeRead(target: target("durable-1", call: nil), catalog: catalog), "a plain notification always reads it again")
+        let unseenDurable = ConduitNotificationTarget(profile: nil, sessionId: "runtime-1", durableSessionID: "durable-new", type: HermesCallRequest.type, call: call)
+        XCTAssertTrue(AppState.notificationOpenNeedsAuthoritativeRead(target: unseenDurable, catalog: catalog),
+                      "the route resolves to the payload's durable id, so a list without it is read again")
+        let listedDurable = ConduitNotificationTarget(profile: nil, sessionId: "runtime-1", durableSessionID: "durable-1", type: HermesCallRequest.type, call: call)
+        XCTAssertFalse(AppState.notificationOpenNeedsAuthoritativeRead(target: listedDurable, catalog: catalog))
         let missed = HermesCallRequest(id: "call-2", kind: .done, title: nil, sessionIDs: ["runtime-1"])
         XCTAssertFalse(AppState.notificationOpenNeedsAuthoritativeRead(target: target("runtime-1", call: missed), catalog: catalog),
                        "a tapped call notification (body, Talk or missed) has the same person waiting on the voice")

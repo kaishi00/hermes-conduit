@@ -24851,7 +24851,11 @@ final class AppState: ObservableObject {
         target: ConduitNotificationTarget,
         catalog: [SessionSummary]
     ) -> Bool {
-        !(target.call != nil && catalogListsSession(target.sessionId, in: catalog))
+        // The route resolves to the payload's durable id first, so that id
+        // must be on hand too, or the bot-chat check would miss its row.
+        guard target.call != nil, catalogListsSession(target.sessionId, in: catalog) else { return true }
+        if let durable = target.durableSessionID, !catalogListsSession(durable, in: catalog) { return true }
+        return false
     }
 
     nonisolated static func catalogListsSession(_ sessionID: String, in catalog: [SessionSummary]) -> Bool {
