@@ -49,6 +49,19 @@ extension HermesClientTests {
         XCTAssertEqual(report.daily.last?.usage.total, 1500)
     }
 
+    func testUsageCountsAreCappedSoTheirSumNeverOverflows() {
+        let huge: [String: Any] = ["totals": [
+            "total_input": Double(Int.max), "total_output": "\(Int.max)", "total_cache_read": 1e300,
+        ] as [String: Any]]
+        let totals = UsageReport.parse(usage: huge, models: nil, days: 7).totals
+        XCTAssertEqual(totals.input, UsageReport.countCap)
+        XCTAssertEqual(totals.output, UsageReport.countCap)
+        XCTAssertEqual(totals.cacheRead, UsageReport.countCap)
+        // Three capped counts add up without trapping.
+        XCTAssertEqual(totals.allTokens, UsageReport.countCap * 3)
+        XCTAssertEqual(UsageReport.int("-5"), 0)
+    }
+
     func testUsageReportPrefersTheModelsRouteAndFallsBackToByModel() {
         let fallback = UsageReport.parse(usage: Self.usageResponse, models: nil, days: 7)
         XCTAssertEqual(fallback.models.map(\.model), ["claude-sonnet"])
