@@ -1448,20 +1448,26 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         var registryID: String?  // the id its bot's registry keeps it by
         // The bot the job is made on, before the wait for its session.
         var botProfile = profile ?? backend.activeProfile()
+        // The call's chat as the job starts (a hang-up during its submit
+        // doesn't make it another kind of job), and the bot it lives on.
+        let startChat = liveThread.map { thread in
+            (profile: thread.profile ?? backend.activeProfile(),
+             id: [thread.storedSessionID, thread.runtimeSessionID].compactMap { $0 }.first { !$0.isEmpty })
+        }
         func keep() {
             guard let registryID else { return }
             // The call's chat, only to the bot it lives on: a job naming
             // another bot is that bot's call job. The plugin makes it the
             // coordinator's only when the chat is its Bot Chat; any other
             // chat's call keeps its jobs as call jobs.
-            let chat = liveThread.flatMap { thread -> String? in
-                guard (thread.profile ?? backend.activeProfile()) == botProfile else { return nil }
-                return [thread.storedSessionID, thread.runtimeSessionID].compactMap { $0 }.first { !$0.isEmpty }
-            }
+            let chat = startChat.flatMap { $0.profile == botProfile ? $0.id : nil }
             let now = self.job(job.id)
             backend.keepInRegistry(botProfile, registryID, job.title, now?.instructions ?? instructions,
                                    fromWatch, chat, now?.status == .finished ? (now?.result ?? "") : nil)
-            if let chat { keptCallChat = (botProfile, chat) }
+            if let chat {
+                // A call that already left its chat is told now; one still on, when it leaves.
+                if liveThread == nil { backend.callLeftChat(botProfile, chat) } else { keptCallChat = (botProfile, chat) }
+            }
         }
         do {
             let ids = try await backend.createSession(profile, callsModel && profile != nil)

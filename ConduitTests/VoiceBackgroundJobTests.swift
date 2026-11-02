@@ -353,6 +353,18 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.leftChats.count, 1, "said once")
     }
 
+    /// A Bot Chat call that hangs up while its job's request goes in: the
+    /// job is still the coordinator's, and the call's end is said at once.
+    func testABotChatCallThatHangsUpDuringTheSubmitStillNamesItsChat() async {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-bot", storedSessionID: "st-bot",
+                                                      title: "Bot Chat", profile: "furina"))
+        fake.onSubmit = { _ in supervisor.detachLiveThread() }
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the backups"))
+        XCTAssertEqual(fake.keptChats, ["st-bot"])
+        XCTAssertEqual(fake.leftChats.map(\.1), ["st-bot"])
+    }
+
     /// A Bot Chat call's job that names another bot is that bot's call job:
     /// the call's chat isn't sent to it.
     func testABotChatCallsJobOnAnotherBotDoesntNameTheChat() async {

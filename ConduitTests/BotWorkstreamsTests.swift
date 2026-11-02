@@ -83,6 +83,10 @@ extension BotModeTests {
         XCTAssertEqual(job.fromCall, "watch")
         XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "W6", "kind": "workstream", "from_call": "car"])).fromCall, "")
         XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "W7", "kind": "workstream"])).fromCall, "")
+        // A Bot Chat call's own workstream: the app row's `call` (the tool row's `started_in_call`).
+        let own = try XCTUnwrap(BotWorkItem(row: ["ref": "W8", "kind": "workstream", "status": "running", "call": "phone"]))
+        XCTAssertEqual(own.startedInCall, "phone")
+        XCTAssertEqual(own.fromCall, "")
         // Its chat stays a Voice Jobs chat, not a workstream's.
         var response = workResponse()
         var rows = response["work"] as? [[String: Any]] ?? []
