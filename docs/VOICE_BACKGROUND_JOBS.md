@@ -43,8 +43,8 @@ a job. At most three jobs run at once.
   latest above the captions, and every one in the transcript panel where it
   started (`VoiceJobCallAnchor`). Tapping one shows its status and, once it
   finishes, its full final reply over the call, with **Open chat** to leave
-  for the job's chat. The reply is already on the phone, so nothing is
-  written to the host mid-call (mid-call saves stalled Gemini Live, PR #281).
+  for the job's chat. The reply is already on the phone, so showing it
+  saves nothing to the host mid-call (mid-call saves stalled Gemini Live, PR #281).
 - Gemini Live and Grok Live also have a `show_on_screen` tool (title and
   Markdown) for anything better seen than heard: tables, Mermaid charts
   (`xychart-beta`, `pie`), steps, image and web links. The card opens over
