@@ -2603,6 +2603,12 @@ extension AppStateMultiDashboardTests {
         }
         XCTAssertNil(next.keptBotMcpSetup(profile: "nova"))
 
+        // A sign-in Hermes took, from Edit Bot or the Connectors page,
+        // opens the MCP page signed in.
+        XCTAssertEqual(next.keptBotMcpSetup(profile: "atlas")?.servers["github_token"]?.needsSignIn, true)
+        next.keepMcpSignedIn(profile: "atlas", name: "github_token", on: owner)
+        XCTAssertEqual(next.keptBotMcpSetup(profile: "atlas")?.servers["github_token"]?.needsSignIn, false)
+
         // A save whose tools section Hermes turned down keeps the MCP
         // section it took, and the tools as they were.
         hermes.applied = ["toolsets": false, "mcp_servers": true]

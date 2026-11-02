@@ -8,7 +8,7 @@ context ("CI Gate").
 Policy:
   plan        must be success
   smoke       must be success (the one macOS job: the build, the unit smoke
-              classes and the UI smoke classes), or skipped when the plan job
+              classes and, on a push, the UI smoke classes), or skipped when the plan job
               succeeded and said the change doesn't need it (--smoke-needed
               false: a PR that changes only docs and review config)
   self-test   must be success (the CI-tooling regression suites)
