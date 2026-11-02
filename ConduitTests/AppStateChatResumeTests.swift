@@ -732,6 +732,11 @@ final class AppStateChatResumeTests: XCTestCase {
             ).map(\.id),
             ["12308.0"]
         )
+        // Times neither can read match only when spelled the same.
+        XCTAssertTrue(MessageTimestampFormatter.sameMoment("09:00", "09:00"))
+        XCTAssertFalse(MessageTimestampFormatter.sameMoment("09:00", "10:00"))
+        XCTAssertFalse(MessageTimestampFormatter.sameMoment("09:00", "2026-09-13T09:00:00Z"))
+        XCTAssertTrue(MessageTimestampFormatter.sameMoment("", "09:00"))
         // Positional ids on both sides with the window moved by a row: an id
         // the shown transcript used for another row isn't swapped in (the
         // map entry's open gap).

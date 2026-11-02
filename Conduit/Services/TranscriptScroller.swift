@@ -1357,7 +1357,9 @@ final class TranscriptScroller: ObservableObject {
         let previousText = latestUserRowText
         let previousStoredRowID = latestUserStoredRowID
         let previousTime = latestUserRowTime
-        latestUserRowTime = latestTarget?.message.timestamp
+        // A time the same row stops saying is kept, as its stored row is.
+        let latestTime = latestTarget?.message.timestamp.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        latestUserRowTime = latestTime.isEmpty && latest == latestUserRowID ? previousTime : latestTarget?.message.timestamp
         // Kept current under the same id too: a row whose text fills in
         // later is compared by what it says now.
         latestUserRowText = latestTarget?.message.content
