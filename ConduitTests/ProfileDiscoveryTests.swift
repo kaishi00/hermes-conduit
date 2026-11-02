@@ -441,6 +441,25 @@ final class ProfileDiscoveryTests: XCTestCase {
         assertNewerDisplaySettings(appState)
     }
 
+    func testANewerDisplaySettingsReadFailingFirstLeavesTheOlderOneToCommit() async throws {
+        seedKnownProfiles(["default"], activeProfile: "default")
+        let appState = makeAppState()
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        defer { held.releaseAll() }
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+
+        let older = Task { await appState.loadProfileDisplayPreferencesForTesting() }
+        try await held.waitForRequests(1)
+        let newer = Task { await appState.loadProfileDisplayPreferencesForTesting() }
+        try await held.waitForRequests(2)
+        try await held.answer(["error": "unavailable"], status: 503, at: 1)
+        await newer.value
+        try await held.answer(Self.newerConfig)
+        await older.value
+
+        assertNewerDisplaySettings(appState)
+    }
+
     /// Every display setting away from Hermes' default, and a zone.
     private static let newerConfig: [String: Any] = [
         "display": [

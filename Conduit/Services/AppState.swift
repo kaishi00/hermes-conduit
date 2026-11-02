@@ -32277,6 +32277,7 @@ final class AppState: ObservableObject {
     /// Reads the host's profile list. False when it wasn't read for this
     /// connection (no bridge, a failed or empty reply, or a reply from a
     /// replaced connection): the list then says nothing about a profile.
+    /// True when a list sent after this one was taken first, which stands.
     @discardableResult
     private func readProfiles() async -> Bool {
         guard let bridge = dashboardTicketBridge else { return false }
