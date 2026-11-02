@@ -179,7 +179,7 @@ final class NativeMCPSignInTests: XCTestCase {
         let outcome = await NativeMCPSignIn.run(profile: "original", name: "server", rpc: { action, params in
             switch action {
             case "start":
-                return self.started(redirect: params["client_redirect_uri"] as! String)
+                return self.started(redirect: try XCTUnwrap(params["client_redirect_uri"] as? String))
             case "callback":
                 XCTAssertEqual(params["code"] as? String, "test-code")
                 XCTAssertEqual(params["state"] as? String, "expected")
@@ -188,8 +188,12 @@ final class NativeMCPSignInTests: XCTestCase {
             default: XCTFail("Unexpected cancel"); return AnyCodable([:])
             }
         }, isCurrent: { true }, open: { url in
-            let items = URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!
-            let redirect = items.first { $0.name == "redirect_uri" }!.value!
+            guard let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
+                  let redirect = items.first(where: { $0.name == "redirect_uri" })?.value else {
+                XCTFail("The auth URL has no redirect_uri")
+                browserReturned.fulfill()
+                return
+            }
             browserTask = Task {
                 defer { browserReturned.fulfill() }
                 let session = URLSession(configuration: .ephemeral)
