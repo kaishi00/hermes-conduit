@@ -3514,7 +3514,17 @@ final class HermesClient: ObservableObject {
         if let questionId, !questionId.isEmpty {
             params["question_id"] = questionId
         }
-        let result = try await rpc("clarify.respond", params: params)
+        let result: AnyCodable
+        let builtForDashboard = !speaksSessionAuthority
+        do {
+            result = try await rpc("clarify.respond", params: params)
+        } catch is RpcError where builtForDashboard && speaksSessionAuthority {
+            // Sent before the ready was read, to the authority, which refuses
+            // this shape before anything runs: answer it in its own.
+            return try await respondToClarification(
+                requestId: requestId, answer: answer, questionId: questionId, sessionId: sessionId, profile: profile
+            )
+        }
         let status = result.objectValue?["status"]?.stringValue?.lowercased()
         if status == "expired" {
             return .expired
@@ -3717,7 +3727,17 @@ final class HermesClient: ObservableObject {
         if let profile, !profile.isEmpty {
             params["profile"] = profile
         }
-        let result = try await rpc("approval.respond", params: params)
+        let result: AnyCodable
+        let builtForDashboard = !speaksSessionAuthority
+        do {
+            result = try await rpc("approval.respond", params: params)
+        } catch is RpcError where builtForDashboard && speaksSessionAuthority {
+            // Sent before the ready was read, to the authority, which refuses
+            // this shape before anything runs: answer it in its own.
+            return try await respondToApprovalOutcome(
+                sessionId: sessionId, requestId: requestId, choice: choice, profile: profile
+            )
+        }
         // Current Hermes reports the number of queue entries resolved. Older
         // gateways omitted the field after a successful response to legacy
         // requestless approval calls.
