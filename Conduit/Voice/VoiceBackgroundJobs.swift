@@ -2535,17 +2535,18 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             guard lastUnidentifiedChatReply != reply else { return }
         }
         rememberChatTurn(messageID, reply: reply)
-        // A voice request's own text is never passed off as typed.
-        var prompt = backend.latestThreadPrompt(thread)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let typed = prompt, typed.isEmpty || typed.hasPrefix(Self.threadTurnText(for: "")) { prompt = nil }
-        // A Bot Chat's turn nobody typed is its coordinator reporting work
-        // (the plugin's work update): the call speaks it, as it speaks a
-        // job's result (Eric 2026-11-02, "Bot Chat calls only").
-        if backend.isBotChat(thread), prompt == nil || prompt?.hasPrefix(Self.workUpdatePrefix) == true {
+        let asked = askedFor(thread)
+        // A Bot Chat's turn nobody asked for is its coordinator reporting
+        // work (the plugin's work update): the call speaks it, as it speaks
+        // a job's result (Eric 2026-11-02, "Bot Chat calls only").
+        if asked == .nobody, backend.isBotChat(thread) {
             lastCallResult = nil
             queueWorkUpdate(reply)
             return
         }
+        // A voice request's own text is never passed off as typed.
+        var prompt: String?
+        if case .typed(let typed) = asked { prompt = typed }
         // The chat replied after any job result: a read-back reads the chat.
         lastCallResult = nil
         queueChatNote(ChatNote(text: Self.chatContextPrompt(typed: prompt, reply: reply)))
@@ -2772,20 +2773,36 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         pruneSettledJobs()
     }
 
-    /// `withReason` adds Hermes' reason to a failure's notice: not for one
-    /// spoken as is, where a raw provider error would be read out.
     func noteChatReport(_ reply: String, sessionID: String) -> Bool {
         let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, backend.isBotChat(VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: ""))
-        else { return false }
+        let thread = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
+        guard !text.isEmpty, backend.isBotChat(thread), askedFor(thread) == .nobody else { return false }
         queueWorkUpdate(text)
         return true
+    }
+
+    /// Who asked for the chat's latest turn, from its open transcript: a
+    /// message typed there, a voice request, or nobody (the plugin's hidden
+    /// work-update turn never shows, and its own text counts as nobody).
+    enum AskedFor: Equatable {
+        case nobody
+        case voice
+        case typed(String)
+    }
+
+    private func askedFor(_ thread: VoiceThreadTarget) -> AskedFor {
+        guard let prompt = backend.latestThreadPrompt(thread)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !prompt.isEmpty, !prompt.hasPrefix(Self.workUpdatePrefix) else { return .nobody }
+        return prompt.hasPrefix(Self.threadTurnText(for: "")) ? .voice : .typed(prompt)
     }
 
     private func queueWorkUpdate(_ reply: String) {
         let clipped = reply.count > Self.maximumChatContextReplyCharacters
             ? String(reply.prefix(Self.maximumChatContextReplyCharacters)) + "…" : reply
         workUpdates.append((UUID(), clipped))
+        if workUpdates.count > Self.maximumPendingChatContext {
+            workUpdates.removeFirst(workUpdates.count - Self.maximumPendingChatContext)
+        }
         onNoticePending?()
     }
 
@@ -2798,6 +2815,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     private var workUpdates: [(id: UUID, text: String)] = []
     private var workUpdatesOut: [UUID: String] = [:]
 
+    /// `withReason` adds Hermes' reason to a failure's notice: not for one
+    /// spoken as is, where a raw provider error would be read out.
     private func takeNotice(withReason: Bool) -> (notice: VoiceBackgroundJobNotice, jobID: UUID)? {
         if !workUpdates.isEmpty {
             let update = workUpdates.removeFirst()

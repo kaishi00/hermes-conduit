@@ -1312,6 +1312,25 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(supervisor.noteChatReport("  Still 7.6 GB free. ", sessionID: "rt-bot"))
         XCTAssertEqual(supervisor.takePendingNotice(), .speak("Still 7.6 GB free."))
         XCTAssertFalse(supervisor.noteChatReport("   ", sessionID: "rt-bot"))
+
+        // A reply to something typed or said in the open Bot Chat is no report.
+        fake.threadPrompt = "hi"
+        XCTAssertFalse(supervisor.noteChatReport("Hello.", sessionID: "rt-bot"), "typed")
+        fake.threadPrompt = VoiceBackgroundJobSupervisor.threadTurnText(for: "check the disk")
+        XCTAssertFalse(supervisor.noteChatReport("On it.", sessionID: "rt-bot"), "a voice request")
+        fake.threadPrompt = "Work update from your workstreams."
+        XCTAssertTrue(supervisor.noteChatReport("W50 found it.", sessionID: "rt-bot"))
+        XCTAssertEqual(supervisor.takePendingNotice(), .speak("W50 found it."))
+    }
+
+    /// Reports the call can't say yet keep the newest few, as chat notes do.
+    func testABotChatCallKeepsOnlyItsNewestWorkUpdates() {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.botChat = true
+        for index in 1...5 { XCTAssertTrue(supervisor.noteChatReport("Report \(index).", sessionID: "rt-bot")) }
+        var spoken: [VoiceBackgroundJobNotice] = []
+        while let notice = supervisor.takePendingNotice() { spoken.append(notice) }
+        XCTAssertEqual(spoken, (3...5).map { VoiceBackgroundJobNotice.speak("Report \($0).") })
     }
 
     /// Eric 2026-11-02: a Bot Chat call speaks its coordinator's report on
@@ -1335,6 +1354,12 @@ extension VoiceConversationControllerTests {
         fake.threadPrompt = "hi"
         supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "u3", content: "Hello.", reasoning: nil))
         XCTAssertEqual(supervisor.pendingChatContext.count, 1)
+        XCTAssertNil(supervisor.takePendingNotice())
+
+        // A reply to a voice request nobody's job owns isn't a report either.
+        fake.threadPrompt = VoiceBackgroundJobSupervisor.threadTurnText(for: "check the disk")
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "u4", content: "On it.", reasoning: nil))
+        XCTAssertEqual(supervisor.pendingChatContext.count, 2)
         XCTAssertNil(supervisor.takePendingNotice())
     }
 
