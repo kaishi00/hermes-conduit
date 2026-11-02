@@ -3346,9 +3346,13 @@ final class HermesClient: ObservableObject {
             }
             // The authority's word on the running turn, even below what this
             // socket had: the control names it as Hermes does.
-            if let generation = Self.exactIntValue(snapshot["execution_generation"]) {
-                executionGenerations[sessionId] = generation
+            guard let generation = Self.exactIntValue(snapshot["execution_generation"]) else {
+                // A turn runs but the chat doesn't name it: sending the
+                // refused turn again would read as no turn running. The
+                // refusal stands, and the chat still reads as running.
+                throw error
             }
+            executionGenerations[sessionId] = generation
             do {
                 let request = authorityControl(method, sessionId: sessionId, text: text)
                 return try await rpc(request.method, params: request.params)
