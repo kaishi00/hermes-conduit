@@ -337,8 +337,31 @@ extension GroupChatModelsTests {
         XCTAssertEqual(state.mcpServersToSave(picking: ["notes", "github"]), ["github", "notes"])
         // None is a choice too: no_mcp is back.
         XCTAssertEqual(state.mcpServersToSave(picking: []), [])
-        // A server the plugin doesn't offer (turned off since) isn't posted.
-        XCTAssertEqual(state.mcpServersToSave(picking: ["notes", "off"]), ["notes"])
+        // A server the plugin doesn't offer isn't posted.
+        XCTAssertEqual(state.mcpServersToSave(picking: ["notes", "mail"]), ["notes"])
+    }
+
+    func testAChosenServerHermesTurnedOffStaysChosen() throws {
+        // Saved github and mail; Hermes turned mail off, so it has no switch.
+        var answer = peopleSetupAnswerWithServers(saved: ["github", "mail"])
+        answer["ready"] = true
+        answer["needs"] = [String]()
+        answer["changes"] = [String]()
+        let state = try RoomSetupClient.parseState(answer)
+        XCTAssertEqual(state.mcpServersTurnedOff, ["mail"])
+        XCTAssertEqual(state.mcpServersInUse, ["github"])
+        // Unchanged switches post nothing, whether or not the picked set has mail.
+        XCTAssertNil(state.mcpServersToSave(picking: ["github", "mail"]))
+        XCTAssertNil(state.mcpServersToSave(picking: ["github"]))
+        XCTAssertFalse(state.changesSavedCeiling(picking: ["vision", "web"], servers: ["github", "mail"]))
+        // Changing a switch sends mail along, so it stays chosen (and off).
+        XCTAssertEqual(state.mcpServersToSave(picking: ["github", "mail", "notes"]), ["github", "notes", "mail"])
+        XCTAssertEqual(state.mcpServersToSave(picking: ["mail"]), ["mail"])
+        XCTAssertTrue(state.changesSavedCeiling(picking: ["vision", "web"], servers: ["mail"]))
+        // Ready names only the one whose tools can run.
+        let list = ["github"].formatted(.list(type: .and).locale(AppLocalization.formattingLocale))
+        XCTAssertEqual(PeopleSettingsText.mcpServers(state, profileName: "Furina"),
+                       AppLocalization.string("MCP servers too: \(list), in rooms whose Custom choice names their tools."))
     }
 
     func testChangingTheMCPServersOfASavedCeilingAsksFirst() throws {

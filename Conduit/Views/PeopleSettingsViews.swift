@@ -71,8 +71,9 @@ enum PeopleSettingsText {
 
     /// The MCP servers rooms may let the profile's agent use, or nil with none.
     static func mcpServers(_ state: RoomSetupState, profileName: String) -> String? {
-        guard !state.mcpServers.isEmpty else { return nil }
-        let list = state.mcpServers.formatted(.list(type: .and).locale(AppLocalization.formattingLocale))
+        // A chosen one Hermes turned off runs no tools, so Ready doesn't name it.
+        guard !state.mcpServersInUse.isEmpty else { return nil }
+        let list = state.mcpServersInUse.formatted(.list(type: .and).locale(AppLocalization.formattingLocale))
         return AppLocalization.string("MCP servers too: \(list), in rooms whose Custom choice names their tools.")
     }
 

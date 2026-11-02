@@ -93,16 +93,31 @@ struct RoomSetupState: Equatable {
 
     /// The MCP servers a setup posts for the ones picked, or nil to keep the
     /// saved ones (and on a plugin that can't name any). A saved one Hermes
-    /// turned off isn't offered, and a POST naming it is refused.
+    /// turned off has no switch and stays chosen (and off): it goes along.
     func mcpServersToSave(picking servers: Set<String>?) -> [String]? {
         guard let choices = mcpChoices, changesServers(servers), let servers else { return nil }
-        return choices.filter(servers.contains)
+        return choices.filter(servers.contains) + mcpServersTurnedOff
+    }
+
+    /// The saved MCP servers Hermes has turned off since: chosen, but none of
+    /// their tools run.
+    var mcpServersTurnedOff: [String] {
+        guard let choices = mcpChoices else { return [] }
+        return mcpServers.filter { !choices.contains($0) }
+    }
+
+    private var mcpServersOn: [String] {
+        guard let choices = mcpChoices else { return [] }
+        return mcpServers.filter(choices.contains)
     }
 
     private func changesServers(_ servers: Set<String>?) -> Bool {
         guard mcpChoices != nil, let servers else { return false }
-        return servers != Set(mcpServers)
+        return servers.subtracting(mcpServersTurnedOff) != Set(mcpServersOn)
     }
+
+    /// The chosen MCP servers Hermes has on, which Ready names.
+    var mcpServersInUse: [String] { mcpServersOn }
 }
 
 struct RoomSetupResult: Equatable {
