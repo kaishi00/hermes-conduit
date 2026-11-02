@@ -42,6 +42,15 @@ struct ProviderEntry: Identifiable, Equatable {
         /// uses: its own rows, or the shared ones it falls back to. Hermes
         /// takes turns over them in the profile's key order.
         var keysInUse = 0
+        /// How many of `keysInUse` are sign-ins (OAuth), not keys.
+        var signInsInUse = 0
+        /// Sign-ins in this profile's own pool (not the main one's): with
+        /// them Hermes uses that pool, not the shared key.
+        var profileSignIns = 0
+        /// False for a summary kept by a build that didn't count sign-ins:
+        /// its counts and key state may leave one out, so the page waits
+        /// for Hermes before showing them.
+        var signInsKnown = true
         /// Where to get a key.
         var signupURL: String?
         /// `vars` are other providers' variables this one also reads: a
@@ -79,7 +88,14 @@ struct ProviderEntry: Identifiable, Equatable {
             }
             // No rows listed: Hermes falls back to the shared ones, which
             // come ahead of a `.env` key once it reads it.
-            guard let first = profileRows.first else { return shared ? .shared : (saved ? .own : .none) }
+            guard let first = profileRows.first else {
+                // A pool of its own that holds only a sign-in: Hermes uses
+                // it, so no shared key is in use. A key saved in the
+                // profile's `.env` is still its own, and removing it leaves
+                // the sign-in ("Use the shared key" couldn't move it off).
+                if profileSignIns > 0 { return saved ? .own : .none }
+                return shared ? .shared : (saved ? .own : .none)
+            }
             if sharedIDs.contains(first.id) { return .shared }
             return first.label == PoolRow.sharedLabel ? .oldCopy : .own
         }
@@ -181,15 +197,28 @@ struct ProviderEntry: Identifiable, Equatable {
 
     var keyState: KeyAccess.State { key?.state(onMainProfile: onMainProfile) ?? .none }
 
+    /// Kept by a build that didn't count sign-ins, on a profile with no
+    /// key rows of its own: Hermes uses keys or sign-ins, but whether its
+    /// own sign-in or the shared key isn't known until Hermes answers.
+    var keyUseUnknown: Bool {
+        guard let key, !key.signInsKnown, !onMainProfile else { return false }
+        return key.profileRows.isEmpty && key.keysInUse > 0
+    }
+
     var status: Status {
         if endpoint != nil { return .customEndpoint }
         if account?.signedIn == true { return .signedIn }
+        // Connected either way; ProviderText names it without saying which.
+        if keyUseUnknown { return .sharedKey }
         switch keyState {
         case .shared: return .sharedKey
         case .own: return .ownKey
         case .oldCopy: return .oldCopy
         case .mainProfileOnly: return .mainProfileOnly
-        case .none: return account == nil && settings.contains(where: \.saved) ? .configured : .notConnected
+        case .none:
+            // A pool of the profile's own that holds only a sign-in.
+            if (key?.profileSignIns ?? 0) > 0 { return .signedIn }
+            return account == nil && settings.contains(where: \.saved) ? .configured : .notConnected
         }
     }
 
@@ -304,9 +333,12 @@ enum ProviderCatalog {
             // turns over them with the keys.
             let shared = sharedCounts[id] ?? .init()
             let own = ownCounts[id] ?? .init()
+            let usesShared = onMainProfile || own.all == 0
             byID[id]?.key?.keysInUse = onMainProfile
                 ? shared.all
-                : (own.all == 0 ? key.sharedRows.count + shared.signIns : own.all)
+                : (usesShared ? key.sharedRows.count + shared.signIns : own.all)
+            byID[id]?.key?.signInsInUse = usesShared ? shared.signIns : own.signIns
+            if !onMainProfile { byID[id]?.key?.profileSignIns = own.signIns }
         }
 
         for row in accounts?["providers"] as? [[String: Any]] ?? [] {
@@ -423,7 +455,7 @@ enum ProviderCatalog {
             var row: [String: Any] = ["id": entry.id, "name": entry.name, "on_main_profile": entry.onMainProfile]
             if let key = entry.key {
                 var access: [String: Any] = [
-                    "vars": key.vars, "vars_saved": key.savedVars, "keys_in_use": key.keysInUse,
+                    "vars": key.vars, "vars_saved": key.savedVars, "keys_in_use": key.keysInUse, "sign_ins_in_use": key.signInsInUse, "profile_sign_ins": key.profileSignIns,
                     "vars_held": key.heldVars, "borrowed_only": key.borrowedOnly,
                     "shared_rows": key.sharedRows.map(encode), "profile_rows": key.profileRows.map(encode),
                 ]
@@ -478,6 +510,7 @@ enum ProviderCatalog {
                     vars: access["vars"] as? [String] ?? [],
                     savedVars: access["vars_saved"] as? [String] ?? [],
                     keysInUse: access["keys_in_use"] as? Int ?? 0,
+                    signInsInUse: access["sign_ins_in_use"] as? Int ?? 0,
                     signupURL: nonEmpty(access["signup_url"])
                 )
                 // Kept before settings had their own list.
@@ -486,6 +519,8 @@ enum ProviderCatalog {
                 }
                 entry.key?.heldVars = access["vars_held"] as? [String] ?? []
                 entry.key?.borrowedOnly = access["borrowed_only"] as? Bool ?? false
+                entry.key?.profileSignIns = access["profile_sign_ins"] as? Int ?? 0
+                entry.key?.signInsKnown = access["sign_ins_in_use"] != nil
                 entry.key?.sharedRows = (access["shared_rows"] as? [[String: Any]] ?? []).compactMap(poolRow)
                 entry.key?.profileRows = (access["profile_rows"] as? [[String: Any]] ?? []).compactMap(poolRow)
             }
@@ -825,8 +860,12 @@ final class ProviderSettingsService: ObservableObject {
         let stale = (entry.key?.sharedIDs ?? []).union((entry.key?.removableRows ?? []).map(\.id))
         _ = try await request(named("/api/credentials/pool", profile: profile), method: "POST",
                               body: ["provider": entry.id, "api_key": value, "label": ProviderEntry.PoolRow.profileLabel])
+        // The key it replaces in this profile's `.env` goes too: Hermes
+        // would read it into the pool again, ahead of the new one.
+        let staleVars = entry.key?.removableVars ?? []
         return await cleanUp {
             try await removeRows(provider: entry.id, ids: stale, profile: profile)
+            try await removeVariables(staleVars)
         }
     }
 

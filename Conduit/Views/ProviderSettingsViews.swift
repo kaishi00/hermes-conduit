@@ -20,12 +20,15 @@ struct ProviderModelContext {
     var catalogAnswered = false
     /// Hermes' last catalog read failed.
     var catalogFailed = false
+    /// The helper models `usage` names were asked of Hermes since the page
+    /// opened (answered or not): Remove waits for it.
+    var usageAnswered = true
     /// Reads the catalog again.
     var reloadCatalog: () async -> Void = {}
     /// Makes `model` on the catalog row `provider` the profile's default.
     var makeDefault: (_ provider: String, _ model: String) async -> Bool
-    /// What else on the profile uses the provider (its delegate or fallback
-    /// models), named for Remove's confirmation.
+    /// What else on the profile uses the provider (its delegate, fallback
+    /// and helper models), named for Remove's confirmation.
     var usage: (ProviderEntry) -> [String]
     /// The order a provider's keys are used in on this profile.
     var keyOrder: KeyOrderAccess?
@@ -49,6 +52,7 @@ struct ModelPageProviders: View {
     var refresh = 0
     @State private var catalog: ProfileModelDefaults?
     @State private var catalogAnswered = false
+    @State private var helpersRead = false
     @State private var catalogFailed = false
     @State private var catalogGeneration = 0
     /// A model pick on a provider's page is saving and reads the catalog
@@ -78,6 +82,7 @@ struct ModelPageProviders: View {
             catalog: catalog,
             catalogAnswered: catalogAnswered,
             catalogFailed: catalogFailed,
+            usageAnswered: helpersRead,
             reloadCatalog: { await reloadCatalog() },
             makeDefault: { provider, model in
                 // Read here, so the page's spinner stays until the new default
@@ -99,6 +104,14 @@ struct ModelPageProviders: View {
         ))
         .onAppear { if catalog == nil { catalog = kept() } }
         .task { await reloadCatalog() }
+        // Read apart from the catalog, so a slow answer holds only Remove:
+        // it names the helper models pinned to a provider as Hermes holds
+        // them, not only as this phone last kept them (a read that fails
+        // leaves the kept ones).
+        .task {
+            _ = try? await appState.loadHelperModels()
+            helpersRead = true
+        }
         .onChange(of: service.changes) { _, _ in
             onChange()
             Task { await reloadCatalog() }
@@ -255,13 +268,37 @@ private struct ProviderRow: View {
     }
 }
 
+/// A key section kept by a build that didn't count sign-ins: which key the
+/// profile uses waits for Hermes, and a read that fails says so.
+private struct KeyWaitingForHermes: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @ObservedObject var service: ProviderSettingsService
+    let retry: Bool
+
+    var body: some View {
+        if service.loadFailed {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(AppLocalization.string("Could not load providers."))
+                    .scaledFont(.footnote).foregroundStyle(.secondary)
+                if retry {
+                    Button(AppLocalization.string("Try Again")) { Task { await service.reload() } }
+                        .scaledFont(.subheadline.weight(.semibold))
+                        .tint(.conduitAccent)
+                }
+            }
+        } else {
+            ProgressView().frame(maxWidth: .infinity).accessibilityLabel(AppLocalization.string("Loading…"))
+        }
+    }
+}
+
 /// The words for a provider's state, kept in one place.
 enum ProviderText {
     static func status(_ entry: ProviderEntry) -> String {
         switch entry.status {
         case .customEndpoint: return AppLocalization.string("Custom endpoint")
         case .signedIn: return AppLocalization.string("Signed in")
-        case .sharedKey: return AppLocalization.string("Shared key")
+        case .sharedKey: return entry.keyUseUnknown ? AppLocalization.string("Connected") : AppLocalization.string("Shared key")
         case .ownKey: return AppLocalization.string("This profile's own key")
         case .oldCopy: return AppLocalization.string("Old copy of the shared key")
         case .mainProfileOnly: return AppLocalization.string("Saved for the main profile only")
@@ -466,7 +503,11 @@ private struct ProviderConnectPage: View {
                 }
                 if let key = entry.key {
                     ConduitSettingsSection(title: AppLocalization.string("API key"), symbol: "key", tint: .conduitAura) {
-                        ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: onConnected)
+                        if key.signInsKnown {
+                            ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: onConnected)
+                        } else {
+                            KeyWaitingForHermes(service: service, retry: true)
+                        }
                     }
                 }
                 ProviderSettingsRows(service: service, entry: entry)
@@ -535,12 +576,20 @@ struct ProviderDetailPage: View {
                 }
                 if let key = entry.key {
                     ConduitSettingsSection(title: AppLocalization.string("API key"), symbol: "key", tint: .conduitAura) {
-                        ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: {},
-                                          keyRemovable: context.catalogAnswered && !runsDefault(entry),
-                                          usage: context.usage(entry))
+                        // A summary kept by an older build doesn't count
+                        // sign-ins, so which key the profile uses waits
+                        // for Hermes.
+                        if key.signInsKnown {
+                            ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: {},
+                                              keyRemovable: context.catalogAnswered && context.usageAnswered && !runsDefault(entry),
+                                              usage: context.usage(entry))
+                        } else {
+                            // The page's Try Again is above.
+                            KeyWaitingForHermes(service: service, retry: false)
+                        }
                     }
-                    if key.keysInUse > 1, let order = context.keyOrder, KeyOrder.settingKey(for: entry.id) != nil {
-                        KeyOrderSection(entry: entry, keys: key.keysInUse, access: order)
+                    if key.signInsKnown, key.keysInUse > 1, let order = context.keyOrder, KeyOrder.settingKey(for: entry.id) != nil {
+                        KeyOrderSection(entry: entry, keys: key.keysInUse, signIns: key.signInsInUse, access: order)
                     }
                 }
                 ProviderSettingsRows(service: service, entry: entry)
@@ -652,7 +701,7 @@ struct ProviderDetailPage: View {
     /// removed in its own section, which says which profiles it reaches.
     private func canRemove(_ entry: ProviderEntry) -> Bool {
         // Until the catalog answers, whether it runs the default is unknown.
-        guard context.catalogAnswered, !runsDefault(entry) else { return false }
+        guard context.catalogAnswered, context.usageAnswered, !runsDefault(entry) else { return false }
         if entry.endpoint != nil { return true }
         return entry.account?.signedIn == true && entry.account?.signsOutHere == true
     }
@@ -720,7 +769,7 @@ private struct ProviderKeyEditor: View {
     /// Hermes' catalog answered and the provider doesn't run the default
     /// model, so its key may go. Off on the Add sheet's pages.
     var keyRemovable = false
-    /// The profile's delegate and fallback models on the provider, named
+    /// The profile's delegate, fallback and helper models on the provider, named
     /// when its key is removed.
     var usage: [String] = []
     @Environment(\.openURL) private var openURL
@@ -738,11 +787,13 @@ private struct ProviderKeyEditor: View {
     private var hasKey: Bool { state != .none }
     /// A key the other profiles can't read yet is pasted again to share it.
     private var showsField: Bool { state == .none || state == .mainProfileOnly || editing }
-    /// A replacement for a profile's own key stays its own; anything else
-    /// is shared unless picked otherwise.
+    /// A replacement for a profile's own key stays its own, and so does a
+    /// key for a profile whose own pool holds a sign-in (Hermes reads that
+    /// pool, not the shared one); anything else is shared unless picked
+    /// otherwise.
     private var chosenScope: ProviderKeyScope {
         if onMain { return .allProfiles }
-        return scope ?? (state == .own ? .thisProfile : .allProfiles)
+        return scope ?? (state == .own || key.profileSignIns > 0 ? .thisProfile : .allProfiles)
     }
 
     var body: some View {
@@ -870,13 +921,13 @@ private struct ProviderKeyEditor: View {
                     Text(verbatim: AppLocalization.string("Conduit never shows a key, so you'd paste it again to use it.") + usageLine)
                 }
             }
-        } else if state == .own || state == .oldCopy, key.shared || keyRemovable, leavesItsOwnKey {
+        } else if state == .own || state == .oldCopy, goesToShared || keyRemovable, leavesItsOwnKey {
             // Back on the shared key the default model still runs; with no
             // shared key, removing this one would leave it none.
             Button {
-                if key.shared { run { try await service.useShared(entry) } } else { confirmingRemoveKey = true }
+                if goesToShared { run { try await service.useShared(entry) } } else { confirmingRemoveKey = true }
             } label: {
-                Text(key.shared ? AppLocalization.string("Use the shared key") : AppLocalization.string("Remove this profile's key"))
+                Text(goesToShared ? AppLocalization.string("Use the shared key") : AppLocalization.string("Remove this profile's key"))
             }
             .buttonStyle(.settings)
             .disabled(saving || !service.answered)
@@ -889,6 +940,10 @@ private struct ProviderKeyEditor: View {
             }
         }
     }
+
+    /// Removing this profile's key puts it on the shared one, unless its
+    /// own pool holds a sign-in, which Hermes keeps using.
+    private var goesToShared: Bool { key.shared && key.profileSignIns == 0 }
 
     /// Going back to the shared key changes what the profile uses: the row
     /// it uses first is one Conduit may remove, or there are no rows and a
@@ -1156,7 +1211,8 @@ struct KeyOrderPicks: Equatable {
 
     /// The kept order, until Hermes answers.
     mutating func showKept(_ stored: String?) {
-        guard order == nil else { return }
+        // A kept config without the key says nothing of Hermes' order.
+        guard order == nil, let stored else { return }
         order = KeyOrder(stored: stored)
     }
 
@@ -1209,6 +1265,8 @@ private struct KeyOrderSection: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let entry: ProviderEntry
     let keys: Int
+    /// Sign-ins (OAuth) among `keys`: Hermes takes turns over them too.
+    let signIns: Int
     let access: KeyOrderAccess
     @State private var picks = KeyOrderPicks()
 
@@ -1216,8 +1274,14 @@ private struct KeyOrderSection: View {
 
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Key order"), symbol: "arrow.triangle.2.circlepath", tint: .conduitAura) {
-            Text(AppLocalization.string("This profile has \(String(keys)) keys for \(entry.name). Hermes moves to another when one hits its limit."))
-                .scaledFont(.footnote).foregroundStyle(.secondary)
+            Group {
+                if signIns > 0 {
+                    Text(AppLocalization.string("This profile has \(String(keys)) keys and sign-ins for \(entry.name). Hermes moves to another when one hits its limit."))
+                } else {
+                    Text(AppLocalization.string("This profile has \(String(keys)) keys for \(entry.name). Hermes moves to another when one hits its limit."))
+                }
+            }
+            .scaledFont(.footnote).foregroundStyle(.secondary)
             if let order = picks.order {
                 ConduitMenuPicker(
                     value: order,
