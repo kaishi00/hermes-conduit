@@ -65,6 +65,8 @@ struct LocalLiveFrontModelSettingsView: View {
     /// last time, kept on the phone, and wait (#1533): a kept address has
     /// no user or password to write back.
     @State private var loaded = false
+    /// The profile turned the plugin off: how to turn it on (issue 1671).
+    @State private var pluginOffReason: String?
     @State private var urlDraft = ""
     @State private var modelDraft = ""
     @State private var keyDraft = ""
@@ -87,7 +89,7 @@ struct LocalLiveFrontModelSettingsView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if loaded && status == nil {
-                Text(AppLocalization.string("Update the Conduit plugin on your Hermes host to use a fast model."))
+                Text(pluginOffReason ?? AppLocalization.string("Update the Conduit plugin on your Hermes host to use a fast model."))
                     .scaledFont(.footnote)
                     .foregroundStyle(.orange)
             } else {
@@ -212,6 +214,7 @@ struct LocalLiveFrontModelSettingsView: View {
     }
 
     private func apply(_ voice: SpeechServerVoiceStatus) {
+        pluginOffReason = voice.pluginOff ? voice.reason : nil
         status = voice.frontModel
         urlDraft = voice.frontModel?.baseURL ?? ""
         modelDraft = voice.frontModel?.model ?? ""
@@ -256,6 +259,7 @@ struct LocalLiveFrontModelSettingsView: View {
     private func applyAfterSave(_ voice: SpeechServerVoiceStatus, keyWritten: Bool? = nil) {
         guard voice.frontModel != nil else {
             if voice.pluginMissing {
+                pluginOffReason = voice.pluginOff ? voice.reason : nil
                 status = nil
                 return
             }

@@ -267,8 +267,10 @@ final class HealthSyncEngine: ObservableObject {
             do {
                 _ = try await request("\(Self.base)/wipe", "POST", ["device_id": state.deviceID])
                 deleted = true
-            } catch DashboardTicketBridgeError.http(let status, _) where status == 404 {
+            } catch DashboardTicketBridgeError.http(let status, let detail)
+                        where status == 404 && !DashboardTicketBridgeError.isPluginOffDetail(detail) {
                 // No health sync on this host any more: nothing left to delete.
+                // A profile that turned the plugin off deleted nothing.
                 deleted = true
             } catch {
                 lastError = Self.describe(error)
@@ -328,8 +330,10 @@ final class HealthSyncEngine: ObservableObject {
                 state.pause = .signInRequired
                 return .paused(.signInRequired)
             case .http(let status, _) where status == 404:
-                state.pause = .pluginMissing
-                return .paused(.pluginMissing)
+                // A profile that turned the plugin off says how to turn it on.
+                let pause = DashboardTicketBridgeError.pluginOffDetail(of: error).map(HealthSyncPause.pluginOff) ?? .pluginMissing
+                state.pause = pause
+                return .paused(pause)
             case .http(let status, let detail) where status == 409 && HostKeyConflict.isKeyLoss(detail):
                 // The host lost or replaced this phone's key (a wipe, a
                 // reinstall of the plugin's store): set it up again next pass.

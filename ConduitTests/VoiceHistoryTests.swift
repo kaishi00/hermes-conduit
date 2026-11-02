@@ -218,6 +218,9 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(VoiceHistoryClient.mapped(.http(status: 409, detail: "")), .busy)
         XCTAssertEqual(VoiceHistoryClient.mapped(.http(status: 422, detail: "")), .rowUnavailable)
         XCTAssertNil(VoiceHistoryClient.mapped(.http(status: 500, detail: "")))
+        // A profile that turned the plugin off isn't a host that can't save
+        // calls: the call waits, and the error says how to turn it on (issue 1671).
+        XCTAssertNil(VoiceHistoryClient.mapped(.http(status: 404, detail: "Plugin not found")))
     }
 
     func testVoiceHistoryParsesTagsAndSkipsUnknownKinds() throws {

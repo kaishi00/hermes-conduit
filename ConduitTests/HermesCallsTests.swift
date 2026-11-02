@@ -510,6 +510,38 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(HermesCallsClient.refusal(from: URLError(.timedOut)))
     }
 
+    /// A watch for a profile that turned the plugin off tells the live model
+    /// how to turn it on there, not that the plugin needs an update (issue
+    /// 1671). The bridge words Hermes' bare 404; the client keeps them.
+    func testWatchForAProfileWithThePluginOffSaysHowToTurnItOn() async throws {
+        let client = HermesCallsClient(request: { path, _, _ in
+            try await DashboardTicketBridgeError.explainingPluginRefusal(path: path) { () async throws -> [String: Any] in
+                throw DashboardTicketBridgeError.http(status: 404, detail: DashboardTicketBridgeError.pluginRefusedDetail)
+            }
+        })
+        let path = DashboardPath.withProfile(HermesCallsClient.watchesPath, profile: "fam")
+        let remedy = try XCTUnwrap(DashboardTicketBridgeError.pluginOffDetail(path: path))
+        do {
+            _ = try await client.watch(sessionIDs: ["s1"], title: "The report", profile: "fam", holdSeconds: 0, endedWithinSeconds: nil)
+            XCTFail("The watch was refused")
+        } catch let refusal as HermesCallRefusal {
+            XCTAssertEqual(refusal, .unavailable(.pluginOff(remedy)))
+        }
+        let told = VoiceCallbackRequestOutcome.unavailable(.pluginOff(remedy)).modelMessage
+        XCTAssertTrue(told.contains(remedy), told)
+        XCTAssertFalse(told.contains("needs an update"), told)
+        XCTAssertFalse(HermesCallRefusal.unavailable(.pluginOff(remedy)).modelNote(title: "The report").contains("needs an update"))
+
+        // Hermes' bare words name the plugin and profile from the path.
+        XCTAssertEqual(HermesCallsClient.refusal(from: DashboardTicketBridgeError.http(status: 404, detail: "Plugin not found"), path: path),
+                       .unavailable(.pluginOff(remedy)))
+        // A plugin without the route still needs the update.
+        XCTAssertEqual(HermesCallsClient.refusal(from: DashboardTicketBridgeError.http(status: 404, detail: "Not Found"), path: path),
+                       .unavailable(.unsupported))
+        XCTAssertEqual(HermesCallsClient.refusal(from: DashboardTicketBridgeError.http(status: 405, detail: "Method Not Allowed")),
+                       .unavailable(.unsupported))
+    }
+
     /// GPT-Live's "Call me: <work>" asks for the job that takes the work,
     /// even a running one taking it as a change; never a later job.
     func testGPTLiveCallMeWithAChangeCallsAboutTheJobThatTookIt() async {

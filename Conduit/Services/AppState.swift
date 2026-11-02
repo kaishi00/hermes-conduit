@@ -8491,6 +8491,8 @@ final class AppState: ObservableObject {
     }
 
     private static func voiceCallSaveFailureReason(_ error: Error) -> String {
+        // The profile turned the plugin off: how to turn it on, uncut.
+        if let remedy = DashboardTicketBridgeError.pluginOffDetail(of: error) { return remedy }
         switch error {
         case VoiceHistoryError.pluginMissing, VoiceHistoryError.unsupported:
             return AppLocalization.string("Your Hermes server can't save these calls yet.")
@@ -27242,6 +27244,7 @@ final class AppState: ObservableObject {
                       transientFailures < chatTakeoverTransientRetryLimit,
                       clock.now < deadline else {
                     if case ChatTakeoverError.pluginMissing = error { return .unavailable(chatTakeoverFailureMessage(error)) }
+                    if case ChatTakeoverError.pluginOff = error { return .unavailable(chatTakeoverFailureMessage(error)) }
                     if case ChatTakeoverError.unsupported = error { return .unavailable(chatTakeoverFailureMessage(error)) }
                     if case ChatTakeoverError.malformed = error { return .unavailable(chatTakeoverFailureMessage(error)) }
                     return .failed(chatTakeoverFailureMessage(error))
@@ -27413,6 +27416,8 @@ final class AppState: ObservableObject {
         switch error {
         case ChatTakeoverError.pluginMissing:
             return AppLocalization.string("Update the Conduit notifier plugin on your Hermes host to take chats over.")
+        case ChatTakeoverError.pluginOff(let remedy):
+            return remedy
         case ChatTakeoverError.unsupported:
             return AppLocalization.string("This Hermes version can't hand a chat over.")
         case ChatTakeoverError.malformed:

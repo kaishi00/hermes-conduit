@@ -312,6 +312,8 @@ enum HealthSyncPause: Codable, Equatable {
     /// Another dashboard is in use; sharing waits for its own.
     case otherDashboard
     /// The host refused a batch for a reason a retry won't fix.
+    /// The profile turned the plugin off: how to turn it on (issue 1671).
+    case pluginOff(String)
     case refused(String)
 
     var message: String {
@@ -322,6 +324,8 @@ enum HealthSyncPause: Codable, Equatable {
             return AppLocalization.string("Paused: update the Conduit plugin on this host to share health data.")
         case .otherDashboard:
             return AppLocalization.string("Waiting: health data goes only to the dashboard it was turned on for. Switch back to it to sync.")
+        case .pluginOff(let remedy):
+            return AppLocalization.string("Paused: \(remedy)")
         case .refused(let detail):
             return AppLocalization.string("Paused: the host refused health data (\(detail)).")
         }

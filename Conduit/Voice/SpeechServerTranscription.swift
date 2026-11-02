@@ -436,6 +436,13 @@ struct SpeechServerStatus: Equatable {
                            reason: pluginMissingReason, pluginMissing: true)
     }
 
+    /// The profile turned the plugin off: as `pluginMissing`, with `remedy`
+    /// (DashboardTicketBridgeError.pluginOffDetail) as the reason (issue 1671).
+    static func pluginOff(_ remedy: String) -> SpeechServerStatus {
+        SpeechServerStatus(configured: false, available: false, url: nil, hasKey: false,
+                           reason: remedy, pluginMissing: true)
+    }
+
     static func failed(_ reason: String) -> SpeechServerStatus {
         var status = SpeechServerStatus(configured: false, available: false, url: nil, hasKey: false,
                                         reason: reason, pluginMissing: false)
