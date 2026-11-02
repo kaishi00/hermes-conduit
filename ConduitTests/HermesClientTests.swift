@@ -2563,6 +2563,66 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testAuthorityResumeTakenBeforeASeenTurnStartedLeavesItRunning() async throws {
+        let (client, socket) = try await authorityClient()
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "message.start", "session_id": "sess-1", "execution_generation": 2]
+        ], to: socket)
+        // An unseen card's answer reads the chat; Hermes took that snapshot
+        // before turn 2 started and answers after its start arrived.
+        var count = socket.sentTexts.count
+        let answer = Task<HermesClient.ClarifyResponseOutcome, Error> {
+            try await client.respondToClarification(requestId: "c-old", answer: "a", sessionId: "sess-1")
+        }
+        try await answerRequest(on: socket, after: count, method: "session.resume", result: [
+            "session_id": "sess-1", "messages": [Any](), "running": false, "revision": 1, "execution_generation": 1,
+            "prompts": [Any]()
+        ])
+        _ = try await awaitResult(of: answer, "the unseen card's answer")
+
+        count = socket.sentTexts.count
+        let send = Task<PromptSubmissionOutcome, Error> { try await client.sendPrompt("sess-1", text: "next") }
+        try await answerRequest(on: socket, after: count, method: "prompt.submit", result: ["status": "queued", "sequence": 1])
+        let outcome = try await awaitResult(of: send, "the send during turn 2")
+        XCTAssertEqual(outcome, .queued, "A snapshot older than turn 2 doesn't say turn 2 ended")
+        client.disconnect()
+    }
+
+    func testAuthorityUnseenCardWhoseChatCouldNotBeReadSendsNothingAndSaysSo() async throws {
+        let (client, socket) = try await authorityClient()
+        var count = socket.sentTexts.count
+        let answer = Task<HermesClient.ClarifyResponseOutcome, Error> {
+            try await client.respondToClarification(requestId: "c-unseen", answer: "a", sessionId: "sess-1")
+        }
+        try await answerRequest(on: socket, after: count, method: "session.resume", error: [
+            "code": 5000, "message": "internal error"
+        ])
+        do {
+            _ = try await answer.value
+            XCTFail("A chat that couldn't be read doesn't settle the card")
+        } catch {
+            XCTAssertTrue(error is HermesClient.AnswerNotSent, "Never sent, not refused: \(error)")
+        }
+        XCTAssertFalse(socket.sentTexts.dropFirst(count).contains { $0.contains("clarify.respond") })
+
+        count = socket.sentTexts.count
+        let approval = Task<HermesClient.ApprovalResponseOutcome, Error> {
+            try await client.respondToApprovalOutcome(sessionId: "sess-1", requestId: "a-unseen", choice: "once")
+        }
+        try await answerRequest(on: socket, after: count, method: "session.resume", error: [
+            "code": 5000, "message": "internal error"
+        ])
+        do {
+            _ = try await approval.value
+            XCTFail("A chat that couldn't be read doesn't settle the approval")
+        } catch {
+            XCTAssertTrue(error is HermesClient.AnswerNotSent, "Never sent, not refused: \(error)")
+        }
+        XCTAssertFalse(socket.sentTexts.dropFirst(count).contains { $0.contains("approval.respond") })
+        client.disconnect()
+    }
+
     func testAuthorityStaleTurnAndUnseenQuestionReadTheBotChatUnderItsProfile() async throws {
         let (client, socket) = try await authorityClient()
         var count = socket.sentTexts.count

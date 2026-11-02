@@ -30314,6 +30314,14 @@ final class AppState: ObservableObject {
                 // The chat's runtime is gone (reaped, or re-opened elsewhere),
                 // as the approval card reads it: nothing waits on this answer.
                 applyClarifyResponseOutcome(.ended, requestId: requestId, questionId: question.id, answer: wireAnswer)
+            } else if let unsent = error as? HermesClient.AnswerNotSent {
+                // Never sent: why Hermes couldn't be reached, and the
+                // question can be answered again.
+                markClarifyQuestionError(
+                    requestId: requestId,
+                    questionId: question.id,
+                    message: UserFacingError.message(for: unsent.underlying)
+                )
             } else {
                 markClarifyQuestionError(
                     requestId: requestId,
@@ -32531,6 +32539,10 @@ final class AppState: ObservableObject {
                 // elsewhere), so nothing waits on this answer any more.
                 messages[updatedIndex].approval?.status = .expired
                 messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active.")
+            } else if let unsent = error as? HermesClient.AnswerNotSent {
+                // Never sent: why Hermes couldn't be reached, and the card
+                // can be answered again.
+                messages[updatedIndex].approval?.error = UserFacingError.message(for: unsent.underlying)
             } else {
                 messages[updatedIndex].approval?.error = AppLocalization.string("Hermes did not accept that decision.")
                 errorMessage = UserFacingError.message(for: error)

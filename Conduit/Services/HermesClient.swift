@@ -1135,6 +1135,26 @@ final class HermesClient: ObservableObject {
     /// other member here. An entry ends with its retry's answer or refusal;
     /// past 256 never retried, the oldest goes first (a retry that old reads
     /// as it would without one).
+    /// A card's answer that never went out: reading the chat for a prompt
+    /// this socket didn't see asked failed first (a timeout, a dropped
+    /// socket). Nothing refused it, so it reads as unreachable, not as
+    /// refused, and can be sent again.
+    struct AnswerNotSent: Error, LocalizedError {
+        let underlying: Error
+        var errorDescription: String? { UserFacingError.message(for: underlying) }
+    }
+
+    /// The chat's resume read before an unseen prompt's answer. A missing
+    /// chat stays as it is (the card is no longer active); any other
+    /// failure means the answer was never sent.
+    private func readPromptsBeforeAnswer(_ sessionId: String, profile: String?) async throws {
+        do {
+            _ = try await resumeSessionObject(sessionId, omitMessages: true, profile: profile)
+        } catch let error where !(error is CancellationError) && !Self.isSessionNotFoundError(error) {
+            throw AnswerNotSent(underlying: error)
+        }
+    }
+
     @MainActor private static var unconfirmedAuthorityAnswers = UnconfirmedAnswers()
     private var unconfirmedAuthorityAnswers: UnconfirmedAnswers {
         get { Self.unconfirmedAuthorityAnswers }
@@ -2325,12 +2345,18 @@ final class HermesClient: ObservableObject {
         let ids = Set([sessionId, object["session_id"]?.stringValue, object["stored_session_id"]?.stringValue]
             .compactMap { $0 }.filter { !$0.isEmpty })
         let running = object["running"]?.boolValue
+        let snapshotTurn = Self.exactIntValue(object["execution_generation"])
         for id in ids {
+            // A snapshot older than a turn this socket already saw start
+            // (taken before that turn's message.start, answered after it)
+            // says nothing about whether that turn runs.
+            let predatesSeenTurn = snapshotTurn.map { $0 < (executionGenerations[id] ?? $0) } ?? false
             noteAuthorityFences(
                 sessionId: id,
                 generation: Self.exactIntValue(object["execution_generation"]),
                 revision: Self.exactIntValue(object["revision"])
             )
+            if predatesSeenTurn { continue }
             if running == true { authorityRunningSessions.insert(id) }
             if running == false { authorityRunningSessions.remove(id) }
         }
@@ -3490,7 +3516,7 @@ final class HermesClient: ObservableObject {
             // the turn that asked. One it no longer lists was answered or
             // ended.
             // A bot chat is only found under its own profile.
-            _ = try await resumeSessionObject(sessionId, omitMessages: true, profile: profile)
+            try await readPromptsBeforeAnswer(sessionId, profile: profile)
             authorityPrompt = authorityPrompts[requestId]
             if authorityPrompt == nil {
                 // Nothing says whose answer settled it, even one of ours that
@@ -3707,8 +3733,8 @@ final class HermesClient: ObservableObject {
             // still waits on; one it no longer lists was answered or ended.
             var cached = authorityPrompts[trimmedRequestId]
             if cached == nil {
-                _ = try await resumeSessionObject(
-                    authorityPromptSessions[trimmedRequestId] ?? sessionId, omitMessages: true, profile: profile
+                try await readPromptsBeforeAnswer(
+                    authorityPromptSessions[trimmedRequestId] ?? sessionId, profile: profile
                 )
                 cached = authorityPrompts[trimmedRequestId]
             }
