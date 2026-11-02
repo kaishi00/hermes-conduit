@@ -34,9 +34,9 @@ a job. At most three jobs run at once.
   "From a Watch call"), journaled, and waiting for the user after a Hermes
   restart. It's a write to the host during the call, one small request off
   the job's path beside the session the job makes anyway; how results come
-  back is unchanged. Whether the "no writes to the host mid-call" ruling
-  allows it is Eric's to confirm (feature map, "Job results during calls"):
-  if not, it moves to hang-up. A start that fails
+  back is unchanged. Eric ruled (2026-11-02) that the "no writes to the
+  host mid-call" ruling allows it (feature map, "Job results during
+  calls"). A start that fails
   or is abandoned isn't kept. Watch relay jobs are kept by the plugin itself
   as they start.
 - Also on those branches (Eric 2026-11-02): a call kept with the Bot Chat
