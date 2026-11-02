@@ -184,8 +184,12 @@ extension AppState {
     /// open chat's task title changed with it.
     private func whileKeepingTitle(_ change: () -> Void) {
         let before = activeWorkstream?.item.shownTitle
+        let stoppable = workstreamStoppedByComposer != nil
         change()
-        if activeWorkstream?.item.shownTitle != before { objectWillChange.send() }
+        // Its title and the composer's Stop both read the open workstream.
+        if activeWorkstream?.item.shownTitle != before || (workstreamStoppedByComposer != nil) != stoppable {
+            objectWillChange.send()
+        }
     }
 
     /// Shows the bot's kept work first, then asks the plugin again. Quiet
@@ -354,6 +358,13 @@ extension AppState {
     var activeWorkstream: (profile: String, item: BotWorkItem)? {
         guard let id = activeSessionId, !id.isEmpty, activeRoomSurface == nil else { return nil }
         return botWork.workstream(forSession: chatOwnSessionIDs(for: id).union([id]))
+    }
+
+    /// The open workstream when the composer's Stop stops it: its turn runs
+    /// in the plugin, not on this chat's socket, so the plugin stops it.
+    var workstreamStoppedByComposer: (profile: String, item: BotWorkItem)? {
+        guard let open = activeWorkstream, !open.item.isClosed, open.item.actions.contains(.stop) else { return nil }
+        return open
     }
 
     /// A workstream's chat, on its bot's profile, as its link opens it.

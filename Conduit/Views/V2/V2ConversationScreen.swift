@@ -195,6 +195,10 @@ struct V2ConversationScreen: View {
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        // A workstream's chat goes back to the Bot Chat that started it,
+        // by Back and by the edge swipe, not to the list under both.
+        .navigationBarBackButtonHidden(workstreamGoesBack != nil)
+        .simultaneousGesture(workstreamBackSwipe, including: workstreamGoesBack != nil ? .all : .subviews)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
@@ -293,8 +297,43 @@ struct V2ConversationScreen: View {
         }
     }
 
+    /// The bot whose Bot Chat a workstream's Back returns to; nil for any
+    /// other chat, or beside the list on a wide window, which has no Back.
+    private var workstreamGoesBack: String? {
+        guard !shell.isSplit else { return nil }
+        return appState.activeWorkstream?.profile
+    }
+
+    private func backToCoordinator() {
+        guard let profile = workstreamGoesBack else { return }
+        Haptics.light()
+        appState.openCoordinator(profile: profile)
+    }
+
+    /// The system's edge swipe, which the hidden Back button takes with it.
+    private var workstreamBackSwipe: some Gesture {
+        DragGesture(minimumDistance: 20).onEnded { drag in
+            guard drag.startLocation.x < 30, drag.translation.width > 80,
+                  abs(drag.translation.height) < abs(drag.translation.width) else { return }
+            backToCoordinator()
+        }
+    }
+
     @ToolbarContentBuilder
     private var toolbarItems: some ToolbarContent {
+        if workstreamGoesBack != nil {
+            ToolbarItem(placement: .topBarLeading) {
+                Button(action: backToCoordinator) {
+                    Image(systemName: "chevron.backward")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Color.primary)
+                        .frame(width: 40, height: 40)
+                        .modifier(V2PreGlassToolbarControl())
+                }
+                .accessibilityLabel(AppLocalization.string("Back"))
+                .accessibilityIdentifier("workstream.backButton")
+            }
+        }
         // Beside the list on a wide window there is no Back: this
         // closes the chat, as Back does on a phone, and the column goes
         // back to offering a new one.

@@ -2068,6 +2068,11 @@ final class AppState: ObservableObject {
             return hasText && !hasAttachments ? .send : .unavailable
         }
         guard offlineChatPresentation == nil, !showsPendingNewChat else { return .unavailable }
+        // A workstream's turn runs in the plugin: Stop stops it from here.
+        if !hasText, !hasAttachments, !turnState.isRunning, composerIsEnabled, isConnected,
+           workstreamStoppedByComposer != nil {
+            return .stop
+        }
         return turnState.composerAction(
             hasText: hasText,
             hasAttachments: hasAttachments,
@@ -29911,7 +29916,12 @@ final class AppState: ObservableObject {
     /// cancel (the turn already settled server-side).
     @discardableResult
     func cancelCurrent() async -> Bool {
-        guard isBusy else { return true }
+        guard isBusy else {
+            if let open = workstreamStoppedByComposer {
+                return await actOnWorkstream(open.item, profile: open.profile, action: .stop)
+            }
+            return true
+        }
         let submissionContext = composerSubmissionContext()
         guard await interruptForReplacement(context: submissionContext) else { return false }
         guard let currentContext = currentComposerSubmissionContextIfOwnedAndAliased(submissionContext) else { return true }

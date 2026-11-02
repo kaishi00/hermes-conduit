@@ -227,6 +227,23 @@ extension BotModeTests {
         XCTAssertFalse(appState.botWork.isActing("W1", profile: "furina"))
     }
 
+    /// A running workstream's chat has no bar: the composer's Stop stops it
+    /// through the plugin, since its turn isn't on this chat's socket.
+    @MainActor
+    func testTheComposersStopStopsAnOpenWorkstream() throws {
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.botWork.set(try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina")))
+        appState.activeSessionId = "20261101_w1"
+        XCTAssertEqual(appState.workstreamStoppedByComposer?.item.ref, "W1")
+        appState.activeSessionId = "20261101_w3"  // done: nothing to stop
+        XCTAssertNil(appState.workstreamStoppedByComposer)
+        appState.activeSessionId = "20261101_other"
+        XCTAssertNil(appState.workstreamStoppedByComposer)
+    }
+
     /// A "Needs you" card's approval comes from the plugin, named by its
     /// request; a row without one (or with a requestless one) offers none.
     func testANeedsYouCardReadsItsApprovalFromThePlugin() throws {

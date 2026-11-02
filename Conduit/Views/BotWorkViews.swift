@@ -803,9 +803,10 @@ private struct BotWorkRow: View {
     }
 }
 
-/// Over a workstream's own chat while it needs a tap: Stop, Continue or
-/// Check first, and what the plugin said when one did nothing. Its title
-/// says whose work it is.
+/// Over a workstream's own chat when a restart cut it off: Continue or
+/// Check first, and what the plugin said when a tap here or the
+/// composer's Stop did nothing. A running or waiting workstream shows no
+/// bar: the composer's Stop stops it, and its approval card is in the chat.
 struct WorkstreamBar: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject var work: BotWorkStore
@@ -814,7 +815,7 @@ struct WorkstreamBar: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private var controls: [BotWorkItem.Action] { [.check, .continue, .stop].filter { item.actions.contains($0) } }
+    private var controls: [BotWorkItem.Action] { [.check, .continue].filter { item.actions.contains($0) } }
 
     var body: some View {
         // A stack, not a Group, so the read runs while nothing shows. A
@@ -849,13 +850,13 @@ struct WorkstreamBar: View {
                 .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: false)
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("workstream.bar")
-                if let refusal {
+            }
+            if let refusal {
                     Text(refusal)
                         .scaledFont(.footnote)
                         .foregroundStyle(Color.orange)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
-                }
             }
         }
         .frame(maxWidth: .infinity)
