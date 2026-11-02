@@ -547,14 +547,16 @@ extension KanbanTests {
         requester.beforeAnswering = { path in
             if path == "/api/env" { store.configure(requester: requester, profile: "home") }
         }
+        var saved: [String] = []
         do {
-            try await store.setConnectorKeys("jira", ["JIRA_EMAIL": "me@example.com", "JIRA_TOKEN": "tok"])
+            try await store.setConnectorKeys("jira", ["JIRA_EMAIL": "me@example.com", "JIRA_TOKEN": "tok"]) { saved.append($0) }
             XCTFail("the save stops at the switch")
         } catch {
             XCTAssertEqual(error as? CapabilitiesStoreError, .profileChanged)
         }
         let writes = requester.calls.filter { $0.method == "PUT" }
         XCTAssertEqual(writes.map { $0.body?["key"] as? String }, ["JIRA_EMAIL"])
+        XCTAssertEqual(saved, ["JIRA_EMAIL"], "the page hears which key Hermes took")
         XCTAssertFalse(writes.contains { $0.body?["profile"] as? String == "home" })
     }
 

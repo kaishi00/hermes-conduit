@@ -286,6 +286,8 @@ struct ConnectorKeysSection: View {
     let name: String
     let fields: [ConnectorCatalogEntry.EnvField]
     let store: CapabilitiesStore
+    /// A server turned off isn't tested (a test starts it on the host).
+    let testsAfterSave: Bool
     @State private var drafts: [String: String] = [:]
     @State private var saving = false
     @State private var note: String?
@@ -351,12 +353,14 @@ struct ConnectorKeysSection: View {
         Task {
             defer { saving = false }
             do {
-                try await store.setConnectorKeys(name, values, generation: generation)
+                // A key Hermes took leaves its field, so after a save that
+                // failed part way the field still filled is the one not saved.
+                try await store.setConnectorKeys(name, values, generation: generation) { drafts[$0] = nil }
                 guard store.generation == generation else { return }
                 drafts = [:]
                 note = AppLocalization.string("Key saved")
                 Haptics.success()
-                await store.probe(name)
+                if testsAfterSave { await store.probe(name) }
             } catch {
                 guard store.generation == generation else { return }
                 note = UserFacingError.message(for: error)
@@ -440,7 +444,7 @@ struct ConnectorDetailPage: View {
                     }
                 }
                 if !server.isFromPlugin, let entry = catalogEntry, let fields = ConnectorKeysSection.fields(entry) {
-                    ConnectorKeysSection(name: name, fields: fields, store: store)
+                    ConnectorKeysSection(name: name, fields: fields, store: store, testsAfterSave: server.enabled)
                 }
                 toolsSection(server, state: state)
                 if !server.isFromPlugin {
