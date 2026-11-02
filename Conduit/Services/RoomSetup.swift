@@ -57,9 +57,18 @@ struct RoomSetupState: Equatable {
     let profile: String
     let apiServer: APIServer
     /// The toolsets rooms may use: the ones the setup saved, else what the
-    /// room choices can turn on.
+    /// room choices can turn on. Toolsets only: the plugin reports the MCP
+    /// servers the saved list names apart, in `mcpServers`, and keeps them
+    /// when a setup posts a ceiling without `mcp_servers`.
     let ceiling: [String]
     let choices: [Choice]
+    /// The profile's MCP servers the ceiling names (notifier #500, plugin
+    /// 0.125+): none unless the owner picks some. Their tools still run only
+    /// where a room's Custom choice names them.
+    let mcpServers: [String]
+    /// The profile's enabled MCP servers the ceiling can name, or nil from a
+    /// plugin that can't name any.
+    let mcpChoices: [String]?
     /// The profile's approval mode (`manual`, `smart`, `off`).
     let approvals: String?
 
@@ -80,9 +89,37 @@ struct RoomSetupState: Equatable {
     /// saved before. Each room pins its members' tools when it starts
     /// (designs/cross-owner-agents, decision 13), so the agent then stops
     /// answering in rooms already started.
-    func changesSavedCeiling(picking picked: Set<String>) -> Bool {
-        picked != Set(ceiling) && !changes.contains("ceiling")
+    func changesSavedCeiling(picking picked: Set<String>, servers: Set<String>? = nil) -> Bool {
+        (picked != Set(ceiling) || changesServers(servers)) && !changes.contains("ceiling")
     }
+
+    /// The MCP servers a setup posts for the ones picked, or nil to keep the
+    /// saved ones (and on a plugin that can't name any). A saved one Hermes
+    /// turned off has no switch and stays chosen (and off): it goes along.
+    func mcpServersToSave(picking servers: Set<String>?) -> [String]? {
+        guard let choices = mcpChoices, changesServers(servers), let servers else { return nil }
+        return choices.filter(servers.contains) + mcpServersTurnedOff
+    }
+
+    /// The saved MCP servers Hermes has turned off since: chosen, but none of
+    /// their tools run.
+    var mcpServersTurnedOff: [String] {
+        guard let choices = mcpChoices else { return [] }
+        return mcpServers.filter { !choices.contains($0) }
+    }
+
+    private var mcpServersOn: [String] {
+        guard let choices = mcpChoices else { return [] }
+        return mcpServers.filter(choices.contains)
+    }
+
+    private func changesServers(_ servers: Set<String>?) -> Bool {
+        guard mcpChoices != nil, let servers else { return false }
+        return servers.subtracting(mcpServersTurnedOff) != Set(mcpServersOn)
+    }
+
+    /// The chosen MCP servers Hermes has on, which Ready names.
+    var mcpServersInUse: [String] { mcpServersOn }
 }
 
 struct RoomSetupResult: Equatable {
@@ -126,12 +163,15 @@ struct RoomSetupClient {
         try Self.parseState(try await request(scopedPath(profile), "GET", nil))
     }
 
-    /// Sets the profile up with `ceiling`, or the one it has when nil;
-    /// `interrupt` restarts the gateway even while chats run on it.
-    func setUp(profile: String, ceiling: [String]?, interrupt: Bool = false) async throws -> RoomSetupResult {
+    /// Sets the profile up with `ceiling` and `mcpServers`, or the ones it
+    /// has when nil; `interrupt` restarts the gateway even while chats run
+    /// on it.
+    func setUp(profile: String, ceiling: [String]?, mcpServers: [String]? = nil,
+               interrupt: Bool = false) async throws -> RoomSetupResult {
         let path = scopedPath(profile)
         var body: [String: Any] = ["interrupt": interrupt]
         if let ceiling { body["ceiling"] = ceiling }
+        if let mcpServers { body["mcp_servers"] = mcpServers }
         let response = try await request(path, "POST", body)
         let state = try Self.parseState(response)
         var restart: RoomSetupResult.Restart?
@@ -180,6 +220,10 @@ struct RoomSetupClient {
             ),
             ceiling: ceiling,
             choices: choices,
+            mcpServers: (response["mcp_servers"] as? [Any] ?? []).compactMap { $0 as? String }.filter { !$0.isEmpty },
+            mcpChoices: (response["mcp_choices"] as? [Any]).map { rows in
+                rows.compactMap { ($0 as? [String: Any])?["id"] as? String }.filter { !$0.isEmpty }
+            },
             approvals: response["approvals"] as? String
         )
     }
