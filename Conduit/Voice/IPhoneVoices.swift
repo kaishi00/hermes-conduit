@@ -60,7 +60,7 @@ enum IPhoneVoices {
 
     /// The best of `candidates` for `wanted`: anything but a screen-reader
     /// voice, then the same Chinese dialect, then Premium, then Enhanced, then iOS's own default for the
-    /// language, then the exact language, then this iPhone's region. Names
+    /// language, then the exact tag (Chinese keys and full tags only), then this iPhone's region. Names
     /// break the last ties so the pick never depends on iOS's list order.
     static func best(
         _ candidates: [IPhoneVoiceOption],
@@ -89,8 +89,15 @@ enum IPhoneVoices {
 
     private static func isCantonese(_ language: String) -> Bool {
         let parts = language.split(whereSeparator: { $0 == "-" || $0 == "_" }).map { $0.uppercased() }
+        // iOS tags its Cantonese voices zh-HK (Sinji), never yue.
         return parts.first == "ZH" && (parts.contains("HK") || parts.contains("MO"))
-            || parts.first == "YUE"
+    }
+
+    /// Whether a pick in Settings changes what's saved. Against the saved
+    /// pick, not the one shown: Automatic over a deleted voice still clears
+    /// it, so a later download doesn't bring it back.
+    static func pickChangesSaved(_ identifier: String?, saved: String?) -> Bool {
+        identifier != saved
     }
 
     /// The picked voice when it's still installed, or else the best one.

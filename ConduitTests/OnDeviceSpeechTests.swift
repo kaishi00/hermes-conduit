@@ -7,6 +7,7 @@
 //  plan is at its class budget, and these cover the same speech streams.
 //
 
+import AVFoundation
 import XCTest
 @testable import Conduit
 
@@ -102,6 +103,30 @@ extension HermesVoiceGatewayTimeoutTests {
         IPhoneVoices.forgetInstalled()
         XCTAssertEqual(IPhoneVoices.installed().map(\.id), ["samantha", "ava"])
         XCTAssertEqual(reads, 2)
+    }
+
+    @MainActor
+    func testIOSSayingTheVoicesChangedReadsThemAgain() {
+        let saved = IPhoneVoices.readInstalled
+        defer {
+            IPhoneVoices.readInstalled = saved
+            IPhoneVoices.forgetInstalled()
+        }
+        var listed = [iPhoneVoice("samantha", "Samantha", "en-US")]
+        IPhoneVoices.readInstalled = { listed }
+        IPhoneVoices.forgetInstalled()
+        XCTAssertEqual(IPhoneVoices.installed().map(\.id), ["samantha"])
+        listed.append(iPhoneVoice("ava", "Ava", "en-US", quality: 3))
+        NotificationCenter.default.post(name: AVSpeechSynthesizer.availableVoicesDidChangeNotification, object: nil)
+        XCTAssertEqual(IPhoneVoices.installed().map(\.id), ["samantha", "ava"])
+    }
+
+    func testAutomaticOverADeletedPickClearsIt() {
+        // The deleted voice shows as Automatic; picking Automatic still saves.
+        XCTAssertTrue(IPhoneVoices.pickChangesSaved(nil, saved: "daniel"))
+        XCTAssertFalse(IPhoneVoices.pickChangesSaved(nil, saved: nil))
+        XCTAssertFalse(IPhoneVoices.pickChangesSaved("ava", saved: "ava"))
+        XCTAssertTrue(IPhoneVoices.pickChangesSaved("ava", saved: nil))
     }
 
     func testAScreenReaderVoiceNeverWinsOverAnyOtherVoice() {

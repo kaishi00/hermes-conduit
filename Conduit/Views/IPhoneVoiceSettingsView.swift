@@ -68,9 +68,7 @@ struct IPhoneVoiceSettingsView: View {
 
     private func pick(_ id: String) {
         let identifier = id == Self.automaticID ? nil : id
-        // Against the saved pick, not the shown one: Automatic over a deleted
-        // voice still clears it, so a later download doesn't bring it back.
-        guard identifier != chosen else { return }
+        guard IPhoneVoices.pickChangesSaved(identifier, saved: chosen) else { return }
         IPhoneVoices.setChosenVoice(identifier, for: language)
         chosen = identifier
         if language == Self.appLanguageKey { onPickedAppLanguageVoice?() }
