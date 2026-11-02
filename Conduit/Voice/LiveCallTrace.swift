@@ -8,6 +8,9 @@
 //  xAI took, each function call by name and how it was answered, and tool
 //  markup cut from a spoken reply. Gateway Diagnostics shows it under the
 //  connection timeline and copies it with it.
+//  A GPT-Live call's steps are its setup (#1611): what the session request
+//  carried, what the host says it applied, session.started, a briefing or
+//  opening sent after the start, who spoke first, drops and error codes.
 //
 //  Event kinds, levels and function names only: never what the user or the
 //  model said, a call's arguments, or a tool's answer.

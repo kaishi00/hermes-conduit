@@ -15,6 +15,55 @@ extension GatewayRestartTests {
         return row
     }
 
+    /// The list as it opens (every kind, unsearched, its first page) is
+    /// kept as Hermes gave it, per store, so it opens on it next time
+    /// (#1533); a chat's own as one chat's of many. A filtered, searched or
+    /// later page isn't, nor an answer the list can't read.
+    func testArtifactsKeepTheListAsItOpens() async throws {
+        var saved: [String: [String: Any]] = [:]
+        let answers = KeptAnswers(
+            kept: { saved[$0] },
+            keep: { route, _, read in
+                let answer = try await read()
+                saved[route] = answer
+                return answer
+            }
+        )
+        var answer: [String: Any] = ["ok": true, "items": [artifactRow([:])], "next_before": 5]
+        var asked: [String] = []
+        let client = ArtifactsClient { path in
+            asked.append(path)
+            return answer
+        }
+        let profile = ArtifactSource(profile: "work", sessionIDs: [])
+        let chat = ArtifactSource(profile: "work", sessionIDs: ["s1"])
+
+        _ = try await client.page(profile, showMissing: false, keptIn: answers)
+        _ = try await client.page(chat, keptIn: answers)
+        _ = try await client.page(profile, filter: .images, showMissing: false, keptIn: answers)
+        _ = try await client.page(profile, query: "map", showMissing: false, keptIn: answers)
+        _ = try await client.page(profile, showMissing: false, before: 5, keptIn: answers)
+
+        let profileRoute = try XCTUnwrap(ArtifactsClient.keptRoute(profile, filter: .all, query: " ", showMissing: false))
+        XCTAssertEqual(profileRoute, asked[0], "the page as it was asked for")
+        XCTAssertEqual(Set(saved.keys), [profileRoute, OfflineChatCacheStore.lastOpenedRoutePrefix + asked[1]])
+        XCTAssertNil(ArtifactsClient.keptRoute(profile, filter: .images, query: "", showMissing: false))
+        XCTAssertNil(ArtifactsClient.keptRoute(profile, filter: .all, query: "map", showMissing: false))
+        let kept = try XCTUnwrap(ArtifactsClient.keptPage(profile, filter: .all, query: "", showMissing: false, in: answers))
+        XCTAssertEqual(kept.items.map(\.name), ["map.png"])
+        XCTAssertEqual(kept.nextBefore, 5)
+        XCTAssertNil(ArtifactsClient.keptPage(profile, filter: .all, query: "", showMissing: true, in: answers),
+                     "showing missing files is another list")
+
+        answer = ["ok": false]
+        do {
+            _ = try await client.page(profile, showMissing: false, keptIn: answers)
+            XCTFail("a malformed answer is refused")
+        } catch {}
+        XCTAssertEqual(ArtifactsClient.keptPage(profile, filter: .all, query: "", showMissing: false, in: answers), kept,
+                       "and not kept over the last one")
+    }
+
     func testArtifactsAskForOneChatByEachOfItsIDs() async throws {
         var asked: [String] = []
         let client = ArtifactsClient { path in

@@ -53,6 +53,9 @@ final class GPTLiveSession {
     private var quietTask: Task<Void, Never>?
 
     var onEvent: (@MainActor (GPTLiveProtocol.ServerEvent) -> Void)?
+    /// A step for the call trace (#1611): kinds, sizes and flags only,
+    /// never what the briefing, the user or the model said.
+    var onTrace: (@MainActor (String) -> Void)?
     var onStateChange: (@MainActor (State) -> Void)?
     /// The call's audio paused for another sound or came back.
     var onAudioPaused: (@MainActor (Bool) -> Void)?
@@ -164,6 +167,8 @@ final class GPTLiveSession {
             guard let encoded = try? GPTLiveProtocol.encode(message), peer.send(encoded) else {
                 if index > 0 {
                     gptLiveLogger.error("GPT-Live context append cut short after \(index, privacy: .public) of \(messages.count, privacy: .public) chunks")
+                    // So a "sent" step after it reads as partly sent.
+                    onTrace?("Context cut short: \(index) of \(messages.count) pieces sent")
                 }
                 return index > 0
             }
@@ -188,6 +193,7 @@ final class GPTLiveSession {
     }
 
     private func connect(_ peer: GPTLivePeer) async {
+        var requestFailed = false
         do {
             guard isCurrent(peer), !Task.isCancelled else { return }
             guard initialCaptureAuthorization?.mayStartCapture != false else {
@@ -202,8 +208,17 @@ final class GPTLiveSession {
             initialCaptureAuthorization = nil
             let offer = try await peer.makeOffer()
             guard isCurrent(peer) else { return }
-            let answer = try await client.createSession(offer: offer, history: history, voice: voice, briefing: briefing, greeting: greeting, callOpening: callOpening)
+            onTrace?(Self.requestStep(briefing: briefing, greeting: greeting, callOpening: callOpening, historyItems: history.count))
+            let answer: GPTLiveSessionAnswer
+            do {
+                answer = try await client.createSession(offer: offer, history: history, voice: voice, briefing: briefing, greeting: greeting, callOpening: callOpening)
+            } catch {
+                requestFailed = true
+                if isCurrent(peer) { onTrace?("Session request failed") }
+                throw error
+            }
             guard isCurrent(peer) else { return }
+            onTrace?(Self.answerStep(answer))
             sessionID = answer.sessionID
             billing = answer.billing
             briefingApplied = answer.briefingApplied
@@ -213,6 +228,9 @@ final class GPTLiveSession {
             guard isCurrent(peer) else { return }
         } catch {
             guard isCurrent(peer) else { return }
+            // The request's own failure is already traced; this is the
+            // WebRTC side (the offer or the answer), named by kind only.
+            if !requestFailed { onTrace?("WebRTC setup failed") }
             fail(UserFacingError.message(for: error))
             return
         }
@@ -221,6 +239,7 @@ final class GPTLiveSession {
             do { try await Task.sleep(for: timeout) } catch { return }
             guard let self, self.isCurrent(peer), self.state == .connecting else { return }
             gptLiveLogger.error("GPT-Live never reported session.started")
+            self.onTrace?("No session.started in time")
             self.fail(AppLocalization.string("GPT-Live didn't start the conversation. Try again."))
         }
     }
@@ -234,6 +253,41 @@ final class GPTLiveSession {
         }
         guard applied.lowercased() != requested.lowercased() else { return nil }
         return AppLocalization.string("Your Hermes server used the voice \(applied) instead of \(requested).")
+    }
+
+    // MARK: Call trace
+
+    /// What the session request carried (#1611): the briefing's size and
+    /// which of its parts were in it, never its text. The persona and
+    /// memory are named by the blocks the briefing wraps them in.
+    nonisolated static func requestStep(briefing: String?, greeting: String?, callOpening: Bool, historyItems: Int) -> String {
+        let text = briefing ?? ""
+        let briefingPart = text.isEmpty
+            ? "no briefing"
+            : "briefing \(text.unicodeScalars.count) characters"
+                + " (persona \(text.contains("\n<hermes_persona>\n") ? "yes" : "no")"
+                + ", memory \(text.contains("\n<hermes_memory>\n") ? "yes" : "no"))"
+        let opening = callOpening ? "call from Hermes" : greeting == nil ? "waits for the user" : "greeting"
+        return "Session request: \(briefingPart), \(opening), \(historyItems) history items"
+    }
+
+    /// What the host says it did with the request. "Applied" means the
+    /// text was in the instructions the host sent, not that the model
+    /// followed it.
+    nonisolated static func answerStep(_ answer: GPTLiveSessionAnswer) -> String {
+        let builder = answer.source.map { $0 == "hermes" ? "built by Hermes" : "built by the plugin" } ?? "builder not reported"
+        let path = answer.billing == .api ? "API key" : "ChatGPT plan"
+        return "Host answered: \(builder), \(path), briefing applied \(answer.briefingApplied ? "yes" : "no")"
+            + ", opening applied \(answer.greetingApplied ? "yes" : "no")"
+            + (traceCode(answer.voice).map { ", voice \($0)" } ?? "")
+    }
+
+    /// An error code or voice name fit for the trace: a short identifier,
+    /// or nothing.
+    nonisolated static func traceCode(_ code: String?) -> String? {
+        guard let code, !code.isEmpty, code.count <= 64,
+              code.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || $0 == "_" || $0 == "-" || $0 == "." }) else { return nil }
+        return code
     }
 
     private func isCurrent(_ peer: GPTLivePeer) -> Bool {
@@ -275,6 +329,7 @@ final class GPTLiveSession {
         case .sessionStarted(let id):
             if let id { sessionID = id }
             if state == .connecting {
+                onTrace?("session.started")
                 startWatchdog?.cancel()
                 startWatchdog = nil
                 state = .ready
@@ -283,6 +338,8 @@ final class GPTLiveSession {
             // A late append after a close is expected noise.
             if code == "context_injection_incomplete" { return }
             gptLiveLogger.error("GPT-Live error: code=\(code ?? "", privacy: .public) message=\(message, privacy: .private)")
+            // The code only: the message is the provider's own text.
+            onTrace?("GPT-Live error\(Self.traceCode(code).map { ": \($0)" } ?? "")")
             if state == .connecting {
                 fail(message.isEmpty
                     ? AppLocalization.string("GPT-Live didn't start the conversation. Try again.")
@@ -290,6 +347,7 @@ final class GPTLiveSession {
                 return
             }
         case .sessionClosed:
+            onTrace?("GPT-Live closed the session")
             onEvent?(event)
             if state != .stopped, !isFailed {
                 tearDown()
@@ -305,9 +363,12 @@ final class GPTLiveSession {
     /// WebRTC dropped to `.disconnected`, which usually recovers: the call
     /// is kept for `reconnectGrace` and only then counted as lost.
     private func connectionInterrupted(_ interrupted: Bool, peer: GPTLivePeer) {
+        let wasInterrupted = reconnectWatchdog != nil
         reconnectWatchdog?.cancel()
         reconnectWatchdog = nil
-        guard interrupted, state == .ready || state == .connecting else { return }
+        guard state == .ready || state == .connecting else { return }
+        if interrupted != wasInterrupted { onTrace?(interrupted ? "Connection interrupted" : "Connection back") }
+        guard interrupted else { return }
         let grace = reconnectGrace
         reconnectWatchdog = Task { [weak self, weak peer] in
             do { try await Task.sleep(for: grace) } catch { return }
@@ -321,6 +382,7 @@ final class GPTLiveSession {
     private func connectionLost() {
         guard state == .ready || state == .connecting else { return }
         gptLiveLogger.notice("GPT-Live connection lost")
+        onTrace?("Connection lost")
         fail(AppLocalization.string("The GPT-Live connection was lost."))
     }
 

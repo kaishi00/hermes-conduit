@@ -20,9 +20,11 @@ extension AppState {
     /// resolves to a roster bot, a workspace profile's name included.
     func profileGlowTint(_ profile: String) -> Color? {
         if let glow = profileGlowColors()[profile] { return glow.color }
-        // The common case has no roster at all: one check, no passes.
-        guard !botRoster.isEmpty else { return nil }
-        guard let bot = Self.linkedBot(named: profile, in: botRoster),
+        // The kept bots until Hermes answers (#1533). The common case has
+        // no roster at all: one check, no passes.
+        let roster = shownBotRoster
+        guard !roster.isEmpty else { return nil }
+        guard let bot = Self.linkedBot(named: profile, in: roster),
               let color = bot.appearanceColor?.trimmingCharacters(in: .whitespacesAndNewlines),
               !color.isEmpty else { return nil }
         return BotAvatarView.color(for: color, name: bot.name)

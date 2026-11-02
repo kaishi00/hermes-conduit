@@ -472,13 +472,13 @@ struct LiveVoiceJobWaitingCard: View {
                 Text("APPROVAL NEEDED")
                     .scaledFont(.caption2.weight(.semibold))
                     .foregroundStyle(.orange)
-                let asked = approval.description.trimmingCharacters(in: .whitespacesAndNewlines)
+                let asked = HermesApprovalText.description(approval.description).trimmingCharacters(in: .whitespacesAndNewlines)
                 if !asked.isEmpty {
                     Text(verbatim: asked)
                         .scaledFont(.callout)
                 }
                 if !approval.command.isEmpty {
-                    Text(verbatim: approval.command)
+                    Text(verbatim: HermesApprovalText.command(approval.command))
                         .scaledFont(.caption.monospaced())
                         .foregroundStyle(.secondary)
                         .lineLimit(4)

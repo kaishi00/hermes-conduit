@@ -39,6 +39,9 @@ final class KanbanStore {
     /// always target this value so a displayed card can never be written to a
     /// different board than the one it was read from.
     private(set) var loadedBoardSlug: String?
+    /// Hermes listed the boards since the store was pointed at this
+    /// dashboard: its answers, not the kept ones, are on screen.
+    private var boardsAnswered = false
     private(set) var isLoading = false
     private(set) var isMutating = false
     private(set) var errorMessage: String?
@@ -55,6 +58,8 @@ final class KanbanStore {
     @ObservationIgnored private var requesterID: ObjectIdentifier?
     @ObservationIgnored private var serverIdentity = ""
     @ObservationIgnored private var persistenceKey: String?
+    /// Where the board's answers are kept on this dashboard (#1533).
+    @ObservationIgnored private var answers: KeptAnswers?
     @ObservationIgnored private var loadGeneration = 0
     /// Bumped on every configure(); captured by mutations so post-mutation
     /// refreshes and UI-state writes from an old server/board context are
@@ -134,23 +139,21 @@ final class KanbanStore {
         return selectedBoardKey + "." + scopeToken(normalized)
     }
 
-    func configure(requester: (any DashboardJSONRequester)?, serverIdentity: String = "") {
-        guard let requester else {
-            configurationGeneration += 1
-            loadGeneration += 1
-            isLoading = false
-            endActiveMutationOwnership()
-            service = nil
-            requesterID = nil
-            board = nil
-            boards = []
-            loadedBoardSlug = nil
+    /// Points the store at a dashboard's board, and shows what it showed
+    /// last time there, kept in `answers` (#1533): offline too, with no
+    /// requester, for the dashboard `serverIdentity` names.
+    func configure(requester: (any DashboardJSONRequester)?, serverIdentity: String = "", answers: KeptAnswers? = nil) {
+        let normalizedServer = serverIdentity.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let identity = requester.map { ObjectIdentifier($0) }
+        if requesterID == identity && self.serverIdentity == normalizedServer {
+            // The same board, whose answers may name its dashboard only now
+            // (one just registered): what they kept shows until Hermes
+            // answers.
+            service?.answers = answers
+            self.answers = answers
+            if !boardsAnswered { showKept() }
             return
         }
-
-        let normalizedServer = serverIdentity.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let identity = ObjectIdentifier(requester)
-        if requesterID == identity && self.serverIdentity == normalizedServer { return }
 
         // Invalidate any cancelled load or in-flight mutation from the
         // previous bridge/server. Their completions must not repopulate this
@@ -161,8 +164,11 @@ final class KanbanStore {
         isLoading = false
         endActiveMutationOwnership()
         loadedBoardSlug = nil
+        boardsAnswered = false
 
-        service = makeService(requester)
+        service = requester.map { makeService($0) }
+        service?.answers = answers
+        self.answers = answers
         requesterID = identity
         self.serverIdentity = normalizedServer
         let scopedKey = Self.scopedBoardKey(serverIdentity: normalizedServer)
@@ -170,7 +176,7 @@ final class KanbanStore {
         selectedBoardSlug = defaults.string(forKey: scopedKey) ?? ""
 
         // One-time migration for the pre-scoped key.
-        if selectedBoardSlug.isEmpty, let legacy = defaults.string(forKey: Self.selectedBoardKey) {
+        if requester != nil, selectedBoardSlug.isEmpty, let legacy = defaults.string(forKey: Self.selectedBoardKey) {
             selectedBoardSlug = legacy
             defaults.set(legacy, forKey: scopedKey)
             defaults.removeObject(forKey: Self.selectedBoardKey)
@@ -184,6 +190,26 @@ final class KanbanStore {
         currentServerBoardSlug = "default"
         errorMessage = nil
         mutationErrorMessage = nil
+        showKept()
+    }
+
+    /// The board's kept answers, shown until Hermes answers. No load set
+    /// `loadedBoardSlug` for them, so nothing on them is actionable. Shown
+    /// again, they redraw nothing.
+    private func showKept() {
+        guard let answers else { return }
+        if let kept = KanbanService.kept(KanbanBoardsResponse.self, from: answers.kept(KanbanService.KeptRoute.boards)) {
+            setIfChanged(\.boards, kept.boards)
+            setIfChanged(\.currentServerBoardSlug, kept.current)
+        }
+        setIfChanged(\.board, keptBoard(resolvedSelectedBoardSlug))
+        setIfChanged(\.profiles, KanbanService.kept(KanbanProfilesResponse.self, from: answers.kept(KanbanService.KeptRoute.profiles))?.profiles ?? [])
+        setIfChanged(\.projects, KanbanService.kept(KanbanProjectsResponse.self, from: answers.kept(KanbanService.KeptRoute.projects))?.projects ?? [])
+        setIfChanged(\.orchestration, KanbanService.kept(KanbanOrchestrationSettings.self, from: answers.kept(KanbanService.KeptRoute.orchestration)))
+    }
+
+    private func keptBoard(_ slug: String) -> KanbanBoard? {
+        answers.flatMap { KanbanService.kept(KanbanBoard.self, from: $0.kept(KanbanService.KeptRoute.board(slug))) }
     }
 
     /// `superseding: true` lets an explicit user navigation (board selection)
@@ -194,9 +220,8 @@ final class KanbanStore {
         loadGeneration += 1
         let generation = loadGeneration
         guard let service else {
-            if board == nil {
-                setIfChanged(\.errorMessage, AppLocalization.string("Connect to a Hermes dashboard to use Kanban."))
-            }
+            // Said over a kept board too, which can't be changed offline.
+            setIfChanged(\.errorMessage, AppLocalization.string("Connect to a Hermes dashboard to use Kanban."))
             return
         }
 
@@ -217,6 +242,7 @@ final class KanbanStore {
 
             setIfChanged(\.boards, boardResponse.boards)
             setIfChanged(\.currentServerBoardSlug, boardResponse.current)
+            boardsAnswered = true
 
             if !selectedBoardSlug.isEmpty && !boards.contains(where: { $0.slug == selectedBoardSlug }) {
                 selectedBoardSlug = ""
@@ -280,6 +306,12 @@ final class KanbanStore {
         } else if let persistenceKey {
             defaults.set(slug, forKey: persistenceKey)
         }
+        // The board picked shows what it showed last time while it loads,
+        // rather than the last board's cards (archived tasks aren't kept).
+        if !includeArchived, resolvedSelectedBoardSlug != loadedBoardSlug, let kept = keptBoard(resolvedSelectedBoardSlug) {
+            loadedBoardSlug = nil
+            setIfChanged(\.board, kept)
+        }
         // Explicit navigation supersedes any in-flight poll so the displayed
         // snapshot converges on the selection instead of racing it.
         await reload(includeArchived: includeArchived, superseding: true)
@@ -331,6 +363,13 @@ final class KanbanStore {
     func fetchModelOptions() async throws -> [KanbanModelProviderOption] {
         guard let service else { throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")) }
         return try await service.fetchModelOptions()
+    }
+
+    /// The roster the override picker listed last time on this dashboard,
+    /// or nil (#1533).
+    func keptModelOptions() -> [KanbanModelProviderOption]? {
+        answers.flatMap { KanbanService.kept(KanbanModelOptionsResponse.self, from: $0.kept(KanbanService.KeptRoute.modelOptions)) }
+            .map(KanbanService.offerable)
     }
 
     @discardableResult

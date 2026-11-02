@@ -56,7 +56,7 @@ struct CapabilityPluginsTab: View {
         let installed = rows.installed
         let catalog = rows.catalog
         CapabilityTabScroll(refresh: { await store.loadPlugins() }) {
-            if !store.pluginsLoaded {
+            if !store.pluginsLoaded && !store.showsKept.contains(.plugins) {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 40)
@@ -150,7 +150,7 @@ struct CapabilityPluginsTab: View {
             }
         }
         .task(id: store.profile) {
-            if !store.pluginsLoaded { await store.loadPlugins() }
+            if !store.pluginsLoaded || !store.showsKept.isDisjoint(with: [.plugins, .pluginCatalog]) { await store.loadPlugins() }
         }
         .confirmationDialog(
             Text("Install \(pendingInstall?.displayName ?? "")?"),

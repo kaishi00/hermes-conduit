@@ -7,6 +7,8 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         let suite = "AppStateWidgetLaunchTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
+        // "Open to" is the drawer shell's.
+        defaults.set(false, forKey: V2ShellPreference.key)
         let dashboard = SavedDashboard(
             id: UUID(uuidString: "00000000-0000-0000-0000-0000000000a1")!,
             label: "Primary",

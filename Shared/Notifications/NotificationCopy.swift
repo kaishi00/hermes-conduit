@@ -73,6 +73,11 @@ enum NotificationCopy {
             // notifier 0.104.0): the host sent only this line, in English.
             return (finalTitle, subtitle, AppLocalization.string("Pulse has something for you."))
         }
+        if label == "approval.needed", let hostBody {
+            // Hermes' explanation, which the plugin sends as written, in
+            // the App Language when Hermes wrote it (#1589).
+            return (finalTitle, subtitle, HermesApprovalText.description(hostBody))
+        }
         return (finalTitle, subtitle, hostBody)
     }
 
@@ -221,7 +226,10 @@ enum NotificationCopy {
         case nil:
             return nil
         }
-        return reason.map { outcome + " " + $0 } ?? outcome
+        // An approval call's reason is the approval's description: Hermes'
+        // own texts in the App Language (#1589), as HermesCallCopy.summary.
+        let said = call["kind"] as? String == "approval" ? reason.map(HermesApprovalText.description) : reason
+        return said.map { outcome + " " + $0 } ?? outcome
     }
 
     private static func nonEmpty(_ value: Any?) -> String? {

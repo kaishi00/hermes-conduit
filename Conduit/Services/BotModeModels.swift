@@ -33,7 +33,7 @@ enum BotModePhase: Equatable {
 
 /// The roster's `canonical_session` field: the profile's canonical "Bot Chat"
 /// row, resolved server-side by title on every `profiles.list`.
-struct BotCanonicalSession: Equatable {
+struct BotCanonicalSession: Equatable, Codable {
     /// The durable registry row.
     let id: String
     /// The compression-lineage tip — the live session a durable id currently
@@ -43,8 +43,11 @@ struct BotCanonicalSession: Equatable {
     let preview: String?
 }
 
-/// One roster row: a Hermes profile as Bot Mode presents it.
-struct BotProfile: Identifiable, Equatable {
+/// One roster row: a Hermes profile as Bot Mode presents it. Codable for
+/// the copy the Bots list keeps to open on (`KeptBotRoster`), which leaves
+/// out the bot's ui_meta: a write sends that back whole, so it takes
+/// Hermes' own.
+struct BotProfile: Identifiable, Equatable, Codable {
     /// The profile name — the wire identity every bot-scoped RPC addresses.
     let name: String
     /// `ui_meta['hermes-bots'].title`, the user's customized bot title.
@@ -80,8 +83,17 @@ struct BotProfile: Identifiable, Equatable {
     /// The main profile's Conduit name (AppState.profileDisplayName), set on
     /// the roster's main bot so it reads as the rest of Conduit names it.
     var conduitName: String?
+    /// A row of the kept copy, drawn until Hermes answers (#1533): it has no
+    /// ui_meta to write back, so nothing writes it.
+    var isKeptCopy = false
 
     var id: String { name }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, botTitle, displayName, profileDescription, model, provider, hasAvatar, isPinned
+        case isHiddenByMeta, appearanceColor, canonicalSession, lastActive, lastPreview, previousNames
+        case isDefault, conduitName
+    }
 
     /// Removable from Conduit: never the gateway's primary profile.
     var isDeletable: Bool {
@@ -135,6 +147,34 @@ struct BotRosterSnapshot: Equatable {
     /// profile's ui_meta — invisible to `groups.list` (see
     /// `DesktopGroupChat`).
     var desktopGroups: [DesktopGroupChat] = []
+}
+
+/// What the Bots list keeps of a `profiles.list` answer to open on
+/// (#1533): the bots and Desktop's groups as Conduit read them. Hermes' own
+/// answer keys Desktop's groups by their names, and the kept answers leave
+/// out any field named like a key or a token.
+struct KeptBotRoster: Codable {
+    var bots: [BotProfile]
+    var desktopGroups: [DesktopGroupChat]
+
+    /// Desktop's group pictures up to the rooms' budget, the rest left
+    /// out: an answer over 2 MB isn't kept at all, so pictures never cost
+    /// the bots their kept copy.
+    func cappingPictures(to budget: Int = GroupRoomPictures.keptBytes) -> KeptBotRoster {
+        var bytes = 0
+        var capped = self
+        capped.desktopGroups = desktopGroups.map { group in
+            guard let data = group.imageData else { return group }
+            var group = group
+            if bytes + data.count <= budget {
+                bytes += data.count
+            } else {
+                group.imageData = nil
+            }
+            return group
+        }
+        return capped
+    }
 }
 
 enum BotRosterDecoder {

@@ -176,7 +176,7 @@ struct UsageSettingsDetail: View {
 
     private func totalsSection(_ report: UsageReport) -> some View {
         ConduitSettingsSection(title: AppLocalization.string("Totals"), symbol: "sum", tint: .conduitAccent) {
-            if report.totals.sessions == 0 && report.totals.total == 0 {
+            if report.totals.sessions == 0 && report.totals.allTokens == 0 {
                 Text("No usage in this period.")
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
@@ -185,6 +185,7 @@ struct UsageSettingsDetail: View {
                     label: report.costIsEstimate ? AppLocalization.string("Estimated cost") : AppLocalization.string("Cost"),
                     value: money(report.cost)
                 )
+                SettingsMetricRow(label: AppLocalization.string("Total tokens"), value: tokens(report.totals.allTokens))
                 SettingsMetricRow(label: AppLocalization.string("Input"), value: tokens(report.totals.input))
                 SettingsMetricRow(label: AppLocalization.string("Output"), value: tokens(report.totals.output))
                 if report.totals.cacheRead > 0 {

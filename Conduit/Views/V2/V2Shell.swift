@@ -404,9 +404,10 @@ struct V2Shell: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.layoutDirection) private var layoutDirection
     @State private var selectedTab: V2Tab = .chats
-    /// The app opens on the Chats list. Nothing is pushed during the
-    /// launch's first layout: a push then, even without animation, left the
-    /// app never idle.
+    /// The app opens on the Chats list, or on the chat iOS closed it on
+    /// (`V2ReopenedConversation`). Nothing is pushed during the launch's
+    /// first layout: a push then, even without animation, left the app
+    /// never idle, so a reopened chat is in the path from the start.
     @State private var chatsPath: [V2Route] = []
     @State private var botsPath: [V2Route] = []
     /// The custom bar keeps a tab alive once it has been opened, so its
@@ -427,6 +428,11 @@ struct V2Shell: View {
     @State private var programmaticTab: V2Tab?
     /// A settings link waiting for the Settings tab to open its page.
     @State private var settingsLink: ConduitAppLink.SettingsLink?
+    /// The window's record of the chat showing, for the launch after iOS
+    /// ends Conduit in the background (MainView's SceneStorage).
+    @Binding private var conversationOnLeave: String
+    /// A launch whose group room opens again once Hermes is connected.
+    @State private var roomToReopen: V2ReopenedConversation.Launch?
     /// The floating bar's height as last laid out (the capsule and the
     /// voice button, with their bottom padding).
     @State private var tabBarHeight: CGFloat = 62
@@ -435,6 +441,26 @@ struct V2Shell: View {
     @AppStorage(V2SplitLayout.listWidths.key) private var storedListWidth = Double(V2SplitLayout.listWidths.standard)
     /// The list's width while its line is dragged (`ColumnDivider`).
     @State private var draggedListWidth: CGFloat?
+
+    /// - Parameters:
+    ///   - conversationOnLeave: the window's record of the chat showing,
+    ///     kept current here.
+    ///   - reopening: where this launch opens, from that record
+    ///     (`V2ReopenedConversation.launch`); nil opens on Chats.
+    init(conversationOnLeave: Binding<String> = .constant(""), reopening launch: V2ReopenedConversation.Launch? = nil) {
+        _conversationOnLeave = conversationOnLeave
+        _roomToReopen = State(initialValue: launch?.roomID == nil ? nil : launch)
+        switch launch?.tab {
+        case .bots?:
+            _selectedTab = State(initialValue: .bots)
+            _botsPath = State(initialValue: launch?.path ?? [])
+            _visitedTabs = State(initialValue: [.chats, .bots])
+        case .chats?:
+            _chatsPath = State(initialValue: launch?.path ?? [])
+        case .tasks?, .settings?, nil:
+            break
+        }
+    }
 
     /// Whether the visible tab shows the conversation.
     private var conversationVisible: Bool {
@@ -450,6 +476,93 @@ struct V2Shell: View {
     /// page in the list column, over the bar like Artifacts.
     private var pulseVisible: Bool {
         selectedTab == .chats && chatsPath.last == .pulse
+    }
+
+    /// What the window keeps for a launch after iOS ends Conduit: where
+    /// the showing chat or room is.
+    private var conversationToReopen: V2ReopenedConversation? {
+        V2ReopenedConversation.kept(
+            showing: conversationVisible ? selectedTab : nil,
+            path: path(of: selectedTab),
+            roomID: appState.activeRoomSurface?.room.roomID
+        )
+    }
+
+    /// The room a launch reopens, once Hermes is connected and only while
+    /// the tab is still as the launch left it (no tap took the reader
+    /// elsewhere meanwhile).
+    @MainActor private func reopenRoomIfWaiting() async {
+        guard let launch = roomToReopen, launch.roomID != nil, appState.isConnected else { return }
+        // A notification, widget or Shortcut at launch pushes its own chat:
+        // opening the room would cancel it, so the room gives way.
+        if appState.hasPendingExplicitNavigation {
+            roomToReopen = nil
+            conversationOnLeave = conversationToReopen?.encoded ?? ""
+            return
+        }
+        func step() -> V2ReopenedConversation.RoomStep {
+            launch.roomStep(
+                in: appState.shownGroupRooms,
+                // Only Hermes' whole list proves a room is gone; a partial
+                // page leaves it waiting.
+                listed: (appState.groupRoomsListed && appState.groupRoomsComplete)
+                    || appState.groupChatPhase == .gatewayUnsupported,
+                tab: selectedTab,
+                path: path(of: launch.tab),
+                roomOpen: appState.activeRoomSurface != nil
+            )
+        }
+        func hermesListed() -> Bool {
+            appState.groupRoomsListed || appState.groupChatPhase == .gatewayUnsupported
+        }
+        var next = step()
+        // A room found only in the kept list waits for Hermes' own list, so
+        // the open doesn't refresh it and show an error nobody tapped for.
+        if next == .askHermes || (next != .giveUp && !hermesListed()) {
+            await appState.refreshGroupChatSupport()
+            // Cut short (the connection dropped) or still unlisted: kept for
+            // the next connection. Given up meanwhile: nothing to open.
+            guard roomToReopen != nil else { return }
+            guard !Task.isCancelled, appState.isConnected, hermesListed() else { return }
+            next = step()
+        }
+        switch next {
+        case .askHermes:
+            // Hermes hasn't listed its rooms yet: kept for the next connection.
+            return
+        case .giveUp:
+            roomToReopen = nil
+            conversationOnLeave = conversationToReopen?.encoded ?? ""
+        case .open(let room):
+            // A destination that came in while Hermes listed its rooms wins.
+            guard !appState.hasPendingExplicitNavigation else {
+                roomToReopen = nil
+                conversationOnLeave = conversationToReopen?.encoded ?? ""
+                return
+            }
+            await appState.openGroupRoom(room)
+            // Opened: its screen keeps the record from here. A failed or cut
+            // short open stays kept, and tries again on the next connection.
+            if appState.activeRoomSurface?.room.roomID == room.roomID {
+                roomToReopen = nil
+            } else if !Task.isCancelled, step() == .giveUp {
+                // The open read Hermes' list, and the room is gone from it.
+                roomToReopen = nil
+                conversationOnLeave = conversationToReopen?.encoded ?? ""
+            }
+        }
+    }
+
+    /// Gives up a waiting room once the reader left the launch's screen (a
+    /// tab, a page, a chat), and keeps what's showing instead.
+    private func giveUpRoomIfLeft() {
+        guard let launch = roomToReopen, !launch.isUntouched(
+            tab: selectedTab,
+            path: path(of: launch.tab),
+            roomOpen: appState.activeRoomSurface != nil
+        ) else { return }
+        roomToReopen = nil
+        conversationOnLeave = conversationToReopen?.encoded ?? ""
     }
 
     /// Whether either tab holds the conversation, shown or not.
@@ -511,6 +624,25 @@ struct V2Shell: View {
                     appState.showSidebar = !visible
                 }
             }
+            .onChange(of: conversationToReopen, initial: true) { _, kept in
+                // A room still waiting to open keeps its record until it
+                // opens or is given up, so a launch cut short tries again.
+                guard kept != nil || roomToReopen == nil else { return }
+                // A chat or room on screen meanwhile: the reader moved on.
+                if kept != nil { roomToReopen = nil }
+                let value = kept?.encoded ?? ""
+                if conversationOnLeave != value { conversationOnLeave = value }
+            }
+            // Again once Hermes lists its rooms, whichever screen asked.
+            .task(id: [appState.isConnected, appState.groupRoomsListed]) { await reopenRoomIfWaiting() }
+            // A page tapped while a room waits takes the reader elsewhere too.
+            .onChange(of: chatsPath) { giveUpRoomIfLeft() }
+            .onChange(of: botsPath) { giveUpRoomIfLeft() }
+            .onChange(of: appState.isModalSheetPresented) { _, presented in
+                // A sheet's dismissal shows the chat again: what came in under
+                // it is read now (#1579).
+                if !presented { appState.clearShownChatNotifications() }
+            }
             .onChange(of: appState.showSidebar) { _, covered in
                 if !covered, !conversationVisible {
                     // A call's screen covers the chat on its own; the list
@@ -560,6 +692,7 @@ struct V2Shell: View {
             }
             .onChange(of: selectedTab) { _, tab in
                 visitedTabs.insert(tab)
+                giveUpRoomIfLeft()
                 // Only a tab the user picked clicks; a chat or link that
                 // switches tabs for them doesn't.
                 if programmaticTab == tab {
@@ -1471,6 +1604,124 @@ private struct V2CapsuleTabBar: View {
         .padding(4)
         .conduitGlassControl(cornerRadius: 28, interactive: false)
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+    }
+}
+
+/// The chat a launch opens on (#1559). A window keeps where its chat was
+/// showing (the tab, the pages under the chat, a group room) as
+/// SceneStorage, which iOS restores when it ended Conduit in the background
+/// and drops when the user swiped Conduit away: so a return after iOS
+/// closed Conduit comes back to the chat, and a launch the user chose
+/// still opens on Chats (Eric, 2026-10-15 and 2026-10-31). The chat is the
+/// one Conduit resumes, by "When returning to Conduit"; a room opens again
+/// once Hermes is connected.
+struct V2ReopenedConversation: Codable, Equatable {
+    static let sceneStorageKey = "conduit.v2.conversationOnLeave"
+
+    /// "chats" or "bots".
+    var tab: String
+    /// The pages under the chat in that tab, bottom first: "project:<id>",
+    /// "pulse", "artifacts".
+    var under: [String] = []
+    /// The group room showing, in place of the tab's chat.
+    var roomID: String?
+
+    /// Where a launch opens: the tab, its path, and a room to open once
+    /// Hermes is connected (its screen is pushed as it opens).
+    struct Launch: Equatable {
+        var tab: V2Tab
+        var path: [V2Route]
+        var roomID: String?
+
+        /// The tab is still as the launch left it: no tap took the reader
+        /// elsewhere, and no room opened another way.
+        func isUntouched(tab shown: V2Tab, path shownPath: [V2Route], roomOpen: Bool) -> Bool {
+            shown == tab && shownPath == path && !roomOpen
+        }
+
+        /// What a launch's room does next: open it while the tab is
+        /// untouched and Hermes lists it; give up once the reader went
+        /// elsewhere, or Hermes' list has no such room (or it's disbanded);
+        /// otherwise ask Hermes for its rooms first.
+        func roomStep(in rooms: [GroupRoom], listed: Bool, tab shown: V2Tab, path shownPath: [V2Route], roomOpen: Bool) -> RoomStep {
+            guard let roomID, isUntouched(tab: shown, path: shownPath, roomOpen: roomOpen) else { return .giveUp }
+            if let room = rooms.first(where: { $0.roomID == roomID }) {
+                return room.isDisbanded ? .giveUp : .open(room)
+            }
+            return listed ? .giveUp : .askHermes
+        }
+    }
+
+    enum RoomStep: Equatable {
+        case open(GroupRoom)
+        case askHermes
+        case giveUp
+    }
+
+    /// What the window keeps: where the showing chat or room is, or
+    /// nothing while no chat shows.
+    static func record(showing tab: V2Tab?, path: [V2Route], roomID: String?) -> String {
+        kept(showing: tab, path: path, roomID: roomID)?.encoded ?? ""
+    }
+
+    /// The record itself, compared on each render and only encoded when it
+    /// changes.
+    static func kept(showing tab: V2Tab?, path: [V2Route], roomID: String?) -> V2ReopenedConversation? {
+        guard let tab, tab == .chats || tab == .bots, path.last == .conversation else { return nil }
+        let under = path.dropLast().compactMap { route -> String? in
+            switch route {
+            case .project(let project): return "project:" + project.id
+            case .pulse: return "pulse"
+            case .artifacts: return "artifacts"
+            case .conversation: return nil
+            }
+        }
+        return V2ReopenedConversation(tab: tab.rawValue, under: under, roomID: roomID)
+    }
+
+    /// What the window's SceneStorage holds.
+    var encoded: String {
+        guard let data = try? JSONEncoder().encode(self) else { return "" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// Where this launch opens, when there's a chat to open: Bots needs the
+    /// kept chat to be a Bot Chat, Chats any kept chat or a saved copy on
+    /// screen, a room only its id. A page under the chat comes back while
+    /// it's still there (a project this profile lists, Pulse while it
+    /// shows); one that isn't is left out.
+    static func launch(
+        stored: String,
+        lastChat: SessionReference.Kind?,
+        hasSavedCopy: Bool,
+        projects: [ProjectSummary],
+        showsPulse: Bool
+    ) -> Launch? {
+        guard !stored.isEmpty,
+              let kept = try? JSONDecoder().decode(V2ReopenedConversation.self, from: Data(stored.utf8)),
+              let tab = V2Tab(rawValue: kept.tab) else { return nil }
+        let under: [V2Route] = kept.under.compactMap { token in
+            switch token {
+            case "pulse": return showsPulse ? .pulse : nil
+            case "artifacts": return .artifacts
+            default:
+                guard token.hasPrefix("project:") else { return nil }
+                let id = String(token.dropFirst("project:".count))
+                return projects.first { $0.id == id }.map(V2Route.project)
+            }
+        }
+        if let roomID = kept.roomID, !roomID.isEmpty {
+            return Launch(tab: tab, path: under, roomID: roomID)
+        }
+        switch tab {
+        case .bots:
+            guard lastChat == .bot else { return nil }
+        case .chats:
+            guard lastChat != nil || hasSavedCopy else { return nil }
+        case .tasks, .settings:
+            return nil
+        }
+        return Launch(tab: tab, path: under + [.conversation])
     }
 }
 

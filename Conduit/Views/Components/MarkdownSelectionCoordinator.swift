@@ -252,7 +252,7 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         orderedSegmentIDs = ordered.map(\.id)
         let currentIDs = Set(orderedSegmentIDs)
         recordsByID = recordsByID.filter { currentIDs.contains($0.key) }
-        deferredMounts = deferredMounts.filter { currentIDs.contains($0.key) }
+        deferredMounts = deferredMounts.filter { currentIDs.contains(Self.segmentID(ofDeferredKey: $0.key)) }
 
         for descriptor in ordered {
             if let record = recordsByID[descriptor.id] {
@@ -298,6 +298,18 @@ final class MarkdownSelectionCoordinator: ObservableObject {
     /// A segment that will register its text view once it has one; until
     /// then a selection can't reach it, so a selection that becomes visible
     /// mounts every deferred segment first (`mountDeferredSegments`).
+    /// What a table's own deferred mount waits under: its first cell's
+    /// segment with this after it, so it never takes the place of that
+    /// cell's, which waits under the bare segment when the cell is drawn
+    /// text (a cell with a link, #1596). Kept while the segment is.
+    static func tableMountKey(forSegmentID segmentID: String) -> String {
+        segmentID + "#table"
+    }
+
+    private static func segmentID(ofDeferredKey key: String) -> String {
+        key.hasSuffix("#table") ? String(key.dropLast("#table".count)) : key
+    }
+
     func deferRegistration(segmentID: String, owner: AnyObject, mount: @escaping () -> Void) {
         deferredMounts[segmentID] = DeferredMount(owner: owner, mount: mount)
     }

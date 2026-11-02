@@ -33,7 +33,6 @@ enum TranscriptPerf {
         case .selectableTextViewUpdate: storage.selectableTextViewUpdate += 1
         case .selectableTextViewTextRebuild: storage.selectableTextViewTextRebuild += 1
         case .textKitMeasurement: storage.textKitMeasurement += 1
-        case .rowFramePreferenceUpdate: storage.rowFramePreferenceUpdate += 1
         case .layoutMetricsChanged: storage.layoutMetricsChanged += 1
         case .transcriptChanged: storage.transcriptChanged += 1
         case .chatViewBody: storage.chatViewBody += 1
@@ -46,6 +45,7 @@ enum TranscriptPerf {
         case .reasoningTranscriptMutation: storage.reasoningTranscriptMutation += 1
         case .scrollTargetPrefixSetBuild: storage.scrollTargetPrefixSetBuild += 1
         case .plainTableCellBody: storage.plainTableCellBody += 1
+        case .rowHeightEstimate: storage.rowHeightEstimate += 1
         }
         #endif
     }
@@ -207,7 +207,6 @@ enum TranscriptPerf {
         case selectableTextViewUpdate
         case selectableTextViewTextRebuild
         case textKitMeasurement
-        case rowFramePreferenceUpdate
         case layoutMetricsChanged
         case transcriptChanged
         case chatViewBody
@@ -221,6 +220,8 @@ enum TranscriptPerf {
         case scrollTargetPrefixSetBuild
         /// A table cell drawn as plain text (MarkdownPlainCell).
         case plainTableCellBody
+        /// A transcript row's height guessed from its text (TranscriptLayout).
+        case rowHeightEstimate
         case settledContentGateComparison
     }
 
@@ -282,10 +283,6 @@ enum TranscriptPerf {
         get { read(\.textKitMeasurement) }
     }
 
-    static var rowFramePreferenceUpdates: Int {
-        get { read(\.rowFramePreferenceUpdate) }
-    }
-
     static var layoutMetricsChangedCalls: Int {
         get { read(\.layoutMetricsChanged) }
     }
@@ -321,6 +318,10 @@ enum TranscriptPerf {
 
     static var plainTableCellBodyEvaluations: Int {
         get { read(\.plainTableCellBody) }
+    }
+
+    static var rowHeightEstimates: Int {
+        get { read(\.rowHeightEstimate) }
     }
 
     static var composerBarBodyEvaluations: Int {
@@ -536,6 +537,7 @@ enum TranscriptPerf {
     private struct Storage {
         var settledBubbleBody = 0
         var plainTableCellBody = 0
+        var rowHeightEstimate = 0
         var settledMarkdownBody = 0
         var settledMarkdownPreWindowRepeatBody = 0
         var settledMarkdownWindowDuplicateBody = 0
@@ -573,7 +575,6 @@ enum TranscriptPerf {
         var selectableTextViewUpdate = 0
         var selectableTextViewTextRebuild = 0
         var textKitMeasurement = 0
-        var rowFramePreferenceUpdate = 0
         var layoutMetricsChanged = 0
         var transcriptChanged = 0
         var chatViewBody = 0

@@ -4,8 +4,10 @@ import UIKit
 import XCTest
 @testable import Conduit
 
-/// Runs the real ChatView in a window and checks the scroll view itself:
-/// where the content actually sits after SwiftUI and UIKit have laid it out.
+/// Runs the real ChatView in a window and checks the transcript's collection
+/// view itself (#1533, the transcript rewrite): where the content actually
+/// sits after SwiftUI, the rows' hosting controllers and UIKit have laid it
+/// out.
 @MainActor
 final class ChatScrollHostedTests: XCTestCase {
     private var window: UIWindow?
@@ -17,7 +19,7 @@ final class ChatScrollHostedTests: XCTestCase {
         super.setUp()
         // These tests follow a reply to its end. Stopping at the start of a
         // long reply (#1256, on by default) has its own test below and in
-        // ChatScrollEngineTests.
+        // TranscriptScrollerTests.
         savedReplyStartPreference = UserDefaults.standard.object(forKey: ChatReplyStartPreference.key)
         UserDefaults.standard.set(false, forKey: ChatReplyStartPreference.key)
     }
@@ -53,7 +55,10 @@ final class ChatScrollHostedTests: XCTestCase {
         let appState: AppState
         let host: UIViewController
         let scrollView: UIScrollView
-        let engine: ChatScrollEngine
+        let layout: TranscriptLayout
+        let scroller: TranscriptScroller
+        /// Draws the same chat at another text size.
+        let setTextSize: (ChatTextSize) -> Void
     }
 
     private static func transcript(_ range: Range<Int>) -> [ChatMessage] {
@@ -77,11 +82,7 @@ final class ChatScrollHostedTests: XCTestCase {
         appState.messages = messages
 
         let host = UIHostingController(
-            rootView: DormancyHarnessEnvironment.applying(
-                ChatView(chatTextSizeOverride: DormancyHarnessEnvironment.pinnedChatTextSize)
-                    .environment(\.v2ComposerRests, composerRests)
-                    .environmentObject(appState)
-            )
+            rootView: Self.chat(appState, composerRests: composerRests, textSize: DormancyHarnessEnvironment.pinnedChatTextSize)
         )
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         window.rootViewController = host
@@ -90,19 +91,29 @@ final class ChatScrollHostedTests: XCTestCase {
         self.host = host
         self.appState = appState
 
-        var locator: ChatScrollSurfaceLocatorView?
+        var collectionView: TranscriptCollectionView?
         XCTAssertTrue(
             PerformanceFixtureWait.eventually(pumpingLayoutOf: host.view) {
-                locator = Self.find(ChatScrollSurfaceLocatorView.self, in: host.view)
-                return locator?.surface?.scrollView != nil
+                collectionView = Self.find(TranscriptCollectionView.self, in: host.view)
+                return collectionView?.window != nil && (collectionView?.bounds.height ?? 0) > 0
             },
-            "the locator must find the transcript's UIScrollView"
+            "the chat must draw its transcript's collection view"
         )
-        let found = try XCTUnwrap(locator)
-        let scrollView = try XCTUnwrap(found.surface?.scrollView)
-        let engine = try XCTUnwrap(found.engine)
+        let found = try XCTUnwrap(collectionView)
+        let controller = try XCTUnwrap(found.delegate as? TranscriptViewController)
         settle(host.view)
-        return Mounted(appState: appState, host: host, scrollView: scrollView, engine: engine)
+        return Mounted(
+            appState: appState, host: host, scrollView: found, layout: controller.layout, scroller: controller.scroller,
+            setTextSize: { size in host.rootView = ChatScrollHostedTests.chat(appState, composerRests: composerRests, textSize: size) }
+        )
+    }
+
+    private static func chat(_ appState: AppState, composerRests: Bool, textSize: ChatTextSize) -> some View {
+        DormancyHarnessEnvironment.applying(
+            ChatView(chatTextSizeOverride: textSize)
+                .environment(\.v2ComposerRests, composerRests)
+                .environmentObject(appState)
+        )
     }
 
     private static func find<T: UIView>(_ type: T.Type, in view: UIView) -> T? {
@@ -113,7 +124,7 @@ final class ChatScrollHostedTests: XCTestCase {
         return nil
     }
 
-    /// Pumps layout and the run loop long enough for lazy rows to measure.
+    /// Pumps layout and the run loop long enough for rows to measure.
     private func settle(_ view: UIView, seconds: TimeInterval = 0.6) {
         let deadline = Date().addingTimeInterval(seconds)
         while Date() < deadline {
@@ -140,30 +151,60 @@ final class ChatScrollHostedTests: XCTestCase {
         XCTAssertLessThanOrEqual(abs(distance), 1, "\(message) (distance \(distance))", file: file, line: line)
     }
 
+    /// `assertAtLatest` while a reply streams in. Its text comes out a few
+    /// characters at a time, and its row reports each growth while UIKit
+    /// lays out its cell, after the collection view's own pass, so the pass
+    /// that follows the growth comes after it: TranscriptViewController
+    /// queues it on the main queue at once, and `settle` can end between
+    /// the two. Checked from a block queued after that pass, once no row's
+    /// growth still owes one.
+    private func assertAtLatestWhileStreaming(
+        _ mounted: Mounted,
+        _ message: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let checked = expectation(description: "checked after the queued pass")
+        func check(_ attempt: Int) {
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    // Text that came out after this block was queued owes a
+                    // pass queued after it: check after that one.
+                    if mounted.scrollView.layer.needsLayout(), attempt < 5 {
+                        check(attempt + 1)
+                        return
+                    }
+                    self.assertAtLatest(mounted, message, file: file, line: line)
+                    checked.fulfill()
+                }
+            }
+        }
+        check(0)
+        wait(for: [checked], timeout: 2)
+    }
+
     /// What a finger would do: begin a drag, move the content, let go.
     private func browse(_ mounted: Mounted, to offsetY: CGFloat) {
-        mounted.engine.userDragBegan()
+        mounted.scroller.userDragBegan()
         mounted.scrollView.contentOffset.y = offsetY
-        mounted.engine.userDragEnded()
+        mounted.scroller.userDragEnded()
         settle(mounted.host.view, seconds: 0.3)
     }
 
-    /// Screen position (relative to the viewport top) of a laid-out row.
+    /// Screen position (relative to the viewport top) of a row.
     private func screenY(of id: String, in mounted: Mounted) -> CGFloat? {
-        guard let frame = mounted.engine.rowFrame(for: id),
-              let surface = mounted.engine.surface else { return nil }
-        return surface.transcriptOriginY + frame.minY - mounted.scrollView.contentOffset.y
+        mounted.layout.rowFrame(id).map { $0.minY - mounted.scrollView.contentOffset.y }
     }
 
     /// Records every offset and content-size change the scroll view goes
-    /// through, and whether the engine made the offset change, so a failure
-    /// says which side moved the transcript.
+    /// through, and whether the scroller made the offset change, so a
+    /// failure says which side moved the transcript.
     private final class ScrollRecorder {
         struct Change {
             let time: CFTimeInterval
             let text: String
             let isOffset: Bool
-            let byEngine: Bool
+            let byScroller: Bool
             var distance: CGFloat = 0
         }
 
@@ -176,9 +217,9 @@ final class ChatScrollHostedTests: XCTestCase {
                 scrollView.observe(\.contentOffset, options: [.old, .new]) { [weak self] view, change in
                     guard let self, change.oldValue != change.newValue else { return }
                     let stack = Thread.callStackSymbols
-                    let byEngine = stack.contains { $0.contains("ChatScrollEngine") }
-                    let writer = byEngine ? "engine" : Self.writer(in: stack)
-                    // Clamped like ChatScrollSurface.maxOffsetY.
+                    let byScroller = stack.contains { $0.contains("TranscriptScroller") }
+                    let writer = byScroller ? "scroller" : Self.writer(in: stack)
+                    // Clamped like TranscriptScrollSurface.maxOffsetY.
                     let max = Swift.max(
                         -view.adjustedContentInset.top,
                         view.contentSize.height + view.adjustedContentInset.bottom - view.bounds.height
@@ -189,7 +230,7 @@ final class ChatScrollHostedTests: XCTestCase {
                             change.oldValue?.y ?? .nan, change.newValue?.y ?? .nan, max, writer
                         ),
                         isOffset: true,
-                        byEngine: byEngine,
+                        byScroller: byScroller,
                         distance: abs((change.newValue?.y ?? 0) - (change.oldValue?.y ?? 0))
                     )
                 },
@@ -202,7 +243,7 @@ final class ChatScrollHostedTests: XCTestCase {
                             change.newValue?.origin.y ?? .nan, change.newValue?.height ?? .nan
                         ),
                         isOffset: false,
-                        byEngine: false
+                        byScroller: false
                     )
                 },
                 scrollView.observe(\.contentSize, options: [.old, .new]) { [weak self] _, change in
@@ -213,7 +254,7 @@ final class ChatScrollHostedTests: XCTestCase {
                             change.oldValue?.height ?? .nan, change.newValue?.height ?? .nan
                         ),
                         isOffset: false,
-                        byEngine: false
+                        byScroller: false
                     )
                 },
             ]
@@ -236,12 +277,12 @@ final class ChatScrollHostedTests: XCTestCase {
                 .joined(separator: " < ")
         }
 
-        private func record(_ text: String, isOffset: Bool, byEngine: Bool, distance: CGFloat = 0) {
+        private func record(_ text: String, isOffset: Bool, byScroller: Bool, distance: CGFloat = 0) {
             changes.append(Change(
                 time: CACurrentMediaTime() - start,
                 text: text,
                 isOffset: isOffset,
-                byEngine: byEngine,
+                byScroller: byScroller,
                 distance: distance
             ))
         }
@@ -262,7 +303,7 @@ final class ChatScrollHostedTests: XCTestCase {
     }
 
     /// Geometry read straight from the scroll view (no KVO), with the
-    /// engine's view of it, for the CI log.
+    /// scroller's view of it, for the CI log.
     private func checkpoint(_ label: String, _ mounted: Mounted, _ recorder: ScrollRecorder) {
         let view = mounted.scrollView
         print(String(
@@ -274,13 +315,13 @@ final class ChatScrollHostedTests: XCTestCase {
             view.bounds.height,
             view.adjustedContentInset.top,
             view.adjustedContentInset.bottom,
-            String(describing: mounted.engine.mode),
+            String(describing: mounted.scroller.mode),
             TranscriptPerf.layoutMetricsChangedCalls,
             recorder.mark()
         ))
     }
 
-    /// Rows whose real heights are far from LazyVStack's estimates: long
+    /// Rows whose real heights are far from the layout's estimates: long
     /// code blocks and lists between ordinary prose.
     private static func uneven(_ range: Range<Int>) -> [ChatMessage] {
         range.map { index in
@@ -310,7 +351,7 @@ final class ChatScrollHostedTests: XCTestCase {
         let mounted = try mount(Self.transcript(0..<120))
         XCTAssertGreaterThan(mounted.scrollView.contentSize.height, mounted.scrollView.bounds.height * 3)
         assertAtLatest(mounted, "a long chat opens on its latest message")
-        XCTAssertTrue(mounted.engine.isFollowingLatest)
+        XCTAssertTrue(mounted.scroller.isFollowingLatest)
     }
 
     func testNewMessagesAndStreamingStayOnTheLatestMessage() throws {
@@ -326,8 +367,63 @@ final class ChatScrollHostedTests: XCTestCase {
                 count: tick * 3
             ))
             settle(mounted.host.view, seconds: 0.1)
-            assertAtLatest(mounted, "streaming growth tick \(tick) is followed")
+            assertAtLatestWhileStreaming(mounted, "streaming growth tick \(tick) is followed")
         }
+    }
+
+    func testARowThatGrowsOnItsOwnIsLaidOutAndFollowedRightAfter() throws {
+        // A row whose content grows by itself (a reply's text coming out, a
+        // picture arriving) reports it from inside its cell's layout, after
+        // the collection view's own pass. The transcript asks for the next
+        // pass at once, on the main queue, so a block queued after the
+        // report runs after that pass. The run loop is only polled, so it
+        // drains the main queue before Core Animation's commit, the other
+        // thing that would lay the rows out.
+        let mounted = try mount(Self.transcript(0..<40))
+        let collectionView = try XCTUnwrap(mounted.scrollView as? UICollectionView)
+        let lastID = try XCTUnwrap(mounted.layout.rows.last?.id)
+        let cell = try XCTUnwrap(
+            collectionView.visibleCells.compactMap { $0 as? TranscriptCell }.first { $0.hostedRowID == lastID },
+            "the latest row is on screen"
+        )
+        let hosting = try XCTUnwrap(cell.hosting)
+        let root = hosting.rootView
+        let before = try XCTUnwrap(mounted.layout.rowFrame(lastID))
+
+        // The row's content grows by 120 pt, measured as its cell measures
+        // it and reported as its geometry observer reports it.
+        hosting.rootView = TranscriptCellRoot(
+            rowID: root.rowID,
+            content: AnyView(VStack(spacing: 0) {
+                root.content
+                Color.clear.frame(height: 120)
+            }),
+            rowEnvironment: root.rowEnvironment,
+            appState: root.appState,
+            resized: root.resized
+        )
+        let grown = hosting.sizeThatFits(in: CGSize(width: mounted.layout.itemWidth, height: .greatestFiniteMagnitude))
+        root.resized(grown)
+
+        final class Ran { var value = false }
+        let checked = Ran()
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                let height = mounted.layout.rowFrame(lastID).map { $0.maxY - $0.minY } ?? 0
+                XCTAssertEqual(
+                    height, before.maxY - before.minY + 120, accuracy: 1,
+                    "the row is laid out at its new height right after its report"
+                )
+                let distance = self.maxOffset(collectionView) - collectionView.contentOffset.y
+                XCTAssertLessThanOrEqual(abs(distance), 1, "and the reader is at its new end (distance \(distance))")
+                checked.value = true
+            }
+        }
+        let deadline = Date().addingTimeInterval(2)
+        while !checked.value, Date() < deadline {
+            _ = CFRunLoopRunInMode(.defaultMode, 0, true)
+        }
+        XCTAssertTrue(checked.value, "the block queued after the report ran")
     }
 
     func testARunningReplyOpenedAgainShowsWhatWasWrittenAtOnce() throws {
@@ -363,8 +459,8 @@ final class ChatScrollHostedTests: XCTestCase {
     func testAReaderScrolledUpIsNotMovedByNewMessages() throws {
         let mounted = try mount(Self.transcript(0..<120))
         browse(mounted, to: mounted.scrollView.contentOffset.y - 1500)
-        XCTAssertEqual(mounted.engine.mode, .browsing)
-        let topRow = try XCTUnwrap(mounted.engine.topVisibleMessageID)
+        XCTAssertEqual(mounted.scroller.mode, .browsing)
+        let topRow = try XCTUnwrap(mounted.scroller.topVisibleMessageID)
         let before = try XCTUnwrap(screenY(of: topRow, in: mounted))
 
         mounted.appState.messages.append(contentsOf: Self.transcript(120..<124))
@@ -373,7 +469,7 @@ final class ChatScrollHostedTests: XCTestCase {
 
         let after = try XCTUnwrap(screenY(of: topRow, in: mounted))
         XCTAssertEqual(after, before, accuracy: 1, "the row being read stays where it was")
-        XCTAssertEqual(mounted.engine.mode, .browsing)
+        XCTAssertEqual(mounted.scroller.mode, .browsing)
     }
 
     func testLoadingEarlierMessagesKeepsTheReaderInPlace() throws {
@@ -386,8 +482,8 @@ final class ChatScrollHostedTests: XCTestCase {
         try loadEarlierMessages(stall: .beforeLayout)
     }
 
-    /// A busy main thread right after the engine's first correction, before
-    /// SwiftUI writes its own offset and the new row frames arrive.
+    /// A busy main thread right after the scroller moves the reader past
+    /// the page, before the page's rows measure.
     func testLoadingEarlierMessagesHoldsThroughAStallAfterTheLayout() throws {
         try loadEarlierMessages(stall: .afterLayout)
     }
@@ -405,27 +501,27 @@ final class ChatScrollHostedTests: XCTestCase {
     ) throws {
         let mounted = try mount(Self.transcript(40..<120))
         browse(mounted, to: mounted.scrollView.contentOffset.y - 1200)
-        let topRow = try XCTUnwrap(mounted.engine.topVisibleMessageID)
+        let topRow = try XCTUnwrap(mounted.scroller.topVisibleMessageID)
         let before = try XCTUnwrap(screenY(of: topRow, in: mounted))
         let recorder = ScrollRecorder(mounted.scrollView)
 
-        mounted.engine.olderPageBackfillRequested(sessionKey: mounted.engine.renderedSessionKey)
         var stalled = false
+        var landed = false
         var stallSubscription: AnyCancellable?
         var stallObservation: NSKeyValueObservation?
         switch stall {
         case .none:
             break
         case .beforeLayout:
-            // The engine publishes its new rows right after the transcript
-            // lands; SwiftUI lays them out in a later pass.
-            stallSubscription = mounted.engine.objectWillChange.sink { [engine = mounted.engine] _ in
-                guard !stalled, engine.prependAnchor?.landedAt != nil else { return }
+            // The scroller publishes its new rows as the transcript lands;
+            // the collection view lays them out in a later pass.
+            stallSubscription = mounted.scroller.objectWillChange.sink { _ in
+                guard !stalled, landed else { return }
                 stalled = true
                 Thread.sleep(forTimeInterval: 1)
             }
         case .afterLayout:
-            // The first jump of more than a page is the engine moving the
+            // The first jump of more than a page is the scroller moving the
             // reader down past the prepended page.
             let offsetBefore = mounted.scrollView.contentOffset.y
             let page = mounted.scrollView.bounds.height
@@ -436,6 +532,7 @@ final class ChatScrollHostedTests: XCTestCase {
             }
         }
         ChatViewportTrace.shared.reset()
+        landed = true
         mounted.appState.messages = Self.transcript(0..<120)
         // The stall takes a second out of the settle; the rest still gets
         // the usual layout passes.
@@ -443,7 +540,7 @@ final class ChatScrollHostedTests: XCTestCase {
         stallSubscription?.cancel()
         stallObservation?.invalidate()
 
-        let trace = { "offsets:\n\(recorder.dump())\nengine:\n\(ChatViewportTrace.shared.dump())" }
+        let trace = { "offsets:\n\(recorder.dump())\nscroller:\n\(ChatViewportTrace.shared.dump())" }
         XCTAssertEqual(
             stalled, stall != .none, "the main thread stalled where the test meant it to",
             file: file, line: line
@@ -464,27 +561,27 @@ final class ChatScrollHostedTests: XCTestCase {
         let start = mounted.scrollView.contentOffset.y
         let bodiesBefore = TranscriptPerf.chatViewBodyEvaluations
 
-        mounted.engine.userDragBegan()
+        mounted.scroller.userDragBegan()
         for step in 1...20 {
             mounted.scrollView.contentOffset.y = start - CGFloat(step) * 90
             settle(mounted.host.view, seconds: 0.03)
         }
-        mounted.engine.userDragEnded()
+        mounted.scroller.userDragEnded()
         settle(mounted.host.view, seconds: 0.3)
-        XCTAssertTrue(mounted.engine.chrome.inputs.showsJumpToLatest)
+        XCTAssertTrue(mounted.scroller.chrome.inputs.showsJumpToLatest)
 
         // Back down to the latest message, which follows again.
-        mounted.engine.userDragBegan()
+        mounted.scroller.userDragBegan()
         for step in (0..<20).reversed() {
             mounted.scrollView.contentOffset.y = step == 0
                 ? maxOffset(mounted.scrollView)
                 : start - CGFloat(step) * 90
             settle(mounted.host.view, seconds: 0.03)
         }
-        mounted.engine.userDragEnded()
+        mounted.scroller.userDragEnded()
         settle(mounted.host.view, seconds: 0.3)
-        XCTAssertTrue(mounted.engine.chrome.inputs.isFollowingLatest)
-        XCTAssertFalse(mounted.engine.chrome.inputs.showsJumpToLatest)
+        XCTAssertTrue(mounted.scroller.chrome.inputs.isFollowingLatest)
+        XCTAssertFalse(mounted.scroller.chrome.inputs.showsJumpToLatest)
 
         // Leaving and returning to the latest message, and the jump button
         // coming and going, re-render only the button: a chat re-render
@@ -496,12 +593,11 @@ final class ChatScrollHostedTests: XCTestCase {
         let mounted = try mount(Self.transcript(0..<120))
         // Within three viewports, so the jump animates and gets its final pin.
         browse(mounted, to: maxOffset(mounted.scrollView) - mounted.scrollView.bounds.height * 2)
-        XCTAssertEqual(mounted.engine.mode, .browsing)
-        mounted.engine.explicitLatestRequested(animated: true)
-        XCTAssertTrue(mounted.engine.latestAnimationInFlight, "a short jump animates")
-        settle(mounted.host.view, seconds: ChatScrollEngine.latestAnimationDuration + 0.2)
-        mounted.engine.latestAnimationFinished()
-        settle(mounted.host.view, seconds: 0.2)
+        XCTAssertEqual(mounted.scroller.mode, .browsing)
+        mounted.scroller.explicitLatestRequested(animated: true)
+        XCTAssertTrue(mounted.scroller.latestAnimationInFlight, "a short jump animates")
+        // The scroller pins once more when the animation has landed.
+        settle(mounted.host.view, seconds: TranscriptScroller.latestAnimationDuration + 0.4)
         assertAtLatest(mounted, "the jump lands on the latest message")
 
         mounted.appState.messages.append(contentsOf: Self.transcript(120..<121))
@@ -511,7 +607,7 @@ final class ChatScrollHostedTests: XCTestCase {
 
     /// Eric's report: send, leave the screen alone, and when the turn
     /// completes the transcript sits past its end. Completion removes the
-    /// turn's partial rows and live tail and appends one settled reply, so
+    /// turn's partial rows and live rows and appends one settled reply, so
     /// the content shrinks under a pinned offset.
     func testTurnCompletionThatShrinksTheContentStaysOnTheLatestMessage() throws {
         let mounted = try mount(Self.uneven(0..<60))
@@ -538,7 +634,7 @@ final class ChatScrollHostedTests: XCTestCase {
         appState.setStreamingTextForTesting(String(repeating: "The final answer streams in with several lines. ", count: 30))
         settle(mounted.host.view, seconds: 0.3)
         checkpoint("completion before", mounted, recorder)
-        assertAtLatest(mounted, "the live turn is followed")
+        assertAtLatestWhileStreaming(mounted, "the live turn is followed")
 
         let mark = recorder.mark()
         // finalizeStreamingCompletion: partials out, one settled reply in,
@@ -556,7 +652,7 @@ final class ChatScrollHostedTests: XCTestCase {
         checkpoint("completion after", mounted, recorder)
         print("[ChatScrollHostedTests] completion trace:\n\(recorder.dump(since: mark))")
         assertAtLatest(mounted, "a completed turn leaves no empty space under it\n\(recorder.dump(since: mark))")
-        XCTAssertTrue(mounted.engine.isFollowingLatest)
+        XCTAssertTrue(mounted.scroller.isFollowingLatest)
     }
 
     /// #1436: with Long replies on, the user's message moves to the top of
@@ -576,17 +672,15 @@ final class ChatScrollHostedTests: XCTestCase {
         // The room is laid out and the message moves up, animated.
         settle(mounted.host.view, seconds: 0.8)
         checkpoint("landed", mounted, recorder)
-        let userRow = try XCTUnwrap(mounted.engine.rowFrame(for: "turn-user"), "the user's message is laid out")
-        let surface = try XCTUnwrap(mounted.engine.surface)
-        let rowTop = surface.transcriptOriginY + userRow.minY - mounted.scrollView.contentOffset.y
+        let rowTop = try XCTUnwrap(screenY(of: "turn-user", in: mounted), "the user's message is laid out")
         XCTAssertEqual(
             rowTop,
-            surface.insetTop + ChatScrollEngine.replyStartTopGap,
+            mounted.scrollView.adjustedContentInset.top + TranscriptScroller.replyStartTopGap,
             accuracy: 2,
             "the sent message sits at the top\n\(recorder.dump())"
         )
         assertAtLatest(mounted, "the room makes the stop the bottom")
-        XCTAssertTrue(mounted.engine.isFollowingLatest)
+        XCTAssertTrue(mounted.scroller.isFollowingLatest)
 
         let landed = mounted.scrollView.contentOffset.y
         let mark = recorder.mark()
@@ -611,7 +705,7 @@ final class ChatScrollHostedTests: XCTestCase {
         checkpoint("hold", mounted, recorder)
 
         XCTAssertEqual(mounted.scrollView.contentOffset.y, landed, accuracy: 1, "the answer doesn't move the reader\n\(recorder.dump(since: mark))")
-        XCTAssertEqual(mounted.engine.mode, .browsing, "the reader is left browsing at the stop")
+        XCTAssertEqual(mounted.scroller.mode, .browsing, "the reader is left browsing at the stop")
         XCTAssertGreaterThan(maxOffset(mounted.scrollView) - mounted.scrollView.contentOffset.y, 40, "the reply runs on below")
 
         let completionMark = recorder.mark()
@@ -621,7 +715,7 @@ final class ChatScrollHostedTests: XCTestCase {
         settle(mounted.host.view, seconds: 0.6)
         checkpoint("hold after completion", mounted, recorder)
         XCTAssertEqual(mounted.scrollView.contentOffset.y, landed, accuracy: 1, "completion leaves the reader at the stop\n\(recorder.dump(since: completionMark))")
-        XCTAssertEqual(mounted.engine.mode, .browsing)
+        XCTAssertEqual(mounted.scroller.mode, .browsing)
     }
 
     /// A short reply ends well above the composer, in the room under the
@@ -643,7 +737,7 @@ final class ChatScrollHostedTests: XCTestCase {
         settle(mounted.host.view, seconds: 0.6)
         checkpoint("short reply done", mounted, recorder)
         XCTAssertEqual(mounted.scrollView.contentOffset.y, landed, accuracy: 1, "nothing moved\n\(recorder.dump(since: mark))")
-        XCTAssertTrue(mounted.engine.isFollowingLatest)
+        XCTAssertTrue(mounted.scroller.isFollowingLatest)
         assertAtLatest(mounted, "the room is still there, so no empty space past the bottom")
     }
 
@@ -666,8 +760,8 @@ final class ChatScrollHostedTests: XCTestCase {
         let mounted = try mount(messages)
         settle(mounted.host.view, seconds: 0.4)
 
-        let header = try XCTUnwrap(mounted.engine.rowFrame(for: "step-0"), "the run's line is laid out")
-        let reply = try XCTUnwrap(mounted.engine.rowFrame(for: "reply"), "the reply is laid out")
+        let header = try XCTUnwrap(mounted.layout.rowFrame("step-0"), "the run's line is laid out")
+        let reply = try XCTUnwrap(mounted.layout.rowFrame("reply"), "the reply is laid out")
         XCTAssertGreaterThan(header.maxY - header.minY, 1, "the run shows as one line")
         XCTAssertEqual(
             reply.minY - header.maxY,
@@ -688,7 +782,7 @@ final class ChatScrollHostedTests: XCTestCase {
         let before = try XCTUnwrap(screenY(of: lastID, in: mounted))
 
         let mark = recorder.mark()
-        mounted.engine.userWillToggleRow()
+        mounted.scroller.userWillToggleRow()
         mounted.appState.messages[59] = ChatMessage(
             id: lastID,
             role: .assistant,
@@ -697,20 +791,75 @@ final class ChatScrollHostedTests: XCTestCase {
         )
         // Past the settle check, which must leave a reader this far from
         // the bottom where they are.
-        settle(mounted.host.view, seconds: ChatScrollEngine.disclosureSettleDelay + 0.4)
+        settle(mounted.host.view, seconds: TranscriptScroller.disclosureSettleDelay + 0.4)
         checkpoint("opened", mounted, recorder)
 
         let after = try XCTUnwrap(screenY(of: lastID, in: mounted))
         XCTAssertEqual(after, before, accuracy: 1, "the tapped row stays put\n\(recorder.dump(since: mark))")
-        XCTAssertEqual(mounted.engine.mode, .browsing)
-        XCTAssertTrue(mounted.engine.showsJumpToLatest)
+        XCTAssertEqual(mounted.scroller.mode, .browsing)
+        XCTAssertTrue(mounted.scroller.showsJumpToLatest)
+    }
+
+    /// Eric's report (build 246): a Thinking row opened in place drew over
+    /// the rows under it, and closing it left its open height empty, until a
+    /// scroll or another visit laid the chat out again. A row opened and
+    /// closed by its own state (no new rows, no forced layout, only the run
+    /// loop turning as on a phone) takes its new height in its cell, and the
+    /// row under it follows.
+    func testARowOpenedAndClosedInPlaceTakesItsHeightAndMovesTheRowsUnder() throws {
+        let mounted = try mount(Self.transcript(0..<40))
+        let collectionView = try XCTUnwrap(mounted.scrollView as? UICollectionView)
+        // A row in the middle of the screen, with one under it on screen.
+        let cells = collectionView.visibleCells.compactMap { $0 as? TranscriptCell }.sorted { $0.frame.minY < $1.frame.minY }
+        XCTAssertGreaterThanOrEqual(cells.count, 3)
+        let cell = cells[cells.count / 2]
+        let id = try XCTUnwrap(cell.hostedRowID)
+        let hosting = try XCTUnwrap(cell.hosting)
+        let root = hosting.rootView
+        let model = OpeningRowState()
+        hosting.rootView = TranscriptCellRoot(
+            rowID: root.rowID,
+            content: AnyView(OpeningRow(model: model, content: root.content)),
+            rowEnvironment: root.rowEnvironment,
+            appState: root.appState,
+            resized: root.resized
+        )
+        turnRunLoop(seconds: 0.6)
+
+        func frames() -> (cell: CGRect, below: CGRect?) {
+            let visible = collectionView.visibleCells.compactMap { $0 as? TranscriptCell }
+            let mine = visible.first { $0.hostedRowID == id }?.frame ?? .null
+            let below = visible.filter { $0.frame.minY > mine.minY }.min { $0.frame.minY < $1.frame.minY }?.frame
+            return (mine, below)
+        }
+        let closed = frames()
+
+        model.toggle(true)
+        turnRunLoop(seconds: 1.0)
+        let opened = frames()
+        XCTAssertEqual(opened.cell.height, closed.cell.height + OpeningRow.openHeight, accuracy: 1, "the opened row's cell takes its height")
+        XCTAssertEqual(opened.below?.minY ?? 0, opened.cell.maxY, accuracy: 1, "the row under it moves down")
+
+        model.toggle(false)
+        turnRunLoop(seconds: 1.0)
+        let shut = frames()
+        XCTAssertEqual(shut.cell.height, closed.cell.height, accuracy: 1, "the closed row's cell gives its height back")
+        XCTAssertEqual(shut.below?.minY ?? 0, shut.cell.maxY, accuracy: 1, "the row under it moves back up")
+    }
+
+    /// The run loop turning as on a phone: no layout forced.
+    private func turnRunLoop(seconds: TimeInterval) {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
     }
 
     /// A tester's report: at the bottom of a chat, a band of empty space
     /// (~126 pt) sat between the last reply and the composer. The composer
-    /// is a bar the scroll view already insets for, so the latest row ends
-    /// one row spacing above it, with the resting V2 composer and the
-    /// stacked one alike.
+    /// is a bar the transcript insets for, so the latest row ends one row
+    /// spacing (and the stack's old 1 pt) above it, with the resting V2
+    /// composer and the stacked one alike.
     func testTheLatestReplyEndsJustAboveTheRestingComposer() throws {
         try assertLatestReplyEndsJustAboveTheComposer(composerRests: true)
     }
@@ -731,14 +880,13 @@ final class ChatScrollHostedTests: XCTestCase {
         }
         XCTAssertEqual(view.contentOffset.y, maxOffset(view), accuracy: 1, "still at the very bottom when measured")
 
-        let last = try XCTUnwrap(mounted.engine.rowFrame(for: "hosted-\(count - 1)"), "the latest row is laid out")
-        let surface = try XCTUnwrap(mounted.engine.surface)
-        let rowBottom = surface.transcriptOriginY + last.maxY - view.contentOffset.y
+        let last = try XCTUnwrap(mounted.layout.rowFrame("hosted-\(count - 1)"), "the latest row is laid out")
+        let rowBottom = last.maxY - view.contentOffset.y
         let composerTop = view.bounds.height - view.adjustedContentInset.bottom
         if composerRests {
-            XCTAssertGreaterThan(view.adjustedContentInset.bottom, 40, "the scroll view insets for the resting composer")
+            XCTAssertGreaterThan(view.adjustedContentInset.bottom, 40, "the transcript insets for the resting composer")
         } else {
-            XCTAssertLessThanOrEqual(view.adjustedContentInset.bottom, 1, "the stacked composer sits below the scroll view")
+            XCTAssertLessThanOrEqual(view.adjustedContentInset.bottom, 1, "the stacked composer sits below the transcript")
         }
         XCTAssertLessThan(composerTop - rowBottom, 30, "no band of empty space above the composer")
         XCTAssertEqual(
@@ -772,5 +920,273 @@ final class ChatScrollHostedTests: XCTestCase {
         let moves = recorder.offsetChanges(since: mark).filter { $0.distance > 1 }
         print("[ChatScrollHostedTests] idle trace:\n\(recorder.dump())")
         XCTAssertTrue(moves.isEmpty, "the transcript moved on its own:\n\(recorder.dump(since: mark))")
+    }
+
+    /// A row draws in a hosting controller of its own and inherits nothing
+    /// from the chat: a change to the chat's text size reaches the rows
+    /// already drawn (TranscriptView's update, TranscriptCell's
+    /// updateEnvironment), so they draw, and measure, at the new size.
+    func testAChangeToTheChatsTextSizeReachesTheRowsDrawn() throws {
+        let messages = Self.transcript(0..<12)
+        let mounted = try mount(messages)
+        let collectionView = try XCTUnwrap(mounted.scrollView as? UICollectionView)
+        let id = try XCTUnwrap(messages.last?.id)
+        let before = try XCTUnwrap(mounted.layout.rowFrame(id))
+
+        mounted.setTextSize(.largest)
+        settle(mounted.host.view)
+
+        // Its frame is what its cell measures now, not the guess every row
+        // starts on at a new text size, which doesn't read the size.
+        let index = try XCTUnwrap(mounted.layout.rows.firstIndex { $0.id == id })
+        let cell = try XCTUnwrap(collectionView.cellForItem(at: IndexPath(item: index, section: 0)) as? TranscriptCell)
+        let hosting = try XCTUnwrap(cell.hosting)
+        let measured = hosting.sizeThatFits(in: CGSize(width: cell.bounds.width, height: .greatestFiniteMagnitude)).height
+        let after = try XCTUnwrap(mounted.layout.rowFrame(id))
+        XCTAssertEqual(
+            after.maxY - after.minY + TranscriptLayout.rowGap,
+            measured,
+            accuracy: 1,
+            "the latest row's frame must be its cell's measurement"
+        )
+        XCTAssertGreaterThan(
+            after.maxY - after.minY,
+            before.maxY - before.minY + 4,
+            "the latest row, drawn before the change, must draw at the larger text"
+        )
+    }
+
+    /// A row's sheet presents from the row's own hosting controller, so a
+    /// cell given to another row while one is up keeps that controller
+    /// aside, still in the transcript and the window, until it closes.
+    func testACellGivenToAnotherRowWhileASheetIsUpKeepsTheRowUntilItCloses() throws {
+        let mounted = try mount(Self.transcript(0..<120))
+        let collectionView = try XCTUnwrap(mounted.scrollView as? UICollectionView)
+        let controller = try XCTUnwrap(collectionView.delegate as? TranscriptViewController)
+        // Every row's controller so far, the cells waiting for reuse included.
+        let rows = controller.children.compactMap { $0 as? UIHostingController<TranscriptCellRoot> }
+        let presenting = try XCTUnwrap(
+            collectionView.visibleCells.compactMap { ($0 as? TranscriptCell)?.hosting }.first,
+            "a row is on screen"
+        )
+        let sheet = UIViewController()
+        presenting.present(sheet, animated: false)
+        XCTAssertTrue(
+            PerformanceFixtureWait.eventually { sheet.view.window != nil && controller.presentedViewController === sheet },
+            "the row presents its sheet"
+        )
+
+        // The cells are given to the first rows.
+        browse(mounted, to: -collectionView.adjustedContentInset.top)
+        let parked = rows.filter { $0.view.superview?.superview as? TranscriptCell == nil }
+        XCTAssertFalse(parked.isEmpty, "cells were given to other rows while the sheet was up")
+        for hosting in parked {
+            XCTAssertTrue(hosting.parent === controller, "a row's controller stays in the transcript while the sheet is up")
+            XCTAssertNotNil(hosting.view.window, "and in the window")
+        }
+        for case let cell as TranscriptCell in collectionView.visibleCells {
+            XCTAssertTrue(cell.hosting?.parent === controller, "the rows given the cells draw in controllers of their own")
+        }
+        XCTAssertTrue(presenting.parent === controller)
+        XCTAssertNotNil(sheet.view.window, "the sheet stays up")
+
+        sheet.dismiss(animated: false)
+        XCTAssertTrue(
+            PerformanceFixtureWait.eventually(pumpingLayoutOf: collectionView) { parked.allSatisfy { $0.parent == nil } },
+            "the controllers kept aside go once the sheet closes"
+        )
+        XCTAssertTrue(parked.allSatisfy { $0.view.superview == nil })
+    }
+
+    // MARK: - Group rooms
+
+    /// A room event: the user's message, or Research Buddy's.
+    private static func roomEvent(seq: Int, eventID: String, fromMember: Bool, text: String) -> GroupEvent {
+        GroupEvent(
+            roomID: "room-1",
+            seq: seq,
+            eventID: eventID,
+            kind: fromMember ? "message.member" : "message.user",
+            actor: fromMember
+                ? GroupActor(kind: "member", id: "researcher", profile: "researcher",
+                             displayName: "Research Buddy", connectionID: nil)
+                : GroupActor(kind: "user", id: "human", profile: nil, displayName: nil, connectionID: nil),
+            authorityEpoch: nil,
+            payload: ["text": .string(text), "thread_id": .string("main")],
+            createdAt: Double(seq)
+        )
+    }
+
+    /// A group room draws on the same transcript (#1533): GroupChatView's
+    /// rows on the collection view, the room opened at its end, and a sent
+    /// message drawn under the id its event will have, so the event takes
+    /// its row in place when the send lands, still at the end.
+    func testARoomDrawsOnTheTranscriptAndASendLandsInPlace() throws {
+        let suiteName = "chat-scroll-hosted-room"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let member = GroupMember(
+            memberID: "researcher", profile: "researcher", handle: "research-buddy",
+            displayName: "Research Buddy", target: nil, extra: [:]
+        )
+        let room = GroupRoom(
+            roomID: "room-1", name: "Planning", members: [member], authorityGatewayID: "gw-a",
+            authorityEpoch: 1, revision: 1, createdAt: 0, updatedAt: 0, disbandedAt: nil, latestSeq: 12
+        )
+        /// The gateway's log, the id the send went out under, and the send
+        /// held until the test lets it land.
+        final class Gateway {
+            var events: [GroupEvent] = []
+            var sentEventID: String?
+            var release: CheckedContinuation<Void, Never>?
+        }
+        let gateway = Gateway()
+        gateway.events = (1...12).map { seq in
+            Self.roomEvent(
+                seq: seq, eventID: "room-e\(seq)", fromMember: seq % 2 == 0,
+                text: String(repeating: "Message \(seq) in the room has a few lines of ordinary prose. ", count: 4)
+            )
+        }
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in
+                GroupCapabilities(
+                    protocolVersion: 2, driverReady: true, authorityGatewayID: "gw-a", features: [],
+                    methods: GroupWire.requiredMethods, maxLogLimit: 500
+                )
+            },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                let latest = gateway.events.last?.seq ?? 0
+                return GroupLogPage(
+                    events: gateway.events.filter { $0.seq > sinceSeq }, cursor: latest, latestSeq: latest,
+                    hasMore: false, authorityGatewayID: "gw-a", authorityEpoch: 1
+                )
+            },
+            send: { _, _, eventID, text, _ in
+                gateway.sentEventID = eventID
+                await withCheckedContinuation { gateway.release = $0 }
+                let event = Self.roomEvent(
+                    seq: (gateway.events.last?.seq ?? 0) + 1,
+                    eventID: GroupRoomOutbox.serverEventID(forClientEventID: eventID),
+                    fromMember: false, text: text
+                )
+                gateway.events.append(event)
+                return GroupSendResult(event: event, accepted: true, driverStarted: false)
+            }
+        )
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: .live,
+            groupChatOperations: operations,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://groups.example", ticket: "groups-test"),
+            profile: "default"
+        )
+        appState.isConnected = true
+        _ = appState.adoptDashboard(forNormalizedURL: "https://groups.example")
+        defer {
+            // A send still held lands in a room already left.
+            gateway.release?.resume()
+            gateway.release = nil
+            appState.closeGroupRoom()
+        }
+        Task {
+            await appState.refreshGroupChatSupport()
+            await appState.openGroupRoom(room)
+        }
+        XCTAssertTrue(
+            PerformanceFixtureWait.eventually { appState.activeRoomReplay.events.count == 12 },
+            "the room opens with its log"
+        )
+
+        let host = UIHostingController(rootView: DormancyHarnessEnvironment.applying(
+            GroupChatView().environmentObject(appState)
+        ))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        self.window = window
+        self.host = host
+        self.appState = appState
+        var collectionView: TranscriptCollectionView?
+        XCTAssertTrue(
+            PerformanceFixtureWait.eventually(pumpingLayoutOf: host.view) {
+                collectionView = Self.find(TranscriptCollectionView.self, in: host.view)
+                return collectionView?.window != nil && (collectionView?.bounds.height ?? 0) > 0
+            },
+            "the room must draw its transcript's collection view"
+        )
+        let found = try XCTUnwrap(collectionView)
+        let controller = try XCTUnwrap(found.delegate as? TranscriptViewController)
+        settle(host.view)
+        let mounted = Mounted(
+            appState: appState, host: host, scrollView: found, layout: controller.layout,
+            scroller: controller.scroller, setTextSize: { _ in }
+        )
+        XCTAssertNotNil(mounted.layout.rowFrame("room-e1"), "the room's events are the transcript's rows")
+        XCTAssertNotNil(mounted.layout.rowFrame("room-e12"))
+        XCTAssertGreaterThan(found.contentSize.height, found.bounds.height * 1.5)
+        assertAtLatest(mounted, "a room opens at its end")
+        XCTAssertTrue(mounted.scroller.isFollowingLatest)
+
+        Task { await appState.sendGroupRoomMessage("Plan the trip for the weekend.") }
+        XCTAssertTrue(
+            PerformanceFixtureWait.eventually(pumpingLayoutOf: host.view) {
+                gateway.release != nil && appState.pendingRoomMessage != nil
+            },
+            "the message goes out"
+        )
+        settle(host.view)
+        let clientID = try XCTUnwrap(gateway.sentEventID)
+        let landedID = GroupRoomOutbox.serverEventID(forClientEventID: clientID)
+        XCTAssertNotNil(mounted.layout.rowFrame(landedID), "the message on its way is drawn under its event's id")
+        XCTAssertNil(mounted.layout.rowFrame(clientID))
+        assertAtLatest(mounted, "a send goes to the end")
+
+        gateway.release?.resume()
+        gateway.release = nil
+        XCTAssertTrue(
+            PerformanceFixtureWait.eventually(pumpingLayoutOf: host.view) {
+                appState.activeRoomReplay.events.count == 13 && appState.pendingRoomMessage == nil
+                    && !appState.activeRoomSendInFlight
+            },
+            "the send lands"
+        )
+        settle(host.view)
+        XCTAssertNotNil(mounted.layout.rowFrame(landedID), "the event took the row in place")
+        assertAtLatest(mounted, "the room stays at its end")
+        XCTAssertTrue(mounted.scroller.isFollowingLatest)
+    }
+}
+
+/// A row that opens and closes by its own state, as Thinking and the tool
+/// cards do: in an animation, its extra part fading in and out.
+@MainActor
+private final class OpeningRowState: ObservableObject {
+    @Published var expanded = false
+
+    func toggle(_ expanded: Bool) {
+        withAnimation(ConduitMotion.response) { self.expanded = expanded }
+    }
+}
+
+private struct OpeningRow: View {
+    static let openHeight: CGFloat = 300
+    @ObservedObject var model: OpeningRowState
+    let content: AnyView
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content
+            if model.expanded {
+                Color.orange.frame(height: Self.openHeight)
+                    .transition(.opacity)
+            }
+        }
     }
 }

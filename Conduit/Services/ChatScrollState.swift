@@ -245,10 +245,6 @@ struct ChatRenderedScrollScope: Hashable {
     let viewportTransitionGeneration: UInt64
 }
 
-struct ChatRenderedScrollContent: Equatable {
-    let scope: ChatRenderedScrollScope
-}
-
 enum ChatMessageScrollTargets {
     static func make(for messages: [ChatMessage]) -> [ChatMessageScrollTarget] {
         make(for: messages, fingerprints: fingerprints(for: messages))

@@ -23,9 +23,22 @@ final class WorkspaceFilesClient {
         self.request = request
     }
 
+    /// With `answers`, the listing is kept as the plugin gave it, so the
+    /// folder opens on it next time (#1533).
     @MainActor
-    func list(root: String, path: String) async throws -> WorkspaceListing {
-        let response = try await get("list", ["root": root, "path": path])
+    func list(root: String, path: String, keptIn answers: KeptAnswers? = nil) async throws -> WorkspaceListing {
+        try Self.listing(await get("list", ["root": root, "path": path], keptIn: answers) {
+            _ = try WorkspaceFilesClient.listing($0, path: path)
+        }, path: path)
+    }
+
+    /// The listing kept for the folder, or nil.
+    @MainActor
+    func keptListing(root: String, path: String, in answers: KeptAnswers) -> WorkspaceListing? {
+        answers.kept(keptRoute("list", ["root": root, "path": path])).flatMap { try? WorkspaceFilesClient.listing($0, path: path) }
+    }
+
+    private static func listing(_ response: [String: Any], path: String) throws -> WorkspaceListing {
         guard let rows = response["entries"] as? [[String: Any]] else { throw Failure.malformed }
         return WorkspaceListing(
             path: response["path"] as? String ?? path,
@@ -47,9 +60,21 @@ final class WorkspaceFilesClient {
         )
     }
 
+    /// With `answers`, kept as `list` keeps a listing.
     @MainActor
-    func recent(root: String) async throws -> [WorkspaceEntry] {
-        let response = try await get("recent", ["root": root])
+    func recent(root: String, keptIn answers: KeptAnswers? = nil) async throws -> [WorkspaceEntry] {
+        try Self.recentEntries(await get("recent", ["root": root], keptIn: answers) {
+            _ = try WorkspaceFilesClient.recentEntries($0)
+        })
+    }
+
+    /// The recent files kept for the folder, or nil.
+    @MainActor
+    func keptRecent(root: String, in answers: KeptAnswers) -> [WorkspaceEntry]? {
+        answers.kept(keptRoute("recent", ["root": root])).flatMap { try? WorkspaceFilesClient.recentEntries($0) }
+    }
+
+    private static func recentEntries(_ response: [String: Any]) throws -> [WorkspaceEntry] {
         guard let rows = response["entries"] as? [[String: Any]] else { throw Failure.malformed }
         return rows.compactMap(WorkspaceEntry.init(row:))
     }
@@ -107,12 +132,28 @@ final class WorkspaceFilesClient {
         DashboardPath.withProfile("\(Self.path)/\(action)", profile: profile)
     }
 
+    /// Only an answer `readable` takes is kept, so one the folder can't
+    /// read never takes the last one's place.
     @MainActor
-    private func get(_ action: String, _ query: [String: String]) async throws -> [String: Any] {
+    private func get(
+        _ action: String, _ query: [String: String], keptIn answers: KeptAnswers? = nil,
+        readable: (([String: Any]) throws -> Void)? = nil
+    ) async throws -> [String: Any] {
         let path = DashboardPath.withProfile(Self.requestPath(action, query), profile: profile)
-        let response = try await request(path, "GET", nil)
-        guard response["ok"] as? Bool == true else { throw Failure.malformed }
-        return response
+        let read = { () async throws -> [String: Any] in
+            let response = try await self.request(path, "GET", nil)
+            guard response["ok"] as? Bool == true else { throw Failure.malformed }
+            try readable?(response)
+            return response
+        }
+        guard let answers else { return try await read() }
+        return try await answers.keep(keptRoute(action, query), false, read)
+    }
+
+    /// Where an answer is kept: one folder's of many, so only the folders
+    /// opened last keep theirs.
+    private func keptRoute(_ action: String, _ query: [String: String]) -> String {
+        OfflineChatCacheStore.lastOpenedRoutePrefix + DashboardPath.withProfile(Self.requestPath(action, query), profile: profile)
     }
 
     @MainActor

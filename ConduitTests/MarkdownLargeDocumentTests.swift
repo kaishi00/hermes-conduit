@@ -1140,6 +1140,41 @@ extension MarkdownLargeDocumentTests {
         XCTAssertGreaterThan(textViews.count, 0, "table must render content")
     }
 
+    /// A paged table in the chat draws its cells plain, except a cell with
+    /// a link, which draws as the reply's text so its link opens (issue
+    /// 1585); drawn until touched, it mounts no text view either.
+    @MainActor
+    func testLargeChatTableDrawsOnlyLinkCellsAsText() throws {
+        let rows = [["Fetch", "0.8 s"], ["Import", "[log](https://example.com/log)"]]
+        let host = UIHostingController(
+            rootView: LargeMarkdownTable(
+                headers: ["Step", "Time"],
+                alignments: [.leading, .leading],
+                rows: rows,
+                foregroundStyle: .primary,
+                usesAccentSurface: false,
+                selectionCoordinator: nil,
+                blockIndex: 0,
+                selectionSegments: []
+            )
+            .environment(\.markdownTablePlainCells, true)
+            .environment(\.selectableTextDrawsUntilTouched, true)
+        )
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        host.view.layoutIfNeeded()
+        pumpForSwiftUICommit(host: host)
+
+        let subviews = host.view.recursiveSubviewsForTests
+        XCTAssertTrue(subviews.compactMap { $0 as? UITextView }.isEmpty, "no text view mounted")
+        XCTAssertEqual(
+            subviews.compactMap { $0 as? SelectableTextViewHostView }.map(\.displayedText), ["log"],
+            "only the link cell draws as text"
+        )
+    }
+
     // Case 3: a single ~500 KB list item splits into bounded pieces.
     func testSingleHugeListItemIsBounded() async {
         let giant = Array(repeating: "itemword", count: 62_500).joined(separator: " ")

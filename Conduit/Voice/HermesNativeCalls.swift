@@ -256,7 +256,8 @@ final class HermesNativeCalls: NSObject {
             configuration.supportsVideo = false
             configuration.maximumCallGroups = 1
             configuration.maximumCallsPerCallGroup = 1
-            configuration.supportedHandleTypes = [.generic]
+            // An address a contact can hold, so a Focus can allow Hermes.
+            configuration.supportedHandleTypes = HermesCallerName.handleTypes
             // A Hermes call can't be called back from the Phone app.
             configuration.includesCallsInRecents = false
             let provider = CXProvider(configuration: configuration)
@@ -357,7 +358,7 @@ final class HermesNativeCalls: NSObject {
         }
         let id = UUID()
         let update = CXCallUpdate()
-        update.remoteHandle = CXHandle(type: .generic, value: "hermes")
+        update.remoteHandle = HermesCallerName.callHandle(profile: call.target?.profile)
         let callerName = Self.callerName(call.target)
         update.localizedCallerName = callerName
         update.hasVideo = false
@@ -600,7 +601,14 @@ final class HermesNativeCalls: NSObject {
     }
 
     /// Whether Conduit is on screen within a moment of the answer.
+    /// A locked phone (its protected data shut) can't bring Conduit on
+    /// screen until it's unlocked, so the call opens from here at once:
+    /// it waited out the whole `phoneScreenWait` on every locked answer
+    /// (1.9 s before the chat opened, Ul'dah 2026-11-02).
     private func waitForPhoneScreen() async -> Bool {
+        guard UIApplication.shared.isProtectedDataAvailable else {
+            return PhoneScenePresence.isInForeground
+        }
         let until = ContinuousClock.now + Self.phoneScreenWait
         while !PhoneScenePresence.isInForeground {
             guard ContinuousClock.now < until else { return false }
@@ -712,7 +720,7 @@ final class HermesNativeCalls: NSObject {
         }
         let id = match?.key ?? UUID()
         let update = CXCallUpdate()
-        update.remoteHandle = CXHandle(type: .generic, value: "hermes")
+        update.remoteHandle = HermesCallerName.callHandle(profile: match?.value.target.profile)
         update.localizedCallerName = match?.value.callerName ?? HermesCallerName.fallback
         update.hasVideo = false
         provider.reportNewIncomingCall(with: id, update: update) { _ in

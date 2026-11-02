@@ -261,6 +261,18 @@ struct NotifierPluginStatus: Equatable {
         return true
     }
 
+    /// True until the plugin says what it serves (offline, just connected)
+    /// and once it reports this one, so what a screen kept from its routes
+    /// may show meanwhile. Unlike `mightSupport`, a plugin that predates
+    /// reporting, or isn't installed, rules it out.
+    func mayServe(_ capability: String) -> Bool {
+        switch state {
+        case .unknown: return true
+        case .predatesCapabilities: return false
+        case .reported(_, let capabilities): return capabilities.contains(capability)
+        }
+    }
+
     /// The plugin version whose /voice-tools serves the location tool.
     static let locationVoiceVersion = "0.28.0"
 

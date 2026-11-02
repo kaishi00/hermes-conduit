@@ -150,7 +150,10 @@ enum HermesCallCopy {
     static func summary(kind: HermesCallRequest.Kind?, title: String?, reason: String?) -> String {
         guard let reason else { return outcome(kind: kind, title: title) }
         switch kind {
-        case .approval?, .question?: return outcome(kind: kind, title: nil) + " " + reason
+        // An approval's reason is its description (the plugin's alert), so
+        // Hermes' own texts show in the App Language (#1589).
+        case .approval?: return outcome(kind: kind, title: nil) + " " + HermesApprovalText.description(reason)
+        case .question?: return outcome(kind: kind, title: nil) + " " + reason
         default: return reason
         }
     }
@@ -338,7 +341,9 @@ struct HermesCallOpening: Equatable {
             return hello + " " + HermesCallCopy.outcome(kind: .question, title: nil) + "\n" + HermesCallWaiting.spokenQuestion(question)
         }
         if case .approval(let command, let description)? = waiting?.item {
-            let what = description.isEmpty ? command : description
+            // Said to the user, so Hermes' own texts in the App Language
+            // (#1589); the model's brief (`block`) keeps Hermes' words.
+            let what = description.isEmpty ? HermesApprovalText.command(command) : HermesApprovalText.description(description)
             let clipped = what.count > 200 ? String(what.prefix(200)) + "…" : what
             return hello + " " + AppLocalization.string("Hermes needs your OK to go on: \(clipped). Say yes to allow it once, or no.")
         }

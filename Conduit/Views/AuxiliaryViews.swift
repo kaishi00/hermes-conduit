@@ -587,6 +587,9 @@ struct SettingsView: View {
     /// Counts main-model saves, so Fast mode's model-dependent choices
     /// reload for the new model.
     @State private var mainModelSaves = 0
+    /// Counts provider changes, so the model lists on the page read Hermes'
+    /// catalog again.
+    @State private var providerChanges = 0
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -659,6 +662,23 @@ struct SettingsView: View {
         )
     }
 
+    /// Models & providers > Helper models, for the profile in use.
+    private var helperModelSettings: HelperModelsSettingsModel {
+        HelperModelsSettingsModel(
+            kept: { appState.keptHelperModels() },
+            load: { try await appState.loadHelperModels() },
+            slot: { slot in
+                VoiceReplyModelSettingsModel(
+                    kept: { appState.keptHelperModel(task: slot.id) },
+                    keptProviders: { appState.keptModelProviders() },
+                    load: { try await appState.loadHelperModel(task: slot.id) },
+                    loadProviders: { await appState.loadModelProviders() },
+                    save: { await appState.setHelperModel($0, confirmed: $1) }
+                )
+            }
+        )
+    }
+
     @ViewBuilder
     private func destinationView(_ destination: SettingsDestination) -> some View {
         switch destination {
@@ -669,36 +689,63 @@ struct SettingsView: View {
             )
         case .model:
             ProfileConfigSettingsPage(
-                title: AppLocalization.string("Model"),
+                title: AppLocalization.string("Models & providers"),
                 subtitle: "",
                 fields: Self.modelFields,
                 load: loadProfileSettings,
                 keptValues: { appState.keptProfileSettings(keys: $0) },
                 save: persistProfileSetting,
                 fieldsHeader: AppLocalization.string("Speed & limits"),
-                leadingSection: AnyView(ProfileModelSettingsDetail(
-                    kept: { appState.keptProfileModelDefaults() },
-                    load: loadProfileModelDefaults,
-                    save: { provider, model, reasoning in
-                        let saved = await persistProfileMainModel(provider, model, reasoning)
-                        if saved { await MainActor.run { mainModelSaves += 1 } }
-                        return saved
+                leadingSection: AnyView(VStack(alignment: .leading, spacing: 24) {
+                    if let bridge = appState.dashboardTicketBridge {
+                        ModelPageProviders(
+                            bridge: bridge,
+                            profile: snapshot.profile,
+                            profileName: appState.profileDisplayName(snapshot.profile),
+                            answers: appState.screenAnswers(profile: snapshot.profile),
+                            profiles: { appState.profiles },
+                            kept: { appState.keptProfileModelDefaults() },
+                            load: loadProfileModelDefaults,
+                            makeDefault: { provider, model, reasoning in
+                                let saved = await persistProfileMainModel(provider, model, reasoning)
+                                if saved { await MainActor.run { mainModelSaves += 1 } }
+                                return saved
+                            },
+                            onChange: { providerChanges += 1 },
+                            refresh: mainModelSaves
+                        )
+                        .id(snapshot.profile)
                     }
-                )),
-                trailingSection: AnyView(FallbackModelsSettings(
-                    keptModels: { appState.keptProfileModelDefaults() },
-                    kept: { appState.keptProfileFallbackModels() },
-                    loadModels: loadProfileModelDefaults,
-                    load: { await appState.loadProfileFallbackModels() },
-                    save: { await appState.setProfileFallbackModels($0) }
-                )),
+                    ProfileModelSettingsDetail(
+                        kept: { appState.keptProfileModelDefaults() },
+                        load: loadProfileModelDefaults,
+                        save: { provider, model, reasoning in
+                            let saved = await persistProfileMainModel(provider, model, reasoning)
+                            if saved { await MainActor.run { mainModelSaves += 1 } }
+                            return saved
+                        },
+                        refresh: providerChanges + mainModelSaves
+                    )
+                }),
+                trailingSection: AnyView(VStack(alignment: .leading, spacing: 24) {
+                    FallbackModelsSettings(
+                        keptModels: { appState.keptProfileModelDefaults() },
+                        kept: { appState.keptProfileFallbackModels() },
+                        loadModels: loadProfileModelDefaults,
+                        load: { await appState.loadProfileFallbackModels() },
+                        save: { await appState.setProfileFallbackModels($0) },
+                        refresh: providerChanges
+                    )
+                    HelperModelsSettingsSection(settings: helperModelSettings)
+                        .id(snapshot.profile)
+                }),
                 loadSchema: { await appState.loadProfileConfigSchema() },
                 keptSchema: { appState.keptProfileConfigSchema() },
                 loadExtraOptions: {
                     Self.modelExtraOptions(await loadProfileModelDefaults() ?? appState.keptProfileModelDefaults())
                 },
                 keptExtraOptions: { appState.keptProfileModelDefaults().map { Self.modelExtraOptions($0) } },
-                extraOptionsRefresh: mainModelSaves
+                extraOptionsRefresh: mainModelSaves + providerChanges
             )
         case .chat:
             ChatSettingsDetail(
@@ -908,7 +955,7 @@ struct SettingsView: View {
                         keptProviders: { appState.keptModelProviders() },
                         load: { try await appState.loadVoiceReplyModel() },
                         loadProviders: { await appState.loadModelProviders() },
-                        save: { await appState.setVoiceReplyModel($0) }
+                        save: { await appState.setVoiceReplyModel($0, confirmed: $1) }
                     ),
                     wake: wakeSettings(profile: snapshot.profile),
                     lockedListening: VoiceLockedListeningSettingsModel(
@@ -1019,6 +1066,7 @@ struct SettingsView: View {
             HermesCallsSettingsPage(
                 model: HermesCallSettingsModel(
                     profile: appState.activeProfile,
+                    botName: appState.hermesCallContactName(appState.activeProfile),
                     status: appState.activeHermesCallsStatus,
                     load: {
                         await appState.refreshHermesCallsStatus()
@@ -1212,7 +1260,7 @@ private struct SettingsHome: View {
                         settingsLink(.profile, icon: "person.crop.circle", title: profileDisplayName, detail: AppLocalization.string("Profile-specific preferences"))
                     }
                     homeSection("Hermes", tint: .conduitAura) {
-                        settingsLink(.model, icon: "cpu", title: AppLocalization.string("Model"), detail: AppLocalization.string("Default model and reasoning"))
+                        settingsLink(.model, icon: "cpu", title: AppLocalization.string("Models & providers"), detail: AppLocalization.string("Default model, reasoning, and providers"))
                         settingsLink(.usage, icon: "chart.bar", title: AppLocalization.string("Usage"), detail: AppLocalization.string("Tokens, cost, and provider quota"), identifier: "settings.usage")
                         settingsLink(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"))
                         settingsLink(.voice, icon: "mic.and.signal.meter", title: AppLocalization.string("Voice"), detail: AppLocalization.string("Speech providers, credentials, and device opt-in"))
@@ -1398,7 +1446,7 @@ private struct SettingsHome: View {
             }
         }
         v2Group(AppLocalization.string("Hermes"), symbol: "gearshape.2") {
-            v2Link(.model, icon: "cpu", title: AppLocalization.string("Model"), detail: AppLocalization.string("Default model and reasoning"), first: true)
+            v2Link(.model, icon: "cpu", title: AppLocalization.string("Models & providers"), detail: AppLocalization.string("Default model, reasoning, and providers"), first: true)
             v2Link(.usage, icon: "chart.bar", title: AppLocalization.string("Usage"), detail: AppLocalization.string("Tokens, cost, and provider quota"), identifier: "settings.usage")
             v2Link(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"))
             v2Link(.memory, icon: "brain.head.profile", title: AppLocalization.string("Memory & delegation"), detail: AppLocalization.string("Memory, compression, and child agents"))
@@ -1932,7 +1980,7 @@ private struct ComposerReturnKeySettings: View {
 }
 
 /// A reply longer than the screen stops at its start (#365), and an
-/// unread chat opens there (ChatReplyStartPreference, ChatScrollEngine).
+/// unread chat opens there (ChatReplyStartPreference, TranscriptScroller).
 private struct ReplyStartSettings: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @AppStorage(ChatReplyStartPreference.key) private var stopsAtStart = ChatReplyStartPreference.defaultOn
@@ -2135,7 +2183,8 @@ private struct ChatReturnBehaviorSettings: View {
     let persistSurface: (ChatReturnSurface) -> Void
     @State private var behavior: ChatResumeBehavior
     @State private var surface: ChatReturnSurface
-    /// V2 always opens on the Chats list, so it has no "Open to" choice.
+    /// V2 opens on Chats, or on the chat iOS closed it on (#1559), so it
+    /// has no "Open to" choice.
     @AppStorage(V2ShellPreference.key) private var usesV2 = V2ShellPreference.defaultValue
 
     init(
@@ -2156,9 +2205,15 @@ private struct ChatReturnBehaviorSettings: View {
             symbol: "arrow.uturn.backward.circle",
             tint: .conduitAccent
         ) {
-            Text("Stored only on this device, not in your Hermes profile. Choose which surface Conduit opens to and whether it preserves your exact reading position or follows the newest conversation.")
-                .scaledFont(.footnote)
-                .foregroundStyle(.secondary)
+            Group {
+                if usesV2 {
+                    Text("Stored only on this device, not in your Hermes profile. If iOS closes Conduit while you're away, it reopens a chat when you come back. If you swipe Conduit away, it opens on Chats. Choose whether that chat is the one you left, at your exact reading position, or the newest conversation.")
+                } else {
+                    Text("Stored only on this device, not in your Hermes profile. Choose which surface Conduit opens to and whether it preserves your exact reading position or follows the newest conversation.")
+                }
+            }
+            .scaledFont(.footnote)
+            .foregroundStyle(.secondary)
             if !usesV2 {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Open to")
@@ -2332,9 +2387,10 @@ struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
     }
 }
 
-/// A Model page editor's stand-in for its pickers until the catalog has
-/// rows: loading, a failed fetch with Try Again, or a gateway with none.
-private struct ModelCatalogPlaceholder: View {
+/// A models list's state when it isn't drawn as models: the Model page
+/// editors' stand-in for their pickers until the catalog has rows, and the
+/// failed row with Try Again under the voice and Pulse pickers' models.
+struct ModelCatalogPlaceholder: View {
     let state: ModelCatalogState
     let retry: () -> Void
 
@@ -2375,6 +2431,9 @@ private struct ProfileModelSettingsDetail: View {
     let kept: () -> ProfileModelDefaults?
     let load: () async -> ProfileModelDefaults?
     let save: (String, String, String) async -> Bool
+    /// Raised when a provider or the default changed elsewhere on the page:
+    /// Hermes is asked again, and picks changed here stay.
+    var refresh = 0
     @State private var defaults: ProfileModelDefaults?
     @State private var provider = ""
     @State private var model = ""
@@ -2466,6 +2525,7 @@ private struct ProfileModelSettingsDetail: View {
             show(keptDefaults)
         }
         .task { await reload() }
+        .onChange(of: refresh) { _, _ in Task { await reload() } }
     }
 
     private func reload() async {
@@ -2760,6 +2820,9 @@ private struct FallbackModelsSettings: View {
     let loadModels: () async -> ProfileModelDefaults?
     let load: () async -> [ProfileFallbackModel]?
     let save: ([ProfileFallbackModel]) async -> Bool
+    /// Raised when a provider was added or removed: the catalog is read
+    /// again, the rows being edited stay.
+    var refresh = 0
     @State private var defaults: ProfileModelDefaults?
     @State private var entries: [ProfileFallbackModel] = []
     @State private var saved: [ProfileFallbackModel] = []
@@ -2826,6 +2889,9 @@ private struct FallbackModelsSettings: View {
             loaded = true
         }
         .task { await reload() }
+        .onChange(of: refresh) { _, _ in
+            Task { if let models = await loadModels() { defaults = models } }
+        }
     }
 
     private func entryRow(index: Int, entry: ProfileFallbackModel) -> some View {

@@ -375,14 +375,14 @@ struct WatchApprovalCard: View {
                     .font(.footnote.weight(.semibold))
                     .lineLimit(3)
                 if !approval.description.isEmpty {
-                    Text(verbatim: approval.description)
+                    Text(verbatim: HermesApprovalText.description(approval.description))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(4)
                 }
                 // All of it: the card scrolls, and the user approves what
                 // they read.
-                Text(verbatim: approval.command)
+                Text(verbatim: HermesApprovalText.command(approval.command))
                     .font(.caption2.monospaced())
                     .padding(6)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -453,7 +453,7 @@ struct WatchCallSummary: View {
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.capsule)
                 .tint(accent)
-                if !WatchCallEnd.isNormal(reason) {
+                if WatchCallEnd.canRetry(reason) {
                     Button {
                         call.dismissEnded()
                         call.start()

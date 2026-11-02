@@ -59,7 +59,7 @@ extension AppState {
     func loadProviderQuotas() async -> [ProviderQuota]? {
         guard let client, let owner = currentDashboardRuntimeOwner() else { return nil }
         let answer = try? await keepingAnswer(profile: activeProfile, owner: owner, keptAs: { _ in KeptRoute.providerQuotas }) {
-            try await client.providerQuotaAnswer()
+            try await client.modelOptionsAnswer()
         }
         return answer.map(ProviderQuota.list(from:))
     }

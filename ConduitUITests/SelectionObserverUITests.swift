@@ -32,6 +32,38 @@ final class SelectionObserverUITests: XCTestCase {
         XCTAssertEqual(pasteboardLabel.label, pasteboardBeforeDrag, "No copy should happen without user action")
     }
 
+    /// A click or tap on a link in a chat table's cell opens it (issue
+    /// 1585). The chat draws cells as plain text inside a row whose own tap
+    /// puts the keyboard away; a plain cell's link lost the tap to it.
+    func testTapOnLinkInChatTableCellOpensIt() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-conduitSelectionFixture", "-conduitChatTableFixture"]
+        app.launchEnvironment["CONDUIT_UITEST"] = "1"
+        app.launch()
+
+        let opened = app.staticTexts.matching(identifier: "fixture.openedURL").firstMatch
+        XCTAssertTrue(opened.waitForExistence(timeout: 5))
+        XCTAssertEqual(opened.label, "opened:none")
+        // The cell's text view is all link, so accessibility shows it as a
+        // Link, not a TextView: match either, the outermost first.
+        let link = app.descendants(matching: .any).matching(NSPredicate(
+            format: "(elementType == %lu OR elementType == %lu) AND label CONTAINS %@",
+            XCUIElement.ElementType.textView.rawValue,
+            XCUIElement.ElementType.link.rawValue,
+            "skills link"
+        )).firstMatch
+        XCTAssertTrue(link.waitForExistence(timeout: 5), "Link cell not found. Tree:\n\(app.debugDescription)")
+
+        link.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+
+        let expected = NSPredicate(format: "label == %@", "opened:https://example.com/skills")
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: expected, object: opened)], timeout: 5),
+            .completed,
+            "the tap opened the link; got \(opened.label)"
+        )
+    }
+
     /// Anchoring inside a table cell and dragging out through the rest of the
     /// response must extend the same way a paragraph-anchored drag does.
     func testCellAnchoredLongPressAndDragExtendsAcrossBlocks() throws {

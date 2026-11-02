@@ -633,3 +633,30 @@ enum NotificationSharedSettings {
         set { defaults?.set(newValue.sorted(), forKey: pulseQuietGatewaysKey) }
     }
 }
+
+/// The chat a delivered push belongs to, noted on it by the extension once
+/// the push verified (#1579). A sealed push stops verifying a day after it
+/// was sent, so Conduit finds an older notification's chat by this note to
+/// clear it once that chat is read. It routes nothing: a tap still opens
+/// only what verifies.
+enum ReadChatHint {
+    static let userInfoKey = "conduit_chat"
+
+    /// The routing fields that name the chat, its dashboard and the kind
+    /// of push (one that waits on the user isn't cleared).
+    static func note(_ routing: [String: Any]) -> [String: String] {
+        var note: [String: String] = [:]
+        for field in ["session_id", "stored_session_id", "session_key", "dashboard_id", "gateway_id", "type"] {
+            if let value = routing[field] as? String, !value.isEmpty { note[field] = value }
+        }
+        return note
+    }
+
+    /// Trusted as the extension's own: it drops any note a push arrives
+    /// with and writes one only on a push it verified. A push that skipped
+    /// the extension could carry one, which only clears; taps verify.
+    static func read(_ userInfo: [AnyHashable: Any]) -> [String: Any]? {
+        guard let note = userInfo[userInfoKey] as? [String: Any], note["session_id"] is String else { return nil }
+        return note
+    }
+}

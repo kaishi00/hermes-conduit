@@ -43,6 +43,12 @@ struct BotEditorSheet: View {
     @State private var capabilitiesLoadFailed = false
     /// The Start From profile the staged lists were read from.
     @State private var capabilitiesSource: String?
+    /// The bot's details as Hermes gave them last time (#1533): shown,
+    /// read-only, until it answers, and never what a save compares with.
+    @State private var keptDetails: BotProfileDetails?
+    /// The Start From profile's lists as Hermes gave them last time, shown
+    /// read-only until it answers.
+    @State private var keptCapabilities: BotCapabilities?
 
     private enum DetailsState {
         case idle, loading, loaded, failed
@@ -54,6 +60,17 @@ struct BotEditorSheet: View {
     }
 
     private var isCreating: Bool { editedBot == nil }
+
+    /// Edit Bot shows the bot's kept details until Hermes answers.
+    private var showsKeptDetails: Bool {
+        !isCreating && detailsState != .loaded && keptDetails != nil
+    }
+
+    /// The lists shown read-only until Hermes answers: the bot's own on
+    /// Edit Bot, the Start From profile's on New Bot.
+    private var shownKeptCapabilities: BotCapabilities? {
+        isCreating ? keptCapabilities : keptDetails?.capabilities
+    }
 
     var body: some View {
         NavigationStack {
@@ -143,6 +160,7 @@ struct BotEditorSheet: View {
             usePicture(image)
             pickedImage = nil
         }
+        .onAppear(perform: seedShown)
         .task { canGeneratePictures = await appState.refreshPictureGeneration() }
         .task { await seed() }
         .task(id: capabilitySource) { await loadStartFromCapabilities() }
@@ -358,10 +376,16 @@ struct BotEditorSheet: View {
     @ViewBuilder
     private var personalitySection: some View {
         Section {
-            if isCreating || detailsState == .loaded {
-                TextEditor(text: $draft.soul)
+            if isCreating || detailsState == .loaded || keptDetails != nil {
+                // The kept SOUL can't be edited: Hermes' own comes first.
+                TextEditor(text: showsKeptDetails ? Binding.constant(keptDetails?.soul ?? "") : $draft.soul)
                     .frame(minHeight: 160)
                     .scaledFont(.callout.monospaced())
+                    .disabled(showsKeptDetails)
+                if showsKeptDetails, detailsState == .failed {
+                    Text(AppLocalization.string("Could not load this bot's personality."))
+                        .foregroundStyle(.secondary)
+                }
             } else if detailsState == .failed {
                 Text(AppLocalization.string("Could not load this bot's personality."))
                     .foregroundStyle(.secondary)
@@ -381,14 +405,15 @@ struct BotEditorSheet: View {
     /// Desktop's Advanced disclosure. Creating: where the profile starts
     /// from, its model, skills, tools and MCP, shared keys and bundled
     /// skills. Editing: its model, skills, tools and MCP, once the bot's
-    /// details have loaded.
+    /// details have loaded or from its kept ones, read-only.
     @ViewBuilder
     private var advancedSection: some View {
-        if isCreating || detailsState == .loaded {
+        if isCreating || detailsState == .loaded || showsKeptDetails {
             Section {
                 Button {
                     Haptics.light()
                     withAnimation { showsAdvanced.toggle() }
+                    showKeptStartFrom()
                 } label: {
                     HStack {
                         Text(AppLocalization.string("Advanced"))
@@ -416,9 +441,13 @@ struct BotEditorSheet: View {
                         BotModelPicker(provider: $draft.provider, model: $draft.model, allowsInherit: isCreating)
                     } label: {
                         LabeledContent(AppLocalization.string("Model")) {
-                            Text(verbatim: BotModelPicker.summary(model: draft.model, allowsInherit: isCreating))
+                            Text(verbatim: BotModelPicker.summary(
+                                model: showsKeptDetails ? keptDetails?.model ?? "" : draft.model,
+                                allowsInherit: isCreating
+                            ))
                         }
                     }
+                    .disabled(showsKeptDetails)
                     capabilitiesRow
                     if isCreating {
                         Toggle(AppLocalization.string("Share Keys and Accounts"), isOn: $draft.shareAuth)
@@ -443,33 +472,49 @@ struct BotEditorSheet: View {
                 : AppLocalization.string("A fresh profile starts with Hermes' bundled skills and default tools. Edit the bot afterwards to change them."))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
-        } else if draft.capabilities != nil {
+        } else if draft.capabilities != nil || shownKeptCapabilities != nil {
+            // One link for the kept lists and Hermes' answer, so a page open
+            // on the kept ones stays open as they become Hermes' own.
             NavigationLink {
                 BotCapabilitiesView(
                     capabilities: Binding(
-                        get: { draft.capabilities ?? BotCapabilities() },
-                        set: { draft.capabilities = $0 }
+                        get: { draft.capabilities ?? shownKeptCapabilities ?? BotCapabilities() },
+                        set: { if draft.capabilities != nil { draft.capabilities = $0 } }
                     ),
                     skillsSkipped: isCreating && draft.noSkills,
                     sourceLabel: isCreating ? startFromLabel : nil,
-                    mcpProfile: editedBot?.name
+                    mcpProfile: editedBot?.name,
+                    editable: draft.capabilities != nil
                 )
             } label: {
                 Text(AppLocalization.string("Skills, Tools and MCP"))
             }
-        } else if capabilitiesLoadFailed {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(AppLocalization.string("Could not load skills, tools or MCP servers."))
-                    .foregroundStyle(.secondary)
-                Button(AppLocalization.string("Try Again")) {
-                    Task { await loadStartFromCapabilities() }
-                }
+            if draft.capabilities == nil, capabilitiesLoadFailed {
+                capabilitiesFailure
             }
+        } else if capabilitiesLoadFailed {
+            capabilitiesFailure
         } else {
             LabeledContent(AppLocalization.string("Skills, Tools and MCP")) {
                 ProgressView()
             }
         }
+    }
+
+    private var capabilitiesFailure: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(AppLocalization.string("Could not load skills, tools or MCP servers."))
+                .foregroundStyle(.secondary)
+            Button(AppLocalization.string("Try Again")) {
+                Task { await loadStartFromCapabilities() }
+            }
+        }
+    }
+
+    /// The Start From profile's lists Hermes gave last time, shown in the
+    /// same frame as the pick or Advanced opening, until its answer comes.
+    private func showKeptStartFrom() {
+        keptCapabilities = capabilitySource.flatMap { appState.keptBotCapabilities(startingFrom: $0) }
     }
 
     /// The profile a new bot's skills, tools and MCP lists are read from
@@ -506,6 +551,7 @@ struct BotEditorSheet: View {
         draft.capabilities = nil
         draft.capabilitiesBaseline = nil
         capabilitiesLoadFailed = false
+        showKeptStartFrom()
         let loaded = await appState.loadBotCapabilities(startingFrom: source)
         // A Try Again isn't cancelled with the task: a newer Start From wins.
         guard !Task.isCancelled, source == capabilitySource else { return }
@@ -530,6 +576,7 @@ struct BotEditorSheet: View {
                 draft.capabilities = nil
                 draft.capabilitiesBaseline = nil
                 capabilitiesLoadFailed = false
+                showKeptStartFrom()
             }
         )
     }
@@ -576,13 +623,21 @@ struct BotEditorSheet: View {
         return identity.isValid && !identity.isTaken
     }
 
-    private func seed() async {
+    /// The editor's first frame: the roster's name, description and color,
+    /// and the bot's details as Hermes gave them last time (#1533).
+    private func seedShown() {
         guard !seeded else { return }
         seeded = true
         guard let bot = editedBot else { return }
         draft.name = bot.botTitle ?? ""
         draft.description = bot.profileDescription
         draft.color = bot.appearanceColor
+        keptDetails = appState.keptBotDetails(bot)
+    }
+
+    private func seed() async {
+        seedShown()
+        guard let bot = editedBot, detailsState == .idle else { return }
         detailsState = .loading
         guard let loaded = await appState.loadBotDetails(bot) else {
             detailsState = .failed

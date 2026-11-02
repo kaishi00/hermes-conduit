@@ -175,14 +175,15 @@ final class WatchGPTLiveSetup: ObservableObject {
             return
         }
         do {
-            apply(try await client.audioStatus(profile: appState.activeProfile))
+            // The profile the Watch's calls run on (#1564).
+            apply(try await client.audioStatus(profile: appState.handsFreeProfile))
         } catch {
             state = .unavailable(AppLocalization.string("Your Hermes host doesn't offer GPT-Live for the Watch. Update the Conduit notifier plugin."))
         }
     }
 
     func prepare() {
-        let profile = AppStateRuntimeRegistry.shared.appState.activeProfile
+        let profile = AppStateRuntimeRegistry.shared.appState.handsFreeProfile
         state = .preparing
         polling?.cancel()
         let client = self.client

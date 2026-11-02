@@ -553,51 +553,6 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(replay.hasGap, false)
     }
 
-    func testRoomTranscriptLeavesFollowingOnlyByTheUsersScroll() {
-        // New rows push the bottom away without the user: still following.
-        XCTAssertTrue(GroupRoomFollow.following(current: true, userScrolling: false, distanceFromBottom: 900))
-        // The user scrolls up: browsing, and new rows don't bring it back.
-        XCTAssertFalse(GroupRoomFollow.following(current: true, userScrolling: true, distanceFromBottom: 300))
-        XCTAssertFalse(GroupRoomFollow.following(current: false, userScrolling: false, distanceFromBottom: 900))
-        // A shrink that lands the reader at the bottom follows again.
-        XCTAssertTrue(GroupRoomFollow.following(current: false, userScrolling: false, distanceFromBottom: 0))
-        // The user scrolls back near the bottom: following again.
-        XCTAssertTrue(GroupRoomFollow.following(
-            current: false, userScrolling: true, distanceFromBottom: GroupRoomFollow.nearBottomTolerance))
-    }
-
-    /// #887, #1358: the lazy stack can lay out no row under a following
-    /// room, which is built again then, as a chat is.
-    func testARoomWithNoRowLaidOutOnScreenIsBlank() {
-        let visible: ClosedRange<CGFloat> = 3000...3800
-        // Nothing laid out, or only rows far above with the latest unlaid.
-        XCTAssertTrue(GroupRoomFollow.isBlank(frames: [:], visible: visible, lastRowID: "e9"))
-        XCTAssertTrue(GroupRoomFollow.isBlank(frames: ["e2": 400...600], visible: visible, lastRowID: "e9"))
-        // The latest row ends above the screen, nothing below it drawn.
-        XCTAssertTrue(GroupRoomFollow.isBlank(frames: ["e9": 2000...2990], visible: visible, lastRowID: "e9"))
-        // The member's Responding row counts as a row.
-        XCTAssertTrue(GroupRoomFollow.isBlank(
-            frames: ["e9": 2000...2990], visible: visible, lastRowID: "responding-row"))
-        XCTAssertFalse(GroupRoomFollow.isBlank(
-            frames: ["e9": 2000...2990, "responding-row": 3000...3060], visible: visible, lastRowID: "responding-row"))
-        // A row on screen, or the latest one below it, isn't blank.
-        XCTAssertFalse(GroupRoomFollow.isBlank(frames: ["e9": 3200...3700], visible: visible, lastRowID: "e9"))
-        XCTAssertFalse(GroupRoomFollow.isBlank(frames: ["e9": 3900...4200], visible: visible, lastRowID: "e9"))
-        // An empty room isn't blank.
-        XCTAssertFalse(GroupRoomFollow.isBlank(frames: [:], visible: visible, lastRowID: nil))
-    }
-
-    func testALandingDecidesFollowingOnlyWhenItsOver() {
-        // Its own animated scroll passing near the bottom doesn't follow.
-        XCTAssertFalse(GroupRoomFollow.following(
-            current: false, userScrolling: false, distanceFromBottom: 0, landing: true))
-        XCTAssertFalse(GroupRoomFollow.following(
-            current: false, userScrolling: false, distanceFromBottom: 900, landing: true))
-        // The user's own scroll still decides.
-        XCTAssertTrue(GroupRoomFollow.following(
-            current: false, userScrolling: true, distanceFromBottom: 0, landing: true))
-    }
-
     func testANewMemberMessageIsWhereTheRoomLands() {
         let log = [
             userMessage(seq: 1, text: "Hello everyone"),
@@ -607,14 +562,107 @@ final class GroupChatModelsTests: XCTestCase {
             memberMessage(seq: 5, member: "ayaka", round: 0, text: "More"),
         ]
         // The first member message after the row that was last before.
-        XCTAssertEqual(GroupRoomFollow.replyStart(in: log, after: "dmessage:2"), "dmessage:4")
-        XCTAssertEqual(GroupRoomFollow.replyStart(in: log, after: "dmessage:4"), "dmessage:5")
+        XCTAssertEqual(GroupRoomTranscript.replyStart(in: log, after: "dmessage:2"), "dmessage:4")
+        XCTAssertEqual(GroupRoomTranscript.replyStart(in: log, after: "dmessage:4"), "dmessage:5")
         // Only the user's own message is new, or nothing is: the bottom.
-        XCTAssertNil(GroupRoomFollow.replyStart(in: Array(log.prefix(3)), after: "dmessage:2"))
-        XCTAssertNil(GroupRoomFollow.replyStart(in: log, after: "dmessage:5"))
+        XCTAssertNil(GroupRoomTranscript.replyStart(in: Array(log.prefix(3)), after: "dmessage:2"))
+        XCTAssertNil(GroupRoomTranscript.replyStart(in: log, after: "dmessage:5"))
         // No row from before (the room just opened, or it's gone): the bottom.
-        XCTAssertNil(GroupRoomFollow.replyStart(in: log, after: nil))
-        XCTAssertNil(GroupRoomFollow.replyStart(in: log, after: "dmessage:99"))
+        XCTAssertNil(GroupRoomTranscript.replyStart(in: log, after: nil))
+        XCTAssertNil(GroupRoomTranscript.replyStart(in: log, after: "dmessage:99"))
+    }
+
+    /// The room's transcript rows (#1533): its events, the message on its
+    /// way under the id its event will have, the member responding, or the
+    /// empty room's welcome.
+    func testRoomTranscriptRowsKeepTheMessageOnItsWayUnderItsEventsID() {
+        let members = roomMembers()
+        let log = [
+            userMessage(seq: 1, text: "Hello everyone"),
+            memberMessage(seq: 2, member: "furina", round: 0, text: "Hi"),
+            memberMessage(seq: 3, member: "furina", round: 0, text: "Again"),
+            memberMessage(seq: 4, member: "zhongli", round: 0, text: "Greetings"),
+        ]
+        // The id the client mints, and the one the gateway files it under.
+        let pending = GroupRoomOutbox.Pending(text: "Plan the trip", eventID: "conduit-abc")
+        let landedID = GroupRoomOutbox.serverEventID(forClientEventID: "conduit-abc")
+        let rows = GroupRoomTranscript.rows(
+            events: log, roomID: "room-1", members: members,
+            pending: pending, isSending: true, responder: members[1]
+        )
+        XCTAssertEqual(
+            rows.map(\.id),
+            ["user:d1", "dmessage:2", "dmessage:3", "dmessage:4", landedID, GroupRoomTranscript.respondingID]
+        )
+        // A member's run shows its picture and name once.
+        guard case .room(.event(_, _, let runContinues)) = rows[2].kind,
+              case .room(.event(_, _, let otherContinues)) = rows[3].kind else { return XCTFail("\(rows)") }
+        XCTAssertTrue(runContinues)
+        XCTAssertFalse(otherContinues)
+        XCTAssertEqual(rows[4].kind, .room(.pending(text: "Plan the trip", members: members, isSending: true)))
+
+        // The send landed while its row still shows: the event's row, once.
+        let landed = GroupRoomTranscript.rows(
+            events: log + [userMessage(seq: 5, text: "Plan the trip", id: landedID)], roomID: "room-1",
+            members: members, pending: pending, isSending: false, responder: nil
+        )
+        XCTAssertEqual(landed.map(\.id), ["user:d1", "dmessage:2", "dmessage:3", "dmessage:4", landedID])
+        guard case .room(.event(_, _, _)) = landed[4].kind else { return XCTFail("the event's row, not the pending one") }
+
+        // Nothing in the room yet: its welcome.
+        let empty = GroupRoomTranscript.rows(
+            events: [], roomID: "room-1", members: members, pending: nil, isSending: false, responder: nil
+        )
+        XCTAssertEqual(empty.map(\.kind), [.room(.empty(roomID: "room-1", members: members))])
+    }
+
+    /// GroupChatView's rows box (#1533) tells the room's scroller of new
+    /// events as it builds their rows: a new member message arms the stop
+    /// at its start, a member starting its turn is followed to the end, and
+    /// a room that didn't change builds nothing. What the log adds without
+    /// a row, and the oldest row going, leave the stop where it is.
+    @MainActor
+    func testTheRoomBoxTellsTheScrollerOfANewMemberMessage() {
+        let scroller = TranscriptScroller()
+        scroller.holdsRepliesAtStart = { true }
+        let box = GroupRoomTranscriptBox()
+        var replay = GroupRoomReplay(roomID: "room-1")
+        replay.adopt(page: logPage([eventJSON(seq: 1, kind: "message.user", payload: ["text": "Hello"])]))
+        var input = GroupRoomTranscriptBox.Input(replay: replay, members: roomMembers())
+        XCTAssertEqual(box.update(input, scroller: scroller).map(\.id), ["e1"])
+        XCTAssertFalse(scroller.replyHoldArmed, "the room's first events are its history")
+
+        let memberHi = eventJSON(
+            seq: 2, kind: "message.member",
+            actor: ["kind": "member", "id": "furina", "profile": "furina"],
+            payload: ["text": "Hi", "member_id": "furina"]
+        )
+        replay.adopt(page: logPage([memberHi]))
+        input.replay = replay
+        let rows = box.update(input, scroller: scroller)
+        XCTAssertEqual(rows.map(\.id), ["e1", "e2"])
+        XCTAssertTrue(scroller.replyHoldArmed, "a new member message is where the room stops")
+        let same = box.update(input, scroller: scroller)
+        XCTAssertTrue(rows.withUnsafeBufferPointer { built in
+            same.withUnsafeBufferPointer { built.baseAddress == $0.baseAddress }
+        }, "the rows it built, not new ones")
+
+        replay.adopt(page: logPage([eventJSON(
+            seq: 3, kind: "turn.heartbeat", actor: ["kind": "gateway", "id": "gw-a"],
+            payload: ["member_id": "furina"]
+        )]))
+        input.replay = replay
+        XCTAssertEqual(box.update(input, scroller: scroller).map(\.id), ["e1", "e2"])
+        XCTAssertTrue(scroller.replyHoldArmed, "the log's bookkeeping adds no row and moves nothing")
+        var trimmed = GroupRoomReplay(roomID: "room-1")
+        trimmed.adoptInitialTail(page: logPage([memberHi]))
+        input.replay = trimmed
+        XCTAssertEqual(box.update(input, scroller: scroller).map(\.id), ["e2"])
+        XCTAssertTrue(scroller.replyHoldArmed, "the oldest row going adds nothing at the end")
+
+        input.responder = roomMembers()[1]
+        XCTAssertEqual(box.update(input, scroller: scroller).map(\.id), ["e2", GroupRoomTranscript.respondingID])
+        XCTAssertFalse(scroller.replyHoldArmed, "a member starting its turn is followed to the end")
     }
 
     func testSendResultAdoptionAdvancesCursorExactlyOnce() {

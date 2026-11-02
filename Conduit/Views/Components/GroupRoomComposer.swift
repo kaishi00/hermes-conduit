@@ -42,6 +42,9 @@ struct GroupRoomComposer: View {
     @State private var showDocumentPicker = false
     @State private var showCamera = false
     @State private var isShowingFullEditor = false
+    /// A send from the full editor that keeps focus: the field takes it
+    /// once the sheet has gone, as in a chat.
+    @State private var focusesAfterFullEditor = false
     @StateObject private var dictation = ComposerDictationService()
     @ObservedObject private var dictationClips = DictationClipInbox.shared
     /// The draft as it was when dictation began; dictated text goes after it.
@@ -250,7 +253,10 @@ struct GroupRoomComposer: View {
             }
             .ignoresSafeArea()
         }
-        .sheet(isPresented: $isShowingFullEditor) {
+        .sheet(isPresented: $isShowingFullEditor, onDismiss: {
+            if focusesAfterFullEditor { isFocused = true }
+            focusesAfterFullEditor = false
+        }) {
             ComposerFullEditor(
                 text: $draft,
                 placeholder: AppLocalization.string("Message the room"),
@@ -602,6 +608,14 @@ struct GroupRoomComposer: View {
         let files = attachments
         dictation.stop()
         Haptics.light()
+        // As in a chat: the field lets go after a send unless a Mac or an
+        // iPad keyboard is typing on (ComposerLayout.keepsFocusAfterSend);
+        // from the full editor it takes focus once the sheet has gone.
+        if !ComposerLayout.keepsFocusAfterSend() {
+            isFocused = false
+        } else if isShowingFullEditor {
+            focusesAfterFullEditor = true
+        }
         isShowingFullEditor = false
         if sendsReply { replyReference = nil }
         if sendsRecipients { recipients = [] }

@@ -23,12 +23,17 @@ final class NotificationService: UNNotificationServiceExtension {
         lock.withLock { self.contentHandler = contentHandler }
         AppLocalization.adopt(appLanguage: NotificationSharedSettings.appLanguage)
         guard let content = request.content.mutableCopy() as? UNMutableNotificationContent else {
-            deliver(request.content)
+            // Never seen: with no copy to strip, only generic text goes out.
+            deliver(Self.generic(UNMutableNotificationContent(), type: nil))
             return
         }
+        // Only this extension writes the chat note, on a push it verified:
+        // one the push arrived with is dropped on every path.
+        content.userInfo.removeValue(forKey: ReadChatHint.userInfoKey)
         let userInfo = content.userInfo
         let type = (NotificationE2E.routingStub(userInfo)?["type"] as? String)
         // Prepared up front so a timeout can only ever deliver generic text.
+        // It takes the chat note once the push verifies.
         let prepared = Self.generic(content.mutableCopy() as? UNMutableNotificationContent ?? content, type: type)
         lock.withLock { fallback = prepared }
 
@@ -43,8 +48,19 @@ final class NotificationService: UNNotificationServiceExtension {
         case .untrusted(let type):
             deliver(Self.generic(content, type: type))
         case .verified(let verified):
+            // Which chat this is, for Conduit to clear it once that chat is read.
+            let note = ReadChatHint.note(verified.routingPayload)
+            lock.withLock {
+                if let noted = fallback?.mutableCopy() as? UNMutableNotificationContent {
+                    noted.userInfo[ReadChatHint.userInfoKey] = note
+                    fallback = noted
+                }
+            }
             guard E2ESeenStore.shared.insert(verified.envelope.replayKey, namespace: "delivered") else {
-                deliver(Self.generic(content, type: verified.type))
+                // A second copy: generic and routing nowhere, but it clears with its chat.
+                let copy = Self.generic(content, type: verified.type)
+                copy.userInfo[ReadChatHint.userInfoKey] = note
+                deliver(copy)
                 return
             }
             let generic = NotificationCopy.generic(for: verified.type)
@@ -67,6 +83,7 @@ final class NotificationService: UNNotificationServiceExtension {
                 if let title = names.title { content.title = title }
                 if let subtitle = names.subtitle { content.subtitle = subtitle }
             }
+            content.userInfo[ReadChatHint.userInfoKey] = note
             // Quiet for today on a Pulse push, where its plugin takes it.
             if PulseNotifications.offersQuietToday(
                 titleLabel: verified.content["title_label"] as? String,

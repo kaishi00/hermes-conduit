@@ -668,3 +668,53 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertEqual(appState.relayGatewayIDs(of: dashboardA), ["gw-1"])
     }
 }
+
+/// A call from Hermes opens its chat from the list on hand when the list
+/// already holds it, instead of reading the whole list again first.
+extension NotificationDashboardOwnershipTests {
+    private func listedRow(_ id: String, stored: String? = nil, alternates: [String] = []) -> SessionSummary {
+        var row = SessionSummary(
+            id: id,
+            alternateIds: alternates,
+            title: id,
+            model: "Hermes",
+            updatedLabel: "now",
+            profile: "default",
+            source: .chat,
+            isActive: false,
+            isArchived: false,
+            lineageRootId: nil
+        )
+        row.storedSessionId = stored
+        return row
+    }
+
+    func testACallsChatIsFoundInTheListOnHandByAnyIdItsRowAnswersTo() {
+        let catalog = [listedRow("runtime-1", stored: "durable-1", alternates: ["alias-1"]), listedRow("other")]
+        XCTAssertTrue(AppState.catalogListsSession("runtime-1", in: catalog))
+        XCTAssertTrue(AppState.catalogListsSession(" durable-1 ", in: catalog), "ids are trimmed, as the identity index does")
+        XCTAssertTrue(AppState.catalogListsSession("alias-1", in: catalog))
+        XCTAssertFalse(AppState.catalogListsSession("unseen", in: catalog), "a chat the list lacks waits for the full read")
+        XCTAssertFalse(AppState.catalogListsSession("", in: catalog))
+        XCTAssertFalse(AppState.catalogListsSession("runtime-1", in: []))
+    }
+
+    func testOnlyAnAnsweredCallWhoseChatIsListedSkipsTheFullListRead() {
+        let catalog = [listedRow("runtime-1", stored: "durable-1")]
+        let call = HermesCallRequest(id: "call-1", kind: .done, title: nil, sessionIDs: ["durable-1"])
+        func target(_ id: String, durable: String? = nil, call: HermesCallRequest?) -> ConduitNotificationTarget {
+            ConduitNotificationTarget(profile: nil, sessionId: id, durableSessionID: durable, type: call == nil ? nil : HermesCallRequest.type, call: call)
+        }
+        func needsRead(_ target: ConduitNotificationTarget, answered: Bool = true) -> Bool {
+            AppState.notificationOpenNeedsAuthoritativeRead(target: target, callAnswered: answered, catalog: catalog)
+        }
+        XCTAssertFalse(needsRead(target("durable-1", call: call)))
+        XCTAssertTrue(needsRead(target("unseen", call: call)), "a call whose chat the list lacks reads it again")
+        XCTAssertTrue(needsRead(target("durable-1", call: call), answered: false),
+                      "a tapped call notification (body, Talk or missed) reads it again, like every notification")
+        XCTAssertTrue(needsRead(target("durable-1", call: nil)), "a plain notification always reads it again")
+        XCTAssertTrue(needsRead(target("runtime-1", durable: "durable-new", call: call)),
+                      "the route resolves to the payload's durable id, so a list without it is read again")
+        XCTAssertFalse(needsRead(target("runtime-1", durable: "durable-1", call: call)))
+    }
+}

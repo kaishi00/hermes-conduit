@@ -44,7 +44,7 @@ struct V2RestingComposerHeightKey: PreferenceKey {
 }
 
 /// Whether someone is typing in a resting composer (it has focus; on a Mac
-/// or with a hardware keyboard, words too, since the field keeps focus
+/// or an iPad's keyboard, words too, since the field keeps focus
 /// after a send), so the minimised call bar steps aside. Only typing hides it:
 /// a running turn or a notice also expands the composer, and hiding the bar
 /// then left a call started from the chat with no way back (#695).
@@ -177,6 +177,13 @@ struct V2ConversationScreen: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
+        .onChange(of: artifactSessionIDs != nil || chatTitlePendingRename != nil
+                  || chatTitlePendingDeletion != nil) { _, covered in
+            appState.chatCoveredBySheet = covered
+            // What came in under the sheet is read once it closes (#1579).
+            if !covered { appState.clearShownChatNotifications() }
+        }
+        .onDisappear { appState.chatCoveredBySheet = false }
         .sheet(item: $artifactSessionIDs) { sheet in
             ChatArtifactsSheet(sessionIDs: sheet.ids, tab: sheet.tab) { artifactSessionIDs?.tab = $0 }
                 .environmentObject(appState)
@@ -467,7 +474,8 @@ struct ChatSidePanel: View {
 
 /// Shown under the title only while the gateway isn't connected, so the
 /// header stays quiet when all is well. Coming back to the app, a
-/// reconnect gets a few seconds to land before it shows (#296).
+/// reconnect gets a few seconds to land before it shows, until a message
+/// waits for it (#296, #1624).
 private struct V2ConnectionLine: View {
     @EnvironmentObject private var appState: AppState
 
@@ -503,8 +511,13 @@ private struct V2ConversationMenu: View {
     let onChooseRoomPicture: (GroupRoomPictureRequest) -> Void
     let onArtifacts: () -> Void
 
+    /// The dot stays a neutral grey while a reconnect back in the app is
+    /// still kept quiet, as the line under the title does: calm, without
+    /// claiming Connected. The menu's own words say what is happening to
+    /// anyone who opens it (#1624).
     private var statusColor: Color {
         if appState.isConnected { return .green }
+        if appState.hidesBriefReconnect { return .secondary }
         return appState.isRecoveringConnection ? .orange : .red
     }
 

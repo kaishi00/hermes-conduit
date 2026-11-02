@@ -128,7 +128,7 @@ enum CarPlayBrowse {
         case .voice: return "waveform"
         case .voiceJob: return "checklist"
         case .cron: return "clock.fill"
-        case .chat, .discord, .telegram, .api, .webhook, .other: return chatSymbol
+        default: return chatSymbol
         }
     }
 

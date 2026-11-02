@@ -462,8 +462,9 @@ enum BotAvatarImage {
 
 // MARK: - Editor models
 
-/// What `profiles.describe` returns that the bot editor needs.
-struct BotProfileDetails: Equatable {
+/// What `profiles.describe` returns that the bot editor needs. Codable
+/// for the copy the editor opens on (AppState's KeptRoute.botDetails).
+struct BotProfileDetails: Equatable, Codable {
     var description: String
     var soul: String
     /// The profile's own `model.provider` / `model.default`; empty when it
@@ -474,7 +475,7 @@ struct BotProfileDetails: Equatable {
 }
 
 /// One skill, toolset or MCP server a profile can turn on or off.
-struct BotCapability: Equatable, Identifiable {
+struct BotCapability: Equatable, Identifiable, Codable {
     var name: String
     var label: String?
     var description: String = ""
@@ -486,7 +487,7 @@ struct BotCapability: Equatable, Identifiable {
 
 /// `profiles.describe`'s skills, toolsets and MCP servers (upstream
 /// `profile-config.tsx` `AdvancedProfileConfig`).
-struct BotCapabilities: Equatable {
+struct BotCapabilities: Equatable, Codable {
     var skills: [BotCapability] = []
     var toolsets: [BotCapability] = []
     var mcpServers: [BotCapability] = []
@@ -548,6 +549,16 @@ struct BotCapabilities: Equatable {
     func canTurnOffToolset(at index: Int) -> Bool {
         guard toolsets.indices.contains(index), toolsets[index].enabled else { return true }
         return toolsets.filter(\.enabled).count > 1
+    }
+
+    /// The lists as Hermes holds them once it took `sections` (as
+    /// `appliedSections` names them) of `edited`.
+    func taking(_ sections: [String], from edited: BotCapabilities) -> BotCapabilities {
+        var lists = self
+        if sections.contains("skills") { lists.skills = edited.skills }
+        if sections.contains("toolsets") { lists.toolsets = edited.toolsets }
+        if sections.contains("mcp_servers") { lists.mcpServers = edited.mcpServers }
+        return lists
     }
 
     /// The `applied` keys `configureParams` sections report under (the
