@@ -280,10 +280,96 @@ private struct ConnectorCatalogRow: View {
 
 /// A server's page: its state and switch, where it runs, test and sign-in,
 /// the tools it brings, and Remove.
+/// A catalog connector's keys, set or replaced from its page. Hermes keeps
+/// them in the profile's `.env`, which the server's config already reads
+/// (`${VAR}`), so the config isn't touched. Write-only: nothing is shown.
+struct ConnectorKeysSection: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    let name: String
+    let fields: [ConnectorCatalogEntry.EnvField]
+    let store: CapabilitiesStore
+    @State private var drafts: [String: String] = [:]
+    @State private var saving = false
+    @State private var note: String?
+
+    /// The keys a catalog entry signs in with, or nil when it takes none
+    /// (an OAuth server signs in instead).
+    static func fields(_ entry: ConnectorCatalogEntry) -> [ConnectorCatalogEntry.EnvField]? {
+        guard entry.authType == "api_key", !entry.requiredEnv.isEmpty else { return nil }
+        return entry.requiredEnv
+    }
+
+    /// What a save sends: each field typed into, trimmed.
+    static func values(_ drafts: [String: String], fields: [ConnectorCatalogEntry.EnvField]) -> [String: String] {
+        var values: [String: String] = [:]
+        for field in fields {
+            let value = (drafts[field.name] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.isEmpty { values[field.name] = value }
+        }
+        return values
+    }
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("API key"), symbol: "key", tint: .conduitAura) {
+            Text(AppLocalization.string("A key saved here replaces the one Hermes keeps for this connector. Conduit never shows it."))
+                .scaledFont(.caption).foregroundStyle(.secondary)
+            ForEach(fields) { field in
+                SecureField(
+                    fields.count == 1 ? AppLocalization.string("Paste API key") : field.prompt,
+                    text: Binding(get: { drafts[field.name] ?? "" }, set: { drafts[field.name] = $0 })
+                )
+                .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .disabled(saving)
+                .accessibilityIdentifier("capabilities.connector.key.\(field.name)")
+            }
+            HStack {
+                if let note {
+                    Text(verbatim: note).scaledFont(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button { save() } label: {
+                    if saving { ProgressView().accessibilityLabel(AppLocalization.string("Saving…")) } else { Text(AppLocalization.string("Save key")) }
+                }
+                .buttonStyle(.settingsPrimary)
+                .disabled(saving || store.showsKept.contains(.connectors) || Self.values(drafts, fields: fields).isEmpty)
+                .accessibilityIdentifier("capabilities.connector.key.save")
+            }
+        }
+        // Another server's page, or another profile's store: nothing typed
+        // carries over.
+        .onChange(of: name) { _, _ in drafts = [:]; note = nil }
+        .onChange(of: store.generation) { _, _ in drafts = [:]; note = nil }
+    }
+
+    private func save() {
+        let values = Self.values(drafts, fields: fields)
+        guard !values.isEmpty, !saving else { return }
+        let generation = store.generation
+        let name = self.name
+        saving = true
+        note = nil
+        Task {
+            defer { saving = false }
+            do {
+                try await store.setConnectorKeys(name, values)
+                guard store.generation == generation else { return }
+                drafts = [:]
+                note = AppLocalization.string("Key saved")
+                Haptics.success()
+                await store.probe(name)
+            } catch {
+                guard store.generation == generation else { return }
+                note = UserFacingError.message(for: error)
+            }
+        }
+    }
+}
+
 struct ConnectorDetailPage: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject var appState: AppState
-    @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Follows a rename made in the editor.
@@ -293,7 +379,11 @@ struct ConnectorDetailPage: View {
     /// The page's own first test has been asked for: from then on an
     /// untested server says so instead of waiting.
     @State private var firstTestAsked = false
-    @State private var signInFlow: String?
+    @State private var signInID: UUID?
+    @State private var browser: BotMcpBrowserPage?
+    /// Safari's dismissal is asynchronous; don't start a new attempt until
+    /// its old cover has actually gone away.
+    @State private var browserClosing = false
     @State private var signInTask: Task<Void, Never>?
     @State private var message: String?
     @State private var confirmingRemove = false
@@ -349,6 +439,9 @@ struct ConnectorDetailPage: View {
                         }
                     }
                 }
+                if !server.isFromPlugin, let entry = catalogEntry, let fields = ConnectorKeysSection.fields(entry) {
+                    ConnectorKeysSection(name: name, fields: fields, store: store)
+                }
                 toolsSection(server, state: state)
                 if !server.isFromPlugin {
                     Button(role: .destructive) {
@@ -386,13 +479,20 @@ struct ConnectorDetailPage: View {
             }
         }
         .onDisappear {
-            // The host finishes a sign-in on its own; this page stops
-            // waiting for it, so it mustn't come back still saying so.
-            signInTask?.cancel()
-            if signInFlow != nil {
-                signInFlow = nil
-                message = nil
-            }
+            // Safari covering the page isn't leaving it.
+            if browser == nil { cancelSignIn() }
+        }
+        .onChange(of: appState.currentCapabilitiesOwner) { _, _ in cancelSignIn() }
+        .onChange(of: appState.client.map { ObjectIdentifier($0) }) { _, _ in cancelSignIn() }
+        .onChange(of: name) { _, _ in cancelSignIn() }
+        .onChange(of: store.generation) { _, _ in cancelSignIn() }
+        .onChange(of: server) { _, _ in cancelSignIn() }
+        .fullScreenCover(item: $browser, onDismiss: {
+            cancelSignIn()
+            browserClosing = false
+        }) { page in
+            BotMcpBrowserView(url: page.url, onDone: { cancelSignIn() })
+                .ignoresSafeArea()
         }
         .sheet(isPresented: $editing) {
             ConnectorEditSheet(
@@ -493,7 +593,7 @@ struct ConnectorDetailPage: View {
         .disabled(state == .checking)
         .conduitGlassControl(cornerRadius: 16, tint: .conduitAura.opacity(0.12))
         if server.canSignIn, state == .needsSignIn || server.auth == "oauth" {
-            if signInFlow != nil {
+            if signInID != nil {
                 Button {
                     cancelSignIn()
                 } label: {
@@ -512,6 +612,7 @@ struct ConnectorDetailPage: View {
                         .padding(.vertical, 6)
                         .frame(minHeight: 44)
                 }
+                .disabled(browserClosing || !appState.isConnected || store.showsKept.contains(.connectors))
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
             }
         }
@@ -568,60 +669,59 @@ struct ConnectorDetailPage: View {
         }
     }
 
-    /// Starts Hermes' OAuth flow, opens its page in the browser, and waits
-    /// for the host to receive the callback.
+    /// Same phone-owned callback as Edit Bot, never the dashboard callback.
     private func signIn() {
+        guard signInID == nil, !browserClosing, let client = appState.client, appState.isConnected,
+              store.serves(appState.currentCapabilitiesOwner),
+              !store.showsKept.contains(.connectors) else { return }
+        let owner = appState.currentCapabilitiesOwner
+        let generation = store.generation
+        let profile = store.profile
+        let name = self.name
+        let id = UUID()
+        signInID = id
         Haptics.selection()
         message = nil
-        signInTask?.cancel()
         signInTask = Task {
-            do {
-                let flow = try await store.startSignIn(name)
-                // Leaving the page cancels this task; a request that finishes
-                // anyway must not bring the wait back.
-                try Task.checkCancellation()
-                signInFlow = flow.flowID
-                message = AppLocalization.string("Finish the sign-in in your browser.")
-                openURL(flow.url)
-                for _ in 0..<150 {
-                    try await Task.sleep(for: .seconds(2))
-                    guard signInFlow == flow.flowID else { return }
-                    let status = try await store.signInStatus(flow.flowID)
-                    try Task.checkCancellation()
-                    if status.status == "approved" {
-                        signInFlow = nil
-                        message = AppLocalization.string("Signed in.")
-                        Haptics.success()
-                        await store.probe(name)
-                        return
-                    }
-                    if status.status == "error" {
-                        signInFlow = nil
-                        message = status.error ?? AppLocalization.string("The sign-in didn't finish.")
-                        return
-                    }
-                }
-                signInFlow = nil
-                message = AppLocalization.string("The sign-in timed out. Try again.")
-            } catch is CancellationError {
-                return
-            } catch {
-                guard !Task.isCancelled else { return }
-                signInFlow = nil
-                message = UserFacingError.message(for: error)
+            let outcome = await NativeMCPSignIn.run(
+                profile: profile, name: name,
+                rpc: { try await client.botMcpOAuth($0, params: $1) },
+                isCurrent: {
+                    signInID == id && store.generation == generation && store.serves(owner)
+                        && appState.currentCapabilitiesOwner == owner && appState.client === client
+                },
+                open: { browser = BotMcpBrowserPage(url: $0) }
+            )
+            // An old task must not close a newer browser or clear its wait.
+            guard signInID == id, !Task.isCancelled,
+                  store.generation == generation, store.serves(owner),
+                  appState.currentCapabilitiesOwner == owner, appState.client === client else { return }
+            signInID = nil
+            signInTask = nil
+            browserClosing = browser != nil
+            browser = nil
+            switch outcome {
+            case .signedIn:
+                message = AppLocalization.string("Signed in.")
+                Haptics.success()
+                await store.probe(name)
+            case .cancelled: break
+            case .failed(let problem): message = problem
             }
         }
     }
 
     private func cancelSignIn() {
         signInTask?.cancel()
-        guard let flow = signInFlow else { return }
-        signInFlow = nil
-        message = nil
-        Task { await store.cancelSignIn(flow) }
+        signInTask = nil
+        if signInID != nil { message = nil }
+        signInID = nil
+        if browser != nil { browserClosing = true }
+        browser = nil
     }
 
     private func remove() {
+        cancelSignIn()
         removing = true
         Task {
             do {

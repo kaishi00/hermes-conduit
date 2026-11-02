@@ -22851,81 +22851,22 @@ final class AppState: ObservableObject {
         }
         let epoch = botRosterEpoch
         let owner = currentDashboardRuntimeOwner()
-        let moved = BotMcpSignInOutcome.failed(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
-        let loopback = NativeOAuthLoopbackServer(expectedState: nil, relaysCallback: true)
-        defer { loopback.stop() }
-        var sessionID: String?
-        var approved = false
-        defer {
-            // Release Hermes' waiting flow; best effort, and not tied to
-            // this (possibly cancelled) task.
-            if let sessionID, !approved {
-                Task { _ = try? await client.botMcpOAuth("cancel", params: ["profile": profile, "name": name, "session_id": sessionID]) }
+        let outcome = await NativeMCPSignIn.run(
+            profile: profile, name: name,
+            rpc: { try await client.botMcpOAuth($0, params: $1) },
+            isCurrent: { self.botOpenFenceIsCurrent(epoch: epoch, client: client) },
+            open: open
+        )
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
+            return .failed(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
+        }
+        if outcome == .signedIn {
+            // The MCP page opens on it signed in (#1533).
+            keepWrittenChange(BotMcpSetupSnapshot.self, KeptRoute.botMcpSetup, profile: profile, on: owner) {
+                $0.servers[name] = BotMcpServerSummary(name: name, auth: "oauth", oauthTokensPresent: true)
             }
         }
-        do {
-            let port = try await loopback.start(timeout: 6 * 60)
-            let redirectURI = "http://127.0.0.1:\(port)/callback"
-            let started = try await client.botMcpOAuth(
-                "start",
-                params: ["profile": profile, "name": name, "client_redirect_uri": redirectURI]
-            )
-            if let problem = BotMcpSetup.failure(started) { return .failed(problem) }
-            guard let flow = BotMcpSetup.startedFlow(started, redirectURI: redirectURI) else {
-                sessionID = BotMcpSetup.payload(started)["session_id"]?.stringValue
-                return .failed(AppLocalization.string("Update Hermes to sign in to MCP servers from Conduit."))
-            }
-            sessionID = flow.sessionID
-            loopback.expect(state: flow.state)
-            try Task.checkCancellation()
-            open(flow.authURL)
-            let query = try await loopback.waitForCallback()
-            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return moved }
-            var params = BotMcpSetup.callbackParams(NativeOAuthFlow.queryValues(query))
-            params["profile"] = profile
-            params["name"] = name
-            params["session_id"] = flow.sessionID
-            let relayed = try await client.botMcpOAuth("callback", params: params)
-            if let problem = BotMcpSetup.failure(relayed) { return .failed(problem) }
-            var pollFailures = 0
-            for _ in 0..<BotMcpSetup.pollAttempts {
-                try Task.checkCancellation()
-                guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return moved }
-                let polled: AnyCodable
-                do {
-                    polled = try await client.botMcpOAuth(
-                        "poll",
-                        params: ["profile": profile, "name": name, "session_id": flow.sessionID]
-                    )
-                    pollFailures = 0
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch {
-                    pollFailures += 1
-                    if pollFailures >= BotMcpSetup.pollFailureLimit { throw error }
-                    try await Task.sleep(nanoseconds: 1_000_000_000)
-                    continue
-                }
-                switch BotMcpSetup.pollStatus(polled) {
-                case "approved":
-                    approved = true
-                    // The MCP page opens on it signed in (#1533).
-                    keepWrittenChange(BotMcpSetupSnapshot.self, KeptRoute.botMcpSetup, profile: profile, on: owner) {
-                        $0.servers[name] = BotMcpServerSummary(name: name, auth: "oauth", oauthTokensPresent: true)
-                    }
-                    return .signedIn
-                case "error":
-                    return .failed(BotMcpSetup.pollError(polled))
-                default:
-                    try await Task.sleep(nanoseconds: 1_000_000_000)
-                }
-            }
-            return .failed(AppLocalization.string("Sign-in timed out. Please try again."))
-        } catch is CancellationError {
-            return .cancelled
-        } catch {
-            return .failed(UserFacingError.message(for: error))
-        }
+        return outcome
     }
 
     /// `profiles.describe` for the edit sheet: the description and SOUL.md.

@@ -495,6 +495,41 @@ extension KanbanTests {
 
     /// Opening a server from the Connectors list cancels the list's tests;
     /// a test already sent still lands, and isn't shown as interrupted (#1570).
+    /// A catalog connector's keys go to the profile's .env, only the
+    /// variables its entry declares, never its config.
+    func testAConnectorKeyIsSetInTheProfileEnvOnly() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [["name": "linear", "transport": "http", "url": "https://l", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [
+                ["name": "linear", "description": "Issues", "auth_type": "api_key", "installed": true,
+                 "required_env": [["name": "LINEAR_API_KEY", "prompt": "Linear API key", "required": true]]],
+                ["name": "notion", "description": "Pages", "auth_type": "oauth"],
+            ]],
+            "/api/env": ["ok": true],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        await store.loadConnectors()
+        let linear = try XCTUnwrap(store.connectorCatalog.first { $0.name == "linear" })
+        let notion = try XCTUnwrap(store.connectorCatalog.first { $0.name == "notion" })
+        let fields = try XCTUnwrap(ConnectorKeysSection.fields(linear))
+        XCTAssertEqual(fields.map(\.name), ["LINEAR_API_KEY"])
+        XCTAssertNil(ConnectorKeysSection.fields(notion), "an OAuth connector signs in instead")
+        XCTAssertEqual(ConnectorKeysSection.values(["LINEAR_API_KEY": "  lin-key  ", "OTHER": "x"], fields: fields),
+                       ["LINEAR_API_KEY": "lin-key"])
+        XCTAssertTrue(ConnectorKeysSection.values(["LINEAR_API_KEY": "   "], fields: fields).isEmpty)
+
+        requester.calls.removeAll()
+        try await store.setConnectorKeys("linear", ["LINEAR_API_KEY": "lin-key", "PATH": "/tmp"])
+        let writes = requester.calls.filter { $0.method != "GET" }
+        XCTAssertEqual(writes.count, 1, "an undeclared variable isn't written")
+        XCTAssertEqual(writes.first?.method, "PUT")
+        XCTAssertEqual(writes.first?.path.hasPrefix("/api/env"), true)
+        XCTAssertEqual(writes.first?.body?["key"] as? String, "LINEAR_API_KEY")
+        XCTAssertEqual(writes.first?.body?["value"] as? String, "lin-key")
+        XCTAssertEqual(writes.first?.body?["profile"] as? String, "work")
+    }
+
     func testAConnectorTestFinishesWhenTheListThatStartedItGoesAway() async {
         let requester = CapabilityMockRequester(responses: [
             "/api/mcp/servers": ["servers": [
