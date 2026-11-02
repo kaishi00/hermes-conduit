@@ -29914,10 +29914,13 @@ final class AppState: ObservableObject {
     /// Cancels the authoritative Hermes turn, reporting whether the
     /// cancellation succeeded. "Success" also covers nothing being left to
     /// cancel (the turn already settled server-side).
+    /// `stopsWorkstream`: the composer's Stop, which stops an open
+    /// workstream through the plugin when this chat has no turn of its own
+    /// (voice's interrupts and cleanups don't).
     @discardableResult
-    func cancelCurrent() async -> Bool {
+    func cancelCurrent(stopsWorkstream: Bool = false) async -> Bool {
         guard isBusy else {
-            if let open = workstreamStoppedByComposer {
+            if stopsWorkstream, let open = workstreamStoppedByComposer {
                 return await actOnWorkstream(open.item, profile: open.profile, action: .stop)
             }
             return true

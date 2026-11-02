@@ -815,13 +815,19 @@ struct WorkstreamBar: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private var controls: [BotWorkItem.Action] { [.check, .continue].filter { item.actions.contains($0) } }
+    /// Only after a restart cut it off: a workstream the user stopped
+    /// carries on from the Work panel or a reply in its chat.
+    private var controls: [BotWorkItem.Action] {
+        guard item.status == "interrupted" else { return [] }
+        return [.check, .continue].filter { item.actions.contains($0) }
+    }
 
     var body: some View {
         // A stack, not a Group, so the read runs while nothing shows. A
-        // compact pill under the title, not a strip across the chat.
+        // compact pill under the title, not a strip across the chat; no
+        // room at all while neither it nor a refusal shows.
+        let refusal = work.refusal(profile, ref: item.ref)
         VStack(spacing: 4) {
-            let refusal = work.refusal(profile, ref: item.ref)
             if !controls.isEmpty {
                 let layout = dynamicTypeSize.isAccessibilitySize
                     ? AnyLayout(VStackLayout(spacing: 6)) : AnyLayout(HStackLayout(spacing: 10))
@@ -860,7 +866,7 @@ struct WorkstreamBar: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 4)
+        .padding(.top, controls.isEmpty && refusal == nil ? 0 : 4)
         .refreshesBotWork(profile: profile)
         .onDisappear { work.setRefusal(nil, profile: profile) }
     }
