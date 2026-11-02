@@ -57,7 +57,9 @@ struct RoomSetupState: Equatable {
     let profile: String
     let apiServer: APIServer
     /// The toolsets rooms may use: the ones the setup saved, else what the
-    /// room choices can turn on.
+    /// room choices can turn on. Toolsets only: the plugin reports the MCP
+    /// servers the saved list names apart, in `mcpServers`, and keeps them
+    /// when a setup posts a ceiling without `mcp_servers`.
     let ceiling: [String]
     let choices: [Choice]
     /// The profile's MCP servers the ceiling names (notifier #500, plugin
