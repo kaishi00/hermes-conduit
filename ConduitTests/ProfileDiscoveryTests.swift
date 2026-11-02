@@ -326,6 +326,159 @@ final class ProfileDiscoveryTests: XCTestCase {
         assertPersistedKnownProfiles(nil)
     }
 
+    // MARK: - Two reads through the same bridge landing out of order
+
+    /// Starts a profile list read and waits until its request is out, so
+    /// the held requests stay in the order the reads were sent.
+    private func startProfileRead(_ appState: AppState, held: HeldDashboardRequests, count: Int) async throws -> Task<Void, Never> {
+        let read = Task { await appState.loadProfiles() }
+        try await held.waitForRequests(count)
+        return read
+    }
+
+    func testAnOlderProfileListLandingLastDoesNotUndoTheNewerOne() async throws {
+        // The profile in use was made after the first read was sent, and
+        // another was deleted: the older list has neither change.
+        seedKnownProfiles(["default", "gone", "fresh"], activeProfile: "fresh")
+        let appState = makeAppState()
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        defer { held.releaseAll() }
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+
+        let older = try await startProfileRead(appState, held: held, count: 1)
+        let newer = try await startProfileRead(appState, held: held, count: 2)
+        try await held.answer(["profiles": ["default", "fresh"]], at: 1)
+        await newer.value
+        try await held.answer(["profiles": ["default", "gone"]])
+        await older.value
+
+        XCTAssertEqual(appState.profiles, ["default", "fresh"])
+        XCTAssertEqual(appState.activeProfile, "fresh")
+        XCTAssertEqual(defaults.string(forKey: Self.activeProfileKey), "fresh")
+        assertPersistedKnownProfiles(["default", "fresh"])
+    }
+
+    func testProfileListReadsLandingInOrderTakeTheNewerList() async throws {
+        seedKnownProfiles(["default"], activeProfile: "default")
+        let appState = makeAppState()
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        defer { held.releaseAll() }
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+
+        let older = try await startProfileRead(appState, held: held, count: 1)
+        let newer = try await startProfileRead(appState, held: held, count: 2)
+        try await held.answer(["profiles": ["default"]])
+        await older.value
+        try await held.answer(["profiles": ["default", "fresh"]])
+        await newer.value
+
+        XCTAssertEqual(appState.profiles, ["default", "fresh"])
+        assertPersistedKnownProfiles(["default", "fresh"])
+    }
+
+    func testANewerProfileListThatFailsOrIsEmptyLeavesTheOlderOneToCommit() async throws {
+        seedKnownProfiles(["default"], activeProfile: "default")
+        let appState = makeAppState()
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        defer { held.releaseAll() }
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+
+        let oldest = try await startProfileRead(appState, held: held, count: 1)
+        let failing = try await startProfileRead(appState, held: held, count: 2)
+        let empty = try await startProfileRead(appState, held: held, count: 3)
+        try await held.answer(["profiles": [String]()], at: 2)
+        await empty.value
+        try await held.answer(["error": "unavailable"], status: 503, at: 1)
+        await failing.value
+        try await held.answer(["profiles": ["default", "fresh"]])
+        await oldest.value
+
+        XCTAssertEqual(appState.profiles, ["default", "fresh"])
+        assertPersistedKnownProfiles(["default", "fresh"])
+    }
+
+    func testAnOlderDisplaySettingsReadLandingLastDoesNotPutItsSettingsBack() async throws {
+        seedKnownProfiles(["default"], activeProfile: "default")
+        let appState = makeAppState()
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        defer { held.releaseAll() }
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+
+        let older = Task { await appState.loadProfileDisplayPreferencesForTesting() }
+        try await held.waitForRequests(1)
+        let newer = Task { await appState.loadProfileDisplayPreferencesForTesting() }
+        try await held.waitForRequests(2)
+        try await held.answer(Self.newerConfig, at: 1)
+        await newer.value
+        try await held.answer([
+            "display": [
+                "show_reasoning": true, "tool_progress": "all",
+                "expand_tools": false, "memory_notifications": "all",
+            ],
+            "timezone": "Europe/Paris",
+        ])
+        await older.value
+
+        assertNewerDisplaySettings(appState)
+    }
+
+    func testAnOlderDisplaySettingsReadFailingLastKeepsTheNewerSettings() async throws {
+        seedKnownProfiles(["default"], activeProfile: "default")
+        let appState = makeAppState()
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        defer { held.releaseAll() }
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+
+        let older = Task { await appState.loadProfileDisplayPreferencesForTesting() }
+        try await held.waitForRequests(1)
+        let newer = Task { await appState.loadProfileDisplayPreferencesForTesting() }
+        try await held.waitForRequests(2)
+        try await held.answer(Self.newerConfig, at: 1)
+        await newer.value
+        try await held.answer(["error": "unavailable"], status: 503)
+        await older.value
+
+        assertNewerDisplaySettings(appState)
+    }
+
+    func testANewerDisplaySettingsReadFailingFirstLeavesTheOlderOneToCommit() async throws {
+        seedKnownProfiles(["default"], activeProfile: "default")
+        let appState = makeAppState()
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        defer { held.releaseAll() }
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+
+        let older = Task { await appState.loadProfileDisplayPreferencesForTesting() }
+        try await held.waitForRequests(1)
+        let newer = Task { await appState.loadProfileDisplayPreferencesForTesting() }
+        try await held.waitForRequests(2)
+        try await held.answer(["error": "unavailable"], status: 503, at: 1)
+        await newer.value
+        try await held.answer(Self.newerConfig)
+        await older.value
+
+        assertNewerDisplaySettings(appState)
+    }
+
+    /// Every display setting away from Hermes' default, and a zone.
+    private static let newerConfig: [String: Any] = [
+        "display": [
+            "show_reasoning": false, "conduit_thinking_on_request": false, "tool_progress": "off",
+            "expand_tools": true, "memory_notifications": "off",
+        ],
+        "timezone": "Asia/Tokyo",
+    ]
+
+    private func assertNewerDisplaySettings(_ appState: AppState, file: StaticString = #filePath, line: UInt = #line) {
+        let shown = appState.displayPreferences
+        XCTAssertFalse(shown.showReasoning, file: file, line: line)
+        XCTAssertFalse(shown.thinkingOnRequest, file: file, line: line)
+        XCTAssertFalse(shown.showToolProgress, file: file, line: line)
+        XCTAssertTrue(shown.expandToolsByDefault, file: file, line: line)
+        XCTAssertFalse(shown.showReviews, file: file, line: line)
+        XCTAssertEqual(appState.activeProfileTimeZoneSetting, "Asia/Tokyo", file: file, line: line)
+    }
+
     func testDegenerateEmptySuccessKeepsKnownProfiles() async throws {
         seedKnownProfiles(["default", "profile2"], activeProfile: "profile2")
         let appState = makeAppState(profileDiscoveryLoader: {

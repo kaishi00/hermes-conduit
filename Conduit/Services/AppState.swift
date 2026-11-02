@@ -32277,10 +32277,13 @@ final class AppState: ObservableObject {
     /// Reads the host's profile list. False when it wasn't read for this
     /// connection (no bridge, a failed or empty reply, or a reply from a
     /// replaced connection): the list then says nothing about a profile.
+    /// True when a list sent after this one was taken first, which stands.
     @discardableResult
     private func readProfiles() async -> Bool {
         guard let bridge = dashboardTicketBridge else { return false }
         let dashboardID = activeDashboardID
+        profileListReadsSent &+= 1
+        let read = profileListReadsSent
         do {
             let response: [String: Any]
             if let profileDiscoveryLoaderOverride {
@@ -32302,6 +32305,15 @@ final class AppState: ObservableObject {
                 if let name = value as? String { return name }
                 return (value as? [String: Any])?["name"] as? String
             }
+            // Two reads through the same bridge can land out of order (one
+            // native, one through the page or read again): one sent after
+            // this that already landed is newer, so this older list must not
+            // undo a bot just made or deleted, nor re-home the profile in use.
+            // Only a list with names takes the place: a degraded empty one
+            // leaves it to an older complete one. A list that lost it was
+            // read all the same, and a newer one stands.
+            guard read > profileListReadCommitted else { return true }
+            if !names.isEmpty { profileListReadCommitted = read }
             // Rows as objects carry `display_name`; a plain-name listing
             // says nothing about it, and the bot roster fills it in.
             let rows = values.compactMap { $0 as? [String: Any] }
@@ -32374,9 +32386,15 @@ final class AppState: ObservableObject {
             let merged = orderedProfiles(profiles + [activeProfile, "default"])
             profiles = merged
             persistKnownProfiles(merged)
-            return false
+            // A list sent after this one was read and taken meanwhile.
+            return read <= profileListReadCommitted
         }
     }
+
+    /// Profile list reads sent, and the newest of them whose list (with
+    /// names) was taken, so an older answer landing after it doesn't commit.
+    private var profileListReadsSent: UInt64 = 0
+    private var profileListReadCommitted: UInt64 = 0
 
     /// Caches the profile list and, when it changed, tells Siri so the
     /// "Start <profile> voice in Conduit" phrases can match the new names.
@@ -33754,6 +33772,11 @@ final class AppState: ObservableObject {
     /// The same for time-zone saves, which come back in that config read
     /// too but are counted apart, so a display save doesn't cost the zone.
     private var timeZoneWriteRevision = 0
+    /// Display settings reads sent, and the newest whose answer was taken,
+    /// so an older read landing after it (or failing after it) doesn't put
+    /// its settings back.
+    private var displayPreferencesReadsSent: UInt64 = 0
+    private var displayPreferencesReadCommitted: UInt64 = 0
 
     /// The reads every connection makes, sent with its ticket rather than
     /// each after the step before it: the profile list, the chat list's
@@ -33794,6 +33817,8 @@ final class AppState: ObservableObject {
         let dashboardTicketBridge = owner.bridge
         let revision = displayPreferencesWriteRevision
         let zoneRevision = timeZoneWriteRevision
+        displayPreferencesReadsSent &+= 1
+        let read = displayPreferencesReadsSent
         do {
             let config = try await startupReads.read(
                 dashboardPath("/api/config", profile: profile),
@@ -33801,6 +33826,9 @@ final class AppState: ObservableObject {
                 fence: startupReadFence(for: dashboardTicketBridge)
             )
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return }
+            // A read sent after this one that already landed is newer.
+            guard read > displayPreferencesReadCommitted else { return }
+            displayPreferencesReadCommitted = read
             let display = config["display"] as? [String: Any] ?? [:]
             // A time-zone or display save that landed while this read was
             // out is newer, each for its own setting.
@@ -33820,7 +33848,8 @@ final class AppState: ObservableObject {
             // A read cut off by a dashboard switch fails here; it must not
             // reset the next dashboard's preferences for a profile of the
             // same name.
-            guard ownsDashboardRuntime(owner), profile == activeProfile else { return }
+            guard ownsDashboardRuntime(owner), profile == activeProfile,
+                  read > displayPreferencesReadCommitted else { return }
             // Unread (offline, say): what this profile last said, not
             // Hermes' defaults, so thinking set to Off stays off.
             displayPreferences = storedDisplayPreferences(dashboardID: activeDashboardID, profile: profile)
@@ -38809,6 +38838,11 @@ final class AppState: ObservableObject {
     /// connection swaps — without the voice capability snapshot plumbing.
     func installDashboardTicketBridgeForTesting(_ bridge: DashboardTicketBridge) {
         dashboardTicketBridge = bridge
+    }
+
+    /// Test-only: the connection's display settings read.
+    func loadProfileDisplayPreferencesForTesting() async {
+        await loadProfileDisplayPreferences()
     }
 
     /// Test-only: what the host's notifier plugin reported serving.
