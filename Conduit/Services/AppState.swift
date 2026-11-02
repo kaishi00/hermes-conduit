@@ -10425,15 +10425,19 @@ final class AppState: ObservableObject {
 
     /// A transcript of the same chat rebuilt from the gateway's rows, with
     /// each message `previous` already showed under another id taking that
-    /// id back (#1648). Hermes' stored rows carry their database ids, while
-    /// a resume during a running turn numbers its rows by position ("0",
-    /// "1-reasoning", ...): a refresh that switched source re-keyed every
-    /// row, so the transcript drew and measured them all again from
-    /// guesses, lost the reader's place, and took a re-keyed latest user
-    /// message for a new turn. Rows are matched in order by role, text and
-    /// tool call. A row whose id `durableIDs` holds (Hermes' stored id,
-    /// which the delivery checks look up) keeps it, and an id goes to at
-    /// most one row and never to a row whose id is still in use.
+    /// id back (#1648). Hermes' stored rows carry their database ids, and a
+    /// resume's rows take the same ids from their `row_id`
+    /// (MessageNormalizer), but a gateway that sends no `row_id` numbers its
+    /// resume rows by position ("0", "1-reasoning", ...): a refresh that
+    /// switched source then re-keyed every row, so the transcript drew and
+    /// measured them all again from guesses, lost the reader's place, and
+    /// took a re-keyed latest user message for a new turn. The two lists
+    /// are lined up by each row's role, text and tool call, as a diff lines
+    /// them up, so rows added at either end (a new turn, older history)
+    /// stay new and a repeated text pairs with its own neighbours. A row
+    /// whose id `durableIDs` holds (Hermes' stored id, which the delivery
+    /// checks look up) keeps it, and an id never goes to a row while another
+    /// row of the rebuilt transcript still has it.
     static func keepingRowIDs(
         from previous: [ChatMessage],
         in rebuilt: [ChatMessage],
@@ -10441,6 +10445,9 @@ final class AppState: ObservableObject {
     ) -> [ChatMessage] {
         let previousIDs = Set(previous.map(\.id))
         let rebuiltIDs = Set(rebuilt.map(\.id))
+        // Nothing re-keyed: every rebuilt row is new or already shown.
+        guard rebuilt.contains(where: { !previousIDs.contains($0.id) }),
+              previous.contains(where: { !rebuiltIDs.contains($0.id) }) else { return rebuilt }
         struct Signature: Hashable {
             let role: MessageRole
             let content: String
@@ -10452,31 +10459,28 @@ final class AppState: ObservableObject {
             }
             return Signature(role: message.role, content: message.content, tool: tool)
         }
-        // The previous rows the rebuilt ones no longer name, by signature,
-        // in order.
-        var candidates: [Signature: [Int]] = [:]
-        for (index, message) in previous.enumerated() where !rebuiltIDs.contains(message.id) {
-            candidates[signature(message), default: []].append(index)
+        let difference = rebuilt.map(signature).difference(from: previous.map(signature))
+        var removed = Set<Int>()
+        var inserted = Set<Int>()
+        for change in difference {
+            switch change {
+            case .remove(let offset, _, _): removed.insert(offset)
+            case .insert(let offset, _, _): inserted.insert(offset)
+            }
         }
-        guard !candidates.isEmpty else { return rebuilt }
-        var cursors: [Signature: Int] = [:]
-        var lastMatched = -1
-        var taken: Set<String> = []
         var result = rebuilt
-        for (index, message) in rebuilt.enumerated() {
-            guard !previousIDs.contains(message.id), !durableIDs.contains(message.id) else { continue }
-            let key = signature(message)
-            guard let list = candidates[key] else { continue }
-            var cursor = cursors[key] ?? 0
-            while cursor < list.count, list[cursor] <= lastMatched { cursor += 1 }
-            cursors[key] = cursor
-            guard cursor < list.count else { continue }
-            let id = previous[list[cursor]].id
-            guard !taken.contains(id) else { continue }
-            taken.insert(id)
-            lastMatched = list[cursor]
-            cursors[key] = cursor + 1
-            result[index] = message.withID(id)
+        var previousIndex = 0
+        for index in rebuilt.indices where !inserted.contains(index) {
+            while removed.contains(previousIndex) { previousIndex += 1 }
+            guard previousIndex < previous.count else { break }
+            let shown = previous[previousIndex]
+            previousIndex += 1
+            let message = rebuilt[index]
+            guard message.id != shown.id,
+                  !previousIDs.contains(message.id),
+                  !durableIDs.contains(message.id),
+                  !rebuiltIDs.contains(shown.id) else { continue }
+            result[index] = message.withID(shown.id)
         }
         return result
     }

@@ -4330,11 +4330,17 @@ enum MessageNormalizer {
             // The persisted `/messages` endpoint exposes SQLite message IDs as
             // numbers, whereas `session.resume` often has no stable message
             // identifier at all. Preserve either form so both sources retain
-            // a deterministic row identity.
+            // a deterministic row identity. A resume row that names its
+            // stored row (`row_id`, the same number as that row's `id`)
+            // takes the id the stored row has, spelled the same way, so a
+            // refresh that switches between the two sources doesn't re-key
+            // the transcript (#1648). Positional ids are the last resort.
+            let storedRowID = HermesClient.exactIntValue(obj["row_id"]).flatMap { $0 > 0 ? obj["row_id"] : nil }
             let id = obj["id"]?.stringValue
                 ?? obj["id"]?.descriptiveStringValue
                 ?? obj["message_id"]?.stringValue
                 ?? obj["message_id"]?.descriptiveStringValue
+                ?? storedRowID?.descriptiveStringValue
                 ?? String(index)
 
             // `display_content` replaces the physical payload for

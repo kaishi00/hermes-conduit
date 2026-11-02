@@ -617,9 +617,11 @@ final class AppStateChatResumeTests: XCTestCase {
         )
     }
 
-    /// Repeated text matches in order, an id goes to one row only, and a row
-    /// whose id is still in use keeps it.
-    func testKeptRowIDsMatchInOrderAndStayUnique() {
+    /// Rows are lined up as a diff lines them up: a repeated text added at
+    /// the end is a new row, older history added at the top is new rows and
+    /// doesn't take the shown rows' ids, an id still used by a rebuilt row
+    /// goes to no other, and another role or text is another message.
+    func testKeptRowIDsLineUpTheRowsAndStayUnique() {
         func row(_ id: String, _ role: MessageRole, _ text: String) -> ChatMessage {
             ChatMessage(id: id, role: role, content: text, timestamp: "2026-09-13T08:00:00Z")
         }
@@ -629,13 +631,18 @@ final class AppStateChatResumeTests: XCTestCase {
             AppState.keepingRowIDs(from: previous, in: rebuilt, durableIDs: []).map(\.id),
             ["a", "b", "c", "d", "4"]
         )
-        // "c" is still a row of the rebuilt transcript: nothing else takes it.
-        let overlapping = [row("0", .user, "yes"), row("c", .assistant, "Other")]
+        // A tail shown, the whole chat rebuilt: the older "continue" stays new.
+        let tail = [row("x", .assistant, "Done"), row("900", .user, "continue")]
+        let whole = [row("0", .user, "continue"), row("1", .assistant, "Earlier"), row("2", .assistant, "Done"), row("3", .user, "continue")]
         XCTAssertEqual(
-            AppState.keepingRowIDs(from: previous, in: overlapping, durableIDs: []).map(\.id),
-            ["a", "c"]
+            AppState.keepingRowIDs(from: tail, in: whole, durableIDs: []).map(\.id),
+            ["0", "1", "x", "900"]
         )
-        // Another role or text is another message.
+        // "a" is still a row of the rebuilt transcript: nothing else takes it.
+        XCTAssertEqual(
+            AppState.keepingRowIDs(from: [row("a", .user, "yes")], in: [row("0", .user, "yes"), row("a", .assistant, "Other")], durableIDs: []).map(\.id),
+            ["0", "a"]
+        )
         XCTAssertEqual(
             AppState.keepingRowIDs(from: previous, in: [row("0", .assistant, "yes")], durableIDs: []).map(\.id),
             ["0"]
