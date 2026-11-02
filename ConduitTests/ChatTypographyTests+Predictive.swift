@@ -243,6 +243,7 @@ extension ChatTypographyTests {
             sessionPresentationCache: SessionPresentationCache(defaults: defaults)
         )
         defer { state.stopPredictiveFollowUpClock() }
+        state.predictiveSender = { _ in [:] }
         state.activeSessionId = "s1"
         state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
         let anchor = try XCTUnwrap(state.predictiveAnchor)
