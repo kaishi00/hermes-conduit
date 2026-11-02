@@ -633,6 +633,29 @@ final class MessageReadAloudControllerTests: XCTestCase {
         controller.stop()
     }
 
+    /// Headphones out while the reply is still opening: its first audio
+    /// starts paused instead of on the speaker.
+    func testHeadphonesRemovedWhileOpeningPauseTheFirstAudio() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway(emitsPCM: true)
+        gateway.blocksOpen = true
+        gateway.pauseAfterEmission = true
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.toggle(messageID: "message-a", content: "Still opening")
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(controller.state, .preparing(messageID: "message-a"))
+        controller.routeChanged(reason: .oldDeviceUnavailable)
+        XCTAssertEqual(playback.pauseCount, 0)
+
+        gateway.resumeOpenForTest()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(controller.state, .playing(messageID: "message-a"))
+        XCTAssertTrue(controller.isPaused)
+        XCTAssertEqual(playback.pauseCount, 1)
+        controller.stop()
+    }
+
     func testPauseIsRefusedBeforeAudioPlays() async {
         let playback = MockReadAloudPlayback()
         let gateway = MockReadAloudGateway()

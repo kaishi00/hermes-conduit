@@ -348,10 +348,12 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         guard !isPaused else { return true }
         if let encodedPlayer, encodedPlayer.isPlaying {
             encodedPlayer.pause()
-        } else if format != nil, engineHasGraph, engine.isRunning {
+        } else if isStreaming {
             // The engine keeps running; only the player holds its place, so
-            // buffers still arriving from the stream queue up behind it.
-            player.pause()
+            // buffers still arriving from the stream queue up behind it. An
+            // engine a route change just stopped (headphones out) has
+            // nothing to pause yet: the fresh engine starts paused.
+            if engineHasGraph, engine.isRunning { player.pause() }
         } else {
             return false
         }
@@ -362,12 +364,16 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
 
     func resume() {
         guard isPaused else { return }
+        endPause()
         if let encodedPlayer {
             encodedPlayer.play()
-        } else {
+        } else if engine.isRunning {
             player.play()
+        } else if isStreaming, !resumeOnFreshEngine() {
+            // The route changed under the pause and the new engine won't
+            // start: playing the dead one would raise.
+            settleLostEngine(wasStreaming: true)
         }
-        endPause()
     }
 
     private func endPause() {
@@ -571,8 +577,8 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             voicePlaybackLogger.error("Playback couldn't come back after a route change: \(LogRedaction.describing(error), privacy: .public)")
             return false
         }
-        player.play()
-        if isPaused { player.pause() }
+        // A paused stream doesn't sound on the new route until resume().
+        if !isPaused { player.play() }
         for buffer in unplayed { schedule(buffer) }
         // At most the chunk that was playing is heard twice; allowing the
         // whole queue keeps the drain watchdog from cutting a reply that a

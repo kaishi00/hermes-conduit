@@ -69,6 +69,9 @@ final class MessageReadAloudController: ObservableObject {
     var pausedStopDelay: Duration = .seconds(10 * 60)
     private var pausedStopTask: Task<Void, Never>?
     private var routeObserver: NSObjectProtocol?
+    /// Headphones came out while this operation was still opening: its
+    /// first audio starts paused rather than on the speaker.
+    private var pauseWhenAudioStarts: UInt64?
 
     init(
         playback: SpeechPlaybackService? = nil,
@@ -250,6 +253,10 @@ final class MessageReadAloudController: ObservableObject {
     /// change plays on (#1641). Internal for tests.
     func routeChanged(reason: AVAudioSession.RouteChangeReason) {
         guard reason == .oldDeviceUnavailable else { return }
+        if case .preparing = state {
+            pauseWhenAudioStarts = operationGeneration
+            return
+        }
         pause()
     }
 
@@ -409,6 +416,10 @@ final class MessageReadAloudController: ObservableObject {
                     return true
                 }
             ))
+            if pauseWhenAudioStarts == generation {
+                pauseWhenAudioStarts = nil
+                pause()
+            }
         }
     }
 
