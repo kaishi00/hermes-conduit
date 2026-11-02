@@ -700,6 +700,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let after: ClarifyActivity?
         do {
             after = try await backend.respondToClarify(clarify, clarify.questions.count == 1 ? nil : question.id, value, job.runtimeSessionID, job.profile)
+        } catch let error where HermesClient.isSessionNotFoundError(error) {
+            // The chat is gone (reaped after a relaunch): nothing waits on
+            // this question any more, as the card reads it.
+            after = nil
         } catch {
             return .failed
         }

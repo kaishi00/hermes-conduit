@@ -1125,16 +1125,6 @@ final class HermesClient: ObservableObject {
     /// can't name knows which chat to read it from. `connect()` clears it
     /// with the fences; a socket handoff carries it over (`adoptSocket`).
     private var authorityPromptSessions: [String: String] = [:]
-    /// Prompts this client sent an answer for that came back with neither a
-    /// status nor a refusal (the socket dropped, a timeout). A retry that
-    /// then hears `already_resolved` may be our own answer or a timeout's,
-    /// so it reads as no longer active rather than another surface's. Shared by
-    /// every client, since a reconnect builds a new one and a drop is the
-    /// usual reason to retry; prompt ids are unique, so one server's never
-    /// reads as another's. Main-actor isolated with the class, like every
-    /// other member here. An entry ends with its retry's answer or refusal;
-    /// past 256 never retried, the oldest goes first (a retry that old reads
-    /// as it would without one).
     /// A card's answer that never went out: reading the chat for a prompt
     /// this socket didn't see asked failed first (a timeout, a dropped
     /// socket). Nothing refused it, so it reads as unreachable, not as
@@ -1145,8 +1135,8 @@ final class HermesClient: ObservableObject {
     }
 
     /// The chat's resume read before an unseen prompt's answer. A missing
-    /// chat stays as it is (the card is no longer active); any other
-    /// failure means the answer was never sent.
+    /// chat's error is rethrown as it is, for the caller to read as no
+    /// longer active; any other failure means the answer was never sent.
     private func readPromptsBeforeAnswer(_ sessionId: String, profile: String?) async throws {
         do {
             _ = try await resumeSessionObject(sessionId, omitMessages: true, profile: profile)
@@ -1155,6 +1145,16 @@ final class HermesClient: ObservableObject {
         }
     }
 
+    /// Prompts this client sent an answer for that came back with neither a
+    /// status nor a refusal (the socket dropped, a timeout). A retry that
+    /// then hears `already_resolved` may be our own answer or a timeout's,
+    /// so it reads as no longer active rather than another surface's. Shared by
+    /// every client, since a reconnect builds a new one and a drop is the
+    /// usual reason to retry; prompt ids are unique, so one server's never
+    /// reads as another's. Main-actor isolated with the class, like every
+    /// other member here. An entry ends with its retry's answer or refusal;
+    /// past 256 never retried, the oldest goes first (a retry that old reads
+    /// as it would without one).
     @MainActor private static var unconfirmedAuthorityAnswers = UnconfirmedAnswers()
     private var unconfirmedAuthorityAnswers: UnconfirmedAnswers {
         get { Self.unconfirmedAuthorityAnswers }

@@ -27315,7 +27315,9 @@ final class AppState: ObservableObject {
         if !joinsRunningTurn { clearStreamingText() }
         turnState = .running
 
-        // Images staged for a Queue, taken back if Hermes refuses it.
+        // Images this send staged, taken back if it fails: left staged, they
+        // would ride on the chat's next message (a Queue's, or on the
+        // session authority any send's, which names its staged pictures).
         var stagedImagePaths: [String] = []
         // Every file that isn't an image (PDFs included) is staged as a file,
         // like Hermes Desktop does: Hermes' PDF route needs poppler on the
@@ -27350,7 +27352,7 @@ final class AppState: ObservableObject {
                     guard let picture, !base64.isEmpty else { throw AttachmentError.unreadableFile(attachment.name) }
                     do {
                         let stagedPath = try await attachImage(client, sessionId, base64, picture.filename)
-                        if queued, let stagedPath { stagedImagePaths.append(stagedPath) }
+                        if let stagedPath { stagedImagePaths.append(stagedPath) }
                         fileReference = nil
                     } catch let error as RpcError where Self.isImageAttachRefusal(error) {
                         // Hermes won't take it as an image (a format it
@@ -27383,7 +27385,7 @@ final class AppState: ObservableObject {
                     )
                 }
             } catch {
-                // Images already staged for this Queue would ride on a later
+                // Images this send already staged would ride on a later
                 // turn; a superseded submission (CancellationError) too.
                 for path in stagedImagePaths {
                     try? await client.detachImage(sessionId, path: path)
@@ -27537,7 +27539,7 @@ final class AppState: ObservableObject {
             if surfaceReport != nil {
                 discardTurnSurface(runtimeSessionID: sessionId, text: promptText, after: error)
             }
-            // Images staged for a Queue that didn't land would ride on a
+            // Images staged for a send that didn't land would ride on a
             // later turn. One Hermes took was already claimed by it, so
             // taking it back then changes nothing.
             for path in stagedImagePaths {
