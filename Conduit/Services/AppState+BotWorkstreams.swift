@@ -236,7 +236,14 @@ extension AppState {
             // before the request becomes a job of its own.
             await refreshBotWork(profile: bot)
         }
-        guard let (profile, item) = botWork.workstream(forSession: ids) else { return nil }
+        guard let (profile, item) = botWork.workstream(forSession: ids) else {
+            // A workstream's chat whose row isn't loaded (an older resolved
+            // one): still no job of its own.
+            guard botWork.workstreamSessionIDs.isDisjoint(with: ids) else {
+                return "This workstream isn't loaded right now, so that wasn't passed on. Say so, and suggest opening it from the Work panel."
+            }
+            return nil
+        }
         let words = request.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !words.isEmpty else { return "There were no words to pass on." }
         guard await actOnWorkstream(item, profile: profile, action: .send, text: words) else {
@@ -390,8 +397,8 @@ extension AppState {
             if action == .stop, !item.call.isEmpty {
                 voiceBackgroundJobSupervisor.stoppedFromWorkPanel(sessionID: item.sessionID)
             }
-            // After a server change the row isn't this server's.
-            guard botWork.mark(profile).epoch == mark.epoch else { return false }
+            // After a server change the row isn't this server's (the plugin did it all the same).
+            guard botWork.mark(profile).epoch == mark.epoch else { return true }
             botWork.noteAction(profile)
             if let updated {
                 whileKeepingTitle {
