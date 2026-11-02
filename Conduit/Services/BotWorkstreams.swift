@@ -277,8 +277,9 @@ struct BotWorkSnapshot: Equatable {
     var recent: [BotWorkItem] { items.filter { !$0.isActive && !$0.isPinned } }
 
     /// Every workstream's chat, so lists and search leave them to the bot.
+    /// Not a call's job's: it stays listed under Voice Jobs.
     var sessionIDs: Set<String> {
-        Set(items.compactMap { $0.kind == .workstream && !$0.sessionID.isEmpty ? $0.sessionID : nil })
+        Set(items.compactMap { $0.kind == .workstream && $0.fromCall.isEmpty && !$0.sessionID.isEmpty ? $0.sessionID : nil })
             .union(knownSessionIDs)
     }
 

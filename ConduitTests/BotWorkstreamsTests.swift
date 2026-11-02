@@ -91,6 +91,8 @@ extension BotModeTests {
         let snapshot = try XCTUnwrap(BotWorkSnapshot(response: response, profile: "furina"))
         let session = try XCTUnwrap(rows[0]["session_id"] as? String)
         XCTAssertNil(snapshot.item(forSession: [session]))
+        // And it stays in the Chats list and search.
+        XCTAssertFalse(snapshot.sessionIDs.contains(session))
     }
 
     /// Pin, Resolve and Reopen: what the plugin offers, and the list as
