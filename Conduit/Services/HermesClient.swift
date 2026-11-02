@@ -2158,6 +2158,8 @@ final class HermesClient: ObservableObject {
         return try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
                 guard !Task.isCancelled else {
+                    // Never written: an answer isn't recorded as possibly taken.
+                    sendWatch?.unwritten = true
                     continuation.resume(throwing: CancellationError())
                     return
                 }
@@ -3956,7 +3958,10 @@ final class HermesClient: ObservableObject {
         let result: AnyCodable
         do {
             result = try await rpc("config.set", params: params)
-        } catch is RpcError where speaksSessionAuthority {
+        } catch let error as RpcError where speaksSessionAuthority
+                    && (error.refusesShape || error.reason == "use_session_mutation_model") {
+            // The authority refuses a model `config.set` by name: a pick is
+            // a mutation there. Any other refusal stands.
             return try await authorityModelPick(sessionId, model: model, provider: provider, confirmed: confirmed)
         }
         return ModelSwitchOutcome(from: result, requestedModel: model)
