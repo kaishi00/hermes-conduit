@@ -1436,6 +1436,17 @@ extension VoiceConversationControllerTests {
                              message("q2", .user, "ship it"), message("a2", .assistant, "Shipped.")]
         supervisor.observe(.messageStart(sessionId: "rt-chat"))
         XCTAssertTrue(supervisor.noteChatReport("W4: deployed.", sessionID: "rt-chat"), "reopened: said")
+
+        // A steer into a running turn is no prompt of its own.
+        supervisor.observe(.messageStart(sessionId: "rt-chat"))
+        fake.openMessages?.append(message("q3", .user, "check the disk"))
+        supervisor.observe(.messageStart(sessionId: "rt-chat"))
+        XCTAssertFalse(supervisor.noteChatReport("Checking.", sessionID: "rt-chat"))
+        fake.openMessages?.append(ChatMessage(id: "s1", role: .user, content: "and the logs too", timestamp: "",
+                                              displayKind: ChatMessage.steerDisplayKind))
+        fake.openMessages?.append(message("a3", .assistant, "Disk and logs are fine."))
+        supervisor.observe(.messageStart(sessionId: "rt-chat"))
+        XCTAssertTrue(supervisor.noteChatReport("W5: cache cleared.", sessionID: "rt-chat"), "the steer took no turn")
     }
 
     func testAReplayedCompletionIsNotedOnce() {

@@ -2809,7 +2809,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             return
         }
         func words(_ message: ChatMessage) -> String { message.content.trimmingCharacters(in: .whitespacesAndNewlines) }
-        let prompts = messages.indices.filter { messages[$0].role == .user }
+        // A steer goes into the turn under way: never a turn's prompt.
+        let prompts = messages.indices.filter { messages[$0].role == .user && !messages[$0].isSteer }
         func taking(_ index: Int) -> (words: String, occurrence: Int) {
             let text = words(messages[index])
             return (text, prompts.filter { $0 <= index && words(messages[$0]) == text }.count)

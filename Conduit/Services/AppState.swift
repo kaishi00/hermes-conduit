@@ -4692,7 +4692,7 @@ final class AppState: ObservableObject {
             threadAwaitsSeveralPrompts: { [weak self] thread in
                 guard let self, self.isOpenChat(thread) else { return false }
                 let afterReply = self.messages.lastIndex(where: { $0.role == .assistant }).map { $0 + 1 } ?? self.messages.startIndex
-                return self.messages[afterReply...].filter { $0.role == .user }.count > 1
+                return self.messages[afterReply...].filter { $0.role == .user && !$0.isSteer }.count > 1
             },
             openThreadMessages: { [weak self] thread in
                 guard let self, self.isOpenChat(thread) else { return nil }
