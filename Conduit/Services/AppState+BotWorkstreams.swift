@@ -197,7 +197,7 @@ extension AppState {
                     _ = try await client.adopt(sessionID: sessionID, title: title, via: via, goal: instructions)
                     return
                 } catch {
-                    botWorkLogger.notice("Keeping a voice job in its bot's work registry failed (try \(attempt + 1, privacy: .public)): \(String(describing: error), privacy: .public)")
+                    botWorkLogger.notice("Keeping a voice job in its bot's work registry failed (try \(attempt + 1, privacy: .public)): \(String(describing: type(of: error)), privacy: .public) \(String(describing: error))")
                     if attempt == 0 { try? await Task.sleep(for: .seconds(3)) }
                 }
             }
