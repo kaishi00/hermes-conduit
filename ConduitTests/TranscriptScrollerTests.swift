@@ -1992,6 +1992,8 @@ final class TranscriptScrollerTests: XCTestCase {
         let shown = Self.messages(0..<9)
         let sent = ChatMessage(id: "local-send", role: .user, content: "Message 9", timestamp: "2026-01-01T00:00:00Z")
         scroller.transcriptChanged(messages: shown + [sent], transcriptRevision: 2, viewportTransitionGeneration: 1)
+        XCTAssertTrue(scroller.replyHoldArmed)
+        scroller.explicitLatestRequested(animated: false)
         XCTAssertFalse(scroller.replyHoldArmed)
 
         var stored = sent.withID("12500.0")

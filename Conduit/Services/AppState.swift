@@ -31163,8 +31163,8 @@ final class AppState: ObservableObject {
         // as the normalizer gives it.
         if let rowID = obj["row_id"] as? NSNumber,
            CFGetTypeID(rowID) != CFBooleanGetTypeID(),
-           rowID.doubleValue > 0, rowID.doubleValue == rowID.doubleValue.rounded() {
-            return String(rowID.doubleValue)
+           let exactRowID = Int(exactly: rowID.doubleValue), exactRowID > 0 {
+            return String(Double(exactRowID))
         }
         for key in ["id", "message_id"] {
             switch obj[key] {
