@@ -2340,6 +2340,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         threadTask = nil
         jobs.removeAll()
         lastJobNumber = 0
+        keptCallChat = nil  // another dashboard's chat: never told to the next
         chatMatches = []
         asksBeforeSending = false
         lastCallResult = nil
