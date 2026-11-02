@@ -18,9 +18,11 @@ retry that would re-run a genuine assertion until it agrees.
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 
 from _util import SCRIPTS_DIR
@@ -169,6 +171,61 @@ class WorkflowContractTests(unittest.TestCase):
                       ' and .pull_requests[0].base.ref == \\"$BASE_REF\\"', plan,
                       "only this PR's runs: a branch with PRs into main and linked-rooms runs for each")
         self.assertIn('actions/runs/$id/cancel', plan)
+
+    def _cancel_step_script(self):
+        lines = self._job_text("plan").splitlines()
+        start = next(i for i, l in enumerate(lines) if "- name: Cancel this PR's older runs" in l)
+        run = next(i for i in range(start, len(lines)) if lines[i].strip() == "run: |")
+        indent = len(lines[run]) - len(lines[run].lstrip())
+        body = []
+        for line in lines[run + 1:]:
+            if line.strip() and len(line) - len(line.lstrip()) <= indent:
+                break
+            body.append(line)
+        return textwrap.dedent("\n".join(body))
+
+    def test_the_cancel_step_cancels_only_this_prs_older_unfinished_runs(self):
+        """Runs the step's script with a stub gh over a list of runs: only the
+        older, unfinished run of this PR (number and base, this repository)
+        is cancelled."""
+        if not shutil.which("jq"):
+            self.skipTest("jq not installed")
+
+        def run(n, status="in_progress", repo="k/conduit", prs=((7, "main"),)):
+            return {"id": n, "run_number": n, "status": status,
+                    "head_repository": {"full_name": repo},
+                    "pull_requests": [{"number": pr, "base": {"ref": base}} for pr, base in prs]}
+
+        runs = [run(9), run(8, status="queued"), run(11), run(10), run(5, status="completed"),
+                run(4, repo="fork/conduit"), run(3, prs=((8, "main"),)),
+                run(2, prs=((7, "linked-rooms"),)), run(1, prs=((7, "main"), (8, "linked-rooms"))),
+                run(6, prs=())]
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = os.path.join(tmp, "runs.json")
+            with open(fixture, "w") as f:
+                json.dump({"workflow_runs": runs}, f)
+            log = os.path.join(tmp, "cancelled")
+            stub = os.path.join(tmp, "gh")
+            with open(stub, "w") as f:
+                f.write(textwrap.dedent(f"""\
+                    #!/usr/bin/env bash
+                    if [ "$3" = POST ]; then echo "$4" >> {log}; exit 0; fi
+                    while [ $# -gt 0 ]; do
+                      if [ "$1" = --jq ]; then jq -r "$2" {fixture}; exit; fi
+                      shift
+                    done
+                    exit 1
+                    """))
+            os.chmod(stub, 0o755)
+            env = dict(os.environ, PATH=f"{tmp}:{os.environ['PATH']}", GITHUB_REPOSITORY="k/conduit",
+                       GITHUB_RUN_NUMBER="10", HEAD_REF="topic", BASE_REF="main", PR_NUMBER="7")
+            result = subprocess.run(["bash", "-c", self._cancel_step_script()], env=env,
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            with open(log) as f:
+                cancelled = f.read().split()
+        self.assertEqual(sorted(cancelled), ["repos/k/conduit/actions/runs/8/cancel",
+                                             "repos/k/conduit/actions/runs/9/cancel"])
 
     # --- the plan job owns every test-to-run mapping -----------------------
 

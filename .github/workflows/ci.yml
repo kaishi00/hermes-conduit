@@ -33,8 +33,9 @@ name: CI
 #
 # One macOS job per run: GitHub allows 5 concurrent macOS jobs per account,
 # and runner queueing, not test time, was what made the three-job CI v4 shape
-# slow. A PR's superseded runs are cancelled (by the newer run's plan job, so
-# it doesn't wait for them to wind down). A newer push never cancels an
+# slow. A PR's superseded runs are cancelled: a same-repository PR's by the
+# newer run's plan job, so it doesn't wait for them to wind down, a fork PR's
+# by its concurrency group. A newer push never cancels an
 # older one's run, so back-to-back merges overlap and each adds one macOS job.
 
 on:
