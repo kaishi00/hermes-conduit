@@ -4597,7 +4597,7 @@ final class AppState: ObservableObject {
                     if let returnedProfile = created.profile, !self.profilesMatch(returnedProfile, targetProfile) {
                         throw HermesError.invalidResponse
                     }
-                    return (created.sessionId, created.storedSessionId)
+                    return (created.sessionId, created.storedSessionId, targetProfile)
                 }
                 // Same model/provider as a composer-created chat, and the
                 // same refusal when Hermes lands it in another profile.
@@ -4616,7 +4616,7 @@ final class AppState: ObservableObject {
                 if let returnedProfile = created.profile, !self.profilesMatch(returnedProfile, profile) {
                     throw HermesError.invalidResponse
                 }
-                return (created.sessionId, created.storedSessionId)
+                return (created.sessionId, created.storedSessionId, profile)
             },
             setTitle: { [weak self] sessionID, title in
                 guard let client = try? await self?.clientForVoiceRequest() else { return }

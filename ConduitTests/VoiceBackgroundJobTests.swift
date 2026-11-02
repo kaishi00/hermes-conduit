@@ -130,6 +130,8 @@ final class FakeVoiceJobBackend {
     var backend: VoiceBackgroundJobBackend {
         VoiceBackgroundJobBackend(
             createSession: { [self] profile, callsModel in
+                // Read as AppState does, before the session's request.
+                let madeOn = profile ?? self.activeProfile
                 self.createdProfiles.append(profile)
                 self.createdCallsModel.append(callsModel)
                 if let error = self.createError { throw error }
@@ -141,7 +143,7 @@ final class FakeVoiceJobBackend {
                     }
                 }
                 self.created += 1
-                return ("rt-\(self.created)", self.storedIDs ? "st-\(self.created)" : nil)
+                return ("rt-\(self.created)", self.storedIDs ? "st-\(self.created)" : nil, madeOn)
             },
             setTitle: { [self] id, title in self.titles.append((id, title)) },
             keepInRegistry: { [self] profile, id, title, _, fromWatch in self.kept.append((profile, id, title, fromWatch)) },

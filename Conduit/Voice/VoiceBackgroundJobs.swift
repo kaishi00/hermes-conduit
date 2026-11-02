@@ -291,7 +291,8 @@ struct VoiceBackgroundJobBackend {
     /// `profile` nil creates the job in the active profile. `callsModel`:
     /// the job is a Watch call's own on that profile, so it runs on that
     /// profile's voice-job model rather than its chat model (#1564).
-    var createSession: @MainActor (_ profile: String?, _ callsModel: Bool) async throws -> (runtimeID: String, storedID: String?)
+    /// The session's ids, and the profile it was made on (nil: not known).
+    var createSession: @MainActor (_ profile: String?, _ callsModel: Bool) async throws -> (runtimeID: String, storedID: String?, profile: String?)
     var setTitle: @MainActor (_ sessionID: String, _ title: String) async -> Void
     /// Keeps the job in its bot's work registry (Bot workstreams M5), so
     /// the Work panel lists it as a call's and a restart leaves it for the
@@ -1427,7 +1428,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         var createdSessionID: String?
         var registryID: String?  // the id its bot's registry keeps it by
         // The bot the job is made on, before the wait for its session.
-        let botProfile = profile ?? backend.activeProfile()
+        var botProfile = profile ?? backend.activeProfile()
         func keep() {
             guard let registryID else { return }
             backend.keepInRegistry(botProfile, registryID, job.title, self.job(job.id)?.instructions ?? instructions,
@@ -1448,6 +1449,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
             onJobSessionCreated?([runtimeID, ids.storedID].compactMap { $0 }.filter { !$0.isEmpty })
             registryID = ids.storedID.flatMap { $0.isEmpty ? nil : $0 } ?? runtimeID
+            // The bot the session was made on, which a switch while it was
+            // made can have moved from the one read above.
+            if profile == nil, let made = ids.profile { botProfile = made }
             await backend.setTitle(runtimeID, job.title)
             guard startIsCurrent(job.id, generation: generation) else {
                 return await abandonStart(job, sessionID: runtimeID, generation: generation)

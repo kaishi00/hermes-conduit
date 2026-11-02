@@ -24,7 +24,7 @@ extension VoiceConversationControllerTests {
     ) -> (VoiceBackgroundJobSupervisor, ChatFinderLog) {
         let log = ChatFinderLog()
         let backend = VoiceBackgroundJobBackend(
-            createSession: { _, _ in ("rt-1", "st-1") },
+            createSession: { _, _ in ("rt-1", "st-1", nil) },
             setTitle: { _, _ in },
             submit: { _, _ in },
             cancel: { _ in },
@@ -287,7 +287,7 @@ extension VoiceConversationControllerTests {
         let gate = AwaitableCounter()
         let parked = ParkedChatSearch()
         let backend = VoiceBackgroundJobBackend(
-            createSession: { _, _ in ("rt-1", "st-1") },
+            createSession: { _, _ in ("rt-1", "st-1", nil) },
             setTitle: { _, _ in },
             submit: { _, _ in },
             cancel: { _ in },
