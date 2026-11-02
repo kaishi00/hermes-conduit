@@ -154,7 +154,7 @@ final class FakeVoiceJobBackend {
                 return ("rt-\(self.created)", self.storedIDs ? "st-\(self.created)" : nil, madeOn)
             },
             setTitle: { [self] id, title in self.titles.append((id, title)) },
-            keepInRegistry: { [self] profile, id, title, _, fromWatch, chat, endedWith in
+            keepInRegistry: { [self] profile, id, title, _, fromWatch, chat, endedWith, _ in
                 self.kept.append((profile, id, title, fromWatch))
                 self.keptChats.append(chat)
                 self.keptEndings.append(endedWith)
@@ -164,7 +164,7 @@ final class FakeVoiceJobBackend {
                 self.workstreamSends.append((thread.runtimeSessionID, request))
                 return "sent to the workstream"
             },
-            callLeftChat: { [self] profile, chat in self.leftChats.append((profile, chat)) },
+            callLeftChat: { [self] profile, chat, _ in self.leftChats.append((profile, chat)) },
             activeProfile: { [self] in self.activeProfile },
             submit: { [self] id, text in
                 self.submissions.append((id, text))

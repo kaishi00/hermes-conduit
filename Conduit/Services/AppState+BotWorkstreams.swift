@@ -180,7 +180,8 @@ extension AppState {
     /// panel lists it as a call's. Best effort, off the job's path: a
     /// plugin without the route, or a bot whose work is off, keeps none.
     func keepVoiceJobInRegistry(profile: String?, sessionID: String, title: String, instructions: String,
-                                fromWatch: Bool, callChat: String? = nil, endedWith: String? = nil) {
+                                fromWatch: Bool, callChat: String? = nil, endedWith: String? = nil,
+                                call: String? = nil) {
         guard let via = Self.voiceJobAdoptVia(plugin: notifierPlugin, sessionID: sessionID, fromWatch: fromWatch)
         else { return }
         let bot = profile ?? activeProfile
@@ -191,7 +192,7 @@ extension AppState {
             _ = await AppState.adoptOnce(
                 stillCurrent: { AppState.sameDashboard(madeOn: dashboard, now: self?.activeDashboardID, appAlive: self != nil) },
                 send: { _ = try await client.adopt(sessionID: sessionID, title: title, via: via, goal: instructions,
-                                                   chat: callChat, result: endedWith)
+                                                   chat: callChat, result: endedWith, call: call)
                         kept = true },
                 wait: { try? await Task.sleep(for: .seconds(3)) },
                 failed: { attempt, error in
@@ -206,14 +207,14 @@ extension AppState {
     /// A call that kept a job with `chat` ended: the bot's plugin sends what
     /// its Bot Chat's call held (Classic never saves its turns with the
     /// chat, so this is its only end). Best effort, on the dashboard in use.
-    func voiceCallLeftChat(profile: String?, chat: String) {
+    func voiceCallLeftChat(profile: String?, chat: String, call: String? = nil) {
         guard notifierPlugin.reports(BotWorkstreamsClient.callEndedCapability), !chat.isEmpty else { return }
         let client = botWorkClient(profile: profile ?? activeProfile)
         let dashboard = activeDashboardID
         Task { @MainActor [weak self] in
             _ = await AppState.adoptOnce(
                 stillCurrent: { AppState.sameDashboard(madeOn: dashboard, now: self?.activeDashboardID, appAlive: self != nil) },
-                send: { try await client.callEnded(chat: chat) },
+                send: { try await client.callEnded(chat: chat, call: call) },
                 wait: { try? await Task.sleep(for: .seconds(3)) },
                 failed: { attempt, error in
                     botWorkLogger.notice("Telling the bot's work a call ended failed (try \(attempt, privacy: .public)): \(String(describing: type(of: error)), privacy: .public)")

@@ -301,9 +301,10 @@ struct VoiceBackgroundJobBackend {
     /// with, so a Bot Chat call's job is its coordinator's own workstream.
     /// `endedWith`: the reply of a job whose turn already ended (during its
     /// submit), so its row settles with it.
+    /// `call`: the call's own id, so its end releases only its own hold.
     var keepInRegistry: @MainActor (_ profile: String?, _ sessionID: String, _ title: String,
                                     _ instructions: String, _ fromWatch: Bool, _ callChat: String?,
-                                    _ endedWith: String?) -> Void = { _, _, _, _, _, _, _ in }
+                                    _ endedWith: String?, _ call: String?) -> Void = { _, _, _, _, _, _, _, _ in }
     /// A call kept with one of a bot's workstreams' chats stays in that
     /// session (Eric 2026-11-02): its requests go to the workstream, as an
     /// interrupt while it works, and never make a job of their own. What to
@@ -313,7 +314,7 @@ struct VoiceBackgroundJobBackend {
     /// chat is the Bot Chat, the updates its workstreams held go out. Every
     /// voice mode ends this way, Classic too, which never saves its turns
     /// with the chat.
-    var callLeftChat: @MainActor (_ profile: String?, _ chat: String) -> Void = { _, _ in }
+    var callLeftChat: @MainActor (_ profile: String?, _ chat: String, _ call: String?) -> Void = { _, _, _ in }
     /// The active profile, read as a job without one is made, so a switch
     /// while its session is made can't file it under another bot.
     var activeProfile: @MainActor () -> String? = { nil }
@@ -448,7 +449,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// the minimised call's bar can name it.
     @Published var liveThread: VoiceThreadTarget?
     /// The chat this call kept a job with, and its bot: told when the call leaves it.
-    private var keptCallChat: (profile: String?, chat: String)?
+    private var keptCallChat: (profile: String?, chat: String, call: String?)?
     /// The job whose chat an unattached call took as its own (#1250): the
     /// call's first ordinary request. Its chat is `liveThread`.
     private(set) var callChatJobID: UUID?
@@ -1450,6 +1451,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         var botProfile = profile ?? backend.activeProfile()
         // The call's chat as the job starts (a hang-up during its submit
         // doesn't make it another kind of job), and the bot it lives on.
+        let startCall = liveCallID?.uuidString
         let startChat = liveThread.map { thread in
             (profile: thread.profile ?? backend.activeProfile(),
              id: [thread.storedSessionID, thread.runtimeSessionID].compactMap { $0 }.first { !$0.isEmpty })
@@ -1463,10 +1465,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             let chat = startChat.flatMap { $0.profile == botProfile ? $0.id : nil }
             let now = self.job(job.id)
             backend.keepInRegistry(botProfile, registryID, job.title, now?.instructions ?? instructions,
-                                   fromWatch, chat, now?.status == .finished ? (now?.result ?? "") : nil)
+                                   fromWatch, chat, now?.status == .finished ? (now?.result ?? "") : nil,
+                                   chat == nil ? nil : startCall)
             if let chat {
                 // A call that already left its chat is told now; one still on, when it leaves.
-                if liveThread == nil { backend.callLeftChat(botProfile, chat) } else { keptCallChat = (botProfile, chat) }
+                if liveThread == nil { backend.callLeftChat(botProfile, chat, startCall) } else {
+                    keptCallChat = (botProfile, chat, startCall)
+                }
             }
         }
         do {
@@ -1896,7 +1901,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         liveThread = nil
         if let kept = keptCallChat {
             keptCallChat = nil
-            backend.callLeftChat(kept.profile, kept.chat)
+            backend.callLeftChat(kept.profile, kept.chat, kept.call)
         }
         let callChatJob = callChatJobID
         // A first request still starting is the call's too.

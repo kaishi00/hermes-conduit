@@ -382,7 +382,7 @@ final class BotWorkstreamsClient {
     /// is "phone" or "watch". The row, or nil when the plugin kept none.
     @MainActor
     func adopt(sessionID: String, title: String, via: String, goal: String, chat: String? = nil,
-               result: String? = nil) async throws -> BotWorkItem? {
+               result: String? = nil, call: String? = nil) async throws -> BotWorkItem? {
         let path = DashboardPath.withProfile("\(Self.path)/adopt", profile: profile, parameter: parameter)
         var body: [String: Any] = ["session_id": sessionID, "title": title, "via": via,
                                    "goal": String(goal.prefix(2_000))]
@@ -390,15 +390,19 @@ final class BotWorkstreamsClient {
         if let chat, !chat.isEmpty { body["chat"] = chat }
         // A turn that ended before it was kept: the row settles with its reply.
         if let result { body["result"] = String(result.prefix(8_000)) }
+        // The call's own id: its end releases only its own hold.
+        if let call, !call.isEmpty { body["call"] = call }
         let response = try await request(path, "POST", body)
         guard response["ok"] as? Bool == true else { throw Failure.malformed }
         return (response["work"] as? [String: Any]).flatMap(BotWorkItem.init(row:))
     }
 
     /// A call kept with `chat` ended: a Bot Chat's held updates go out.
-    func callEnded(chat: String) async throws {
+    func callEnded(chat: String, call: String? = nil) async throws {
         let path = DashboardPath.withProfile("\(Self.path)/call-ended", profile: profile, parameter: parameter)
-        let response = try await request(path, "POST", ["chat": chat])
+        var body: [String: Any] = ["chat": chat]
+        if let call, !call.isEmpty { body["call"] = call }
+        let response = try await request(path, "POST", body)
         guard response["ok"] as? Bool == true else { throw Failure.malformed }
     }
 
