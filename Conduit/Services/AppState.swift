@@ -4622,9 +4622,12 @@ final class AppState: ObservableObject {
                 guard let client = try? await self?.clientForVoiceRequest() else { return }
                 try? await client.setSessionTitle(sessionID, title: title)
             },
-            keepInRegistry: { [weak self] targetProfile, sessionID, title, instructions, fromWatch in
+            keepInRegistry: { [weak self] targetProfile, sessionID, title, instructions, fromWatch, callChat in
                 self?.keepVoiceJobInRegistry(profile: targetProfile, sessionID: sessionID, title: title,
-                                             instructions: instructions, fromWatch: fromWatch)
+                                             instructions: instructions, fromWatch: fromWatch, callChat: callChat)
+            },
+            sendToCallWorkstream: { [weak self] thread, request in
+                await self?.sendCallRequestToWorkstream(thread, request)
             },
             activeProfile: { [weak self] in self?.activeProfile },
             submit: { [weak self] sessionID, text in

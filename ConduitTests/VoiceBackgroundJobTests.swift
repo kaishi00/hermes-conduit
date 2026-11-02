@@ -86,6 +86,11 @@ final class FakeVoiceJobBackend {
     private(set) var titles: [(String, String)] = []
     /// Each job kept in its bot's work registry: profile, session, title, whether a Watch call's.
     private(set) var kept: [(String?, String, String, Bool)] = []
+    /// The call's chat each kept job named, as kept.
+    private(set) var keptChats: [String?] = []
+    /// Chats that are workstreams', and what their calls sent there.
+    var workstreamChats: Set<String> = []
+    private(set) var workstreamSends: [(String, String)] = []
     var activeProfile: String? = "default"
     private(set) var submissions: [(String, String)] = []
     private(set) var cancelled: [String] = []
@@ -146,7 +151,15 @@ final class FakeVoiceJobBackend {
                 return ("rt-\(self.created)", self.storedIDs ? "st-\(self.created)" : nil, madeOn)
             },
             setTitle: { [self] id, title in self.titles.append((id, title)) },
-            keepInRegistry: { [self] profile, id, title, _, fromWatch in self.kept.append((profile, id, title, fromWatch)) },
+            keepInRegistry: { [self] profile, id, title, _, fromWatch, chat in
+                self.kept.append((profile, id, title, fromWatch))
+                self.keptChats.append(chat)
+            },
+            sendToCallWorkstream: { [self] thread, request in
+                guard self.workstreamChats.contains(thread.runtimeSessionID) else { return nil }
+                self.workstreamSends.append((thread.runtimeSessionID, request))
+                return "sent to the workstream"
+            },
             activeProfile: { [self] in self.activeProfile },
             submit: { [self] id, text in
                 self.submissions.append((id, text))
@@ -306,6 +319,31 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(fake.cancelled.isEmpty, "the plugin already interrupted it")
         XCTAssertFalse(supervisor.backgroundJobs.contains { $0.owns(sessionID: "st-1") && $0.status != .cancelled })
         XCTAssertEqual(supervisor.backgroundJobs.filter { $0.status.isActive }.count, 1, "the other job runs on")
+    }
+
+    /// Eric 2026-11-02: a Bot Chat call's job is the coordinator's own, on
+    /// its bot, kept naming the call's chat.
+    func testABotChatCallsJobRunsOnItsBotAndNamesTheChat() async {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-bot", storedSessionID: "st-bot",
+                                                      title: "Bot Chat", profile: "furina"))
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the backups"))
+        XCTAssertEqual(fake.createdProfiles, ["furina"], "the coordinator's bot runs it")
+        XCTAssertEqual(fake.kept.map(\.0), ["furina"])
+        XCTAssertEqual(fake.keptChats, ["st-bot"])
+    }
+
+    /// Eric 2026-11-02: a workstream's call stays in its session; no job is made.
+    func testAWorkstreamsCallSendsEveryRequestToItsSession() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.workstreamChats = ["rt-work"]
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-work", storedSessionID: nil, title: "W3"))
+        let said = await supervisor.performVoiceCommand(.start(instructions: "use the staging database instead"))
+        _ = await supervisor.startJob(instructions: "and check the logs", joinsCall: true)
+        XCTAssertTrue(fake.createdProfiles.isEmpty, "no job session")
+        XCTAssertEqual(fake.workstreamSends.map(\.1), ["use the staging database instead", "and check the logs"])
+        XCTAssertTrue(supervisor.backgroundJobs.isEmpty)
+        XCTAssertEqual(said, "sent to the workstream")
     }
 
     func testJobsStartedInALiveCallAreAnchoredToItsTranscript() async {

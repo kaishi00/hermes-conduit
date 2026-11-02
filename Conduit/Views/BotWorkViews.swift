@@ -639,7 +639,7 @@ private struct BotWorkRow: View {
                     .scaledFont(.footnote)
                     .foregroundStyle(item.needsYou ? Color.orange : Color.secondary)
                     .lineLimit(expanded ? nil : 1)
-                if !item.fromCall.isEmpty {
+                if !item.call.isEmpty {
                     fromCallLine
                 }
                 if !item.result.isEmpty {
@@ -665,9 +665,9 @@ private struct BotWorkRow: View {
 
     /// A voice call's job: the call tells the user what it found.
     private var fromCallLine: some View {
-        Label(item.fromCall == "watch" ? AppLocalization.string("From a Watch call")
+        Label(item.call == "watch" ? AppLocalization.string("From a Watch call")
                   : AppLocalization.string("From a voice call"),
-              systemImage: item.fromCall == "watch" ? "applewatch" : "waveform")
+              systemImage: item.call == "watch" ? "applewatch" : "waveform")
             .scaledFont(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)

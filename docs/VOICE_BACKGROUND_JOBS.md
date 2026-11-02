@@ -39,6 +39,11 @@ a job. At most three jobs run at once.
   if not, it moves to hang-up. A start that fails
   or is abandoned isn't kept. Watch relay jobs are kept by the plugin itself
   as they start.
+- Also on those branches (Eric 2026-11-02): a call kept with the Bot Chat
+  runs its jobs on that bot, as the coordinator's own workstreams, and the
+  coordinator reports each in the Bot Chat once the call is saved. A call
+  kept with a workstream's chat makes no jobs at all: every request goes to
+  the workstream through its plugin, interrupting it while it works.
 - During a live call, the call screen shows each job the call started: the
   latest above the captions, and every one in the transcript panel where it
   started (`VoiceJobCallAnchor`). Tapping one shows its status and, once it

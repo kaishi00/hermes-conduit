@@ -297,9 +297,15 @@ struct VoiceBackgroundJobBackend {
     /// Keeps the job in its bot's work registry (Bot workstreams M5), so
     /// the Work panel lists it as a call's and a restart leaves it for the
     /// user. Fire and forget: the job never waits on it. `fromWatch`: a
-    /// Watch call's job on the phone.
+    /// Watch call's job on the phone. `callChat`: the chat the call is kept
+    /// with, so a Bot Chat call's job is its coordinator's own workstream.
     var keepInRegistry: @MainActor (_ profile: String?, _ sessionID: String, _ title: String,
-                                    _ instructions: String, _ fromWatch: Bool) -> Void = { _, _, _, _, _ in }
+                                    _ instructions: String, _ fromWatch: Bool, _ callChat: String?) -> Void = { _, _, _, _, _, _ in }
+    /// A call kept with one of a bot's workstreams' chats stays in that
+    /// session (Eric 2026-11-02): its requests go to the workstream, as an
+    /// interrupt while it works, and never make a job of their own. What to
+    /// tell the call, or nil when the chat isn't a workstream's.
+    var sendToCallWorkstream: @MainActor (_ thread: VoiceThreadTarget, _ request: String) async -> String? = { _, _ in nil }
     /// The active profile, read as a job without one is made, so a switch
     /// while its session is made can't file it under another bot.
     var activeProfile: @MainActor () -> String? = { nil }
@@ -1375,6 +1381,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         fromWatch: Bool = false,
         onJobCreated: (@MainActor (UUID) -> Void)? = nil
     ) async -> String {
+        // A workstream's call: every request stays in its session.
+        if let thread = liveThread, let said = await backend.sendToCallWorkstream(thread, requested) { return said }
         if joinsCall, liveThread == nil {
             // Said while the call's first job is still making its chat: it
             // joins that chat once it's made.
@@ -1396,7 +1404,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let profileLabel: String?
         switch routed {
         case .run(let task, let target, let label):
-            (instructions, profile, profileLabel) = (task, target, label)
+            // A Bot Chat call's job runs on its bot, as the coordinator's own.
+            (instructions, profile, profileLabel) = (task, target ?? liveThread?.profile, label)
         case .unknown(let spokenProfile):
             // A named target that isn't a known profile is never guessed at.
             return AppLocalization.string("I don't know a profile or bot called \(spokenProfile), so I didn't start the job.")
@@ -1431,8 +1440,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         var botProfile = profile ?? backend.activeProfile()
         func keep() {
             guard let registryID else { return }
+            let chat = liveThread.flatMap { thread in [thread.storedSessionID, thread.runtimeSessionID]
+                .compactMap { $0 }.first { !$0.isEmpty } }
             backend.keepInRegistry(botProfile, registryID, job.title, self.job(job.id)?.instructions ?? instructions,
-                                   fromWatch)
+                                   fromWatch, chat)
         }
         do {
             let ids = try await backend.createSession(profile, callsModel && profile != nil)

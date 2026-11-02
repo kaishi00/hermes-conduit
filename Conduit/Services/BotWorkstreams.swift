@@ -83,6 +83,12 @@ struct BotWorkItem: Identifiable, Equatable {
     /// call that started it and tells the user its result; empty for the
     /// bot's own work.
     let fromCall: String
+    /// The bot's own workstream a call kept with its Bot Chat started
+    /// ("phone" or "watch"); empty otherwise. The phone follows its job, so
+    /// a Stop here stops the call's job too.
+    let startedInCall: String
+    /// The call that started it, either way: the card's "From a voice call".
+    var call: String { fromCall.isEmpty ? startedInCall : fromCall }
 
     var id: String { ref }
 
@@ -113,6 +119,8 @@ struct BotWorkItem: Identifiable, Equatable {
         isUncertain = row["uncertain"] as? Bool ?? false
         branch = (row["branch"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         fromCall = ["phone", "watch"].contains(row["from_call"] as? String ?? "") ? row["from_call"] as? String ?? "" : ""
+        startedInCall = fromCall.isEmpty && ["phone", "watch"].contains(row["call"] as? String ?? "")
+            ? row["call"] as? String ?? "" : ""
         actions = (row["actions"] as? [String] ?? []).compactMap(Action.init(rawValue:))
         manage = (row["manage"] as? [String] ?? []).compactMap(Action.init(rawValue:))
         if let asked = row["approval"] as? [String: Any], let requestID = asked["request_id"] as? String,
@@ -372,10 +380,12 @@ final class BotWorkstreamsClient {
     /// the job's request: the Work panel lists it as a call's. `via`
     /// is "phone" or "watch". The row, or nil when the plugin kept none.
     @MainActor
-    func adopt(sessionID: String, title: String, via: String, goal: String) async throws -> BotWorkItem? {
+    func adopt(sessionID: String, title: String, via: String, goal: String, chat: String? = nil) async throws -> BotWorkItem? {
         let path = DashboardPath.withProfile("\(Self.path)/adopt", profile: profile, parameter: parameter)
-        let body: [String: Any] = ["session_id": sessionID, "title": title, "via": via,
+        var body: [String: Any] = ["session_id": sessionID, "title": title, "via": via,
                                    "goal": String(goal.prefix(2_000))]
+        // The chat the call is kept with: the Bot Chat's makes it the coordinator's own.
+        if let chat, !chat.isEmpty { body["chat"] = chat }
         let response = try await request(path, "POST", body)
         guard response["ok"] as? Bool == true else { throw Failure.malformed }
         return (response["work"] as? [String: Any]).flatMap(BotWorkItem.init(row:))

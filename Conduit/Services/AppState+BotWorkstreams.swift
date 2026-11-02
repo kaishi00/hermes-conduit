@@ -180,7 +180,7 @@ extension AppState {
     /// panel lists it as a call's. Best effort, off the job's path: a
     /// plugin without the route, or a bot whose work is off, keeps none.
     func keepVoiceJobInRegistry(profile: String?, sessionID: String, title: String, instructions: String,
-                                fromWatch: Bool) {
+                                fromWatch: Bool, callChat: String? = nil) {
         guard let via = Self.voiceJobAdoptVia(plugin: notifierPlugin, sessionID: sessionID, fromWatch: fromWatch)
         else { return }
         let bot = profile ?? activeProfile
@@ -190,7 +190,8 @@ extension AppState {
         Task { @MainActor [weak self] in
             await AppState.adoptOnce(
                 stillCurrent: { AppState.sameDashboard(madeOn: dashboard, now: self?.activeDashboardID, appAlive: self != nil) },
-                send: { _ = try await client.adopt(sessionID: sessionID, title: title, via: via, goal: instructions) },
+                send: { _ = try await client.adopt(sessionID: sessionID, title: title, via: via, goal: instructions,
+                                                   chat: callChat) },
                 wait: { try? await Task.sleep(for: .seconds(3)) },
                 failed: { attempt, error in
                     botWorkLogger.notice("Keeping a voice job in its bot's work registry failed (try \(attempt, privacy: .public)): \(String(describing: type(of: error)), privacy: .public) \(String(describing: error))")
@@ -198,6 +199,26 @@ extension AppState {
             )
         }
     }
+
+    /// A request from a call kept with one of a bot's workstreams' chats
+    /// (Eric 2026-11-02): it goes into the workstream's own session through
+    /// its bot's plugin, which takes it as an interrupt while the
+    /// workstream works and as its next turn otherwise; no job session is
+    /// made. What to tell the call (for the live model, not localized), or
+    /// nil when the chat isn't a workstream's.
+    func sendCallRequestToWorkstream(_ thread: VoiceThreadTarget, _ request: String) async -> String? {
+        let ids = Set([thread.runtimeSessionID, thread.storedSessionID ?? ""].filter { !$0.isEmpty })
+        guard let (profile, item) = botWork.workstream(forSession: ids) else { return nil }
+        let words = request.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty else { return "There were no words to pass on." }
+        guard await actOnWorkstream(item, profile: profile, action: .send, text: words) else {
+            return "Hermes couldn't pass that to this workstream just now. Say so, and offer to try again."
+        }
+        return Self.workstreamCallSent
+    }
+
+    /// What a workstream's call is told once its request went in.
+    static let workstreamCallSent = "Sent to this workstream, in its own session: if it was working, Hermes takes this as an interrupt and keeps its work so far; otherwise it starts on it now. Its reply shows in the workstream's chat and its bot's Work panel, not on this call, so don't guess it."
 
     /// Sends a voice job's adopt, and once more after `wait` if that one
     /// fails: a dropped request would leave the job out of the panel for
@@ -346,7 +367,7 @@ extension AppState {
             }
             // A call's job stopped here is stopped for its call too, not
             // settled as finished when its session goes quiet.
-            if action == .stop, !item.fromCall.isEmpty {
+            if action == .stop, !item.call.isEmpty {
                 voiceBackgroundJobSupervisor.stoppedFromWorkPanel(sessionID: item.sessionID)
             }
             Haptics.success()
