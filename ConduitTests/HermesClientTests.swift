@@ -2399,6 +2399,45 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testAuthorityPromptNamesTheChatsStagedPictures() async throws {
+        let (client, socket) = try await authorityClient()
+        var count = socket.sentTexts.count
+        let attach = Task<String?, Error> {
+            try await client.attachImage("sess-pics", base64: "AAAA", filename: "a.png")
+        }
+        try await answerRequest(on: socket, after: count, method: "image.attach_bytes", result: [
+            "attached": true, "path": "/h/cache/images/upload_a.png", "mime": "image/png"
+        ])
+        let path = try await awaitResult(of: attach, "the staged picture")
+        XCTAssertEqual(path, "/h/cache/images/upload_a.png")
+        count = socket.sentTexts.count
+        let second = Task<String?, Error> {
+            try await client.attachImage("sess-pics", base64: "BBBB", filename: "b.jpg")
+        }
+        try await answerRequest(on: socket, after: count, method: "image.attach_bytes", result: [
+            "attached": true, "path": "/h/cache/images/upload_b.jpg", "mime": "image/jpeg"
+        ])
+        _ = try await awaitResult(of: second, "the second picture")
+        // Taken back before the send: nothing to tell Hermes, and it isn't named.
+        try await client.detachImage("sess-pics", path: "/h/cache/images/upload_b.jpg")
+        XCTAssertEqual(socket.sentTexts.count, count + 1, "No image.detach on the authority")
+
+        count = socket.sentTexts.count
+        let send = Task<PromptSubmissionOutcome, Error> { try await client.sendPrompt("sess-pics", text: "look") }
+        let sent = try await answerRequest(on: socket, after: count, method: "prompt.submit", result: ["status": "queued"])
+        let attachments = try XCTUnwrap(sent["attachments"] as? [[String: String]])
+        XCTAssertEqual(attachments, [["path": "/h/cache/images/upload_a.png", "mime": "image/png"]])
+        _ = try await awaitResult(of: send, "the send")
+
+        // The next message carries none.
+        count = socket.sentTexts.count
+        let next = Task<PromptSubmissionOutcome, Error> { try await client.sendPrompt("sess-pics", text: "again") }
+        let nextSent = try await answerRequest(on: socket, after: count, method: "prompt.submit", result: ["status": "queued"])
+        XCTAssertNil(nextSent["attachments"])
+        _ = try await awaitResult(of: next, "the next send")
+        client.disconnect()
+    }
+
     func testAuthorityRequestlessApprovalAnswersTheOneTheChatStillWaitsOn() async throws {
         let (client, socket) = try await authorityClient()
         try await deliverFrame([

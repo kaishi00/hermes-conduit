@@ -3227,6 +3227,10 @@ final class HermesClient: ObservableObject {
         // Hermes already admitted is that admission again, never a second
         // copy. A send the user makes again is a new call with a new id.
         let submissionID = UUID().uuidString.lowercased()
+        // The chat's staged images go with its next message, as the
+        // dashboard sends its own held ones; a hidden turn isn't the
+        // user's message.
+        let stagedImages = hidden ? [] : (Self.authorityStagedImages.removeValue(forKey: sessionId) ?? [])
         var sentToAuthority = false
         // Read before sending: an idle send's own turn can start before
         // its receipt comes back.
@@ -3240,7 +3244,10 @@ final class HermesClient: ObservableObject {
                 answer = try await shapedRPC(timeout: Self.promptSubmitTimeout) { authority in
                     sentToAuthority = authority
                     var shaped = current
-                    if authority { shaped["submission_id"] = submissionID }
+                    if authority {
+                        shaped["submission_id"] = submissionID
+                        if !stagedImages.isEmpty { shaped["attachments"] = stagedImages }
+                    }
                     return GatewayRequest(method: "prompt.submit", params: shaped)
                 }
             } catch let error as RpcError where params["voice_turn"] != nil && error.refusesUnknownParam("voice_turn") {
@@ -4213,12 +4220,33 @@ final class HermesClient: ObservableObject {
             "content_base64": base64,
             "filename": filename
         ], timeout: Self.uploadTimeout(forPayloadCharacters: base64.utf8.count))
-        return result.objectValue?["path"]?.stringValue
+        let path = result.objectValue?["path"]?.stringValue
+        // The dashboard holds a staged image for the chat's next prompt; the
+        // authority only stages it, and the prompt names it.
+        if speaksSessionAuthority, let path, !path.isEmpty,
+           let mime = result.objectValue?["mime"]?.stringValue, !mime.isEmpty {
+            Self.authorityStagedImages[sessionId, default: []].append(["path": path, "mime": mime])
+        }
+        return path
     }
 
+    /// Images staged on the authority for each chat's next prompt, as
+    /// `prompt.submit`'s `attachments` names them. Shared by every client,
+    /// like the dashboard's own list, so a reconnect between staging and
+    /// sending keeps them.
+    @MainActor private static var authorityStagedImages: [String: [[String: String]]] = [:]
+
     /// Takes back an image staged with `attachImage` before any prompt
-    /// used it.
+    /// used it. On the authority nothing holds it but the next prompt.
     func detachImage(_ sessionId: String, path: String) async throws {
+        if Self.authorityStagedImages[sessionId]?.contains(where: { $0["path"] == path }) == true {
+            Self.authorityStagedImages[sessionId]?.removeAll { $0["path"] == path }
+            if Self.authorityStagedImages[sessionId]?.isEmpty == true {
+                Self.authorityStagedImages.removeValue(forKey: sessionId)
+            }
+            return
+        }
+        guard !speaksSessionAuthority else { return }
         _ = try await rpc("image.detach", params: [
             "session_id": sessionId,
             "path": path
