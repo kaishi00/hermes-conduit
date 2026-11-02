@@ -3696,11 +3696,15 @@ nightly run covers.
 
 **Siblings:** the pinned lists and their caps · the change's own unit classes
 · the source contracts · the UI targeted retry · the step summary · the
-nightly partition, which runs everything Smoke leaves out · docs/CI.md
+nightly partition, which runs everything Smoke leaves out · how a PR's newer
+run supersedes its older ones (the concurrency group and the plan job's
+cancel step; the reviews supersede their own way, in opencode-review.yml) ·
+docs/CI.md, its Budget section included
 
 **Code**
 - Lists and caps: `scripts/smoke-suite.json`; validation and the change's own classes: `scripts/plan-tests.py` (`smoke`)
 - Workflow steps: `.github/workflows/ci.yml` (the plan job's selection, the Smoke job's unit and UI steps; the self-test job's nightly partition check)
+- Superseded runs: `.github/workflows/ci.yml` (`concurrency:` and the plan job's "Cancel this PR's older runs"); its tests in `scripts/tests/test_ci_workflow_contract.py` (`test_a_pr_run_never_waits_for_its_superseded_run`, `test_the_cancel_step_cancels_only_this_prs_older_unfinished_runs`)
 - UI retry: `scripts/smoke-retry-classes.py`; step summary: `scripts/smoke-summary.py`
 - Nightly partition: `scripts/hosted-suite.json`, `.github/workflows/nightly.yml`; the app-only overlay its unit shards build: `project-tests.yml`
 - Tests: `scripts/tests/test_ci_workflow_contract.py`, `scripts/tests/test_smoke_job_runner.py`, `scripts/tests/test_hosted_ci.py`
@@ -3712,13 +3716,14 @@ nightly partition, which runs everything Smoke leaves out · docs/CI.md
 - Everything Smoke leaves out runs every night; the nightly run is the exhaustive authority (CI v5, #739).
 - A PR's Smoke runs the unit tests only; the pinned UI tests run on pushes (main's run after each merge, and `linked-rooms`), and the whole UI suite nightly. A PR still builds every UI test, and the unit tests run inside the app, so a broken launch still fails it (Eric, 2026-11-02, #1642: UI smoke was 3-5 of a PR's 18-22 minutes and its flakiest step).
 - Smoke waits only for the plan job's selection and skip decision; the Linux checks run in the self-test job beside the build (2026-11-02, #1642).
+- A PR's newer run never waits for its superseded one: a PR from this repository gets a concurrency group of its own run, and its plan job's first step cancels the PR's older runs (only runs whose one PR is this one, number and base). A fork PR, whose token can't cancel, keeps one group per PR with cancel-in-progress (2026-11-02, #1646: a cancelled Smoke job took about 3.5 minutes to wind down).
 - Smoke builds the full app (`project.yml`) on every PR and push, from the cache main's latest merge saved; the app-only overlay (`project-tests.yml`) is built only by the nightly unit shards and the App Store screenshots capture job (`.github/workflows/app-store-screenshots.yml`). An app-only PR build restored only nightly's cache and recompiled the day's main: 682 s to a finished build against 537 s, medians of 275 runs 2026-10-22..29 (2026-10-29, #1513).
 
 **Open gaps**
 - A changed UI test class doesn't join Smoke: a UI test a PR adds or edits first runs at night. UI tests are the slow ones (36-150 s each) and the list is capped at 4 (2026-10-29, #1508).
 - A changed unit class with no timing baseline is charged 3 s of `changed_budget_s`, and `scripts/test-timings.json` was last seeded in August, so a PR adding several slow new classes isn't held to the budget (2026-10-29, #1508).
 
-**Checked:** 2026-11-02, #1642 (UI smoke on pushes only, Smoke starts beside the checks); #1513; #1508.
+**Checked:** 2026-11-02, #1646 (a PR's new run cancels its older runs); #1642; #1513; #1508.
 
 ## Settings connection page
 
