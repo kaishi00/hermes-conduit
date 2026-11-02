@@ -698,4 +698,15 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertFalse(AppState.catalogListsSession("", in: catalog))
         XCTAssertFalse(AppState.catalogListsSession("runtime-1", in: []))
     }
+
+    func testOnlyAnAnsweredCallWhoseChatIsListedSkipsTheFullListRead() {
+        let catalog = [listedRow("runtime-1", stored: "durable-1")]
+        let call = HermesCallRequest(id: "call-1", kind: .done, title: nil, sessionIDs: ["durable-1"])
+        func target(_ id: String, call: HermesCallRequest?) -> ConduitNotificationTarget {
+            ConduitNotificationTarget(profile: nil, sessionId: id, type: call == nil ? nil : HermesCallRequest.type, call: call)
+        }
+        XCTAssertFalse(AppState.notificationOpenNeedsAuthoritativeRead(target: target("durable-1", call: call), catalog: catalog))
+        XCTAssertTrue(AppState.notificationOpenNeedsAuthoritativeRead(target: target("unseen", call: call), catalog: catalog), "a call whose chat the list lacks reads it again")
+        XCTAssertTrue(AppState.notificationOpenNeedsAuthoritativeRead(target: target("durable-1", call: nil), catalog: catalog), "a tapped notification always reads it again")
+    }
 }

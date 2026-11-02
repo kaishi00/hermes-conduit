@@ -845,6 +845,8 @@ docs/OWN_VOICE_SERVER.md · the notifier's README (read-back)
 | Gemini, Qwen, Grok, Local Live | barge-in | barge-in with "Talk over it on the speaker" on |
 | GPT-Live | barge-in (WebRTC cancels the echo) | barge-in |
 
+Calls from Hermes use the default audio in every mode, so the speaker and car column's talk-over does not apply to them (see the rulings below).
+
 **Code**
 - Routes: `Conduit/Voice/VoiceBargeInRoutePolicy.swift`
 - Classic: `Conduit/Voice/VoiceConversationController.swift` (isTalkOverAvailable, isSteerAvailable, isAcknowledgementSteerable, beginPushToTalk), `Conduit/Voice/VoiceSpeechDetector.swift`, `Conduit/Voice/EchoCancellingVoiceConversationAudio.swift`

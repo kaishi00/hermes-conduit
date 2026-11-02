@@ -24842,6 +24842,15 @@ final class AppState: ObservableObject {
     /// allowing the ordinary cold-start session restoration to win first.
     /// Whether `sessionID` names a row of `catalog`: its id, stored id or
     /// one of its alternates.
+    /// A tapped notification always rereads the chat list; an answered call
+    /// does only when the list on hand lacks its chat.
+    nonisolated static func notificationOpenNeedsAuthoritativeRead(
+        target: ConduitNotificationTarget,
+        catalog: [SessionSummary]
+    ) -> Bool {
+        !(target.call != nil && catalogListsSession(target.sessionId, in: catalog))
+    }
+
     nonisolated static func catalogListsSession(_ sessionID: String, in catalog: [SessionSummary]) -> Bool {
         guard let wanted = ChatScrollIdentityNormalization.sessionID(sessionID) else { return false }
         return catalog.contains { row in
@@ -25130,16 +25139,18 @@ final class AppState: ObservableObject {
         // ID for the notification's runtime/alternate ID. Otherwise the next
         // cold-start recovery only sees the old normal-session list and jumps
         // back to its newest entry.
-        // Do not share the sidebar refresh guard here. The notification route
-        // needs one authoritative read even if a visual refresh is already in
+        // Do not share the sidebar refresh guard here. A tapped notification
+        // takes one authoritative read even if a visual refresh is already in
         // progress, otherwise it can resolve against the stale catalog.
         // A call from Hermes is answered with its caller waiting: when the
-        // list on hand already holds the call's chat, the open goes on from
-        // it. Reading the whole list again took 2-3 s of every answered
-        // call on a long list (897 rows, Ul'dah 2026-11-02), and the chat
-        // sync the call's connection started refreshes it anyway. A chat
-        // the list lacks still waits for the authoritative read.
-        if target.call != nil, Self.catalogListsSession(target.sessionId, in: sessions + cronSessions) {
+        // list on hand already holds the call's chat, the route resolves
+        // against that list. Reading the whole list again took 2-3 s of every
+        // answered call on a long list (897 rows, Ul'dah 2026-11-02). A row
+        // that matches the call's id by any of its ids is the call's chat
+        // even if the host has since rotated its runtime id, and the chat
+        // sync the call's connection starts refreshes it. A chat the list
+        // lacks still waits for the authoritative read.
+        if !Self.notificationOpenNeedsAuthoritativeRead(target: target, catalog: sessions + cronSessions) {
             traceStage = "session list (on hand)"
         } else {
             traceStage = "session list"
@@ -25156,8 +25167,9 @@ final class AppState: ObservableObject {
             return .retry
         }
         let requestedID = target.sessionId
-        // The fresh catalog was just published (its labeled rows are already
-        // committed to the identity index), so resolution runs through the
+        // The catalog is fresh, or (for an answered call) already lists the
+        // call's chat; its labeled rows are committed to the identity index,
+        // so resolution runs through the
         // evidence hierarchy: explicit durable id from the payload, catalog
         // alias, confirmed index alias — and only then the legacy raw
         // runtime resume. An unknown runtime id is never reinterpreted as
