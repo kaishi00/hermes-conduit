@@ -186,17 +186,20 @@ extension AppState {
         let bot = profile ?? activeProfile
         let client = botWorkClient(profile: bot)
         let dashboard = activeDashboardID
-        // The panel's next read shows it.
         Task { @MainActor [weak self] in
-            await AppState.adoptOnce(
+            var kept = false
+            _ = await AppState.adoptOnce(
                 stillCurrent: { AppState.sameDashboard(madeOn: dashboard, now: self?.activeDashboardID, appAlive: self != nil) },
                 send: { _ = try await client.adopt(sessionID: sessionID, title: title, via: via, goal: instructions,
-                                                   chat: callChat, result: endedWith) },
+                                                   chat: callChat, result: endedWith)
+                        kept = true },
                 wait: { try? await Task.sleep(for: .seconds(3)) },
                 failed: { attempt, error in
                     botWorkLogger.notice("Keeping a voice job in its bot's work registry failed (try \(attempt, privacy: .public)): \(String(describing: type(of: error)), privacy: .public) \(String(describing: error))")
                 }
             )
+            // The Work panel shows it now rather than at its next read.
+            if kept { await self?.refreshBotWork(profile: bot) }
         }
     }
 
