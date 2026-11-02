@@ -862,8 +862,30 @@ final class CapabilitiesStore {
         for (key, value) in values.sorted(by: { $0.key < $1.key }) where declared.contains(key) {
             guard token == generation else { throw CapabilitiesStoreError.profileChanged }
             _ = try await request(scoped("/api/env"), method: "PUT", body: scopedBody(["key": key, "value": value]))
+            // A test already running read the old key: it runs again. A write
+            // that lands after a switch leaves the new profile's tests alone.
+            if token == generation { probeEpochs[name, default: 0] &+= 1 }
             saved(key)
         }
+    }
+
+    /// After a key save, the server is tested only if it's on: the list is
+    /// read again from the host first, as Edit Server's save reads it, so a
+    /// switch turned on another device meanwhile counts. A read that fails
+    /// or is overtaken tests nothing rather than start the server on a stale
+    /// list, and the old key's result is dropped, so the server shows as
+    /// untested; a save that took no key tests nothing.
+    func testAfterKeySave(_ name: String, savedAny: Bool = true, generation token: Int? = nil) async {
+        let token = token ?? generation
+        guard savedAny, token == generation else { return }
+        let reloaded = await loadConnectors()
+        guard token == generation else { return }
+        guard reloaded else {
+            probes[name] = nil
+            return
+        }
+        guard servers.first(where: { $0.name == name })?.enabled == true else { return }
+        await probe(name)
     }
 
     // MARK: Plugins

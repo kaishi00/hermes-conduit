@@ -286,8 +286,6 @@ struct ConnectorKeysSection: View {
     let name: String
     let fields: [ConnectorCatalogEntry.EnvField]
     let store: CapabilitiesStore
-    /// A server turned off isn't tested (a test starts it on the host).
-    let testsAfterSave: Bool
     @State private var drafts: [String: String] = [:]
     @State private var saving = false
     @State private var note: String?
@@ -351,20 +349,32 @@ struct ConnectorKeysSection: View {
         saving = true
         note = nil
         Task {
-            defer { saving = false }
+            var savedAny = false
+            var failure: Error?
             do {
                 // A key Hermes took leaves its field, so after a save that
                 // failed part way the field still filled is the one not saved.
-                try await store.setConnectorKeys(name, values, generation: generation) { drafts[$0] = nil }
-                guard store.generation == generation else { return }
+                try await store.setConnectorKeys(name, values, generation: generation) {
+                    drafts[$0] = nil
+                    savedAny = true
+                }
+            } catch {
+                failure = error
+            }
+            // The fields come back before the test, which can take a while,
+            // and nothing after this clears a later save's spinner.
+            saving = false
+            guard store.generation == generation else { return }
+            if let failure {
+                note = UserFacingError.message(for: failure)
+            } else {
                 drafts = [:]
                 note = AppLocalization.string("Key saved")
                 Haptics.success()
-                if testsAfterSave { await store.probe(name) }
-            } catch {
-                guard store.generation == generation else { return }
-                note = UserFacingError.message(for: error)
             }
+            // Keys Hermes took before a failure are tested too, so the page
+            // doesn't keep the old key's result.
+            await store.testAfterKeySave(name, savedAny: failure == nil || savedAny, generation: generation)
         }
     }
 }
@@ -444,7 +454,7 @@ struct ConnectorDetailPage: View {
                     }
                 }
                 if !server.isFromPlugin, let entry = catalogEntry, let fields = ConnectorKeysSection.fields(entry) {
-                    ConnectorKeysSection(name: name, fields: fields, store: store, testsAfterSave: server.enabled)
+                    ConnectorKeysSection(name: name, fields: fields, store: store)
                 }
                 toolsSection(server, state: state)
                 if !server.isFromPlugin {
