@@ -813,12 +813,13 @@ kept on the iPhone's headset (the Watch's Mute and End)
 - Silence mutes the assistant's voice apart from the microphone; its speech is dropped, not held, and job news waits for unmute (2026-10-09, #488).
 - An alarm or phone call pauses a live call, which comes back when the audio does (2026-10-04, #380).
 - A call from Hermes answered on the Watch plays on the iPhone's headset when one is on there (AirPods, wired, never the car's); the Watch's Mute and End control it like a phone call's, and a mute from any of Conduit's own controls reaches the Watch (Eric 2026-10-24, #1225).
+- A route change mid-reply (AirPods, Speaker, a dock) never drops speech: a conversation's reply, Read Aloud and the speech test play on from where they were on a fresh engine; only an encoded clip (which follows the route itself) or an engine that won't start again settles (2026-11-02, issue 1641, #1650).
 
 **Open gaps**
 - Silence isn't on CarPlay or the minimised bar (#488).
 - Classic still ends with "Audio was interrupted." when an alarm or phone call takes the audio, where live calls pause; only CarPlay and calls from Hermes restart it (#380, #1155).
 
-**Checked:** 2026-10-30, #1524 (Read Aloud reads a Desktop card as a short note; route, Speaker and mute unchanged); 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
+**Checked:** 2026-11-02, #1650 (Read Aloud and the speech test play on after a route change instead of restarting with the queued middle dropped, issue 1641); 2026-10-30, #1524 (Read Aloud reads a Desktop card as a short note; route, Speaker and mute unchanged); 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
 
 ## Talking over Hermes
 
