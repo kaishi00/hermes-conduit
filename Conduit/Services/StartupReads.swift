@@ -108,22 +108,17 @@ final class StartupReads {
 
 extension StartupReads {
     /// `path` through `bridge`: the early read's answer when this step may
-    /// take it, else a read of its own. An early read that couldn't go out
-    /// without the page (no session cookie yet) or was refused as signed out
-    /// is sent again, the step's way; any other failure is
-    /// this step's, since sending the same read again moments later would
-    /// only wait for it twice.
+    /// take it, else a read of its own. An early read that failed for any
+    /// reason (no session cookie yet, refused as signed out, a dropped
+    /// request) is sent again once, the step's way, so a connect never fails
+    /// where its own read alone would have gone through.
     func read(_ path: String, through bridge: DashboardTicketBridge, fence: Fence) async throws -> [String: Any] {
         guard let early = take(path, through: bridge, fence: fence) else {
             return try await bridge.requestJSON(path: path)
         }
         do {
             return try await early.value.json
-        } catch DashboardTicketBridgeError.notReady {
-            return try await bridge.requestJSON(path: path)
-        } catch DashboardTicketBridgeError.signInRequired {
-            // The step's own read can go through the page, whose landing
-            // decides whether the session really ended.
+        } catch where !Task.isCancelled {
             return try await bridge.requestJSON(path: path)
         }
     }
