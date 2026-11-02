@@ -3443,14 +3443,14 @@ final class HermesClient: ObservableObject {
             // the turn that asked. One it no longer lists was answered or
             // ended.
             // A bot chat is only found under its own profile.
-            let snapshot = try await resumeSessionObject(sessionId, omitMessages: true, profile: profile)
+            _ = try await resumeSessionObject(sessionId, omitMessages: true, profile: profile)
             authorityPrompt = authorityPrompts[requestId]
             if authorityPrompt == nil {
-                // Our earlier send that got no word back most likely settled
-                // it, if the turn that asked still runs; one that ended may
-                // have ended without it.
-                let ours = unconfirmedAuthorityAnswers.remove(requestId) != nil
-                return ours && snapshot["running"]?.boolValue == true ? .accepted(remaining: []) : .ended
+                // Nothing says whose answer settled it, even one of ours that
+                // got no word back: a turn that keeps running may have gone
+                // on without it.
+                unconfirmedAuthorityAnswers.remove(requestId)
+                return .ended
             }
         }
         if authorityPrompt == nil, speaksSessionAuthority,
@@ -3653,20 +3653,18 @@ final class HermesClient: ObservableObject {
             // prompt from the chat's resume, which lists the ones Hermes
             // still waits on; one it no longer lists was answered or ended.
             var cached = authorityPrompts[trimmedRequestId]
-            var stillRunning = false
             if cached == nil {
-                let snapshot = try await resumeSessionObject(
+                _ = try await resumeSessionObject(
                     authorityPromptSessions[trimmedRequestId] ?? sessionId, omitMessages: true, profile: profile
                 )
-                stillRunning = snapshot["running"]?.boolValue == true
                 cached = authorityPrompts[trimmedRequestId]
             }
             guard let prompt = cached else {
-                // Our earlier send that got no word back most likely settled
-                // it, if the turn that asked still runs; one that ended may
-                // have ended without it (an approval that timed out).
-                let ours = unconfirmedAuthorityAnswers.remove(trimmedRequestId) != nil
-                return ours && stillRunning ? .accepted : .ended
+                // Nothing says whose answer settled it, even one of ours that
+                // got no word back: an approval that timed out is denied and
+                // the turn goes on, so a running turn doesn't make it ours.
+                unconfirmedAuthorityAnswers.remove(trimmedRequestId)
+                return .ended
             }
             var params: [String: Any] = [
                 "session_id": prompt.sessionId,

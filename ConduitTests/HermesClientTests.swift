@@ -2398,7 +2398,7 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
-    func testAuthorityRetryOnANewClientReadsAPromptItsChatNoLongerListsAsTaken() async throws {
+    func testAuthorityRetryOnANewClientReadsAPromptItsChatNoLongerListsAsNoLongerActive() async throws {
         let (client, socket) = try await authorityClient()
         try await deliverFrame([
             "jsonrpc": "2.0", "method": "event",
@@ -2407,7 +2407,7 @@ final class HermesClientTests: XCTestCase {
                 "payload": ["prompt_id": "p-drop-5", "execution_generation": 5, "command": "rm x"]
             ]
         ], to: socket)
-        var count = socket.sentTexts.count
+        let count = socket.sentTexts.count
         let lost = Task<HermesClient.ApprovalResponseOutcome, Error> {
             try await client.respondToApprovalOutcome(sessionId: "sess-1", requestId: "p-drop-5", choice: "once")
         }
@@ -2419,52 +2419,21 @@ final class HermesClientTests: XCTestCase {
         } catch {}
         client.disconnect()
 
-        // A reconnect builds a new client; Hermes took the answer, so the
-        // chat's resume no longer lists the prompt.
+        // A reconnect builds a new client. The chat's resume no longer lists
+        // the prompt while its turn runs on: an approval that timed out is
+        // denied and the turn goes on too, so nothing says it was ours.
         let (fresh, freshSocket) = try await authorityClient()
-        count = freshSocket.sentTexts.count
+        let freshCount = freshSocket.sentTexts.count
         let retry = Task<HermesClient.ApprovalResponseOutcome, Error> {
             try await fresh.respondToApprovalOutcome(sessionId: "sess-1", requestId: "p-drop-5", choice: "once")
         }
-        try await answerRequest(on: freshSocket, after: count, method: "session.resume", result: [
+        try await answerRequest(on: freshSocket, after: freshCount, method: "session.resume", result: [
             "session_id": "sess-1", "messages": [Any](), "running": true, "revision": 1,
             "execution_generation": 5, "prompts": [Any]()
         ])
         let retried = try await awaitResult(of: retry, "the retried approval")
-        XCTAssertEqual(retried, .accepted, "The answer the user gave isn't read as expired")
-
-        // One whose turn ended may have ended without it (an approval that
-        // timed out): no longer active, not approved.
-        try await deliverFrame([
-            "jsonrpc": "2.0", "method": "event",
-            "params": [
-                "type": "approval.request", "session_id": "sess-1", "execution_generation": 6,
-                "payload": ["prompt_id": "p-drop-6", "execution_generation": 6, "command": "rm y"]
-            ]
-        ], to: freshSocket)
-        count = freshSocket.sentTexts.count
-        let lostAgain = Task<HermesClient.ApprovalResponseOutcome, Error> {
-            try await fresh.respondToApprovalOutcome(sessionId: "sess-1", requestId: "p-drop-6", choice: "once")
-        }
-        await waitForSends(count + 1, on: freshSocket)
-        lostAgain.cancel()
-        do {
-            _ = try await lostAgain.value
-            XCTFail("A cancelled answer throws")
-        } catch {}
+        XCTAssertEqual(retried, .ended, "A running turn doesn't say the answer was approved")
         fresh.disconnect()
-        let (third, thirdSocket) = try await authorityClient()
-        count = thirdSocket.sentTexts.count
-        let afterEnd = Task<HermesClient.ApprovalResponseOutcome, Error> {
-            try await third.respondToApprovalOutcome(sessionId: "sess-1", requestId: "p-drop-6", choice: "once")
-        }
-        try await answerRequest(on: thirdSocket, after: count, method: "session.resume", result: [
-            "session_id": "sess-1", "messages": [Any](), "running": false, "revision": 1,
-            "execution_generation": 6, "prompts": [Any]()
-        ])
-        let ended = try await awaitResult(of: afterEnd, "the retry after the turn ended")
-        XCTAssertEqual(ended, .ended)
-        third.disconnect()
     }
 
     func testAuthoritySendIntoARunningTurnReadsAsHeldForTheNextTurn() async throws {
