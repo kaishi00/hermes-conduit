@@ -4582,8 +4582,9 @@ final class AppState: ObservableObject {
                 if let targetProfile {
                     // A job on another profile or bot runs on that profile's
                     // own model: this profile's voice-job model is not its.
-                    // A Watch call's own job on that profile uses its voice-job
-                    // model, as the call's relay jobs do (#1564).
+                    // A call's own job on that profile (a Watch call's, or a
+                    // Bot Chat call's on its bot) uses its voice-job model, as
+                    // the call's relay jobs do (#1564).
                     var options: (model: String?, provider: String?, reasoningEffort: String?) = (nil, nil, nil)
                     if callsModel {
                         options = self.watchCallJobSession(self.loadVoiceProfilePreferences(profile: targetProfile), profile: targetProfile)

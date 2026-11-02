@@ -343,6 +343,7 @@ extension VoiceConversationControllerTests {
                                                       title: "Bot Chat", profile: "furina"))
         _ = await supervisor.performVoiceCommand(.start(instructions: "check the backups"))
         XCTAssertEqual(fake.createdProfiles, ["furina"], "the coordinator's bot runs it")
+        XCTAssertEqual(fake.createdCallsModel, [true], "on the voice-job model chosen for that bot")
         XCTAssertEqual(fake.kept.map(\.0), ["furina"])
         XCTAssertEqual(fake.keptChats, ["st-bot"])
         // Its end, in any voice mode, lets the bot's plugin send what it held.
@@ -598,6 +599,7 @@ extension VoiceConversationControllerTests {
         let reply = await supervisor.performVoiceCommand(.start(instructions: "for Fam, check the router"))
 
         XCTAssertEqual(fake.createdProfiles, ["fam"])
+        XCTAssertEqual(fake.createdCallsModel, [false], "another bot's job runs on its own model")
         XCTAssertEqual(supervisor.jobs.first?.profile, "fam")
         XCTAssertEqual(supervisor.jobs.first?.title, "check the router", "the target is not part of the task")
         XCTAssertTrue(fake.submissions.first?.1.hasSuffix("check the router") == true)

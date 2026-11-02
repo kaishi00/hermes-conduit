@@ -37,10 +37,12 @@ final class BotWorkStore: ObservableObject {
     private(set) var workstreamSessionIDs: Set<String> = []
     /// Bots whose list is being read, so two views showing it share one read.
     private var reading: Set<String> = []
-    /// Bots a call's request already read the work of before deciding it
-    /// isn't a workstream's: once each, so a host whose list won't load
-    /// doesn't hold every later request up.
-    var callPreReads: Set<String> = []
+    /// When a call's request last read a bot's work before deciding it isn't
+    /// a workstream's: again only after a minute while it still hasn't
+    /// loaded, so a host whose list won't load doesn't hold every request up
+    /// and one failed read isn't the last.
+    var callPreReads: [String: Date] = [:]
+    static let callPreReadRetry: TimeInterval = 60
     private var rereads: Set<String> = []
     /// Bumped by a server change (every bot) and by an action (its bot), so
     /// a list read before either never lands over what came after it.
@@ -104,7 +106,7 @@ final class BotWorkStore: ObservableObject {
         acting = []
         reading = []
         rereads = []
-        callPreReads = []  // another server's bots: read again there
+        callPreReads = [:]  // another server's bots: read again there
         epoch += 1
     }
 
@@ -238,7 +240,8 @@ extension AppState {
         let ids = Set([thread.runtimeSessionID, thread.storedSessionID ?? ""].filter { !$0.isEmpty })
         let bot = thread.profile ?? activeProfile
         if botWork.workstream(forSession: ids) == nil, botWork.snapshot(bot) == nil,
-           botWork.callPreReads.insert(bot).inserted {
+           botWork.callPreReads[bot].map({ Date().timeIntervalSince($0) >= BotWorkStore.callPreReadRetry }) ?? true {
+            botWork.callPreReads[bot] = Date()
             // Its bot's work isn't read yet (just after a launch): read it
             // before the request becomes a job of its own.
             await refreshBotWork(profile: bot)

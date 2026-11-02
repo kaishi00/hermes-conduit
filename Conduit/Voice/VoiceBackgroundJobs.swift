@@ -289,8 +289,9 @@ enum VoiceBackgroundJobNotice: Equatable {
 /// tests can script them.
 struct VoiceBackgroundJobBackend {
     /// `profile` nil creates the job in the active profile. `callsModel`:
-    /// the job is a Watch call's own on that profile, so it runs on that
-    /// profile's voice-job model rather than its chat model (#1564).
+    /// the job is the call's own on that profile (a Watch call's, or a Bot
+    /// Chat call's on its bot), so it runs on that profile's voice-job model
+    /// rather than its chat model (#1564).
     /// The session's ids, and the profile it was made on (nil: not known).
     var createSession: @MainActor (_ profile: String?, _ callsModel: Bool) async throws -> (runtimeID: String, storedID: String?, profile: String?)
     var setTitle: @MainActor (_ sessionID: String, _ title: String) async -> Void
@@ -1413,10 +1414,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let instructions: String
         let profile: String?
         let profileLabel: String?
+        // A job on the call's own bot (no profile named) keeps the voice-job
+        // model chosen for that bot, as an unnamed job on the phone's does.
+        var callsOwnModel = callsModel
         switch routed {
         case .run(let task, let target, let label):
             // A Bot Chat call's job runs on its bot, as the coordinator's own.
             (instructions, profile, profileLabel) = (task, target ?? liveThread?.profile, label)
+            if target == nil { callsOwnModel = true }
         case .unknown(let spokenProfile):
             // A named target that isn't a known profile is never guessed at.
             return AppLocalization.string("I don't know a profile or bot called \(spokenProfile), so I didn't start the job.")
@@ -1475,7 +1480,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
         }
         do {
-            let ids = try await backend.createSession(profile, callsModel && profile != nil)
+            let ids = try await backend.createSession(profile, callsOwnModel && profile != nil)
             createdSessionID = ids.runtimeID.isEmpty ? nil : ids.runtimeID
             guard startIsCurrent(job.id, generation: generation) else {
                 return await abandonStart(job, sessionID: createdSessionID, generation: generation)
