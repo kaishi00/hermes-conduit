@@ -898,6 +898,9 @@ class SmokeSelectionTests(unittest.TestCase):
         self.assertEqual(summary.returncode, 0, summary.stderr)
         self.assertIn("Hosted CI selection", summary.stdout)
         self.assertIn("nightly workflow", summary.stdout)
+        # A PR runs no UI smoke, so the summary never says it did.
+        self.assertIn("pinned UI tests (pushes only)", summary.stdout)
+        self.assertIn("UI (pushes only): ", summary.stdout)
 
     def _changed_selection(self, changed, mutate=None):
         """Run `smoke --changed-files` on the shipped (or mutated) suite and

@@ -3,7 +3,7 @@ name: CI
 # CI v5 - GitHub-hosted CI is the only merge gate, and it is light on
 # purpose (see docs/CI.md):
 #
-#   PR / push (this file)   the cheap Linux validation, then ONE macOS job that
+#   PR / push (this file)   the cheap Linux validation beside ONE macOS job that
 #                           compiles the full app and all test targets once,
 #                           incrementally from main's latest build, and runs
 #                           the pinned unit smoke tests (scripts/smoke-suite.json)
@@ -314,7 +314,7 @@ jobs:
 
   smoke:
     # The only macOS job of a PR or push run: one build, one booted simulator,
-    # then the unit smoke tests and the UI smoke tests on them.
+    # then the unit smoke tests and, on a push, the UI smoke tests on them.
     name: Smoke
     needs: plan
     if: needs.plan.outputs.smoke != 'false'
