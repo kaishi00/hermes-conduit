@@ -413569,6 +413569,88 @@
           }
         }
       }
+    },
+    "A key saved here replaces the one Hermes keeps for this connector. Conduit never shows it.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein hier gespeicherter Schlüssel ersetzt den, den Hermes für diesen Connector hat. Conduit zeigt ihn nie an."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una clave guardada aquí sustituye a la que Hermes tiene para este conector. Conduit nunca la muestra."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une clé enregistrée ici remplace celle que Hermes garde pour ce connecteur. Conduit ne l'affiche jamais."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunci yang disimpan di sini menggantikan kunci yang disimpan Hermes untuk konektor ini. Conduit tidak pernah menampilkannya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una chiave salvata qui sostituisce quella che Hermes tiene per questo connettore. Conduit non la mostra mai."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ここで保存したキーは、Hermes がこのコネクタ用に保持しているキーを置き換えます。Conduit がキーを表示することはありません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "여기에 저장한 키는 Hermes가 이 커넥터에 보관한 키를 대체합니다. Conduit은 키를 표시하지 않습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klucz zapisany tutaj zastępuje ten, który Hermes przechowuje dla tego konektora. Conduit nigdy go nie pokazuje."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uma chave salva aqui substitui a que o Hermes guarda para este conector. O Conduit nunca a mostra."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключ, сохранённый здесь, заменяет тот, что Hermes хранит для этого коннектора. Conduit никогда его не показывает."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Burada kaydedilen anahtar, Hermes'in bu bağlayıcı için tuttuğu anahtarın yerini alır. Conduit onu asla göstermez."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在此保存的密钥会替换 Hermes 为此连接器保存的密钥。Conduit 从不显示它。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在此儲存的金鑰會取代 Hermes 為此連接器保存的金鑰。Conduit 從不顯示它。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

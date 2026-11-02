@@ -242,12 +242,13 @@ final class CapabilitiesStore {
     }
 
     /// Writes Hermes keeps in the profile config. Keys (`/api/env`),
-    /// connector tests, sign-ins and reads don't wait for config saves.
+    /// connector tests and reads don't wait for config saves. Sign-ins run
+    /// on the gateway (NativeMCPSignIn), not these routes.
     static func writesProfileConfig(method: String, path: String) -> Bool {
         guard method != "GET" else { return false }
         let route = path.split(separator: "?").first.map(String.init) ?? path
-        if route.hasSuffix("/test") || route.hasSuffix("/auth") { return false }
-        return !route.hasPrefix("/api/env") && !route.hasPrefix("/api/mcp/oauth/")
+        if route.hasSuffix("/test") { return false }
+        return !route.hasPrefix("/api/env")
     }
 
     /// Reads `path` and keeps what `kept` makes of its answer under
@@ -842,33 +843,27 @@ final class CapabilitiesStore {
         if case .failed = connectorInstalls[name] { connectorInstalls[name] = nil }
     }
 
-    /// Starts a server's OAuth sign-in; the person finishes it in the
-    /// browser at the returned address.
-    func startSignIn(_ name: String) async throws -> (flowID: String, url: URL) {
-        let response = try await request(
-            scoped("/api/mcp/servers/\(Self.component(name))/auth"),
-            method: "POST",
-            timeout: 45_000
-        )
-        if let error = response["error"] as? String, !error.isEmpty {
-            throw CapabilitiesStoreError.declined(error)
+    /// Sets a catalog connector's keys in the profile's `.env`, where its
+    /// config reads them (`${VAR}`); the config stays as it is. Only the
+    /// variables its catalog entry declares are written.
+    /// `generation` is the store's when the user pressed Save: a switch to
+    /// another dashboard or profile since, or mid-save, stops it, so no key
+    /// is sent to the Hermes the user switched to.
+    /// `saved` hears each key Hermes took, in order.
+    func setConnectorKeys(
+        _ name: String,
+        _ values: [String: String],
+        generation token: Int? = nil,
+        saved: (String) -> Void = { _ in }
+    ) async throws {
+        let token = token ?? generation
+        guard token == generation else { throw CapabilitiesStoreError.profileChanged }
+        let declared = Set(connectorCatalog.first { $0.name == name }?.requiredEnv.map(\.name) ?? [])
+        for (key, value) in values.sorted(by: { $0.key < $1.key }) where declared.contains(key) {
+            guard token == generation else { throw CapabilitiesStoreError.profileChanged }
+            _ = try await request(scoped("/api/env"), method: "PUT", body: scopedBody(["key": key, "value": value]))
+            saved(key)
         }
-        guard let flowID = response["flow_id"] as? String,
-              let address = response["authorization_url"] as? String,
-              let url = URL(string: address) else {
-            throw CapabilitiesStoreError.declined(AppLocalization.string("Hermes didn't return a sign-in page."))
-        }
-        return (flowID, url)
-    }
-
-    /// starting, authorization_required, approved or error.
-    func signInStatus(_ flowID: String) async throws -> (status: String, error: String?) {
-        let response = try await request("/api/mcp/oauth/flows/\(Self.component(flowID))")
-        return (response["status"] as? String ?? "", (response["error"] as? String).flatMap { $0.isEmpty ? nil : $0 })
-    }
-
-    func cancelSignIn(_ flowID: String) async {
-        _ = try? await request("/api/mcp/oauth/flows/\(Self.component(flowID))", method: "DELETE")
     }
 
     // MARK: Plugins
