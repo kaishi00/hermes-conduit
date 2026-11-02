@@ -3704,15 +3704,15 @@ nightly partition, which runs everything Smoke leaves out · docs/CI.md
 - Smoke pins single tests (Class/testMethod), never whole classes, under `max_unit_tests` (70) and `max_ui_tests` (4); `plan-tests.py smoke` fails a whole-class entry, a test its class doesn't declare, a pinned nightly-only timing family and a list over its cap. Add coverage by swapping a test; raising a cap is a deliberate change with its reason in the PR (Eric, 2026-10-29, #1508: whole classes let unit smoke grow from 195 s to 240 s with the list unchanged).
 - The source contracts and the change's own unit classes run whole; a changed class runs in place of the tests pinned from it (2026-10-29, #1508).
 - Everything Smoke leaves out runs every night; the nightly run is the exhaustive authority (CI v5, #739).
-- A PR's Smoke runs the unit tests only; the pinned UI tests run on pushes (main's run after each merge, and `linked-rooms`), and the whole UI suite nightly. A PR still builds every UI test, and the unit tests run inside the app, so a broken launch still fails it (Eric, 2026-11-02, #PRNUM: UI smoke was 3-5 of a PR's 18-22 minutes and its flakiest step).
-- Smoke waits only for the plan job's selection and skip decision; the Linux checks run in the self-test job beside the build (2026-11-02, #PRNUM).
+- A PR's Smoke runs the unit tests only; the pinned UI tests run on pushes (main's run after each merge, and `linked-rooms`), and the whole UI suite nightly. A PR still builds every UI test, and the unit tests run inside the app, so a broken launch still fails it (Eric, 2026-11-02, #1642: UI smoke was 3-5 of a PR's 18-22 minutes and its flakiest step).
+- Smoke waits only for the plan job's selection and skip decision; the Linux checks run in the self-test job beside the build (2026-11-02, #1642).
 - Smoke builds the full app (`project.yml`) on every PR and push, from the cache main's latest merge saved; the app-only overlay (`project-tests.yml`) is built only by the nightly unit shards and the App Store screenshots capture job (`.github/workflows/app-store-screenshots.yml`). An app-only PR build restored only nightly's cache and recompiled the day's main: 682 s to a finished build against 537 s, medians of 275 runs 2026-10-22..29 (2026-10-29, #1513).
 
 **Open gaps**
 - A changed UI test class doesn't join Smoke: a UI test a PR adds or edits first runs at night. UI tests are the slow ones (36-150 s each) and the list is capped at 4 (2026-10-29, #1508).
 - A changed unit class with no timing baseline is charged 3 s of `changed_budget_s`, and `scripts/test-timings.json` was last seeded in August, so a PR adding several slow new classes isn't held to the budget (2026-10-29, #1508).
 
-**Checked:** 2026-11-02, #PRNUM (UI smoke on pushes only, Smoke starts beside the checks); #1513; #1508.
+**Checked:** 2026-11-02, #1642 (UI smoke on pushes only, Smoke starts beside the checks); #1513; #1508.
 
 ## Settings connection page
 
@@ -4761,4 +4761,4 @@ point at the map and its check
 - On a merge of main into `pulse` or `linked-rooms`, an entry both sides changed that the merge settles on main's copy keeps main's Checked line, so CI doesn't flag dropping the branch's edit; a reviewer checks that choice. CI only sees content, and that copy is main's word for word.
 - If GitHub can't say whether a PR into `pulse` or `linked-rooms` merges main, or can't give main's maps, the step warns and checks without them, so a merge of main fails on the entries it brings in until a re-run.
 
-**Checked:** 2026-11-02, #PRNUM (docs/CI.md names the self-test job for the map check); #1314.
+**Checked:** 2026-11-02, #1642 (docs/CI.md names the self-test job for the map check); #1314.
