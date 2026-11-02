@@ -24838,18 +24838,19 @@ final class AppState: ObservableObject {
         return outcome == .opened
     }
 
-    /// A plain notification always rereads the chat list. A call's open
-    /// (answered, or a tap on a call notification) has someone waiting on the voice, so it
-    /// rereads only when the list on hand lacks the call's chat. Runtime and
-    /// alias ids are never handed to another chat, so a row they match is
-    /// the call's chat.
+    /// Every notification tap rereads the chat list, a call notification's
+    /// included. The open of a call answered in CallKit has its caller
+    /// waiting on the voice, so it rereads only when the list on hand lacks
+    /// the call's chat. Runtime and alias ids are never handed to another
+    /// chat, so a row they match is the call's chat.
     nonisolated static func notificationOpenNeedsAuthoritativeRead(
         target: ConduitNotificationTarget,
+        callAnswered: Bool,
         catalog: [SessionSummary]
     ) -> Bool {
         // The route resolves to the payload's durable id first, so that id
         // must be on hand too, or the bot-chat check would miss its row.
-        guard target.call != nil, catalogListsSession(target.sessionId, in: catalog) else { return true }
+        guard callAnswered, target.call != nil, catalogListsSession(target.sessionId, in: catalog) else { return true }
         if let durable = target.durableSessionID, !catalogListsSession(durable, in: catalog) { return true }
         return false
     }
@@ -25149,8 +25150,8 @@ final class AppState: ObservableObject {
         // Do not share the sidebar refresh guard here. A notification takes
         // one authoritative read even if a visual refresh is already in
         // progress, otherwise it can resolve against the stale catalog;
-        // only a call's open may skip it. A call from Hermes (answered, or
-        // its notification's Talk button) has its caller waiting: when the
+        // only the open of a call answered in CallKit may skip it. That call
+        // has its caller waiting: when the
         // list on hand already holds the call's chat, the route resolves
         // against that list. Reading the whole list again took 2-3 s of every
         // answered call on a long list (897 rows, Ul'dah 2026-11-02). A row
@@ -25158,7 +25159,11 @@ final class AppState: ObservableObject {
         // even if the host has since rotated its runtime id, and the chat
         // sync the call's connection starts refreshes it. A chat the list
         // lacks still waits for the authoritative read.
-        if !Self.notificationOpenNeedsAuthoritativeRead(target: target, catalog: sessions + cronSessions) {
+        if !Self.notificationOpenNeedsAuthoritativeRead(
+            target: target,
+            callAnswered: isNativeHermesCallAnswered,
+            catalog: sessions + cronSessions
+        ) {
             traceStage = "session list (on hand)"
         } else {
             traceStage = "session list"
