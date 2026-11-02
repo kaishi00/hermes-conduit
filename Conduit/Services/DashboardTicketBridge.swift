@@ -1067,6 +1067,9 @@ final class DashboardTicketBridge: NSObject {
                 // No cookie in any store yet: the page's own retries below.
             } catch DashboardTicketBridgeError.signInRequired where webViewCanRun() && !isInvalidated {
                 // Refused as signed out: the page's reload-and-retry decides.
+            } catch DashboardTicketBridgeError.http(let status, _) where status == 0 && webViewCanRun() && !isInvalidated {
+                // Never answered (a stalled link): the page's retries, as a
+                // ticket had before it went natively.
             }
         }
         // Retry twice on the two recoverable failures, then let the final
