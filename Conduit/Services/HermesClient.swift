@@ -3232,7 +3232,8 @@ final class HermesClient: ObservableObject {
         // The chat's staged images go with its next message, as the
         // dashboard sends its own held ones; a hidden turn isn't the
         // user's message.
-        let stagedImages = hidden ? [] : (Self.authorityStagedImages.removeValue(forKey: sessionId) ?? [])
+        let stagedImages = hidden || !speaksSessionAuthority
+            ? [] : (Self.authorityStagedImages.removeValue(forKey: sessionId) ?? [])
         var sentToAuthority = false
         // Read before sending: an idle send's own turn can start before
         // its receipt comes back.
