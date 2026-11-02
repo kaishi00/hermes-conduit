@@ -55,8 +55,9 @@ a call from Hermes about it · a confirmation Hermes shows on the call screen ·
 rooms · your agents' approvals in rooms other people host · a room's ask to
 its owner (Ask me first; app side C5c on the `linked-rooms` branch only, see
 Linked Rooms) · a linked person's ask to its owner (asks between linked agents;
-app side C7 on the `linked-rooms` branch only, see Linked Rooms) · the resume
-jump · what models and Settings say about it
+app side C7 on the `linked-rooms` branch only, see Linked Rooms) · a
+workstream's "Needs you" card on Bot Chat's Work panel (Bot workstreams) · the
+resume jump · what models and Settings say about it
 
 | Where | Says it | Answer by voice | Card on screen |
 |---|---|---|---|
@@ -95,7 +96,7 @@ several details only the user can give (notifier 0.82).
 **Code**
 - Chat card: `Conduit/Views/ChatView.swift` (ApprovalCard, ClarifyCard, ClarifyQuestionRow's form field), `Conduit/Services/ApprovalDisplayText.swift`, `Shared/Approvals/HermesApprovalText.swift` (Hermes' own approval texts in the App Language, for every card, voice line, the notification and the Watch; their translations in both `Conduit/Localizable.xcstrings` and `ConduitWatch/Localizable.xcstrings`), `Conduit/Services/AppState.swift` (respondToApproval, legacyApprovalTarget, respondToClarifyForm)
 - Forms and blank answers: `Conduit/Models/Models.swift` (ClarifyActivity.isForm, ClarifyQuestion.formAnswer, isSkipped), `Conduit/Models/ClarifyHistoryRecord.swift`, `Conduit/Services/HermesClient.swift` (pendingClarifyActivity), `Conduit/Services/PushNotificationService.swift` (blankAnswer)
-- A workstream's approval on its Work panel card: `Conduit/Views/BotWorkViews.swift` (WorkstreamApprovalBox, drawn through the same texts as the chat card; Approve only for a command it shows whole, see Bot workstreams)
+- A workstream's approval on its Work panel card: `Conduit/Services/AppState+BotWorkstreams.swift` (answerWorkstreamApproval, through the open chat's card or the plugin), `Conduit/Views/BotWorkViews.swift` (WorkstreamApprovalBox, drawn through the same texts as the chat card; Approve only for a command it shows whole, see Bot workstreams)
 - What waits, and spoken picks: `Conduit/Voice/HermesCallWaiting.swift` (block, answerRule, pickedChoices, spokenQuestion, isSkip)
 - Classic and Local Live: `Conduit/Services/AppState+SpokenApprovals.swift` (answerQuestionBySpeech, noteClarifyForClassicVoice, openChatWaitingCards), `Conduit/Voice/SpokenApprovals.swift`, `Conduit/Voice/VoiceConversationController.swift` (noteApprovalWaiting), `Conduit/Views/VoiceConversationSheet.swift` (VoiceApprovalPanel), `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift` (approvalLine, waitingQuestion)
 - Live modes: `Conduit/Voice/VoiceBackgroundJobs.swift` (waitingNotice, answerJobApproval, answerJobQuestion), `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift`, `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (jobApprovalRule), `Conduit/Views/LiveVoiceCallJobs.swift` (LiveVoiceWaitingPanel), `Conduit/Views/LiveVoiceCallSheet.swift`
