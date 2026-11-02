@@ -1120,12 +1120,15 @@ final class HermesClient: ObservableObject {
     /// usual reason to retry; prompt ids are unique, so one server's never
     /// reads as another's. Main-actor isolated with the class, like every
     /// other member here. An entry ends with its retry's answer or refusal;
-    /// past 256 never retried, the record starts over (a retry that old
+    /// past 256 never retried, the record starts over from the newest (a retry that old
     /// reads as no longer active, as it would without one).
     private static var unconfirmedAuthorityAnswers: Set<String> = []
     private var unconfirmedAuthorityAnswers: Set<String> {
         get { Self.unconfirmedAuthorityAnswers }
-        set { Self.unconfirmedAuthorityAnswers = newValue.count > 256 ? [] : newValue }
+        set {
+            Self.unconfirmedAuthorityAnswers = newValue.count > 256
+                ? newValue.subtracting(Self.unconfirmedAuthorityAnswers) : newValue
+        }
     }
     private var closedIntentionally = false
     private var receiveTask: Task<Void, Never>?
