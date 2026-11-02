@@ -349,8 +349,8 @@ struct ConnectorKeysSection: View {
         saving = true
         note = nil
         Task {
-            defer { saving = false }
             var savedAny = false
+            var failure: Error?
             do {
                 // A key Hermes took leaves its field, so after a save that
                 // failed part way the field still filled is the one not saved.
@@ -358,21 +358,23 @@ struct ConnectorKeysSection: View {
                     drafts[$0] = nil
                     savedAny = true
                 }
-                guard store.generation == generation else { return }
+            } catch {
+                failure = error
+            }
+            // The fields come back before the test, which can take a while,
+            // and nothing after this clears a later save's spinner.
+            saving = false
+            guard store.generation == generation else { return }
+            if let failure {
+                note = UserFacingError.message(for: failure)
+            } else {
                 drafts = [:]
                 note = AppLocalization.string("Key saved")
                 Haptics.success()
-                // The fields come back before the test, which can take a while.
-                saving = false
-                await store.testAfterKeySave(name, generation: generation)
-            } catch {
-                guard store.generation == generation else { return }
-                note = UserFacingError.message(for: error)
-                saving = false
-                // Keys Hermes took before the failure are tested too, so the
-                // page doesn't keep the old key's result.
-                await store.testAfterKeySave(name, savedAny: savedAny, generation: generation)
             }
+            // Keys Hermes took before a failure are tested too, so the page
+            // doesn't keep the old key's result.
+            await store.testAfterKeySave(name, savedAny: failure == nil || savedAny, generation: generation)
         }
     }
 }
