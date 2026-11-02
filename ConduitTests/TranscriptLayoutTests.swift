@@ -116,6 +116,35 @@ final class TranscriptLayoutTests: XCTestCase {
         XCTAssertGreaterThan(layout.generation, generation, "The scroller hears of the pass")
     }
 
+    /// Eric's report (build 246): an opened Thinking row drew over the rows
+    /// under it, and a closed one left its old height empty. The layout had
+    /// the new frames, but the context named only the row that resized, and
+    /// UIKit asks again only for the items a context names: the cells under
+    /// it kept their old frames until a scroll or another visit.
+    func testTheCellsUnderARowThatResizedMoveWithIt() throws {
+        show(["a", "b", "c", "d"])
+        measure(["a": 100, "b": 100, "c": 100, "d": 100])
+        let cTop = try XCTUnwrap(view.cellForItem(at: IndexPath(item: 2, section: 0))).frame.minY
+        let dTop = try XCTUnwrap(view.cellForItem(at: IndexPath(item: 3, section: 0))).frame.minY
+
+        measure(["b": 250])
+        XCTAssertEqual(try XCTUnwrap(view.cellForItem(at: IndexPath(item: 1, section: 0))).frame.height, 250)
+        XCTAssertEqual(try XCTUnwrap(view.cellForItem(at: IndexPath(item: 2, section: 0))).frame.minY, cTop + 150, "opened")
+        XCTAssertEqual(try XCTUnwrap(view.cellForItem(at: IndexPath(item: 3, section: 0))).frame.minY, dTop + 150, "every row under it")
+
+        measure(["b": 100])
+        XCTAssertEqual(try XCTUnwrap(view.cellForItem(at: IndexPath(item: 2, section: 0))).frame.minY, cTop, "closed")
+        XCTAssertEqual(try XCTUnwrap(view.cellForItem(at: IndexPath(item: 3, section: 0))).frame.minY, dTop)
+
+        // A cell's own measurement names the rows under it too.
+        let original = try XCTUnwrap(layout.layoutAttributesForItem(at: IndexPath(item: 1, section: 0)))
+        let preferred = try XCTUnwrap(original.copy() as? UICollectionViewLayoutAttributes)
+        preferred.size.height = 180
+        XCTAssertTrue(layout.shouldInvalidateLayout(forPreferredLayoutAttributes: preferred, withOriginalAttributes: original))
+        let context = layout.invalidationContext(forPreferredLayoutAttributes: preferred, withOriginalAttributes: original)
+        XCTAssertEqual(Set(context.invalidatedItemIndexPaths ?? []).intersection([IndexPath(item: 2, section: 0), IndexPath(item: 3, section: 0)]).count, 2)
+    }
+
     func testAHeightMeasuredAtAnotherWidthIsNotTaken() throws {
         show(["a"])
         measure(["a": 100])
