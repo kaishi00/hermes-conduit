@@ -1494,6 +1494,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             case .running?, .needsInput?, .finished?:
                 keep()  // Hermes took it after all
                 if joinsCall { adoptCallChat(job.id) }
+                armCallback(job.id)  // a "call me when it's done" still calls
                 startPollingIfNeeded()
                 return startedReply(job)
             case .failed?:
