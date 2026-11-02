@@ -3769,20 +3769,11 @@ final class HermesClient: ObservableObject {
             }
         }
         if speaksSessionAuthority {
-            // The authority names every approval it asks. A card without an
-            // id (one answered before the ready was read, which goes again
-            // here) answers the one the chat still waits on; none waiting
-            // means nothing to answer.
-            let waiting = try await pendingApprovals(sessionId: sessionId, profile: profile)
-                .compactMap { $0.requestId?.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-            guard let only = waiting.first else { return .ended }
-            // With several waiting, nothing says which one the card shows:
-            // the user answers it once the cards carry their ids.
-            guard waiting.count == 1 else { throw HermesError.severalApprovalsWaiting }
-            return try await respondToApprovalOutcome(
-                sessionId: sessionId, requestId: only, choice: choice, profile: profile
-            )
+            // The authority names every approval it asks, and AppState
+            // matches an id-less card to its request by command before it
+            // answers (legacyApprovalTarget). One still without an id can't
+            // be told from another approval in the chat: nothing is sent.
+            return .ended
         }
         var params: [String: Any] = [
             "choice": choice,
@@ -4670,8 +4661,6 @@ enum HermesError: Error, LocalizedError {
     case connectionClosed
     case timeout(String)
     case steerRejected
-    /// A card without an id, answered while its chat waits on more than one.
-    case severalApprovalsWaiting
 
     var errorDescription: String? {
         switch self {
@@ -4688,8 +4677,6 @@ enum HermesError: Error, LocalizedError {
         case .timeout:
             return Self.timeoutMessage
         case .steerRejected: return AppLocalization.string("Hermes could not steer the active response.")
-        case .severalApprovalsWaiting:
-            return AppLocalization.string("This chat is waiting on more than one approval. Open the chat and answer the one you mean.")
         }
     }
 
