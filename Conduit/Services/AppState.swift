@@ -10432,18 +10432,15 @@ final class AppState: ObservableObject {
     /// switched source then re-keyed every row, so the transcript drew and
     /// measured them all again from guesses, lost the reader's place, and
     /// took a re-keyed latest user message for a new turn. The two lists
-    /// are lined up by each row's role, text and tool call. A row whose id
+    /// are lined up by each row's role, text and tool call. The same pairing
+    /// gives a live turn's resume rows the ids of the stored rows read with
+    /// them (reconcile), so on such a gateway only the rows Hermes hasn't
+    /// stored yet are drawn under positional ids. A row whose id
     /// `durableIDs` holds keeps it: the delivery checks, the graft of a
     /// refreshed page onto older history and the merge of newer stored rows
-    /// all find rows by Hermes' stored ids. So on such a gateway the rows a
-    /// turn drew from a resume are re-keyed once its stored rows arrive (the
-    /// scroller
-    /// doesn't take the re-keyed latest user message for a new turn,
-    /// TranscriptScroller.noteLatestUserRow). The chat's own notes, which
-    /// Hermes never has (keepingLocalNotes puts them back), are left out of
-    /// the lining up. An id never goes to a row while another row of the
-    /// rebuilt transcript still has it, and an optimistic row's id is never
-    /// carried.
+    /// all find rows by Hermes' stored ids. An id never goes to a row while
+    /// another row of the rebuilt transcript still has it, and an optimistic
+    /// row's id is never carried.
     static func keepingRowIDs(
         from previous: [ChatMessage],
         in rebuilt: [ChatMessage],
@@ -10465,28 +10462,66 @@ final class AppState: ObservableObject {
             }
             return Signature(role: message.role, content: message.content, tool: tool)
         }
-        // Lined up from the newest rows back while they agree, then from the
-        // oldest forward up to those: the rows on screen pair first, rows
-        // added at either end stay new, and a repeated text never pairs with
-        // an older row of the same words.
-        let shownRows = previous.filter { !($0.role == .system && $0.id.hasPrefix("slash-")) }
-        let previousSignatures = shownRows.map(signature)
-        let rebuiltSignatures = rebuilt.map(signature)
-        let common = min(shownRows.count, rebuilt.count)
-        var suffix = 0
-        while suffix < common,
-              previousSignatures[shownRows.count - 1 - suffix] == rebuiltSignatures[rebuilt.count - 1 - suffix] {
-            suffix += 1
+        // Lined up as the longest run of rows the two lists share in order,
+        // a repeated text pairing with its newest copy: rows added at either
+        // end or between (a new turn, older history, the chat's own notes,
+        // saved review cards) stay unpaired. A list too long to line up
+        // that way pairs only the rows the two share at each end.
+        // Each signature as a number, so lining up compares numbers.
+        var codes: [Signature: Int] = [:]
+        func code(_ message: ChatMessage) -> Int {
+            let key = signature(message)
+            if let known = codes[key] { return known }
+            codes[key] = codes.count
+            return codes.count - 1
         }
-        var prefix = 0
-        while prefix < common - suffix, previousSignatures[prefix] == rebuiltSignatures[prefix] {
-            prefix += 1
+        let previousCodes = previous.map(code)
+        let rebuiltCodes = rebuilt.map(code)
+        let rebuiltCount = rebuilt.count, shownCount = previous.count
+        var pairs: [(rebuilt: Int, previous: Int)] = []
+        if rebuiltCount * shownCount <= 2_000_000 {
+            // lengths[i * width + j]: the longest shared run of the first i
+            // rebuilt rows and the first j shown rows.
+            let width = shownCount + 1
+            var lengths = [Int32](repeating: 0, count: (rebuiltCount + 1) * width)
+            for i in 0..<rebuiltCount {
+                for j in 0..<shownCount {
+                    lengths[(i + 1) * width + j + 1] = rebuiltCodes[i] == previousCodes[j]
+                        ? lengths[i * width + j] + 1
+                        : max(lengths[i * width + j + 1], lengths[(i + 1) * width + j])
+                }
+            }
+            // From the newest back, so a repeated text pairs with its
+            // newest copy.
+            var i = rebuiltCount, j = shownCount
+            while i > 0, j > 0 {
+                if rebuiltCodes[i - 1] == previousCodes[j - 1] {
+                    pairs.append((rebuilt: i - 1, previous: j - 1))
+                    i -= 1
+                    j -= 1
+                } else if lengths[(i - 1) * width + j] >= lengths[i * width + j - 1] {
+                    i -= 1
+                } else {
+                    j -= 1
+                }
+            }
+        } else {
+            let common = min(shownCount, rebuiltCount)
+            var suffix = 0
+            while suffix < common,
+                  previousCodes[shownCount - 1 - suffix] == rebuiltCodes[rebuiltCount - 1 - suffix] {
+                suffix += 1
+            }
+            var prefix = 0
+            while prefix < common - suffix, previousCodes[prefix] == rebuiltCodes[prefix] {
+                prefix += 1
+            }
+            pairs = (0..<prefix).map { (rebuilt: $0, previous: $0) }
+                + (0..<suffix).map { (rebuilt: rebuiltCount - 1 - $0, previous: shownCount - 1 - $0) }
         }
-        var pairs: [(rebuilt: Int, previous: Int)] = (0..<prefix).map { (rebuilt: $0, previous: $0) }
-        pairs += (0..<suffix).map { (rebuilt: rebuilt.count - 1 - $0, previous: shownRows.count - 1 - $0) }
         var result = rebuilt
         for pair in pairs {
-            let shown = shownRows[pair.previous]
+            let shown = previous[pair.previous]
             let message = rebuilt[pair.rebuilt]
             // An optimistic row's id (`local-`) stays its own: the delivery
             // and steer checks read it as a row Hermes hasn't stored yet.
@@ -17455,6 +17490,18 @@ final class AppState: ObservableObject {
                     snapshot: result.snapshot
                 )
                 graftedBackfilledPrefix = grafted.grafted
+            } else if let transcript, transcriptMatches, !transcript.messages.isEmpty {
+                // A live turn's rows come from the resume. On a gateway whose
+                // resume rows don't name their stored rows (`row_id`), the
+                // ones Hermes has stored take their ids from the stored rows
+                // read with them, so the turn's end doesn't re-key the chat
+                // (#1648).
+                presentationResult = SessionResumeResult(
+                    sessionId: result.sessionId,
+                    storedSessionId: result.storedSessionId,
+                    messages: Self.keepingRowIDs(from: transcript.messages, in: result.messages, durableIDs: []),
+                    snapshot: result.snapshot
+                )
             } else {
                 presentationResult = result
             }
