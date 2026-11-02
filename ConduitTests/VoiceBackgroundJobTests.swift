@@ -309,7 +309,7 @@ extension VoiceConversationControllerTests {
         _ = await lost.performVoiceCommand(.start(instructions: "check the router"))
         XCTAssertEqual(lostFake.kept.count, 1)
         XCTAssertEqual(lostFake.kept.last?.2, "check the router")
-        XCTAssertTrue(fake.keptEndings.allSatisfy { $0 == nil }, "still running: nothing to settle with")
+        XCTAssertTrue(lostFake.keptEndings.allSatisfy { $0 == nil }, "still running: nothing to settle with")
         // A turn that ended during its submit: kept with its reply, so its row settles.
         let (quick, quickFake) = makeSupervisor()
         quickFake.onSubmit = { id in
@@ -343,6 +343,18 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.createdProfiles, ["furina"], "the coordinator's bot runs it")
         XCTAssertEqual(fake.kept.map(\.0), ["furina"])
         XCTAssertEqual(fake.keptChats, ["st-bot"])
+    }
+
+    /// A Bot Chat call's job that names another bot is that bot's call job:
+    /// the call's chat isn't sent to it.
+    func testABotChatCallsJobOnAnotherBotDoesntNameTheChat() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.profileTargets = ["kazuha": .other("kazuha")]
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-bot", storedSessionID: "st-bot",
+                                                      title: "Bot Chat", profile: "furina"))
+        _ = await supervisor.startJob(instructions: "check the backups", profile: "kazuha")
+        XCTAssertEqual(fake.kept.map(\.0), ["kazuha"])
+        XCTAssertEqual(fake.keptChats, [nil])
     }
 
     /// Eric 2026-11-02: a workstream's call stays in its session; no job is made.

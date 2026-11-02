@@ -1443,8 +1443,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         var botProfile = profile ?? backend.activeProfile()
         func keep() {
             guard let registryID else { return }
-            let chat = liveThread.flatMap { thread in [thread.storedSessionID, thread.runtimeSessionID]
-                .compactMap { $0 }.first { !$0.isEmpty } }
+            // The call's chat, only to the bot it lives on: a job naming
+            // another bot is that bot's call job. The plugin makes it the
+            // coordinator's only when the chat is its Bot Chat; any other
+            // chat's call keeps its jobs as call jobs.
+            let chat = liveThread.flatMap { thread -> String? in
+                guard (thread.profile ?? backend.activeProfile()) == botProfile else { return nil }
+                return [thread.storedSessionID, thread.runtimeSessionID].compactMap { $0 }.first { !$0.isEmpty }
+            }
             let now = self.job(job.id)
             backend.keepInRegistry(botProfile, registryID, job.title, now?.instructions ?? instructions,
                                    fromWatch, chat, now?.status == .finished ? (now?.result ?? "") : nil)
