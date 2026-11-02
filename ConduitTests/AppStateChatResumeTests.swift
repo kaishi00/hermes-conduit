@@ -767,6 +767,47 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(AppState.keepingStoredRowIDs(resume, from: []).messages.map(\.id), ["0", "1", "2"])
     }
 
+    /// Where a reconcile takes its rows from: a live turn's resume keeps the
+    /// stored rows' ids, a settled one shows the stored rows, a resume with
+    /// no rows shows the stored ones even mid-turn, and rows of another
+    /// chat, or none stored, leave the resume as it came.
+    func testAReconcileTakesALiveTurnsRowsFromTheResumeWithStoredIDs() {
+        let row = ChatMessage(id: "0", role: .user, content: "Hi", timestamp: "2026-09-13T08:00:00Z")
+        let stored = [row.withID("12308.0")]
+        func resume(_ messages: [ChatMessage], live: Bool) -> SessionResumeResult {
+            SessionResumeResult(
+                sessionId: "chat-a",
+                messages: messages,
+                snapshot: SessionRuntimeSnapshot(object: [:], inflight: .bool(live))
+            )
+        }
+        XCTAssertTrue(resume([row], live: true).snapshot.hasLiveProjection)
+        XCTAssertEqual(
+            AppState.reconcileRowsSource(transcriptMatches: true, storedMessages: stored, result: resume([row], live: true)),
+            .resumeKeepingStoredIDs
+        )
+        XCTAssertEqual(
+            AppState.reconcileRowsSource(transcriptMatches: true, storedMessages: stored, result: resume([row], live: false)),
+            .stored
+        )
+        XCTAssertEqual(
+            AppState.reconcileRowsSource(transcriptMatches: true, storedMessages: stored, result: resume([], live: true)),
+            .stored
+        )
+        XCTAssertEqual(
+            AppState.reconcileRowsSource(transcriptMatches: false, storedMessages: stored, result: resume([row], live: true)),
+            .resume
+        )
+        XCTAssertEqual(
+            AppState.reconcileRowsSource(transcriptMatches: true, storedMessages: [], result: resume([row], live: true)),
+            .resume
+        )
+        XCTAssertEqual(
+            AppState.reconcileRowsSource(transcriptMatches: true, storedMessages: nil, result: resume([row], live: false)),
+            .resume
+        )
+    }
+
     /// Through a resume of the same chat: the rows keep their ids.
     func testAResumeOfTheSameChatKeepsTheRowsIDs() {
         let harness = makeHarness()

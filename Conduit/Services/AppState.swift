@@ -10535,6 +10535,37 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// Where a reconcile's rows come from.
+    enum ReconcileRowsSource: Equatable {
+        /// Hermes' stored rows (a settled turn, or a resume with no rows).
+        case stored
+        /// The resume's rows, a live turn's, with the stored ones keeping
+        /// the stored rows' ids (`keepingStoredRowIDs`, #1648).
+        case resumeKeepingStoredIDs
+        /// The resume's rows as they came: no stored rows of this chat.
+        case resume
+    }
+
+    /// A compact resume ships no persisted transcript, so the REST rows are
+    /// the durable base even while a turn is live: the in-flight projection
+    /// rides on top through the streaming bubble, matching Desktop's
+    /// cache-as-base rendering. A resume that carried messages keeps the
+    /// historical precedence where a live projection wins over the REST
+    /// read, its stored rows keeping their ids.
+    static func reconcileRowsSource(
+        transcriptMatches: Bool,
+        storedMessages: [ChatMessage]?,
+        result: SessionResumeResult
+    ) -> ReconcileRowsSource {
+        guard transcriptMatches, let storedMessages else { return .resume }
+        let resumeCarriedTranscript = !result.messages.isEmpty
+        if (!storedMessages.isEmpty || !resumeCarriedTranscript)
+            && (!result.snapshot.hasLiveProjection || !resumeCarriedTranscript) {
+            return .stored
+        }
+        return storedMessages.isEmpty ? .resume : .resumeKeepingStoredIDs
+    }
+
     /// The longest run of `pairs` (in rebuilt order) whose shown index rises
     /// too, by patience sorting.
     private static func risingRun(_ pairs: [(rebuilt: Int, previous: Int)]) -> [(rebuilt: Int, previous: Int)] {
@@ -17469,16 +17500,12 @@ final class AppState: ObservableObject {
                     )
                 )
             }
-            // A compact resume ships no persisted transcript, so the REST rows
-            // are the durable base even while a turn is live: the in-flight
-            // projection rides on top through the streaming bubble, matching
-            // Desktop's cache-as-base rendering. A resume that carried
-            // messages keeps the historical precedence where a live projection
-            // wins over the REST read.
-            let resumeCarriedTranscript = !result.messages.isEmpty
-            let shouldUsePersistedTranscript = transcriptMatches
-                && (transcript.map { !$0.messages.isEmpty || !resumeCarriedTranscript } ?? false)
-                && (!result.snapshot.hasLiveProjection || !resumeCarriedTranscript)
+            // Stored rows or the resume's (reconcileRowsSource).
+            let rowsSource = Self.reconcileRowsSource(
+                transcriptMatches: transcriptMatches,
+                storedMessages: transcript?.messages,
+                result: result
+            )
             let priorWindowForGraft = priorWindowOwnsThisConversation(
                 priorWindow,
                 requestedSessionId: sessionId,
@@ -17488,7 +17515,7 @@ final class AppState: ObservableObject {
             ) ? priorWindow : nil
             let presentationResult: SessionResumeResult
             var graftedBackfilledPrefix = false
-            if let transcript, shouldUsePersistedTranscript {
+            if let transcript, rowsSource == .stored {
                 // A re-reconciliation replaces only the newest page. Keep
                 // everything "Load earlier messages" already backfilled by
                 // re-anchoring the refreshed tail onto the older prefix;
@@ -17510,7 +17537,7 @@ final class AppState: ObservableObject {
                     snapshot: result.snapshot
                 )
                 graftedBackfilledPrefix = grafted.grafted
-            } else if let transcript, transcriptMatches, !transcript.messages.isEmpty {
+            } else if let transcript, rowsSource == .resumeKeepingStoredIDs {
                 // A live turn's rows come from the resume; the ones Hermes
                 // has stored keep the stored rows' ids (#1648).
                 presentationResult = Self.keepingStoredRowIDs(result, from: transcript.messages)
@@ -31125,8 +31152,9 @@ final class AppState: ObservableObject {
     ///
     /// Keep the envelope merge and id-key order in sync with
     /// `MessageNormalizer.normalizeMessages`, which consumes the same rows.
-    /// The normalizer also reads a resume row's `row_id`, spelled as this
-    /// renders a stored row's `id`; `/messages` rows carry `id` itself.
+    /// This covers `/messages` rows only, which carry `id` itself; the
+    /// normalizer also reads a resume row's `row_id` after `id` and
+    /// `message_id`, spelled as this renders a stored row's `id`.
     nonisolated static func durablePersistedRowID(from rawRow: Any) -> String? {
         guard let envelope = rawRow as? [String: Any] else { return nil }
         // Same envelope merge as normalizeMessages: `message` / `payload` /

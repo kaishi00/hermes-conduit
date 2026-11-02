@@ -1363,10 +1363,13 @@ final class TranscriptScroller: ObservableObject {
         // No user message left to stop under (the transcript was cleared).
         if latest == nil { replyHoldArmed = false }
         // The same message: the old row is gone, the text is the same, and
-        // no stored row id says they differ.
+        // no stored row id says they differ. A send's own row (`local-`) is
+        // always new: a retry or an edit takes the last message away and
+        // sends the same words again.
         let storedRowsDiffer = previousStoredRowID != nil && latestTarget?.message.rowId != nil
             && previousStoredRowID != latestTarget?.message.rowId
-        let rekeyed = previous.map { !targetIDs.contains($0) } == true
+        let rekeyed = latest?.hasPrefix("local-") == false
+            && previous.map { !targetIDs.contains($0) } == true
             && latestTarget?.message.content == previousText
             && !storedRowsDiffer
         if arming, previous != nil, latest != nil, !rekeyed {

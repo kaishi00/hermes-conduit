@@ -1966,6 +1966,22 @@ final class TranscriptScrollerTests: XCTestCase {
         withExtendedLifetime(surface) {}
     }
 
+    /// A send's own row is new even with the words of the message it
+    /// replaces: a retry takes the last message away and sends it again.
+    func testASendRepeatingARemovedMessageArmsTheHold() {
+        let (scroller, surface) = makeScroller()
+        scroller.holdsRepliesAtStart = { true }
+        let shown = Self.messages(0..<10)
+        scroller.transcriptChanged(messages: shown, transcriptRevision: 2, viewportTransitionGeneration: 1)
+        XCTAssertFalse(scroller.replyHoldArmed)
+
+        var retried = Array(shown.prefix(8))
+        retried.append(shown[8].withID("local-retry"))
+        scroller.transcriptChanged(messages: retried, transcriptRevision: 3, viewportTransitionGeneration: 1)
+        XCTAssertTrue(scroller.replyHoldArmed)
+        withExtendedLifetime(surface) {}
+    }
+
     func testOpeningAChatDoesNotArmTheHold() {
         let (scroller, surface) = makeScroller()
         scroller.holdsRepliesAtStart = { true }
