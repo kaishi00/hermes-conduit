@@ -10432,10 +10432,11 @@ final class AppState: ObservableObject {
     /// switched source then re-keyed every row, so the transcript drew and
     /// measured them all again from guesses, lost the reader's place, and
     /// took a re-keyed latest user message for a new turn. A message pairs
-    /// by its role, text and tool call when each list holds it once. The
-    /// same pairing gives a live turn's resume rows the ids of the stored
-    /// rows read with them (reconcile), so on such a gateway only the rows Hermes hasn't
-    /// stored yet are drawn under positional ids. A row whose id
+    /// by its role, text and tool call when each list holds it once and
+    /// their times, where both say one, agree. The same pairing gives a
+    /// live turn's resume rows the ids of the stored rows read with them
+    /// (`keepingStoredRowIDs`), so on such a gateway only the rows Hermes
+    /// hasn't stored yet are drawn under positional ids. A row whose id
     /// `durableIDs` holds keeps it: the delivery checks, the graft of a
     /// refreshed page onto older history and the merge of newer stored rows
     /// all find rows by Hermes' stored ids. An id never goes to a row while
@@ -10480,7 +10481,8 @@ final class AppState: ObservableObject {
         for (index, message) in rebuilt.enumerated() {
             let key = signature(message)
             guard rebuiltCount[key] == 1, previousCount[key] == 1,
-                  let shownIndex = previousIndex[key] else { continue }
+                  let shownIndex = previousIndex[key],
+                  Self.sameTime(previous[shownIndex].timestamp, message.timestamp) else { continue }
             candidates.append((rebuilt: index, previous: shownIndex))
         }
         let pairs = Self.risingRun(candidates)
@@ -10503,6 +10505,34 @@ final class AppState: ObservableObject {
             result[pair.rebuilt] = kept
         }
         return result
+    }
+
+    /// Whether two rows' times can be the same message's: true when either
+    /// doesn't say one, or they're within a couple of seconds (the two
+    /// sources spell Hermes' stored time differently). The same text at
+    /// another time is another message ("thanks" sent again later).
+    private static func sameTime(_ lhs: String, _ rhs: String) -> Bool {
+        guard let left = MessageTimestampFormatter.date(from: lhs),
+              let right = MessageTimestampFormatter.date(from: rhs) else { return true }
+        return abs(left.timeIntervalSince(right)) <= 2
+    }
+
+    /// A live turn's resume rows, read with Hermes' stored rows of the same
+    /// chat (`stored`): the ones Hermes has stored take those rows' ids, so
+    /// the turn's end, when the stored rows take over, doesn't re-key the
+    /// chat on a gateway whose resume rows don't name their stored rows
+    /// (`row_id`) (#1648).
+    static func keepingStoredRowIDs(
+        _ result: SessionResumeResult,
+        from stored: [ChatMessage]
+    ) -> SessionResumeResult {
+        guard !stored.isEmpty else { return result }
+        return SessionResumeResult(
+            sessionId: result.sessionId,
+            storedSessionId: result.storedSessionId,
+            messages: keepingRowIDs(from: stored, in: result.messages, durableIDs: []),
+            snapshot: result.snapshot
+        )
     }
 
     /// The longest run of `pairs` (in rebuilt order) whose shown index rises
@@ -17481,17 +17511,9 @@ final class AppState: ObservableObject {
                 )
                 graftedBackfilledPrefix = grafted.grafted
             } else if let transcript, transcriptMatches, !transcript.messages.isEmpty {
-                // A live turn's rows come from the resume. On a gateway whose
-                // resume rows don't name their stored rows (`row_id`), the
-                // ones Hermes has stored take their ids from the stored rows
-                // read with them, so the turn's end doesn't re-key the chat
-                // (#1648).
-                presentationResult = SessionResumeResult(
-                    sessionId: result.sessionId,
-                    storedSessionId: result.storedSessionId,
-                    messages: Self.keepingRowIDs(from: transcript.messages, in: result.messages, durableIDs: []),
-                    snapshot: result.snapshot
-                )
+                // A live turn's rows come from the resume; the ones Hermes
+                // has stored keep the stored rows' ids (#1648).
+                presentationResult = Self.keepingStoredRowIDs(result, from: transcript.messages)
             } else {
                 presentationResult = result
             }
