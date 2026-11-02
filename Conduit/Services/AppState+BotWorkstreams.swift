@@ -356,6 +356,12 @@ extension AppState {
         do {
             let updated = try await botWorkClient(profile: profile).act(ref: item.ref, action: action, text: text,
                                                                          requestID: requestID)
+            // A call's job stopped here is stopped for its call too, not
+            // settled as finished when its session goes quiet: the stop went
+            // in, even if the server changed meanwhile.
+            if action == .stop, !item.call.isEmpty {
+                voiceBackgroundJobSupervisor.stoppedFromWorkPanel(sessionID: item.sessionID)
+            }
             // After a server change the row isn't this server's.
             guard botWork.mark(profile).epoch == mark.epoch else { return false }
             botWork.noteAction(profile)
@@ -364,11 +370,6 @@ extension AppState {
                     botWork.replace(updated, profile: profile, reopened: action == .reopen)
                     botWork.fileResolved(updated, profile: profile)
                 }
-            }
-            // A call's job stopped here is stopped for its call too, not
-            // settled as finished when its session goes quiet.
-            if action == .stop, !item.call.isEmpty {
-                voiceBackgroundJobSupervisor.stoppedFromWorkPanel(sessionID: item.sessionID)
             }
             Haptics.success()
             // The buttons free up now; the list is read again behind them.
