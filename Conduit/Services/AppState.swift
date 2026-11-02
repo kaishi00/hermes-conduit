@@ -24838,12 +24838,8 @@ final class AppState: ObservableObject {
         return outcome == .opened
     }
 
-    /// Routes a notification to its originating profile/session without
-    /// allowing the ordinary cold-start session restoration to win first.
-    /// Whether `sessionID` names a row of `catalog`: its id, stored id or
-    /// one of its alternates.
     /// A plain notification always rereads the chat list. A call's open
-    /// (answered, or its Talk button) has someone waiting on the voice, so it
+    /// (answered, or a tap on a call notification) has someone waiting on the voice, so it
     /// rereads only when the list on hand lacks the call's chat. Runtime and
     /// alias ids are never handed to another chat, so a row they match is
     /// the call's chat.
@@ -24858,6 +24854,8 @@ final class AppState: ObservableObject {
         return false
     }
 
+    /// Whether `sessionID` names a row of `catalog`: its id, stored id or
+    /// one of its alternates.
     nonisolated static func catalogListsSession(_ sessionID: String, in catalog: [SessionSummary]) -> Bool {
         guard let wanted = ChatScrollIdentityNormalization.sessionID(sessionID) else { return false }
         return catalog.contains { row in
@@ -24866,6 +24864,8 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Routes a notification to its originating profile/session without
+    /// allowing the ordinary cold-start session restoration to win first.
     func openNotificationTargetOutcome(_ target: ConduitNotificationTarget) async -> NotificationOpenOutcome {
         widgetLaunchCoordinator.supersede()
         // Where an open for a call from Hermes stopped (#449).
