@@ -3501,7 +3501,7 @@ final class HermesClient: ObservableObject {
             }
         }
         if authorityPrompt == nil, speaksSessionAuthority,
-           !requestId.hasPrefix(PushNotificationService.relayRequestPrefix) {
+           !requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) {
             // Neither seen asked nor in a chat it could be read from: the
             // authority refuses the dashboard's shape, and nothing here
             // says it still waits.
