@@ -14180,6 +14180,10 @@ final class AppState: ObservableObject {
                 )
             }
         }
+        // The early reads are this connection's steps' alone: what any other
+        // screen reads after the connection settled (a pull to refresh, the
+        // profile list after a new bot) is read fresh.
+        defer { startupReads.clear() }
         guard automaticChatResumeWorkIsCurrent(
             automaticWorkToken,
             reconnectOperationID: transportOperationID
