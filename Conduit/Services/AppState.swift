@@ -22860,13 +22860,16 @@ final class AppState: ObservableObject {
         guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
             return .failed(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
         }
-        if outcome == .signedIn {
-            // The MCP page opens on it signed in (#1533).
-            keepWrittenChange(BotMcpSetupSnapshot.self, KeptRoute.botMcpSetup, profile: profile, on: owner) {
-                $0.servers[name] = BotMcpServerSummary(name: name, auth: "oauth", oauthTokensPresent: true)
-            }
-        }
+        if outcome == .signedIn { keepMcpSignedIn(profile: profile, name: name, on: owner) }
         return outcome
+    }
+
+    /// A sign-in Hermes took, from Edit Bot or the Connectors page: the
+    /// bot editor's MCP page opens on it signed in (#1533, #1640).
+    func keepMcpSignedIn(profile: String, name: String, on owner: DashboardRuntimeOwner?) {
+        keepWrittenChange(BotMcpSetupSnapshot.self, KeptRoute.botMcpSetup, profile: profile, on: owner) {
+            $0.servers[name] = BotMcpServerSummary(name: name, auth: "oauth", oauthTokensPresent: true)
+        }
     }
 
     /// `profiles.describe` for the edit sheet: the description and SOUL.md.

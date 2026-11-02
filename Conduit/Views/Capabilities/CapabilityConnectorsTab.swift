@@ -278,8 +278,6 @@ private struct ConnectorCatalogRow: View {
     }
 }
 
-/// A server's page: its state and switch, where it runs, test and sign-in,
-/// the tools it brings, and Remove.
 /// A catalog connector's keys, set or replaced from its page. Hermes keeps
 /// them in the profile's `.env`, which the server's config already reads
 /// (`${VAR}`), so the config isn't touched. Write-only: nothing is shown.
@@ -367,6 +365,8 @@ struct ConnectorKeysSection: View {
     }
 }
 
+/// A server's page: its state and switch, where it runs, test and sign-in,
+/// the tools it brings, and Remove.
 struct ConnectorDetailPage: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject var appState: AppState
@@ -675,6 +675,7 @@ struct ConnectorDetailPage: View {
               store.serves(appState.currentCapabilitiesOwner),
               !store.showsKept.contains(.connectors) else { return }
         let owner = appState.currentCapabilitiesOwner
+        let runtimeOwner = appState.currentDashboardRuntimeOwner()
         let generation = store.generation
         let profile = store.profile
         let name = self.name
@@ -704,6 +705,7 @@ struct ConnectorDetailPage: View {
             case .signedIn:
                 message = AppLocalization.string("Signed in.")
                 Haptics.success()
+                appState.keepMcpSignedIn(profile: profile, name: name, on: runtimeOwner)
                 await store.probe(name)
             case .cancelled: break
             case .failed(let problem): message = problem
