@@ -49,7 +49,10 @@ enum IPhoneVoices {
         let base = (parts.first ?? language).lowercased()
         guard base == "zh" else { return base }
         let rest = parts.dropFirst().map { $0.uppercased() }
-        if rest.contains(where: { ["TW", "HK", "MO", "HANT"].contains($0) }) { return "zh-TW" }
+        // A script named outright wins over the region (zh-Hans-HK is Simplified).
+        if rest.contains("HANT") { return "zh-TW" }
+        if rest.contains("HANS") { return "zh-CN" }
+        if rest.contains(where: { ["TW", "HK", "MO"].contains($0) }) { return "zh-TW" }
         return "zh-CN"
     }
 

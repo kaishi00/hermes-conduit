@@ -232,10 +232,14 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
     /// voice.
     nonisolated static func speechLanguage(of locale: Locale) -> String? {
         guard let code = locale.language.languageCode?.identifier else { return nil }
-        guard code == "zh" else { return code }
-        let traditional = locale.language.script?.identifier == "Hant"
-            || ["TW", "HK", "MO"].contains(locale.language.region?.identifier ?? "")
-        return traditional ? "zh-TW" : "zh-CN"
+        guard code == "zh" else { return detectedTag(code) }
+        // A script named outright wins over the region (zh-Hans-HK is Simplified).
+        switch locale.language.script?.identifier {
+        case "Hant": return "zh-TW"
+        case "Hans": return "zh-CN"
+        default:
+            return ["TW", "HK", "MO"].contains(locale.language.region?.identifier ?? "") ? "zh-TW" : "zh-CN"
+        }
     }
 }
 

@@ -2851,7 +2851,7 @@ Classic voice, and its calls speak with their live voices.
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-02, #1664 (new entry: a reply recognized as Cantonese speaks with a Cantonese voice; automatic skips screen-reader voices, a pick per language, newly downloaded voices used at once; review: Automatic clears a deleted pick, screen-reader voices listed only when alone, Chinese kept apart by script, screen-reader voices below any other, an app in Traditional Chinese falls back to Traditional, Mandarin over Cantonese unpicked, a short opening sentence no longer fixes the reply's language).
+**Checked:** 2026-11-02, #1664 (new entry: a reply recognized as Cantonese, or a Cantonese system language, speaks with a Cantonese voice, and a Chinese script named outright wins over the region; automatic skips screen-reader voices, a pick per language, newly downloaded voices used at once; review: Automatic clears a deleted pick, screen-reader voices listed only when alone, Chinese kept apart by script, screen-reader voices below any other, an app in Traditional Chinese falls back to Traditional, Mandarin over Cantonese unpicked, a short opening sentence no longer fixes the reply's language).
 
 ## Providers and keys
 
