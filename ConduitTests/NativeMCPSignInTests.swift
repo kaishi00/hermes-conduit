@@ -13,7 +13,9 @@ final class NativeMCPSignInTests: XCTestCase {
     private func loopback(stopped: @escaping () -> Void = {}) -> NativeMCPSignIn.Loopback {
         NativeMCPSignIn.Loopback(
             start: { 45678 }, expect: { XCTAssertEqual($0, "expected") },
-            callback: { "code=test-code&state=expected&iss=https%3A%2F%2Fprovider.example" }, stop: stopped
+            // The live listener relays the callback's values in this form.
+            callback: { NativeOAuthFlow.encodedQuery(["code": "test-code", "state": "expected", "iss": "https://provider.example"]) },
+            stop: stopped
         )
     }
 
@@ -135,7 +137,7 @@ final class NativeMCPSignInTests: XCTestCase {
             }, isCurrent: { true }, open: { _ in }, loopback: NativeMCPSignIn.Loopback(
                 start: { 45678 }, expect: { _ in }, callback: {
                     if timesOut { throw NativeOAuthError.timedOut }
-                    return "error=access_denied&state=expected"
+                    return NativeOAuthFlow.encodedQuery(["error": "access_denied", "state": "expected"])
                 }, stop: { stopped = true }
             ))
             if case .failed = outcome {} else { XCTFail("Expected failure") }
