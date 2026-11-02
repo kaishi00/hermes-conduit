@@ -3750,10 +3750,18 @@ final class HermesClient: ObservableObject {
             }
         }
         if speaksSessionAuthority {
-            // The authority names every approval it asks; a card without an
-            // id asks nothing it still waits on (AppState fills a waiting
-            // one's id from `approval.pending`, which lists the same ids).
-            return .ended
+            // The authority names every approval it asks. A card without an
+            // id (one answered before the ready was read, which goes again
+            // here) answers the oldest the chat still waits on, as the
+            // dashboard's requestless answer settles its queue's head; none
+            // waiting means nothing to answer.
+            let waiting = try await pendingApprovals(sessionId: sessionId, profile: profile)
+                .compactMap { $0.requestId?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            guard let oldest = waiting.first else { return .ended }
+            return try await respondToApprovalOutcome(
+                sessionId: sessionId, requestId: oldest, choice: choice, profile: profile
+            )
         }
         var params: [String: Any] = [
             "choice": choice,

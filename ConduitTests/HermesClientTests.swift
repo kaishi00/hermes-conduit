@@ -2399,6 +2399,40 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testAuthorityRequestlessApprovalAnswersTheOneTheChatStillWaitsOn() async throws {
+        let (client, socket) = try await authorityClient()
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": [
+                "type": "approval.request", "session_id": "sess-1", "execution_generation": 8,
+                "payload": ["prompt_id": "p-pend-8", "execution_generation": 8, "command": "rm q"]
+            ]
+        ], to: socket)
+        let count = socket.sentTexts.count
+        let answer = Task<HermesClient.ApprovalResponseOutcome, Error> {
+            try await client.respondToApprovalOutcome(sessionId: "sess-1", choice: "once")
+        }
+        try await answerRequest(on: socket, after: count, method: "approval.pending", result: [
+            "approvals": [["prompt_id": "p-pend-8", "command": "rm q", "description": "rm q"]]
+        ])
+        let sent = try await answerRequest(on: socket, after: count + 1, method: "approval.respond",
+                                           result: ["status": "resolved", "prompt_id": "p-pend-8"])
+        XCTAssertEqual(sent["prompt_id"] as? String, "p-pend-8")
+        XCTAssertEqual(sent["execution_generation"] as? Int, 8)
+        let outcome = try await awaitResult(of: answer, "the requestless approval")
+        XCTAssertEqual(outcome, .accepted)
+
+        // Nothing waiting: nothing to answer.
+        let again = socket.sentTexts.count
+        let none = Task<HermesClient.ApprovalResponseOutcome, Error> {
+            try await client.respondToApprovalOutcome(sessionId: "sess-1", choice: "once")
+        }
+        try await answerRequest(on: socket, after: again, method: "approval.pending", result: ["approvals": [Any]()])
+        let noneOutcome = try await awaitResult(of: none, "the requestless approval with nothing waiting")
+        XCTAssertEqual(noneOutcome, .ended)
+        client.disconnect()
+    }
+
     func testAuthorityAnswerTheSocketRefusedIsNotReadAsTakenOnRetry() async throws {
         let (client, socket) = try await authorityClient()
         try await deliverFrame([
