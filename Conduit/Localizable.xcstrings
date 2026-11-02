@@ -416157,6 +416157,94 @@
           }
         }
       }
+    },
+    "Approvals are off for this bot in Hermes, so its chats and workstreams run without asking.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Freigaben sind für diesen Bot in Hermes aus, daher laufen seine Chats und Workstreams ohne Nachfrage."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approvals are off for this bot in Hermes, so its chats and workstreams run without asking."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las aprobaciones están desactivadas para este bot en Hermes, así que sus chats y flujos de trabajo se ejecutan sin preguntar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les approbations sont désactivées pour ce bot dans Hermes, donc ses discussions et flux de travail s’exécutent sans demander."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Persetujuan dimatikan untuk bot ini di Hermes, jadi obrolan dan alur kerjanya berjalan tanpa bertanya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le approvazioni sono disattivate per questo bot in Hermes, quindi le sue chat e i flussi di lavoro procedono senza chiedere."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermesでこのボットの承認はオフなので、チャットもワークストリームも確認せずに実行します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes에서 이 봇의 승인이 꺼져 있어서 채팅과 작업 스트림이 묻지 않고 실행돼요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zatwierdzenia są wyłączone dla tego bota w Hermesie, więc jego czaty i wątki pracy działają bez pytania."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As aprovações estão desativadas para este bot no Hermes, então os chats e fluxos de trabalho dele rodam sem perguntar."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подтверждения для этого бота в Hermes выключены, поэтому его чаты и рабочие потоки работают без вопросов."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu bot için Hermes’te onaylar kapalı, bu yüzden sohbetleri ve iş akışları sormadan çalışır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个机器人在 Hermes 中关闭了审批，因此它的聊天和工作流都会直接运行，不再询问。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這個機器人在 Hermes 中關閉了核准，因此它的聊天和工作流程都會直接執行，不再詢問。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

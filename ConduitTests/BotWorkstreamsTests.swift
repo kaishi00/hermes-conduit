@@ -439,5 +439,9 @@ extension BotModeTests {
         let off = BotWorkSettingsView.approvalsCaption(settings, botName: "Furina")
         XCTAssertNotEqual(asks, off)
         XCTAssertTrue(off.contains("Hermes"))
+        let sameAsChats = BotWorkSettingsView.approvalsCaption(
+            BotWorkSettings(approvals: .chats, chatApprovals: "off"), botName: "Furina")
+        XCTAssertNotEqual(sameAsChats, BotWorkSettingsView.approvalsCaption(
+            BotWorkSettings(approvals: .chats, chatApprovals: "manual"), botName: "Furina"))
     }
 }

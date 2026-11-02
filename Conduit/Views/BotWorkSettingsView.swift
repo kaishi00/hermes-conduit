@@ -19,6 +19,8 @@ struct BotWorkSettingsView: View {
         Form {
             if let settings {
                 content(settings)
+                    // One change at a time: a tap while one saves isn't lost unseen.
+                    .disabled(isSaving)
             } else if loadFailed {
                 Section {
                     VStack(alignment: .leading, spacing: 6) {
@@ -122,6 +124,8 @@ struct BotWorkSettingsView: View {
     /// What the workstreams' approvals choice means on this bot.
     static func approvalsCaption(_ settings: BotWorkSettings, botName: String) -> String {
         switch settings.approvals {
+        case .chats where settings.chatApprovals == "off":
+            return AppLocalization.string("Approvals are off for this bot in Hermes, so its chats and workstreams run without asking.")
         case .chats:
             return AppLocalization.string("Workstreams ask for approval as this bot’s chats do in Hermes.")
         case .ask where settings.chatApprovals == "off":
