@@ -2432,7 +2432,39 @@ final class HermesClientTests: XCTestCase {
         ])
         let retried = try await awaitResult(of: retry, "the retried approval")
         XCTAssertEqual(retried, .accepted, "The answer the user gave isn't read as expired")
+
+        // One whose turn ended may have ended without it (an approval that
+        // timed out): no longer active, not approved.
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": [
+                "type": "approval.request", "session_id": "sess-1", "execution_generation": 6,
+                "payload": ["prompt_id": "p-drop-6", "execution_generation": 6, "command": "rm y"]
+            ]
+        ], to: freshSocket)
+        count = freshSocket.sentTexts.count
+        let lostAgain = Task<HermesClient.ApprovalResponseOutcome, Error> {
+            try await fresh.respondToApprovalOutcome(sessionId: "sess-1", requestId: "p-drop-6", choice: "once")
+        }
+        await waitForSends(count + 1, on: freshSocket)
+        lostAgain.cancel()
+        do {
+            _ = try await lostAgain.value
+            XCTFail("A cancelled answer throws")
+        } catch {}
         fresh.disconnect()
+        let (third, thirdSocket) = try await authorityClient()
+        count = thirdSocket.sentTexts.count
+        let afterEnd = Task<HermesClient.ApprovalResponseOutcome, Error> {
+            try await third.respondToApprovalOutcome(sessionId: "sess-1", requestId: "p-drop-6", choice: "once")
+        }
+        try await answerRequest(on: thirdSocket, after: count, method: "session.resume", result: [
+            "session_id": "sess-1", "messages": [Any](), "running": false, "revision": 1,
+            "execution_generation": 6, "prompts": [Any]()
+        ])
+        let ended = try await awaitResult(of: afterEnd, "the retry after the turn ended")
+        XCTAssertEqual(ended, .ended)
+        third.disconnect()
     }
 
     func testAuthoritySendIntoARunningTurnReadsAsHeldForTheNextTurn() async throws {

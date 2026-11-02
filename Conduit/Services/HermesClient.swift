@@ -3234,7 +3234,8 @@ final class HermesClient: ObservableObject {
                 generation: Self.exactIntValue(result.objectValue?["execution_generation"]),
                 revision: nil
             )
-            return queued || joinsRunningTurn ? .queued : .accepted
+            // A Queue send into a chat this socket saw idle starts at once.
+            return joinsRunningTurn ? .queued : .accepted
         }
         return PromptSubmissionOutcome(
             gatewayStatus: result.objectValue?["status"]?.stringValue
@@ -3439,11 +3440,14 @@ final class HermesClient: ObservableObject {
             // the turn that asked. One it no longer lists was answered or
             // ended.
             // A bot chat is only found under its own profile.
-            _ = try await resumeSessionObject(sessionId, omitMessages: true, profile: profile)
+            let snapshot = try await resumeSessionObject(sessionId, omitMessages: true, profile: profile)
             authorityPrompt = authorityPrompts[requestId]
             if authorityPrompt == nil {
-                // Our earlier send that got no word back most likely settled it.
-                return unconfirmedAuthorityAnswers.remove(requestId) != nil ? .accepted(remaining: []) : .ended
+                // Our earlier send that got no word back most likely settled
+                // it, if the turn that asked still runs; one that ended may
+                // have ended without it.
+                let ours = unconfirmedAuthorityAnswers.remove(requestId) != nil
+                return ours && snapshot["running"]?.boolValue == true ? .accepted(remaining: []) : .ended
             }
         }
         if authorityPrompt == nil, speaksSessionAuthority,
@@ -3631,15 +3635,20 @@ final class HermesClient: ObservableObject {
             // prompt from the chat's resume, which lists the ones Hermes
             // still waits on; one it no longer lists was answered or ended.
             var cached = authorityPrompts[trimmedRequestId]
+            var stillRunning = false
             if cached == nil {
-                _ = try await resumeSessionObject(
+                let snapshot = try await resumeSessionObject(
                     authorityPromptSessions[trimmedRequestId] ?? sessionId, omitMessages: true, profile: profile
                 )
+                stillRunning = snapshot["running"]?.boolValue == true
                 cached = authorityPrompts[trimmedRequestId]
             }
             guard let prompt = cached else {
-                // Our earlier send that got no word back most likely settled it.
-                return unconfirmedAuthorityAnswers.remove(trimmedRequestId) != nil ? .accepted : .ended
+                // Our earlier send that got no word back most likely settled
+                // it, if the turn that asked still runs; one that ended may
+                // have ended without it (an approval that timed out).
+                let ours = unconfirmedAuthorityAnswers.remove(trimmedRequestId) != nil
+                return ours && stillRunning ? .accepted : .ended
             }
             var params: [String: Any] = [
                 "session_id": prompt.sessionId,
@@ -5518,8 +5527,9 @@ enum MessageNormalizer {
     /// wire generation. Returns nil for payloads with no request id or no
     /// answerable question — deliberately dropped, never half-presented.
     static func clarifyActivity(from payload: [String: AnyCodable]) -> ClarifyActivity? {
-        // `prompt_id`: the session authority's clarify prompt.
-        let requestIDCandidates = ["request_id", "requestId", "id", "prompt_id"]
+        // `prompt_id` first: the session authority's clarify prompt, which
+        // its answer and the cached prompt name.
+        let requestIDCandidates = ["prompt_id", "request_id", "requestId", "id"]
             .compactMap { payload[$0]?.stringValue }
         let requestId = requestIDCandidates
             .first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
@@ -5664,8 +5674,9 @@ enum MessageNormalizer {
     ) -> ApprovalActivity? {
         let normalizedSessionId = sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedSessionId.isEmpty else { return nil }
-        // `prompt_id`: the session authority's approval prompt.
-        let requestId = ["request_id", "requestId", "prompt_id"]
+        // `prompt_id` first: the session authority's approval prompt, which
+        // its answer and the cached prompt name.
+        let requestId = ["prompt_id", "request_id", "requestId"]
             .compactMap { payload[$0]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
 
