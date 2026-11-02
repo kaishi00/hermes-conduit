@@ -27,6 +27,7 @@ extension DashboardTicketBridge {
         timeoutMilliseconds: Int = 12_000
     ) async throws -> [String: Any] {
         guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
+        noteWriteSent()
         return try await DashboardTicketBridgeError.explainingPluginRefusal(path: path) { () async throws -> [String: Any] in
             if let nativeOAuthSession {
                 return try await nativeOAuthSession.requestJSON(
@@ -42,6 +43,26 @@ extension DashboardTicketBridge {
                 encodedBody: encodedBody,
                 timeoutMilliseconds: timeoutMilliseconds
             )
+        }
+    }
+
+    /// A read that never goes through the page, so it neither waits for the
+    /// page nor loads it: with the native sign-in's token, else with the
+    /// page's cookies (`.notReady` while no store holds one). For reads sent
+    /// as a connection starts (StartupReads).
+    func readWithoutPage(path: String) async throws -> [String: Any] {
+        guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
+        return try await DashboardTicketBridgeError.explainingPluginRefusal(path: path) { () async throws -> [String: Any] in
+            if let nativeOAuthSession {
+                return try await nativeOAuthSession.requestJSON(
+                    path: path,
+                    method: "GET",
+                    body: nil,
+                    timeoutMilliseconds: 12_000,
+                    maxResponseBytes: DataURLLimits.maxJSONResponseBytes
+                )
+            }
+            return try await requestJSONWithoutPage(path: path)
         }
     }
 

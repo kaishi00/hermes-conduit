@@ -14211,6 +14211,9 @@ final class AppState: ObservableObject {
         continueConnectionTimeline("sign-in")
         noteConnectionStep("Connecting")
         prepareDashboardBridge(for: conn.baseUrl)
+        if chatResumeLifecycleOperations.connectClient == nil {
+            sendStartupReads(profile: profile)
+        }
 
         let previousClient = client
         let client = makeClient(connection: conn, profile: profile)
@@ -19621,6 +19624,7 @@ final class AppState: ObservableObject {
         }
         prepareDashboardBridge(for: connection.baseUrl)
         guard let dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        sendStartupReads(profile: activeProfile)
         let startedAt = Date()
         let signposter = ResponsivenessSignposts.signposter
         let minting = signposter.beginInterval("Ticket mint", id: signposter.makeSignpostID())
@@ -31683,7 +31687,11 @@ final class AppState: ObservableObject {
 
         for page in 0..<maximumPages {
             let offset = page * 200
-            let response = try await bridge.requestJSON(path: profileSessionsPath(profile, offset: offset))
+            let response = try await startupReads.read(
+                profileSessionsPath(profile, offset: offset),
+                through: bridge,
+                fence: startupReadFence(for: bridge)
+            )
             let batch = response["sessions"] as? [Any] ?? []
             let normalizedBatch = await dashboardOwnedSessions(batch, profile: profile)
             sessions += normalizedBatch
@@ -32253,7 +32261,7 @@ final class AppState: ObservableObject {
             if let profileDiscoveryLoaderOverride {
                 response = try await profileDiscoveryLoaderOverride()
             } else {
-                response = try await bridge.requestJSON(path: "/api/profiles")
+                response = try await startupReads.read("/api/profiles", through: bridge, fence: startupReadFence(for: bridge))
             }
             // Commit gate, same identity pattern as the dashboard catalog
             // loader: a bridge swapped mid-request (server change, re-login,
@@ -33719,13 +33727,45 @@ final class AppState: ObservableObject {
     /// doesn't put the older choice back.
     private var displayPreferencesWriteRevision = 0
 
+    /// The reads every connection makes, sent with its ticket rather than
+    /// each after the step before it: the profile list, the chat list's
+    /// newest page and the display settings. Each step takes its answer
+    /// through `startupReads.read`, or reads again when something changed
+    /// since. Only through a saved dashboard's bridge, whose own stores hold
+    /// its session; never through the page.
+    let startupReads = StartupReads()
+
+    func sendStartupReads(profile: String) {
+        guard let bridge = dashboardTicketBridge,
+              bridge.readsWithoutThePageFirst || bridge.usesNativeOAuth else { return }
+        startupReads.send(
+            ["/api/profiles", profileSessionsPath(profile), dashboardPath("/api/config", profile: profile)],
+            through: bridge,
+            fence: startupReadFence(for: bridge)
+        )
+    }
+
+    /// What an early read must still match to be used: no write through the
+    /// dashboard, chat list change or display save since it was sent.
+    private func startupReadFence(for bridge: DashboardTicketBridge) -> StartupReads.Fence {
+        StartupReads.Fence(
+            writes: bridge.writesSent,
+            catalog: sessionCatalogCache.mutationGeneration,
+            display: displayPreferencesWriteRevision
+        )
+    }
+
     private func loadProfileDisplayPreferences() async {
         let profile = activeProfile
         guard let owner = currentDashboardRuntimeOwner() else { return }
         let dashboardTicketBridge = owner.bridge
         let revision = displayPreferencesWriteRevision
         do {
-            let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
+            let config = try await startupReads.read(
+                dashboardPath("/api/config", profile: profile),
+                through: dashboardTicketBridge,
+                fence: startupReadFence(for: dashboardTicketBridge)
+            )
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return }
             let display = config["display"] as? [String: Any] ?? [:]
             profileTimeZoneSetting = (profile, config[ProfileTimeZone.configKey] as? String ?? "")

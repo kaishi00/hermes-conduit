@@ -782,6 +782,16 @@ final class DashboardTicketBridge: NSObject {
     /// background (driving with CarPlay, a locked phone) requests go out
     /// natively with the page's cookies instead (#378). Test seam.
     var webViewCanRun: @MainActor () -> Bool = { PhoneScenePresence.isInForeground }
+    /// Whether reads and the ticket go out without the page while it runs
+    /// too. Only a saved dashboard's own stores say whether it holds a
+    /// session: a bridge built before its dashboard is saved (the login
+    /// screen, tests) shares WebKit's and URLSession's default stores, so it
+    /// keeps the page.
+    var readsWithoutThePageFirst: Bool { dashboardID != nil }
+    /// Requests sent that change something on the dashboard, counted so a
+    /// read sent before one isn't shown after it (StartupReads).
+    private(set) var writesSent = 0
+    func noteWriteSent() { writesSent += 1 }
     /// Cookies the dashboard set on requests sent without the page, newest
     /// last, so a rotated session cookie is the one sent next.
     var backgroundIssuedCookies: [HTTPCookie] = []
@@ -1027,15 +1037,21 @@ final class DashboardTicketBridge: NSObject {
         return try await requestAuthorizer.mintTicket()
     }
 
-    /// Cookie mode's ticket: through the dashboard page, or natively with the
-    /// page's cookies while the page cannot run.
+    /// Cookie mode's ticket: natively with the page's cookies, as the
+    /// socket's upgrade already goes, so a launch doesn't wait for WebKit
+    /// and the page's load first. Through the page only while no store
+    /// holds a cookie yet and the page can run.
     private func mintCookieTicket() async throws -> String {
-        if !webViewCanRun() {
-            let response = try await requestJSONWithoutPage(path: "/api/auth/ws-ticket", method: "POST")
-            guard let ticket = response["ticket"] as? String, !ticket.isEmpty else {
-                throw DashboardTicketBridgeError.requestFailed(DashboardTicketBridgeError.noSessionTicketDetail)
+        if !webViewCanRun() || readsWithoutThePageFirst {
+            do {
+                let response = try await requestJSONWithoutPage(path: "/api/auth/ws-ticket", method: "POST")
+                guard let ticket = response["ticket"] as? String, !ticket.isEmpty else {
+                    throw DashboardTicketBridgeError.requestFailed(DashboardTicketBridgeError.noSessionTicketDetail)
+                }
+                return ticket
+            } catch DashboardTicketBridgeError.notReady where webViewCanRun() && !isInvalidated {
+                // No cookie in any store yet: the page's own retries below.
             }
-            return ticket
         }
         // Retry twice on the two recoverable failures, then let the final
         // attempt's error propagate to the caller unchanged:
@@ -1161,6 +1177,8 @@ final class DashboardTicketBridge: NSObject {
         maxResponseBytes: Int,
         readsOnly: Bool
     ) async throws -> [String: Any] {
+        let isRead = readsOnly || ["GET", "HEAD"].contains(method.uppercased())
+        if !isRead { noteWriteSent() }
         if let nativeOAuthSession {
             guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
             return try await nativeOAuthSession.requestJSON(
@@ -1171,14 +1189,24 @@ final class DashboardTicketBridge: NSObject {
                 maxResponseBytes: maxResponseBytes
             )
         }
-        if !webViewCanRun() {
-            return try await requestJSONWithoutPage(
-                path: path,
-                method: method,
-                body: body,
-                timeoutMilliseconds: timeoutMilliseconds,
-                maxResponseBytes: maxResponseBytes
-            )
+        // Reads go out natively with the page's cookies whenever a store
+        // holds one, so they don't wait for WebKit and the page's load, and
+        // their answers aren't copied through a script on the main actor.
+        // Writes keep the page while it runs: a switch leaves a page write
+        // waiting for its answer, so the caller learns whether the old
+        // dashboard took the change.
+        if !webViewCanRun() || (isRead && readsWithoutThePageFirst) {
+            do {
+                return try await requestJSONWithoutPage(
+                    path: path,
+                    method: method,
+                    body: body,
+                    timeoutMilliseconds: timeoutMilliseconds,
+                    maxResponseBytes: maxResponseBytes
+                )
+            } catch DashboardTicketBridgeError.notReady where webViewCanRun() && !isInvalidated {
+                // No cookie in any store yet: through the page.
+            }
         }
         try await waitUntilReady()
 
