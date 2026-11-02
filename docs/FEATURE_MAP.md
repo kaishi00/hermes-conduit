@@ -2571,6 +2571,36 @@ speech-server transcription stream (listening, not speaking)
 
 **Checked:** 2026-10-24, at #1208, carried in #1229.
 
+## iPhone voice
+
+Which of iOS's own voices speaks a reply when Settings > Voice > Assistant
+speech is On this iPhone: Classic voice, Read Aloud, and a Hermes voice that
+fails before any audio, all through one on-device speech stream.
+
+**Siblings:** Classic voice on the phone and in CarPlay (the car plays the
+phone's audio) · Read Aloud, in chats and group rooms · the Hermes speech
+fallback (see Speech stream failures) · Settings' speaking test · Assistant
+speech's captions · docs/VOICE_SETTINGS.md. Not the Apple Watch: it has no
+Classic voice, and its calls speak with their live voices.
+
+**Code**
+- Picking the voice: `Conduit/Voice/IPhoneVoices.swift` (best, pick, installed, the pick per language)
+- Speaking: `Conduit/Voice/OnDeviceSpeech.swift` (SystemSpeechSynthesizer.voice(for:), OnDeviceSpeechStream's reply language)
+- Settings: `Conduit/Views/IPhoneVoiceSettingsView.swift`, in `Conduit/Views/VoiceSettingsView.swift` (iPhoneVoiceDetail)
+- Tests: `ConduitTests/OnDeviceSpeechTests.swift`
+
+**Rulings**
+- Siri's own voices aren't offered: iOS never lists them to apps (WWDC20 session 10022), and private ones would fail App Review. Settings says so and points to Premium voices, the closest there is (2026-11-02, from a tester's report of a robotic voice).
+- Automatic picks, for the reply's language: Premium, then Enhanced, then any voice but iOS 17's screen-reader voices (Eloquence: Eddy, Flo…), then iOS's default for the language, the exact language, the iPhone's region, and the name, so the pick never follows iOS's list order. Novelty voices and Personal Voice are never used.
+- A pick in Settings is per language (all its regions) and per device, not per profile: voices are installed per device. A picked voice that's deleted goes back to automatic.
+- A voice downloaded or deleted while Conduit runs is used from the next sentence (iOS's voices-changed notice), and Settings reads the list again when it opens or Conduit comes back from iPhone Settings.
+- With no Enhanced or Premium voice for a language, Settings says replies use a basic one and where to download one. A pick in the app's language plays the speaking test.
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-02, #PRNUM.
+
 ## Profile config saves
 
 Every change Conduit makes to a profile's Hermes config. Most are a GET, a

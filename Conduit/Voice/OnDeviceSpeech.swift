@@ -220,9 +220,6 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
     private var watchdog: Task<Void, Never>?
     /// When the current utterance last produced audio (or started).
     private var lastAudio = ContinuousClock.now
-    /// Best voice per language, shared by every reply; a cached nil means
-    /// none is installed.
-    private static var voices: [String: AVSpeechSynthesisVoice?] = [:]
 
     override init() {
         super.init()
@@ -312,28 +309,12 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
         }
     }
 
-    /// The best voice installed for `language`: Premium, then Enhanced,
-    /// then the default one, preferring the iPhone's own region. Novelty
-    /// and Personal Voices are never picked.
+    /// The voice picked for `language` in Settings, or else the best one
+    /// installed (IPhoneVoices).
     private func voice(for language: String?) -> AVSpeechSynthesisVoice? {
-        let key = language ?? ""
-        if let cached = Self.voices[key] { return cached }
         let wanted = language ?? AVSpeechSynthesisVoice.currentLanguageCode()
-        let base = wanted.split(separator: "-").first.map(String.init) ?? wanted
-        let region = Locale.current.region?.identifier
-        let candidates = AVSpeechSynthesisVoice.speechVoices().filter { voice in
-            !voice.voiceTraits.contains(.isNoveltyVoice)
-                && !voice.voiceTraits.contains(.isPersonalVoice)
-                && (voice.language == wanted || voice.language.hasPrefix(base + "-") || voice.language == base)
-        }
-        func rank(_ voice: AVSpeechSynthesisVoice) -> (Int, Int, Int) {
-            let exact = voice.language == wanted ? 1 : 0
-            let local = region.map { voice.language.hasSuffix("-" + $0) } == true ? 1 : 0
-            return (voice.quality.rawValue, exact, local)
-        }
-        let chosen = candidates.max { rank($0) < rank($1) } ?? AVSpeechSynthesisVoice(language: wanted)
+        let chosen = IPhoneVoices.voice(for: wanted)
         if chosen == nil { onDeviceSpeechLog.notice("No iPhone voice for \(wanted, privacy: .public)") }
-        Self.voices[key] = .some(chosen)
         return chosen
     }
 

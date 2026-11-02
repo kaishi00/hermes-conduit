@@ -1,6 +1,498 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Speaks with": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spricht mit"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Habla con"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parle avec"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Berbicara dengan"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parla con"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用する声"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "사용할 음성"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mówi głosem"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fala com"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Голос"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konuşan ses"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用的声音"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用的聲音"
+          }
+        }
+      }
+    },
+    "Automatic (%@)": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatisch (%@)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automático (%@)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatique (%@)"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otomatis (%@)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatico (%@)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動（%@）"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "자동(%@)"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatycznie (%@)"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automático (%@)"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Автоматически (%@)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otomatik (%@)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动（%@）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動（%@）"
+          }
+        }
+      }
+    },
+    "%@ (Premium)": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Premium)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Premium)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Premium)"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Premium)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Premium)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@（プレミアム）"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@(프리미엄)"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Premium)"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Premium)"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Премиум)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Premium)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@（优质）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@（高品質）"
+          }
+        }
+      }
+    },
+    "%@ (Enhanced)": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Erweitert)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Mejorada)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Améliorée)"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Ditingkatkan)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Migliorata)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@（拡張）"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@(향상됨)"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Rozszerzony)"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Aprimorada)"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Улучшенный)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Geliştirilmiş)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@（增强）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@（增強）"
+          }
+        }
+      }
+    },
+    "This iPhone has no Enhanced or Premium voice for %@ yet, so replies use a basic one. To download one, search iPhone Settings for “Voices”; it shows up here once it's done.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone hat noch keine erweiterte oder Premium-Stimme für %@, daher klingen Antworten einfach. Suche zum Laden in den iPhone-Einstellungen nach „Stimmen“; sobald sie fertig ist, erscheint sie hier."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone aún no tiene una voz mejorada o Premium para %@, así que las respuestas usan una básica. Para descargar una, busca «Voces» en Ajustes del iPhone; aparecerá aquí cuando termine."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet iPhone n'a pas encore de voix améliorée ou Premium pour %@, les réponses utilisent donc une voix basique. Pour en télécharger une, cherche « Voix » dans Réglages ; elle apparaîtra ici une fois prête."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone ini belum punya suara Ditingkatkan atau Premium untuk %@, jadi balasan memakai suara dasar. Untuk mengunduhnya, cari “Suara” di Pengaturan iPhone; suara itu muncul di sini setelah selesai."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo iPhone non ha ancora una voce migliorata o Premium per %@, quindi le risposte usano una voce di base. Per scaricarne una, cerca “Voci” in Impostazioni; comparirà qui appena pronta."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このiPhoneには%@の拡張またはプレミアムの声がまだないため、返信は基本の声で読み上げられます。ダウンロードするには、iPhoneの「設定」で「声」を検索してください。完了するとここに表示されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 iPhone에는 아직 %@ 향상된 음성이나 프리미엄 음성이 없어 답장이 기본 음성으로 읽힙니다. 다운로드하려면 iPhone 설정에서 '음성'을 검색하세요. 완료되면 여기에 표시됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ten iPhone nie ma jeszcze rozszerzonego ani Premium głosu dla języka %@, więc odpowiedzi czyta głos podstawowy. Aby go pobrać, wyszukaj „Głosy” w Ustawieniach iPhone’a; pojawi się tutaj po pobraniu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone ainda não tem uma voz Aprimorada ou Premium para %@, então as respostas usam uma básica. Para baixar uma, busque “Vozes” nos Ajustes do iPhone; ela aparece aqui quando terminar."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "На этом iPhone пока нет улучшенного или премиум-голоса для языка «%@», поэтому ответы читает простой голос. Чтобы загрузить голос, найдите «Голоса» через поиск в Настройках iPhone; он появится здесь, когда загрузится."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu iPhone'da %@ için henüz Geliştirilmiş ya da Premium ses yok, bu yüzden yanıtlar temel bir sesle okunuyor. İndirmek için iPhone Ayarlar'da “Sesler” diye arayın; bittiğinde burada görünür."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 还没有%@的增强或优质声音，所以回复使用基础声音。要下载，请在 iPhone 的“设置”中搜索“声音”，下载完成后会显示在这里。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這部 iPhone 尚未有%@的增強或高品質聲音，因此回覆使用基本聲音。要下載，請在 iPhone 的「設定」中搜尋「聲音」，完成後會顯示在這裡。"
+          }
+        }
+      }
+    },
+    "Conduit uses the best voice installed for the reply's language, or the one you pick. Siri's own voices aren't open to apps, and Premium voices come closest: search iPhone Settings for “Voices” to download them.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit nutzt die beste installierte Stimme für die Sprache der Antwort oder die, die du wählst. Siris eigene Stimmen stehen Apps nicht zur Verfügung, Premium-Stimmen kommen ihnen am nächsten: Suche in den iPhone-Einstellungen nach „Stimmen“, um sie zu laden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit usa la mejor voz instalada para el idioma de la respuesta, o la que elijas. Las voces de Siri no están disponibles para las apps; las voces Premium son las más parecidas: busca «Voces» en Ajustes del iPhone para descargarlas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit utilise la meilleure voix installée pour la langue de la réponse, ou celle que tu choisis. Les voix de Siri ne sont pas accessibles aux apps ; les voix Premium s'en rapprochent le plus : cherche « Voix » dans Réglages pour les télécharger."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit memakai suara terbaik yang terpasang untuk bahasa balasan, atau yang Anda pilih. Suara Siri tidak tersedia untuk app, dan suara Premium paling mendekati: cari “Suara” di Pengaturan iPhone untuk mengunduhnya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit usa la voce migliore installata per la lingua della risposta, o quella che scegli. Le voci di Siri non sono disponibili per le app; le voci Premium sono le più simili: cerca “Voci” in Impostazioni per scaricarle."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduitは返信の言語に合う、インストール済みの最も良い声か、選んだ声を使います。Siri自体の声はアプリから使えません。最も近いのはプレミアムの声です。iPhoneの「設定」で「声」を検索してダウンロードできます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit는 답장 언어에 맞는 가장 좋은 설치된 음성이나 직접 고른 음성을 사용합니다. Siri 자체 음성은 앱에서 쓸 수 없으며, 프리미엄 음성이 가장 비슷합니다. iPhone 설정에서 '음성'을 검색해 다운로드하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit używa najlepszego zainstalowanego głosu dla języka odpowiedzi albo tego, który wybierzesz. Głosy Siri nie są dostępne dla aplikacji, a najbliżej nich są głosy Premium: wyszukaj „Głosy” w Ustawieniach iPhone’a, aby je pobrać."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Conduit usa a melhor voz instalada para o idioma da resposta, ou a que você escolher. As vozes da Siri não estão disponíveis para apps, e as vozes Premium são as mais próximas: busque “Vozes” nos Ajustes do iPhone para baixá-las."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit использует лучший установленный голос для языка ответа или выбранный вами. Голоса Siri приложениям недоступны, ближе всего к ним премиум-голоса: найдите «Голоса» через поиск в Настройках iPhone, чтобы загрузить их."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit, yanıtın dili için yüklü en iyi sesi ya da sizin seçtiğinizi kullanır. Siri'nin kendi sesleri uygulamalara açık değildir; en yakını Premium seslerdir: indirmek için iPhone Ayarlar'da “Sesler” diye arayın."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 会使用为回复语言安装的最佳声音，或你选择的声音。Siri 自己的声音不对 app 开放，优质声音最接近：在 iPhone 的“设置”中搜索“声音”即可下载。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 會使用為回覆語言安裝的最佳聲音，或你選擇的聲音。Siri 本身的聲音不開放給 App，高品質聲音最接近：在 iPhone 的「設定」中搜尋「聲音」即可下載。"
+          }
+        }
+      }
+    },
     "\n… (%lld more lines)": {
       "localizations": {
         "de": {
@@ -128105,88 +128597,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "若為直接位址，請選擇 Hermes 提供的協定。"
-          }
-        }
-      }
-    },
-    "For a more natural voice, download an Enhanced or Premium voice in iPhone Settings > Accessibility: search Settings for “Voices” to find them. Conduit uses the best one installed for the reply's language.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Für eine natürlichere Stimme lade in den iPhone-Einstellungen unter Bedienungshilfen eine erweiterte oder Premium-Stimme. Suche in den Einstellungen nach „Stimmen“, um sie zu finden. Conduit nutzt die beste installierte Stimme für die Sprache der Antwort."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Para una voz más natural, descarga una voz mejorada o premium en Ajustes del iPhone > Accesibilidad: busca «Voces» en Ajustes para encontrarlas. Conduit usa la mejor instalada para el idioma de la respuesta."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pour une voix plus naturelle, télécharge une voix améliorée ou premium dans Réglages de l’iPhone > Accessibilité : cherche « Voix » dans Réglages pour les trouver. Conduit utilise la meilleure voix installée pour la langue de la réponse."
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Untuk suara yang lebih alami, unduh suara Ditingkatkan atau Premium di Pengaturan iPhone > Aksesibilitas: cari “Suara” di Pengaturan untuk menemukannya. Conduit memakai suara terbaik yang terpasang untuk bahasa balasan."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Per una voce più naturale, scarica una voce migliorata o premium in Impostazioni dell’iPhone > Accessibilità: cerca “Voci” in Impostazioni per trovarle. Conduit usa la migliore installata per la lingua della risposta."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "より自然な声にするには、iPhoneの「設定」>「アクセシビリティ」で拡張またはプレミアムの声をダウンロードしてください。「設定」で「声」を検索すると見つかります。Conduitは返答の言語に合う、インストール済みの最も良い声を使います。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "더 자연스러운 음성을 원하면 iPhone 설정 > 손쉬운 사용에서 향상된 음성 또는 프리미엄 음성을 다운로드하세요. 설정에서 '음성'을 검색하면 찾을 수 있습니다. Conduit는 답변 언어에 맞게 설치된 가장 좋은 음성을 사용합니다."
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aby głos brzmiał naturalniej, pobierz głos rozszerzony lub premium w Ustawieniach iPhone’a > Dostępność: wyszukaj „Głosy” w Ustawieniach, aby je znaleźć. Conduit używa najlepszego zainstalowanego głosu dla języka odpowiedzi."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Para uma voz mais natural, baixe uma voz aprimorada ou premium em Ajustes do iPhone > Acessibilidade: busque “Vozes” nos Ajustes para encontrá-las. O Conduit usa a melhor voz instalada para o idioma da resposta."
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Для более естественного голоса скачайте улучшенный голос или голос премиум в «Настройки» iPhone > «Универсальный доступ»: найдите «Голоса» через поиск в Настройках. Conduit использует лучший установленный голос для языка ответа."
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Daha doğal bir ses için iPhone Ayarlar > Erişilebilirlik bölümünden Geliştirilmiş veya Premium bir ses indirin: bulmak için Ayarlar'da “Sesler” diye arayın. Conduit, yanıtın dili için yüklü en iyi sesi kullanır."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "想要更自然的声音，请在 iPhone 的“设置”>“辅助功能”中下载增强版或高级版声音：在“设置”中搜索“声音”即可找到。Conduit 会为回复的语言使用已安装的最佳声音。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "想要更自然的聲音，請在 iPhone 的「設定」>「輔助使用」中下載加強版或高級版聲音：在「設定」中搜尋「聲音」即可找到。Conduit 會為回覆的語言使用已安裝的最佳聲音。"
           }
         }
       }

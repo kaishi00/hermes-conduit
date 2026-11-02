@@ -50,6 +50,65 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(newer.continuousConversation)
     }
 
+    // MARK: - Which iPhone voice
+
+    private func iPhoneVoice(_ id: String, _ name: String, _ language: String, quality: Int = 1) -> IPhoneVoiceOption {
+        IPhoneVoiceOption(id: id, name: name, language: language, quality: quality)
+    }
+
+    func testAutomaticVoiceNeverPicksAScreenReaderVoiceOverTheDefaultOne() {
+        // iOS lists its Eloquence voices (Eddy, Flo…) at default quality, often first.
+        let eddy = iPhoneVoice("com.apple.eloquence.en-US.Eddy", "Eddy", "en-US")
+        let samantha = iPhoneVoice("com.apple.voice.compact.en-US.Samantha", "Samantha", "en-US")
+        let fred = iPhoneVoice("com.apple.speech.synthesis.voice.Fred", "Fred", "en-US")
+        XCTAssertEqual(IPhoneVoices.best([eddy, fred, samantha], wanted: "en", region: "US", systemDefault: samantha.id), samantha)
+        // With no default named, still not Eddy, and not by list order.
+        XCTAssertEqual(IPhoneVoices.best([eddy, fred, samantha], wanted: "en", region: "US", systemDefault: nil)?.isScreenReaderVoice, false)
+        XCTAssertEqual(
+            IPhoneVoices.best([samantha, fred], wanted: "en", region: "US", systemDefault: nil),
+            IPhoneVoices.best([fred, samantha], wanted: "en", region: "US", systemDefault: nil)
+        )
+    }
+
+    func testAutomaticVoicePrefersPremiumThenEnhancedThenThePhonesRegion() {
+        let basic = iPhoneVoice("basic", "Samantha", "en-US")
+        let enhanced = iPhoneVoice("enhanced", "Daniel", "en-GB", quality: 2)
+        let premiumUS = iPhoneVoice("premium-us", "Ava", "en-US", quality: 3)
+        let premiumAU = iPhoneVoice("premium-au", "Lee", "en-AU", quality: 3)
+        XCTAssertEqual(IPhoneVoices.best([basic, enhanced], wanted: "en", region: "US", systemDefault: basic.id), enhanced)
+        XCTAssertEqual(IPhoneVoices.best([basic, enhanced, premiumUS, premiumAU], wanted: "en", region: "AU", systemDefault: basic.id), premiumAU)
+        XCTAssertEqual(IPhoneVoices.best([basic, enhanced, premiumUS, premiumAU], wanted: "en-US", region: "AU", systemDefault: nil), premiumUS)
+    }
+
+    func testPickedVoiceSpeaksItsLanguageUntilItsDeleted() {
+        let ava = iPhoneVoice("ava", "Ava", "en-US", quality: 3)
+        let daniel = iPhoneVoice("daniel", "Daniel", "en-GB")
+        let anna = iPhoneVoice("anna", "Anna", "de-DE", quality: 3)
+        let all = [ava, daniel, anna]
+        XCTAssertEqual(IPhoneVoices.pick(all, wanted: "en", chosen: "daniel", region: "US", systemDefault: nil), daniel)
+        // A German reply never borrows the English pick.
+        XCTAssertEqual(IPhoneVoices.pick(all, wanted: "de", chosen: "daniel", region: "US", systemDefault: nil), anna)
+        // Deleted from the iPhone: back to the best installed.
+        XCTAssertEqual(IPhoneVoices.pick([ava, anna], wanted: "en", chosen: "daniel", region: "US", systemDefault: nil), ava)
+        XCTAssertNil(IPhoneVoices.pick(all, wanted: "fr", chosen: nil, region: "US", systemDefault: nil))
+    }
+
+    func testVoicePicksAreSavedPerLanguageForEveryRegion() throws {
+        let suite = "IPhoneVoicesTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(IPhoneVoices.languageKey("en-US"), "en")
+        XCTAssertEqual(IPhoneVoices.languageKey("EN_gb"), "en")
+        XCTAssertEqual(IPhoneVoices.languageKey("zh-TW"), "zh")
+        IPhoneVoices.setChosenVoice("daniel", for: "en-GB", defaults: defaults)
+        IPhoneVoices.setChosenVoice("anna", for: "de", defaults: defaults)
+        XCTAssertEqual(IPhoneVoices.chosenVoice(for: "en", defaults: defaults), "daniel")
+        XCTAssertEqual(IPhoneVoices.chosenVoice(for: "en-US", defaults: defaults), "daniel")
+        IPhoneVoices.setChosenVoice(nil, for: "en", defaults: defaults)
+        XCTAssertNil(IPhoneVoices.chosenVoice(for: "en-AU", defaults: defaults))
+        XCTAssertEqual(IPhoneVoices.chosenVoice(for: "de-DE", defaults: defaults), "anna")
+    }
+
     // MARK: - Speaking on this iPhone
 
     func testSentencesStartSpeakingWhileTheReplyStreams() {
