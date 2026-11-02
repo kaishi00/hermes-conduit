@@ -13,6 +13,7 @@
 //  like a podcast. Only starting a new reply needs the app on screen.
 //
 
+import AVFoundation
 import Combine
 import Foundation
 import UIKit
@@ -67,6 +68,7 @@ final class MessageReadAloudController: ObservableObject {
     /// not keep the app running in the background. Internal for tests.
     var pausedStopDelay: Duration = .seconds(10 * 60)
     private var pausedStopTask: Task<Void, Never>?
+    private var routeObserver: NSObjectProtocol?
 
     init(
         playback: SpeechPlaybackService? = nil,
@@ -86,9 +88,23 @@ final class MessageReadAloudController: ObservableObject {
         self.storeSpeed = storeSpeed
         self.beginBackgroundActivity = beginBackgroundActivity ?? Self.beginApplicationBackgroundTask
         self.reportError = reportError
+        routeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] notification in
+            let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+            let reason = raw.flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
+            // Route notifications can arrive off the main thread.
+            Task { @MainActor [weak self] in
+                guard let reason else { return }
+                self?.routeChanged(reason: reason)
+            }
+        }
     }
 
     deinit {
+        if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
         playbackTask?.cancel()
         pausedStopTask?.cancel()
         let end = endBackgroundActivity
@@ -226,6 +242,15 @@ final class MessageReadAloudController: ObservableObject {
         pausedStopTask = nil
         nowPlaying.setPaused(false)
         return true
+    }
+
+    /// Headphones taken out (AirPods back in the case, a cable pulled) pause
+    /// the reply rather than carrying on out loud from the speaker, as iOS
+    /// media does; Resume picks it up on the new route. Any other route
+    /// change plays on (#1641). Internal for tests.
+    func routeChanged(reason: AVAudioSession.RouteChangeReason) {
+        guard reason == .oldDeviceUnavailable else { return }
+        pause()
     }
 
     @discardableResult
