@@ -32308,8 +32308,11 @@ final class AppState: ObservableObject {
             // native, one through the page or read again): one sent after
             // this that already landed is newer, so this older list must not
             // undo a bot just made or deleted, nor re-home the profile in use.
-            guard read > profileListReadCommitted else { return !names.isEmpty }
-            profileListReadCommitted = read
+            // Only a list with names takes the place: a degraded empty one
+            // leaves it to an older complete one. A list that lost it was
+            // read all the same, and a newer one stands.
+            guard read > profileListReadCommitted else { return true }
+            if !names.isEmpty { profileListReadCommitted = read }
             // Rows as objects carry `display_name`; a plain-name listing
             // says nothing about it, and the bot roster fills it in.
             let rows = values.compactMap { $0 as? [String: Any] }
@@ -32386,8 +32389,8 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Profile list reads sent, and the newest of them whose answer was
-    /// taken, so an older answer landing after it doesn't commit.
+    /// Profile list reads sent, and the newest of them whose list (with
+    /// names) was taken, so an older answer landing after it doesn't commit.
     private var profileListReadsSent: UInt64 = 0
     private var profileListReadCommitted: UInt64 = 0
 

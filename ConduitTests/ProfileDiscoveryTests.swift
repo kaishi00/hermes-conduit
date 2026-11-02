@@ -376,6 +376,27 @@ final class ProfileDiscoveryTests: XCTestCase {
         assertPersistedKnownProfiles(["default", "fresh"])
     }
 
+    func testANewerProfileListThatFailsOrIsEmptyLeavesTheOlderOneToCommit() async throws {
+        seedKnownProfiles(["default"], activeProfile: "default")
+        let appState = makeAppState()
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        defer { held.releaseAll() }
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+
+        let oldest = try await startProfileRead(appState, held: held, count: 1)
+        let failing = try await startProfileRead(appState, held: held, count: 2)
+        let empty = try await startProfileRead(appState, held: held, count: 3)
+        try await held.answer(["profiles": [String]()], at: 2)
+        await empty.value
+        try await held.answer(["error": "unavailable"], status: 503, at: 1)
+        await failing.value
+        try await held.answer(["profiles": ["default", "fresh"]])
+        await oldest.value
+
+        XCTAssertEqual(appState.profiles, ["default", "fresh"])
+        assertPersistedKnownProfiles(["default", "fresh"])
+    }
+
     func testAnOlderDisplaySettingsReadLandingLastDoesNotPutItsSettingsBack() async throws {
         seedKnownProfiles(["default"], activeProfile: "default")
         let appState = makeAppState()
@@ -423,7 +444,7 @@ final class ProfileDiscoveryTests: XCTestCase {
     /// Every display setting away from Hermes' default, and a zone.
     private static let newerConfig: [String: Any] = [
         "display": [
-            "show_reasoning": false, "tool_progress": "off",
+            "show_reasoning": false, "conduit_thinking_on_request": false, "tool_progress": "off",
             "expand_tools": true, "memory_notifications": "off",
         ],
         "timezone": "Asia/Tokyo",
@@ -432,6 +453,7 @@ final class ProfileDiscoveryTests: XCTestCase {
     private func assertNewerDisplaySettings(_ appState: AppState, file: StaticString = #filePath, line: UInt = #line) {
         let shown = appState.displayPreferences
         XCTAssertFalse(shown.showReasoning, file: file, line: line)
+        XCTAssertFalse(shown.thinkingOnRequest, file: file, line: line)
         XCTAssertFalse(shown.showToolProgress, file: file, line: line)
         XCTAssertTrue(shown.expandToolsByDefault, file: file, line: line)
         XCTAssertFalse(shown.showReviews, file: file, line: line)
