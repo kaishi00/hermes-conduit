@@ -292,6 +292,7 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
             while let self, self.utterance == id {
                 do { try await Task.sleep(until: self.lastAudio + quiet, clock: .continuous) } catch { return }
                 if ContinuousClock.now - self.lastAudio >= quiet {
+                    onDeviceSpeechLog.notice("iPhone speech went quiet without ending; moving on")
                     self.finish(id)
                     return
                 }

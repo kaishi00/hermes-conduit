@@ -705,7 +705,10 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertTrue(try XCTUnwrap(engines.last).isRunning)
     }
 
-    func testStandaloneSpeechStillSettlesOnARouteChange() throws {
+    /// Read Aloud kept a route change's unplayed audio too: settling it
+    /// let the next chunk start a new stream, so the queued middle of the
+    /// reply was skipped and its end was read (#1641).
+    func testReadAloudCarriesOnAfterARouteChangeStopsTheEngine() throws {
         var engines: [AVAudioEngine] = []
         let service = AVSpeechPlaybackService(
             coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()),
@@ -723,16 +726,127 @@ extension VoiceAudioSessionCoordinatorTests {
         try XCTUnwrap(engines.last).stop()
         _ = try service.enqueuePCM16(chunk, sampleRate: 24_000)
 
-        XCTAssertEqual(service.pendingBuffers, 1, "Read Aloud starts over as before")
-        XCTAssertNotEqual(service.playbackGeneration, generation)
+        XCTAssertEqual(service.pendingBuffers, 3, "nothing queued was dropped")
+        XCTAssertEqual(service.playbackGeneration, generation, "the same stream, so Read Aloud's drain still waits")
+        XCTAssertTrue(try XCTUnwrap(engines.last).isRunning)
     }
 
-    func testOnlyConversationStreamsPlayOnAfterARouteChange() {
-        typealias Service = AVSpeechPlaybackService
-        XCTAssertTrue(Service.resumesOnConfigurationChange(intent: .conversationPlayback, streaming: true))
-        XCTAssertFalse(Service.resumesOnConfigurationChange(intent: .conversationPlayback, streaming: false),
-                       "an encoded clip's player follows the route by itself")
-        XCTAssertFalse(Service.resumesOnConfigurationChange(intent: .standalonePlayback, streaming: true))
+    /// A route change while Read Aloud is paused moves the reply to the new
+    /// engine still paused, with nothing dropped.
+    func testPausedReadAloudStaysPausedAcrossARouteChange() async throws {
+        var engines: [AVAudioEngine] = []
+        let service = AVSpeechPlaybackService(
+            coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()),
+            makeEngine: {
+                let engine = OfflineRenderingEngine.make()
+                engines.append(engine)
+                return engine
+            }
+        )
+        defer { service.stop() }
+        let chunk = Data(count: 480)
+        for _ in 0..<2 { _ = try service.enqueuePCM16(chunk, sampleRate: 24_000) }
+        XCTAssertTrue(service.pause())
+        let built = engines.count
+        let stopped = try XCTUnwrap(engines.last)
+
+        stopped.stop()
+        NotificationCenter.default.post(name: .AVAudioEngineConfigurationChange, object: stopped)
+        let moved = await waitForCondition { engines.count == built + 1 }
+
+        XCTAssertTrue(moved)
+        XCTAssertEqual(service.pendingBuffers, 2)
+        XCTAssertTrue(service.isPaused, "the reply waits for Resume on the new route")
+    }
+
+    /// Headphones out can reach Read Aloud after the route change already
+    /// stopped the engine: the pause still holds, and the fresh engine
+    /// starts paused rather than on the speaker.
+    func testPauseAfterTheEngineStoppedHoldsOnTheFreshEngine() async throws {
+        var engines: [AVAudioEngine] = []
+        let service = AVSpeechPlaybackService(
+            coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()),
+            makeEngine: {
+                let engine = OfflineRenderingEngine.make()
+                engines.append(engine)
+                return engine
+            }
+        )
+        defer { service.stop() }
+        let chunk = Data(count: 480)
+        for _ in 0..<2 { _ = try service.enqueuePCM16(chunk, sampleRate: 24_000) }
+        let built = engines.count
+        let stopped = try XCTUnwrap(engines.last)
+
+        stopped.stop()
+        XCTAssertTrue(service.pause(), "a stream on a stopped engine can still be paused")
+        NotificationCenter.default.post(name: .AVAudioEngineConfigurationChange, object: stopped)
+        let moved = await waitForCondition { engines.count == built + 1 }
+
+        XCTAssertTrue(moved)
+        XCTAssertTrue(service.isPaused)
+        XCTAssertEqual(service.pendingBuffers, 2)
+        service.resume()
+        XCTAssertFalse(service.isPaused)
+        XCTAssertTrue(try XCTUnwrap(engines.last).isRunning)
+    }
+
+    /// A pause whose engine stopped and never came back: Resume rebuilds the
+    /// graph instead of playing the dead player.
+    func testResumeAfterTheEngineStoppedUnderThePauseRebuildsIt() throws {
+        var engines: [AVAudioEngine] = []
+        let service = AVSpeechPlaybackService(
+            coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()),
+            makeEngine: {
+                let engine = OfflineRenderingEngine.make()
+                engines.append(engine)
+                return engine
+            }
+        )
+        defer { service.stop() }
+        let chunk = Data(count: 480)
+        for _ in 0..<2 { _ = try service.enqueuePCM16(chunk, sampleRate: 24_000) }
+        XCTAssertTrue(service.pause())
+        let built = engines.count
+        try XCTUnwrap(engines.last).stop()
+
+        service.resume()
+
+        XCTAssertFalse(service.isPaused)
+        XCTAssertEqual(engines.count, built + 1)
+        XCTAssertEqual(service.pendingBuffers, 2)
+        XCTAssertTrue(try XCTUnwrap(engines.last).isRunning)
+    }
+
+    /// When the fresh engine won't start, Read Aloud ends: its next chunk
+    /// must not start a new stream past the audio that was dropped (#1641).
+    func testReadAloudEndsWhenTheRouteChangeEngineWontStart() throws {
+        var engines: [AVAudioEngine] = []
+        var rejecting = false
+        let service = AVSpeechPlaybackService(
+            coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()),
+            makeEngine: {
+                let engine = rejecting ? FormatRejectingEngine(onStart: {}) : OfflineRenderingEngine.make()
+                engines.append(engine)
+                return engine
+            }
+        )
+        defer { service.stop() }
+        let chunk = Data(count: 480)
+        service.ownershipIntent = .standalonePlayback
+        for _ in 0..<2 { _ = try service.enqueuePCM16(chunk, sampleRate: 24_000) }
+        rejecting = true
+
+        try XCTUnwrap(engines.last).stop()
+        XCTAssertThrowsError(try service.enqueuePCM16(chunk, sampleRate: 24_000)) { error in
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertThrowsError(try service.enqueuePCM16(chunk, sampleRate: 24_000), "later chunks are refused too")
+        XCTAssertEqual(service.pendingBuffers, 0)
+        XCTAssertFalse(service.isPlaying)
+        XCTAssertThrowsError(try service.finish(), "the reply didn't play out, so it can't finish as played") { error in
+            XCTAssertTrue(error is CancellationError)
+        }
     }
 }
 
