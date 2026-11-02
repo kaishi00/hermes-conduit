@@ -582,6 +582,9 @@ private struct BotWorkRow: View {
                 WorkstreamApprovalBox(item: item, profile: profile, isActing: isActing)
             }
             if expanded {
+                if !item.branch.isEmpty {
+                    branchLine
+                }
                 if !item.checklist.isEmpty {
                     checklist
                 }
@@ -655,6 +658,31 @@ private struct BotWorkRow: View {
             }
         }
         .contentShape(Rectangle())
+    }
+
+    /// The branch its own worktree is on, to merge once it's done.
+    private var branchLine: some View {
+        Label {
+            Text(verbatim: item.branch)
+                .scaledFont(.footnote.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .textSelection(.enabled)
+        } icon: {
+            Image(systemName: "arrow.triangle.branch")
+                .scaledFont(.footnote)
+                .foregroundStyle(tint)
+        }
+        .contextMenu {
+            Button {
+                UIPasteboard.general.string = item.branch
+                Haptics.light()
+            } label: {
+                Label(AppLocalization.string("Copy Branch"), systemImage: "doc.on.doc")
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(AppLocalization.string("Branch \(item.branch)"))
     }
 
     /// How far its checklist is: a bar and "1 of 3".

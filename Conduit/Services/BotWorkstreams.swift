@@ -76,6 +76,9 @@ struct BotWorkItem: Identifiable, Equatable {
     /// What it's waiting on the user to approve; nil when nothing, or when
     /// only its chat can answer it.
     let approval: Approval?
+    /// Its git worktree's branch, for the user to merge; empty when it
+    /// works in the folder itself.
+    let branch: String
 
     var id: String { ref }
 
@@ -104,6 +107,7 @@ struct BotWorkItem: Identifiable, Equatable {
         resolvedBy = row["resolved_by"] as? String ?? ""
         isPinned = row["pinned"] as? Bool ?? false
         isUncertain = row["uncertain"] as? Bool ?? false
+        branch = (row["branch"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         actions = (row["actions"] as? [String] ?? []).compactMap(Action.init(rawValue:))
         manage = (row["manage"] as? [String] ?? []).compactMap(Action.init(rawValue:))
         if let asked = row["approval"] as? [String: Any], let requestID = asked["request_id"] as? String,

@@ -70,6 +70,13 @@ extension BotModeTests {
 
     /// Pin, Resolve and Reopen: what the plugin offers, and the list as
     /// each leaves it before the next read.
+    func testAWorkstreamsWorktreeBranchIsShown() throws {
+        let branched = try XCTUnwrap(BotWorkItem(row: ["ref": "W3", "kind": "workstream", "status": "done",
+                                                        "branch": " hermes-subagent/subagent-work-default-w3-ab12 "]))
+        XCTAssertEqual(branched.branch, "hermes-subagent/subagent-work-default-w3-ab12")
+        XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "W4", "kind": "workstream"])).branch, "")
+    }
+
     func testFilingWorkMovesItBetweenTheLists() throws {
         var response = workResponse()
         response["resolved_count"] = 4
