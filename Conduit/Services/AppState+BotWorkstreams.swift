@@ -185,11 +185,14 @@ extension AppState {
         else { return }
         let bot = profile ?? activeProfile
         let client = botWorkClient(profile: bot)
+        let dashboard = activeDashboardID
         // The panel's next read shows it.
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
             // Once more after a short wait: a dropped request would leave
-            // the job out of the panel for good.
+            // the job out of the panel for good. Only on the dashboard the
+            // job was made on: the client's transport reads the current one.
             for attempt in 0..<2 {
+                guard let self, self.activeDashboardID == dashboard else { return }
                 do {
                     _ = try await client.adopt(sessionID: sessionID, title: title, via: via, goal: instructions)
                     return
