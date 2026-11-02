@@ -2327,7 +2327,7 @@ itself · the hidden dashboard page's failed load
 **Open gaps**
 - `recoverTransportForCarPlayIfNeeded(immediately:)` still reconnects at once without a path check (CarPlay connecting only).
 
-**Checked:** 2026-11-02, #PRNUM (the ticket and reads go out without the hidden page when a session cookie is held, so its failed load holds up only writes and a dashboard with no cookie yet; see A connection's first reads); 2026-11-01, #1631 (a call's spoken answers pass their chat and profile, which the gateway's own listener reads an unseen question from; see Two Hermes servers); 2026-11-01, #1628 (reconnecting kept quiet on return, the ticket banner after the quiet retries, signposts); 2026-10-30, #1526 (the hidden page reloads a failed load on any request); 2026-10-28, #1452 (a drop on a socket handed on at a profile switch reaches the client holding it); 2026-10-27, #1382 (a call's request off screen checks a quiet socket first); 2026-10-25, at #1268; 2026-10-24, at #1191.
+**Checked:** 2026-11-02, #1663 (the ticket and reads go out without the hidden page when a session cookie is held, so its failed load holds up only writes and a dashboard with no cookie yet; see A connection's first reads); 2026-11-01, #1631 (a call's spoken answers pass their chat and profile, which the gateway's own listener reads an unseen question from; see Two Hermes servers); 2026-11-01, #1628 (reconnecting kept quiet on return, the ticket banner after the quiet retries, signposts); 2026-10-30, #1526 (the hidden page reloads a failed load on any request); 2026-10-28, #1452 (a drop on a socket handed on at a profile switch reaches the client holding it); 2026-10-27, #1382 (a call's request off screen checks a quiet socket first); 2026-10-25, at #1268; 2026-10-24, at #1191.
 
 ## Native sign-in browser
 
@@ -2390,7 +2390,7 @@ signed-in check
 - The background session's redirect rule and the login screen's signed-in check compare origins strictly, without the http to https allowance: such a redirect comes back as the response (and is judged by isSignIn there), and the login screen with a dashboard saved on http behind a TLS edge hasn't been checked.
 - The hidden page doesn't follow that upgrade either: its navigation policy cancels an http to https move to an ordinary page as a failed load (no longer as sign-in), so a dashboard behind a TLS-forcing edge must be saved on https. Following it would take the page's landing and script-message checks and the socket off the saved origin, so it was left as is (#1191 review).
 
-**Checked:** 2026-11-02, #PRNUM (on screen the ticket and reads with a session cookie go without the page, so the requests' redirect rule decides for them too; the rule itself is unchanged); 2026-10-30, #1526 (any request, not only a ticket, reloads a page whose load failed, so a reload that lands on sign-in now reaches a history or status read as sign-in required, where it got "still connecting" before); 2026-10-26, #1247 (the hidden page's deinit removes its script handler on the main actor); 2026-10-24, at #1191.
+**Checked:** 2026-11-02, #1663 (on screen the ticket and reads with a session cookie go without the page, so the requests' redirect rule decides for them too; the rule itself is unchanged); 2026-10-30, #1526 (any request, not only a ticket, reloads a page whose load failed, so a reload that lands on sign-in now reaches a history or status read as sign-in required, where it got "still connecting" before); 2026-10-26, #1247 (the hidden page's deinit removes its script handler on the main actor); 2026-10-24, at #1191.
 
 ## A connection's first reads
 
@@ -2417,15 +2417,15 @@ show shorter)
 - Tests: `ConduitTests/DashboardTicketBridgeTests+Foreground.swift`
 
 **Rulings**
-- With a saved dashboard's session cookie, reads and the ticket go out natively with the page's cookies even while the page can run, as the socket's upgrade already did, so a launch doesn't wait for WebKit and the page's load, and an answer isn't copied through a script on the main actor. With no cookie in any store yet (just after a browser sign-in, before WebKit hands it over), they go through the page as before. Writes keep the page while it runs, so a dashboard switch still leaves one waiting for its answer. A bridge built before its dashboard is saved (the login screen) keeps the page, since it shares the default stores (2026-11-02, Eric picked the fixes from the startup lag audit; #PRNUM).
-- The profile list, the chat list's newest page and the display settings go out with the ticket instead of each after the step before. Each step takes the early answer once, only through the same bridge, within 20 s, and only while nothing changed since it was sent: no write through the dashboard, no change to the chat list, no display setting saved. Otherwise, or when the early read couldn't go out without the page, the step reads again. An early read never goes through the page (#PRNUM).
-- No plugin route bundles the first reads: sent together they already cost one round trip, and a route in the plugin would wait for a non-default profile's plugin host to start (2 to 2.6 s on its first request, #1442), so it was left out (2026-11-02, after reading Hermes' plugin hosts; Eric had picked it and was told why in the audit thread; #PRNUM).
+- With a saved dashboard's session cookie, reads and the ticket go out natively with the page's cookies even while the page can run, as the socket's upgrade already did, so a launch doesn't wait for WebKit and the page's load, and an answer isn't copied through a script on the main actor. With no cookie in any store yet (just after a browser sign-in, before WebKit hands it over), they go through the page as before. Writes keep the page while it runs, so a dashboard switch still leaves one waiting for its answer. A bridge built before its dashboard is saved (the login screen) keeps the page, since it shares the default stores (2026-11-02, Eric picked the fixes from the startup lag audit; #1663).
+- The profile list, the chat list's newest page and the display settings go out with the ticket instead of each after the step before. Each step takes the early answer once, only through the same bridge, within 20 s, and only while nothing changed since it was sent: no write through the dashboard, no change to the chat list, no display setting saved. Otherwise, or when the early read couldn't go out without the page, the step reads again. An early read never goes through the page (#1663).
+- No plugin route bundles the first reads: sent together they already cost one round trip, and a route in the plugin would wait for a non-default profile's plugin host to start (2 to 2.6 s on its first request, #1442), so it was left out (2026-11-02, after reading Hermes' plugin hosts; Eric had picked it and was told why in the audit thread; #1663).
 
 **Open gaps**
 - The cron runs list, the archived calls and the Bot roster and busy mode (socket calls) still go out when their steps reach them.
 - The resume still waits for the chat list, which decides whether the stored chat is still there (#1452's held-back step).
 
-**Checked:** 2026-11-02, #PRNUM (added: reads and the ticket without the page, and the first reads sent with the ticket).
+**Checked:** 2026-11-02, #1663 (added: reads and the ticket without the page, and the first reads sent with the ticket).
 
 ## Skill and tool switches
 
