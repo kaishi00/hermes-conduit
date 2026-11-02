@@ -227,6 +227,76 @@ extension ChatTypographyTests {
         state.stopPredictiveFollowUpClock()
     }
 
+    /// A follow-up check the host couldn't answer for a while (a guess for
+    /// the chat still running, too many at once, a timeout, the connection
+    /// dropping) is asked again after the shortest wait Hermes may ask for,
+    /// within the reply's checks. One that won't change (the chat closed on
+    /// the host, a bad request) ends the checks for the reply (#1669).
+    @MainActor
+    func testAFollowUpCheckTheHostWasTooBusyForIsAskedAgain() async throws {
+        UserDefaults.standard.set(true, forKey: Predictive.followUpKey)
+        defer { UserDefaults.standard.removeObject(forKey: Predictive.followUpKey) }
+        let defaults = makeScratchDefaults("PredictiveCheckRetryTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        defer { state.stopPredictiveFollowUpClock() }
+        state.predictiveSender = { _ in [:] }
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        let anchor = try XCTUnwrap(state.predictiveAnchor)
+        let busy: [Error] = [
+            DashboardTicketBridgeError.http(status: 429, detail: "A prediction for this chat is still running"),
+            DashboardTicketBridgeError.http(status: 503, detail: "The host is busy with other predictions; try again shortly"),
+            DashboardTicketBridgeError.http(status: 504, detail: "The prediction took too long"),
+            DashboardTicketBridgeError.http(status: 0, detail: ""),
+            DashboardTicketBridgeError.notReady,
+            URLError(.networkConnectionLost),
+        ]
+        for error in busy {
+            state.predictiveSender = { _ in throw error }
+            state.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor)
+            let asked = Date()
+            await state.checkPredictiveFollowUp(for: anchor)
+            XCTAssertFalse(state.predictiveFollowUp.stopped, "\(error)")
+            let next = try XCTUnwrap(state.predictiveFollowUp.nextCheck, "\(error)")
+            XCTAssertEqual(next.timeIntervalSince(asked), TimeInterval(Predictive.askAgainRange.lowerBound), accuracy: 5)
+            XCTAssertNotNil(state.predictiveFollowUpTask, "the next check is on the clock: \(error)")
+            state.stopPredictiveFollowUpClock()
+        }
+        // Writing meanwhile starts the idle time over: the retry waits the
+        // chosen time from when the composer is empty again.
+        state.predictiveSender = { _ in throw DashboardTicketBridgeError.http(status: 429, detail: "") }
+        state.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor)
+        await state.checkPredictiveFollowUp(for: anchor)
+        XCTAssertNotNil(state.predictiveFollowUp.nextCheck)
+        state.predictiveDraftChanged("Actually")
+        state.predictiveDraftChanged("")
+        XCTAssertFalse(state.predictiveFollowUp.stopped)
+        XCTAssertGreaterThan(TimeInterval(Predictive.followUpDelay()), TimeInterval(Predictive.askAgainRange.lowerBound))
+        XCTAssertEqual(state.predictiveFollowUpDue.timeIntervalSinceNow, TimeInterval(Predictive.followUpDelay()),
+                       accuracy: 5, "the chosen wait applies again, not the sooner retry")
+        state.stopPredictiveFollowUpClock()
+        // The reply's last check isn't followed by another.
+        state.predictiveSender = { _ in throw DashboardTicketBridgeError.http(status: 429, detail: "") }
+        state.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor, checks: Predictive.maximumChecks - 1)
+        await state.checkPredictiveFollowUp(for: anchor)
+        XCTAssertTrue(state.predictiveFollowUp.stopped, "the checks ran out")
+        let final: [Error] = [
+            DashboardTicketBridgeError.http(status: 404, detail: "That chat isn't open on the host"),
+            DashboardTicketBridgeError.http(status: 400, detail: "bad request"),
+            DashboardTicketBridgeError.signInRequired,
+        ]
+        for error in final {
+            state.predictiveSender = { _ in throw error }
+            state.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor)
+            await state.checkPredictiveFollowUp(for: anchor)
+            XCTAssertTrue(state.predictiveFollowUp.stopped, "\(error)")
+        }
+    }
+
     /// A turn ending while the hidden prompt is still on its way is the one
     /// ahead: it isn't tagged, and the follow-up isn't counted as queued
     /// behind another.
