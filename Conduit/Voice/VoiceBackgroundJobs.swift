@@ -358,6 +358,9 @@ struct VoiceBackgroundJobBackend {
     /// Whether the attached chat is a bot's Bot Chat, whose coordinator
     /// reports its workstreams there in turns of its own.
     var isBotChat: @MainActor (_ thread: VoiceThreadTarget) -> Bool = { _ in false }
+    /// Whether the open chat shows more than one message waiting on its
+    /// reply, so the latest turn's prompt can't be told.
+    var threadAwaitsSeveralPrompts: @MainActor (_ thread: VoiceThreadTarget) -> Bool = { _ in false }
     /// The user's earlier chats that match `query`, best first, for a call
     /// asked to find one: on `profile`, or the one in use when nil.
     var searchChats: @MainActor (_ query: String, _ profile: String?) async throws -> [VoiceChatMatch] = { _, _ in
@@ -2783,20 +2786,28 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// Who asked for the chat's latest turn, from its open transcript: a
     /// message typed there, a voice request, or nobody (the plugin's hidden
-    /// work-update turn never shows, and its own text counts as nobody).
+    /// work-update turn never shows), or not known (several messages wait
+    /// on replies: something typed, so it stays quiet).
     enum AskedFor: Equatable {
         case nobody
+        case unknown
         case voice
         case typed(String)
     }
 
     private func askedFor(_ thread: VoiceThreadTarget) -> AskedFor {
         guard let prompt = backend.latestThreadPrompt(thread)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !prompt.isEmpty, !prompt.hasPrefix(Self.workUpdatePrefix) else { return .nobody }
+              !prompt.isEmpty else {
+            return backend.threadAwaitsSeveralPrompts(thread) ? .unknown : .nobody
+        }
         return prompt.hasPrefix(Self.threadTurnText(for: "")) ? .voice : .typed(prompt)
     }
 
     private func queueWorkUpdate(_ reply: String) {
+        // Said as is in every mode: links read as their text, emoji and
+        // narrated actions dropped, as Classic speaks them.
+        let reply = SpokenTextFilter.filter(Self.linkTextOnly(reply)).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !reply.isEmpty else { return }
         let clipped = reply.count > Self.maximumChatContextReplyCharacters
             ? String(reply.prefix(Self.maximumChatContextReplyCharacters)) + "…" : reply
         workUpdates.append((UUID(), clipped))
@@ -2806,8 +2817,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         onNoticePending?()
     }
 
-    /// How the plugin's work-update turn opens in a Bot Chat.
-    static let workUpdatePrefix = "Work update from "
+    /// Markdown links (a work update's `[Open W3](conduit://…)`) as their text.
+    static func linkTextOnly(_ text: String) -> String {
+        text.replacingOccurrences(of: #"\[([^\]\n]+)\]\([^)\s]+\)"#, with: "$1", options: .regularExpression)
+    }
 
     /// A Bot Chat call's coordinator reports, oldest first, waiting to be
     /// spoken; and those handed out but not yet sent, so one that never
@@ -2911,6 +2924,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         if let text = workUpdatesOut.removeValue(forKey: jobID) {
             releaseInFlight(jobID)
             workUpdates.insert((jobID, text), at: 0)
+            if workUpdates.count > Self.maximumPendingChatContext {
+                workUpdates.removeFirst(workUpdates.count - Self.maximumPendingChatContext)
+            }
             noticeMayBePending()
             return
         }

@@ -4689,6 +4689,11 @@ final class AppState: ObservableObject {
                 return [thread.runtimeSessionID, thread.storedSessionID ?? ""]
                     .contains { !$0.isEmpty && self.botConversationProfile(for: $0) != nil }
             },
+            threadAwaitsSeveralPrompts: { [weak self] thread in
+                guard let self, self.isOpenChat(thread) else { return false }
+                let afterReply = self.messages.lastIndex(where: { $0.role == .assistant }).map { $0 + 1 } ?? self.messages.startIndex
+                return self.messages[afterReply...].filter { $0.role == .user }.count > 1
+            },
             searchChats: { [weak self] query, profile in
                 guard let self else { throw HermesError.notConnected }
                 return try await self.searchChatsForVoice(query, profile: profile)

@@ -111,6 +111,7 @@ final class FakeVoiceJobBackend {
     /// What the user typed for the chat's latest turn, as the open chat shows it.
     var threadPrompt: String?
     var botChat = false
+    var severalPrompts = false
     private(set) var threadSubmissions: [(String, String)] = []
     /// Follow-ups put into a running turn (#451): what each carried, and
     /// Hermes' answers to the next ones (taken in turn; none left means
@@ -221,7 +222,8 @@ final class FakeVoiceJobBackend {
                 return self.threadReply
             },
             latestThreadPrompt: { [self] _ in self.threadPrompt },
-            isBotChat: { [self] _ in self.botChat }
+            isBotChat: { [self] _ in self.botChat },
+            threadAwaitsSeveralPrompts: { [self] _ in self.severalPrompts }
         )
     }
 
@@ -1318,9 +1320,12 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(supervisor.noteChatReport("Hello.", sessionID: "rt-bot"), "typed")
         fake.threadPrompt = VoiceBackgroundJobSupervisor.threadTurnText(for: "check the disk")
         XCTAssertFalse(supervisor.noteChatReport("On it.", sessionID: "rt-bot"), "a voice request")
-        fake.threadPrompt = "Work update from your workstreams."
-        XCTAssertTrue(supervisor.noteChatReport("W50 found it.", sessionID: "rt-bot"))
-        XCTAssertEqual(supervisor.takePendingNotice(), .speak("W50 found it."))
+        fake.threadPrompt = nil
+        fake.severalPrompts = true
+        XCTAssertFalse(supervisor.noteChatReport("Hello.", sessionID: "rt-bot"), "two typed messages wait: one of theirs")
+        fake.severalPrompts = false
+        XCTAssertTrue(supervisor.noteChatReport("W50 found it: [Open W50](conduit://session/abc) 💾", sessionID: "rt-bot"))
+        XCTAssertEqual(supervisor.takePendingNotice(), .speak("W50 found it: Open W50"), "said as Classic says it")
     }
 
     /// Reports the call can't say yet keep the newest few, as chat notes do.
@@ -1331,6 +1336,15 @@ extension VoiceConversationControllerTests {
         var spoken: [VoiceBackgroundJobNotice] = []
         while let notice = supervisor.takePendingNotice() { spoken.append(notice) }
         XCTAssertEqual(spoken, (3...5).map { VoiceBackgroundJobNotice.speak("Report \($0).") })
+
+        // One handed out and returned after newer ones came keeps the cap.
+        for index in 1...3 { _ = supervisor.noteChatReport("Next \(index).", sessionID: "rt-bot") }
+        guard let item = supervisor.takePendingNoticeForJob() else { return XCTFail("no notice") }
+        _ = supervisor.noteChatReport("Next 4.", sessionID: "rt-bot")
+        supervisor.returnUndeliveredNotice(jobID: item.jobID)
+        spoken = []
+        while let notice = supervisor.takePendingNotice() { spoken.append(notice) }
+        XCTAssertEqual(spoken, (2...4).map { VoiceBackgroundJobNotice.speak("Next \($0).") })
     }
 
     /// Eric 2026-11-02: a Bot Chat call speaks its coordinator's report on
@@ -1346,7 +1360,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.takePendingNotice(), .speak("Still 7.6 GB free."), "one that never reached the user goes again")
         XCTAssertNil(supervisor.takePendingNotice())
 
-        fake.threadPrompt = "Work update from your workstreams."
+        // The work update's own turn is hidden: no prompt shows.
         supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "u2", content: "W50 found it.", reasoning: nil))
         XCTAssertEqual(supervisor.takePendingNotice(), .speak("W50 found it."))
 
@@ -1360,6 +1374,13 @@ extension VoiceConversationControllerTests {
         fake.threadPrompt = VoiceBackgroundJobSupervisor.threadTurnText(for: "check the disk")
         supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "u4", content: "On it.", reasoning: nil))
         XCTAssertEqual(supervisor.pendingChatContext.count, 2)
+        XCTAssertNil(supervisor.takePendingNotice())
+
+        // Two typed messages waiting: the reply is to one of them.
+        fake.threadPrompt = nil
+        fake.severalPrompts = true
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "u5", content: "Both done.", reasoning: nil))
+        XCTAssertEqual(supervisor.pendingChatContext.count, 3)
         XCTAssertNil(supervisor.takePendingNotice())
     }
 
