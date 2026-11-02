@@ -24842,8 +24842,11 @@ final class AppState: ObservableObject {
     /// allowing the ordinary cold-start session restoration to win first.
     /// Whether `sessionID` names a row of `catalog`: its id, stored id or
     /// one of its alternates.
-    /// A tapped notification always rereads the chat list; an answered call
-    /// does only when the list on hand lacks its chat.
+    /// A plain notification always rereads the chat list. A call's open
+    /// (answered, or its Talk button) has someone waiting on the voice, so it
+    /// rereads only when the list on hand lacks the call's chat. Runtime and
+    /// alias ids are never handed to another chat, so a row they match is
+    /// the call's chat.
     nonisolated static func notificationOpenNeedsAuthoritativeRead(
         target: ConduitNotificationTarget,
         catalog: [SessionSummary]

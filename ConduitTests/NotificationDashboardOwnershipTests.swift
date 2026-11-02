@@ -707,6 +707,6 @@ extension NotificationDashboardOwnershipTests {
         }
         XCTAssertFalse(AppState.notificationOpenNeedsAuthoritativeRead(target: target("durable-1", call: call), catalog: catalog))
         XCTAssertTrue(AppState.notificationOpenNeedsAuthoritativeRead(target: target("unseen", call: call), catalog: catalog), "a call whose chat the list lacks reads it again")
-        XCTAssertTrue(AppState.notificationOpenNeedsAuthoritativeRead(target: target("durable-1", call: nil), catalog: catalog), "a tapped notification always reads it again")
+        XCTAssertTrue(AppState.notificationOpenNeedsAuthoritativeRead(target: target("durable-1", call: nil), catalog: catalog), "a plain notification always reads it again")
     }
 }
