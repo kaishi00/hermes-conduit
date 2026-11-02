@@ -28,6 +28,7 @@ extension DashboardTicketBridge {
     ) async throws -> [String: Any] {
         guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
         noteWriteSent()
+        defer { noteWriteSent() }
         return try await DashboardTicketBridgeError.explainingPluginRefusal(path: path) { () async throws -> [String: Any] in
             if let nativeOAuthSession {
                 return try await nativeOAuthSession.requestJSON(
@@ -267,7 +268,11 @@ extension DashboardTicketBridge {
     /// issued to requests sent without the page.
     func cookiesForRequestsWithoutPage() async -> [HTTPCookie] {
         var cookies = DashboardCookiePersistence.mirroredCookies(dashboardID: dashboardID)
-        if let webKit = await webKitCookies(timeout: .seconds(2)) {
+        // WebKit's store may hold a newer cookie than the mirror, but when the
+        // mirror already holds one a slow store mustn't hold the request up
+        // long: on screen it answers in milliseconds.
+        let webKitWait: Duration = cookies.isEmpty ? .seconds(2) : .milliseconds(500)
+        if let webKit = await webKitCookies(timeout: webKitWait) {
             cookies += webKit
         }
         cookies += DashboardCookiePersistence.nativeCookieStorage(for: dashboardID).cookies ?? []

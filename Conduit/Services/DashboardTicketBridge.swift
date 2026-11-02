@@ -788,8 +788,9 @@ final class DashboardTicketBridge: NSObject {
     /// screen, tests) shares WebKit's and URLSession's default stores, so it
     /// keeps the page.
     var readsWithoutThePageFirst: Bool { dashboardID != nil }
-    /// Requests sent that change something on the dashboard, counted so a
-    /// read sent before one isn't shown after it (StartupReads).
+    /// Requests that change something on the dashboard, counted as each
+    /// starts and as it ends, so a read sent before one or while it was out
+    /// isn't shown after it (StartupReads).
     private(set) var writesSent = 0
     func noteWriteSent() { writesSent += 1 }
     /// Cookies the dashboard set on requests sent without the page, newest
@@ -1039,8 +1040,11 @@ final class DashboardTicketBridge: NSObject {
 
     /// Cookie mode's ticket: natively with the page's cookies, as the
     /// socket's upgrade already goes, so a launch doesn't wait for WebKit
-    /// and the page's load first. Through the page only while no store
-    /// holds a cookie yet and the page can run.
+    /// and the page's load first. Through the page, with its retries, while
+    /// no store holds a cookie yet or when the native ticket was refused as
+    /// signed out and the page can run: a cookie the stores held may be
+    /// older than the one WebKit's page holds, so one native 401 doesn't
+    /// end a durable session.
     private func mintCookieTicket() async throws -> String {
         if !webViewCanRun() || readsWithoutThePageFirst {
             do {
@@ -1051,6 +1055,8 @@ final class DashboardTicketBridge: NSObject {
                 return ticket
             } catch DashboardTicketBridgeError.notReady where webViewCanRun() && !isInvalidated {
                 // No cookie in any store yet: the page's own retries below.
+            } catch DashboardTicketBridgeError.signInRequired where webViewCanRun() && !isInvalidated {
+                // Refused as signed out: the page's reload-and-retry decides.
             }
         }
         // Retry twice on the two recoverable failures, then let the final
@@ -1178,7 +1184,10 @@ final class DashboardTicketBridge: NSObject {
         readsOnly: Bool
     ) async throws -> [String: Any] {
         let isRead = readsOnly || ["GET", "HEAD"].contains(method.uppercased())
+        // Counted when it starts and again when it ends, so a read sent while
+        // it was out is never taken for one sent after it (StartupReads).
         if !isRead { noteWriteSent() }
+        defer { if !isRead { noteWriteSent() } }
         if let nativeOAuthSession {
             guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
             return try await nativeOAuthSession.requestJSON(
@@ -1206,6 +1215,9 @@ final class DashboardTicketBridge: NSObject {
                 )
             } catch DashboardTicketBridgeError.notReady where webViewCanRun() && !isInvalidated {
                 // No cookie in any store yet: through the page.
+            } catch DashboardTicketBridgeError.signInRequired where webViewCanRun() && !isInvalidated {
+                // Refused as signed out: the page, whose landing decides, as
+                // for the ticket.
             }
         }
         try await waitUntilReady()

@@ -25,6 +25,8 @@ final class StartupReads {
     }
 
     /// An answer, carried from the early read to the step that takes it.
+    /// Unchecked because `[String: Any]` isn't Sendable; it never leaves the
+    /// main actor, which both the read and the step run on.
     struct Answer: @unchecked Sendable { let json: [String: Any] }
 
     /// How long an early answer may wait for its step. A connection's steps
@@ -53,7 +55,7 @@ final class StartupReads {
            now.timeIntervalSince(lastSent.at) < Self.resendAfter {
             return
         }
-        entries.removeAll()
+        cancelWaiting()
         self.bridge = bridge
         lastSent = (paths, now)
         for path in paths where entries[path] == nil {
@@ -79,17 +81,25 @@ final class StartupReads {
     /// Paths still waiting to be taken. Readable for tests.
     var waitingPaths: Set<String> { Set(entries.keys) }
 
+    /// Drops every early read, cancelling those still out: a dashboard
+    /// switch or sign-out leaves nothing for its steps.
     func clear() {
-        entries.removeAll()
+        cancelWaiting()
         bridge = nil
         lastSent = nil
+    }
+
+    private func cancelWaiting() {
+        for entry in entries.values { entry.task.cancel() }
+        entries.removeAll()
     }
 }
 
 extension StartupReads {
     /// `path` through `bridge`: the early read's answer when this step may
     /// take it, else a read of its own. An early read that couldn't go out
-    /// without the page (no session cookie yet) is sent again; any other failure is
+    /// without the page (no session cookie yet) or was refused as signed out
+    /// is sent again, the step's way; any other failure is
     /// this step's, since sending the same read again moments later would
     /// only wait for it twice.
     func read(_ path: String, through bridge: DashboardTicketBridge, fence: Fence) async throws -> [String: Any] {
@@ -99,6 +109,10 @@ extension StartupReads {
         do {
             return try await early.value.json
         } catch DashboardTicketBridgeError.notReady {
+            return try await bridge.requestJSON(path: path)
+        } catch DashboardTicketBridgeError.signInRequired {
+            // The step's own read can go through the page, whose landing
+            // decides whether the session really ended.
             return try await bridge.requestJSON(path: path)
         }
     }

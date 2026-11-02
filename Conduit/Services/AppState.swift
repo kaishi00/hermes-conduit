@@ -15789,6 +15789,8 @@ final class AppState: ObservableObject {
                 guard let self, let bridge, self.dashboardTicketBridge === bridge else { return }
                 self.noteConnectionStep(event)
             }
+            // Early reads through the bridge this replaces are no one's now.
+            startupReads.clear()
             dashboardTicketBridge = bridge
         } else if let bridge = dashboardTicketBridge, bridge.requiresSignIn {
             // The same dashboard's page settled on sign-in, and a connection

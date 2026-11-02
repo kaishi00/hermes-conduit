@@ -72,7 +72,53 @@ extension DashboardTicketBridgeTests {
             // notReady from the page that can't load
         }
         XCTAssertEqual(sentWithoutPage, [], "a write on screen goes through the page")
-        XCTAssertEqual(bridge.writesSent, 1)
+        XCTAssertEqual(bridge.writesSent, 2, "counted as it started and as it ended")
+    }
+
+    /// A native ticket refused as signed out goes on to the page, whose
+    /// reload and retries decide: a store's cookie may be older than the
+    /// page's, so one native 401 doesn't end the session.
+    func testATicketRefusedNativelyGoesOnToThePage() async throws {
+        let bridge = DashboardTicketBridge(
+            baseURL: "http://127.0.0.1:1",
+            dashboardID: UUID(),
+            readinessPollAttempts: 2,
+            readinessPollInterval: .milliseconds(10)
+        )
+        bridge.webViewCanRun = { true }
+        bridge.backgroundIssuedCookies = [try XCTUnwrap(HTTPCookie(properties: [
+            .name: "session", .value: "old", .domain: "127.0.0.1", .path: "/",
+        ]))]
+        var sentWithoutPage = 0
+        bridge.loadWithoutPageForTesting = { request in
+            sentWithoutPage += 1
+            let response = HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!
+            return (Data(#"{"detail":"Unauthorized"}"#.utf8), response)
+        }
+        addTeardownBlock { @MainActor in bridge.invalidate() }
+
+        do {
+            _ = try await bridge.mintTicket()
+            XCTFail("nothing answers the page")
+        } catch DashboardTicketBridgeError.signInRequired {
+            XCTFail("one native 401 ended the session without the page's say")
+        } catch {
+            // the page, which can't load here, has the last word
+        }
+        XCTAssertEqual(sentWithoutPage, 1)
+    }
+
+    /// A write is counted as it starts and as it ends, so a read sent while
+    /// it was out doesn't match a fence taken after it.
+    func testAWriteIsCountedWhenItStartsAndEnds() async throws {
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        addTeardownBlock { @MainActor in held.releaseAll() }
+        let write = Task { try await held.bridge.requestJSON(path: "/api/sessions/s", method: "PATCH", body: ["title": "t"]) }
+        try await held.waitForRequests(1)
+        XCTAssertEqual(held.bridge.writesSent, 1)
+        try await held.answer([String: Any]())
+        _ = try await write.value
+        XCTAssertEqual(held.bridge.writesSent, 2)
     }
 
     /// A bridge built before its dashboard is saved shares the default
