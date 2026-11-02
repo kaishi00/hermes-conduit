@@ -90,6 +90,18 @@ enum Predictive {
 
     /// A draft shorter than this says too little to guess from.
     static let minimumDraftCharacters = 3
+    /// The plugin takes a draft of at most this many characters, counted
+    /// as Python counts them (Unicode scalars, not the graphemes Swift's
+    /// `count` gives: one family emoji is 1 Character but 7 scalars).
+    static let maximumDraftScalars = 2_000
+
+    /// Whether a draft is short enough to ask about. A longer one isn't
+    /// asked about rather than cut: continuations start where the draft
+    /// stops, so a guess for its first part couldn't follow the rest
+    /// (issue 1670).
+    static func fitsQuestion(_ draft: String) -> Bool {
+        draft.unicodeScalars.count <= maximumDraftScalars
+    }
     /// Follow-up checks for one reply; "not again" ends them sooner.
     static let maximumChecks = 4
     /// The plugin holds "ask again" to this window too (predict.py).
@@ -159,7 +171,7 @@ enum Predictive {
             "model": model.rawValue,
             "wait_s": wait,
         ]
-        if let draft { body["draft"] = String(draft.prefix(2_000)) }
+        if let draft { body["draft"] = draft }
         if let facts {
             var measured: [String: Any] = [
                 "last_reply_s": max(0, facts.lastReplySeconds),

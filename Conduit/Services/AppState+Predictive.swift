@@ -252,6 +252,7 @@ extension AppState {
         }
         guard Predictive.pauseEnabled(), predictiveIsServed, !isEmpty, !text.hasPrefix("/"),
               text.trimmingCharacters(in: .whitespacesAndNewlines).count >= Predictive.minimumDraftCharacters,
+              Predictive.fitsQuestion(text),
               let sessionID = activeSessionId, !sessionID.isEmpty,
               predictiveDraftAsked?.sessionID != sessionID || predictiveDraftAsked?.draft != text,
               !predictive.hiddenSessions.contains(sessionID), !isBusy, !turnState.isRunning,

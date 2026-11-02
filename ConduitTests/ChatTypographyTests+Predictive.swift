@@ -51,6 +51,33 @@ extension ChatTypographyTests {
         XCTAssertEqual(Predictive.guesses("not a list"), [])
     }
 
+    func testADraftIsMeasuredAsThePluginMeasuresIt() {
+        // One family emoji: 1 Character, 7 Unicode scalars (Python's len).
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}"
+        XCTAssertEqual(family.count, 1)
+        XCTAssertEqual(family.unicodeScalars.count, 7)
+        // 300 of them is 300 Characters but 2,100 scalars: over the plugin's
+        // limit, so it isn't asked about (it would get a 400).
+        XCTAssertFalse(Predictive.fitsQuestion(String(repeating: family, count: 300)))
+        XCTAssertTrue(Predictive.fitsQuestion(String(repeating: family, count: 285)))
+        XCTAssertTrue(Predictive.fitsQuestion(String(repeating: "a", count: Predictive.maximumDraftScalars)))
+        XCTAssertFalse(Predictive.fitsQuestion(String(repeating: "a", count: Predictive.maximumDraftScalars + 1)))
+        // A draft that fits is sent whole, never cut.
+        let draft = String(repeating: family, count: 285)
+        let body = Predictive.body(
+            kind: .draft, sessionID: "s1", count: 3, draft: draft,
+            language: "English", model: .fast, wait: Predictive.draftWait
+        )
+        XCTAssertEqual(body["draft"] as? String, draft)
+    }
+
+    func testAGuessUpToTheLimitIsKept() {
+        // The plugin keeps replies up to 200 code points (issue 1670); one of
+        // 200 ASCII characters is a chip.
+        let longest = String(repeating: "a", count: Predictive.maxGuessLength)
+        XCTAssertEqual(Predictive.guesses([["text": longest, "p": 0.5]]).map(\.text), [longest])
+    }
+
     func testAFollowUpIsOnlyTakenWithItsHiddenTurn() {
         let yes = Predictive.turnAnswer(["take_turn": true, "why": "Worth a check.", "nudge": "[Conduit] …", "ask_again_in_seconds": NSNull()])
         XCTAssertTrue(yes.takeTurn)
