@@ -3323,8 +3323,8 @@ idea.
 empty state, the filter menu) · the iPad and Mac list (same view) · the
 classic drawer (its New project button and ⋯ menu, its empty state) · the
 Folder tab beside Artifacts (the same plugin route makes its New Folder) ·
-Unread dot on projects and Project chats in Chats (the new project shows
-in both at once) · README.md
+Unread dot on projects (the new project's row takes the dot like any
+other) · README.md
 
 **Code**
 - Buttons: `Conduit/Views/V2/V2ChatsView.swift` (projectsHeader, canCreateProject, projectsList's empty state, filterMenu), `Conduit/Views/SidebarView.swift` (the drawer's New project button and menu item)
@@ -3337,10 +3337,10 @@ in both at once) · README.md
 - A new project goes to the profile in use, whose projects the list shows, so it shows there as soon as Hermes makes it. All profiles has no Projects list of its own, so the sheet names the profile and says to switch profiles for another one rather than offering a picker that would make a project the list doesn't show (2026-11-03, issue 1661).
 - The folders are the Hermes host's, browsed through Hermes' own listing from the open chat's folder (only while a chat is open: the last chat's folder outlives it), else Home's; the picker goes into folders and out to the one holding them. The device's own folder picker isn't offered: Conduit's device isn't the host, even on a Mac (2026-11-03, issue 1661).
 - A new folder is made inside the folder shown, through the plugin's workspace route, which refuses a name already there; without the plugin the picker chooses existing folders only.
-- Nothing is overwritten or doubled: a name or folder another made project already has is refused before Create, and the idea is written as IDEA.md only when the first folder has none. Home and the repos Hermes found on its own have no record to clash with. A create that fails reads the list again, so a retry sees a project Hermes made anyway; an idea that couldn't be saved says so rather than vanishing.
+- Nothing is overwritten or doubled: a name or folder another made project already has is refused before Create, and the idea is written as IDEA.md only when the first folder has none. Home and the repos Hermes found on its own have no record to clash with. Create reads Hermes' list again and checks it before asking, and a create that fails reads it again too, so a retry sees a project Hermes made anyway; an idea that couldn't be saved says so rather than vanishing.
 
 **Open gaps**
-- None known.
+- The folder clash checks only each project's first folder: the project tree gives Conduit no others.
 
 **Checked:** 2026-11-03, #1685.
 

@@ -67,9 +67,12 @@ extension AppState {
     /// gives a Windows host's paths with backslashes.
     static func parentWorkspacePath(_ path: String) -> String? {
         let normalized = normalizedWorkspacePath(path.trimmingCharacters(in: .whitespacesAndNewlines))
+        let posix = normalized.hasPrefix("/") || normalized.hasPrefix("~")
         guard !normalized.isEmpty, normalized != "/", normalized != "~",
               normalized.range(of: #"^[A-Za-z]:[\\/]?$"#, options: .regularExpression) == nil,
-              let cut = normalized.lastIndex(where: { $0 == "/" || $0 == "\\" }) else { return nil }
+              // A POSIX path's name may hold a backslash: only a slash
+              // separates there.
+              let cut = normalized.lastIndex(where: { $0 == "/" || (!posix && $0 == "\\") }) else { return nil }
         let parent = String(normalized[..<cut])
         if parent.isEmpty { return "/" }
         if parent.range(of: #"^[A-Za-z]:$"#, options: .regularExpression) != nil {

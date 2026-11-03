@@ -234,6 +234,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(AppState.parentWorkspacePath("C:\\Users"), "C:\\")
         XCTAssertNil(AppState.parentWorkspacePath("C:\\"))
         XCTAssertNil(AppState.parentWorkspacePath(""))
+        XCTAssertEqual(AppState.parentWorkspacePath("/home/me/a\\b"), "/home/me", "a backslash in a POSIX name isn't a separator")
     }
 
     func testProjectFolderPickerStartsInTheChatsFolderElseHomes() throws {

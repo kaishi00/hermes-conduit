@@ -32922,6 +32922,11 @@ final class AppState: ObservableObject {
         guard !trimmedName.isEmpty, !uniqueFolders.isEmpty else { return false }
 
         let profile = activeProfile
+        // Checked again on Hermes' list as it is now: another device may
+        // have made the same project since the list was read.
+        await loadProjects(using: client, profile: profile)
+        guard profile == activeProfile, self.client === client,
+              projectCreationProblem(name: trimmedName, folders: uniqueFolders) == nil else { return false }
         do {
             guard let created = try await client.createProject(name: trimmedName, folders: uniqueFolders) else {
                 throw HermesError.invalidResponse
