@@ -371,8 +371,8 @@ struct BotPortraitCell<MenuContent: View>: View {
         .onChange(of: work.snapshot(bot.name)?.readyCount) { old, new in
             if let old, let new, new > old { noteFinished() }
         }
-        .onChange(of: shell.isTabActive) { _, active in
-            if active && finishPending { noteFinished() }
+        .onChange(of: isShown) { _, shown in
+            if shown && finishPending { noteFinished() }
         }
     }
 
@@ -499,10 +499,14 @@ struct BotPortraitCell<MenuContent: View>: View {
         return false
     }
 
+    /// Bots Home is on screen: its tab shows and nothing is pushed over it
+    /// (split, the chat beside the grid leaves it showing).
+    private var isShown: Bool { shell.isTabActive && !shell.isRootCovered }
+
     /// The portrait moves only while Bots Home is on screen and the person
     /// hasn't asked for less motion or for Low Power Mode.
     private var animates: Bool {
-        shell.isTabActive && scenePhase == .active && !reduceMotion
+        isShown && scenePhase == .active && !reduceMotion
             && !devicePower.isLowPowerModeEnabled
     }
 
@@ -510,7 +514,7 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// check on the badge, then still. Off screen, it waits for Bots Home
     /// to show again.
     private func noteFinished() {
-        guard shell.isTabActive else {
+        guard isShown else {
             finishPending = true
             return
         }
