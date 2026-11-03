@@ -805,10 +805,12 @@ struct ComposerBar: View, Equatable {
                     handlePastedImageError(message, editorIdentity: currentEditorIdentity)
                 },
                 editorIdentity: editorIdentity,
-                onDroppedFiles: { providers in
+                // A locked composer takes no drop, as its Attach menu is
+                // off then (the chat around it doesn't either).
+                onDroppedFiles: appState.composerIsEnabled ? { providers in
                     guard currentEditorIdentity == editorIdentity else { return }
                     handleDroppedFiles(providers)
-                },
+                } : nil,
                 onLongTextPaste: { pasted in
                     guard currentEditorIdentity == editorIdentity else { return false }
                     return attachLongPaste(pasted)

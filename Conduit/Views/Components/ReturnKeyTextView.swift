@@ -59,7 +59,8 @@ class ReturnKeyTextView: UITextView {
     ) -> FieldDrop {
         let items = zip(registeredTypeIdentifiers, suggestedNames)
         if items.contains(where: { AttachmentDrop.takes(registeredTypeIdentifiers: $0, suggestedName: $1) }) {
-            return takesFiles ? .files : .declined
+            // A locked field takes no files, as its Attach menu is off.
+            return takesFiles && isEditable ? .files : .declined
         }
         let hasWords = registeredTypeIdentifiers.contains { identifiers in
             identifiers.contains { identifier in
@@ -121,9 +122,8 @@ class ReturnKeyTextView: UITextView {
         let words = providers.filter { !AttachmentDrop.takes($0) }
         guard isEditable, !words.isEmpty else { return }
         if !isFirstResponder { _ = becomeFirstResponder() }
-        if let position = closestPosition(to: point) {
-            selectedTextRange = textRange(from: position, to: position)
-        }
+        let target = closestPosition(to: point).flatMap { textRange(from: $0, to: $0) }
+        if let target { selectedTextRange = target }
         Task { @MainActor [weak self] in
             var pieces: [String] = []
             for provider in words {
@@ -131,6 +131,8 @@ class ReturnKeyTextView: UITextView {
             }
             let text = pieces.joined(separator: " ")
             guard let self, self.isEditable, !text.isEmpty else { return }
+            // At the drop point, even if the caret moved while they loaded.
+            if let target { self.selectedTextRange = target }
             self.insertText(text)
         }
     }

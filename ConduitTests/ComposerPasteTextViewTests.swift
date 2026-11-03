@@ -469,6 +469,11 @@ final class ComposerPasteTextViewTests: XCTestCase {
             ReturnKeyTextView.fieldDrop(registeredTypeIdentifiers: [words], suggestedNames: [nil], isEditable: false, takesFiles: true),
             .declined
         )
+        XCTAssertEqual(
+            ReturnKeyTextView.fieldDrop(registeredTypeIdentifiers: [jpeg], suggestedNames: ["a.jpg"], isEditable: false, takesFiles: true),
+            .declined,
+            "A locked field takes no files"
+        )
     }
 
     func testAPictureDroppedOnTheChatFieldKeepsThePicturePaste() async {
@@ -480,6 +485,7 @@ final class ComposerPasteTextViewTests: XCTestCase {
             completion(expectedData, nil)
             return nil
         }
+        view.isEditable = true
         view.onDroppedFiles = { _ in }
         let callback = expectation(description: "picture paste")
         view.onPastedImage = { pastedImage in
