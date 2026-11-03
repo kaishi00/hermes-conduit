@@ -9076,7 +9076,10 @@ final class AppState: ObservableObject {
         Task { @MainActor [weak self] in
             guard let self else { return }
             var target = self.linkedSessionTarget(id)
-            if target == nil {
+            // A bot's workstream is hidden from Hermes' list, so a refresh
+            // never finds its row: it only held the open up for seconds
+            // (Eric's build 248 test). It resumes by its id straight away.
+            if target == nil, !self.isWorkstreamSession(id) {
                 let openBefore = self.activeSessionId
                 await self.loadSessions(forceRefresh: true)
                 // A chat opened meanwhile is the later choice; it stays.
