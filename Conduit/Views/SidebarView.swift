@@ -2471,8 +2471,11 @@ struct CronJobDetailSheet: View {
                             ConduitSettingsSection(title: AppLocalization.string("Prompt"), symbol: "text.quote", tint: .conduitAura) { Text(prompt).textSelection(.enabled).scaledFont(.callout) }
                         }
                         ConduitSettingsSection(title: AppLocalization.string("Run history"), symbol: "clock.arrow.circlepath", tint: .conduitAura) {
-                            if !appState.cronRunsLoaded || appState.cronRunsJobID != job.id {
+                            if appState.cronRunsJobID == job.id, let failure = appState.cronRunsFailure {
+                                Text(failure).scaledFont(.footnote).foregroundStyle(.secondary)
+                            } else if !appState.cronRunsLoaded || appState.cronRunsJobID != job.id {
                                 ProgressView().frame(maxWidth: .infinity, alignment: .leading)
+                                    .accessibilityLabel(AppLocalization.string("Loading \(AppLocalization.string("Run history"))…"))
                             } else if appState.cronRuns.isEmpty {
                                 Text("This job has not run yet.").scaledFont(.footnote).foregroundStyle(.secondary)
                             }

@@ -13,6 +13,7 @@ import XCTest
 @MainActor
 private final class CronRunsRequester: DashboardJSONRequester {
     var responsesByPath: [String: [String: Any]] = [:]
+    var failingPrefix: String?
     private(set) var paths: [String] = []
     /// Reads whose path starts with this wait until `release()`.
     var holdPrefix: String?
@@ -35,6 +36,9 @@ private final class CronRunsRequester: DashboardJSONRequester {
         paths.append(path)
         if let holdPrefix, path.hasPrefix(holdPrefix) {
             await withCheckedContinuation { held.append($0) }
+        }
+        if let failingPrefix, path.hasPrefix(failingPrefix) {
+            throw DashboardTicketBridgeError.http(status: 0, detail: "Load failed")
         }
         return responsesByPath.first { path.hasPrefix($0.key) }?.value ?? [:]
     }
@@ -98,6 +102,49 @@ extension SidebarLayoutTests {
 
         XCTAssertEqual(state.cronRunsJobID, "bbbbbbbbbbbb")
         XCTAssertTrue(state.cronRuns.isEmpty)
+    }
+
+    func testAnOlderReadOfTheSameJobThatLandsLastIsDropped() async {
+        let state = cronRunHistoryState()
+        let requester = CronRunsRequester()
+        let older: [String: Any] = ["runs": [["id": "cron_aaaaaaaaaaaa_20261103_090000"]]]
+        let newer: [String: Any] = ["runs": [["id": "cron_aaaaaaaaaaaa_20261104_090000"]]]
+        let job = CronJob(enabled: true, id: "aaaaaaaaaaaa")
+        requester.responsesByPath["/api/cron/jobs/aaaaaaaaaaaa/runs"] = older
+        requester.holdPrefix = "/api/cron/jobs/aaaaaaaaaaaa/runs"
+
+        let slow = Task { await state.loadCronRuns(for: job, dashboard: requester, gateway: nil) }
+        while requester.heldCount == 0 { await Task.yield() }
+        // Run now reads again while the sheet's first read is out.
+        requester.holdPrefix = nil
+        requester.responsesByPath["/api/cron/jobs/aaaaaaaaaaaa/runs"] = newer
+        await state.loadCronRuns(for: job, dashboard: requester, gateway: nil)
+        requester.responsesByPath["/api/cron/jobs/aaaaaaaaaaaa/runs"] = older
+        requester.release()
+        await slow.value
+
+        XCTAssertEqual(state.cronRuns.map(\.id), ["cron_aaaaaaaaaaaa_20261104_090000"])
+    }
+
+    func testAFailedReadIsNotANeverRunJob() async {
+        let state = cronRunHistoryState()
+        let requester = CronRunsRequester()
+        requester.failingPrefix = "/api/cron/jobs/aaaaaaaaaaaa/runs"
+
+        await state.loadCronRuns(for: CronJob(enabled: true, id: "aaaaaaaaaaaa"), dashboard: requester, gateway: nil)
+        XCTAssertFalse(state.cronRunsLoaded, "no answer, so the sheet can't say the job hasn't run")
+        XCTAssertNotNil(state.cronRunsFailure)
+
+        // Offline: nothing to ask is no answer either.
+        await state.loadCronRuns(for: CronJob(enabled: true, id: "bbbbbbbbbbbb"), dashboard: nil, gateway: nil)
+        XCTAssertFalse(state.cronRunsLoaded)
+        XCTAssertNotNil(state.cronRunsFailure)
+
+        // A later answer clears the failure.
+        requester.responsesByPath["/api/cron/jobs/bbbbbbbbbbbb/runs"] = ["runs": []]
+        await state.loadCronRuns(for: CronJob(enabled: true, id: "bbbbbbbbbbbb"), dashboard: requester, gateway: nil)
+        XCTAssertTrue(state.cronRunsLoaded)
+        XCTAssertNil(state.cronRunsFailure)
     }
 
     func testWithoutTheDashboardOnlyTheJobsOwnRunsAreKept() async {

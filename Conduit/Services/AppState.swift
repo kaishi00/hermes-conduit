@@ -5429,6 +5429,9 @@ final class AppState: ObservableObject {
     /// Whether `cronRuns` holds an answer for `cronRunsJobID` yet, so the
     /// sheet says a job hasn't run only once it knows.
     @Published private(set) var cronRunsLoaded = false
+    /// Why the open job's history couldn't be read, before any answer came:
+    /// the sheet says so rather than that the job hasn't run.
+    @Published private(set) var cronRunsFailure: String?
     @Published private(set) var cronJobsLoading = false
     @Published private(set) var cronJobActionID: String?
     /// Bumped by a job delete so a list load that started before it can't
@@ -34047,7 +34050,8 @@ final class AppState: ObservableObject {
     /// lists every job's runs, so it is read only without the dashboard, and
     /// only the runs it can tell are this job's are kept (#1707). The list
     /// belongs to one job: opening another clears it until its answer lands
-    /// (`cronRunsLoaded`), and only the newest read's answer is kept.
+    /// (`cronRunsLoaded`) or the read fails (`cronRunsFailure`), and only the
+    /// newest read's answer is kept.
     func loadCronRuns(
         for job: CronJob,
         dashboard: (any DashboardJSONRequester)?,
@@ -34057,6 +34061,7 @@ final class AppState: ObservableObject {
         if cronRunsJobID != job.id {
             cronRuns = []
             cronRunsLoaded = false
+            cronRunsFailure = nil
             cronRunsJobID = job.id
         }
         cronRunsLoad += 1
@@ -34076,18 +34081,30 @@ final class AppState: ObservableObject {
                     maxResponseBytes: DataURLLimits.maxJSONResponseBytes
                 )
                 guard profile == activeProfile, cronRunsLoad == load else { return }
-                cronRuns = cronRunValues(from: result).compactMap(decodeCronRun).filter(inProfile)
-            } else if let gateway {
-                let answer = try await gateway()
+                answerCronRuns(cronRunValues(from: result).compactMap(decodeCronRun).filter(inProfile))
+            } else if let gateway, let runs = try await gateway() {
                 guard profile == activeProfile, cronRunsLoad == load else { return }
-                if let runs = answer { cronRuns = runs.filter { $0.isRun(ofJob: job.id) && inProfile($0) } }
+                answerCronRuns(runs.filter { $0.isRun(ofJob: job.id) && inProfile($0) })
+            } else {
+                // Nothing to ask (offline, or the client was replaced mid-read).
+                guard profile == activeProfile, cronRunsLoad == load, !cronRunsLoaded else { return }
+                cronRunsFailure = AppLocalization.string("Connect to Hermes to check.")
             }
-            cronRunsLoaded = true
         } catch {
             guard profile == activeProfile, cronRunsLoad == load else { return }
-            cronRunsLoaded = true
-            errorMessage = AppLocalization.string("Could not load scheduled-job runs: \(UserFacingError.message(for: error))")
+            let message = AppLocalization.string("Could not load scheduled-job runs: \(UserFacingError.message(for: error))")
+            if cronRunsLoaded {
+                errorMessage = message
+            } else {
+                cronRunsFailure = message
+            }
         }
+    }
+
+    private func answerCronRuns(_ runs: [CronRun]) {
+        cronRuns = runs
+        cronRunsLoaded = true
+        cronRunsFailure = nil
     }
 
     func performCronAction(_ action: CronJobAction, for job: CronJob) async -> Bool {
