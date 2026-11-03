@@ -202,7 +202,7 @@ final class PulseSettingsTests: XCTestCase {
 
     func testOnlyAStoppedPulseWithHermesTooOldAsksToUpdateHermes() throws {
         let older = try XCTUnwrap(PulseState(json: ["enabled": true, "running": false]))
-        XCTAssertEqual(older.hostProblem, "")  // a plugin before 0.127.5: the restart hint
+        XCTAssertEqual(older.hostProblem, "")  // a plugin before 0.127.6: the restart hint
         XCTAssertFalse(older.hermesTooOld)
         let running = try XCTUnwrap(PulseState(json: ["enabled": true, "running": true, "host_problem": "hermes_too_old"]))
         XCTAssertFalse(running.hermesTooOld)
