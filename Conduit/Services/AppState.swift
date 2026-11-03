@@ -2808,6 +2808,25 @@ final class AppState: ObservableObject {
         keptAnswer(KeptRoute.providerQuotas).map(Self.modelProviders(in:)) ?? []
     }
 
+    /// The models Hermes offers in `profile`, which may not be the one
+    /// open: Settings > Pulse's, for the profile Pulse runs in, where its
+    /// model is set (issue 1681). Another profile's come from the
+    /// dashboard's route for it, kept as the Model page keeps them. Nil when
+    /// Hermes didn't answer, or the dashboard changed meanwhile.
+    func loadModelProviders(inProfile profile: String) async -> [ProviderInfo]? {
+        if profilesMatch(profile, activeProfile) { return await loadModelProviders() }
+        guard let owner = currentDashboardRuntimeOwner(),
+              let answer = try? await readKeepingAnswer(KeptRoute.modelOptions, profile: profile, owner: owner),
+              ownsDashboardRuntime(owner) else { return nil }
+        return Self.modelProviders(in: answer)
+    }
+
+    /// `profile`'s models as last read, kept on the phone.
+    func keptModelProviders(inProfile profile: String) -> [ProviderInfo] {
+        if profilesMatch(profile, activeProfile) { return keptModelProviders() }
+        return keptAnswer(KeptRoute.modelOptions, profile: profile).map(Self.modelProviders(in:)) ?? []
+    }
+
     /// The providers of a `model.options` answer.
     static func modelProviders(in answer: [String: Any]) -> [ProviderInfo] {
         (AnyCodable.from(answer).objectValue?["providers"]?.arrayValue ?? []).compactMap(ProviderInfo.init(from:))

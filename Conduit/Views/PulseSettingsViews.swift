@@ -789,20 +789,23 @@ struct PulseSettingsPage: View {
             .accessibilityIdentifier("settings.pulse.model")
             if modelsFailed {
                 // The models listed stay up; Hermes didn't answer.
-                ModelCatalogPlaceholder(state: .failed) { Task { await loadModels() } }
+                ModelCatalogPlaceholder(state: .failed) { Task { await loadModels(profile: state.profile) } }
             }
             Text("Pulse's reports, morning brief, follow-ups and memory run on this model. A fast, cheap model is plenty.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
-        .task(id: appState.activeDashboardID) { await loadModels() }
+        // Pulse's profile's models, where its model is set (issue 1681).
+        .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(state.profile ?? "")") {
+            await loadModels(profile: state.profile)
+        }
     }
 
     /// One that fails keeps the models listed, the kept ones included,
     /// and says so with Try Again.
-    private func loadModels() async {
+    private func loadModels(profile: String?) async {
         let dashboard = appState.activeDashboardID
-        let loaded = await appState.loadModelProviders()
+        let loaded = await appState.loadModelProviders(inProfile: profile ?? AppState.pulseDefaultProfile)
         guard appState.activeDashboardID == dashboard else { return }
         if let loaded {
             providers = loaded
@@ -990,8 +993,13 @@ struct PulseSettingsPage: View {
     /// doesn't stop this iPhone watching shops (`apply` does, on Pulse's
     /// answer), and the days to read follow the answer again.
     private func showKept() {
-        if providers.isEmpty { providers = appState.keptModelProviders() }
-        guard state == nil, let kept = appState.keptPulseState() else { return }
+        let keptState = appState.keptPulseState()
+        if providers.isEmpty {
+            providers = appState.keptModelProviders(
+                inProfile: (state ?? keptState)?.profile ?? AppState.pulseDefaultProfile
+            )
+        }
+        guard state == nil, let kept = keptState else { return }
         state = kept
         dayCount = kept.backfillDays
     }

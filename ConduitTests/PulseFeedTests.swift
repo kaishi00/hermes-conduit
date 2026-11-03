@@ -632,6 +632,41 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "fresh", profile: "default"))
     }
 
+    func testDoItGoesToTheProfilePulseRunsIn() throws {
+        // Issue 1681: Pulse in a named profile; Do it's new chat is made there.
+        let suite = "PulseFeedTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let dashboard = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "http://127.0.0.1:1")
+        let state = AppState(defaults: defaults, loadSavedConnection: false,
+                             dashboardRegistry: SavedDashboardRegistry(activeDashboardID: dashboard.id,
+                                                                       dashboards: [dashboard]),
+                             clearSessionPresentationCache: {})
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"home_chat_id": "pulse_chat", "profile": "rei-ii", "cards": [
+          {"id": 1, "kind": "noticed", "topic": "date", "level": "screen", "news": "Dentist Friday", "chat_id": "pulse_chat"}
+        ]}
+        """)))
+        state.setNotifierPluginStateForTesting(.reported(version: "0.126.2", capabilities: [
+            PulseClient.feedCapability, PulseClient.doneCapability, PulseClient.actedCapability,
+            PulseClient.foundActionsCapability
+        ]))
+        state.applyPulseFeed(page)
+        let date = try XCTUnwrap(page.cards.first)
+        XCTAssertEqual(state.pulseHomeProfile, "rei-ii")
+        state.isConnected = true
+        state.client = HermesClient(connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+                                    profile: "rei-ii")
+        state.isNativeHermesCallActive = true
+        // From the default profile, Do it has to switch, which a call stops.
+        XCTAssertEqual(state.pulseNewChatRefusal(for: date),
+                       AppLocalization.string("End the call to open a chat in another profile."))
+        // With Pulse's own profile open, it needs no switch.
+        state.setActiveProfileForTesting("rei-ii")
+        XCTAssertNotEqual(state.pulseNewChatRefusal(for: date),
+                          AppLocalization.string("End the call to open a chat in another profile."))
+    }
+
     func testACardFromAKanbanWorkerShowsItsTaskAndDoItStartsANewChatAboutIt() async throws {
         let state = try appState()
         let page = try XCTUnwrap(PulseFeedPage(json: json("""
