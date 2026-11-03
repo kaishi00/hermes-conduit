@@ -713,6 +713,47 @@ enum BotWorkLinks {
         return (kept.trimmingCharacters(in: .whitespacesAndNewlines), links)
     }
 
+    /// A ref named in a reply's words ("W50 found …"), not one already a
+    /// link's text, a path's or a longer word's part.
+    private static let namedRef = try! NSRegularExpression(pattern: #"(?<![\w/\[])(W\d+)\b(?!\]\()"#)
+
+    /// Whether a reply could name a workstream: a cheap check before the
+    /// row watches the bot's work list.
+    static func mayNameWork(_ text: String) -> Bool {
+        text.range(of: #"W\d"#, options: .regularExpression) != nil
+    }
+
+    /// A Bot Chat reply with each workstream it names, as the bot's work
+    /// lists it, made a link to that workstream's chat (Eric 2026-11-03:
+    /// the coordinator names its work, the user taps it). Code is left as
+    /// written; a ref the list doesn't have stays plain.
+    static func linkingNamedRefs(_ text: String, chats: (String) -> URL?) -> String {
+        guard text.contains("W") else { return text }
+        var out = ""
+        var inCode = false
+        // Backtick runs split code from prose: only the prose is linked.
+        for (index, piece) in text.components(separatedBy: "`").enumerated() {
+            if index > 0 { out += "`" }
+            if inCode {
+                out += piece
+            } else {
+                let ns = piece as NSString
+                var linked = ""
+                var last = 0
+                for match in namedRef.matches(in: piece, range: NSRange(location: 0, length: ns.length)) {
+                    let ref = ns.substring(with: match.range(at: 1))
+                    guard let url = chats(ref) else { continue }
+                    linked += ns.substring(with: NSRange(location: last, length: match.range.location - last))
+                    linked += "[\(ref)](\(url.absoluteString))"
+                    last = match.range.location + match.range.length
+                }
+                out += linked + ns.substring(from: last)
+            }
+            inCode.toggle()
+        }
+        return out
+    }
+
     private static func spacesBefore(_ index: String.Index, in text: String) -> String.Index {
         var lower = index
         while lower > text.startIndex, text[text.index(before: lower)] == " " { lower = text.index(before: lower) }

@@ -339,6 +339,23 @@ extension BotModeTests {
         XCTAssertEqual(asked.approval?.isApprovable, true)
     }
 
+    /// The workstreams a Bot Chat reply names become links to their chats
+    /// (Eric 2026-11-03): only refs the work list has, never in code, a
+    /// link's text, a path or a longer word.
+    func testWorkRefsABotChatReplyNamesBecomeLinks() {
+        let chats: (String) -> URL? = { ref in
+            ["W50": "a", "W51": "b"][ref].map { URL(string: "conduit://session/\($0)?profile=furina")! }
+        }
+        XCTAssertEqual(
+            BotWorkLinks.linkingNamedRefs("The lookups were in **W50** and W51, not W9.", chats: chats),
+            "The lookups were in **[W50](conduit://session/a?profile=furina)** and "
+                + "[W51](conduit://session/b?profile=furina), not W9.")
+        let untouched = "Run `echo W50` in /tmp/W50, see [W50](conduit://session/a) or XW50 and W500."
+        XCTAssertEqual(BotWorkLinks.linkingNamedRefs(untouched, chats: chats), untouched)
+        XCTAssertTrue(BotWorkLinks.mayNameWork("Done in W3."))
+        XCTAssertFalse(BotWorkLinks.mayNameWork("Nothing running. Weather is fine."))
+    }
+
     /// A Bot Chat reply's links to its work become cards under it; other
     /// links stay in its words.
     func testWorkLinksInABotChatReplyBecomeCards() throws {
