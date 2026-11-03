@@ -323,11 +323,20 @@ final class AppStateReasoningStreamTests: XCTestCase {
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "older turn"), turnGeneration: 3)
         XCTAssertEqual(events, [], "The cancelled turn's words never reach Voice")
 
-        // Its end does: a conversation still waiting on that turn (stopped
-        // from the chat) is released by it; one waiting on the next question
+        // Its end does, as what it was: a conversation still waiting on that
+        // turn (stopped from the chat) is released by it without speaking
+        // the reply the user stopped; one waiting on the next question
         // ignores it until that reply starts.
         state.handleStreamEvent(.messageInterrupted(sessionId: "stored-a"), turnGeneration: 4)
         XCTAssertEqual(events, [.interrupted(sessionID: "stored-a")])
+        events.removeAll()
+        state.handleStreamEvent(.messageComplete(
+            sessionId: "stored-a", messageId: nil, content: "late words and the rest", reasoning: nil
+        ), turnGeneration: 4)
+        XCTAssertEqual(events, [.interrupted(sessionID: "stored-a")], "The stopped reply is never spoken from its end")
+        events.removeAll()
+        state.handleStreamEvent(.messageError(sessionId: "stored-a", message: "Interrupted"), turnGeneration: 4)
+        XCTAssertEqual(events, [.failed(sessionID: "stored-a", message: "Interrupted")], "A failure passes as it is")
 
         events.removeAll()
         state.handleStreamEvent(.messageStart(sessionId: "stored-a"), turnGeneration: 5)
@@ -470,8 +479,8 @@ final class AppStateReasoningStreamTests: XCTestCase {
     }
 
     /// A cancel that read the chat again (a stale generation) stopped the
-    /// turn Hermes named there: the note follows it, and only a noted chat
-    /// is raised.
+    /// turn Hermes named there: the note follows it, even when the socket
+    /// never saw that turn, and only for a chat that showed a turn running.
     func testVoiceNoteFollowsTheTurnTheCancelStopped() {
         let state = makeAppState()
         installActiveSession(state, id: "stored-a")
@@ -480,18 +489,28 @@ final class AppStateReasoningStreamTests: XCTestCase {
         defer { state.removeVoiceAssistantObserver(observer) }
 
         state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 4)
-        state.raiseVoiceCancelledTurn(sessionId: "stored-a", to: 9)
-        state.raiseVoiceCancelledTurn(sessionId: "stored-a", to: 6)
-        state.raiseVoiceCancelledTurn(sessionId: "stored-a", to: nil)
+        state.raiseVoiceCancelledTurn(sessionId: "stored-a", to: 9, wasRunning: true)
+        state.raiseVoiceCancelledTurn(sessionId: "stored-a", to: 6, wasRunning: true)
+        state.raiseVoiceCancelledTurn(sessionId: "stored-a", to: nil, wasRunning: true)
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "stopped turn"), turnGeneration: 9)
         XCTAssertEqual(events, [], "Raised to the stopped turn, never lowered")
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "next"), turnGeneration: 10)
         XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "next")])
 
+        // A turn this socket never saw start: nothing was noted before the
+        // cancel, and the turn it stopped is noted after.
         events.removeAll()
-        state.raiseVoiceCancelledTurn(sessionId: "stored-a", to: 12)
-        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "unnoted"), turnGeneration: 12)
-        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "unnoted")], "A chat with no note is not noted")
+        state.raiseVoiceCancelledTurn(sessionId: "stored-a", to: 12, wasRunning: true)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "unseen turn"), turnGeneration: 12)
+        XCTAssertEqual(events, [], "The stopped turn is noted though the socket never saw it")
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "next"), turnGeneration: 13)
+        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "next")])
+
+        // A chat that showed nothing running notes nothing.
+        events.removeAll()
+        state.raiseVoiceCancelledTurn(sessionId: "stored-a", to: 20, wasRunning: false)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "idle chat"), turnGeneration: 20)
+        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "idle chat")])
     }
 
     /// A gateway frame as HermesClient hands it to AppState.
