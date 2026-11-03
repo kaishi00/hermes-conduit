@@ -253,6 +253,7 @@ extension AppState {
         }
         guard Predictive.pauseEnabled(), predictiveIsServed, !isEmpty, !text.hasPrefix("/"),
               text.trimmingCharacters(in: .whitespacesAndNewlines).count >= Predictive.minimumDraftCharacters,
+              Predictive.fitsQuestion(text),
               let sessionID = activeSessionId, !sessionID.isEmpty,
               predictiveDraftAsked?.sessionID != sessionID || predictiveDraftAsked?.draft != text,
               !predictive.hiddenSessions.contains(sessionID), !isBusy, !turnState.isRunning,
@@ -274,8 +275,10 @@ extension AppState {
     /// Asks about `draft` once. The answer counts while it comes within
     /// the wait and the draft still starts with what was asked.
     private func askAboutDraft(_ draft: String, sessionID: String) {
-        // Asked once per draft in each chat.
-        guard predictiveDraftAsked?.sessionID != sessionID || predictiveDraftAsked?.draft != draft else { return }
+        // Over the plugin's limit, Refresh included (issue 1670). Asked once
+        // per draft in each chat.
+        guard Predictive.fitsQuestion(draft),
+              predictiveDraftAsked?.sessionID != sessionID || predictiveDraftAsked?.draft != draft else { return }
         predictiveDraftAsked = (sessionID, draft)
         let body = Predictive.body(
             kind: .draft, sessionID: sessionID, count: Predictive.replyCount(), draft: draft,

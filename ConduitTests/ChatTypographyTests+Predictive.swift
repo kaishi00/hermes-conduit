@@ -51,6 +51,33 @@ extension ChatTypographyTests {
         XCTAssertEqual(Predictive.guesses("not a list"), [])
     }
 
+    func testADraftIsMeasuredAsThePluginMeasuresIt() {
+        // One family emoji: 1 Character, 7 Unicode scalars (Python's len).
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}"
+        XCTAssertEqual(family.count, 1)
+        XCTAssertEqual(family.unicodeScalars.count, 7)
+        // 300 of them is 300 Characters but 2,100 scalars: over the plugin's
+        // limit, so it isn't asked about (it would get a 400).
+        XCTAssertFalse(Predictive.fitsQuestion(String(repeating: family, count: 300)))
+        XCTAssertTrue(Predictive.fitsQuestion(String(repeating: family, count: 285)))
+        XCTAssertTrue(Predictive.fitsQuestion(String(repeating: "a", count: Predictive.maximumDraftScalars)))
+        XCTAssertFalse(Predictive.fitsQuestion(String(repeating: "a", count: Predictive.maximumDraftScalars + 1)))
+        // A draft that fits is sent whole, never cut.
+        let draft = String(repeating: family, count: 285)
+        let body = Predictive.body(
+            kind: .draft, sessionID: "s1", count: 3, draft: draft,
+            language: "English", model: .fast, wait: Predictive.draftWait
+        )
+        XCTAssertEqual(body["draft"] as? String, draft)
+    }
+
+    func testAGuessUpToTheLimitIsKept() {
+        // The plugin keeps replies up to 200 code points (issue 1670); one of
+        // 200 ASCII characters is a chip.
+        let longest = String(repeating: "a", count: Predictive.maxGuessLength)
+        XCTAssertEqual(Predictive.guesses([["text": longest, "p": 0.5]]).map(\.text), [longest])
+    }
+
     func testAFollowUpIsOnlyTakenWithItsHiddenTurn() {
         let yes = Predictive.turnAnswer(["take_turn": true, "why": "Worth a check.", "nudge": "[Conduit] …", "ask_again_in_seconds": NSNull()])
         XCTAssertTrue(yes.takeTurn)
@@ -181,6 +208,32 @@ extension ChatTypographyTests {
         state.predictiveTurnSettled(sessionId: "s1")
         XCTAssertEqual(state.predictive.followUpReasons["a3"], "Worth a check.")
         XCTAssertNil(state.predictiveFollowUpTurn)
+    }
+
+    /// A draft over the plugin's limit is never asked about, by ⋯ > Refresh
+    /// either; one at the limit is (issue 1670).
+    @MainActor
+    func testADraftOverThePluginsLimitIsNeverAskedAbout() {
+        let defaults = makeScratchDefaults("PredictiveDraftLimitTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.predictiveSender = { _ in [:] }
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        XCTAssertNotNil(state.predictiveAnchor)
+
+        let over = String(repeating: "a", count: Predictive.maximumDraftScalars + 1)
+        state.predictive.draftChanged(over)
+        state.refreshPredictions()
+        XCTAssertNil(state.predictiveDraftAsked, "a draft over the limit isn't asked about")
+
+        let atLimit = String(repeating: "a", count: Predictive.maximumDraftScalars)
+        state.predictive.draftChanged(atLimit)
+        state.refreshPredictions()
+        XCTAssertEqual(state.predictiveDraftAsked?.draft, atLimit, "one at the limit is")
     }
 
     /// A system notice merged into the last row anchors no guesses and no
