@@ -265,7 +265,12 @@ struct BotPortraitCell<MenuContent: View>: View {
                     return
                 }
                 appState.dismissSidebarDrawer()
-                Task { await appState.openBotChat(for: bot) }
+                // This chat grows out of this portrait (BotZoomDestination),
+                // unless it opens beside the list, or doesn't open.
+                appState.botZoomArmed = openBeside == nil ? bot.name : nil
+                Task {
+                    if await !appState.openBotChat(for: bot) { appState.botZoomArmed = nil }
+                }
             } label: {
                 VStack(spacing: 8) {
                     portrait(status)
@@ -283,18 +288,6 @@ struct BotPortraitCell<MenuContent: View>: View {
             .modifier(BotPortraitDrag(name: bot.name, enabled: onDrop != nil) {
                 BotMonogramView(bot: bot, size: 64)
             })
-            .dropDestination(for: String.self) { items, _ in
-                guard let onDrop, let dragged = items.first.flatMap(BotDragPayload.botName(from:)),
-                      dragged.caseInsensitiveCompare(bot.name) != .orderedSame else { return false }
-                let merge = mergeReady
-                BotDragPayload.lifted = nil
-                endTargeting()
-                onDrop(dragged, merge)
-                return true
-            } isTargeted: { targeted in
-                guard onDrop != nil else { return }
-                targeted ? beginTargeting() : endTargeting()
-            }
             .accessibilityLabel(Text(bot.displayLabel))
             .accessibilityValue(Text(accessibilityValue(status)))
             .accessibilityHint(Text(portraitHint))
@@ -310,6 +303,20 @@ struct BotPortraitCell<MenuContent: View>: View {
             .accessibilityLabel(Text(AppLocalization.string("\(bot.displayLabel)’s overview")))
             .accessibilityValue(Text(verbatim: status == .idle ? "" : status.title))
             .accessibilityIdentifier("bots.overview.\(bot.name)")
+        }
+        // The whole cell, pill included, takes a dropped bot, so a drop
+        // under a face lands there rather than at the end.
+        .dropDestination(for: String.self) { items, _ in
+            guard let onDrop, let dragged = items.first.flatMap(BotDragPayload.botName(from:)),
+                  dragged.caseInsensitiveCompare(bot.name) != .orderedSame else { return false }
+            let merge = mergeReady
+            BotDragPayload.lifted = nil
+            endTargeting()
+            onDrop(dragged, merge)
+            return true
+        } isTargeted: { targeted in
+            guard onDrop != nil else { return }
+            targeted ? beginTargeting() : endTargeting()
         }
         // The pill's words: read once each time Bots Home shows or
         // connects, not polled (the Bot Chat and its overview poll).
@@ -359,6 +366,7 @@ struct BotPortraitCell<MenuContent: View>: View {
         return BotMonogramView(bot: bot, size: 72)
             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             .padding(4)
+            .modifier(BotZoomSource(name: bot.name))
             .overlay {
                 Circle()
                     .strokeBorder(ringed ? Color.conduitAccent : color.opacity(0.85),
@@ -619,5 +627,73 @@ struct BotReorderSheet: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Portrait to chat
+
+/// The namespace a Bots Home portrait and the Bot Chat it opens share, so
+/// the chat grows out of the portrait (iOS 18's zoom) and Back shrinks it
+/// back in. Nil outside the Bots stack, and split, where the chat opens
+/// beside the list rather than over it.
+private struct BotZoomNamespaceKey: EnvironmentKey {
+    static let defaultValue: Namespace.ID? = nil
+}
+
+extension EnvironmentValues {
+    var botZoomNamespace: Namespace.ID? {
+        get { self[BotZoomNamespaceKey.self] }
+        set { self[BotZoomNamespaceKey.self] = newValue }
+    }
+}
+
+/// The portrait the chat grows from: a circle, keyed by its bot.
+struct BotZoomSource: ViewModifier {
+    let name: String
+    @Environment(\.botZoomNamespace) private var namespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *), let namespace, !reduceMotion {
+            content.matchedTransitionSource(id: name, in: namespace) { source in
+                // Only a RoundedRectangle may clip a source: one rounder
+                // than the portrait is its circle.
+                source.clipShape(RoundedRectangle(cornerRadius: 1000))
+            }
+        } else {
+            content
+        }
+    }
+}
+
+/// A Bot Chat pushed in the Bots stack: it zooms from its bot's portrait.
+/// Any other page, a plain session, or Reduce Motion: the usual push.
+struct BotZoomDestination: ViewModifier {
+    let route: V2Route
+    let namespace: Namespace.ID
+    /// The chat was pushed on Bots Home itself, where its portrait shows.
+    let fromHome: Bool
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *),
+           let bot = Self.zoomingBot(route: route, fromHome: fromHome, open: appState.activeBotChatProfile,
+                                     tapped: appState.botZoomArmed, reduceMotion: reduceMotion) {
+            content.navigationTransition(.zoom(sourceID: bot, in: namespace))
+        } else {
+            content
+        }
+    }
+
+    /// The bot whose portrait the chat grows from, or nil for the usual
+    /// push: only the Bot Chat of the portrait just tapped, pushed on Bots
+    /// Home itself, never one a notification, widget, Shortcut or link
+    /// opened, and nothing under Reduce Motion.
+    static func zoomingBot(route: V2Route, fromHome: Bool, open: String?, tapped: String?,
+                           reduceMotion: Bool) -> String? {
+        guard route == .conversation, fromHome, !reduceMotion, let open, let tapped,
+              open.caseInsensitiveCompare(tapped) == .orderedSame else { return nil }
+        return open
     }
 }

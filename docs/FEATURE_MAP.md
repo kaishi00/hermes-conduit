@@ -1438,13 +1438,13 @@ Bots: create and edit) · VoiceOver (the menu's two items, a portrait's
 value while a room is being built) · README.md's Bots Home line
 
 **Code**
-- Tabs and routes: `Conduit/Views/V2/V2Shell.swift` (V2Tab.destinations, title and conversationTab, the first tab, pulseVisible and openConversation on Bots too)
-- Bots Home: `Conduit/Views/V2/V2BotsView.swift` (title, +, BotsHomeShortcuts), `Conduit/Views/V2/V2BotsHome.swift` (V2ShortcutPill, BotsHomeShortcuts, BotPortraitGrid and its drop at the end, BotPortraitStatus, BotPortraitCell's drop targeting and room membership, BotPortraitDrag, BotDragPayload, BotReorderSheet, BotOverviewSheet), `Conduit/Views/BotRosterView.swift` (portraitGrid, portrait, handleDrop, newRoomBar, BotRosterMenu's Start a Room with… and Reorder Bots, homeCards, the overview's sheet and Edit Bot after it), `Conduit/Views/V2/V2PulsePage.swift` (V2PulseButton's named pill)
+- Tabs and routes: `Conduit/Views/V2/V2Shell.swift` (V2Tab.destinations, title and conversationTab, the first tab, pulseVisible and openConversation on Bots too, the Bots stack's botZoom namespace)
+- Bots Home: `Conduit/Views/V2/V2BotsView.swift` (title, +, BotsHomeShortcuts), `Conduit/Views/V2/V2BotsHome.swift` (V2ShortcutPill, BotsHomeShortcuts, BotPortraitGrid and its drop at the end, BotPortraitStatus, BotPortraitCell's drop targeting and room membership, BotPortraitDrag, BotDragPayload, BotReorderSheet, BotOverviewSheet, BotZoomSource and BotZoomDestination), `Conduit/Views/BotRosterView.swift` (portraitGrid, portrait, handleDrop, newRoomBar, BotRosterMenu's Start a Room with… and Reorder Bots, homeCards, the overview's sheet and Edit Bot after it), `Conduit/Views/V2/V2PulsePage.swift` (V2PulseButton's named pill)
 - Order: `Conduit/Models/BotOrder.swift`, `Conduit/Services/AppState+BotOrder.swift` (orderedBots, moveBot, moveBots, botOrderSlot), `Conduit/Services/AppState.swift` (botOrder, setBotOrder, shownBotRoster; sign-out and a new server clear it), `Conduit/Services/AppState+SyncedPreferences.swift` (bots.order), `Conduit/Views/SyncedPreferencesViews.swift` (the caption), `Conduit/Services/AppState+Widgets.swift` (the widget's bots), `Conduit/Views/GroupChatView.swift` (GroupCreateSheet's visibleBots), `Conduit/Views/BotEditorSheet.swift` (cloneSources, New Bot's Start From)
 - A new room: `Conduit/Models/BotRoomBuild.swift` (the room being started), `Conduit/Views/GroupChatView.swift` (GroupCreateSheet's preselected, suggestedName and onCreated), `Conduit/Services/GroupChatModels.swift` (GroupRoomLimits)
 - Overview: `Conduit/Views/BotWorkViews.swift` (BotWorkPanel's `showsHeader`), `Conduit/Views/V2/V2ArtifactsViews.swift` (BotArtifactsList, ArtifactScope.bot), `Conduit/Services/AppState+Artifacts.swift` (artifactSources for `.bot`), `Conduit/Views/V2/V2ConversationScreen.swift` (the Bot Chat's overview sheet)
 - Cards at the top: `Conduit/Views/V2/V2ChatsView.swift` (V2ConnectionRepairCard), `Conduit/Views/V2/V2FinishSetupCard.swift`
-- Tests: `ConduitTests/BotWorkstreamsTests.swift` (testBotsComeFirstAndChatsIsSessions, testAPlainSessionOpenedOverBotsLandsInSessions, testThePortraitPillSaysWhatNeedsYouFirst, testTheBotOrderMovesADroppedBotAndKeepsNewOnesLast, testTheBotOrderSyncsAsItsNames, testARoomBeingStartedHoldsSixAndDropsWhatLeaves, testABotDragCarriesAMarkedName), `ConduitTests/GatewayRestartTests+Artifacts.swift` (testABotOverviewReadsItsBotsWholeProfile), `ConduitUITests/V2NavigationHelpers.swift`, `ConduitUITests/ConnectionRepairUITests.swift`, `ConduitScreenshots/AppStoreScreenshotTests.swift`
+- Tests: `ConduitTests/BotWorkstreamsTests.swift` (testBotsComeFirstAndChatsIsSessions, testAPlainSessionOpenedOverBotsLandsInSessions, testThePortraitPillSaysWhatNeedsYouFirst, testOnlyATappedPortraitsChatZoomsOutOfIt, testTheBotOrderMovesADroppedBotAndKeepsNewOnesLast, testTheBotOrderSyncsAsItsNames, testARoomBeingStartedHoldsSixAndDropsWhatLeaves, testABotDragCarriesAMarkedName), `ConduitTests/GatewayRestartTests+Artifacts.swift` (testABotOverviewReadsItsBotsWholeProfile), `ConduitUITests/V2NavigationHelpers.swift`, `ConduitUITests/ConnectionRepairUITests.swift`, `ConduitScreenshots/AppStoreScreenshotTests.swift`
 
 **Rulings**
 - Layout A (Eric, 2026-11-03, from three layouts): a three-across portrait grid in each bot's color with a soft glow, no card per bot and no hero bot; Pulse and Artifacts as named pills under the title; Group Chats as rows under the bots. Rejected before it: an asymmetric hero card, and a two-column grid of rectangular cards (2026-11-02).
@@ -1456,17 +1456,17 @@ value while a room is being built) · README.md's Bots Home line
 - The app opens on Bots. Finish setting up and Repair Connection show at Bots Home's top too, so a first launch or a failed connection offers them where the app opens.
 - Only a bot's own chats (its Bot Chat or a workstream's chat) open inside Bots; any other session opened while Bots shows (a notification, a widget, a Shortcut) goes to Sessions. A chat opened from a page pushed in Bots (Pulse, Artifacts) stays in Bots, under that page.
 - The pill reads nothing and says Overview on a plugin that serves no workstreams.
+- A Bot Chat opened from its portrait grows out of it, a circle opening into the chat (iOS 18's zoom), and Back or a swipe down shrinks it back in (the design canvas's Transition board, 2026-11-03). Only the chat of the portrait just tapped, pushed on Bots Home itself: a Bot Chat a notification, widget, Shortcut, call or link opens, one opened under Pulse or Artifacts, beside the list on a split window, on iOS 17 or with Reduce Motion is the usual push.
 
 **Open gaps**
-- The portrait-to-chat transition (a circle growing from the portrait) isn't built yet; it comes in its own PR.
 - A bot made on another device shows its pill words only once Bots Home is opened again or reconnects.
 - Bots Home redraws on each AppState change, unlike the Sessions list (`V2ShownUpdates`); a roster is small, but a cold launch with many bots hasn't been measured.
 - Dropping a bot on an existing room to add it isn't possible: hosted groups can't add members after they start (groups.* has no add). The live-rooms row that would take such a drop isn't built yet.
 - A portrait dragged out of Conduit (an iPad split, Stage Manager) carries its marked name as plain text, which another app's text field accepts; a private drag type would need one declared in the app's Info.plist.
 - The bots' order is by profile name, so a renamed profile goes to the end; Hermes Desktop keeps no order of its own to match.
-- Not yet tried on a device: whether a drag's lift and the portrait's long-press menu share the hold, the merge dwell's feel, and whether a cancelled drag lets go of its item at once (a portrait reads the dragged bot only while it lives).
+- Not yet tried on a device: the zoom's look from a portrait in the grid's list row; whether a drag's lift and the portrait's long-press menu share the hold, the merge dwell's feel, and whether a cancelled drag lets go of its item at once (a portrait reads the dragged bot only while it lives).
 
-**Checked:** 2026-11-03, #1679 (the bots' order, synced, and starting a room by dropping bots together, with a confirm step); 2026-11-03, #1678 (added).
+**Checked:** 2026-11-03, #1682 (the portrait-to-chat zoom; a drop on a portrait's pill lands on it); 2026-11-03, #1679 (the bots' order, synced, and starting a room by dropping bots together, with a confirm step); 2026-11-03, #1678 (added).
 
 ## Bots: create and edit
 
