@@ -120,7 +120,7 @@ struct PulseState: Equatable {
     var running = false
     var staleBuild = false
     /// Why the dashboard can't run Pulse while it isn't running: "hermes_too_old"
-    /// (notifier 0.127.5), or empty, the restart hint.
+    /// (notifier 0.127.6), or empty, the restart hint.
     var hostProblem = ""
     /// Settings > Pulse says to update Hermes rather than restart the dashboard.
     var hermesTooOld: Bool { enabled && !running && hostProblem == "hermes_too_old" }
