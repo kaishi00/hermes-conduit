@@ -132,6 +132,12 @@ final class LocationBackgroundMonitor: NSObject, CLLocationManagerDelegate {
             } catch {
                 LocationSyncEngine.log.info("Saved-place monitor stopped: \(LogRedaction.message(error), privacy: .public)")
             }
+            // Its events ended (an error or a plain finish): the next sync
+            // opens it again by name (this one is released with this task),
+            // which keeps its places, as walking past's monitor does.
+            guard let self, self.monitor === created else { return }
+            self.monitor = nil
+            self.eventsTask = nil
         }
         return created
     }
