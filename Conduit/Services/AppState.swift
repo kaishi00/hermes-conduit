@@ -32953,6 +32953,7 @@ final class AppState: ObservableObject {
                 ideaSaved = await writeProjectIdea(trimmedIdea, in: uniqueFolders[0], profile: profile)
             }
             await loadProjects(using: client, profile: profile)
+            guard profile == activeProfile, self.client === client else { return .failed(nil) }
             return ideaSaved
                 ? .created
                 : .ideaUnsaved(projectID: created.id,

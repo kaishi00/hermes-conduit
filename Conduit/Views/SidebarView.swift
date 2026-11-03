@@ -1806,6 +1806,8 @@ struct ProjectCreateSheet: View {
     /// The project this sheet made when its idea couldn't be saved: the
     /// sheet then only saves the idea, and the project is no clash.
     @State private var madeProjectID: String?
+    /// The first folder that project was made with: Save Idea writes there.
+    @State private var madeProjectFolder: String?
 
     /// A name or folder another project already has (issue 1661).
     private var clash: String? {
@@ -1824,7 +1826,7 @@ struct ProjectCreateSheet: View {
                     Section {
                         TextField("e.g. Skunkworks", text: $name)
                             .textInputAutocapitalization(.words)
-                            .disabled(madeProjectID != nil)
+                            .disabled(madeProjectID != nil || isCreating)
                     } header: {
                         Text("Name")
                     } footer: {
@@ -1852,7 +1854,7 @@ struct ProjectCreateSheet: View {
                         .onDelete { folders.remove(atOffsets: $0) }
                         // Once the project is made, Save Idea writes to the
                         // folder it was made with.
-                        .deleteDisabled(madeProjectID != nil)
+                        .deleteDisabled(madeProjectID != nil || isCreating)
 
                         Button {
                             validationMessage = nil
@@ -1864,7 +1866,7 @@ struct ProjectCreateSheet: View {
                         } label: {
                             Label(AppLocalization.string("Add folder"), systemImage: "plus")
                         }
-                        .disabled(madeProjectID != nil)
+                        .disabled(madeProjectID != nil || isCreating)
                     }
 
                     Section {
@@ -1929,13 +1931,14 @@ struct ProjectCreateSheet: View {
     /// given: a message stays on screen with the idea still in its field.
     private func createProject() async {
         isCreating = true
-        if madeProjectID != nil, let folder = folders.first {
+        if madeProjectID != nil, let folder = madeProjectFolder {
             let saved = await appState.saveProjectIdea(idea, in: folder)
             isCreating = false
             if saved { dismiss() }
             return
         }
         validationMessage = nil
+        let firstFolder = folders.first
         let outcome = await appState.createProject(name: name, folders: folders, idea: idea)
         isCreating = false
         switch outcome {
@@ -1943,6 +1946,7 @@ struct ProjectCreateSheet: View {
             dismiss()
         case .ideaUnsaved(let projectID, let message):
             madeProjectID = projectID
+            madeProjectFolder = firstFolder
             validationMessage = message
         case .failed(let message):
             validationMessage = message ?? AppLocalization.string("Hermes could not create this project.")
