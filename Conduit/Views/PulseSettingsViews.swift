@@ -46,6 +46,8 @@ struct PulseSettingsPage: View {
     /// Hermes answered the models read: only then is a model picked, as a
     /// list that didn't load is never picked from.
     @State private var modelsAnswered = false
+    /// The profile `providers` are from: Pulse's, as its state names it.
+    @State private var modelsProfile: String?
     /// The note to Pulse as it's being edited; nil shows the plugin's.
     @State private var noteDraft: String?
     @FocusState private var noteFocused: Bool
@@ -805,6 +807,13 @@ struct PulseSettingsPage: View {
     /// and says so with Try Again.
     private func loadModels(profile: String?) async {
         let dashboard = appState.activeDashboardID
+        if modelsAnswered, modelsProfile != profile {
+            // Another profile's models never stay up to be picked for this one.
+            providers = appState.keptModelProviders(inProfile: profile ?? AppState.pulseDefaultProfile)
+            modelsAnswered = false
+            modelsFailed = false
+        }
+        modelsProfile = profile
         let loaded = await appState.loadModelProviders(inProfile: profile ?? AppState.pulseDefaultProfile)
         guard appState.activeDashboardID == dashboard else { return }
         if let loaded {

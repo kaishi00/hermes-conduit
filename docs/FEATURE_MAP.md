@@ -1269,7 +1269,7 @@ no chat or from a Kanban task's worker · the Kanban task such a card links, ope
 - Settings > Pulse and What Pulse remembers open on what Pulse answered last on this dashboard, kept on the phone (see Screens that open on their last answer). Until Pulse answers again, a step that writes back what the page shows besides what was picked, or acts on it (Set up Pulse, Pin it, reading older chats), waits; a kept state never stops this iPhone watching shops (Eric's ruling of 2026-10-30 on issue #1533, #1555).
 
 **Open gaps**
-- Set up Pulse: if titling the new chat (or the profile check) fails after the host made it, the chat stays in Pulse's profile untitled and unpinned, not yet recorded as Pulse's, so it can show in Chats (`AppState.createPulseHomeChat`; from #1092, found in review on #1517).
+- Set up Pulse: if titling the new chat (or the profile check) fails after the host made it, the chat stays where the host made it (Pulse's profile, or another one when the profile check is what failed) untitled and unpinned, not yet recorded as Pulse's, so it can show in Chats (`AppState.createPulseHomeChat`; from #1092, found in review on #1517).
 - Set up Pulse in Settings > Pulse hasn't been tried on a real host: it must make a chat Pulse finds before anything is sent in it.
 - What a Pulse push does on the Watch, which has no Pulse screen, hasn't been checked, Quiet for today's button included.
 - The note to Pulse in Settings > Pulse hasn't been tried on a phone against notifier 0.78.2 (#1277).

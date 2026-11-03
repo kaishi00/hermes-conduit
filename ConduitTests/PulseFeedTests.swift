@@ -632,7 +632,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "fresh", profile: "default"))
     }
 
-    func testDoItGoesToTheProfilePulseRunsIn() throws {
+    func testDoItsCallCheckGoesByTheProfilePulseRunsIn() throws {
         // Issue 1681: Pulse in a named profile; Do it's new chat is made there.
         let suite = "PulseFeedTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
