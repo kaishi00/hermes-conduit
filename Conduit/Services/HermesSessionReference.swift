@@ -24,7 +24,7 @@ struct HermesSessionReference: Equatable {
     /// Profile names are lowercase tokens; session ids are plain tokens
     /// (`20261011_142233_ab12cd`). A trailing `.` or `:` ends the sentence,
     /// not the id. Not inside a word, a path or inline code.
-    private static let pattern = #"(?<![\w/`@])@session:(?:([A-Za-z0-9][A-Za-z0-9_-]{0,63})/)?([A-Za-z0-9_](?:[A-Za-z0-9_.:-]{0,126}[A-Za-z0-9_])?)"#
+    static let pattern = #"(?<![\w/`@])@session:(?:([A-Za-z0-9][A-Za-z0-9_-]{0,63})/)?([A-Za-z0-9_](?:[A-Za-z0-9_.:-]{0,126}[A-Za-z0-9_])?)"#
     private static let bare = try! NSRegularExpression(pattern: pattern)
     private static let target = #"\(\s*@session:(?:([A-Za-z0-9][A-Za-z0-9_-]{0,63})/)?([A-Za-z0-9_][A-Za-z0-9_.:-]{0,127})\s*\)"#
     private static let markdownTarget = try! NSRegularExpression(pattern: #"\]"# + target)

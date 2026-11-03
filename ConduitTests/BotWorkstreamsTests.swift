@@ -382,6 +382,16 @@ extension BotModeTests {
         // Only the link's own place changes: code elsewhere stays as written.
         let code = try XCTUnwrap(BotWorkLinks.split("Run `ls -a .` then f() , see [Open W3](conduit://session/c)"))
         XCTAssertEqual(code.text, "Run `ls -a .` then f() , see")
+        // Desktop's reference after each link (notifier: workstreams open in
+        // Hermes Desktop from it) is left out with the link.
+        let desktop = try XCTUnwrap(BotWorkLinks.split(
+            "W12 is waiting on you ([Open W12](conduit://session/20261103_w12?profile=furina) @session:furina/20261103_w12)."))
+        XCTAssertEqual(desktop.text, "W12 is waiting on you.")
+        XCTAssertEqual(desktop.links.map(\.sessionID), ["20261103_w12"])
+        // Without a work link, a reference stays a chat link (HermesSessionReference).
+        XCTAssertNil(BotWorkLinks.split("Open it here: @session:20261103_w12"))
+        let code = try XCTUnwrap(BotWorkLinks.split("Type `@session:x` in Desktop. [Open W3](conduit://session/c)"))
+        XCTAssertEqual(code.text, "Type `@session:x` in Desktop.")
     }
 
     /// A read asked for after an action, while one was under way, makes
