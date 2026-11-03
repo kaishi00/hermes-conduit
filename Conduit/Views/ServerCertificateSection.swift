@@ -70,7 +70,7 @@ struct ServerCertificateSection: View {
             ConnectionSetupNote(symbol: "checkmark.seal", text: AppLocalization.string("iOS already trusts this server’s certificate, so certificates aren’t what’s stopping Conduit."))
             checkAgain(url)
         case .installable(let certificate):
-            installable(certificate, host: url.host ?? address)
+            installable(certificate, url: url)
         case .rootNotSent:
             ConnectionSetupNote(symbol: "exclamationmark.triangle", text: AppLocalization.string("The server doesn’t send its certificate authority’s root, so Conduit can’t save it. Install the root certificate from wherever you made your certificates, then turn on full trust for it."))
             checkAgain(url)
@@ -88,7 +88,8 @@ struct ServerCertificateSection: View {
     }
 
     @ViewBuilder
-    private func installable(_ certificate: ServerCertificate, host: String) -> some View {
+    private func installable(_ certificate: ServerCertificate, url: URL) -> some View {
+        let host = url.host ?? address
         ConnectionSetupPanel(spacing: 8) {
             Text(verbatim: certificate.subject.isEmpty ? host : certificate.subject)
                 .scaledFont(.subheadline.weight(.semibold))
@@ -101,7 +102,7 @@ struct ServerCertificateSection: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("setup.certificate-fingerprint")
         }
-        ConnectionSetupNote(symbol: "lock.shield", text: AppLocalization.string("Only install it if this fingerprint matches your server’s certificate. Anyone between you and the server could present a different one."))
+        ConnectionSetupNote(symbol: "lock.shield", text: AppLocalization.string("Only install it if this fingerprint matches the one your server reports for this certificate. Anyone between you and the server could present a different one."))
         AskHermesPromptView(
             title: ConnectionSetupPrompt.certificateFingerprint.title,
             prompt: ConnectionSetupPrompt.certificateFingerprint.text
@@ -124,6 +125,7 @@ struct ServerCertificateSection: View {
             }
         } else if profileFailed {
             ConnectionSetupNote(symbol: "exclamationmark.triangle", text: AppLocalization.string("Conduit couldn’t save the profile. Try again."))
+            checkAgain(url)
         }
     }
 

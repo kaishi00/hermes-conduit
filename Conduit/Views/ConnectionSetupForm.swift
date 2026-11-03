@@ -298,6 +298,11 @@ struct ConnectionSetupForm: View {
                         .buttonStyle(.settings)
                         .accessibilityIdentifier("setup.test.retry")
                 }
+                if plan.offersCertificateHelp {
+                    Button(ConnectionHelpDestination.tls.displayName) { flow.showTroubleshooting(.tls) }
+                        .buttonStyle(.settings)
+                        .accessibilityIdentifier("setup.test.certificate-help")
+                }
             }
         }
     }

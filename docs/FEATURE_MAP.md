@@ -3998,7 +3998,9 @@ home network, your own domain) and what to tell Hermes to set it up.
 **Siblings:** README.md (Connecting: the ask-Hermes prompt, Docker or a NAS,
 by hand) · the website's setup page (setup/index.html, written by
 scripts/build_site.py in hermes-conduit-website) · the sign-in screen's Need
-help connecting? assistant and the prompts it hands out ·
+help connecting? assistant and the prompts it hands out (the certificate
+fingerprint prompt on HTTPS & certificates included) · the connection test's
+HTTPS & certificates action on a certificate failure ·
 docs/OWN_VOICE_SERVER.md (names Tailscale only as a way to reach the speech
 server, never Tailscale SSH)
 
@@ -4012,7 +4014,7 @@ server, never Tailscale SSH)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-27, at #1377.
+**Checked:** 2026-11-03, #1716 (a certificate failure in the connection test opens HTTPS & certificates, Back returns to the test; its install step is in Connection failure messages); 2026-10-27, at #1377.
 
 ## Connection failure messages
 
@@ -4020,7 +4022,8 @@ What Conduit says when it can't connect or sign in, classified from the
 error's type and code (never its text), and the troubleshooting it points to.
 
 **Siblings:** the sign-in screen's failure card · the setup assistant's
-connection test · Repair's Reconnect Now · Settings' Sign In Again · Siri's
+connection test (a certificate failure there also offers HTTPS &
+certificates) · Repair's Reconnect Now · Settings' Sign In Again · Siri's
 voice launch notice · the HTTPS & certificates troubleshooting page and its
 Install this server's certificate step (the check, the saved profile, the
 Ask Hermes fingerprint prompt) · the
@@ -4029,7 +4032,7 @@ hermes-conduit-website)
 
 **Code**
 - Classification and copy: `Conduit/Services/ConnectionFailure.swift` (ConnectionFailureClassifier, TLSTrustDiagnosis, userTitle, userMessage, helpDestination)
-- Where it lands: `Conduit/Services/ConnectionSetupFlow.swift` (repairPath), `Conduit/Services/ConnectionSetupTest.swift` (ConnectionSetupTestRecoveryPlan)
+- Where it lands: `Conduit/Services/ConnectionSetupFlow.swift` (repairPath, showTroubleshooting), `Conduit/Services/ConnectionSetupTest.swift` (ConnectionSetupTestRecoveryPlan, offersCertificateHelp)
 - Install this server's certificate: `Conduit/Services/ServerCertificateProfile.swift` (ServerCertificateCheck, ServerCertificateInspector, ServerCertificateProfile), `Conduit/Views/ServerCertificateSection.swift`, `Conduit/Services/ConnectionSetupFlow.swift` (ConnectionSetupPrompt.certificateFingerprint)
 - Shown: `Conduit/Views/ConnectionSetupForm.swift`, `Conduit/Views/ConnectionSetupView.swift` (the troubleshooting checks), `Conduit/Voice/Wake/PendingVoiceLaunchPolicy.swift`
 - Tests: `ConduitTests/ConnectionFailureTests.swift`, `ConduitTests/ConnectionSetupTestTests.swift`, `ConduitTests/ConnectionRepairTests.swift`, `ConduitTests/ServerCertificateProfileTests.swift` (also fails any source that hands a server trust a credential)

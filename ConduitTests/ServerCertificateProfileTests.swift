@@ -35,6 +35,21 @@ final class ServerCertificateProfileTests: XCTestCase {
         )
     }
 
+    func testAChainWithItsRootOffersTheRootNotTheServerCertificate() throws {
+        let check = ServerCertificateCheck.from(try Self.chainTrust([Self.caIssuedLeaf, Self.homeCA]))
+        guard case .installable(let root) = check else { return XCTFail("expected installable, got \(check)") }
+        XCTAssertEqual(root.subject, "Home Test CA")
+        XCTAssertEqual(root.der, try XCTUnwrap(Data(base64Encoded: Self.homeCA)))
+    }
+
+    func testAServerThatDoesNotSendItsRootHasNothingToSave() throws {
+        XCTAssertEqual(ServerCertificateCheck.from(try Self.chainTrust([Self.caIssuedLeaf])), .rootNotSent)
+    }
+
+    func testATrustedRootNeedsNothing() throws {
+        XCTAssertEqual(ServerCertificateCheck.from(try Self.chainTrust([Self.caIssuedLeaf, Self.homeCA], anchored: true)), .alreadyTrusted)
+    }
+
     func testProfileInstallsTheCertificateAsARoot() throws {
         let certificate = ServerCertificate(der: Data([1, 2, 3]), subject: "Home CA", isSelfSigned: true)
         let data = try ServerCertificateProfile.data(for: certificate, host: "hermes.home.arpa")
@@ -122,6 +137,56 @@ final class ServerCertificateProfileTests: XCTestCase {
         "j18nkumUTjH1Mz8sCbUS8Pq7JIFfUpJNa3a2trao9EpUFlD4LrTF4GUnw8hx/CFuJnUKjA//i9qG" +
         "li7/gv0skSi3DfG3E0XFZc1d8hs4S2wkyOWBabyFc5UTJZ1muKuxDs6yq7oBkyN/ygGTOox2TlaS" +
         "7bcXGUqhpE+KZZOnVnR5ZQgKlW8gyT4YFLELv1cf7xA9+3wxNHlB4YM+ep1Jp4Smbg=="
+
+    /// A root, "Home Test CA" (ten years, from 2026-11-03).
+    private static let homeCA =
+        "MIIDHzCCAgegAwIBAgIUTO5YPGFNfD2tpfPkeT76afemfzQwDQYJKoZIhvcNAQELBQAwFzEVMBMG" +
+        "A1UEAwwMSG9tZSBUZXN0IENBMB4XDTI2MTEwMzIzMTI0MloXDTM2MTAzMTIzMTI0MlowFzEVMBMG" +
+        "A1UEAwwMSG9tZSBUZXN0IENBMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyc8vWX/I" +
+        "OH6+88WQkqSkHDdJQ0BZ9HWKr0fMbafi309kYxt7KQlvO59erryzxxNdu7ckUz9ij7tmc1RLJV4z" +
+        "agnBZmtBLtY42jWNw7bQyPmMjlbao+Rfnwkuo+smoKcOgBCTrSBd2tHibuoyUjJGYN5SZTNdI6Zx" +
+        "6NWBdAqLU19DOMcmVVwgBSO3CCkwBrBEwZeZksfrUzPX059/ZFwTiJ5spDXU89ixiPov9u6nyt0n" +
+        "nOI/Dn8Ze+CfGJ1Hlz7B3//+F7hZGDMwC+Q2ez4gmJi28U13P4jEc/haX0UmLthaYb49S1g4roqO" +
+        "GDTsoIB/Ff22eqBXTBI4jn0BJY50iQIDAQABo2MwYTAdBgNVHQ4EFgQUxgEMChUzXr7tktNbuX8M" +
+        "G9mhRU4wHwYDVR0jBBgwFoAUxgEMChUzXr7tktNbuX8MG9mhRU4wDwYDVR0TAQH/BAUwAwEB/zAO" +
+        "BgNVHQ8BAf8EBAMCAQYwDQYJKoZIhvcNAQELBQADggEBABrTNQO+rBn3G8kKJrn2A4gucQrR6BKE" +
+        "he/pLTJx3bs5Sb3gtSS9mZPr+oGjz9EMwRxAboTj+TVjelah/OHCDB1q11T59KZP4rvZNjGLQTS4" +
+        "+wYjd/mxkkrMGAWhOXrnYSvnSKu01jq4RwDwB3K/0Go454NhJFAa/6RP9d+KHd1D28Nu+iyqQY1U" +
+        "MLsOAQTNMLLdfClN8uTAH8S/dZF5/FD0G0DFfNR7HCHEkmcwAAbRSwkokIpzfKUMsI9C7sORGrSO" +
+        "kCg2SmsxIwPRbmEGtf3q42To9YyIoI4TkIRsdZBtSaFN+G7vx/bbSF6u5uspYwHAszw1kYu4gcqy" +
+        "ipfOSGg="
+
+    /// hermes.home.arpa issued by homeCA (one year from 2026-11-03, serverAuth, SAN).
+    private static let caIssuedLeaf =
+        "MIIDTjCCAjagAwIBAgIUI2eKoqxSwI6gs9mFhgu4J6yqh0kwDQYJKoZIhvcNAQELBQAwFzEVMBMG" +
+        "A1UEAwwMSG9tZSBUZXN0IENBMB4XDTI2MTEwMzIzMTI0MloXDTI3MTEwMzIzMTI0MlowGzEZMBcG" +
+        "A1UEAwwQaGVybWVzLmhvbWUuYXJwYTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMJ1" +
+        "pfe8rOh0NvVeMG3RWHUmo7OzMRp+OifKZxlu7jckGJbHEpipFzyTInBy5/reKrSPj5rStPPbTAVy" +
+        "2h1zXerJof63E1XlORVR7btVlOBPsx7KFh2IfQAR4VESZlgCfBss2qgmqsI+V6OeflFMUfVdcx5i" +
+        "8rkIwkux7uLK5hTcJGLfErghhIjPaM66hbDTScUyoCjT8HkSIZs15vtBn1VpOo8D6yFo5EhPGwFD" +
+        "THvpLPvR4u/bML9kg56TwZ2ezERwkBKbjQ2brE6cq9hJRXZzYea0EW7mB1ZwQ6tD1zqrAkKhx3dN" +
+        "G/tGB16+JdBivd5442OzJ15Afs3oUXatZn8CAwEAAaOBjTCBijAJBgNVHRMEAjAAMBsGA1UdEQQU" +
+        "MBKCEGhlcm1lcy5ob21lLmFycGEwEwYDVR0lBAwwCgYIKwYBBQUHAwEwCwYDVR0PBAQDAgWgMB0G" +
+        "A1UdDgQWBBQ8UiYZ2FBZvhw5TPTDNsxsPWylFDAfBgNVHSMEGDAWgBTGAQwKFTNevu2S01u5fwwb" +
+        "2aFFTjANBgkqhkiG9w0BAQsFAAOCAQEAvokJ8Rdkm1tGZ4XSjLnQZRKJbfd3D4UaM9diGObjf4nd" +
+        "yB5oYKEtrW4lvCyv/PFSsUq5oq061RtvNWep1PIL05L0BNxzRUP41F2WVLzxxHQQrVrmoErFbM+n" +
+        "y84Osb0G3RcYahQxupsUUoARLwgyyY5RtcQX/rY87dmPGp1ZYsU083g6ZoXqNidX+IcIBzscyqRM" +
+        "Foify50BGZexh7Iw46XuH3KryfiUWtl8s5nUwRikmLMfS5b+mJc+GJEZed+iE/4rHdMiNdL6ZUin" +
+        "oR4BzpwX0tQLSqZQKzKKcUuySsLgU2VSZk+XkejfoQfiaB58GCjkLY1g0V7V2vNCqsBOnw=="
+
+    private static func chainTrust(_ chain: [String], anchored: Bool = false) throws -> SecTrust {
+        let certificates = try chain.map { base64 in
+            try XCTUnwrap(SecCertificateCreateWithData(nil, try XCTUnwrap(Data(base64Encoded: base64)) as CFData))
+        }
+        var trust: SecTrust?
+        XCTAssertEqual(SecTrustCreateWithCertificates(certificates as CFArray, SecPolicyCreateSSL(true, "hermes.home.arpa" as CFString), &trust), errSecSuccess)
+        let made = try XCTUnwrap(trust)
+        if anchored {
+            XCTAssertEqual(SecTrustSetAnchorCertificates(made, [certificates[certificates.count - 1]] as CFArray), errSecSuccess)
+        }
+        SecTrustSetVerifyDate(made, Date(timeIntervalSince1970: 1796000000) as CFDate)
+        return made
+    }
 
     private static func trust(
         hostname: String, certificate base64: String = certificate,

@@ -425924,88 +425924,6 @@
         }
       }
     },
-    "Only install it if this fingerprint matches your server’s certificate. Anyone between you and the server could present a different one." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Installiere es nur, wenn dieser Fingerabdruck zum Zertifikat deines Servers passt. Jemand zwischen dir und dem Server könnte ein anderes vorlegen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Instálalo solo si esta huella coincide con el certificado de tu servidor. Alguien entre tú y el servidor podría presentar otro distinto."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ne l’installez que si cette empreinte correspond au certificat de votre serveur. Quelqu’un placé entre vous et le serveur pourrait en présenter un autre."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Instal hanya jika sidik jari ini cocok dengan sertifikat server Anda. Siapa pun di antara Anda dan server dapat menyajikan sertifikat lain."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Installalo solo se questa impronta corrisponde al certificato del tuo server. Qualcuno tra te e il server potrebbe presentarne uno diverso."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このフィンガープリントがサーバの証明書と一致する場合にのみインストールしてください。あなたとサーバの間にいる第三者が別の証明書を提示する可能性があります。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 지문이 서버의 인증서와 일치할 때만 설치하세요. 사용자와 서버 사이에 있는 누군가가 다른 인증서를 제시할 수 있습니다."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Instaluj go tylko wtedy, gdy ten odcisk zgadza się z certyfikatem Twojego serwera. Ktoś między Tobą a serwerem mógłby przedstawić inny."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Só instale se esta impressão digital corresponder ao certificado do seu servidor. Alguém entre você e o servidor poderia apresentar outro."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Устанавливайте его, только если этот отпечаток совпадает с сертификатом вашего сервера. Кто-то между вами и сервером может подставить другой."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yalnızca bu parmak izi sunucunuzun sertifikasıyla eşleşiyorsa yükleyin. Sizinle sunucu arasındaki biri farklı bir sertifika sunabilir."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "只有当此指纹与你服务器的证书一致时才安装。你与服务器之间的任何人都可能出示另一个证书。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "只有在此指紋與你伺服器的憑證相符時才安裝。你與伺服器之間的任何人都可能出示另一張憑證。"
-          }
-        }
-      }
-    },
     "Please tell me the SHA-256 fingerprint of the TLS certificate my Hermes dashboard serves, and of the root certificate that issued it if there is one, so I can check it before I trust it on my iPhone. Only read the certificates; don't change them. Keep dashboard authentication enabled." : {
       "localizations" : {
         "de" : {
@@ -426658,6 +426576,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "iOS 已經信任此伺服器的憑證，所以問題不在憑證。"
+          }
+        }
+      }
+    },
+    "Only install it if this fingerprint matches the one your server reports for this certificate. Anyone between you and the server could present a different one." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installiere es nur, wenn dieser Fingerabdruck mit dem übereinstimmt, den dein Server für dieses Zertifikat angibt. Jemand zwischen dir und dem Server könnte ein anderes vorlegen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instálalo solo si esta huella coincide con la que tu servidor indica para este certificado. Alguien entre tú y el servidor podría presentar otro distinto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ne l’installez que si cette empreinte correspond à celle que votre serveur indique pour ce certificat. Quelqu’un placé entre vous et le serveur pourrait en présenter un autre."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instal hanya jika sidik jari ini cocok dengan yang dilaporkan server Anda untuk sertifikat ini. Siapa pun di antara Anda dan server dapat menyajikan sertifikat lain."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installalo solo se questa impronta corrisponde a quella che il tuo server indica per questo certificato. Qualcuno tra te e il server potrebbe presentarne uno diverso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このフィンガープリントが、サーバがこの証明書について示すものと一致する場合にのみインストールしてください。あなたとサーバの間にいる第三者が別の証明書を提示する可能性があります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 지문이 서버가 이 인증서에 대해 알려 주는 지문과 일치할 때만 설치하세요. 사용자와 서버 사이에 있는 누군가가 다른 인증서를 제시할 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instaluj go tylko wtedy, gdy ten odcisk zgadza się z tym, który Twój serwer podaje dla tego certyfikatu. Ktoś między Tobą a serwerem mógłby przedstawić inny."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Só instale se esta impressão digital corresponder à que o seu servidor informa para este certificado. Alguém entre você e o servidor poderia apresentar outro."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Устанавливайте его, только если этот отпечаток совпадает с тем, который ваш сервер сообщает для этого сертификата. Кто-то между вами и сервером может подставить другой."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yalnızca bu parmak izi, sunucunuzun bu sertifika için bildirdiğiyle eşleşiyorsa yükleyin. Sizinle sunucu arasındaki biri farklı bir sertifika sunabilir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有当此指纹与你的服务器为此证书报告的指纹一致时才安装。你与服务器之间的任何人都可能出示另一个证书。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有在此指紋與你的伺服器為此憑證回報的指紋相符時才安裝。你與伺服器之間的任何人都可能出示另一張憑證。"
           }
         }
       }
