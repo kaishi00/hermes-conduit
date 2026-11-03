@@ -241,6 +241,11 @@ struct BotPortraitCell<MenuContent: View>: View {
     @State private var isTargeted = false
     @State private var mergeReady = false
     @State private var dwell: Task<Void, Never>?
+    @Environment(\.scenePhase) private var scenePhase
+    /// When the bot last finished something (its ready count went up),
+    /// for the ripple; nil once it has settled.
+    @State private var finishedAt: Date?
+    @State private var finishPending = false
 
     /// Without the plugin's workstreams, nothing to show, even if a read
     /// from before is still kept (the overview hides Work then too).
@@ -326,6 +331,12 @@ struct BotPortraitCell<MenuContent: View>: View {
             guard shell.isTabActive else { return }
             await appState.refreshBotWork(profile: bot.name)
         }
+        .onChange(of: work.snapshot(bot.name)?.readyCount) { old, new in
+            if let old, let new, new > old { noteFinished() }
+        }
+        .onChange(of: shell.isTabActive) { _, active in
+            if active && finishPending { noteFinished() }
+        }
     }
 
     private var portraitHint: String {
@@ -367,13 +378,13 @@ struct BotPortraitCell<MenuContent: View>: View {
             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             .padding(4)
             .modifier(BotZoomSource(name: bot.name))
-            .overlay {
-                Circle()
-                    .strokeBorder(ringed ? Color.conduitAccent : color.opacity(0.85),
-                                  lineWidth: ringed ? 3 : 2)
-            }
-            .shadow(color: (mergeReady ? Color.conduitAccent : color).opacity(mergeReady ? 0.7 : 0.45),
-                    radius: mergeReady ? 20 : 14)
+            .modifier(BotPortraitMotion(
+                status: status,
+                color: mergeReady ? Color.conduitAccent : color,
+                highlighted: ringed,
+                animates: animates,
+                finishedAt: finishedAt
+            ))
             .scaleEffect(mergeReady ? 1.1 : 1)
             // Held over, not yet merging: a bar where the dragged bot will
             // land, before this one.
@@ -400,7 +411,20 @@ struct BotPortraitCell<MenuContent: View>: View {
                 }
             }
             .overlay(alignment: .topTrailing) {
-                if case .needsYou = status {
+                if finishedAt != nil, !isNeedsYou(status) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundStyle(.black)
+                        .frame(width: 24, height: 24)
+                        .background(Circle().fill(Color.green))
+                        .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2))
+                        .offset(x: 2, y: -2)
+                        .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
+                        .accessibilityHidden(true)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if case .needsYou(let count) = status {
                     Image(systemName: "exclamationmark")
                         .font(.system(size: 12, weight: .heavy))
                         .foregroundStyle(.white)
@@ -408,9 +432,40 @@ struct BotPortraitCell<MenuContent: View>: View {
                         .background(Circle().fill(Color.orange))
                         .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2))
                         .offset(x: 2, y: -2)
+                        // One small nudge when it first shows, and when more
+                        // comes to need the user.
+                        .symbolEffect(.bounce, options: .nonRepeating, value: animates ? count : 0)
                         .accessibilityHidden(true)
                 }
             }
+    }
+
+    private func isNeedsYou(_ status: BotPortraitStatus) -> Bool {
+        if case .needsYou = status { return true }
+        return false
+    }
+
+    /// The portrait moves only while Bots Home is on screen and the person
+    /// hasn't asked for less motion or for Low Power Mode.
+    private var animates: Bool {
+        shell.isTabActive && scenePhase == .active && !reduceMotion
+            && !ProcessInfo.processInfo.isLowPowerModeEnabled
+    }
+
+    /// A result came back (the bot's ready count went up): one ripple and a
+    /// check on the badge, then still. Off screen, it waits for Bots Home
+    /// to show again.
+    private func noteFinished() {
+        guard shell.isTabActive else {
+            finishPending = true
+            return
+        }
+        finishPending = false
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { finishedAt = Date() }
+        Task { @MainActor in
+            try? await Task.sleep(for: BotPortraitMotion.finishShown)
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { finishedAt = nil }
+        }
     }
 
     private func pill(_ status: BotPortraitStatus) -> some View {
@@ -733,5 +788,102 @@ struct BotZoomArm: Equatable {
         guard let tapped, let tappedAt, now.timeIntervalSince(tappedAt) < Self.window,
               tapped.caseInsensitiveCompare(open) == .orderedSame else { return nil }
         return tapped
+    }
+}
+
+/// A portrait's life (Eric, 2026-11-03): still when idle; a comet of the
+/// bot's color circling the ring while it works; a slow orange breath when
+/// something needs the user; one ripple when a result comes back. With
+/// `animates` off (Reduce Motion, Low Power Mode, Bots Home off screen)
+/// every state is still: a bright ring for working, the orange ring for
+/// needs you, and the check alone for finished.
+struct BotPortraitMotion: ViewModifier {
+    let status: BotPortraitStatus
+    let color: Color
+    /// Ringed in the accent: the open chat beside the list, a bot in the
+    /// room being started, or a drop about to start one.
+    let highlighted: Bool
+    let animates: Bool
+    let finishedAt: Date?
+
+    /// One lap of the working comet.
+    static let lap: Double = 6
+    /// One breath of needs you.
+    static let breath: Double = 2.6
+    /// The finished ripple, and how long the check shows.
+    static let ripple: Double = 1.2
+    static let finishShown: Duration = .milliseconds(1600)
+
+    private var isWorking: Bool { if case .working = status { return true } else { return false } }
+    private var isNeedsYou: Bool { if case .needsYou = status { return true } else { return false } }
+
+    func body(content: Content) -> some View {
+        let moving = animates && (isWorking || isNeedsYou || finishedAt != nil)
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !moving)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            // 0 to 1 and back, once a breath.
+            let breath = animates && isNeedsYou ? (1 - cos(t / Self.breath * 2 * .pi)) / 2 : 0
+            let lap = Angle.degrees((t / Self.lap).truncatingRemainder(dividingBy: 1) * 360)
+            content
+                .overlay { ring(lap: lap) }
+                .shadow(color: glowColor.opacity(glowOpacity(breath)), radius: isNeedsYou ? 14 + 6 * breath : 14)
+                .scaleEffect(1 + 0.04 * breath)
+                .overlay { ripple(now: context.date) }
+        }
+    }
+
+    private var glowColor: Color {
+        if highlighted { return .conduitAccent }
+        return isNeedsYou ? .orange : color
+    }
+
+    private func glowOpacity(_ breath: Double) -> Double {
+        if isNeedsYou { return 0.3 + 0.4 * breath }
+        if isWorking { return animates ? 0.3 : 0.45 }
+        return highlighted ? 0.45 : 0
+    }
+
+    @ViewBuilder
+    private func ring(lap: Angle) -> some View {
+        if highlighted {
+            Circle().strokeBorder(Color.conduitAccent, lineWidth: 3)
+        } else if isNeedsYou {
+            Circle().strokeBorder(Color.orange, lineWidth: 2.5)
+        } else if isWorking && animates {
+            ZStack {
+                Circle().strokeBorder(color.opacity(0.35), lineWidth: 2)
+                Circle()
+                    .strokeBorder(
+                        AngularGradient(
+                            gradient: Gradient(stops: [
+                                .init(color: color.opacity(0), location: 0),
+                                .init(color: color.opacity(0), location: 0.55),
+                                .init(color: color, location: 0.97),
+                                .init(color: color.opacity(0), location: 1),
+                            ]),
+                            center: .center
+                        ),
+                        lineWidth: 3
+                    )
+                    .rotationEffect(lap)
+                    .shadow(color: color.opacity(0.8), radius: 4)
+            }
+        } else if isWorking {
+            Circle().strokeBorder(color, lineWidth: 2.5)
+        } else {
+            Circle().strokeBorder(color.opacity(0.45), lineWidth: 2)
+        }
+    }
+
+    @ViewBuilder
+    private func ripple(now: Date) -> some View {
+        if animates, let finishedAt {
+            let progress = min(max(now.timeIntervalSince(finishedAt) / Self.ripple, 0), 1)
+            Circle()
+                .stroke(Color.green, lineWidth: 2)
+                .scaleEffect(1 + 0.9 * progress)
+                .opacity(0.9 * (1 - progress))
+                .allowsHitTesting(false)
+        }
     }
 }
