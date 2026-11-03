@@ -395,6 +395,12 @@ extension BotModeTests {
         let other = try XCTUnwrap(BotWorkLinks.split(
             "Join with `hermes open @session:furina/w12`, see @session:old1 or [Open W3](conduit://session/c)"))
         XCTAssertEqual(other.text, "Join with `hermes open @session:furina/w12`, see @session:old1 or")
+        // Another session's reference right after a work link, or one after
+        // an ordinary chat link, stays too.
+        let unrelated = try XCTUnwrap(BotWorkLinks.split(
+            "See [an earlier chat](conduit://session/old) @session:old and [Open W3](conduit://session/c) @session:furina/other"))
+        XCTAssertEqual(unrelated.text,
+                       "See [an earlier chat](conduit://session/old) @session:old and @session:furina/other")
     }
 
     /// A read asked for after an action, while one was under way, makes
