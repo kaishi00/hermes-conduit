@@ -726,10 +726,27 @@ enum BotWorkLinks {
     private static let pattern = try! NSRegularExpression(
         pattern: #"\[(?:Open )?(W\d+)\]\((conduit://session/[^)\s]+)\)"#)
 
-    /// The reply's text without those links, and the links in order (each
-    /// workstream once); nil when it has none.
-    static func split(_ text: String) -> (text: String, links: [Link])? {
-        guard text.contains("conduit://session/") else { return nil }
+    /// Hermes Desktop's session reference the plugin puts right after each
+    /// work link ("[Open W3](conduit://session/…) @session:<profile>/<id>"),
+    /// which Desktop draws as a chip that opens the workstream (workstreams
+    /// aren't in its list). Conduit's card opens it here, so that reference
+    /// is left out with the spaces before it, only when it names that link's
+    /// own session; any other reference stays a chat link
+    /// (HermesSessionReference). Group 1 is the work link, group 2 its id.
+    private static let desktopRef = try! NSRegularExpression(
+        pattern: #"(\[(?:Open )?W\d+\]\(conduit://session/([^)?\s]+)[^)\s]*\))[ \t]*"#
+            + #"(?<![\w/`@])@session:(?:[A-Za-z0-9][A-Za-z0-9_-]{0,63}/)?\2(?![A-Za-z0-9_]|[.:-][A-Za-z0-9_])"#)
+
+    /// The reply's text without those links (and Desktop's references to
+    /// them), and the links in order (each workstream once); nil when it has
+    /// none.
+    static func split(_ original: String) -> (text: String, links: [Link])? {
+        guard original.contains("conduit://session/") else { return nil }
+        var text = original
+        if text.contains("@session:") {
+            text = desktopRef.stringByReplacingMatches(
+                in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "$1")
+        }
         let range = NSRange(text.startIndex..., in: text)
         var links: [Link] = []
         var kept = text

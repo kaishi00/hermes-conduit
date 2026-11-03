@@ -382,6 +382,25 @@ extension BotModeTests {
         // Only the link's own place changes: code elsewhere stays as written.
         let code = try XCTUnwrap(BotWorkLinks.split("Run `ls -a .` then f() , see [Open W3](conduit://session/c)"))
         XCTAssertEqual(code.text, "Run `ls -a .` then f() , see")
+        // Desktop's reference after each link (notifier: workstreams open in
+        // Hermes Desktop from it) is left out with the link.
+        let desktop = try XCTUnwrap(BotWorkLinks.split(
+            "W12 is waiting on you ([Open W12](conduit://session/20261103_w12?profile=furina) @session:furina/20261103_w12)."))
+        XCTAssertEqual(desktop.text, "W12 is waiting on you.")
+        XCTAssertEqual(desktop.links.map(\.sessionID), ["20261103_w12"])
+        // Without a work link, a reference stays a chat link (HermesSessionReference).
+        XCTAssertNil(BotWorkLinks.split("Open it here: @session:20261103_w12"))
+        // Only the one right after a work link goes: one in code, or another
+        // chat's, stays as written.
+        let other = try XCTUnwrap(BotWorkLinks.split(
+            "Join with `hermes open @session:furina/w12`, see @session:old1 or [Open W3](conduit://session/c)"))
+        XCTAssertEqual(other.text, "Join with `hermes open @session:furina/w12`, see @session:old1 or")
+        // Another session's reference right after a work link, or one after
+        // an ordinary chat link, stays too.
+        let unrelated = try XCTUnwrap(BotWorkLinks.split(
+            "See [an earlier chat](conduit://session/old) @session:old and [Open W3](conduit://session/c) @session:furina/other"))
+        XCTAssertEqual(unrelated.text,
+                       "See [an earlier chat](conduit://session/old) @session:old and @session:furina/other")
     }
 
     /// A read asked for after an action, while one was under way, makes
