@@ -189,6 +189,15 @@ final class VoiceConversationController: ObservableObject {
     /// orphaned turn first (user-initiated, same seam as Stop) so its late
     /// events can never alias onto the new turn's ownership.
     private var suspendedInFlightTurnOrphaned = false
+    /// Set when a running turn was cancelled on purpose (talking over,
+    /// Interrupt, CarPlay's Stop, a spoken Stop). Until
+    /// that turn's own end (interrupted, failed or completed) arrives, its
+    /// late events are dropped, even once the next submission owns the
+    /// session again: the socket delivers them before the next turn's. A
+    /// turn whose end never arrives stops being waited for at the deadline.
+    private var cancelledTurnEndDeadline: Date?
+    /// How long after its cancel a cancelled turn's end is waited for.
+    var cancelledTurnEndWindow: TimeInterval = 5
     private var operationGeneration: UInt64 = 0
     private var initialWidgetCaptureAuthorization: WidgetInitialCaptureAuthorization?
     private var utteranceTask: Task<Void, Never>?
@@ -758,6 +767,7 @@ final class VoiceConversationController: ObservableObject {
         awaitedAssistantResponseStarted = false
         expectedAssistantSessionIDs = []
         suspendedInFlightTurnOrphaned = false
+        cancelledTurnEndDeadline = nil
         isRuntimeSuspended = false
         announcedApprovals = []
         state = .idle
@@ -1082,6 +1092,7 @@ final class VoiceConversationController: ObservableObject {
                 .failed(let id, _), .interrupted(let id):
             sessionID = id
         }
+        if dropsCancelledTurnEvent(event, sessionID: sessionID) { return }
         if routePromotedSteerReply(event, sessionID: sessionID) { return }
         guard isVoiceSessionActive,
               isAwaitingVoiceAssistant,
@@ -1760,6 +1771,7 @@ final class VoiceConversationController: ObservableObject {
         awaitedAssistantResponseStarted = false
         expectedAssistantSessionIDs = []
         suspendedInFlightTurnOrphaned = false
+        cancelledTurnEndDeadline = nil
         isRuntimeSuspended = false
         // Terminal path: release session-ownership bookkeeping so audio-
         // adjacent side features (response haptics) do not stand down
@@ -2094,8 +2106,37 @@ final class VoiceConversationController: ObservableObject {
     /// it is kept as an orphan and the next submission cancels it first, as
     /// after a suspension, so its late reply is never taken as the new one.
     private func cancelRetiredTurn() async {
-        guard !(await interrupt()), isVoiceSessionActive else { return }
-        suspendedInFlightTurnOrphaned = true
+        awaitCancelledTurnEnd()
+        guard await interrupt() else {
+            guard isVoiceSessionActive else { return }
+            suspendedInFlightTurnOrphaned = true
+            return
+        }
+        // The window runs from the cancel's answer: the turn's last events
+        // and its end follow it.
+        awaitCancelledTurnEnd()
+    }
+
+    private func awaitCancelledTurnEnd() {
+        cancelledTurnEndDeadline = Date().addingTimeInterval(cancelledTurnEndWindow)
+    }
+
+    /// Drops a cancelled turn's late event (see `cancelledTurnEndDeadline`);
+    /// its end is dropped too, and lets the next turn's events through.
+    private func dropsCancelledTurnEvent(_ event: VoiceAssistantEvent, sessionID: String) -> Bool {
+        guard let deadline = cancelledTurnEndDeadline,
+              expectedAssistantSessionIDs.contains(sessionID) else { return false }
+        guard Date() <= deadline else {
+            cancelledTurnEndDeadline = nil
+            return false
+        }
+        switch event {
+        case .completed, .failed, .interrupted:
+            cancelledTurnEndDeadline = nil
+        case .started, .delta, .interim:
+            break
+        }
+        return true
     }
 
     /// A spoken End Conversation phrase consumed the utterance locally: the
