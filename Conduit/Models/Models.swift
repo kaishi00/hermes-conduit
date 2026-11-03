@@ -1247,12 +1247,67 @@ struct CronRun: Codable, Identifiable {
     var profile: String?
     var startedAt: Int?
     var title: String?
+    /// The job the gateway says ran it (`job_id` or `cron_job_id`), when it says.
+    var jobID: String?
 
     enum CodingKeys: String, CodingKey {
         case id, model, preview, profile
         case lastActive = "last_active"
         case startedAt = "started_at"
         case title
+        case jobID = "job_id"
+        case cronJobID = "cron_job_id"
+    }
+
+    init(id: String, lastActive: Int?, model: String?, preview: String?, profile: String?, startedAt: Int?, title: String?, jobID: String? = nil) {
+        self.id = id
+        self.lastActive = lastActive
+        self.model = model
+        self.preview = preview
+        self.profile = profile
+        self.startedAt = startedAt
+        self.title = title
+        self.jobID = jobID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        lastActive = try container.decodeIfPresent(Int.self, forKey: .lastActive)
+        model = try container.decodeIfPresent(String.self, forKey: .model)
+        preview = try container.decodeIfPresent(String.self, forKey: .preview)
+        profile = try container.decodeIfPresent(String.self, forKey: .profile)
+        startedAt = try container.decodeIfPresent(Int.self, forKey: .startedAt)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        // The first that names a job: an empty or non-string one doesn't.
+        jobID = [CodingKeys.jobID, .cronJobID].lazy
+            .compactMap { try? container.decodeIfPresent(String.self, forKey: $0) }
+            .first { !$0.isEmpty }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encodeIfPresent(lastActive, forKey: .lastActive)
+        try container.encodeIfPresent(model, forKey: .model)
+        try container.encodeIfPresent(preview, forKey: .preview)
+        try container.encodeIfPresent(profile, forKey: .profile)
+        try container.encodeIfPresent(startedAt, forKey: .startedAt)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encodeIfPresent(jobID, forKey: .jobID)
+    }
+
+    /// Whether this is a run of the job (#1707): the job the gateway names,
+    /// else Hermes' run session id, `cron_<job id>_<YYYYMMDD>_<HHMMSS>` (the
+    /// only form Hermes writes, cron/scheduler.py). A run
+    /// that says neither is no job's, so a list of every job's runs never
+    /// lends one to a job that didn't make it.
+    func isRun(ofJob job: String) -> Bool {
+        if let jobID, !jobID.isEmpty { return jobID == job }
+        let prefix = "cron_\(job)_"
+        guard !job.isEmpty, id.hasPrefix(prefix) else { return false }
+        let stamp = id.dropFirst(prefix.count).split(separator: "_", omittingEmptySubsequences: false)
+        return stamp.map(\.count) == [8, 6] && stamp.allSatisfy { part in part.allSatisfy { $0.isASCII && $0.isNumber } }
     }
 }
 

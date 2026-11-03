@@ -2442,7 +2442,11 @@ struct CronJobDetailSheet: View {
                                 .frame(minHeight: 48)
                                 .conduitGlassControl(cornerRadius: 16, tint: .orange.opacity(0.18))
                             }
-                            Button { Task { _ = await appState.performCronAction(.trigger, for: job); await appState.loadCronRuns(for: job) } } label: {
+                            Button { Task {
+                                _ = await appState.performCronAction(.trigger, for: job)
+                                // Not if the sheet closed and another job's opened meanwhile.
+                                if appState.cronRunsJobID == job.id { await appState.loadCronRuns(for: job) }
+                            } } label: {
                                 Label(appState.cronJobActionID == job.id ? AppLocalization.string("Working…") : AppLocalization.string("Run now"), systemImage: "play.fill")
                                     .frame(maxWidth: .infinity)
                                     .foregroundStyle(Color.white)
@@ -2471,8 +2475,15 @@ struct CronJobDetailSheet: View {
                             ConduitSettingsSection(title: AppLocalization.string("Prompt"), symbol: "text.quote", tint: .conduitAura) { Text(prompt).textSelection(.enabled).scaledFont(.callout) }
                         }
                         ConduitSettingsSection(title: AppLocalization.string("Run history"), symbol: "clock.arrow.circlepath", tint: .conduitAura) {
-                            if appState.cronRuns.isEmpty { Text("This job has not run yet.").scaledFont(.footnote).foregroundStyle(.secondary) }
-                            ForEach(appState.cronRuns) { run in
+                            if appState.cronRunsJobID == job.id, let failure = appState.cronRunsFailure {
+                                Text(failure).scaledFont(.footnote).foregroundStyle(.secondary)
+                            } else if !appState.cronRunsLoaded || appState.cronRunsJobID != job.id {
+                                ProgressView().frame(maxWidth: .infinity, alignment: .leading)
+                                    .accessibilityLabel(AppLocalization.string("Loading \(AppLocalization.string("Run history"))…"))
+                            } else if appState.cronRuns.isEmpty {
+                                Text("This job has not run yet.").scaledFont(.footnote).foregroundStyle(.secondary)
+                            }
+                            ForEach(appState.cronRunsJobID == job.id ? appState.cronRuns : []) { run in
                                 Button { appState.dismissSidebarDrawer(); dismiss(); appState.requestOpenSession(run.id) } label: {
                                     HStack { VStack(alignment: .leading) { Text(run.title ?? run.preview ?? run.id).lineLimit(1); Text(run.model ?? "Hermes").scaledFont(.caption).foregroundStyle(.secondary) }; Spacer(); Text(run.lastActive.map(String.init) ?? "").scaledFont(.caption2).foregroundStyle(.conduitTertiary) }
                                 }
