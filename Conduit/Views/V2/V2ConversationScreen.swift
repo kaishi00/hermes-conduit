@@ -408,8 +408,11 @@ struct V2ConversationScreen: View {
     /// anywhere, as a session's chat does: the zoom's own swipe starts only
     /// where the transcript has no text. A workstream's chat, whose hidden
     /// Back button takes the system's swipe with it, goes to its Bot Chat.
+    /// Not while the composer is in use (a caret or selection dragged
+    /// along a line) or a held voice message slides to cancel.
     private var swipesBack: Bool {
-        workstreamGoesBack != nil || (botChatZoomed && !shell.isSplit && appState.activeBotChatProfile != nil)
+        guard !composerExpanded, !voiceMessages.isActive else { return false }
+        return workstreamGoesBack != nil || (botChatZoomed && !shell.isSplit && appState.activeBotChatProfile != nil)
     }
 
     private var backSwipe: some Gesture {

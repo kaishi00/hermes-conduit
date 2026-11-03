@@ -172,7 +172,8 @@ struct V2VoiceButton: View {
         if needsSetup { return AppLocalization.string("Set up voice") }
         switch context {
         case .home: return AppLocalization.string("New voice call")
-        case .bots: return AppLocalization.string("Call a bot")
+        case .bots:
+            return callableBots.isEmpty ? AppLocalization.string("New voice call") : AppLocalization.string("Call a bot")
         case .project(let project):
             return Self.folder(of: project) == nil
                 ? AppLocalization.string("New voice call")
@@ -513,11 +514,13 @@ struct V2VoiceButton: View {
         isStarting = true
         Task { @MainActor in
             defer { isStarting = false }
+            let previous = appState.activeSessionId
             appState.beginOpeningBotChat(bot.name)
             let opened = await appState.openBotChat(for: bot)
             appState.endOpeningBotChat(bot.name)
             guard opened else {
-                reportCouldNotOpen()
+                // A newer navigation took over: not a failure, and not this chat.
+                if appState.activeSessionId == previous { reportCouldNotOpen() }
                 return
             }
             await startVoice(
