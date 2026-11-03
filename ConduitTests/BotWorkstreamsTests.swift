@@ -649,10 +649,15 @@ extension BotModeTests {
         XCTAssertNil(arm.source(open: "furina", now: now), "a notification or widget opened it")
         arm.tap("Furina", now: now)
         XCTAssertEqual(arm.source(open: "furina", now: now), "Furina", "the portrait's own id")
-        XCTAssertNil(arm.source(open: "atlas", now: now))
+        // The shell pushes before the open lands, while the chat open
+        // before is still the active one (build 248).
+        XCTAssertEqual(arm.source(open: "atlas", now: now), "Furina", "pushed before it lands")
         XCTAssertNil(arm.source(open: "furina", now: now.addingTimeInterval(BotZoomArm.window + 1)), "stale")
-        arm.pushed(open: "furina", now: now.addingTimeInterval(0.5))
+        arm.pushed(open: "atlas", now: now.addingTimeInterval(0.5))
+        XCTAssertEqual(arm.source(open: "atlas", now: now.addingTimeInterval(1)), "Furina", "not landed yet")
+        arm.opened("furina")
         XCTAssertEqual(arm.source(open: "furina", now: now.addingTimeInterval(60)), "Furina", "Back shrinks it home")
+        XCTAssertNil(arm.source(open: "atlas", now: now.addingTimeInterval(61)), "another chat opened in its place")
         arm.left()
         XCTAssertNil(arm.source(open: "furina", now: now))
         // A failed open drops only its own arm.
@@ -661,10 +666,37 @@ extension BotModeTests {
         XCTAssertEqual(arm.source(open: "atlas", now: now), "Atlas")
         arm.openFailed("Atlas")
         XCTAssertNil(arm.source(open: "atlas", now: now))
+        // Another bot's chat landing first: the push carried that one.
+        arm.tap("Atlas", now: now)
+        arm.pushed(open: "furina", now: now)
+        arm.opened("rei")
+        XCTAssertNil(arm.source(open: "rei", now: now))
+        arm.left()
+        // A push whose open then fails zooms no more.
+        arm.tap("Atlas", now: now)
+        arm.pushed(open: "furina", now: now)
+        arm.openFailed("Atlas")
+        XCTAssertNil(arm.source(open: "furina", now: now))
+        arm.left()
         // A push with a stale arm zooms nothing, then or later.
         arm.tap("Atlas", now: now)
         arm.pushed(open: "atlas", now: now.addingTimeInterval(BotZoomArm.window + 1))
         XCTAssertNil(arm.source(open: "atlas", now: now))
+    }
+
+    /// A ring takes the bot's glow color (picked or drawn from its photo),
+    /// else its Hermes color, else its name's hue (build 248).
+    @MainActor
+    func testABotsRingTakesItsGlowColorFirst() {
+        func bot(_ color: String?) -> BotProfile {
+            BotProfile(name: "raiden", botTitle: nil, displayName: "Raiden", profileDescription: "", model: nil,
+                       provider: nil, hasAvatar: true, isPinned: false, isHiddenByMeta: false,
+                       appearanceColor: color, canonicalSession: nil, lastActive: nil, lastPreview: nil)
+        }
+        let glow = ProfileGlowRGB(red: 0.5, green: 0.2, blue: 0.8)
+        XCTAssertEqual(AppState.botColor(bot("#00ff00"), glow: glow), glow.color, "the glow wins")
+        XCTAssertEqual(AppState.botColor(bot("#00ff00"), glow: nil), BotAvatarView.color(for: "#00ff00", name: "raiden"))
+        XCTAssertEqual(AppState.botColor(bot(nil), glow: nil), BotAvatarView.color(for: nil, name: "raiden"), "the name's hue")
     }
 
     /// A dragged portrait carries a marked name, so text dragged in from

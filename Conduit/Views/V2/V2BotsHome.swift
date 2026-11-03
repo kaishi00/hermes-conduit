@@ -413,7 +413,7 @@ struct BotPortraitCell<MenuContent: View>: View {
             talkingIn: appState.talkingRooms(of: bot.name).map(\.name))
     }
 
-    private var color: Color { BotAvatarView.color(for: bot.appearanceColor, name: bot.name) }
+    private var color: Color { appState.botColor(bot) }
 
     /// Beside its open Bot Chat on a split window.
     private var selection: V2RowSelection {
@@ -452,7 +452,11 @@ struct BotPortraitCell<MenuContent: View>: View {
             .buttonStyle(PressableButtonStyle())
             .contextMenu { menu }
             .modifier(BotPortraitDrag(name: bot.name, enabled: onDrop != nil) {
+                // A drag preview is drawn outside the view's environment:
+                // without AppState handed in, a long press crashed as the
+                // lift began (build 248).
                 BotMonogramView(bot: bot, size: 64)
+                    .environmentObject(appState)
             })
             .accessibilityLabel(Text(bot.displayLabel))
             .accessibilityValue(Text(accessibilityValue(status)))
@@ -615,7 +619,7 @@ struct BotPortraitCell<MenuContent: View>: View {
 
     private func askerColor(_ status: BotPortraitStatus) -> Color? {
         guard case .helping = status, let asker = status.otherBot(in: appState.shownBotRoster) else { return nil }
-        return BotAvatarView.color(for: asker.appearanceColor, name: asker.name)
+        return appState.botColor(asker)
     }
 
     private func isNeedsYou(_ status: BotPortraitStatus) -> Bool {
@@ -748,6 +752,9 @@ struct BotOverviewSheet: View {
                 .controlSize(.large)
                 .padding(.horizontal, 16)
                 .padding(.top, 6)
+                // Without Work's picker under it, the artifacts' search
+                // field comes next: room between them.
+                .padding(.bottom, showsWork ? 0 : 12)
                 .accessibilityIdentifier("botOverview.chat")
                 if showsWork {
                     Picker(AppLocalization.string("Overview"), selection: $section) {
@@ -794,7 +801,7 @@ struct BotOverviewSheet: View {
                     BotMonogramView(bot: bot, size: 52)
                         .modifier(BotPortraitMotion(
                             status: headerStatus,
-                            color: BotAvatarView.color(for: bot.appearanceColor, name: bot.name),
+                            color: appState.botColor(bot),
                             highlighted: false,
                             animates: scenePhase == .active && !reduceMotion
                                 && !devicePower.isLowPowerModeEnabled,
@@ -802,7 +809,7 @@ struct BotOverviewSheet: View {
                             askerColor: { () -> Color? in
                                 guard case .helping = headerStatus,
                                       let asker = headerStatus.otherBot(in: appState.shownBotRoster) else { return nil }
-                                return BotAvatarView.color(for: asker.appearanceColor, name: asker.name)
+                                return appState.botColor(asker)
                             }()
                         ))
                 } else {
@@ -940,10 +947,22 @@ struct BotZoomSource: ViewModifier {
 
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *), let namespace, !reduceMotion {
-            content.matchedTransitionSource(id: name, in: namespace) { source in
-                // Only a RoundedRectangle may clip a source: one rounder
-                // than the portrait is its circle.
-                source.clipShape(RoundedRectangle(cornerRadius: 1000))
+            // The source is a copy behind the portrait, not the portrait:
+            // iOS hides a zoom's source while it runs, and on a phone a
+            // source sometimes stayed hidden afterwards, leaving empty rings
+            // on Bots Home (build 248). The copy draws the same picture, so
+            // the chat still grows out of it.
+            content.background {
+                GeometryReader { proxy in
+                    content
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .matchedTransitionSource(id: name, in: namespace) { source in
+                            // Only a RoundedRectangle may clip a source: half
+                            // the portrait's side is its circle.
+                            source.clipShape(RoundedRectangle(
+                                cornerRadius: min(proxy.size.width, proxy.size.height) / 2))
+                        }
+                }
             }
         } else {
             content
@@ -984,25 +1003,46 @@ struct BotZoomArm: Equatable {
     private(set) var tappedAt: Date?
     /// The bot whose chat is in the Bots stack, grown from its portrait.
     private(set) var zooming: String?
+    /// Its chat has landed (it is the open Bot Chat). The shell pushes the
+    /// conversation as the list closes, before the open lands, while the
+    /// chat open before is still the active one (#1700), so until then the
+    /// zoom holds whatever chat is named open.
+    private(set) var landed = false
 
     mutating func tap(_ name: String, now: Date = Date()) {
         tapped = name
         tappedAt = now
     }
 
-    /// Its open failed: only this tap's arm goes.
+    /// Its open failed: only this tap's arm goes, and a push it made that
+    /// never landed zooms no more.
     mutating func openFailed(_ name: String) {
-        guard tapped == name else { return }
+        if tapped == name {
+            tapped = nil
+            tappedAt = nil
+        }
+        if zooming == name && !landed { zooming = nil }
+    }
+
+    /// The Bots stack now shows a conversation: a fresh tap's chat zooms
+    /// until it leaves, whichever chat is still named open; otherwise
+    /// nothing does.
+    mutating func pushed(open: String?, now: Date = Date()) {
+        zooming = freshTap(now: now) ?? source(open: open, now: now)
+        landed = Self.same(zooming, open)
         tapped = nil
         tappedAt = nil
     }
 
-    /// The Bots stack now shows `open`'s chat: a fresh arm for it zooms it
-    /// until it leaves; otherwise nothing does.
-    mutating func pushed(open: String?, now: Date = Date()) {
-        zooming = source(open: open, now: now)
-        tapped = nil
-        tappedAt = nil
+    /// `open` is now the open Bot Chat. Another bot's chat landing first
+    /// (a notification's, a link's) means the push carried that one: it
+    /// zooms no more.
+    mutating func opened(_ open: String?) {
+        if Self.same(zooming, open) {
+            landed = true
+        } else if open != nil, zooming != nil, !landed {
+            zooming = nil
+        }
     }
 
     /// The chat left the Bots stack, or closed.
@@ -1010,14 +1050,22 @@ struct BotZoomArm: Equatable {
         self = BotZoomArm()
     }
 
-    /// The portrait name `open`'s chat grows from (its source key), or nil
-    /// for the usual push.
+    /// The portrait name the pushed chat grows from (its source key), or
+    /// nil for the usual push. Before the tapped chat lands, `open` is
+    /// still the chat open before it.
     func source(open: String?, now: Date = Date()) -> String? {
-        guard let open else { return nil }
-        if let zooming, zooming.caseInsensitiveCompare(open) == .orderedSame { return zooming }
-        guard let tapped, let tappedAt, now.timeIntervalSince(tappedAt) < Self.window,
-              tapped.caseInsensitiveCompare(open) == .orderedSame else { return nil }
+        if let zooming { return !landed || Self.same(zooming, open) ? zooming : nil }
+        return freshTap(now: now)
+    }
+
+    private func freshTap(now: Date) -> String? {
+        guard let tapped, let tappedAt, now.timeIntervalSince(tappedAt) < Self.window else { return nil }
         return tapped
+    }
+
+    private static func same(_ a: String?, _ b: String?) -> Bool {
+        guard let a, let b else { return false }
+        return a.caseInsensitiveCompare(b) == .orderedSame
     }
 }
 

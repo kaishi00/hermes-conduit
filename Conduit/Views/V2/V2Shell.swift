@@ -953,6 +953,10 @@ struct V2Shell: View {
                                                          fromHome: botsPath.first == .conversation))
                     }
             }
+            // The tapped portrait's chat lands after the push (#1700).
+            .onChange(of: appState.activeBotChatProfile) { _, open in
+                appState.botZoom.opened(open)
+            }
             // The tapped portrait's chat has left: the next open pushes.
             .onChange(of: botsPath) { old, path in
                 if path == [.conversation], !old.contains(.conversation) {
@@ -1136,14 +1140,17 @@ struct V2Shell: View {
     }
 
     private func closeConversation() {
-        appState.botZoom.left()
         switch selectedTab {
         case .chats:
+            appState.botZoom.left()
             if chatsPath.last == .conversation { chatsPath.removeLast() }
         case .bots:
-            if botsPath.last == .conversation { botsPath.removeLast() }
+            // The zoom stays armed through the pop, so the chat shrinks back
+            // into its portrait; the path's change lets it go after
+            // (build 248: clearing it first made Back a plain pop).
+            if botsPath.last == .conversation { botsPath.removeLast() } else { appState.botZoom.left() }
         case .tasks, .settings:
-            break
+            appState.botZoom.left()
         }
     }
 
