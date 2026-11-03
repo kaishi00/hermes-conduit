@@ -111,7 +111,7 @@ struct CronJobEditorSheet: View {
                 }
             }
         }
-        .interactiveDismissDisabled(isSaving || (seeded && draft != original))
+        .interactiveDismissDisabled(isSaving || (seeded && (draft != original || botChoiceChanged)))
         .task { await seed() }
     }
 
@@ -187,7 +187,14 @@ struct CronJobEditorSheet: View {
                 } else if let body = draft.createBody {
                     jobID = try await appState.createCronJob(body)?.id
                 }
-                // A new job just shows by default, so only "act" is sent for it.
+                // A new job just shows by default, so only "act" is sent for
+                // it, which needs the id Hermes gave it.
+                if offersBotChoice, editedJob == nil, botActs, jobID == nil {
+                    Haptics.mutationCompleted(false)
+                    appState.errorMessage = AppLocalization.string("The job is saved, but not whether the bot acts on it: \(HermesError.invalidResponse.localizedDescription)")
+                    dismiss()
+                    return
+                }
                 if offersBotChoice, let jobID, editedJob == nil ? botActs : botChoiceChanged {
                     do {
                         try await appState.setCronJobLetsBotAct(botActs, jobID: jobID, profile: profile)
@@ -467,15 +474,6 @@ struct CronBlueprintGallerySheet: View {
             blueprints = try await appState.loadCronBlueprints()
             // Only widens the delivery choices; the blueprint's own stay.
             targets = (try? await appState.loadCronDeliveryTargets()) ?? []
-        // Whether this Hermes shows a Bot Chat job's report without a turn,
-        // and the job's choice, when the Cron tab hasn't read them yet.
-        if !appState.offersCronBotChatChoice, appState.supportsCronBotChatReports {
-            await appState.refreshCronNotifications()
-            if let job = editedJob, !botChoiceChanged {
-                botActs = appState.cronJobLetsBotAct(job.id)
-                originalBotActs = botActs
-            }
-        }
         } catch {
             self.error = UserFacingError.message(for: error)
         }
