@@ -1639,7 +1639,7 @@ cards) · notifier README.md's Cron jobs delivered to a Bot Chat
 - Tried on Hermes' canary (notifier upstream/test_cron_bot_chat.py) but not yet on a phone: the card in a real Bot Chat, and a report that arrives during a turn.
 - Hermes' own side, unchanged by the plugin: in the canary test, a job that lets the bot act was refused (`runtime_coordination_required`, delivery failed) while a socket session that had resumed the Bot Chat held its writer.
 
-**Checked:** 2026-11-03, #PRNUM (added).
+**Checked:** 2026-11-03, #1690 (added, with notifier #518).
 
 ## Links in messages
 
