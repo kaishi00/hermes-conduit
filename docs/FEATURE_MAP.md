@@ -4255,11 +4255,12 @@ notifier README and CHANGELOG
 - Conduit lays the board out: Hermes picks only stack or tabs; small cards pair up on a wide window (2026-11-03, #1713).
 - Follow-ups are plain messages the user would send, at most four, offered only under the last turn's board while Hermes is free and connected: tap sends, long-press edits, as Predictions' chips (Eric, 2026-11-03, #1713).
 - Checklist ticks in a chat are kept on the host for every device, and Hermes hears what changed once, at the chat's next turn; on the call screen they stay on the phone (Eric, 2026-11-03, #1713 with notifier #528).
+- In a group room the board goes in the agent's reply as Markdown (`group_room`), until rooms draw cards in a follow-up PR (Eric, 2026-11-03, #1713 with notifier #528).
 - A Conduit without "board-cards" gets at most four cards, no layout and no follow-ups (2026-11-03, notifier #528).
 - Real data only: models are told to fill tables, stats and charts from tools, sites or the user's files, with their source (2026-11-03, notifier #528).
 
 **Open gaps**
-- Group rooms draw no cards: room messages carry text only, so a board there needs the room format to carry cards (put to Eric, 2026-11-03).
+- Group rooms draw no cards yet: room messages carry text only, so cards there need the room format to carry them, the next PR.
 - Hermes Desktop draws the Markdown, not the cards: drawing them natively waits on a probe of Desktop's plugin SDK.
 - The call screen draws a board stacked, with no tabs and no follow-ups (the user speaks the next question).
 - The Watch and CarPlay show no cards.
