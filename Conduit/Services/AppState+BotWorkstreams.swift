@@ -479,6 +479,12 @@ extension AppState {
                     ? AppLocalization.string("\(item.ref) isn't waiting on that any more.")
                     : AppLocalization.string("Couldn't reach this bot's work. Try again in a moment.")
                 botWork.setRefusal(text, profile: profile, ref: item.ref)
+            } else if status == .pending || status == .submitting {
+                // The chat's card didn't take it (its send was held back):
+                // the tap says so instead of looking dead.
+                Haptics.warning()
+                botWork.setRefusal(AppLocalization.string("Couldn't reach this bot's work. Try again in a moment."),
+                                   profile: profile, ref: item.ref)
             }
             // Otherwise (the chat changed meanwhile) the refresh below says where it is.
             Task { await refreshBotWork(profile: profile, afterAction: true) }
@@ -501,7 +507,9 @@ extension AppState {
             return
         }
         guard !list.isLoading else { return }
-        let before = more ? list.items.last?.closedAt : nil
+        // The oldest closed time shown: a last row without one would ask
+        // for the first page again, and Show more would never grow.
+        let before = more ? list.items.compactMap(\.closedAt).min() : nil
         list.isLoading = true
         list.failed = false
         botWork.setResolvedList(list, profile: profile)

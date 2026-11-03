@@ -23,7 +23,10 @@ private struct BotWorkRefresh: ViewModifier {
     static let idleInterval: UInt64 = 20_000_000_000
 
     func body(content: Content) -> some View {
-        content.task(id: "\(profile)\u{1F}\(appState.isConnected)\u{1F}\(appState.servesBotWorkstreams)") {
+        // Keyed on the bot's work being on too: turned on in Edit Bot,
+        // its reads start again.
+        let isOn = appState.botWork.snapshot(profile)?.isOn ?? true
+        content.task(id: "\(profile)\u{1F}\(appState.isConnected)\u{1F}\(appState.servesBotWorkstreams)\u{1F}\(isOn)") {
             while !Task.isCancelled {
                 await appState.refreshBotWork(profile: profile)
                 let snapshot = appState.botWork.snapshot(profile)
