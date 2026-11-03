@@ -557,6 +557,21 @@ final class ImagePasteTextView: ReturnKeyTextView {
         }
     }
 
+    /// The chat composer stages files dropped on its field itself, so a
+    /// lone picture keeps the picture paste; with no composer to take
+    /// them, the chat around the field does.
+    override var takesDroppedFiles: Bool { onDroppedFiles != nil }
+
+    override func takeDroppedFiles(_ providers: [NSItemProvider]) {
+        let files = AttachmentDrop.files(in: providers)
+        if AttachmentDrop.stagesAsFiles(providers) {
+            onDroppedFiles?(files)
+        } else {
+            // A lone picture: the picture paste below.
+            paste(itemProviders: files)
+        }
+    }
+
     override func paste(itemProviders: [NSItemProvider]) {
         // Dropped files (Finder, Files) attach as picked files do; words
         // and links among them go into the text, and a lone image keeps

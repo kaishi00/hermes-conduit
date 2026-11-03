@@ -422,6 +422,133 @@ final class ComposerPasteTextViewTests: XCTestCase {
         await fulfillment(of: [callback], timeout: 5.0)
     }
 
+    // Issue 1689: UIKit's own text drop took a picture dropped from Finder
+    // and never finished it. Every composer field has one drop
+    // interaction, its own.
+    func testEveryComposerFieldHasOnlyItsOwnDropInteraction() {
+        for view in [ReturnKeyTextView(), ImagePasteTextView()] {
+            view.isEditable = true
+            view.pasteConfiguration = UIPasteConfiguration(acceptableTypeIdentifiers: [UTType.item.identifier])
+            let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 200))
+            window.addSubview(view)
+            let drops = view.interactions.compactMap { $0 as? UIDropInteraction }
+            XCTAssertEqual(drops.count, 1, "\(type(of: view)) keeps one drop interaction")
+            XCTAssertTrue(drops.first?.delegate is FieldDropHandler)
+            view.removeFromSuperview()
+        }
+    }
+
+    func testAFieldTakesFilesOnlyWhenItStagesThemAndWordsWhenEditable() {
+        let jpeg = [UTType.jpeg.identifier]
+        let words = [UTType.utf8PlainText.identifier]
+        let link = [UTType.url.identifier]
+        XCTAssertEqual(
+            ReturnKeyTextView.fieldDrop(registeredTypeIdentifiers: [jpeg], suggestedNames: ["2T3A8639.JPG"], isEditable: true, takesFiles: true),
+            .files
+        )
+        XCTAssertEqual(
+            ReturnKeyTextView.fieldDrop(registeredTypeIdentifiers: [jpeg, words], suggestedNames: ["a.jpg", nil], isEditable: true, takesFiles: false),
+            .declined,
+            "A room's field or the full editor leaves files to the drop target around it"
+        )
+        XCTAssertEqual(
+            ReturnKeyTextView.fieldDrop(registeredTypeIdentifiers: [words], suggestedNames: ["notes.txt"], isEditable: true, takesFiles: false),
+            .declined,
+            "A named text file is a file, not words"
+        )
+        XCTAssertEqual(
+            ReturnKeyTextView.fieldDrop(registeredTypeIdentifiers: [words], suggestedNames: [nil], isEditable: true, takesFiles: false),
+            .words
+        )
+        XCTAssertEqual(
+            ReturnKeyTextView.fieldDrop(registeredTypeIdentifiers: [link], suggestedNames: ["Example"], isEditable: true, takesFiles: true),
+            .words,
+            "A link stays a link"
+        )
+        XCTAssertEqual(
+            ReturnKeyTextView.fieldDrop(registeredTypeIdentifiers: [words], suggestedNames: [nil], isEditable: false, takesFiles: true),
+            .declined
+        )
+    }
+
+    func testAPictureDroppedOnTheChatFieldKeepsThePicturePaste() async {
+        let view = ImagePasteTextView()
+        let expectedData = Data([0xFF, 0xD8, 0xFF, 0xE0])
+        let provider = NSItemProvider()
+        provider.suggestedName = "2T3A8639.JPG"
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.jpeg.identifier, visibility: .all) { completion in
+            completion(expectedData, nil)
+            return nil
+        }
+        view.onDroppedFiles = { _ in }
+        let callback = expectation(description: "picture paste")
+        view.onPastedImage = { pastedImage in
+            XCTAssertEqual(pastedImage.data, expectedData)
+            callback.fulfill()
+        }
+        XCTAssertEqual(view.fieldDrop(for: [provider]), .files)
+
+        view.takeDrop([provider], at: .zero)
+
+        await fulfillment(of: [callback], timeout: 5.0)
+    }
+
+    func testFilesDroppedOnTheChatFieldGoToTheComposerAndWordsToTheDraft() async {
+        let view = ImagePasteTextView()
+        view.frame = CGRect(x: 0, y: 0, width: 320, height: 44)
+        view.isEditable = true
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 200))
+        window.addSubview(view)
+        defer { view.removeFromSuperview() }
+        let file = NSItemProvider()
+        file.suggestedName = "report.pdf"
+        file.registerDataRepresentation(forTypeIdentifier: UTType.pdf.identifier, visibility: .all) { completion in
+            completion(Data("%PDF".utf8), nil)
+            return nil
+        }
+        let words = NSItemProvider(object: NSString(string: "dragged words"))
+        let staged = expectation(description: "files to the composer")
+        view.onDroppedFiles = { providers in
+            XCTAssertEqual(providers.count, 1)
+            XCTAssertTrue(providers.first === file)
+            staged.fulfill()
+        }
+
+        view.takeDrop([file, words], at: .zero)
+
+        await fulfillment(of: [staged], timeout: 5.0)
+        await waitForText("dragged words", in: view)
+    }
+
+    func testWordsDroppedOnARoomFieldGoIntoItsDraft() async {
+        let view = ReturnKeyTextView()
+        view.frame = CGRect(x: 0, y: 0, width: 320, height: 44)
+        view.isEditable = true
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 200))
+        window.addSubview(view)
+        defer { view.removeFromSuperview() }
+        let words = NSItemProvider(object: NSString(string: "dropped words"))
+        XCTAssertEqual(view.fieldDrop(for: [words]), .words)
+
+        view.takeDrop([words], at: .zero)
+
+        await waitForText("dropped words", in: view)
+    }
+
+    private func waitForText(_ expected: String, in view: UITextView) async {
+        let inserted = expectation(description: "words in the field")
+        let deadline = Date().addingTimeInterval(3.0)
+        func check() {
+            if view.text == expected {
+                inserted.fulfill()
+            } else if Date() < deadline {
+                DispatchQueue.main.async { check() }
+            }
+        }
+        check()
+        await fulfillment(of: [inserted], timeout: 4.0)
+    }
+
     func testALongDraggedSelectionStaysWordsInTheField() async {
         await withClearedGeneralPasteboard {
             let view = ImagePasteTextView()
