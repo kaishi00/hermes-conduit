@@ -32919,9 +32919,9 @@ final class AppState: ObservableObject {
     /// with the message unless the project was made with all it was given.
     enum ProjectCreateOutcome: Equatable {
         case created
-        /// Made, but the idea isn't in IDEA.md: the sheet keeps it on
-        /// screen so it isn't lost.
-        case ideaUnsaved(String)
+        /// Made (its id), but the idea isn't in IDEA.md: the sheet keeps it
+        /// on screen and Save Idea tries the write again.
+        case ideaUnsaved(projectID: String, message: String)
         case failed(String?)
     }
 
@@ -32960,7 +32960,8 @@ final class AppState: ObservableObject {
             await loadProjects(using: client, profile: profile)
             return ideaSaved
                 ? .created
-                : .ideaUnsaved(AppLocalization.string("\(created.title) is made, but its idea couldn’t be saved as IDEA.md."))
+                : .ideaUnsaved(projectID: created.id,
+                               message: AppLocalization.string("\(created.title) is made, but its idea couldn’t be saved as IDEA.md."))
         } catch {
             guard profile == activeProfile, self.client === client else { return .failed(nil) }
             if isProjectsUnavailable(error) {
@@ -33226,6 +33227,13 @@ final class AppState: ObservableObject {
         let entries = try await workspaceDirectoryEntries(at: path, profile: profile)
         guard profile == activeProfile else { return [] }
         return entries
+    }
+
+    /// The sheet's Save Idea after a create whose idea wasn't saved.
+    func saveProjectIdea(_ idea: String, in folder: String) async -> Bool {
+        let trimmed = idea.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        return await writeProjectIdea(trimmed, in: folder, profile: activeProfile)
     }
 
     /// Never over an IDEA.md the folder already has: an existing folder

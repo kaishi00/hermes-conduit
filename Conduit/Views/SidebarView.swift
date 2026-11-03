@@ -1803,10 +1803,13 @@ struct ProjectCreateSheet: View {
     @State private var showFolderPicker = false
     @State private var isCreating = false
     @State private var validationMessage: String?
+    /// The project this sheet made when its idea couldn't be saved: the
+    /// sheet then only saves the idea, and the project is no clash.
+    @State private var madeProjectID: String?
 
     /// A name or folder another project already has (issue 1661).
     private var clash: String? {
-        appState.projectCreationProblem(name: name, folders: folders)
+        madeProjectID == nil ? appState.projectCreationProblem(name: name, folders: folders) : nil
     }
 
     private var canCreate: Bool {
@@ -1868,7 +1871,7 @@ struct ProjectCreateSheet: View {
                         Text(AppLocalization.string("Saved as IDEA.md in the first folder, as in Hermes Desktop, unless the folder already has one."))
                     }
 
-                    if let message = validationMessage ?? clash {
+                    if let message = clash ?? validationMessage {
                         Section {
                             Label(message, systemImage: "exclamationmark.triangle")
                                 .foregroundStyle(.orange)
@@ -1887,7 +1890,13 @@ struct ProjectCreateSheet: View {
                     Button {
                         Task { await createProject() }
                     } label: {
-                        if isCreating { ProgressView() } else { Text("Create") }
+                        if isCreating {
+                            ProgressView()
+                        } else if madeProjectID != nil {
+                            Text(AppLocalization.string("Save Idea"))
+                        } else {
+                            Text("Create")
+                        }
                     }
                     .disabled(!canCreate)
                 }
@@ -1907,13 +1916,20 @@ struct ProjectCreateSheet: View {
     /// given: a message stays on screen with the idea still in its field.
     private func createProject() async {
         isCreating = true
+        if madeProjectID != nil, let folder = folders.first {
+            let saved = await appState.saveProjectIdea(idea, in: folder)
+            isCreating = false
+            if saved { dismiss() }
+            return
+        }
         validationMessage = nil
         let outcome = await appState.createProject(name: name, folders: folders, idea: idea)
         isCreating = false
         switch outcome {
         case .created:
             dismiss()
-        case .ideaUnsaved(let message):
+        case .ideaUnsaved(let projectID, let message):
+            madeProjectID = projectID
             validationMessage = message
         case .failed(let message):
             validationMessage = message ?? AppLocalization.string("Hermes could not create this project.")
