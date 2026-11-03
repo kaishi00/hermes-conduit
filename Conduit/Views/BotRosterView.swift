@@ -325,8 +325,8 @@ struct BotRosterView: View {
                 actions: actions(for: bot)
             ),
             onOverview: { overviewBot = bot },
-            room: newRoom.isEmpty ? .none : (isInNewRoom(bot.name) ? .member : .notMember),
-            onDrop: { dragged, merge in drop(dragged, on: bot, merge: merge) },
+            room: newRoom.isEmpty ? .off : (isInNewRoom(bot.name) ? .member : .notMember),
+            onDrop: { dragged, merge in handleDrop(dragged, on: bot, merge: merge) },
             onToggleRoom: { toggleNewRoom(bot) }
         )
     }
@@ -344,7 +344,7 @@ struct BotRosterView: View {
     /// A portrait dropped on another: held over its face, the two start a
     /// room (or the dropped one joins the room being started); else it
     /// moves before it.
-    private func drop(_ dragged: String, on target: BotProfile, merge: Bool) {
+    private func handleDrop(_ dragged: String, on target: BotProfile, merge: Bool) {
         let draggedBot = appState.shownBotRoster.first { $0.name.caseInsensitiveCompare(dragged) == .orderedSame }
         if merge, canStartRoomHere, !target.isHiddenByMeta, let draggedBot, !draggedBot.isHiddenByMeta {
             withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {

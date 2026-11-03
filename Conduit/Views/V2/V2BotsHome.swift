@@ -101,7 +101,7 @@ struct BotPortraitGrid<Cell: View>: View {
 /// Where Bots Home is in starting a room.
 enum BotPortraitRoom: Equatable {
     /// No room being started.
-    case none
+    case off
     /// One is: this bot is in it, or could be added.
     case member
     case notMember
@@ -194,7 +194,7 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// A room being started on Bots Home: whether this bot is in it.
     /// While one is, a tap on a portrait adds or takes out its bot instead
     /// of opening its chat.
-    var room: BotPortraitRoom = .none
+    var room: BotPortraitRoom = .off
     /// Another bot dropped on this one: `merge` when it was held over the
     /// face long enough to start (or join) a room, else moved before it.
     var onDrop: ((_ dragged: String, _ merge: Bool) -> Void)?
@@ -223,7 +223,7 @@ struct BotPortraitCell<MenuContent: View>: View {
         VStack(spacing: 6) {
             Button {
                 Haptics.light()
-                if room != .none, let onToggleRoom {
+                if room != .off, let onToggleRoom {
                     onToggleRoom()
                     return
                 }
@@ -285,7 +285,7 @@ struct BotPortraitCell<MenuContent: View>: View {
 
     private var portraitHint: String {
         switch room {
-        case .none: return AppLocalization.string("Opens this bot's chat.")
+        case .off: return AppLocalization.string("Opens this bot's chat.")
         case .member: return AppLocalization.string("Takes this bot out of the new room.")
         case .notMember: return AppLocalization.string("Adds this bot to the new room.")
         }
