@@ -512,6 +512,29 @@ extension BotModeTests {
         XCTAssertEqual(change.count, 2)
     }
 
+    /// Edit Bot > Work's Workstream Model (Eric 2026-11-03): read from the
+    /// plugin, sent as a pick, and null going back to the Bot Chat's own.
+    func testTheWorkstreamModelIsReadAndSent() throws {
+        let read = try XCTUnwrap(BotWorkSettings(response: [
+            "ok": true, "policy": "strict", "max_running": 2,
+            "workstream_model": ["model": "claude-sonnet-5-5", "provider": "anthropic"],
+        ]))
+        XCTAssertEqual(read.workstreamModel, BotWorkSettings.Model(model: "claude-sonnet-5-5", provider: "anthropic"))
+        XCTAssertNil(try XCTUnwrap(BotWorkSettings(response: [
+            "ok": true, "policy": "strict", "max_running": 2, "workstream_model": NSNull(),
+        ])).workstreamModel)
+        XCTAssertNil(try XCTUnwrap(BotWorkSettings(response: [
+            "ok": true, "policy": "strict", "max_running": 2, "workstream_model": ["model": " "],
+        ])).workstreamModel)
+        let own = BotWorkSettings()
+        var picked = own
+        picked.workstreamModel = BotWorkSettings.Model(model: "gpt-5.5")
+        let sent = try XCTUnwrap(picked.change(from: own)["workstream_model"] as? [String: Any])
+        XCTAssertEqual(sent as? [String: String], ["model": "gpt-5.5"])
+        XCTAssertTrue(own.change(from: picked)["workstream_model"] is NSNull)
+        XCTAssertEqual(own.change(from: picked).count, 1)
+    }
+
     func testTheApprovalsCaptionSaysWhenHermesWontAsk() {
         var settings = BotWorkSettings(approvals: .ask, chatApprovals: "manual")
         let asks = BotWorkSettingsView.approvalsCaption(settings, botName: "Furina")

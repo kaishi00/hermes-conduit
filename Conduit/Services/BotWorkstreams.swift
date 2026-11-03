@@ -450,20 +450,52 @@ struct BotWorkSettings: Equatable {
     var approvals: Approvals
     /// The bot's approval mode in Hermes ("manual", "smart" or "off").
     var chatApprovals: String
+    /// The model new workstreams start on; nil for the bot's own, the one
+    /// its Bot Chat uses (Eric 2026-11-03).
+    var workstreamModel: Model?
     /// Why workstreams can't run on this Hermes, as the plugin says it.
     var unavailable: String?
+
+    /// A model Hermes' `session.create` takes, as the plugin keeps it.
+    struct Model: Equatable {
+        var model: String
+        var provider: String = ""
+        var reasoningEffort: String = ""
+
+        init(model: String, provider: String = "", reasoningEffort: String = "") {
+            self.model = model
+            self.provider = provider
+            self.reasoningEffort = reasoningEffort
+        }
+
+        init?(_ object: Any?) {
+            guard let object = object as? [String: Any],
+                  let model = (object["model"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !model.isEmpty else { return nil }
+            self.init(model: model, provider: object["provider"] as? String ?? "",
+                      reasoningEffort: object["reasoning_effort"] as? String ?? "")
+        }
+
+        var body: [String: Any] {
+            var body: [String: Any] = ["model": model]
+            if !provider.isEmpty { body["provider"] = provider }
+            if !reasoningEffort.isEmpty { body["reasoning_effort"] = reasoningEffort }
+            return body
+        }
+    }
 
     var isOn: Bool { policy != .off }
 
     init(policy: Policy = .strict, maxRunning: Int = 2, maxRunningLimit: Int = 6,
          afterRestart: AfterRestart = .continue, approvals: Approvals = .chats,
-         chatApprovals: String = "manual", unavailable: String? = nil) {
+         chatApprovals: String = "manual", workstreamModel: Model? = nil, unavailable: String? = nil) {
         self.policy = policy
         self.maxRunning = maxRunning
         self.maxRunningLimit = maxRunningLimit
         self.afterRestart = afterRestart
         self.approvals = approvals
         self.chatApprovals = chatApprovals
+        self.workstreamModel = workstreamModel
         self.unavailable = unavailable
     }
 
@@ -479,6 +511,7 @@ struct BotWorkSettings: Equatable {
             afterRestart: (response["after_restart"] as? String).flatMap(AfterRestart.init(rawValue:)) ?? .continue,
             approvals: (response["workstream_approvals"] as? String).flatMap(Approvals.init(rawValue:)) ?? .chats,
             chatApprovals: (response["chat_approvals"] as? String) ?? "manual",
+            workstreamModel: Model(response["workstream_model"]),
             unavailable: (response["unavailable"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         )
     }
@@ -490,6 +523,10 @@ struct BotWorkSettings: Equatable {
         if maxRunning != old.maxRunning { body["max_running"] = maxRunning }
         if afterRestart != old.afterRestart { body["after_restart"] = afterRestart.rawValue }
         if approvals != old.approvals { body["workstream_approvals"] = approvals.rawValue }
+        if workstreamModel != old.workstreamModel {
+            // null: back to the bot's own.
+            body["workstream_model"] = workstreamModel.map { $0.body as Any } ?? NSNull()
+        }
         return body
     }
 }
