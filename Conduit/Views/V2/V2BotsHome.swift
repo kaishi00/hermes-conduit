@@ -330,12 +330,13 @@ struct BotPortraitCell<MenuContent: View>: View {
     }
 
     private func beginTargeting() {
-        let lifted = BotDragPayload.lifted
-        // Over its own place: nothing to move before or merge with.
-        if let lifted, lifted.caseInsensitiveCompare(bot.name) == .orderedSame { return }
+        // Only a portrait being dragged, and not over its own place: text
+        // from another app, or a bot over itself, shows nothing.
+        guard let lifted = BotDragPayload.lifted,
+              lifted.caseInsensitiveCompare(bot.name) != .orderedSame else { return }
         isTargeted = true
         dwell?.cancel()
-        guard let lifted, canMerge?(lifted) == true else { return }
+        guard canMerge?(lifted) == true else { return }
         dwell = Task { @MainActor in
             try? await Task.sleep(for: BotDragPayload.mergeDwell)
             guard !Task.isCancelled, isTargeted else { return }
