@@ -69,7 +69,7 @@ struct BotWorkSettingsView: View {
             Toggle(AppLocalization.string("Coordinate Work"), isOn: binding(\.isOnSetting))
         } footer: {
             Text(settings.isOn
-                ? AppLocalization.string("\(botName) starts a chat of its own for each task, works on it in the background, and tells you in its Bot Chat when it’s done.")
+                ? AppLocalization.string("\(botName) starts a chat of its own for longer tasks, works on them in the background, and tells you in its Bot Chat when they’re done.")
                 : AppLocalization.string("\(botName) does everything in its Bot Chat itself. Work that’s already running carries on."))
         }
         if settings.isOn {

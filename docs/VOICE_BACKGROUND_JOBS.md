@@ -28,7 +28,7 @@ a job. At most three jobs run at once.
   listing it under its call. That holds while only voice has used it (its
   prompt, and corrections sent as `(voice) <words>`): typing into it brings
   it back for good, and a failed, stopped or pinned job stays listed.
-- On the `bot-workstreams` branches, a host whose plugin keeps bot work
+- A host whose plugin keeps bot work
   (`work-adopt`) is also told of each job once Hermes takes its request, so
   the job shows in its bot's Work panel as a call's ("From a voice call" or
   "From a Watch call"), journaled, and waiting for the user after a Hermes
@@ -39,7 +39,7 @@ a job. At most three jobs run at once.
   calls"). A start that fails
   or is abandoned isn't kept. Watch relay jobs are kept by the plugin itself
   as they start.
-- Also on those branches (Eric 2026-11-02): a call kept with the Bot Chat
+- Eric 2026-11-02: a call kept with the Bot Chat
   runs its jobs on that bot, as the coordinator's own workstreams, and the
   coordinator reports each in the Bot Chat once the call is saved. A call
   kept with a workstream's chat makes no jobs at all: every request goes to
@@ -149,7 +149,7 @@ reply pending or playing):
 ## Limits of this phase
 
 - Jobs keep running on the server across app restarts, sign-out, and
-  profile switches. On the `bot-workstreams` branch (M5b), the phone keeps
+  profile switches. The phone keeps
   its job list for each workspace and profile. After a relaunch, or when it
   comes back to that profile, it follows the jobs again and reads the
   replies of any that finished meanwhile. Only a later call kept with the
