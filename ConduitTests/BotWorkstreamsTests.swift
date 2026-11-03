@@ -563,6 +563,81 @@ extension BotModeTests {
         XCTAssertEqual(V2Tab.chats.title, AppLocalization.string("Sessions"))
     }
 
+    /// Bots Home's order: unset, Hermes' order; a drop moves a bot before
+    /// another; a bot the order doesn't name goes at the end, and a hidden
+    /// one keeps its place.
+    func testTheBotOrderMovesADroppedBotAndKeepsNewOnesLast() {
+        let hermes = ["hermes", "furina", "nahida", "atlas"]
+        var order = BotOrder()
+        XCTAssertEqual(order.arrange(hermes, name: { $0 }), hermes)
+        order = order.moving("atlas", before: "furina", shown: hermes)
+        XCTAssertEqual(order.arrange(hermes, name: { $0 }), ["hermes", "atlas", "furina", "nahida"])
+        // A new bot, and the order saved before it, put it last.
+        XCTAssertEqual(order.arrange(["scout"] + hermes, name: { $0 }), ["hermes", "atlas", "furina", "nahida", "scout"])
+        // Dropped past the last portrait: the end.
+        order = order.moving("hermes", before: nil, shown: ["hermes", "atlas", "furina", "nahida"])
+        XCTAssertEqual(order.names, ["atlas", "furina", "nahida", "hermes"])
+        // Furina hidden (not shown): Reorder Bots' moves keep her place.
+        order = order.moving(fromOffsets: IndexSet(integer: 2), toOffset: 0, shown: ["atlas", "nahida", "hermes"])
+        XCTAssertEqual(order.names, ["hermes", "furina", "atlas", "nahida"])
+        // Names match whatever their case; a bot dropped on itself stays.
+        XCTAssertEqual(order.moving("HERMES", before: "hermes", shown: order.names), order)
+        XCTAssertEqual(BotOrder(names: ["a", "A", "", "b"]).names, ["a", "b"])
+    }
+
+    /// The bots' order syncs as `bots.order`: an unset order sends nothing,
+    /// a set one sends its names, and one from another device is saved.
+    @MainActor
+    func testTheBotOrderSyncsAsItsNames() throws {
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let slot = appState.botOrderSlot
+        XCTAssertEqual(slot.key, "bots.order")
+        XCTAssertNil(slot.read())
+        appState.moveBot("atlas", before: "hermes", shown: ["hermes", "atlas"])
+        XCTAssertEqual(slot.read() as? [String], ["atlas", "hermes"])
+        slot.write(["furina", "atlas"])
+        XCTAssertEqual(appState.botOrder.names, ["furina", "atlas"])
+        XCTAssertEqual(defaults.stringArray(forKey: BotOrder.storageKey), ["furina", "atlas"])
+        slot.write(nil)
+        XCTAssertTrue(appState.botOrder.isEmpty)
+        XCTAssertNil(defaults.stringArray(forKey: BotOrder.storageKey))
+    }
+
+    /// A room being started: bots join once, whatever their case, all or
+    /// none up to six; a full room takes no one new; a bot hidden or
+    /// deleted meanwhile leaves it.
+    func testARoomBeingStartedHoldsSixAndDropsWhatLeaves() {
+        var build = BotRoomBuild()
+        XCTAssertTrue(build.isEmpty)
+        XCTAssertTrue(build.add(["hermes", "furina"]))
+        XCTAssertTrue(build.add(["FURINA", "atlas"]))
+        XCTAssertEqual(build.names, ["hermes", "furina", "atlas"])
+        XCTAssertTrue(build.add(["nahida", "scout", "zed"]))
+        XCTAssertTrue(build.isFull)
+        // Full: a merge bringing anyone new doesn't fit, one of members does.
+        XCTAssertFalse(build.fits(["hermes", "kai"]))
+        XCTAssertFalse(build.add(["kai"]))
+        XCTAssertTrue(build.fits(["hermes", "atlas"]))
+        // Five in, a merge of two new ones doesn't fit, all or none.
+        build.remove("ZED")
+        XCTAssertFalse(build.add(["kai", "lumi"]))
+        XCTAssertEqual(build.names.count, 5)
+        XCTAssertEqual(build.pruned(visible: ["Atlas", "hermes", "kai"]).names, ["hermes", "atlas"])
+        build.clear()
+        XCTAssertTrue(build.isEmpty)
+    }
+
+    /// A dragged portrait carries a marked name, so text dragged in from
+    /// another app is never taken for a bot.
+    func testABotDragCarriesAMarkedName() {
+        XCTAssertEqual(BotDragPayload.botName(from: BotDragPayload.payload(for: "furina")), "furina")
+        XCTAssertNil(BotDragPayload.botName(from: "furina"))
+        XCTAssertNil(BotDragPayload.botName(from: BotDragPayload.prefix))
+    }
+
     /// Bots is the launch tab: a plain session opened over it still lands
     /// in Sessions, and only a bot's own chats stay in Bots.
     func testAPlainSessionOpenedOverBotsLandsInSessions() {
@@ -570,6 +645,9 @@ extension BotModeTests {
         XCTAssertEqual(V2Tab.conversationTab(selected: .bots, isBotsChat: true), .bots)
         XCTAssertEqual(V2Tab.conversationTab(selected: .chats, isBotsChat: true), .chats)
         XCTAssertEqual(V2Tab.conversationTab(selected: .tasks, isBotsChat: false), .chats)
+        // From Pulse or Artifacts pushed in Bots: Back goes to that page.
+        XCTAssertEqual(V2Tab.conversationTab(selected: .bots, isBotsChat: false, fromBotsPage: true), .bots)
+        XCTAssertEqual(V2Tab.conversationTab(selected: .chats, isBotsChat: false, fromBotsPage: true), .chats)
     }
 
     /// A portrait's Overview pill: what needs the user first, then what's

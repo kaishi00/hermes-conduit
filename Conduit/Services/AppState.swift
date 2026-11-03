@@ -963,6 +963,8 @@ final class AppState: ObservableObject {
     @Published private(set) var sessionStars = SessionStars()
     /// The Pinned section's order, per profile (issue 1354).
     @Published private(set) var pinnedChatOrder = PinnedChatOrder()
+    /// The bots' order on Bots Home and every bot list (AppState+BotOrder).
+    @Published private(set) var botOrder = BotOrder()
     /// Replies pinned to the top of their chat, per profile (#918). Kept on
     /// this device only (AppState+PinnedReplies).
     @Published var pinnedRepliesByProfile: [String: [PinnedReply]] = [:]
@@ -7095,6 +7097,7 @@ final class AppState: ObservableObject {
         }
         sessionStars = SessionStars(defaults: defaults)
         pinnedChatOrder = PinnedChatOrder(defaults: defaults)
+        botOrder = BotOrder(defaults: defaults)
         allProfilesChatsSettings = AllProfilesChatsSettings(defaults: defaults)
         if let data = defaults.data(forKey: pinnedRepliesByProfileKey),
            let stored = try? JSONDecoder().decode([String: [PinnedReply]].self, from: data) {
@@ -9907,6 +9910,15 @@ final class AppState: ObservableObject {
         order.save(to: defaults)
     }
 
+    /// Saves the bots' order (BotOrder), set here or from Sync across
+    /// devices.
+    func setBotOrder(_ order: BotOrder) {
+        guard order != botOrder else { return }
+        botOrder = order
+        order.save(to: defaults)
+        publishWidgetSnapshot()
+    }
+
     /// Saves where All's mixed Pinned section holds each profile's chats
     /// (issue 1486), on this device only.
     func setPinnedChatMixedOrder(_ keys: [String]) {
@@ -11526,6 +11538,8 @@ final class AppState: ObservableObject {
         pinnedChatOrder = PinnedChatOrder()
         defaults.removeObject(forKey: PinnedChatOrder.storageKey)
         defaults.removeObject(forKey: PinnedChatOrder.mixedStorageKey)
+        botOrder = BotOrder()
+        defaults.removeObject(forKey: BotOrder.storageKey)
         allProfilesCatalogTask?.cancel()
         allProfilesCatalogTask = nil
         allProfilesCatalog = AllProfilesCatalog()
@@ -14492,6 +14506,8 @@ final class AppState: ObservableObject {
         pinnedChatOrder = PinnedChatOrder()
         defaults.removeObject(forKey: PinnedChatOrder.storageKey)
         defaults.removeObject(forKey: PinnedChatOrder.mixedStorageKey)
+        botOrder = BotOrder()
+        defaults.removeObject(forKey: BotOrder.storageKey)
         allProfilesCatalogTask?.cancel()
         allProfilesCatalogTask = nil
         allProfilesCatalog = AllProfilesCatalog()
@@ -22466,8 +22482,8 @@ final class AppState: ObservableObject {
     /// (#1533). A kept bot's row opens its Bot Chat; nothing writes it
     /// (`BotProfile.isKeptCopy`).
     var shownBotRoster: [BotProfile] {
-        guard botRoster.isEmpty, !botRosterAnswered else { return botRoster }
-        return keptBotRoster()?.bots ?? []
+        guard botRoster.isEmpty, !botRosterAnswered else { return orderedBots(botRoster) }
+        return orderedBots(keptBotRoster()?.bots ?? [])
     }
 
     /// Desktop's group chats, from the roster or its kept copy, as the bots.

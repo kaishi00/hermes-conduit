@@ -602,7 +602,7 @@ struct BotEditorSheet: View {
 
     /// Bots a new one can copy its settings from, besides the main profile.
     private var cloneSources: [BotProfile] {
-        appState.botRoster.filter { !BotManagement.isDefaultProfile($0.name) }
+        appState.orderedBots(appState.botRoster).filter { !BotManagement.isDefaultProfile($0.name) }
     }
 
     // MARK: State
