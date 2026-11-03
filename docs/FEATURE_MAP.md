@@ -1431,11 +1431,11 @@ Hermes Desktop (not needed: it has no tab bar) · the drawer shell (not
 needed: it keeps its sidebar) · Watch and CarPlay (not needed: no bots list)
 
 **Code**
-- Tabs and routes: `Conduit/Views/V2/V2Shell.swift` (V2Tab.destinations and title, the first tab, pulseVisible and openConversation on Bots too)
+- Tabs and routes: `Conduit/Views/V2/V2Shell.swift` (V2Tab.destinations, title and conversationTab, the first tab, pulseVisible and openConversation on Bots too)
 - Bots Home: `Conduit/Views/V2/V2BotsView.swift` (title, +, BotsHomeShortcuts), `Conduit/Views/V2/V2BotsHome.swift` (V2ShortcutPill, BotsHomeShortcuts, BotPortraitGrid, BotPortraitStatus, BotPortraitCell, BotOverviewSheet), `Conduit/Views/BotRosterView.swift` (portraitGrid, portrait, BotRosterMenu, homeCards, the overview's sheet and Edit Bot after it), `Conduit/Views/V2/V2PulsePage.swift` (V2PulseButton's named pill)
 - Overview: `Conduit/Views/BotWorkViews.swift` (BotWorkPanel's `showsHeader`), `Conduit/Views/V2/V2ArtifactsViews.swift` (BotArtifactsList, ArtifactScope.bot), `Conduit/Services/AppState+Artifacts.swift` (artifactSources for `.bot`), `Conduit/Views/V2/V2ConversationScreen.swift` (the Bot Chat's overview sheet)
 - Cards at the top: `Conduit/Views/V2/V2ChatsView.swift` (V2ConnectionRepairCard), `Conduit/Views/V2/V2FinishSetupCard.swift`
-- Tests: `ConduitTests/BotWorkstreamsTests.swift` (testBotsComeFirstAndChatsIsSessions, testThePortraitPillSaysWhatNeedsYouFirst), `ConduitTests/GatewayRestartTests+Artifacts.swift` (testABotOverviewReadsItsBotsWholeProfile), `ConduitUITests/V2NavigationHelpers.swift`, `ConduitUITests/ConnectionRepairUITests.swift`, `ConduitScreenshots/AppStoreScreenshotTests.swift`
+- Tests: `ConduitTests/BotWorkstreamsTests.swift` (testBotsComeFirstAndChatsIsSessions, testAPlainSessionOpenedOverBotsLandsInSessions, testThePortraitPillSaysWhatNeedsYouFirst), `ConduitTests/GatewayRestartTests+Artifacts.swift` (testABotOverviewReadsItsBotsWholeProfile), `ConduitUITests/V2NavigationHelpers.swift`, `ConduitUITests/ConnectionRepairUITests.swift`, `ConduitScreenshots/AppStoreScreenshotTests.swift`
 
 **Rulings**
 - Layout A (Eric, 2026-11-03, from three layouts): a three-across portrait grid in each bot's color with a soft glow, no card per bot and no hero bot; Pulse and Artifacts as named pills under the title; Group Chats as rows under the bots. Rejected before it: an asymmetric hero card, and a two-column grid of rectangular cards (2026-11-02).
@@ -1444,6 +1444,7 @@ needed: it keeps its sidebar) · Watch and CarPlay (not needed: no bots list)
 - The overview is reusable, never a screen between picking a bot and talking to it. Its Work is the Work panel's list, not a second one; its Artifacts read the bot's whole profile, labelled as another profile's unless it's the one in use. Without the plugin's workstreams it shows Chat and Artifacts only. From the Bot Chat, Chat just closes it.
 - Pulse and Artifacts are global: the shortcuts open the same pages as the Sessions bar, pushed in Bots, Pulse full screen as it is there.
 - The app opens on Bots. Finish setting up and Repair Connection show at Bots Home's top too, so a first launch or a failed connection offers them where the app opens.
+- Only a bot's own chats (its Bot Chat or a workstream's chat) open inside Bots; any other session opened while Bots shows (a notification, a widget, a Shortcut) goes to Sessions.
 
 **Open gaps**
 - The portrait-to-chat transition (a circle growing from the portrait) isn't built yet; it comes in its own PR.

@@ -16,6 +16,13 @@ import SwiftUI
 
 /// The shell's four destinations.
 enum V2Tab: String, Identifiable, Hashable {
+    /// The tab an opened conversation is pushed in. Bots is the launch tab,
+    /// so a plain session opened over it (a notification, a widget, a
+    /// Shortcut) still goes to Sessions; only a bot's own chats stay in Bots.
+    static func conversationTab(selected: V2Tab, isBotsChat: Bool) -> V2Tab {
+        selected == .bots && isBotsChat ? .bots : .chats
+    }
+
     case chats
     case tasks
     case bots
@@ -1055,11 +1062,15 @@ struct V2Shell: View {
 
     // MARK: - Conversation routing
 
-    /// Pushes the conversation: in Bots when a bot's chat opened from there,
-    /// otherwise in Chats. Only one tab ever holds it, since both would show
-    /// the same active session.
+    /// Pushes the conversation: in Bots when a bot's chat (its Bot Chat or
+    /// one of its workstreams) opened while Bots shows, otherwise in
+    /// Sessions. Only one tab ever holds it, since both would show the same
+    /// active session.
     private func openConversation() {
-        let target: V2Tab = selectedTab == .bots ? .bots : .chats
+        let target = V2Tab.conversationTab(
+            selected: selectedTab,
+            isBotsChat: appState.activeBotChatProfile != nil || appState.activeWorkstream != nil
+        )
         switch target {
         case .bots:
             chatsPath.removeAll { $0 == .conversation }

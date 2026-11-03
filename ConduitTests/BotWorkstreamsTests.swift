@@ -563,6 +563,15 @@ extension BotModeTests {
         XCTAssertEqual(V2Tab.chats.title, AppLocalization.string("Sessions"))
     }
 
+    /// Bots is the launch tab: a plain session opened over it still lands
+    /// in Sessions, and only a bot's own chats stay in Bots.
+    func testAPlainSessionOpenedOverBotsLandsInSessions() {
+        XCTAssertEqual(V2Tab.conversationTab(selected: .bots, isBotsChat: false), .chats)
+        XCTAssertEqual(V2Tab.conversationTab(selected: .bots, isBotsChat: true), .bots)
+        XCTAssertEqual(V2Tab.conversationTab(selected: .chats, isBotsChat: true), .chats)
+        XCTAssertEqual(V2Tab.conversationTab(selected: .tasks, isBotsChat: false), .chats)
+    }
+
     /// A portrait's Overview pill: what needs the user first, then what's
     /// working, else just Overview, and Overview while work is off.
     func testThePortraitPillSaysWhatNeedsYouFirst() throws {
