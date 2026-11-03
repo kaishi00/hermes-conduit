@@ -1131,6 +1131,7 @@ struct V2Shell: View {
     }
 
     private func closeConversation() {
+        appState.botZoomArmed = nil
         switch selectedTab {
         case .chats:
             if chatsPath.last == .conversation { chatsPath.removeLast() }

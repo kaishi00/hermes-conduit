@@ -265,9 +265,12 @@ struct BotPortraitCell<MenuContent: View>: View {
                     return
                 }
                 appState.dismissSidebarDrawer()
-                // This chat grows out of this portrait (BotZoomDestination).
-                appState.botZoomArmed = bot.name
-                Task { await appState.openBotChat(for: bot) }
+                // This chat grows out of this portrait (BotZoomDestination),
+                // unless it opens beside the list, or doesn't open.
+                appState.botZoomArmed = openBeside == nil ? bot.name : nil
+                Task {
+                    if await !appState.openBotChat(for: bot) { appState.botZoomArmed = nil }
+                }
             } label: {
                 VStack(spacing: 8) {
                     portrait(status)
