@@ -16,6 +16,12 @@ import Foundation
 /// Reads JSON numbers and flags the way the plugin sends them: a JSON
 /// boolean is never a number, and epochs may carry fractions.
 enum PulseJSON {
+    /// A profile the plugin names, trimmed; nil when it names none.
+    static func profile(_ value: Any?) -> String? {
+        let profile = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return profile.isEmpty ? nil : profile
+    }
+
     static func bool(_ value: Any?) -> Bool? {
         guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else { return nil }
         return number.boolValue
@@ -115,6 +121,9 @@ struct PulseState: Equatable {
     var staleBuild = false
     var homeChat: PulseHomeChat?
     var homeProblem = ""
+    /// The profile Pulse runs in, whose chats it reads (0.126.2); nil from
+    /// an older plugin, whose Pulse runs in the dashboard's default profile.
+    var profile: String?
     var homeTitle = "Pulse"
     var checks: [String: Int] = [:]
     var recent: [PulseRecentAttempt] = []
@@ -207,6 +216,7 @@ struct PulseState: Equatable {
             )
         }
         homeProblem = json["home_problem"] as? String ?? ""
+        profile = PulseJSON.profile(json["profile"])
         if let title = json["home_title"] as? String, !title.isEmpty { homeTitle = title }
         checks = PulseJSON.counts(json["checks"])
         recent = (json["recent"] as? [Any] ?? []).enumerated().compactMap { index, raw in

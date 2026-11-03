@@ -179,7 +179,7 @@ struct PulseSettingsPage: View {
                 // whether or not the plugin names it as a problem.
                 Button(AppLocalization.string("Pin it")) {
                     run { _ in
-                        try await appState.pinPulseHomeChat(id: chat.id)
+                        try await appState.pinPulseHomeChat(id: chat.id, profile: state.profile)
                         return nil
                     }
                 }
@@ -210,13 +210,14 @@ struct PulseSettingsPage: View {
 
     private func homeChatSection(_ state: PulseState) -> some View {
         ConduitSettingsSection(title: AppLocalization.string("Set up Pulse"), symbol: "pin", tint: .conduitAccent) {
-            Text(AppLocalization.string("Pulse keeps its reports in a chat of its own in the dashboard's default profile. It stays out of your chats."))
+            Text(AppLocalization.string("Pulse keeps its reports in a chat of its own in the profile it runs in, \(appState.profileDisplayName(state.profile ?? AppState.pulseDefaultProfile)). It stays out of your chats."))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Button(AppLocalization.string("Set up Pulse")) {
                 let title = state.homeTitle
+                let profile = state.profile
                 run { _ in
-                    try await appState.createPulseHomeChat(title: title)
+                    try await appState.createPulseHomeChat(title: title, profile: profile)
                     return nil
                 }
             }
@@ -821,7 +822,7 @@ struct PulseSettingsPage: View {
             let next = try await client.update(["model": model?.setting ?? NSNull()])
             guard isShown(client) else { return nil }
             do {
-                try await appState.setPulseMemoryModel(model)
+                try await appState.setPulseMemoryModel(model, profile: shown.profile)
             } catch {
                 if isShown(client) { _ = try? await client.update(["model": previous?.setting ?? NSNull()]) }
                 throw error
