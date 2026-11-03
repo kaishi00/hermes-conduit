@@ -330,8 +330,16 @@ extension AppState {
 
     /// A bot's work settings, or nil when they couldn't be read.
     func loadBotWorkSettings(profile: String) async -> BotWorkSettings? {
-        guard servesBotWorkSettings, isConnected else { return nil }
-        return try? await botWorkSettingsClient(profile: profile).load()
+        guard servesBotWorkSettings, isConnected else {
+            botWorkLogger.notice("Work settings not read: \(self.servesBotWorkSettings ? "not connected" : "plugin doesn't serve them", privacy: .public)")
+            return nil
+        }
+        do {
+            return try await botWorkSettingsClient(profile: profile).load()
+        } catch {
+            botWorkLogger.notice("Reading the work settings failed: \(String(describing: type(of: error)), privacy: .public) \(String(describing: error), privacy: .public)")
+            return nil
+        }
     }
 
     /// Saves the user's change to a bot's work settings; the settings as the

@@ -43,7 +43,12 @@ struct BotWorkSettingsView: View {
         }
         .navigationTitle(AppLocalization.string("Work"))
         .navigationBarTitleDisplayMode(.inline)
-        .task { await load() }
+        // Again when the connection comes back: a page opened while the
+        // app reconnects (just back in the foreground) read nothing.
+        .task(id: appState.isConnected) {
+            guard settings == nil else { return }
+            await load()
+        }
     }
 
     @ViewBuilder
@@ -225,14 +230,26 @@ struct BotWorkSettingsView: View {
         )
     }
 
+    /// A read can miss while the dashboard's bridge settles (a reconnect, a
+    /// busy plugin), so it tries again twice, a second and then two apart,
+    /// before saying it couldn't (Eric 2026-11-03).
     private func load() async {
         loadFailed = false
-        if let loaded = await appState.loadBotWorkSettings(profile: profile) {
-            settings = loaded
-        } else if settings == nil {
-            loadFailed = true
+        for attempt in 0..<Self.loadAttempts {
+            if attempt > 0 {
+                try? await Task.sleep(for: .seconds(attempt))
+                if Task.isCancelled { return }
+            }
+            if let loaded = await appState.loadBotWorkSettings(profile: profile) {
+                settings = loaded
+                return
+            }
+            if Task.isCancelled { return }
         }
+        if settings == nil { loadFailed = true }
     }
+
+    static let loadAttempts = 3
 
     private func save(_ new: BotWorkSettings, from old: BotWorkSettings) async {
         isSaving = true
