@@ -600,6 +600,9 @@ extension BotModeTests {
         XCTAssertEqual(V2Tab.conversationTab(selected: .bots, isBotsChat: true), .bots)
         XCTAssertEqual(V2Tab.conversationTab(selected: .chats, isBotsChat: true), .chats)
         XCTAssertEqual(V2Tab.conversationTab(selected: .tasks, isBotsChat: false), .chats)
+        // From Pulse or Artifacts pushed in Bots: Back goes to that page.
+        XCTAssertEqual(V2Tab.conversationTab(selected: .bots, isBotsChat: false, fromBotsPage: true), .bots)
+        XCTAssertEqual(V2Tab.conversationTab(selected: .chats, isBotsChat: false, fromBotsPage: true), .chats)
     }
 
     /// A portrait's Overview pill: what needs the user first, then what's

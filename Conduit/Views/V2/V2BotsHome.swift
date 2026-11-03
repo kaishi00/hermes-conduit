@@ -209,7 +209,11 @@ struct BotPortraitCell<MenuContent: View>: View {
     @State private var mergeReady = false
     @State private var dwell: Task<Void, Never>?
 
-    private var status: BotPortraitStatus { .of(work.snapshot(bot.name)) }
+    /// Without the plugin's workstreams, nothing to show, even if a read
+    /// from before is still kept (the overview hides Work then too).
+    private var status: BotPortraitStatus {
+        appState.servesBotWorkstreams ? .of(work.snapshot(bot.name)) : .idle
+    }
 
     private var color: Color { BotAvatarView.color(for: bot.appearanceColor, name: bot.name) }
 

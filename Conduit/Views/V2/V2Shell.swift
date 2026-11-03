@@ -18,9 +18,12 @@ import SwiftUI
 enum V2Tab: String, Identifiable, Hashable {
     /// The tab an opened conversation is pushed in. Bots is the launch tab,
     /// so a plain session opened over it (a notification, a widget, a
-    /// Shortcut) still goes to Sessions; only a bot's own chats stay in Bots.
-    static func conversationTab(selected: V2Tab, isBotsChat: Bool) -> V2Tab {
-        selected == .bots && isBotsChat ? .bots : .chats
+    /// Shortcut) still goes to Sessions; only a bot's own chats, and chats
+    /// opened from a page in Bots, stay in Bots.
+    /// A chat opened from a page pushed in Bots (Pulse, Artifacts) stays
+    /// there too, so Back returns to that page.
+    static func conversationTab(selected: V2Tab, isBotsChat: Bool, fromBotsPage: Bool = false) -> V2Tab {
+        selected == .bots && (isBotsChat || fromBotsPage) ? .bots : .chats
     }
 
     case chats
@@ -1069,7 +1072,8 @@ struct V2Shell: View {
     private func openConversation() {
         let target = V2Tab.conversationTab(
             selected: selectedTab,
-            isBotsChat: appState.activeBotChatProfile != nil || appState.activeWorkstream != nil
+            isBotsChat: appState.activeBotChatProfile != nil || appState.activeWorkstream != nil,
+            fromBotsPage: botsPath.last == .pulse || botsPath.last == .artifacts
         )
         switch target {
         case .bots:
