@@ -1279,8 +1279,10 @@ struct CronRun: Codable, Identifiable {
         profile = try container.decodeIfPresent(String.self, forKey: .profile)
         startedAt = try container.decodeIfPresent(Int.self, forKey: .startedAt)
         title = try container.decodeIfPresent(String.self, forKey: .title)
-        jobID = try container.decodeIfPresent(String.self, forKey: .jobID)
-            ?? container.decodeIfPresent(String.self, forKey: .cronJobID)
+        // The first that names a job: an empty or non-string one doesn't.
+        jobID = [CodingKeys.jobID, .cronJobID].lazy
+            .compactMap { try? container.decodeIfPresent(String.self, forKey: $0) }
+            .first { !$0.isEmpty }
     }
 
     func encode(to encoder: Encoder) throws {

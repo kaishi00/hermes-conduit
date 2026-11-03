@@ -1701,7 +1701,8 @@ notifier (not needed: no cron history there)
 **Rulings**
 - The dashboard's per-job route is the job's history, an empty answer too: it never falls back to `cron.runs`, which lists every job's runs (#1707).
 - Without a dashboard, `cron.runs` keeps only the runs that name the job (`job_id` or `cron_job_id`) or carry Hermes' run session id, `cron_<job id>_<YYYYMMDD>_<HHMMSS>`. A run that says neither is no job's: an empty history beats another job's.
-- The list belongs to one job: opening another job shows a spinner until its answer lands, never the last job's runs or "This job has not run yet." before it knows, and only the newest read's answer is kept. A read that fails, or can't be made offline, says so in the sheet instead.
+- The list belongs to one job: opening another job shows a spinner until its answer lands, never the last job's runs or "This job has not run yet." before it knows, and only the newest read's answer is kept. Before the job's first answer, a read that fails, or can't be made offline, says so in the sheet instead; a later refresh that fails keeps the runs shown and reports through the app's error message.
+- Runs that name another profile are left out; a run that names none is kept.
 
 **Open gaps**
 - Without a dashboard, a run of Hermes' unified runtime (a `local-*` id) that `cron.runs` doesn't name a job for is left out of every job's history.

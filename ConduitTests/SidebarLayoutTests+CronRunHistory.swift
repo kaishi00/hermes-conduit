@@ -175,6 +175,18 @@ extension SidebarLayoutTests {
         XCTAssertTrue(state.cronRunsLoaded)
     }
 
+    func testRunsOfAnotherProfileAreLeftOut() async {
+        let state = cronRunHistoryState()
+        let profile = state.activeProfile
+        let runs = [
+            CronRun(id: "cron_aaaaaaaaaaaa_20261103_090000", lastActive: nil, model: nil, preview: nil, profile: profile, startedAt: nil, title: nil),
+            CronRun(id: "cron_aaaaaaaaaaaa_20261103_100000", lastActive: nil, model: nil, preview: nil, profile: "someone-else", startedAt: nil, title: nil),
+            CronRun(id: "cron_aaaaaaaaaaaa_20261103_110000", lastActive: nil, model: nil, preview: nil, profile: nil, startedAt: nil, title: nil),
+        ]
+        await state.loadCronRuns(for: CronJob(enabled: true, id: "aaaaaaaaaaaa"), dashboard: nil, gateway: { runs })
+        XCTAssertEqual(state.cronRuns.map(\.id), ["cron_aaaaaaaaaaaa_20261103_090000", "cron_aaaaaaaaaaaa_20261103_110000"])
+    }
+
     func testARunBelongsToTheJobItNamesOrItsSessionIDNames() {
         func run(_ id: String, job: String? = nil) -> CronRun {
             CronRun(id: id, lastActive: nil, model: nil, preview: nil, profile: nil, startedAt: nil, title: nil, jobID: job)
@@ -200,5 +212,11 @@ extension SidebarLayoutTests {
 
         let named = try JSONDecoder().decode(CronRun.self, from: Data(#"{"id":"local-7f3a","cron_job_id":"def456"}"#.utf8))
         XCTAssertEqual(named.jobID, "def456")
+
+        // An empty or non-string job_id doesn't hide cron_job_id or the row.
+        let empty = try JSONDecoder().decode(CronRun.self, from: Data(#"{"id":"local-7f3a","job_id":"","cron_job_id":"def456"}"#.utf8))
+        XCTAssertEqual(empty.jobID, "def456")
+        let numeric = try JSONDecoder().decode(CronRun.self, from: Data(#"{"id":"local-7f3a","job_id":42}"#.utf8))
+        XCTAssertNil(numeric.jobID)
     }
 }

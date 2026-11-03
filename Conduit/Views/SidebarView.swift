@@ -2442,7 +2442,11 @@ struct CronJobDetailSheet: View {
                                 .frame(minHeight: 48)
                                 .conduitGlassControl(cornerRadius: 16, tint: .orange.opacity(0.18))
                             }
-                            Button { Task { _ = await appState.performCronAction(.trigger, for: job); await appState.loadCronRuns(for: job) } } label: {
+                            Button { Task {
+                                _ = await appState.performCronAction(.trigger, for: job)
+                                // Not if the sheet closed and another job's opened meanwhile.
+                                if appState.cronRunsJobID == job.id { await appState.loadCronRuns(for: job) }
+                            } } label: {
                                 Label(appState.cronJobActionID == job.id ? AppLocalization.string("Working…") : AppLocalization.string("Run now"), systemImage: "play.fill")
                                     .frame(maxWidth: .infinity)
                                     .foregroundStyle(Color.white)
