@@ -1808,6 +1808,10 @@ struct ProjectCreateSheet: View {
     @State private var madeProjectID: String?
     /// The first folder that project was made with: Save Idea writes there.
     @State private var madeProjectFolder: String?
+    /// The profile it was made in: Save Idea writes through that one.
+    @State private var madeProjectProfile: String?
+    /// And the Hermes it was made on, which Save Idea writes to or not at all.
+    @State private var madeProjectDashboard: UUID?
 
     /// A name or folder another project already has (issue 1661).
     private var clash: String? {
@@ -1837,7 +1841,7 @@ struct ProjectCreateSheet: View {
                     // profile whose projects the list shows, so it shows
                     // there at once (issue 1661).
                     Section {
-                        LabeledContent(AppLocalization.string("Profile"), value: appState.profileDisplayName(appState.activeProfile))
+                        LabeledContent(AppLocalization.string("Profile"), value: appState.profileDisplayName(madeProjectProfile ?? appState.activeProfile))
                     } footer: {
                         Text(AppLocalization.string("New projects go to the profile in use. To make one in another profile, switch to it first."))
                     }
@@ -1932,13 +1936,17 @@ struct ProjectCreateSheet: View {
     private func createProject() async {
         isCreating = true
         if madeProjectID != nil, let folder = madeProjectFolder {
-            let saved = await appState.saveProjectIdea(idea, in: folder)
+            let saved = await appState.saveProjectIdea(idea, in: folder,
+                                                       profile: madeProjectProfile ?? appState.activeProfile,
+                                                       dashboard: madeProjectDashboard)
             isCreating = false
             if saved { dismiss() }
             return
         }
         validationMessage = nil
         let firstFolder = folders.first
+        let profile = appState.activeProfile
+        let dashboard = appState.activeDashboardID
         let outcome = await appState.createProject(name: name, folders: folders, idea: idea)
         isCreating = false
         switch outcome {
@@ -1947,6 +1955,8 @@ struct ProjectCreateSheet: View {
         case .ideaUnsaved(let projectID, let message):
             madeProjectID = projectID
             madeProjectFolder = firstFolder
+            madeProjectProfile = profile
+            madeProjectDashboard = dashboard
             validationMessage = message
         case .failed(let message):
             validationMessage = message ?? AppLocalization.string("Hermes could not create this project.")
