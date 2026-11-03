@@ -3349,7 +3349,7 @@ other) · README.md
 - IDEA.md is checked by a listing, then written by Hermes' own write route: a file another writer puts there between the two is written over. Hermes has no create-only write.
 - The open chat's folder is `runtime.cwd`, which a chat that reports no folder leaves as the last chat's, here as in the Folder tab.
 
-**Checked:** 2026-11-03, #PRNUM.
+**Checked:** 2026-11-03, #1693.
 
 ## Pinned chats order
 
