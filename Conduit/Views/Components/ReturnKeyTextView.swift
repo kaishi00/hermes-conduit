@@ -648,7 +648,9 @@ final class FieldDropHandler: NSObject, UIDropInteractionDelegate, UITextDragDel
     }
 
     func dropInteraction(_ interaction: UIDropInteraction, sessionDidUpdate session: UIDropSession) -> UIDropProposal {
-        UIDropProposal(operation: ownWords(local: session.localDragSession) != nil ? .move : .copy)
+        // A copy even for the field's own words: the field moves them
+        // itself (`perform`), so the drag's source never removes them too.
+        UIDropProposal(operation: .copy)
     }
 
     func dropInteraction(_ interaction: UIDropInteraction, performDrop session: UIDropSession) {
