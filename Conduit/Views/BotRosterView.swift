@@ -79,9 +79,13 @@ struct BotRosterView: View {
         .onChange(of: canStartRoomHere) { _, can in
             if !can { newRoom = [] }
         }
+        .onChange(of: visibleBotNames) { _, _ in
+            let kept = newRoomBots.map(\.name)
+            if kept.count != newRoom.count { newRoom = kept }
+        }
         .sheet(isPresented: $showingNewRoomSheet) {
             GroupCreateSheet(
-                preselected: Set(newRoom),
+                preselected: Set(newRoomBots.map(\.name)),
                 suggestedName: ListFormatter.localizedString(byJoining: newRoomBots.map(\.displayLabel)),
                 onCreated: { newRoom = [] }
             )
@@ -325,8 +329,10 @@ struct BotRosterView: View {
                 actions: actions(for: bot)
             ),
             onOverview: { overviewBot = bot },
-            room: newRoom.isEmpty ? .off : (isInNewRoom(bot.name) ? .member : .notMember),
+            // A hidden bot can't join a room, so its tap still opens its chat.
+            room: newRoom.isEmpty || bot.isHiddenByMeta ? .off : (isInNewRoom(bot.name) ? .member : .notMember),
             onDrop: { dragged, merge in handleDrop(dragged, on: bot, merge: merge) },
+            canMerge: { dragged in canMerge(dragged, with: bot) },
             onToggleRoom: { toggleNewRoom(bot) }
         )
     }
@@ -341,12 +347,23 @@ struct BotRosterView: View {
         newRoom.contains { $0.caseInsensitiveCompare(name) == .orderedSame }
     }
 
+    /// Whether `dragged`, held over `target`'s face, starts a room with it
+    /// (the same test the drop makes).
+    private func canMerge(_ dragged: String, with target: BotProfile) -> Bool {
+        guard canStartRoomHere, !target.isHiddenByMeta,
+              dragged.caseInsensitiveCompare(target.name) != .orderedSame,
+              let draggedBot = appState.shownBotRoster.first(where: {
+                  $0.name.caseInsensitiveCompare(dragged) == .orderedSame
+              }) else { return false }
+        return !draggedBot.isHiddenByMeta
+    }
+
     /// A portrait dropped on another: held over its face, the two start a
     /// room (or the dropped one joins the room being started); else it
     /// moves before it.
     private func handleDrop(_ dragged: String, on target: BotProfile, merge: Bool) {
-        let draggedBot = appState.shownBotRoster.first { $0.name.caseInsensitiveCompare(dragged) == .orderedSame }
-        if merge, canStartRoomHere, !target.isHiddenByMeta, let draggedBot, !draggedBot.isHiddenByMeta {
+        if merge, canMerge(dragged, with: target),
+           let draggedBot = appState.shownBotRoster.first(where: { $0.name.caseInsensitiveCompare(dragged) == .orderedSame }) {
             withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
                 if !isInNewRoom(target.name) { addToNewRoom(target.name) }
                 if !isInNewRoom(draggedBot.name) { addToNewRoom(draggedBot.name) }
@@ -375,12 +392,12 @@ struct BotRosterView: View {
         newRoom.append(name)
     }
 
+    /// Taking a bot out always works; adding one only while it's shown.
     private func toggleNewRoom(_ bot: BotProfile) {
-        guard !bot.isHiddenByMeta else { return }
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
             if isInNewRoom(bot.name) {
                 newRoom.removeAll { $0.caseInsensitiveCompare(bot.name) == .orderedSame }
-            } else {
+            } else if !bot.isHiddenByMeta {
                 addToNewRoom(bot.name)
             }
         }
@@ -390,11 +407,15 @@ struct BotRosterView: View {
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { newRoom = [] }
     }
 
+    /// The room's bots that are still shown and not hidden: a bot hidden or
+    /// deleted meanwhile leaves the room (onChange of visibleBotNames).
     private var newRoomBots: [BotProfile] {
         newRoom.compactMap { name in
-            appState.shownBotRoster.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+            visibleBots.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
         }
     }
+
+    private var visibleBotNames: [String] { visibleBots.map(\.name) }
 
     /// The bar a room being started shows at the bottom: its bots (a tap
     /// takes one out), Cancel, and Create, which opens New Group Chat with

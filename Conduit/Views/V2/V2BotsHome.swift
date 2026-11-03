@@ -118,7 +118,14 @@ struct BotPortraitDrag<Preview: View>: ViewModifier {
 
     func body(content: Content) -> some View {
         if enabled {
-            content.draggable(BotDragPayload.payload(for: name)) { preview() }
+            // onDrag, not draggable: its closure runs as the drag starts,
+            // so the portraits can tell which bot is lifted.
+            content.onDrag {
+                BotDragPayload.lifted = name
+                return NSItemProvider(object: BotDragPayload.payload(for: name) as NSString)
+            } preview: {
+                preview()
+            }
         } else {
             content
         }
@@ -133,6 +140,11 @@ enum BotDragPayload {
     static var mergeDwell: Duration { .milliseconds(500) }
 
     static let prefix = "conduit-bot:"
+
+    /// The bot whose portrait was last picked up, set as its drag starts.
+    /// A drag that's cancelled leaves it set until the next one, which only
+    /// a portrait being targeted reads.
+    static var lifted: String?
 
     static func payload(for name: String) -> String { prefix + name }
 
@@ -198,6 +210,10 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// Another bot dropped on this one: `merge` when it was held over the
     /// face long enough to start (or join) a room, else moved before it.
     var onDrop: ((_ dragged: String, _ merge: Bool) -> Void)?
+    /// Whether the bot being dragged can start a room with this one: never
+    /// with itself, nor when either is hidden or rooms can't start here.
+    /// Without it the face never swells, and a drop only moves.
+    var canMerge: ((_ dragged: String) -> Bool)?
     var onToggleRoom: (() -> Void)?
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2OpenBeside) private var openBeside
@@ -296,8 +312,12 @@ struct BotPortraitCell<MenuContent: View>: View {
     }
 
     private func beginTargeting() {
+        let lifted = BotDragPayload.lifted
+        // Over its own place: nothing to move before or merge with.
+        if let lifted, lifted.caseInsensitiveCompare(bot.name) == .orderedSame { return }
         isTargeted = true
         dwell?.cancel()
+        guard let lifted, canMerge?(lifted) == true else { return }
         dwell = Task { @MainActor in
             try? await Task.sleep(for: BotDragPayload.mergeDwell)
             guard !Task.isCancelled, isTargeted else { return }

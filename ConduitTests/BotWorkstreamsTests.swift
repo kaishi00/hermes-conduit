@@ -585,6 +585,27 @@ extension BotModeTests {
         XCTAssertEqual(BotOrder(names: ["a", "A", "", "b"]).names, ["a", "b"])
     }
 
+    /// The bots' order syncs as `bots.order`: an unset order sends nothing,
+    /// a set one sends its names, and one from another device is saved.
+    @MainActor
+    func testTheBotOrderSyncsAsItsNames() throws {
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let slot = appState.botOrderSlot
+        XCTAssertEqual(slot.key, "bots.order")
+        XCTAssertNil(slot.read())
+        appState.moveBot("atlas", before: "hermes", shown: ["hermes", "atlas"])
+        XCTAssertEqual(slot.read() as? [String], ["atlas", "hermes"])
+        slot.write(["furina", "atlas"])
+        XCTAssertEqual(appState.botOrder.names, ["furina", "atlas"])
+        XCTAssertEqual(defaults.stringArray(forKey: BotOrder.storageKey), ["furina", "atlas"])
+        slot.write(nil)
+        XCTAssertTrue(appState.botOrder.isEmpty)
+        XCTAssertNil(defaults.stringArray(forKey: BotOrder.storageKey))
+    }
+
     /// A dragged portrait carries a marked name, so text dragged in from
     /// another app is never taken for a bot.
     func testABotDragCarriesAMarkedName() {
