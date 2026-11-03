@@ -1401,11 +1401,14 @@ final class VoiceConversationController: ObservableObject {
                 // event belongs to the retired turn and must not end the
                 // window this Stop reopens (#1691). The steer and approval
                 // bookkeeping that terminal would have closed ends here.
+                // A Stop with no turn of this conversation's running still
+                // cancels whatever runs in the chat, without the orphan retry.
+                let turnStillRunning = isAwaitingVoiceAssistant
                 isAwaitingVoiceAssistant = false
                 awaitedAssistantResponseStarted = false
                 endSteerBookkeeping()
                 endApprovalNotice()
-                await cancelRetiredTurn()
+                if turnStillRunning { await cancelRetiredTurn() } else { _ = await interrupt() }
                 guard isCurrent(generation) else { return }
                 playback.stop()
                 await startListening()
