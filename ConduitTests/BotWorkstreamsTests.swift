@@ -678,6 +678,21 @@ extension BotModeTests {
         XCTAssertNil(arm.source(open: "atlas", now: now))
     }
 
+    /// A ring takes the bot's glow color (picked or drawn from its photo),
+    /// else its Hermes color, else its name's hue (build 248).
+    @MainActor
+    func testABotsRingTakesItsGlowColorFirst() {
+        func bot(_ color: String?) -> BotProfile {
+            BotProfile(name: "raiden", botTitle: nil, displayName: "Raiden", profileDescription: "", model: nil,
+                       provider: nil, hasAvatar: true, isPinned: false, isHiddenByMeta: false,
+                       appearanceColor: color, canonicalSession: nil, lastActive: nil, lastPreview: nil)
+        }
+        let glow = ProfileGlowRGB(red: 0.5, green: 0.2, blue: 0.8)
+        XCTAssertEqual(AppState.botColor(bot("#00ff00"), glow: glow), glow.color, "the glow wins")
+        XCTAssertEqual(AppState.botColor(bot("#00ff00"), glow: nil), BotAvatarView.color(for: "#00ff00", name: "raiden"))
+        XCTAssertEqual(AppState.botColor(bot(nil), glow: nil), BotAvatarView.color(for: nil, name: "raiden"), "the name's hue")
+    }
+
     /// A dragged portrait carries a marked name, so text dragged in from
     /// another app is never taken for a bot.
     func testABotDragCarriesAMarkedName() {

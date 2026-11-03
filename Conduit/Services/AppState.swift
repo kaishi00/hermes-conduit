@@ -25218,11 +25218,16 @@ final class AppState: ObservableObject {
     /// waiting on the voice, so it rereads only when the list on hand lacks
     /// the call's chat. Runtime and alias ids are never handed to another
     /// chat, so a row they match is the call's chat.
+    /// A bot's workstream never needs it: Hermes hides it from the list, so
+    /// the read can't find its row and only held the open up for seconds
+    /// (Eric's build 248 test, a secondary bot's work link or card).
     nonisolated static func notificationOpenNeedsAuthoritativeRead(
         target: ConduitNotificationTarget,
         callAnswered: Bool,
-        catalog: [SessionSummary]
+        catalog: [SessionSummary],
+        isWorkstream: Bool = false
     ) -> Bool {
+        if isWorkstream { return false }
         // The route resolves to the payload's durable id first, so that id
         // must be on hand too, or the bot-chat check would miss its row.
         guard callAnswered, target.call != nil, catalogListsSession(target.sessionId, in: catalog) else { return true }
@@ -25537,7 +25542,8 @@ final class AppState: ObservableObject {
         if !Self.notificationOpenNeedsAuthoritativeRead(
             target: target,
             callAnswered: isNativeHermesCallAnswered,
-            catalog: sessions + cronSessions
+            catalog: sessions + cronSessions,
+            isWorkstream: isWorkstreamSession(target.sessionId)
         ) {
             traceStage = "session list (on hand)"
         } else {

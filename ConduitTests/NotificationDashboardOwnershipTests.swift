@@ -716,5 +716,8 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertTrue(needsRead(target("runtime-1", durable: "durable-new", call: call)),
                       "the route resolves to the payload's durable id, so a list without it is read again")
         XCTAssertFalse(needsRead(target("runtime-1", durable: "durable-1", call: call)))
+        XCTAssertFalse(AppState.notificationOpenNeedsAuthoritativeRead(
+            target: target("hidden-work", call: nil), callAnswered: false, catalog: catalog, isWorkstream: true),
+            "a workstream is hidden from the list, so reading it can't find its row")
     }
 }
