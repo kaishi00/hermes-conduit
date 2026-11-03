@@ -417,6 +417,32 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertEqual(events, [.delta(sessionID: "runtime-a", text: "next")])
     }
 
+    /// A cron chat's runtime id is one of its ids too.
+    func testVoiceCancelNotesACronChatsTurnUnderItsOtherId() async {
+        let operations = ChatResumeLifecycleOperations(interrupt: { _, _ in })
+        let state = makeAppState(lifecycleOperations: operations)
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        state.connection = connection
+        state.client = HermesClient(connection: connection, profile: "default")
+        state.cronSessions = [SessionSummary(
+            id: "stored-c", alternateIds: ["runtime-c"], title: "stored-c", model: "Hermes",
+            updatedLabel: "now", profile: "default", source: .chat, isActive: false,
+            isArchived: false, lineageRootId: nil
+        )]
+        state.activeSessionId = "stored-c"
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+        state.runningTurnGenerationLookup = { ["runtime-c": 3][$0] }
+
+        state.handleStreamEvent(.messageStart(sessionId: "runtime-c"))
+        _ = await state.interruptForVoice()
+        events.removeAll()
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-c", text: "straggler"), turnGeneration: 3)
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-c", text: "next"), turnGeneration: 4)
+        XCTAssertEqual(events, [.delta(sessionID: "runtime-c", text: "next")])
+    }
+
     /// Each chat keeps its own note: a cancel in another chat doesn't end it.
     func testVoiceKeepsEachChatsCancelledTurn() {
         let state = makeAppState()

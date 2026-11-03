@@ -846,7 +846,7 @@ final class AppState: ObservableObject {
     @Published private(set) var dashboardTicketBridge: DashboardTicketBridge?
     private var voiceAssistantObservers: [UUID: @MainActor (VoiceAssistantEvent) -> Void] = [:]
     /// The turn Voice cancelled, by its execution generation (see
-    /// `voiceEventAfterCancel`).
+    /// `takeVoiceEventAfterCancel`).
     private var voiceCancelledTurns: [String: Int] = [:]
     /// Which write made each chat's note, so a failed cancel takes back
     /// only its own (`restoreVoiceCancelNote`).
@@ -5358,7 +5358,7 @@ final class AppState: ObservableObject {
         var bufferedEvents: [StreamEvent] = []
         /// The turn each buffered event named (`execution_generation`), in
         /// step with `bufferedEvents`, so a replay is told apart as live
-        /// events are (`voiceEventAfterCancel`).
+        /// events are (`takeVoiceEventAfterCancel`).
         var bufferedGenerations: [Int?] = []
 
         init(
@@ -35232,7 +35232,7 @@ final class AppState: ObservableObject {
     }
 
     /// Applies an event with the turn it named, live or replayed after a
-    /// resume, so Voice tells the turns apart the same way (`voiceEventAfterCancel`).
+    /// resume, so Voice tells the turns apart the same way (`takeVoiceEventAfterCancel`).
     private func applyNumberedStreamEvent(
         _ event: StreamEvent,
         turnGeneration: Int?,
@@ -37294,20 +37294,28 @@ final class AppState: ObservableObject {
 
     /// Any cancel of the open chat's turn (Voice's, the composer's Stop,
     /// /stop, a send that replaces the turn) notes it first, so a Voice
-    /// conversation never hears it again (`voiceEventAfterCancel`).
+    /// conversation never hears it again (`takeVoiceEventAfterCancel`).
     /// Only a turn the chat shows running is cancelled, so only that one is
-    /// noted. The socket may know the chat by any of its ids.
+    /// noted. The socket may know the chat by any of its ids: those its
+    /// listing gives (chats or cron chats) and those a resume admitted, as
+    /// `eventBelongsToActiveSession` takes them.
     private func noteRunningTurnBeforeCancel(in sessionId: String) {
         guard isBusy else { return }
         let client = self.client
         let lookup: (String) -> Int? = runningTurnGenerationLookup ?? { client?.runningTurnGeneration(for: $0) }
-        let summary = sessions.first { $0.id == sessionId || $0.alternateIds.contains(sessionId) }
-        let ids = [sessionId] + (summary.map { [$0.id] + $0.alternateIds } ?? [])
+        func names(_ session: SessionSummary) -> Bool {
+            session.id == sessionId || session.alternateIds.contains(sessionId)
+        }
+        let summary = sessions.first(where: names) ?? cronSessions.first(where: names)
+        var ids = [sessionId] + (summary.map { [$0.id] + $0.alternateIds } ?? [])
+        if let reconciliation, reconciliation.acceptedSessionIDs.contains(sessionId) {
+            ids += reconciliation.acceptedSessionIDs.sorted()
+        }
         guard let generation = ids.compactMap(lookup).max() else { return }
         noteVoiceCancelledTurn(sessionId: sessionId, generation: generation)
     }
 
-    /// Holds that turn's later events back from Voice (`voiceEventAfterCancel`).
+    /// Holds that turn's later events back from Voice (`takeVoiceEventAfterCancel`).
     func noteVoiceCancelledTurn(sessionId: String, generation: Int) {
         voiceCancelledTurns[sessionId] = generation
         lastVoiceCancelNoteWrite += 1
@@ -37349,7 +37357,8 @@ final class AppState: ObservableObject {
     /// What Voice hears of the stream event being handled, given the turn
     /// a cancel noted: nil for that turn's words (or an earlier turn's), by
     /// the execution generation the event names; an event of a later turn
-    /// ends the watch. Such a turn can stream a few words after its cancel,
+    /// ends the watch, clearing the chat's notes (hence "take": call it once
+    /// per event, as `notifyVoiceAssistant` does). Such a turn can stream a few words after its cancel,
     /// and once the next question owns the chat they'd be taken as its
     /// reply (#1696). Events a resume held keep their number for the
     /// replay. An event that reaches Voice belongs to the open chat (its
@@ -37364,7 +37373,7 @@ final class AppState: ObservableObject {
     /// by Voice) is released without speaking or writing the reply the user
     /// stopped, and one already waiting on the next question ignores it
     /// until that question's reply starts. A failure passes as it is.
-    private func voiceEventAfterCancel(_ event: VoiceAssistantEvent) -> VoiceAssistantEvent? {
+    private func takeVoiceEventAfterCancel(_ event: VoiceAssistantEvent) -> VoiceAssistantEvent? {
         switch event {
         case .started, .delta, .interim, .completed: break
         case .failed, .interrupted: return event
@@ -39278,7 +39287,7 @@ final class AppState: ObservableObject {
     }
 
     private func notifyVoiceAssistant(_ event: VoiceAssistantEvent) {
-        guard let heard = voiceEventAfterCancel(event) else { return }
+        guard let heard = takeVoiceEventAfterCancel(event) else { return }
         voiceAssistantObservers.values.forEach { $0(heard) }
     }
 
