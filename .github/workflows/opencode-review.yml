@@ -1,5 +1,7 @@
 name: opencode-review
 on:
+  pull_request:
+    types: [opened, synchronize]
   pull_request_target:
     types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
@@ -14,7 +16,7 @@ concurrency:
   # or any label on an own-branch or trusted contributor's PR, gets one group
   # per run, so it can't cancel anything. The trusted list here and in the
   # plan job's if must match.
-  group: opencode-review-${{ github.event.pull_request.number || github.event.inputs.pr_number }}${{ github.event.action == 'labeled' && (github.event.label.name != 'run-review' || github.event.pull_request.head.repo.full_name == github.repository || contains(fromJSON('["malaiwah"]'), github.event.pull_request.user.login)) && format('-{0}', github.run_id) || '' }}
+  group: opencode-review-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.inputs.pr_number }}${{ github.event.action == 'labeled' && (github.event.label.name != 'run-review' || github.event.pull_request.head.repo.full_name == github.repository || contains(fromJSON('["malaiwah"]'), github.event.pull_request.user.login)) && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 jobs:
