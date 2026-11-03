@@ -461,9 +461,12 @@ struct BotPortraitCell<MenuContent: View>: View {
             return
         }
         finishPending = false
-        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { finishedAt = Date() }
+        let finished = Date()
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { finishedAt = finished }
         Task { @MainActor in
             try? await Task.sleep(for: BotPortraitMotion.finishShown)
+            // A later finish keeps its own check up for its full time.
+            guard finishedAt == finished else { return }
             withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { finishedAt = nil }
         }
     }
@@ -509,6 +512,8 @@ struct BotPortraitCell<MenuContent: View>: View {
 /// closes it.
 struct BotOverviewSheet: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var work: BotWorkStore
     let profile: String
     /// Edit Bot, for a bot that can be edited here; nil hides it.
@@ -587,7 +592,16 @@ struct BotOverviewSheet: View {
         HStack(spacing: 12) {
             Group {
                 if let bot {
+                    // The same life as its portrait on Bots Home.
                     BotMonogramView(bot: bot, size: 52)
+                        .modifier(BotPortraitMotion(
+                            status: showsWork ? .of(work.snapshot(profile)) : .idle,
+                            color: BotAvatarView.color(for: bot.appearanceColor, name: bot.name),
+                            highlighted: false,
+                            animates: scenePhase == .active && !reduceMotion
+                                && !ProcessInfo.processInfo.isLowPowerModeEnabled,
+                            finishedAt: nil
+                        ))
                 } else {
                     ProfileAvatarView(profile: profile, displayName: botName,
                                       url: appState.profileAvatarURL(for: profile), size: 52)
