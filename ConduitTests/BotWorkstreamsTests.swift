@@ -688,6 +688,9 @@ extension BotModeTests {
         XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: working, profile: "furina")), .working(2))
         var quiet = workResponse()
         quiet["counts"] = ["working": 0, "needs_you": 0, "ready": 1]
+        // Nothing going on but its unanswered ask of Nahida.
+        XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: quiet, profile: "furina")), .waitingOn("Nahida"))
+        quiet["items"] = []
         XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: quiet, profile: "furina")), .idle)
         var off = workResponse()
         off["policy"] = "off"
