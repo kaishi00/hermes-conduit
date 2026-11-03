@@ -845,6 +845,17 @@ final class AppState: ObservableObject {
     @Published private(set) var appIconChoice: AppIconChoice
     @Published private(set) var dashboardTicketBridge: DashboardTicketBridge?
     private var voiceAssistantObservers: [UUID: @MainActor (VoiceAssistantEvent) -> Void] = [:]
+    /// The turn Voice cancelled, by its execution generation (see
+    /// `takeVoiceEventAfterCancel`).
+    private var voiceCancelledTurns: [String: Int] = [:]
+    /// Which write made each chat's note, so a failed cancel takes back
+    /// only its own (`restoreVoiceCancelNote`).
+    private var voiceCancelNoteWrites: [String: Int] = [:]
+    private var lastVoiceCancelNoteWrite = 0
+    /// The execution generation the stream event being handled names.
+    private var handledStreamEventGeneration: Int?
+    /// Tests stand in for the client's `runningTurnGeneration(for:)`.
+    var runningTurnGenerationLookup: ((String) -> Int?)?
 
     // MARK: - Session
 
@@ -4850,7 +4861,21 @@ final class AppState: ObservableObject {
             cancel: { [weak self] sessionID in
                 guard let self else { throw HermesError.notConnected }
                 let client = try await self.clientForVoiceRequest()
-                try await client.cancel(sessionID, profile: self.presentationProfile(for: sessionID))
+                // A job in the open chat: its turn is noted as any cancel there is.
+                let open = self.activeSessionId.flatMap { self.eventBelongsToActiveSession(sessionID) ? $0 : nil }
+                let noteBeforeCancel = open.map { self.voiceCancelNote(in: $0) }
+                let wasRunning = self.isBusy
+                if let open { self.noteRunningTurnBeforeCancel(in: open) }
+                let noteWrite = open.flatMap { self.voiceCancelNoteWrites[$0] }
+                do {
+                    let stopped = try await client.cancel(sessionID, profile: self.presentationProfile(for: sessionID))
+                    if let open { self.noteVoiceStoppedTurn(sessionId: open, generation: stopped, wasRunning: wasRunning, ifStill: noteWrite) }
+                } catch {
+                    if let open, let noteBeforeCancel {
+                        self.restoreVoiceCancelNote(in: open, to: noteBeforeCancel, ifStill: noteWrite)
+                    }
+                    throw error
+                }
             },
             liveSessions: { [weak self] targetProfile in
                 guard let self else { throw HermesError.notConnected }
@@ -5331,6 +5356,10 @@ final class AppState: ObservableObject {
         let streamTextAtBoundary: String?
         let streamSessionIDAtBoundary: String?
         var bufferedEvents: [StreamEvent] = []
+        /// The turn each buffered event named (`execution_generation`), in
+        /// step with `bufferedEvents`, so a replay is told apart as live
+        /// events are (`takeVoiceEventAfterCancel`).
+        var bufferedGenerations: [Int?] = []
 
         init(
             token: UUID,
@@ -5341,7 +5370,8 @@ final class AppState: ObservableObject {
             acceptsAnySession: Bool = false,
             streamTextAtBoundary: String? = nil,
             streamSessionIDAtBoundary: String? = nil,
-            bufferedEvents: [StreamEvent] = []
+            bufferedEvents: [StreamEvent] = [],
+            bufferedGenerations: [Int?] = []
         ) {
             self.token = token
             self.requestedSessionId = requestedSessionId
@@ -5352,6 +5382,15 @@ final class AppState: ObservableObject {
             self.streamTextAtBoundary = streamTextAtBoundary
             self.streamSessionIDAtBoundary = streamSessionIDAtBoundary
             self.bufferedEvents = bufferedEvents
+            self.bufferedGenerations = bufferedGenerations
+        }
+
+        /// Each buffered event with the turn it named (nil when none).
+        var bufferedEntries: [(event: StreamEvent, generation: Int?)] {
+            let generations = bufferedGenerations.count == bufferedEvents.count
+                ? bufferedGenerations
+                : Array(repeating: nil, count: bufferedEvents.count)
+            return zip(bufferedEvents, generations).map { (event: $0, generation: $1) }
         }
 
         func accepts(_ sessionId: String) -> Bool {
@@ -15419,10 +15458,12 @@ final class AppState: ObservableObject {
         client.setKeepaliveBackgrounded(!isSceneActive && hasEnteredBackgroundScenePhase)
         let epoch = UUID()
         activeClientEpoch = epoch
-        client.onEvent = { [weak self] event in
+        client.onEvent = { [weak self, weak client] event in
+            // Read while the client delivers this event: the turn it names.
+            let turnGeneration = client?.deliveringEventGeneration
             Task { @MainActor in
                 guard let self, self.activeClientEpoch == epoch else { return }
-                self.handleStreamEvent(event)
+                self.handleStreamEvent(event, turnGeneration: turnGeneration)
             }
         }
         client.onDisconnected = { [weak self] in
@@ -16992,6 +17033,7 @@ final class AppState: ObservableObject {
     func beginReconciliation() -> UUID {
         let token = UUID()
         let bufferedEvents = reconciliation?.bufferedEvents ?? []
+        let bufferedGenerations = reconciliation?.bufferedGenerations ?? []
         let streamTextAtBoundary: String?
         let streamSessionIDAtBoundary: String?
         if let existingReconciliation = reconciliation {
@@ -17008,7 +17050,8 @@ final class AppState: ObservableObject {
             acceptsAnySession: true,
             streamTextAtBoundary: streamTextAtBoundary,
             streamSessionIDAtBoundary: streamSessionIDAtBoundary,
-            bufferedEvents: bufferedEvents
+            bufferedEvents: bufferedEvents,
+            bufferedGenerations: bufferedGenerations
         )
         refreshActiveChatScrollSessionIdentity(isReconciling: true)
         return token
@@ -17241,6 +17284,7 @@ final class AppState: ObservableObject {
             ?? botScopeProfile(forSessionIDs: [sessionId], workspaceProfile: profile)
         let priorReconciliation = reconciliation?.token == token ? reconciliation : nil
         let bufferedEvents = priorReconciliation?.bufferedEvents ?? []
+        let bufferedGenerations = priorReconciliation?.bufferedGenerations ?? []
         reconciliation = Reconciliation(
             token: token,
             requestedSessionId: sessionId,
@@ -17248,7 +17292,8 @@ final class AppState: ObservableObject {
             acceptedSessionIDs: acceptedSessionIDs.union([sessionId]),
             streamTextAtBoundary: priorReconciliation?.streamTextAtBoundary,
             streamSessionIDAtBoundary: priorReconciliation?.streamSessionIDAtBoundary,
-            bufferedEvents: bufferedEvents
+            bufferedEvents: bufferedEvents,
+            bufferedGenerations: bufferedGenerations
         )
         // Any previously held durable anchors belong to a different reconcile
         // transaction; they are re-adopted below only from a transcript this
@@ -17707,11 +17752,13 @@ final class AppState: ObservableObject {
                 return false
             }
 
-            var bufferedEvents = reconciliation?.token == token
-                ? (reconciliation?.bufferedEvents ?? []).filter {
-                    reconciliation?.accepts(sessionID(for: $0)) == true
+            let bufferedEntries = reconciliation?.token == token
+                ? (reconciliation?.bufferedEntries ?? []).filter {
+                    reconciliation?.accepts(sessionID(for: $0.event)) == true
                 }
                 : []
+            var bufferedEvents = bufferedEntries.map { $0.event }
+            var bufferedGenerations = bufferedEntries.map { $0.generation }
             if result.snapshot.hasLiveProjection {
                 let resumedInflightText = streamingBuffer
                 let boundary = reconciliation?.token == token ? reconciliation : nil
@@ -17762,7 +17809,7 @@ final class AppState: ObservableObject {
                 // projection, which already includes deltas emitted while this
                 // reconciliation was in flight. Replay only the portion beyond
                 // the normalized text captured at the same session boundary.
-                bufferedEvents = Self.deduplicatingBufferedEvents(
+                let deduplicated = Self.deduplicatingBufferedEvents(
                     bufferedEvents,
                     againstInflight: resumedInflightText,
                     knownPrefix: knownPrefix,
@@ -17773,15 +17820,20 @@ final class AppState: ObservableObject {
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                         .isEmpty == false
                 )
+                bufferedGenerations = Self.generations(
+                    bufferedGenerations, of: bufferedEvents, keptIn: deduplicated
+                )
+                bufferedEvents = deduplicated
             }
             let bufferedYoloAuthority = reconcileExplicitYolo ? result.snapshot.yolo : nil
             // The approval mode is profile-scoped and independent of the
             // per-session YOLO write gate: a user toggle during the resume must
             // not let a stale buffered event re-impose an outdated floor.
             let bufferedApprovalsModeAuthority = result.snapshot.approvalsMode
-            bufferedEvents.forEach { event in
-                applyStreamEvent(
+            zip(bufferedEvents, bufferedGenerations).forEach { event, generation in
+                applyNumberedStreamEvent(
                     event,
+                    turnGeneration: generation,
                     authoritativeYolo: bufferedYoloAuthority,
                     authoritativeApprovalsMode: bufferedApprovalsModeAuthority
                 )
@@ -18632,6 +18684,30 @@ final class AppState: ObservableObject {
         return String(
             normalizedUnpersistedSnapshot.dropFirst(normalizedUnpersistedBoundary.count)
         )
+    }
+
+    /// The generations of the events `deduplicatingBufferedEvents` kept,
+    /// which drops only the earliest deltas (and may trim the next one in
+    /// place), so the rest keep their slots.
+    nonisolated static func generations(
+        _ generations: [Int?],
+        of events: [StreamEvent],
+        keptIn deduplicated: [StreamEvent]
+    ) -> [Int?] {
+        guard generations.count == events.count else {
+            return Array(repeating: nil, count: deduplicated.count)
+        }
+        var dropped = events.count - deduplicated.count
+        var kept: [Int?] = []
+        kept.reserveCapacity(deduplicated.count)
+        for (event, generation) in zip(events, generations) {
+            if dropped > 0, case .messageDelta = event {
+                dropped -= 1
+                continue
+            }
+            kept.append(generation)
+        }
+        return kept
     }
 
     nonisolated static func deduplicatingBufferedEvents(
@@ -20763,8 +20839,8 @@ final class AppState: ObservableObject {
         setRunning(true)
         turnStateIsStale = false
         // Newer live edges win over the snapshot.
-        let bufferedEvents = reconciliation?.bufferedEvents ?? []
-        bufferedEvents.forEach { applyStreamEvent($0) }
+        let bufferedEntries = reconciliation?.bufferedEntries ?? []
+        bufferedEntries.forEach { applyNumberedStreamEvent($0.event, turnGeneration: $0.generation) }
         _ = settleReconciliationAndPublish(token, automaticWorkToken: automaticWorkToken)
     }
 
@@ -20779,8 +20855,8 @@ final class AppState: ObservableObject {
         automaticWorkToken: ChatResumeAutomaticWorkToken?
     ) {
         guard token == reconciliationToken else { return }
-        let bufferedEvents = reconciliation?.bufferedEvents ?? []
-        bufferedEvents.forEach { applyStreamEvent($0) }
+        let bufferedEntries = reconciliation?.bufferedEntries ?? []
+        bufferedEntries.forEach { applyNumberedStreamEvent($0.event, turnGeneration: $0.generation) }
         _ = settleReconciliationAndPublish(token, automaticWorkToken: automaticWorkToken)
     }
 
@@ -30360,17 +30436,24 @@ final class AppState: ObservableObject {
             return false
         }
         guard let client, let sessionId = currentContext.sessionID else { return false }
+        let noteBeforeCancel = voiceCancelNote(in: sessionId)
+        let wasRunning = isBusy
+        noteRunningTurnBeforeCancel(in: sessionId)
+        let noteWrite = voiceCancelNoteWrites[sessionId]
         cancelChatResumeRestoration()
         turnState = .synchronizing
         do {
             if let interrupt = chatResumeLifecycleOperations.interrupt {
                 try await interrupt(client, sessionId)
             } else {
-                try await client.cancel(sessionId, profile: presentationProfile(for: sessionId))
+                let stopped = try await client.cancel(sessionId, profile: presentationProfile(for: sessionId))
+                noteVoiceStoppedTurn(sessionId: sessionId, generation: stopped, wasRunning: wasRunning, ifStill: noteWrite)
             }
             guard isCurrentOrAliasedComposerSubmission(currentContext) else { return false }
             return true
         } catch {
+            // The turn wasn't stopped, so Voice may still hear it.
+            restoreVoiceCancelNote(in: sessionId, to: noteBeforeCancel, ifStill: noteWrite)
             guard isCurrentOrAliasedComposerSubmission(currentContext) else { return false }
             errorMessage = AppLocalization.string("Could not interrupt the active response: \(UserFacingError.message(for: error))")
             await recoverComposerSubmission(using: currentContext)
@@ -35116,7 +35199,9 @@ final class AppState: ObservableObject {
 
     // MARK: - Stream event handling
 
-    func handleStreamEvent(_ event: StreamEvent) {
+    /// `turnGeneration`: the execution generation the event names, when
+    /// the server numbers turns.
+    func handleStreamEvent(_ event: StreamEvent, turnGeneration: Int? = nil) {
         // A step summary's answer is never a /btw reply, in any chat.
         if takeStepSummaryAnswer(event) { return }
         // Voice background jobs are not the active conversation, so they
@@ -35158,8 +35243,25 @@ final class AppState: ObservableObject {
             break
         }
         releaseServerCompactionClaimOnAgentOutput(event)
-        if bufferIfReconciling(event) { return }
-        applyStreamEvent(event)
+        if bufferIfReconciling(event, turnGeneration: turnGeneration) { return }
+        applyNumberedStreamEvent(event, turnGeneration: turnGeneration)
+    }
+
+    /// Applies an event with the turn it named, live or replayed after a
+    /// resume, so Voice tells the turns apart the same way (`takeVoiceEventAfterCancel`).
+    private func applyNumberedStreamEvent(
+        _ event: StreamEvent,
+        turnGeneration: Int?,
+        authoritativeYolo: Bool? = nil,
+        authoritativeApprovalsMode: String? = nil
+    ) {
+        handledStreamEventGeneration = turnGeneration
+        defer { handledStreamEventGeneration = nil }
+        applyStreamEvent(
+            event,
+            authoritativeYolo: authoritativeYolo,
+            authoritativeApprovalsMode: authoritativeApprovalsMode
+        )
     }
 
     /// Gateway compression lifecycle edges (`status.update`):
@@ -35396,14 +35498,18 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func bufferIfReconciling(_ event: StreamEvent) -> Bool {
+    private func bufferIfReconciling(_ event: StreamEvent, turnGeneration: Int?) -> Bool {
         guard var reconciliation else { return false }
         guard reconciliation.accepts(sessionID(for: event)) else { return false }
         if case .sideAgentComplete = event {
             heldSideAgentCompletions.append(event)
             return true
         }
+        if reconciliation.bufferedGenerations.count != reconciliation.bufferedEvents.count {
+            reconciliation.bufferedGenerations = Array(repeating: nil, count: reconciliation.bufferedEvents.count)
+        }
         reconciliation.bufferedEvents.append(event)
+        reconciliation.bufferedGenerations.append(turnGeneration)
         self.reconciliation = reconciliation
         return true
     }
@@ -37202,6 +37308,113 @@ final class AppState: ObservableObject {
         await cancelCurrent()
     }
 
+    /// Any cancel of the open chat's turn (Voice's, the composer's Stop,
+    /// /stop, a send that replaces the turn) notes it first, so a Voice
+    /// conversation never hears it again (`takeVoiceEventAfterCancel`).
+    /// Only a turn the chat shows running is cancelled, so only that one is
+    /// noted. The socket may know the chat by any of its ids: those its
+    /// listing gives (chats or cron chats) and those a resume admitted, as
+    /// `eventBelongsToActiveSession` takes them.
+    private func noteRunningTurnBeforeCancel(in sessionId: String) {
+        guard isBusy else { return }
+        let client = self.client
+        let lookup: (String) -> Int? = runningTurnGenerationLookup ?? { client?.runningTurnGeneration(for: $0) }
+        func names(_ session: SessionSummary) -> Bool {
+            session.id == sessionId || session.alternateIds.contains(sessionId)
+        }
+        let summary = sessions.first(where: names) ?? cronSessions.first(where: names)
+        var ids = [sessionId] + (summary.map { [$0.id] + $0.alternateIds } ?? [])
+        if let reconciliation, reconciliation.acceptedSessionIDs.contains(sessionId) {
+            ids += reconciliation.acceptedSessionIDs.sorted()
+        }
+        guard let generation = ids.compactMap(lookup).max() else { return }
+        noteVoiceCancelledTurn(sessionId: sessionId, generation: generation)
+    }
+
+    /// Holds that turn's later events back from Voice (`takeVoiceEventAfterCancel`).
+    func noteVoiceCancelledTurn(sessionId: String, generation: Int) {
+        voiceCancelledTurns[sessionId] = generation
+        lastVoiceCancelNoteWrite += 1
+        voiceCancelNoteWrites[sessionId] = lastVoiceCancelNoteWrite
+    }
+
+    /// A chat's note and the write that made it, as a cancel found them.
+    struct VoiceCancelNote: Equatable {
+        let generation: Int?
+        let write: Int?
+    }
+
+    func voiceCancelNote(in sessionId: String) -> VoiceCancelNote {
+        VoiceCancelNote(generation: voiceCancelledTurns[sessionId], write: voiceCancelNoteWrites[sessionId])
+    }
+
+    /// A cancel that failed puts back the note it found, since that turn
+    /// still runs, but only while the note is still the one it left
+    /// (`write`, the write that stood after it noted): another cancel of
+    /// the chat that noted meanwhile keeps its note, even one naming the
+    /// same turn.
+    func restoreVoiceCancelNote(in sessionId: String, to note: VoiceCancelNote, ifStill write: Int?) {
+        guard voiceCancelNoteWrites[sessionId] == write else { return }
+        voiceCancelledTurns[sessionId] = note.generation
+        voiceCancelNoteWrites[sessionId] = note.write
+    }
+
+    /// The turn a cancel actually stopped. A stale generation makes the
+    /// cancel read the chat again and stop the turn Hermes names there:
+    /// newer than the one noted before it, lower when this socket's number
+    /// was too high (a stale refusal corrects it), or the only one known
+    /// when this socket never saw it start. The note becomes that turn, so
+    /// its words stay held and the next turn's are not.
+    /// `wasRunning`: whether the chat showed a turn running before the
+    /// cancel; a chat that wasn't notes nothing. `write`: the chat's note as
+    /// this cancel left it; one another cancel wrote meanwhile is theirs.
+    func noteVoiceStoppedTurn(sessionId: String, generation: Int?, wasRunning: Bool, ifStill write: Int?) {
+        guard wasRunning, let generation, voiceCancelNoteWrites[sessionId] == write,
+              generation != voiceCancelledTurns[sessionId] else { return }
+        noteVoiceCancelledTurn(sessionId: sessionId, generation: generation)
+    }
+
+    /// What Voice hears of the stream event being handled, given the turn
+    /// a cancel noted: nil for that turn's words (or an earlier turn's), by
+    /// the execution generation the event names; an event of a later turn
+    /// ends the watch, clearing the chat's notes (hence "take": call it once
+    /// per event, as `notifyVoiceAssistant` does). Such a turn can stream a few words after its cancel,
+    /// and once the next question owns the chat they'd be taken as its
+    /// reply (#1696). Events a resume held keep their number for the
+    /// replay. An event that reaches Voice belongs to the open chat (its
+    /// aliases included), so the watch holds while that chat is open, under
+    /// whichever id it now goes by; each chat keeps its own note, so a
+    /// cancel elsewhere doesn't end it. Only the session authority numbers
+    /// turns, so on `hermes dashboard` nothing is noted or held.
+    ///
+    /// The words are held (`.started`, `.delta`, `.interim`), and the
+    /// turn's end (its completion, failure or interruption) reaches Voice
+    /// as an end with no words: a conversation still waiting on it (stopped from the chat, not by
+    /// Voice) finishes what it already said and listens again, as after any
+    /// reply, without speaking or writing the rest the user stopped; one
+    /// already waiting on the next question ignores it until that
+    /// question's reply starts, so the stopped turn never fails or ends
+    /// that wait.
+    private func takeVoiceEventAfterCancel(_ event: VoiceAssistantEvent) -> VoiceAssistantEvent? {
+        guard let generation = handledStreamEventGeneration else { return event }
+        // The open chat can hold a note under each of its ids (Voice's
+        // cancel names the open chat, the composer's its runtime id): the
+        // newest one counts, and a later turn ends them all.
+        let notes = voiceCancelledTurns.filter { $0.key == activeSessionId || eventBelongsToActiveSession($0.key) }
+        guard let cancelled = notes.values.max() else { return event }
+        guard generation <= cancelled else {
+            notes.keys.forEach {
+                voiceCancelledTurns[$0] = nil
+                voiceCancelNoteWrites[$0] = nil
+            }
+            return event
+        }
+        switch event {
+        case .completed, .failed, .interrupted: return .completed(sessionID: event.sessionID, content: nil)
+        default: return nil
+        }
+    }
+
     /// Who speaks Classic voice replies for the active profile.
     var voiceSpeechOutput: VoiceSpeechOutput {
         .resolved(chosen: voiceSpeechOutputChoice, snapshot: voiceCapabilitySnapshot)
@@ -37951,7 +38164,7 @@ final class AppState: ObservableObject {
                 errorMessage = AppLocalization.string("Stop the current response before starting voice in this conversation.")
                 return .failed(AppLocalization.string("Stop the current response before starting voice in this conversation."))
             }
-            await cancelCurrent()
+            _ = await interruptForVoice()
             guard widgetLease?.isCurrent != false else { return .deferred }
         }
         await refreshVoiceCapabilities()
@@ -39094,7 +39307,8 @@ final class AppState: ObservableObject {
     }
 
     private func notifyVoiceAssistant(_ event: VoiceAssistantEvent) {
-        voiceAssistantObservers.values.forEach { $0(event) }
+        guard let heard = takeVoiceEventAfterCancel(event) else { return }
+        voiceAssistantObservers.values.forEach { $0(heard) }
     }
 
     private func scheduleStreamingPublish() {

@@ -1054,6 +1054,62 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.appState.activeChatScrollSessionIdentity.canonicalSessionID, "stored-a")
     }
 
+    /// Events a resume held keep the turn they named for the replay, so a
+    /// turn Voice cancelled stays unheard and the next one is heard (#1696).
+    func testResumeReplayKeepsEachHeldEventsTurnForVoice() async {
+        let openGate = ControlledSuspension()
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("unrelated"), self.session("stored-a")] },
+            openSession: { _, _, _ in
+                await openGate.suspend()
+                return SessionResumeResult(sessionId: "runtime-a", messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            refreshContext: { _, _ in }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"), profile: "default")
+        harness.appState.sessions = [self.session("stored-a", alternateIDs: ["runtime-a"])]
+        harness.appState.activeSessionId = "runtime-a"
+        var events: [VoiceAssistantEvent] = []
+        let observer = harness.appState.addVoiceAssistantObserver { events.append($0) }
+        defer { harness.appState.removeVoiceAssistantObserver(observer) }
+        harness.appState.noteVoiceCancelledTurn(sessionId: "runtime-a", generation: 4)
+
+        let sync = Task { @MainActor in
+            await harness.appState.syncSession()
+        }
+        await openGate.waitUntilSuspended()
+        harness.appState.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "straggler"), turnGeneration: 4)
+        harness.appState.handleStreamEvent(.messageStart(sessionId: "runtime-a"), turnGeneration: 5)
+        harness.appState.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "answer"), turnGeneration: 5)
+        XCTAssertEqual(events, [], "Held while the resume runs")
+        openGate.resume()
+        await sync.value
+
+        XCTAssertEqual(events, [
+            .started(sessionID: "runtime-a"),
+            .delta(sessionID: "runtime-a", text: "answer")
+        ])
+    }
+
+    func testDeduplicatedResumeEventsKeepTheirTurns() {
+        let events: [StreamEvent] = [
+            .messageDelta(sessionId: "a", text: "one"),
+            .messageDelta(sessionId: "a", text: "two"),
+            .messageStart(sessionId: "a"),
+            .messageDelta(sessionId: "a", text: "three")
+        ]
+        let kept: [StreamEvent] = [
+            .messageDelta(sessionId: "a", text: "o"),
+            .messageStart(sessionId: "a"),
+            .messageDelta(sessionId: "a", text: "three")
+        ]
+        XCTAssertEqual(AppState.generations([4, 4, 5, 5], of: events, keptIn: kept), [4, 5, 5])
+        XCTAssertEqual(AppState.generations([4], of: events, keptIn: kept), [nil, nil, nil],
+                       "Out of step: no turn is claimed")
+    }
+
     func testFailedPreserveCurrentRecoveryKeepsApprovalAnnouncedDuringResume() async {
         // Hermes announces an approval once (`approval.request`) and never
         // re-sends it. When it lands while a preserve-current resume is in

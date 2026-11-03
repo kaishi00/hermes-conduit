@@ -642,6 +642,14 @@ enum VoiceAssistantEvent: Equatable {
     case completed(sessionID: String, content: String?, alreadyShown: Bool = false)
     case failed(sessionID: String, message: String)
     case interrupted(sessionID: String)
+
+    var sessionID: String {
+        switch self {
+        case let .started(sessionID), let .delta(sessionID, _), let .interim(sessionID, _, _),
+             let .completed(sessionID, _, _), let .failed(sessionID, _), let .interrupted(sessionID):
+            return sessionID
+        }
+    }
 }
 
 struct VoiceConversationTranscriptEntry: Identifiable, Equatable {

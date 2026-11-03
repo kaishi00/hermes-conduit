@@ -1518,6 +1518,24 @@ final class VoiceConversationControllerTests: XCTestCase {
         controller.stop()
     }
 
+    /// A turn the chat stopped reaches Voice as an end with no words
+    /// (issue 1691): the conversation listens again, speaks nothing and
+    /// writes no reply.
+    func testEndWithNoWordsRelistensWithoutSpeaking() async {
+        let gateway = MockGateway(transcript: "Question")
+        let submitted = SubmitSpy()
+        let controller = makeSteerController(
+            gateway: gateway, submitted: submitted, steers: SubmitSpy(), interrupts: AwaitableCounter()
+        )
+        await driveToThinking(controller, submitted: submitted)
+        controller.receiveAssistantEvent(.completed(sessionID: "session", content: nil))
+        let listening = await controller.waitForState(.listening)
+        XCTAssertTrue(listening, "the conversation listens again after an end with no words")
+        XCTAssertEqual(gateway.openCount, 0)
+        XCTAssertFalse(controller.conversationTranscript.contains { $0.speaker == .assistant })
+        controller.stop()
+    }
+
     func testAssistantDeltasStayInOnePersistentSpeechStream() async {
         let gateway = MockGateway()
         let capture = MockCapture(permissionGranted: true)

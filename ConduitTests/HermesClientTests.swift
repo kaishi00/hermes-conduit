@@ -2077,6 +2077,97 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testCancelNamesTheTurnItStopped() async throws {
+        let (client, socket) = try await authorityClient()
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "message.start", "session_id": "sess-1", "execution_generation": 5]
+        ], to: socket)
+        var count = socket.sentTexts.count
+        var stop = Task<Int?, Error> { try await client.cancel("sess-1") }
+        let first = try await answerRequest(on: socket, after: count, method: "session.interrupt", result: [:])
+        XCTAssertEqual(first["execution_generation"] as? Int, 5)
+        let stopped = try await awaitResult(of: stop, "the interrupt")
+        XCTAssertEqual(stopped, 5)
+
+        // A turn this socket never saw start: the stale refusal reads the
+        // chat again, and the cancel names the turn it stopped there.
+        count = socket.sentTexts.count
+        stop = Task<Int?, Error> { try await client.cancel("sess-1") }
+        try await answerRequest(on: socket, after: count, method: "session.interrupt", error: [
+            "code": 4001, "message": "stale_generation", "data": ["reason": "stale_generation"]
+        ])
+        try await answerRequest(on: socket, after: count + 1, method: "session.resume", result: [
+            "session_id": "sess-1", "running": true, "execution_generation": 9, "revision": 3
+        ])
+        let retried = try await answerRequest(on: socket, after: count + 2, method: "session.interrupt", result: [:])
+        XCTAssertEqual(retried["execution_generation"] as? Int, 9)
+        let restopped = try await awaitResult(of: stop, "the second interrupt")
+        XCTAssertEqual(restopped, 9)
+
+        // No turn runs after all: nothing was stopped, so no turn is named.
+        count = socket.sentTexts.count
+        stop = Task<Int?, Error> { try await client.cancel("sess-1") }
+        try await answerRequest(on: socket, after: count, method: "session.interrupt", error: [
+            "code": 4001, "message": "stale_generation", "data": ["reason": "stale_generation"]
+        ])
+        try await answerRequest(on: socket, after: count + 1, method: "session.resume", result: [
+            "session_id": "sess-1", "running": false, "execution_generation": 9
+        ])
+        let none = try await awaitResult(of: stop, "the interrupt with nothing to stop")
+        XCTAssertNil(none)
+
+        // A turn that starts while the interrupt is in flight still runs:
+        // the interrupt stopped the one before it.
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "message.start", "session_id": "sess-1", "execution_generation": 11]
+        ], to: socket)
+        count = socket.sentTexts.count
+        stop = Task<Int?, Error> { try await client.cancel("sess-1") }
+        await waitForSends(count + 1, on: socket)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "message.start", "session_id": "sess-1", "execution_generation": 12]
+        ], to: socket)
+        let named = try await answerRequest(on: socket, after: count, method: "session.interrupt", result: [:])
+        XCTAssertEqual(named["execution_generation"] as? Int, 11)
+        let overtaken = try await awaitResult(of: stop, "the interrupt a newer turn overtook")
+        XCTAssertEqual(overtaken, 11)
+        XCTAssertEqual(client.runningTurnGeneration(for: "sess-1"), 12, "The newer turn still reads as running")
+        client.disconnect()
+    }
+
+    func testEventsNameTheirTurnWhileDeliveredAndTheRunningTurnIsKnown() async throws {
+        let (client, socket) = try await authorityClient()
+        var seen: [Int?] = []
+        client.onEvent = { [weak client] _ in seen.append(client?.deliveringEventGeneration) }
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "message.start", "session_id": "sess-1", "execution_generation": 5]
+        ], to: socket)
+        XCTAssertEqual(seen, [5])
+        XCTAssertNil(client.deliveringEventGeneration, "Only while the event is delivered")
+        XCTAssertEqual(client.runningTurnGeneration(for: "sess-1"), 5)
+        XCTAssertNil(client.runningTurnGeneration(for: "sess-2"))
+
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "message.delta", "session_id": "sess-1", "execution_generation": 5,
+                       "payload": ["text": "hi"]]
+        ], to: socket)
+        XCTAssertEqual(seen, [5, 5])
+        XCTAssertEqual(client.runningTurnGeneration(for: "sess-1"), 5, "A delta leaves the turn running")
+
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "message.complete", "session_id": "sess-1", "execution_generation": 5,
+                       "payload": ["text": "done"]]
+        ], to: socket)
+        XCTAssertNil(client.runningTurnGeneration(for: "sess-1"), "No turn runs after its end")
+        client.disconnect()
+    }
+
     func testAuthorityAnswersNameThePromptAndTheTurnThatAsked() async throws {
         let (client, socket) = try await authorityClient()
         try await deliverFrame([
