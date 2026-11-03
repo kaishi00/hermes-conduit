@@ -541,6 +541,26 @@ final class ComposerPasteTextViewTests: XCTestCase {
         await waitForText("dropped words", in: view)
     }
 
+    func testWordsDraggedWithinAFieldMoveThere() {
+        // "one two three": "two " (4...8) dragged to the end and to the start.
+        let source = NSRange(location: 4, length: 4)
+        XCTAssertEqual(ReturnKeyTextView.wordsMove(source: source, dropOffset: 13, length: 13)?.insertOffset, 9)
+        XCTAssertEqual(ReturnKeyTextView.wordsMove(source: source, dropOffset: 0, length: 13)?.insertOffset, 0)
+        XCTAssertNil(ReturnKeyTextView.wordsMove(source: source, dropOffset: 6, length: 13), "A drop inside the words leaves them")
+        XCTAssertNil(ReturnKeyTextView.wordsMove(source: NSRange(location: 10, length: 8), dropOffset: 0, length: 13))
+
+        let view = ReturnKeyTextView()
+        view.frame = CGRect(x: 0, y: 0, width: 320, height: 44)
+        view.isEditable = true
+        view.text = "one two three"
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 200))
+        window.addSubview(view)
+        defer { view.removeFromSuperview() }
+        let end = view.caretRect(for: view.endOfDocument).origin
+        view.moveDraggedWords(from: source, to: CGPoint(x: end.x + 1, y: end.y + 1))
+        XCTAssertEqual(view.text, "one threetwo ")
+    }
+
     private func waitForText(_ expected: String, in view: UITextView) async {
         let inserted = expectation(description: "words in the field")
         let deadline = Date().addingTimeInterval(3.0)

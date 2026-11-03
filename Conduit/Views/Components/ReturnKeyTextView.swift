@@ -93,6 +93,7 @@ class ReturnKeyTextView: UITextView {
     private func installFieldDrop() {
         fieldDropHandler.field = self
         textDropDelegate = nil
+        textDragDelegate = fieldDropHandler
         for case let drop as UIDropInteraction in interactions where drop.delegate !== fieldDropHandler {
             removeInteraction(drop)
         }
@@ -135,6 +136,36 @@ class ReturnKeyTextView: UITextView {
             if let target { self.selectedTextRange = target }
             self.insertText(text)
         }
+    }
+
+    /// Words dragged within the field move there, as UIKit's own text drop
+    /// moved them: the dragged range leaves and goes in at the drop point.
+    /// A drop inside the dragged range leaves the text as it was.
+    func moveDraggedWords(from source: NSRange, to point: CGPoint) {
+        guard isEditable,
+              let position = closestPosition(to: point),
+              let move = Self.wordsMove(
+                source: source,
+                dropOffset: offset(from: beginningOfDocument, to: position),
+                length: (text as NSString).length
+              ) else { return }
+        let moved = (text as NSString).substring(with: source)
+        if !isFirstResponder { _ = becomeFirstResponder() }
+        // Through the text system, so the composer hears both edits.
+        selectedRange = source
+        deleteBackward()
+        selectedRange = NSRange(location: move.insertOffset, length: 0)
+        insertText(moved)
+    }
+
+    /// Where words dragged from `source` go in once they've left, or nil
+    /// when the drop is inside them (or the range no longer fits).
+    static func wordsMove(source: NSRange, dropOffset: Int, length: Int) -> (deleteRange: NSRange, insertOffset: Int)? {
+        guard source.length > 0, source.location >= 0, NSMaxRange(source) <= length,
+              dropOffset >= 0, dropOffset <= length else { return nil }
+        if dropOffset >= source.location && dropOffset <= NSMaxRange(source) { return nil }
+        let insertOffset = dropOffset > NSMaxRange(source) ? dropOffset - source.length : dropOffset
+        return (source, insertOffset)
     }
 
     /// The words a dragged item carries, or its link written out.
@@ -571,9 +602,36 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
 }
 
 /// The field's only drop interaction (`ReturnKeyTextView.installFieldDrop`).
-/// A drop it turns down goes to the drop target around the field.
-final class FieldDropHandler: NSObject, UIDropInteractionDelegate {
+/// A drop it turns down goes to the drop target around the field. As the
+/// field's text drag delegate it also keeps the range a drag from the
+/// field took, so a drop back in the field moves those words.
+final class FieldDropHandler: NSObject, UIDropInteractionDelegate, UITextDragDelegate {
     weak var field: ReturnKeyTextView?
+    private weak var draggedSession: UIDragSession?
+    private var draggedRange: NSRange?
+
+    func textDraggableView(_ textDraggableView: UIView & UITextDraggable, itemsForDrag dragRequest: UITextDragRequest) -> [UIDragItem] {
+        if let field {
+            let start = field.offset(from: field.beginningOfDocument, to: dragRequest.dragRange.start)
+            let end = field.offset(from: field.beginningOfDocument, to: dragRequest.dragRange.end)
+            draggedSession = dragRequest.dragSession
+            draggedRange = NSRange(location: start, length: max(0, end - start))
+        }
+        return dragRequest.suggestedItems
+    }
+
+    func textDraggableView(_ textDraggableView: UIView & UITextDraggable, dragSessionDidEnd session: UIDragSession, with operation: UIDropOperation) {
+        if session === draggedSession {
+            draggedSession = nil
+            draggedRange = nil
+        }
+    }
+
+    /// The range of the field's own words this drop carries, if it does.
+    private func ownWords(in session: UIDropSession) -> NSRange? {
+        guard let local = session.localDragSession, local === draggedSession else { return nil }
+        return draggedRange
+    }
 
     func dropInteraction(_ interaction: UIDropInteraction, canHandle session: UIDropSession) -> Bool {
         guard let field else { return false }
@@ -586,6 +644,12 @@ final class FieldDropHandler: NSObject, UIDropInteractionDelegate {
 
     func dropInteraction(_ interaction: UIDropInteraction, performDrop session: UIDropSession) {
         guard let field else { return }
+        if let source = ownWords(in: session) {
+            draggedSession = nil
+            draggedRange = nil
+            field.moveDraggedWords(from: source, to: session.location(in: field))
+            return
+        }
         field.takeDrop(session.items.map(\.itemProvider), at: session.location(in: field))
     }
 }
