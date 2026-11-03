@@ -483,7 +483,7 @@ struct BotPortraitCell<MenuContent: View>: View {
                         .offset(x: 2, y: -2)
                         // One small nudge when it first shows, and when more
                         // comes to need the user.
-                        .symbolEffect(.bounce, options: .nonRepeating, value: animates ? count : 0)
+                        .symbolEffect(.bounce, options: .nonRepeating, value: count)
                         .accessibilityHidden(true)
                 }
             }
@@ -863,8 +863,8 @@ struct BotZoomArm: Equatable {
         self = BotZoomArm()
     }
 
-    /// The portrait id `open`'s chat grows from, or nil for the usual push.
-    /// The portrait's own name, as its source is keyed.
+    /// The portrait name `open`'s chat grows from (its source key), or nil
+    /// for the usual push.
     func source(open: String?, now: Date = Date()) -> String? {
         guard let open else { return nil }
         if let zooming, zooming.caseInsensitiveCompare(open) == .orderedSame { return zooming }
@@ -913,7 +913,7 @@ struct BotPortraitMotion: ViewModifier {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !moving)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             // 0 to 1 and back, once a breath.
-            let breath = animates && isNeedsYou ? (1 - cos(t / Self.breath * 2 * .pi)) / 2 : 0
+            let breath: CGFloat = animates && isNeedsYou ? CGFloat(1 - cos(t / Self.breath * 2 * .pi)) / 2 : 0
             let lap = Angle.degrees((t / Self.lap).truncatingRemainder(dividingBy: 1) * 360)
             content
                 .overlay { ring(lap: lap) }
@@ -928,8 +928,8 @@ struct BotPortraitMotion: ViewModifier {
         return isNeedsYou ? .orange : color
     }
 
-    private func glowOpacity(_ breath: Double) -> Double {
-        if isNeedsYou { return 0.3 + 0.4 * breath }
+    private func glowOpacity(_ breath: CGFloat) -> Double {
+        if isNeedsYou { return 0.3 + 0.4 * Double(breath) }
         if isWorking { return animates ? 0.3 : 0.45 }
         return highlighted ? 0.45 : 0
     }
@@ -959,7 +959,7 @@ struct BotPortraitMotion: ViewModifier {
             Circle()
                 .inset(by: 1)
                 .stroke(color.opacity(0.85), style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [5, 6],
-                                                                dashPhase: animates ? -lap.degrees / 9 : 0))
+                                                                dashPhase: animates ? -CGFloat(lap.degrees / 360) * 44 : 0))
         } else {
             Circle().strokeBorder(color.opacity(0.45), lineWidth: 2)
         }
@@ -980,7 +980,7 @@ struct BotPortraitMotion: ViewModifier {
     @ViewBuilder
     private func ripple(now: Date) -> some View {
         if animates, let finishedAt {
-            let progress = min(max(now.timeIntervalSince(finishedAt) / Self.ripple, 0), 1)
+            let progress = CGFloat(min(max(now.timeIntervalSince(finishedAt) / Self.ripple, 0), 1))
             Circle()
                 .stroke(Color.green, lineWidth: 2)
                 .scaleEffect(1 + 0.9 * progress)

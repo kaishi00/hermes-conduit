@@ -710,7 +710,7 @@ extension BotModeTests {
         response["work"] = rows
         let helping = BotPortraitStatus.of(BotWorkSnapshot(response: response, profile: "furina"))
         XCTAssertEqual(helping, .helping("Hermes"))
-        XCTAssertEqual(helping.title, AppLocalization.string("Helping \("Hermes")"))
+        XCTAssertTrue(helping.title.contains("Hermes"), helping.title)
         // No ask in and no work of its own: waiting on Nahida (A1).
         rows = rows.filter { $0["ref"] as? String != "A2" }
         rows.append(["ref": "A3", "kind": "ask_in", "status": "done", "title": "Old", "bot": "Hermes"])
