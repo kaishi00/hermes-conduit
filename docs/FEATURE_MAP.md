@@ -2664,10 +2664,11 @@ do what it's asked.
 location, maps, inbox, notify, present, show, settings, rooms, Linked people
 and the Bot workstreams' `work_*` tools) · live calls' host tools, which
 read the same descriptions from `/voice-tools` · the skills the descriptions
-point to
+point to and the notifier README
 
 **Code**
 - Descriptions: `notifier/call_tool.py`, `notifier/call_watches.py`, `notifier/phone_tool.py`, `notifier/health_tool.py`, `notifier/location_tool.py` (voice_description too), `notifier/maps_tool.py`, `notifier/inbox_tool.py`, `notifier/notify_tool.py`, `notifier/present_tool.py`, `notifier/show_tool.py`, `notifier/settings_tool.py`, `notifier/room_tool.py`, `notifier/room_asks.py`, `notifier/room_free_busy.py`, `notifier/link_ask_tool.py`, `notifier/work_tool.py`
+- Where the call tools' text continues: `notifier/skills/calling-the-user/SKILL.md`, `notifier/README.md` (Calls from Hermes)
 - Check: `notifier/upstream/test_tool_catalog.py` (every tool's line, through Hermes' own `_short_desc`, against a real Hermes)
 
 **Rulings**
