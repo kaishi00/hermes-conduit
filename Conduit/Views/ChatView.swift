@@ -212,13 +212,16 @@ struct ChatView: View {
         return Self.runningTool(in: appState.messages)?.input
     }
 
-    /// "Messaging Atlas…" while a delivery to a teammate runs, as its step
-    /// says; nil for any other tool.
+    /// "Messaging Atlas…" while a delivery to a teammate runs, "Starting
+    /// work…" while a work tool does, as their steps say; nil for any other
+    /// tool.
     private var runningToolTitle: String? {
-        guard appState.isBusy, let tool = Self.runningTool(in: appState.messages),
-              let key = BotTeammateMessages.deliveryTarget(toolName: tool.name, input: tool.input) else { return nil }
-        let name = BotTeammateMessages.displayName(for: key, in: appState.shownBotRoster)
-        return AppLocalization.string("Messaging \(name)…")
+        guard appState.isBusy, let tool = Self.runningTool(in: appState.messages) else { return nil }
+        if let key = BotTeammateMessages.deliveryTarget(toolName: tool.name, input: tool.input) {
+            let name = BotTeammateMessages.displayName(for: key, in: appState.shownBotRoster)
+            return AppLocalization.string("Messaging \(name)…")
+        }
+        return BotWorkCall.parse(toolName: tool.name, input: tool.input, output: nil)?.title(running: true)
     }
 
     static func runningToolName(in messages: [ChatMessage]) -> String? {
@@ -1183,12 +1186,39 @@ struct MessageBubble: View, Equatable {
     @Environment(\.openURL) private var openURL
     @Environment(\.chatRowDisclosure) private var rowDisclosure
 
+    /// A reply's bubble; in a Bot Chat, one naming its work ("W50 found …")
+    /// links each ref to that workstream's chat once the bot's work list has it.
+    @ViewBuilder
+    private func botChatReply(_ message: ChatMessage) -> some View {
+        if let profile = appState.activeBotChatProfile, BotWorkLinks.mayNameWork(message.content) {
+            BotChatWorkReply(
+                work: appState.botWork,
+                profile: profile,
+                message: message,
+                readAloudController: appState.messageReadAloudController,
+                gatewayResolver: gatewayResolver,
+                stepsAbove: stepsAbove
+            )
+        } else {
+            AssistantBubble(
+                message: message,
+                readAloudController: appState.messageReadAloudController,
+                gatewayResolver: gatewayResolver,
+                stepsAbove: stepsAbove
+            )
+        }
+    }
+
     var body: some View {
         let _ = TranscriptPerf.note(.settledBubbleBody)
         switch message.role {
         case .user:
             if message.isSteer {
                 SteerBubble(message: message)
+            } else if let brief = WorkstreamBrief.parse(message.content) {
+                // A workstream's brief from the bot coordinating it: a card,
+                // not something the user typed (Bot workstreams).
+                WorkstreamBriefCard(brief: brief, timestamp: message.timestamp, disclosureID: message.id)
             } else if let inbound = BotTeammateMessages.inbound(message.content) {
                 // A teammate bot's delivery is an event in the chat, not
                 // something the user said (Desktop's agent message note).
@@ -1236,24 +1266,32 @@ struct MessageBubble: View, Equatable {
                         gatewayResolver: gatewayResolver
                     )
                 }
+            } else if let split = BotWorkLinks.split(message.content) {
+                // A Bot Chat reply's links to its work: cards under the
+                // reply, not plain links among its words.
+                VStack(alignment: .leading, spacing: 8) {
+                    if let why = rowState.followUpReasons[message.id] {
+                        PredictiveFollowUpTag(why: why)
+                    }
+                    if !split.text.isEmpty {
+                        botChatReply(message.withContent(split.text))
+                    }
+                    ForEach(split.links, id: \.ref) { link in
+                        BotWorkLinkCard(work: appState.botWork, link: link,
+                                        profile: link.profile ?? appState.activeProfile) {
+                            openURL(link.url)
+                        }
+                        .frame(maxWidth: 560, alignment: .leading)
+                    }
+                }
             } else if let why = rowState.followUpReasons[message.id] {
                 // A reply Hermes wrote on its own (Predictive follow-ups).
                 VStack(alignment: .leading, spacing: 4) {
                     PredictiveFollowUpTag(why: why)
-                    AssistantBubble(
-                        message: message,
-                        readAloudController: appState.messageReadAloudController,
-                        gatewayResolver: gatewayResolver,
-                        stepsAbove: stepsAbove
-                    )
+                    botChatReply(message)
                 }
             } else {
-                AssistantBubble(
-                    message: message,
-                    readAloudController: appState.messageReadAloudController,
-                    gatewayResolver: gatewayResolver,
-                    stepsAbove: stepsAbove
-                )
+                botChatReply(message)
             }
         case .reasoning:
             if let step {
@@ -1307,6 +1345,10 @@ struct MessageBubble: View, Equatable {
                 VoiceCallMarkerCard(link: link, origin: true) {
                     appState.openVoiceCallChat(markerID: link.originMarkerID)
                 }
+            } else if let report = CronBotChatReport.parse(message.content) {
+                // A cron job's report the bot wasn't asked to act on: the
+                // report itself, not a system line (cron_bot_chat).
+                CronReportCard(report: report, timestamp: message.timestamp, disclosureID: message.id)
             } else if let review = message.review ?? MessageNormalizer.reviewActivity(fromText: message.content) {
                 if let reviewRun, reviewRun.run.count >= 2, reviewRun.index == 0, let disclosure = rowDisclosure {
                     ReviewRunCard(run: reviewRun.run, disclosure: disclosure, toggles: disclosure.groupToggles) {
@@ -2632,6 +2674,33 @@ struct ReadAloudButton: View {
     }
 }
 
+/// A Bot Chat reply whose words name the bot's workstreams: each ref a
+/// link to its chat. It watches the bot's work list, so a ref links once
+/// the list that has it is read.
+struct BotChatWorkReply: View {
+    @ObservedObject var work: BotWorkStore
+    let profile: String
+    let message: ChatMessage
+    let readAloudController: MessageReadAloudController
+    let gatewayResolver: GatewayMediaDataURLResolver?
+    var stepsAbove: ChatStepGroup? = nil
+
+    var body: some View {
+        let items = (work.snapshot(profile)?.items ?? []) + (work.resolvedList(profile)?.items ?? [])
+        let shown = BotWorkLinks.linkingNamedRefs(message.content) { ref in
+            guard let item = items.first(where: { $0.ref == ref && !$0.sessionID.isEmpty }) else { return nil }
+            return ConduitAppLink.session(id: item.sessionID, profile: profile).url
+        }
+        AssistantBubble(
+            message: message,
+            readAloudController: readAloudController,
+            gatewayResolver: gatewayResolver,
+            stepsAbove: stepsAbove,
+            shownContent: shown == message.content ? nil : shown
+        )
+    }
+}
+
 struct AssistantBubble: View {
     let message: ChatMessage
     /// Held as a plain reference (not @ObservedObject): forwarding a
@@ -2641,6 +2710,9 @@ struct AssistantBubble: View {
     let gatewayResolver: GatewayMediaDataURLResolver?
     /// The run of steps above the reply, when it has thinking.
     var stepsAbove: ChatStepGroup? = nil
+    /// Other words to draw (a Bot Chat reply with its work refs linked);
+    /// Copy, Read Aloud and the rest keep the reply's own.
+    var shownContent: String? = nil
     @Environment(\.chatRowState) private var rowState
     @Environment(\.chatRowActions) private var rowActions
     @Environment(\.chatRowDisclosure) private var disclosure
@@ -2660,7 +2732,7 @@ struct AssistantBubble: View {
         let identity = rowState.agentIdentity
         VStack(alignment: .leading, spacing: 6) {
             SettledAssistantMessageContent(
-                message: message,
+                message: shownContent.map(message.withContent) ?? message,
                 identity: identity,
                 gatewayResolver: gatewayResolver,
                 sizeCategory: sizeCategory,
@@ -3336,8 +3408,11 @@ private struct SettledToolCardContent: View, Equatable {
     /// it; otherwise the step's own words.
     private func stepTitle(
         _ delivery: BotTeammateMessages.Delivery?,
+        work: BotWorkCall? = nil,
         running: Bool
     ) -> String {
+        // A Bot Chat's work tools draw as work cards ("Started W3: Login bug").
+        if let title = work?.title(running: running) { return title }
         guard let delivery else { return running ? label.runningTitle : label.doneTitle }
         let name = teammateName(delivery.target)
         return running
@@ -3356,6 +3431,7 @@ private struct SettledToolCardContent: View, Equatable {
             let style = ChatStepStyle(toolName: tool.name)
             let running = tool.status == .running
             let delivery = delivery(tool)
+            let work = BotWorkCall.parse(toolName: tool.name, input: tool.input, output: tool.output)
             VStack(alignment: .leading, spacing: 0) {
                 Button {
                     let opens = !expanded
@@ -3375,7 +3451,7 @@ private struct SettledToolCardContent: View, Equatable {
                             // Large text: the time goes under the words
                             // instead of squeezing them.
                             AdaptiveStack(spacing: 6) {
-                                Text(stepTitle(delivery, running: running))
+                                Text(stepTitle(delivery, work: work, running: running))
                                     .scaledFont(.body)
                                     .foregroundStyle(running ? Color.conduitAccent : Color.primary)
                                     .lineLimit(sizeCategory.isAccessibilityCategory ? nil : 1)
@@ -3386,9 +3462,15 @@ private struct SettledToolCardContent: View, Equatable {
                                     tone: .supporting
                                 )
                             }
-                            // A delivery's subject is what was said, not the
-                            // command that sent it.
-                            if !expanded, let subject = delivery?.message.flatMap({ ChatStepSubject.line(from: $0) })
+                            // A started workstream's card says where it is
+                            // now ("Working · Running df -h /", "Done ·
+                            // 7.6G free"), so its answer needn't repeat it.
+                            if !expanded, !running, work?.tool == .start, let ref = work?.ref,
+                               let appState = rowActions?.appState,
+                               let profile = work?.profile ?? appState.activeBotChatProfile {
+                                WorkStartStatusLine(work: appState.botWork, profile: profile, ref: ref,
+                                                    fallback: label.action ?? ChatStepSubject.line(from: tool.input))
+                            } else if !expanded, let subject = delivery?.message.flatMap({ ChatStepSubject.line(from: $0) })
                                 ?? label.action
                                 ?? ChatStepSubject.line(from: tool.input)
                                 ?? ChatStepSubject.line(from: tool.output) {
@@ -3427,6 +3509,18 @@ private struct SettledToolCardContent: View, Equatable {
                         Text(tool.name)
                             .scaledFont(.caption2.monospaced().weight(.semibold))
                             .foregroundStyle(.conduitTertiary)
+                        if let work, let session = work.sessionID, let ref = work.ref {
+                            // The workstream it started or reached, opened on its bot's profile.
+                            Button {
+                                Haptics.light()
+                                rowActions?.appState.openAppLink(.session(id: session, profile: work.profile))
+                            } label: {
+                                Label(AppLocalization.string("Open \(ref)"), systemImage: "arrow.up.right.square")
+                                    .scaledFont(.caption.weight(.semibold))
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
                         if let detail = label.detail {
                             Text(detail)
                                 .scaledFont(.caption)

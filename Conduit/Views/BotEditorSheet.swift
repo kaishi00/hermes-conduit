@@ -99,6 +99,7 @@ struct BotEditorSheet: View {
                     Text(AppLocalization.string("Description"))
                 }
                 personalitySection
+                workSection
                 advancedSection
             }
             .navigationTitle(isCreating ? AppLocalization.string("New Bot") : AppLocalization.string("Edit Bot"))
@@ -402,6 +403,24 @@ struct BotEditorSheet: View {
         }
     }
 
+    /// Edit Bot > Work: how the bot's Bot Chat coordinates its work, kept
+    /// by the plugin and saved as it's changed there. Only for a bot that
+    /// exists, on a plugin that serves it.
+    @ViewBuilder
+    private var workSection: some View {
+        if let bot = editedBot, appState.servesBotWorkSettings {
+            Section {
+                NavigationLink {
+                    BotWorkSettingsView(profile: bot.name, botName: bot.displayLabel)
+                } label: {
+                    Text(AppLocalization.string("Work"))
+                }
+            } footer: {
+                Text(AppLocalization.string("How \(bot.displayLabel) hands tasks to workstreams and keeps track of them in its Bot Chat."))
+            }
+        }
+    }
+
     /// Desktop's Advanced disclosure. Creating: where the profile starts
     /// from, its model, skills, tools and MCP, shared keys and bundled
     /// skills. Editing: its model, skills, tools and MCP, once the bot's
@@ -583,7 +602,7 @@ struct BotEditorSheet: View {
 
     /// Bots a new one can copy its settings from, besides the main profile.
     private var cloneSources: [BotProfile] {
-        appState.botRoster.filter { !BotManagement.isDefaultProfile($0.name) }
+        appState.orderedBots(appState.botRoster).filter { !BotManagement.isDefaultProfile($0.name) }
     }
 
     // MARK: State

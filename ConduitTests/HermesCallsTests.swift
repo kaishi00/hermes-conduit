@@ -120,6 +120,20 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.jobs.map(\.callsBackWhenDone), [false, true])
     }
 
+    /// A start whose acknowledgement was lost after Hermes began its turn
+    /// still calls back when it's done.
+    func testCallMeWatchesAJobWhoseStartAcknowledgementWasLost() async {
+        let (supervisor, jobs, calls) = hermesCallSupervisor()
+        beginHermesCall(supervisor)
+        XCTAssertEqual(supervisor.requestCallback(), .marked(titles: [], later: .next))
+        jobs.submitError = HermesError.timeout("prompt.submit")
+        jobs.onSubmit = { id in supervisor.observe(.messageStart(sessionId: id)) }
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
+        await supervisor.callbackPassesSettled()
+
+        XCTAssertEqual(calls.watches.map(\.target.runtimeSessionID), ["rt-1"])
+    }
+
     func testCallMeBeforeTheWorkMarksOnlyTheNextJob() async {
         let (supervisor, _, calls) = hermesCallSupervisor()
         beginHermesCall(supervisor)

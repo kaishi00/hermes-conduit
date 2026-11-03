@@ -1248,9 +1248,13 @@ struct V2ChatsView: View, Equatable {
             activeProfile: appState.isAllProfilesChatsOn ? appState.activeProfile : "",
             owner: { session in appState.isAllProfilesChatsOn ? appState.rowProfile(session) : "" }
         )
+        // A bot's workstreams belong to its Work panel, as its Bot Chat does.
+        let shown = rows.filter { row in
+            !(row.session.map(appState.isWorkstreamRow) ?? appState.isWorkstreamSession(row.hit.sessionID))
+        }
         // Pulse's chat stays behind the Pulse screen, message matches too.
-        guard appState.showsPulseScreen, let home = appState.pulseHomeChat else { return rows }
-        return rows.filter { row in
+        guard appState.showsPulseScreen, let home = appState.pulseHomeChat else { return shown }
+        return shown.filter { row in
             row.session.map { !appState.isPulseHomeChat($0) }
                 ?? (row.hit.sessionID != home && appState.canonicalSessionID(for: row.hit.sessionID) != home)
         }
@@ -1269,33 +1273,6 @@ struct V2ChatsView: View, Equatable {
     }
 
     // MARK: - Sessions list
-
-    private var connectionRepairCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if let error = appState.errorMessage, !error.isEmpty {
-                Text(error)
-                    .scaledFont(.footnote)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Button {
-                Haptics.light()
-                repairContext = appState.beginConnectionRepair()
-            } label: {
-                Label("Repair Connection", systemImage: "wrench.and.screwdriver")
-                    .scaledFont(.footnote.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 44)
-            }
-            .buttonStyle(.bordered)
-            .tint(.conduitAccent)
-            .accessibilityIdentifier("chats.repair-connection")
-            .accessibilityLabel("Repair Connection")
-            .accessibilityHint("Test and fix the failed connection, then reconnect")
-        }
-        .padding(14)
-        .settingsCard()
-    }
 
     private var sessionsList: some View {
         // Worked out once per render: the rows walk the whole catalog.
@@ -1328,7 +1305,7 @@ struct V2ChatsView: View, Equatable {
             // so the composer's Repair Connection is offered here too,
             // searching or not.
             if appState.showsConnectionRepair {
-                connectionRepairCard
+                V2ConnectionRepairCard(identifier: "chats.repair-connection") { repairContext = $0 }
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 12, trailing: 16))
@@ -2742,5 +2719,43 @@ final class V2ChatsRenderMemo {
         let rows = make()
         filtered[key] = rows
         return rows
+    }
+}
+
+/// A failed connection's Repair Connection, at the top of the screens the
+/// app opens on (Bots Home and Sessions) rather than only on a composer.
+struct V2ConnectionRepairCard: View {
+    @EnvironmentObject private var appState: AppState
+    /// Each screen's own, for UI tests.
+    let identifier: String
+    /// Opens the repair, on the screen's own sheet: it outlives the card,
+    /// which goes once the connection is back.
+    let onRepair: (ConnectionRepairContext?) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let error = appState.errorMessage, !error.isEmpty {
+                Text(error)
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Button {
+                Haptics.light()
+                onRepair(appState.beginConnectionRepair())
+            } label: {
+                Label("Repair Connection", systemImage: "wrench.and.screwdriver")
+                    .scaledFont(.footnote.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .tint(.conduitAccent)
+            .accessibilityIdentifier(identifier)
+            .accessibilityLabel("Repair Connection")
+            .accessibilityHint("Test and fix the failed connection, then reconnect")
+        }
+        .padding(14)
+        .settingsCard()
     }
 }

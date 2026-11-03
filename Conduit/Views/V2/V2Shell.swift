@@ -16,19 +16,31 @@ import SwiftUI
 
 /// The shell's four destinations.
 enum V2Tab: String, Identifiable, Hashable {
+    /// The tab an opened conversation is pushed in. Bots is the launch tab,
+    /// so a plain session opened over it (a notification, a widget, a
+    /// Shortcut) still goes to Sessions; only a bot's own chats, and chats
+    /// opened from a page in Bots, stay in Bots.
+    /// A chat opened from a page pushed in Bots (Pulse, Artifacts) stays
+    /// there too, so Back returns to that page.
+    static func conversationTab(selected: V2Tab, isBotsChat: Bool, fromBotsPage: Bool = false) -> V2Tab {
+        selected == .bots && (isBotsChat || fromBotsPage) ? .bots : .chats
+    }
+
     case chats
     case tasks
     case bots
     case settings
 
-    /// The tabs the bar lists.
-    static let destinations: [V2Tab] = [.chats, .tasks, .bots, .settings]
+    /// The tabs the bar lists. Bots comes first: picking a bot and
+    /// talking to it is Conduit's home, and direct sessions are a tab
+    /// over (designs/bot-mode-coordinator/bots-home-ui.md).
+    static let destinations: [V2Tab] = [.bots, .chats, .tasks, .settings]
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .chats: return AppLocalization.string("Chats")
+        case .chats: return AppLocalization.string("Sessions")
         case .tasks: return AppLocalization.string("Tasks")
         case .bots: return AppLocalization.string("Bots")
         case .settings: return AppLocalization.string("Settings")
@@ -403,16 +415,18 @@ struct V2Shell: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.layoutDirection) private var layoutDirection
-    @State private var selectedTab: V2Tab = .chats
-    /// The app opens on the Chats list, or on the chat iOS closed it on
+    @State private var selectedTab: V2Tab = .bots
+    /// The app opens on Bots, or on the chat iOS closed it on
     /// (`V2ReopenedConversation`). Nothing is pushed during the launch's
     /// first layout: a push then, even without animation, left the app
     /// never idle, so a reopened chat is in the path from the start.
     @State private var chatsPath: [V2Route] = []
     @State private var botsPath: [V2Route] = []
+    /// Bots Home's portraits and the Bot Chats they open (BotZoomSource).
+    @Namespace private var botZoom
     /// The custom bar keeps a tab alive once it has been opened, so its
     /// scroll position and pushed screens survive switching away.
-    @State private var visitedTabs: Set<V2Tab> = [.chats]
+    @State private var visitedTabs: Set<V2Tab> = [.chats, .bots]
     @State private var contentFaded = false
     @State private var contentShift: CGFloat = 0
     @State private var profileSwitchToken = 0
@@ -446,7 +460,7 @@ struct V2Shell: View {
     ///   - conversationOnLeave: the window's record of the chat showing,
     ///     kept current here.
     ///   - reopening: where this launch opens, from that record
-    ///     (`V2ReopenedConversation.launch`); nil opens on Chats.
+    ///     (`V2ReopenedConversation.launch`); nil opens on Bots.
     init(conversationOnLeave: Binding<String> = .constant(""), reopening launch: V2ReopenedConversation.Launch? = nil) {
         _conversationOnLeave = conversationOnLeave
         _roomToReopen = State(initialValue: launch?.roomID == nil ? nil : launch)
@@ -456,6 +470,7 @@ struct V2Shell: View {
             _botsPath = State(initialValue: launch?.path ?? [])
             _visitedTabs = State(initialValue: [.chats, .bots])
         case .chats?:
+            _selectedTab = State(initialValue: .chats)
             _chatsPath = State(initialValue: launch?.path ?? [])
         case .tasks?, .settings?, nil:
             break
@@ -475,7 +490,7 @@ struct V2Shell: View {
     /// whole window as a chat does: no tabs or voice button. Split, it is a
     /// page in the list column, over the bar like Artifacts.
     private var pulseVisible: Bool {
-        selectedTab == .chats && chatsPath.last == .pulse
+        (selectedTab == .chats && chatsPath.last == .pulse) || (selectedTab == .bots && botsPath.last == .pulse)
     }
 
     /// What the window keeps for a launch after iOS ends Conduit: where
@@ -927,8 +942,24 @@ struct V2Shell: View {
             }
         case .bots:
             NavigationStack(path: $botsPath) {
+                // A Bot Chat grows out of its portrait (BotZoomDestination).
                 listRoot(tabBarClearance(V2BotsView()), alone: canSplit)
-                    .navigationDestination(for: V2Route.self) { destination($0, alone: canSplit) }
+                    .environment(\.botZoomNamespace, botZoom)
+                    .navigationDestination(for: V2Route.self) { route in
+                        destination(route, alone: canSplit)
+                            // Only straight from Bots Home: under Pulse or
+                            // Artifacts the portrait isn't on screen.
+                            .modifier(BotZoomDestination(route: route, namespace: botZoom,
+                                                         fromHome: botsPath.first == .conversation))
+                    }
+            }
+            // The tapped portrait's chat has left: the next open pushes.
+            .onChange(of: botsPath) { old, path in
+                if path == [.conversation], !old.contains(.conversation) {
+                    appState.botZoom.pushed(open: appState.activeBotChatProfile)
+                } else if !path.contains(.conversation) {
+                    appState.botZoom.left()
+                }
             }
         case .settings:
             // Settings puts the clearance inside its own stack, on its home
@@ -1052,15 +1083,26 @@ struct V2Shell: View {
 
     // MARK: - Conversation routing
 
-    /// Pushes the conversation: in Bots when a bot's chat opened from there,
-    /// otherwise in Chats. Only one tab ever holds it, since both would show
-    /// the same active session.
+    /// Pushes the conversation: in Bots when a bot's chat (its Bot Chat or
+    /// one of its workstreams) opened while Bots shows, otherwise in
+    /// Sessions. Only one tab ever holds it, since both would show the same
+    /// active session.
     private func openConversation() {
-        let target: V2Tab = selectedTab == .bots ? .bots : .chats
+        let target = V2Tab.conversationTab(
+            selected: selectedTab,
+            isBotsChat: appState.placesConversationAsBotChat,
+            fromBotsPage: botsPath.last == .pulse || botsPath.last == .artifacts
+        )
+        appState.botChatOpeningPlaced()
         switch target {
         case .bots:
             chatsPath.removeAll { $0 == .conversation }
-            if botsPath.last != .conversation { botsPath.append(.conversation) }
+            if botsPath.last != .conversation {
+                // As in Chats: a chat opened from Pulse over another chat
+                // moves to the top.
+                botsPath.removeAll { $0 == .conversation }
+                botsPath.append(.conversation)
+            }
         default:
             botsPath.removeAll { $0 == .conversation }
             if chatsPath.last != .conversation {
@@ -1094,6 +1136,7 @@ struct V2Shell: View {
     }
 
     private func closeConversation() {
+        appState.botZoom.left()
         switch selectedTab {
         case .chats:
             if chatsPath.last == .conversation { chatsPath.removeLast() }

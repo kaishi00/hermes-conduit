@@ -34,17 +34,25 @@ struct V2PulseButton: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.v2Shell) private var shell
+    /// Bots Home's shortcut: a named pill beside Artifacts' rather than
+    /// the Sessions bar's icon (`V2ShortcutPill`).
+    var named = false
 
     var body: some View {
         NavigationLink(value: V2Route.pulse) {
-            V2CapsuleIcon(systemImage: "waveform.path.ecg", dot: appState.pulseUnseen > 0 ? Color.conduitAccent : nil)
+            if named {
+                V2ShortcutPill(systemImage: "waveform.path.ecg", title: AppLocalization.string("Pulse"),
+                               tint: Color.conduitAccent, dot: appState.pulseUnseen > 0)
+            } else {
+                V2CapsuleIcon(systemImage: "waveform.path.ecg", dot: appState.pulseUnseen > 0 ? Color.conduitAccent : nil)
+            }
         }
         .buttonStyle(PressableButtonStyle())
         .simultaneousGesture(TapGesture().onEnded { Haptics.selection() })
         .accessibilityLabel(appState.pulseUnseen > 0
             ? AppLocalization.string("Pulse, new cards")
             : AppLocalization.string("Pulse"))
-        .accessibilityIdentifier("chats.pulse")
+        .accessibilityIdentifier(named ? "bots.pulse" : "chats.pulse")
         // While the Chats tab shows, every minute: new cards light the dot and
         // mark their messages in the chats. At once when the plugin answers
         // after a launch or a reconnect, so the feed names Pulse's chat.

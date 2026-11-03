@@ -1346,3 +1346,8 @@ enum DesktopGroupChatDecoder {
         }
     }
 }
+
+/// How many bots a hosted room holds (New Group Chat's "Members (2–6)").
+enum GroupRoomLimits {
+    static let maxMembers = 6
+}

@@ -157,6 +157,7 @@ extension AppState {
         slots.append(voicePreferencesSlot)
         slots.append(savedDashboardsSlot)
         slots.append(pinnedChatOrderSlot)
+        slots.append(botOrderSlot)
         return slots
     }
 

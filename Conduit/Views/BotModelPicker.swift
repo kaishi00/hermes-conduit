@@ -8,6 +8,9 @@ struct BotModelPicker: View {
     @Binding var model: String
     /// Offers "Same as Main Profile" (empty provider and model).
     let allowsInherit: Bool
+    /// What that choice is called where it inherits something else (Edit
+    /// Bot > Work's Workstream Model: the Bot Chat's).
+    var inheritTitle: String? = nil
 
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
@@ -24,7 +27,7 @@ struct BotModelPicker: View {
             if allowsInherit {
                 Section {
                     row(
-                        title: AppLocalization.string("Same as Main Profile"),
+                        title: inheritTitle ?? AppLocalization.string("Same as Main Profile"),
                         isSelected: provider.isEmpty && model.isEmpty
                     ) {
                         provider = ""

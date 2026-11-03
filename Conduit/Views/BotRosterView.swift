@@ -21,6 +21,20 @@ struct BotRosterView: View {
     @State private var showsHiddenBots = false
     /// New Group Chat from a bot's Groups menu starts with that bot picked.
     @State private var groupSheetBot: BotProfile?
+    /// The bot whose Bot Overview shows (Bots Home's Overview pill).
+    @State private var overviewBot: BotProfile?
+    /// Edit Bot tapped in the overview: the editor opens once it's gone,
+    /// since a sheet can't open over it from here.
+    @State private var editAfterOverview: BotProfile?
+    /// Repair Connection opened from Bots Home's top.
+    @State private var repairContext: ConnectionRepairContext?
+    /// A room being started on Bots Home, its bots in the order they came
+    /// (empty: none). Nothing reaches the host until Create.
+    @State private var newRoom = BotRoomBuild()
+    @State private var showingNewRoomSheet = false
+    @State private var showingReorder = false
+    @Environment(\.v2Shell) private var shell
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// V2's Bots tab: its title bar's "+" asks for a new bot here, and the
     /// in-list create card steps aside.
     private let createRequest: Binding<Bool>?
@@ -40,18 +54,80 @@ struct BotRosterView: View {
             if appState.shownBotRoster.isEmpty && !hasGroupRows && groupProbeFailure == nil {
                 emptyState
                     .safeAreaInset(edge: .top) {
-                        if let notice = managementNotice {
-                            managementNoticeCard(notice)
-                                .padding(.horizontal, 16)
+                        VStack(spacing: 12) {
+                            homeCards
+                            if let notice = managementNotice {
+                                managementNoticeCard(notice)
+                            }
                         }
+                        .padding(.horizontal, 16)
                     }
             } else {
                 rosterList
+                    .environment(\.botsHomeCovered, coveredBySheet)
+                    .safeAreaInset(edge: .bottom) {
+                        if !newRoom.isEmpty {
+                            newRoomBar
+                        }
+                    }
             }
+        }
+        // Leaving Bots, or a room no longer possible, drops the room being
+        // started: nothing was made.
+        .onChange(of: shell.isTabActive) { _, active in
+            if !active { newRoom.clear() }
+        }
+        .onChange(of: canStartRoomHere) { _, can in
+            if !can { newRoom.clear() }
+        }
+        .onChange(of: visibleBotNames) { _, _ in
+            let kept = newRoom.pruned(visible: visibleBotNames)
+            if kept != newRoom { newRoom = kept }
+        }
+        .sheet(isPresented: $showingNewRoomSheet) {
+            GroupCreateSheet(
+                preselected: Set(newRoomBots.map(\.name)),
+                suggestedName: joinedNames(newRoomBots),
+                onCreated: { newRoom.clear() }
+            )
+            .environmentObject(appState)
+        }
+        .sheet(isPresented: $showingReorder) {
+            BotReorderSheet()
+                .environmentObject(appState)
         }
         .sheet(item: $presentedDesktopGroup) { group in
             DesktopGroupChatView(group: group)
                 .environmentObject(appState)
+        }
+        .sheet(item: $repairContext) { context in
+            ConnectionRepairSetupSheet(context: context)
+                .environmentObject(appState)
+        }
+        .sheet(item: $overviewBot, onDismiss: {
+            if let bot = editAfterOverview {
+                editAfterOverview = nil
+                editorMode = .edit(bot)
+            }
+        }) { bot in
+            BotOverviewSheet(
+                work: appState.botWork,
+                profile: bot.name,
+                onEdit: canManageBots ? { (edited: BotProfile) in
+                    editAfterOverview = edited
+                    overviewBot = nil
+                } : nil,
+                onChat: {
+                    overviewBot = nil
+                    appState.beginOpeningBotChat(bot.name)
+                    Task {
+                        await appState.openBotChat(for: bot)
+                        appState.endOpeningBotChat(bot.name)
+                    }
+                },
+                onClose: { overviewBot = nil }
+            )
+            .environmentObject(appState)
         }
         .sheet(item: $editorMode) { mode in
             BotEditorSheet(mode: mode) { createdName, warning, introduces in
@@ -60,8 +136,11 @@ struct BotRosterView: View {
                       let bot = appState.botRoster.first(where: { $0.name == createdName }) else { return }
                 // Desktop opens a new bot's forever chat straight away, and
                 // the bot introduces itself when it can reach a model.
-                appState.dismissSidebarDrawer()
-                Task { await appState.openNewBotChat(for: bot, introduces: introduces) }
+                appState.beginOpeningBotChat(bot.name)
+                Task {
+                    await appState.openNewBotChat(for: bot, introduces: introduces)
+                    appState.endOpeningBotChat(bot.name)
+                }
             }
             .environmentObject(appState)
         }
@@ -169,38 +248,31 @@ struct BotRosterView: View {
         return nil
     }
 
+    /// Bots Home: every bot as a portrait, three across on a phone, in
+    /// the roster's own order, so a bot never moves for being busy. Hidden
+    /// bots follow under their disclosure, dimmed, as on the list.
+    @ViewBuilder
+    private var portraitGrid: some View {
+        BotPortraitGrid(bots: visibleBots, onDropAtEnd: dropAtEnd) { portrait($0) }
+            .modifier(BotsTalkingRoomsReader())
+            .rosterListRow(divider: false)
+        if !hiddenBots.isEmpty {
+            hiddenDisclosure
+            if showsHiddenBots {
+                BotPortraitGrid(bots: hiddenBots) { portrait($0) }
+                    .opacity(0.6)
+                    .rosterListRow(divider: false)
+            }
+        }
+    }
+
     @ViewBuilder
     private var botRows: some View {
         ForEach(visibleBots) { bot in
             botRow(bot)
         }
         if !hiddenBots.isEmpty {
-            // Desktop's "Hidden" disclosure: hidden bots keep working, so
-            // they stay one tap away to open or unhide.
-            Button {
-                Haptics.selection()
-                withAnimation(.easeInOut(duration: 0.2)) { showsHiddenBots.toggle() }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: showsHiddenBots ? "chevron.down" : "chevron.right")
-                        .scaledFont(.caption.weight(.semibold))
-                        .accessibilityHidden(true)
-                    Text(AppLocalization.string("Hidden"))
-                    Text(verbatim: String(hiddenBots.count))
-                        .foregroundStyle(.tertiary)
-                    Spacer()
-                }
-                .scaledFont(.footnote.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.vertical, 8)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .rosterListRow(divider: false)
-            .accessibilityLabel(Text(AppLocalization.string("Hidden bots: \(String(hiddenBots.count))")))
-            .accessibilityValue(Text(
-                showsHiddenBots ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed")
-            ))
+            hiddenDisclosure
             if showsHiddenBots {
                 ForEach(hiddenBots) { bot in
                     botRow(bot)
@@ -210,6 +282,35 @@ struct BotRosterView: View {
         }
     }
 
+    /// Desktop's "Hidden" disclosure: hidden bots keep working, so they
+    /// stay one tap away to open or unhide.
+    private var hiddenDisclosure: some View {
+        Button {
+            Haptics.selection()
+            withAnimation(.easeInOut(duration: 0.2)) { showsHiddenBots.toggle() }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: showsHiddenBots ? "chevron.down" : "chevron.right")
+                    .scaledFont(.caption.weight(.semibold))
+                    .accessibilityHidden(true)
+                Text(AppLocalization.string("Hidden"))
+                Text(verbatim: String(hiddenBots.count))
+                    .foregroundStyle(.tertiary)
+                Spacer()
+            }
+            .scaledFont(.footnote.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .rosterListRow(divider: false)
+        .accessibilityLabel(Text(AppLocalization.string("Hidden bots: \(String(hiddenBots.count))")))
+        .accessibilityValue(Text(
+            showsHiddenBots ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed")
+        ))
+    }
+
     private func botRow(_ bot: BotProfile) -> some View {
         BotRosterRow(
             bot: bot,
@@ -217,32 +318,205 @@ struct BotRosterView: View {
             canDelete: appState.canDeleteBot(bot),
             rooms: botRooms(bot),
             canStartGroup: canStartGroups && !bot.isHiddenByMeta,
-            actions: BotRosterRow.Actions(
-                edit: { editorMode = .edit(bot) },
-                togglePin: {
-                    Task { managementNotice = await appState.setBotPinned(bot, pinned: !bot.isPinned) }
-                },
-                toggleHidden: {
-                    Task { managementNotice = await appState.setBotHidden(bot, hidden: !bot.isHiddenByMeta) }
-                },
-                duplicate: {
-                    managementNotice = AppLocalization.string("Duplicating \(bot.displayLabel)…")
-                    Task { managementNotice = await appState.duplicateBot(bot) }
-                },
-                newChat: {
-                    appState.dismissSidebarDrawer()
-                    appState.startNewChat(inProfile: bot.name)
-                },
-                openRoom: { room in
-                    appState.dismissSidebarDrawer()
-                    Task { await appState.openGroupRoom(room) }
-                },
-                newGroup: {
-                    appState.errorMessage = nil
-                    groupSheetBot = bot
-                },
-                delete: { pendingDelete = bot }
-            )
+            actions: actions(for: bot)
+        )
+    }
+
+    /// Bots Home's portrait of a bot: its chat, its Overview and the row's
+    /// menu.
+    private func portrait(_ bot: BotProfile) -> some View {
+        BotPortraitCell(
+            bot: bot,
+            work: appState.botWork,
+            menu: BotRosterMenu(
+                bot: bot,
+                canManage: canManageBots,
+                canDelete: appState.canDeleteBot(bot),
+                rooms: botRooms(bot),
+                canStartGroup: canStartGroups && !bot.isHiddenByMeta,
+                actions: actions(for: bot)
+            ),
+            onOverview: { overviewBot = bot },
+            // A hidden bot can't join a room, so its tap still opens its chat.
+            room: newRoom.isEmpty || bot.isHiddenByMeta ? .off : (isInNewRoom(bot.name) ? .member : .notMember),
+            onDrop: { dragged, merge in handleDrop(dragged, on: bot, merge: merge) },
+            canMerge: { dragged in canMerge(dragged, with: bot) },
+            onToggleRoom: { toggleNewRoom(bot) }
+        )
+    }
+
+    // MARK: - Arranging and starting rooms (Bots Home)
+
+    private var canStartRoomHere: Bool {
+        canStartGroups && createRequest != nil
+    }
+
+    private func isInNewRoom(_ name: String) -> Bool {
+        newRoom.contains(name)
+    }
+
+    /// Whether `dragged`, held over `target`'s face, starts a room with it
+    /// (the same test the drop makes).
+    private func canMerge(_ dragged: String, with target: BotProfile) -> Bool {
+        guard canStartRoomHere, !target.isHiddenByMeta,
+              dragged.caseInsensitiveCompare(target.name) != .orderedSame,
+              let draggedBot = appState.shownBotRoster.first(where: {
+                  $0.name.caseInsensitiveCompare(dragged) == .orderedSame
+              }) else { return false }
+        // A room that's full takes no one new.
+        return !draggedBot.isHiddenByMeta && newRoom.fits([target.name, draggedBot.name])
+    }
+
+    /// A portrait dropped on another: held over its face, the two start a
+    /// room (or the dropped one joins the room being started); else it
+    /// moves before it.
+    private func handleDrop(_ dragged: String, on target: BotProfile, merge: Bool) {
+        if merge, canMerge(dragged, with: target),
+           let draggedBot = appState.shownBotRoster.first(where: { $0.name.caseInsensitiveCompare(dragged) == .orderedSame }) {
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                addToNewRoom([target.name, draggedBot.name])
+            }
+            return
+        }
+        Haptics.selection()
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            appState.moveBot(dragged, before: target.name, shown: appState.shownBotRoster.map(\.name))
+        }
+    }
+
+    private func dropAtEnd(_ dragged: String) {
+        Haptics.selection()
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            appState.moveBot(dragged, before: nil, shown: appState.shownBotRoster.map(\.name))
+        }
+    }
+
+    private func addToNewRoom(_ names: [String]) {
+        guard newRoom.add(names) else {
+            Haptics.warning()
+            managementNotice = AppLocalization.string("A room holds up to 6 bots.")
+            return
+        }
+    }
+
+    /// Taking a bot out always works; adding one only while it's shown.
+    private func toggleNewRoom(_ bot: BotProfile) {
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            if isInNewRoom(bot.name) {
+                newRoom.remove(bot.name)
+            } else if !bot.isHiddenByMeta {
+                addToNewRoom([bot.name])
+            }
+        }
+    }
+
+    private func cancelNewRoom() {
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { newRoom.clear() }
+    }
+
+    /// The room's bots that are still shown and not hidden: a bot hidden or
+    /// deleted meanwhile leaves the room (onChange of visibleBotNames).
+    private var newRoomBots: [BotProfile] {
+        newRoom.names.compactMap { name in
+            visibleBots.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+        }
+    }
+
+    private var visibleBotNames: [String] { visibleBots.map(\.name) }
+
+    /// "Atlas and Furina", in the App Language like the rest of the app
+    /// (the suggested room name is kept as typed, so it matters).
+    private func joinedNames(_ bots: [BotProfile]) -> String {
+        let formatter = ListFormatter()
+        formatter.locale = AppLocalization.formattingLocale
+        return formatter.string(from: bots.map(\.displayLabel)) ?? bots.map(\.displayLabel).joined(separator: ", ")
+    }
+
+    /// The bar a room being started shows at the bottom: its bots (a tap
+    /// takes one out), Cancel, and Create, which opens New Group Chat with
+    /// them picked and a name suggested: the confirmation.
+    private var newRoomBar: some View {
+        let bots = newRoomBots
+        return HStack(spacing: 12) {
+            HStack(spacing: -22) {
+                ForEach(bots) { bot in
+                    Button {
+                        toggleNewRoom(bot)
+                    } label: {
+                        BotMonogramView(bot: bot, size: 30)
+                            .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2))
+                            // A 44 pt target; the next face's sits on top
+                            // where they overlap, as the faces do.
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text(AppLocalization.string("Take \(bot.displayLabel) out")))
+                }
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(AppLocalization.string("New room"))
+                    .scaledFont(.subheadline.weight(.semibold))
+                Text(verbatim: bots.count < 2
+                     ? AppLocalization.string("Drag or tap bots to add them.")
+                     : joinedNames(bots))
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button(AppLocalization.string("Cancel"), action: cancelNewRoom)
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("bots.newRoom.cancel")
+            Button(AppLocalization.string("Create")) {
+                Haptics.light()
+                showingNewRoomSheet = true
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.conduitAccent)
+            .disabled(bots.count < 2)
+            .accessibilityIdentifier("bots.newRoom.create")
+        }
+        .padding(12)
+        .conduitGlassSurface(cornerRadius: 22)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    private func actions(for bot: BotProfile) -> BotRosterRow.Actions {
+        BotRosterRow.Actions(
+            edit: { editorMode = .edit(bot) },
+            togglePin: {
+                Task { managementNotice = await appState.setBotPinned(bot, pinned: !bot.isPinned) }
+            },
+            toggleHidden: {
+                Task { managementNotice = await appState.setBotHidden(bot, hidden: !bot.isHiddenByMeta) }
+            },
+            duplicate: {
+                managementNotice = AppLocalization.string("Duplicating \(bot.displayLabel)…")
+                Task { managementNotice = await appState.duplicateBot(bot) }
+            },
+            newChat: {
+                appState.dismissSidebarDrawer()
+                appState.startNewChat(inProfile: bot.name)
+            },
+            openRoom: { room in
+                appState.dismissSidebarDrawer()
+                Task { await appState.openGroupRoom(room) }
+            },
+            newGroup: {
+                appState.errorMessage = nil
+                groupSheetBot = bot
+            },
+            delete: { pendingDelete = bot },
+            startRoom: createRequest == nil || bot.isHiddenByMeta ? nil : {
+                // Into the room being started, if there is one.
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                    addToNewRoom([bot.name])
+                }
+            },
+            reorder: createRequest == nil ? nil : { showingReorder = true }
         )
     }
 
@@ -255,8 +529,36 @@ struct BotRosterView: View {
         }
     }
 
+    /// Bots Home is where the app opens: finishing setup and a failed
+    /// connection's repair are offered at its top, as on Sessions.
+    @ViewBuilder
+    private var homeCards: some View {
+        if createRequest != nil {
+            if appState.showsFinishSetup {
+                V2FinishSetupCard()
+            }
+            if appState.showsConnectionRepair {
+                V2ConnectionRepairCard(identifier: "bots.repair-connection") { repairContext = $0 }
+            }
+        }
+    }
+
+    /// One of this screen's sheets is up over the grid.
+    private var coveredBySheet: Bool {
+        overviewBot != nil || showingNewRoomSheet || showingReorder || presentedDesktopGroup != nil
+            || repairContext != nil || editorMode != nil || showingGroupCreateSheet || groupSheetBot != nil
+    }
+
     private var rosterList: some View {
         List {
+            if createRequest != nil, appState.showsFinishSetup || appState.showsConnectionRepair {
+                Section {
+                    homeCards
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 12, trailing: 16))
+                }
+            }
             if let notice = managementNotice {
                 Section {
                     managementNoticeCard(notice)
@@ -285,7 +587,11 @@ struct BotRosterView: View {
                 // the bots says what a bot is. A row, not a footer: a plain
                 // List paints footers as an opaque band across the backdrop.
                 Section {
-                    botRows
+                    if !appState.talkingRooms.isEmpty {
+                        BotsLiveRooms()
+                            .rosterListRow(divider: false)
+                    }
+                    portraitGrid
                     Text("Each bot is its own profile with one ongoing conversation.")
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
@@ -551,13 +857,20 @@ private struct BotRosterRow: View {
         let openRoom: (GroupRoom) -> Void
         let newGroup: () -> Void
         let delete: () -> Void
+        /// Bots Home only: start a room with this bot, adding others by a
+        /// tap or a drag, and Reorder Bots.
+        var startRoom: (() -> Void)?
+        var reorder: (() -> Void)?
     }
 
     var body: some View {
         Button {
             Haptics.light()
-            appState.dismissSidebarDrawer()
-            Task { await appState.openBotChat(for: bot) }
+            appState.beginOpeningBotChat(bot.name)
+            Task {
+                await appState.openBotChat(for: bot)
+                appState.endOpeningBotChat(bot.name)
+            }
         } label: {
             // V2: a chat-style row, no card. Picture, name and time, then
             // the latest message.
@@ -601,55 +914,8 @@ private struct BotRosterRow: View {
         .accessibilityHint(Text(AppLocalization.string("Opens this bot's chat.")))
         .v2SelectedTrait(selection)
         .contextMenu {
-            Button(action: actions.newChat) {
-                Label(AppLocalization.string("New Chat"), systemImage: "square.and.pencil")
-            }
-            if !rooms.isEmpty || canStartGroup {
-                Menu {
-                    ForEach(rooms) { room in
-                        Button {
-                            actions.openRoom(room)
-                        } label: {
-                            Text(verbatim: room.name)
-                        }
-                    }
-                    if canStartGroup {
-                        Button(action: actions.newGroup) {
-                            Label(AppLocalization.string("New Group Chat"), systemImage: "plus")
-                        }
-                    }
-                } label: {
-                    Label(AppLocalization.string("Groups"), systemImage: "person.3")
-                }
-            }
-            if canManage {
-                Divider()
-                Button(action: actions.togglePin) {
-                    Label(
-                        bot.isPinned ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
-                        systemImage: bot.isPinned ? "pin.slash" : "pin"
-                    )
-                }
-                Button(action: actions.toggleHidden) {
-                    Label(
-                        bot.isHiddenByMeta ? AppLocalization.string("Unhide") : AppLocalization.string("Hide"),
-                        systemImage: bot.isHiddenByMeta ? "eye" : "eye.slash"
-                    )
-                }
-                Divider()
-                Button(action: actions.edit) {
-                    Label(AppLocalization.string("Edit Bot"), systemImage: "pencil")
-                }
-                Button(action: actions.duplicate) {
-                    Label(AppLocalization.string("Duplicate"), systemImage: "plus.square.on.square")
-                }
-                if canDelete {
-                    Divider()
-                    Button(role: .destructive, action: actions.delete) {
-                        Label(AppLocalization.string("Delete Bot"), systemImage: "trash")
-                    }
-                }
-            }
+            BotRosterMenu(bot: bot, canManage: canManage, canDelete: canDelete, rooms: rooms,
+                          canStartGroup: canStartGroup, actions: actions)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if canManage {
@@ -716,6 +982,79 @@ private struct BotRosterRow: View {
     }
 }
 
+/// A bot's menu, on its Bots list row and its Bots Home portrait
+/// (Desktop's row menu).
+private struct BotRosterMenu: View {
+    let bot: BotProfile
+    let canManage: Bool
+    let canDelete: Bool
+    let rooms: [GroupRoom]
+    let canStartGroup: Bool
+    let actions: BotRosterRow.Actions
+
+    var body: some View {
+        Button(action: actions.newChat) {
+            Label(AppLocalization.string("New Chat"), systemImage: "square.and.pencil")
+        }
+        if !rooms.isEmpty || canStartGroup {
+            Menu {
+                ForEach(rooms) { room in
+                    Button {
+                        actions.openRoom(room)
+                    } label: {
+                        Text(verbatim: room.name)
+                    }
+                }
+                if canStartGroup {
+                    Button(action: actions.newGroup) {
+                        Label(AppLocalization.string("New Group Chat"), systemImage: "plus")
+                    }
+                }
+            } label: {
+                Label(AppLocalization.string("Groups"), systemImage: "person.3")
+            }
+        }
+        if canStartGroup, let startRoom = actions.startRoom {
+            Button(action: startRoom) {
+                Label(AppLocalization.string("Start a Room with…"), systemImage: "person.2.badge.plus")
+            }
+        }
+        if let reorder = actions.reorder {
+            Button(action: reorder) {
+                Label(AppLocalization.string("Reorder Bots"), systemImage: "arrow.up.arrow.down")
+            }
+        }
+        if canManage {
+            Divider()
+            Button(action: actions.togglePin) {
+                Label(
+                    bot.isPinned ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
+                    systemImage: bot.isPinned ? "pin.slash" : "pin"
+                )
+            }
+            Button(action: actions.toggleHidden) {
+                Label(
+                    bot.isHiddenByMeta ? AppLocalization.string("Unhide") : AppLocalization.string("Hide"),
+                    systemImage: bot.isHiddenByMeta ? "eye" : "eye.slash"
+                )
+            }
+            Divider()
+            Button(action: actions.edit) {
+                Label(AppLocalization.string("Edit Bot"), systemImage: "pencil")
+            }
+            Button(action: actions.duplicate) {
+                Label(AppLocalization.string("Duplicate"), systemImage: "plus.square.on.square")
+            }
+            if canDelete {
+                Divider()
+                Button(role: .destructive, action: actions.delete) {
+                    Label(AppLocalization.string("Delete Bot"), systemImage: "trash")
+                }
+            }
+        }
+    }
+}
+
 /// A bot's face on the roster and in group pickers: its gateway-stored
 /// picture (the one Hermes Desktop shows) once fetched, else its initial on
 /// its color.
@@ -724,7 +1063,14 @@ struct BotMonogramView: View {
     @EnvironmentObject private var appState: AppState
     /// Scales with Dynamic Type so the glyph never clips at accessibility
     /// sizes (a fixed 36x36 frame clipped the letter once `.body` grew).
-    @ScaledMetric(relativeTo: .body) private var avatarSize: CGFloat = 36
+    @ScaledMetric private var avatarSize: CGFloat
+
+    /// `size` at the default Text Size: 36 on a row, larger on Bots Home's
+    /// portraits.
+    init(bot: BotProfile, size: CGFloat = 36) {
+        self.bot = bot
+        _avatarSize = ScaledMetric(wrappedValue: size, relativeTo: .body)
+    }
 
     var body: some View {
         BotAvatarView(

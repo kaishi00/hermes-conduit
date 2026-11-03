@@ -1883,7 +1883,7 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
         let named = (profile ?? "").isEmpty ? nil : profile
         // The call's own jobs on another profile take that profile's
         // voice-job model; named work runs on its profile's own.
-        let reply = await base.startJob(instructions: instructions, profile: named ?? callProfile, callsModel: named == nil, onJobCreated: { jobID in
+        let reply = await base.startJob(instructions: instructions, profile: named ?? callProfile, callsModel: named == nil, fromWatch: true, onJobCreated: { jobID in
             startedID = jobID
             // Marked before Hermes can answer, so its reply is matched
             // against replays from the start.

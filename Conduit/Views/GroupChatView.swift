@@ -1362,18 +1362,30 @@ struct GroupCreateSheet: View {
     @State private var attemptedInputs: GroupCreateAttempt.Inputs?
     @State private var isCreating = false
 
-    /// `preselected`: bots already picked, as from a bot's Groups menu.
-    init(preselected: Set<String> = []) {
+    /// Runs once the room is made (Bots Home drops the room it was starting).
+    private let onCreated: (() -> Void)?
+
+    /// `preselected`: bots already picked, as from a bot's Groups menu or
+    /// the bots dropped together on Bots Home, with `suggestedName`.
+    init(preselected: Set<String> = [], suggestedName: String = "", onCreated: (() -> Void)? = nil) {
         _selected = State(initialValue: preselected)
+        _name = State(initialValue: suggestedName)
+        self.onCreated = onCreated
     }
 
     private var visibleBots: [BotProfile] {
-        appState.botRoster.filter { !$0.isHiddenByMeta }
+        appState.orderedBots(appState.botRoster).filter { !$0.isHiddenByMeta }
+    }
+
+    /// The picked bots still listed: one hidden or deleted while the sheet
+    /// is open can't be unticked, so it never counts.
+    private var pickedNames: Set<String> {
+        selected.intersection(visibleBots.map(\.name))
     }
 
     private var canCreate: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && selected.count >= 2 && selected.count <= 6
+            && pickedNames.count >= 2 && pickedNames.count <= GroupRoomLimits.maxMembers
             && !isCreating
     }
 
@@ -1421,7 +1433,7 @@ struct GroupCreateSheet: View {
                         let roomName = name
                         let inputs = GroupCreateAttempt.Inputs(
                             name: roomName.trimmingCharacters(in: .whitespacesAndNewlines),
-                            members: selected
+                            members: pickedNames
                         )
                         roomID = GroupCreateAttempt.roomID(
                             for: inputs, current: roomID, attempted: attemptedInputs
@@ -1433,7 +1445,10 @@ struct GroupCreateSheet: View {
                                 name: roomName, bots: bots, roomID: pendingRoomID
                             )
                             isCreating = false
-                            if created { dismiss() }
+                            if created {
+                                onCreated?()
+                                dismiss()
+                            }
                         }
                     }
                     .disabled(!canCreate)

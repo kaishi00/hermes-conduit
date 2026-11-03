@@ -766,6 +766,8 @@ final class AppState: ObservableObject {
         didSet {
             refreshActiveChatScrollSessionIdentity()
             if oldValue != activeProfile {
+                // Its own saved voice jobs, if no boundary already took them.
+                if voiceJobLedgerRestoredKey != nil { scheduleVoiceJobLedgerRestore() }
                 composerNotice = nil
                 restoreDisplayPreferences()
                 restoreBusyInputMode()
@@ -1040,6 +1042,10 @@ final class AppState: ObservableObject {
     @Published private(set) var sessionStars = SessionStars()
     /// The Pinned section's order, per profile (issue 1354).
     @Published private(set) var pinnedChatOrder = PinnedChatOrder()
+    /// The bots' order on Bots Home and every bot list (AppState+BotOrder).
+    @Published private(set) var botOrder = BotOrder()
+    /// Which Bot Chat grows out of its Bots Home portrait (BotZoomArm).
+    var botZoom = BotZoomArm()
     /// Replies pinned to the top of their chat, per profile (#918). Kept on
     /// this device only (AppState+PinnedReplies).
     @Published var pinnedRepliesByProfile: [String: [PinnedReply]] = [:]
@@ -2147,6 +2153,11 @@ final class AppState: ObservableObject {
             return hasText && !hasAttachments ? .send : .unavailable
         }
         guard offlineChatPresentation == nil, !showsPendingNewChat else { return .unavailable }
+        // A workstream's turn runs in the plugin: Stop stops it from here.
+        if !hasText, !hasAttachments, !turnState.isRunning, composerIsEnabled, isConnected,
+           workstreamStoppedByComposer != nil {
+            return .stop
+        }
         return turnState.composerAction(
             hasText: hasText,
             hasAttachments: hasAttachments,
@@ -2290,6 +2301,36 @@ final class AppState: ObservableObject {
     func dismissSidebarDrawer() {
         guard showSidebar else { return }
         showSidebar = false
+    }
+
+    /// The bot whose chat a list of bots is opening. The list closes first
+    /// and the shell routes the chat then, before it lands, so this tells
+    /// it a Bot Chat is coming (it stays in Bots) whatever was open before.
+    private(set) var botChatOpening: String?
+
+    /// Closes the list for `name`'s Bot Chat; `endOpeningBotChat` once the
+    /// open has finished, opened or not.
+    func beginOpeningBotChat(_ name: String) {
+        botChatOpening = name
+        dismissSidebarDrawer()
+    }
+
+    func endOpeningBotChat(_ name: String) {
+        if botChatOpening == name { botChatOpening = nil }
+    }
+
+    /// The shell placed the conversation for the marked Bot Chat: the mark
+    /// is spent, so a plain session a notification opens before the Bot
+    /// Chat lands still goes to Sessions.
+    func botChatOpeningPlaced() {
+        botChatOpening = nil
+    }
+
+    /// Whether the shell keeps the conversation it's placing in Bots: a
+    /// Bot Chat or a workstream's chat is open, or a list of bots marked
+    /// one as coming.
+    var placesConversationAsBotChat: Bool {
+        activeBotChatProfile != nil || activeWorkstream != nil || botChatOpening != nil
     }
     @Published var showModelPicker = false
     @Published var showContextSheet = false
@@ -4813,8 +4854,9 @@ final class AppState: ObservableObject {
                 if let targetProfile {
                     // A job on another profile or bot runs on that profile's
                     // own model: this profile's voice-job model is not its.
-                    // A Watch call's own job on that profile uses its voice-job
-                    // model, as the call's relay jobs do (#1564).
+                    // A call's own job on that profile (a Watch call's, or a
+                    // Bot Chat call's on its bot) uses its voice-job model, as
+                    // the call's relay jobs do (#1564).
                     var options: (model: String?, provider: String?, reasoningEffort: String?) = (nil, nil, nil)
                     if callsModel {
                         options = self.watchCallJobSession(self.loadVoiceProfilePreferences(profile: targetProfile), profile: targetProfile)
@@ -4828,7 +4870,7 @@ final class AppState: ObservableObject {
                     if let returnedProfile = created.profile, !self.profilesMatch(returnedProfile, targetProfile) {
                         throw HermesError.invalidResponse
                     }
-                    return (created.sessionId, created.storedSessionId)
+                    return (created.sessionId, created.storedSessionId, targetProfile)
                 }
                 // Same model/provider as a composer-created chat, and the
                 // same refusal when Hermes lands it in another profile.
@@ -4847,12 +4889,24 @@ final class AppState: ObservableObject {
                 if let returnedProfile = created.profile, !self.profilesMatch(returnedProfile, profile) {
                     throw HermesError.invalidResponse
                 }
-                return (created.sessionId, created.storedSessionId)
+                return (created.sessionId, created.storedSessionId, profile)
             },
             setTitle: { [weak self] sessionID, title in
                 guard let client = try? await self?.clientForVoiceRequest() else { return }
                 try? await client.setSessionTitle(sessionID, title: title)
             },
+            keepInRegistry: { [weak self] targetProfile, sessionID, title, instructions, fromWatch, callChat, endedWith, call in
+                self?.keepVoiceJobInRegistry(profile: targetProfile, sessionID: sessionID, title: title,
+                                             instructions: instructions, fromWatch: fromWatch, callChat: callChat,
+                                             endedWith: endedWith, call: call)
+            },
+            sendToCallWorkstream: { [weak self] thread, request in
+                await self?.sendCallRequestToWorkstream(thread, request)
+            },
+            callLeftChat: { [weak self] profile, chat, call in
+                self?.voiceCallLeftChat(profile: profile, chat: chat, call: call)
+            },
+            activeProfile: { [weak self] in self?.activeProfile },
             submit: { [weak self] sessionID, text in
                 guard let self else { throw HermesError.notConnected }
                 let client = try await self.clientForVoiceRequest()
@@ -4915,6 +4969,24 @@ final class AppState: ObservableObject {
                 guard let self, self.isOpenChat(thread),
                       let message = Self.liveVoiceUnansweredPrompt(in: self.messages) else { return nil }
                 return Self.liveVoiceTypedPrompt(message)
+            },
+            isBotChat: { [weak self] thread in
+                guard let self else { return false }
+                return [thread.runtimeSessionID, thread.storedSessionID ?? ""]
+                    .contains { !$0.isEmpty && self.botConversationProfile(for: $0) != nil }
+            },
+            threadAwaitsSeveralPrompts: { [weak self] thread in
+                guard let self, self.isOpenChat(thread) else { return false }
+                let afterReply = self.messages.lastIndex(where: { $0.role == .assistant }).map { $0 + 1 } ?? self.messages.startIndex
+                return self.messages[afterReply...].filter { $0.role == .user && !$0.isSteer }.count > 1
+            },
+            saveLedger: { [weak self] saved in
+                self?.saveVoiceJobLedger(saved)
+            },
+            ledgerKey: { [weak self] in self?.voiceJobLedgerKey },
+            openThreadMessages: { [weak self] thread in
+                guard let self, self.isOpenChat(thread) else { return nil }
+                return self.messages
             },
             searchChats: { [weak self] query, profile in
                 guard let self else { throw HermesError.notConnected }
@@ -5080,8 +5152,41 @@ final class AppState: ObservableObject {
                 await self?.loadSessions(forceRefresh: true)
             }
         }
+        self.scheduleVoiceJobLedgerRestore()
         return supervisor
     }()
+
+    /// Where the voice jobs' ledger is kept for this dashboard and profile
+    /// (M5b): a relaunch follows the jobs a call left running.
+    var voiceJobLedgerKey: String {
+        "conduit.voiceJobLedger.\(activeDashboardID?.uuidString ?? "none").\(activeProfile)"
+    }
+
+    /// Saves only into the ledger this run brought back: a boundary's empty
+    /// ledger never overwrites the next dashboard's or profile's.
+    func saveVoiceJobLedger(_ saved: [SavedVoiceJob]) {
+        guard let key = voiceJobLedgerRestoredKey, key == voiceJobLedgerKey else { return }
+        // Only this ledger's jobs: another profile's stay in its own.
+        let saved = saved.filter { $0.ledgerKey == nil || $0.ledgerKey == key }
+        if saved.isEmpty {
+            defaults.removeObject(forKey: key)
+        } else if let data = try? JSONEncoder().encode(saved) {
+            defaults.set(data, forKey: key)
+        }
+    }
+
+    /// After whatever boundary is under way settles, takes back the active
+    /// dashboard and profile's saved jobs.
+    func scheduleVoiceJobLedgerRestore() {
+        voiceJobLedgerRestoredKey = nil
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let key = self.voiceJobLedgerKey
+            guard self.voiceJobLedgerRestoredKey != key else { return }
+            self.voiceJobLedgerRestoredKey = key
+            self.voiceBackgroundJobSupervisor.restore(SavedVoiceJob.decode(self.defaults.data(forKey: key)))
+        }
+    }
     /// Logical identity of a Voice conversation suspended by an app lifecycle
     /// transition (scene backgrounded / device locked). Identity only: it
     /// never holds audio resources, gateway or transport references, session
@@ -5326,6 +5431,13 @@ final class AppState: ObservableObject {
     /// the dashboard and profile in `cronMutedJobsKey`.
     @Published var cronMutedJobIDs: Set<String> = []
     @Published var cronMutedJobsKey: String?
+    /// Cron jobs delivered to a Bot Chat whose report starts the bot's turn
+    /// (the rest just show it), read with `cronMutedJobIDs` and keyed by
+    /// the same `cronMutedJobsKey`.
+    @Published var cronActingJobIDs: Set<String> = []
+    /// Whether the host's Hermes shows a Bot Chat job's report without a
+    /// turn (the plugin's `shows_reports`), for `cronMutedJobsKey`.
+    @Published var cronShowsBotChatReports = false
     @Published var cronNotificationsChangingJobID: String?
     /// Moves with every save, so a refresh that started before one drops its answer.
     var cronNotificationsGeneration = 0
@@ -5548,6 +5660,8 @@ final class AppState: ObservableObject {
     private var presentationCacheFlushTask: Task<Void, Never>?
     /// Session-list refresh after a Voice background job creates its chat.
     private var voiceJobSessionListRefreshTask: Task<Void, Never>?
+    /// The saved ledger this run took back (M5b), the only one it saves into.
+    private var voiceJobLedgerRestoredKey: String?
     /// Monotonic fence for deferred presentation-cache writes. Bumped when
     /// the active profile identity changes so a coalesced flush scheduled
     /// under one profile can never land in another profile's namespace.
@@ -6022,9 +6136,15 @@ final class AppState: ObservableObject {
     /// conversation's.
     var displayedChatTitle: String {
         if showsPendingNewChat { return AppLocalization.string("New conversation") }
-        return offlineChatPresentation?.picked?.title
+        let title = offlineChatPresentation?.picked?.title
             ?? offlineChatPresentation?.displayedTranscript?.title
             ?? activeSessionTitle
+        // A workstream's chat is hidden from Hermes' lists, so it has no
+        // title here: it takes its task's.
+        if title == AppLocalization.string("New conversation"), let workstream = activeWorkstream {
+            return workstream.item.shownTitle
+        }
+        return title
     }
 
     func dismissOfflineChatPresentation() {
@@ -7285,6 +7405,7 @@ final class AppState: ObservableObject {
         }
         sessionStars = SessionStars(defaults: defaults)
         pinnedChatOrder = PinnedChatOrder(defaults: defaults)
+        botOrder = BotOrder(defaults: defaults)
         allProfilesChatsSettings = AllProfilesChatsSettings(defaults: defaults)
         if let data = defaults.data(forKey: pinnedRepliesByProfileKey),
            let stored = try? JSONDecoder().decode([String: [PinnedReply]].self, from: data) {
@@ -7727,7 +7848,9 @@ final class AppState: ObservableObject {
         // A Watch call to Gemini belongs to the outgoing connection too: it
         // ends here, before its jobs' news goes back to the supervisor.
         WatchVoiceLink.shared.direct.connectionRetiring(in: self)
+        voiceJobLedgerRestoredKey = nil  // before the reset's empty ledger
         voiceBackgroundJobSupervisor.reset()
+        scheduleVoiceJobLedgerRestore()
         voiceJobSessionListRefreshTask?.cancel()
         voiceJobSessionListRefreshTask = nil
     }
@@ -10126,6 +10249,15 @@ final class AppState: ObservableObject {
         order.save(to: defaults)
     }
 
+    /// Saves the bots' order (BotOrder), set here or from Sync across
+    /// devices.
+    func setBotOrder(_ order: BotOrder) {
+        guard order != botOrder else { return }
+        botOrder = order
+        order.save(to: defaults)
+        publishWidgetSnapshot()
+    }
+
     /// Saves where All's mixed Pinned section holds each profile's chats
     /// (issue 1486), on this device only.
     func setPinnedChatMixedOrder(_ keys: [String]) {
@@ -11904,6 +12036,8 @@ final class AppState: ObservableObject {
         pinnedChatOrder = PinnedChatOrder()
         defaults.removeObject(forKey: PinnedChatOrder.storageKey)
         defaults.removeObject(forKey: PinnedChatOrder.mixedStorageKey)
+        botOrder = BotOrder()
+        defaults.removeObject(forKey: BotOrder.storageKey)
         allProfilesCatalogTask?.cancel()
         allProfilesCatalogTask = nil
         allProfilesCatalog = AllProfilesCatalog()
@@ -11955,6 +12089,7 @@ final class AppState: ObservableObject {
     /// mutate state against the outgoing server.
     private func invalidateBotModeState() {
         botRosterEpoch += 1
+        botWork.clear()
         botRosterVerifiedForCurrentConnection = false
         botChatOpenFlights.values.forEach { $0.task?.cancel() }
         botChatSessionProfiles.removeAll()
@@ -12068,6 +12203,10 @@ final class AppState: ObservableObject {
     @Published private(set) var groupChatPhase: GroupChatPhase = .idle
     @Published private(set) var groupCapabilities: GroupCapabilities?
     @Published private(set) var groupRooms: [GroupRoom] = []
+    /// The hosted rooms whose bots are talking now (each room's driver is
+    /// working), read while Bots Home shows (`refreshTalkingRooms`), for
+    /// its live-rooms row and the "In <room>" pills.
+    @Published private(set) var talkingRoomIDs: Set<String> = []
     /// `groups.list` has answered since the group state was last cleared:
     /// until then the Bots list shows the rooms kept from its last answer on
     /// this dashboard (`shownGroupRooms`, #1533). Published so a room a
@@ -12243,6 +12382,7 @@ final class AppState: ObservableObject {
         groupRoomsListed = false
         groupRoomsComplete = false
         groupRooms = []
+        talkingRoomIDs = []
         desktopGroupChats = []
         groupRoomPictureData = [:]
         groupRoomPictureRevisions = [:]
@@ -12591,6 +12731,94 @@ final class AppState: ObservableObject {
             // Keep the last known room list; the roster surfaces the probe
             // failure path, and a stale room row is safer than an empty one.
         }
+    }
+
+    /// The most rooms Bots Home asks after at once: the ones talked in
+    /// last (`updatedAt`), so a host with many rooms isn't asked about each.
+    static let talkingRoomsRead = 8
+    /// A talking room that doesn't answer stays talking for this many reads.
+    static let talkingRoomMissesKept = 3
+    /// Each room's reads in a row that failed.
+    private var talkingRoomMisses: [String: Int] = [:]
+    /// A talking-rooms read is running.
+    private var talkingRoomsReading = false
+    /// When the last talking-rooms read began.
+    private var talkingRoomsReadAt: Date?
+
+    /// `refreshTalkingRooms`, unless one began within `every` (less a
+    /// second's slack): Bots Home and a bot's overview both ask on their
+    /// own clocks, and the rooms are read once each round, not by each.
+    func refreshTalkingRoomsIfDue(every: Duration) async {
+        // Offline nothing is read, and the first ask back reads at once.
+        guard isConnected else {
+            talkingRoomsReadAt = nil
+            await refreshTalkingRooms()
+            return
+        }
+        let interval = Double(every.components.seconds) - 1
+        if let at = talkingRoomsReadAt, Date().timeIntervalSince(at) < interval { return }
+        talkingRoomsReadAt = Date()
+        await refreshTalkingRooms()
+    }
+
+    /// Which hosted rooms are talking now: one `groups.state` per room
+    /// (its driver's `working`), the rooms updated last first. Bots Home
+    /// reads it while it shows. An unanswered room keeps what it was.
+    func refreshTalkingRooms() async {
+        // Bots Home and a bot's overview both ask; one read at a time.
+        guard !talkingRoomsReading else { return }
+        talkingRoomsReading = true
+        defer { talkingRoomsReading = false }
+        guard groupChatPhase == .available, groupRoomsListed, let client, isConnected else {
+            if !talkingRoomIDs.isEmpty { talkingRoomIDs = [] }
+            talkingRoomMisses = [:]
+            // Asked again as soon as it can answer.
+            talkingRoomsReadAt = nil
+            return
+        }
+        let epoch = groupRoomEpoch
+        let rooms = groupRooms.filter { !$0.isDisbanded }
+            .sorted { $0.updatedAt > $1.updatedAt }
+            .prefix(Self.talkingRoomsRead)
+        var talking = Set<String>()
+        // Only the rooms read this pass keep a count, so one that left
+        // the read rooms starts over when it comes back.
+        var misses: [String: Int] = [:]
+        for room in rooms {
+            do {
+                let (_, driver) = try await groupsState(client, roomID: room.roomID)
+                if driver?.working == true { talking.insert(room.roomID) }
+            } catch is CancellationError {
+                // Cut short: the next ask reads again at once.
+                talkingRoomsReadAt = nil
+                return
+            } catch {
+                // Kept through a couple of misses, not for good.
+                let missed = (talkingRoomMisses[room.roomID] ?? 0) + 1
+                misses[room.roomID] = missed
+                if talkingRoomIDs.contains(room.roomID), missed < Self.talkingRoomMissesKept {
+                    talking.insert(room.roomID)
+                }
+            }
+            guard groupRoomEpoch == epoch, self.client === client else { return }
+        }
+        talkingRoomMisses = misses
+        if talking != talkingRoomIDs { talkingRoomIDs = talking }
+    }
+
+    /// The talking rooms `profile` is a member of, talked in last first.
+    func talkingRooms(of profile: String) -> [GroupRoom] {
+        guard !talkingRoomIDs.isEmpty else { return [] }
+        return talkingRooms.filter { room in
+            room.members.contains { $0.profile?.caseInsensitiveCompare(profile) == .orderedSame }
+        }
+    }
+
+    /// The talking rooms, talked in last first.
+    var talkingRooms: [GroupRoom] {
+        guard !talkingRoomIDs.isEmpty else { return [] }
+        return groupRooms.filter { talkingRoomIDs.contains($0.roomID) && !$0.isDisbanded }
+            .sorted { $0.updatedAt > $1.updatedAt }
     }
 
     /// Keeps the listed rooms and their pictures as they are now, as a
@@ -13082,7 +13310,7 @@ final class AppState: ObservableObject {
             errorMessage = AppLocalization.string("Connect to Hermes to create a group chat.")
             return false
         }
-        guard bots.count >= 2, bots.count <= 6 else {
+        guard bots.count >= 2, bots.count <= GroupRoomLimits.maxMembers else {
             errorMessage = AppLocalization.string("Pick 2 to 6 bots for a group chat.")
             return false
         }
@@ -14893,6 +15121,8 @@ final class AppState: ObservableObject {
         pinnedChatOrder = PinnedChatOrder()
         defaults.removeObject(forKey: PinnedChatOrder.storageKey)
         defaults.removeObject(forKey: PinnedChatOrder.mixedStorageKey)
+        botOrder = BotOrder()
+        defaults.removeObject(forKey: BotOrder.storageKey)
         allProfilesCatalogTask?.cancel()
         allProfilesCatalogTask = nil
         allProfilesCatalog = AllProfilesCatalog()
@@ -22943,8 +23173,8 @@ final class AppState: ObservableObject {
     /// (#1533). A kept bot's row opens its Bot Chat; nothing writes it
     /// (`BotProfile.isKeptCopy`).
     var shownBotRoster: [BotProfile] {
-        guard botRoster.isEmpty, !botRosterAnswered else { return botRoster }
-        return keptBotRoster()?.bots ?? []
+        guard botRoster.isEmpty, !botRosterAnswered else { return orderedBots(botRoster) }
+        return orderedBots(keptBotRoster()?.bots ?? [])
     }
 
     /// Desktop's group chats, from the roster or its kept copy, as the bots.
@@ -26940,6 +27170,14 @@ final class AppState: ObservableObject {
     // A send refused because Hermes Desktop or a terminal owns the chat
     // (SESSION_NOT_OWNED) offers "Take over"; see ChatTakeover.swift.
 
+    /// Each bot's work, for the Bot Chat's Work strip and panel
+    /// (AppState+BotWorkstreams.swift).
+    lazy var botWork: BotWorkStore = {
+        let store = BotWorkStore()
+        store.onWorkstreamsChanged = { [weak self] in self?.workstreamsChanged() }
+        return store
+    }()
+
     /// What the host's notifier plugin serves; Settings nudges an update.
     @Published private(set) var notifierPlugin = NotifierPluginStatus() {
         // A plugin that just said it takes on-screen reports gets the turn
@@ -30464,9 +30702,17 @@ final class AppState: ObservableObject {
     /// Cancels the authoritative Hermes turn, reporting whether the
     /// cancellation succeeded. "Success" also covers nothing being left to
     /// cancel (the turn already settled server-side).
+    /// `stopsWorkstream`: the composer's Stop, which stops an open
+    /// workstream through the plugin when this chat has no turn of its own
+    /// (voice's interrupts and cleanups don't).
     @discardableResult
-    func cancelCurrent() async -> Bool {
-        guard isBusy else { return true }
+    func cancelCurrent(stopsWorkstream: Bool = false) async -> Bool {
+        guard isBusy else {
+            if stopsWorkstream, let open = workstreamStoppedByComposer {
+                return await actOnWorkstream(open.item, profile: open.profile, action: .stop)
+            }
+            return true
+        }
         let submissionContext = composerSubmissionContext()
         guard await interruptForReplacement(context: submissionContext) else { return false }
         guard let currentContext = currentComposerSubmissionContextIfOwnedAndAliased(submissionContext) else { return true }
@@ -33859,6 +34105,7 @@ final class AppState: ObservableObject {
             if profile == activeProfile {
                 cronJobs.removeAll { $0.id == job.id }
                 cronMutedJobIDs.remove(job.id)
+                cronActingJobIDs.remove(job.id)
             }
             return true
         } catch {
@@ -40366,6 +40613,7 @@ extension AppState {
         let kept = rows.filter { session in
             !BotChatHygiene.isCanonicalBotChatRow(session, roster: botRoster)
                 && !BotChatHygiene.isBotOwnedRow(session, botOwnedSessionIDs: botOwned)
+                && !isWorkstreamRow(session)
         }
         // Each other profile's rows are noted the way its own list notes
         // them, so a reply that lands there later lights its dot here.

@@ -34,4 +34,34 @@ extension GatewayRestartTests {
         XCTAssertThrowsError(try CronNotificationsClient.parse(["ok": true]))
         XCTAssertThrowsError(try CronNotificationsClient.parse(["ok": false, "muted": []]))
     }
+
+    func testABotChatJobsChoiceIsReadSentAndOptional() async throws {
+        var sent: [String: Any]?
+        let client = CronNotificationsClient { _, method, body in
+            if method == "PUT" { sent = body }
+            return ["ok": true, "muted": ["m1"], "act": ["a1"], "shows_reports": true]
+        }
+        let read = try await client.choices(profile: "default")
+        XCTAssertEqual(read, CronNotificationsClient.Choices(muted: ["m1"], act: ["a1"], showsReports: true))
+        _ = try await client.setActs(true, jobID: "a1", profile: "default")
+        XCTAssertEqual(sent?["job_id"] as? String, "a1")
+        XCTAssertEqual(sent?["act"] as? Bool, true)
+        XCTAssertNil(sent?["notify"])
+        // An older plugin lists no `act`, and Conduit offers no choice there.
+        XCTAssertEqual(try CronNotificationsClient.parseChoices(["ok": true, "muted": []]), .init())
+        XCTAssertThrowsError(try CronNotificationsClient.parseChoices(["ok": true, "muted": [], "act": "a1"]))
+    }
+
+    func testABotChatReportReadsAsTheJobAndItsReport() {
+        let report = CronBotChatReport.parse(
+            "[Cron job \"Morning news\" report: shown in the chat, no reply asked for]\n\nRain at 9.\n\n- Bring a coat"
+        )
+        XCTAssertEqual(report, CronBotChatReport(job: "Morning news", report: "Rain at 9.\n\n- Bring a coat"))
+        XCTAssertNil(CronBotChatReport.parse("[Cron job \"Morning news\" output — scheduled job, not the user.]\n\nRain"))
+        XCTAssertNil(CronBotChatReport.parse("Rain at 9."))
+        XCTAssertTrue(CronDeliveryTarget.deliversToBotChat("bot-chat"))
+        XCTAssertTrue(CronDeliveryTarget.deliversToBotChat("telegram, Bot-Chat:furina"))
+        XCTAssertFalse(CronDeliveryTarget.deliversToBotChat("local"))
+        XCTAssertFalse(CronDeliveryTarget.deliversToBotChat("bot-chatter"))
+    }
 }
