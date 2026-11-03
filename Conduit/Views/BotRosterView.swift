@@ -86,7 +86,7 @@ struct BotRosterView: View {
         .sheet(isPresented: $showingNewRoomSheet) {
             GroupCreateSheet(
                 preselected: Set(newRoomBots.map(\.name)),
-                suggestedName: ListFormatter.localizedString(byJoining: newRoomBots.map(\.displayLabel)),
+                suggestedName: joinedNames(newRoomBots),
                 onCreated: { newRoom = [] }
             )
             .environmentObject(appState)
@@ -417,6 +417,14 @@ struct BotRosterView: View {
 
     private var visibleBotNames: [String] { visibleBots.map(\.name) }
 
+    /// "Atlas and Furina", in the App Language like the rest of the app
+    /// (the suggested room name is kept as typed, so it matters).
+    private func joinedNames(_ bots: [BotProfile]) -> String {
+        let formatter = ListFormatter()
+        formatter.locale = AppLocalization.formattingLocale
+        return formatter.string(from: bots.map(\.displayLabel)) ?? bots.map(\.displayLabel).joined(separator: ", ")
+    }
+
     /// The bar a room being started shows at the bottom: its bots (a tap
     /// takes one out), Cancel, and Create, which opens New Group Chat with
     /// them picked and a name suggested: the confirmation.
@@ -440,7 +448,7 @@ struct BotRosterView: View {
                     .scaledFont(.subheadline.weight(.semibold))
                 Text(verbatim: bots.count < 2
                      ? AppLocalization.string("Drag or tap bots to add them.")
-                     : ListFormatter.localizedString(byJoining: bots.map(\.displayLabel)))
+                     : joinedNames(bots))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)

@@ -92,6 +92,7 @@ struct BotPortraitGrid<Cell: View>: View {
         // A drop between or after the portraits, not on one: the end.
         .dropDestination(for: String.self) { items, _ in
             guard let onDropAtEnd, let dragged = items.first.flatMap(BotDragPayload.botName(from:)) else { return false }
+            BotDragPayload.lifted = nil
             onDropAtEnd(dragged)
             return true
         }
@@ -107,9 +108,9 @@ enum BotPortraitRoom: Equatable {
     case notMember
 }
 
-/// A portrait picked up by a touch and hold that moves: dropped between
-/// two others it moves there, held over one's face it starts a room with
-/// it. The payload names the bot, marked, so text dragged in from another
+/// A portrait picked up by a touch and hold that moves: dropped on another
+/// it moves before it, past the last one to the end, and held over one's
+/// face it starts a room with it. The payload names the bot, marked, so text dragged in from another
 /// app is never taken for one.
 struct BotPortraitDrag<Preview: View>: ViewModifier {
     let name: String
@@ -270,6 +271,7 @@ struct BotPortraitCell<MenuContent: View>: View {
                 guard let onDrop, let dragged = items.first.flatMap(BotDragPayload.botName(from:)),
                       dragged.caseInsensitiveCompare(bot.name) != .orderedSame else { return false }
                 let merge = mergeReady
+                BotDragPayload.lifted = nil
                 endTargeting()
                 onDrop(dragged, merge)
                 return true
