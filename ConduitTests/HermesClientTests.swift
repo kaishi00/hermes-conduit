@@ -2104,6 +2104,18 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual(retried["execution_generation"] as? Int, 9)
         let restopped = try await awaitResult(of: stop, "the second interrupt")
         XCTAssertEqual(restopped, 9)
+
+        // No turn runs after all: nothing was stopped, so no turn is named.
+        count = socket.sentTexts.count
+        stop = Task<Int?, Error> { try await client.cancel("sess-1") }
+        try await answerRequest(on: socket, after: count, method: "session.interrupt", error: [
+            "code": 4001, "message": "stale_generation", "data": ["reason": "stale_generation"]
+        ])
+        try await answerRequest(on: socket, after: count + 1, method: "session.resume", result: [
+            "session_id": "sess-1", "running": false, "execution_generation": 9
+        ])
+        let none = try await awaitResult(of: stop, "the interrupt with nothing to stop")
+        XCTAssertNil(none)
         client.disconnect()
     }
 

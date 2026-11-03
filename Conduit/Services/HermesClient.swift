@@ -3415,57 +3415,65 @@ final class HermesClient: ObservableObject {
     /// `profile` is the chat's own (a bot chat's), for the authority's
     /// stale-turn read; nil is the client's.
     func steer(_ sessionId: String, text: String, profile: String? = nil) async throws {
-        guard let result = try await turnControl("session.steer", sessionId: sessionId, text: text, profile: profile),
+        guard let result = try await turnControl("session.steer", sessionId: sessionId, text: text, profile: profile).result,
               result.objectValue?["status"]?.stringValue != "rejected" else {
             throw HermesError.steerRejected
         }
     }
 
     func redirect(_ sessionId: String, text: String, profile: String? = nil) async throws -> SessionRedirectOutcome {
-        guard let result = try await turnControl("session.redirect", sessionId: sessionId, text: text, profile: profile) else {
+        guard let result = try await turnControl("session.redirect", sessionId: sessionId, text: text, profile: profile).result else {
             return .rejected
         }
         return SessionRedirectOutcome(gatewayStatus: result.objectValue?["status"]?.stringValue)
     }
 
-    /// Returns the turn the interrupt named, by its execution generation:
-    /// after a `stale_generation` refusal that is the one Hermes gave on
-    /// reading the chat again, which can be newer than the one this socket
-    /// had. Nil on `hermes dashboard`, which numbers no turns.
+    /// Returns the turn the interrupt that went through named, by its
+    /// execution generation: after a `stale_generation` refusal that is the
+    /// one Hermes gave on reading the chat again, which can differ from the
+    /// one this socket had. Nil when no interrupt went through (no turn ran)
+    /// and on `hermes dashboard`, which numbers no turns.
     @discardableResult
     func cancel(_ sessionId: String, profile: String? = nil) async throws -> Int? {
         // Nil: no turn is running, so there is nothing to stop.
-        _ = try await turnControl("session.interrupt", sessionId: sessionId, profile: profile)
+        let control = try await turnControl("session.interrupt", sessionId: sessionId, profile: profile)
         // Stopped: the stopped turn ends right after, and a send then starts
         // as soon as it does, so it reads as a turn of its own rather than
         // waiting on an end this socket may never see.
         authorityRunningSessions.remove(sessionId)
-        return speaksSessionAuthority ? executionGenerations[sessionId] : nil
+        return control.generation
     }
 
     /// A steer, redirect or interrupt of the running turn. The authority
     /// names the turn by its generation; one it doesn't know as running
     /// (`stale_generation`) is read again from the session, and the
-    /// control goes once more if a turn still runs. Nil when none does:
-    /// the turn ended first, the dashboard's `rejected`.
+    /// control goes once more if a turn still runs. A nil result when none
+    /// does: the turn ended first, the dashboard's `rejected`. `generation`
+    /// is the turn the control that went through named (nil on the
+    /// dashboard, or when none went through), read as it was sent, since
+    /// another turn's events can move this socket's number meanwhile.
     private func turnControl(
         _ method: String, sessionId: String, text: String? = nil, profile: String? = nil
-    ) async throws -> AnyCodable? {
+    ) async throws -> (result: AnyCodable?, generation: Int?) {
         func dashboardRequest() -> GatewayRequest {
             var params: [String: Any] = ["session_id": sessionId]
             if let text { params["text"] = text }
             return GatewayRequest(method: method, params: params)
         }
         do {
-            return try await shapedRPC { [self] authority in
-                authority ? authorityControl(method, sessionId: sessionId, text: text) : dashboardRequest()
+            var named: Int?
+            let result = try await shapedRPC { [self] authority in
+                guard authority else { return dashboardRequest() }
+                named = executionGenerations[sessionId]
+                return authorityControl(method, sessionId: sessionId, text: text)
             }
+            return (result, named)
         } catch let error as RpcError where error.reason == "stale_generation" {
             // A bot chat is only found under its own profile.
             let snapshot = try await resumeSessionObject(sessionId, omitMessages: true, profile: profile)
             guard snapshot["running"]?.boolValue == true else {
                 authorityRunningSessions.remove(sessionId)
-                return nil
+                return (nil, nil)
             }
             // The authority's word on the running turn, even below what this
             // socket had: the control names it as Hermes does.
@@ -3478,11 +3486,11 @@ final class HermesClient: ObservableObject {
             executionGenerations[sessionId] = generation
             do {
                 let request = authorityControl(method, sessionId: sessionId, text: text)
-                return try await rpc(request.method, params: request.params)
+                return (try await rpc(request.method, params: request.params), generation)
             } catch let error as RpcError where error.reason == "stale_generation" {
                 // No turn runs after all: a send there starts one, not held.
                 authorityRunningSessions.remove(sessionId)
-                return nil
+                return (nil, nil)
             }
         }
     }

@@ -4869,7 +4869,7 @@ final class AppState: ObservableObject {
                 let noteWrite = open.flatMap { self.voiceCancelNoteWrites[$0] }
                 do {
                     let stopped = try await client.cancel(sessionID, profile: self.presentationProfile(for: sessionID))
-                    if let open { self.noteVoiceStoppedTurn(sessionId: open, generation: stopped, wasRunning: wasRunning) }
+                    if let open { self.noteVoiceStoppedTurn(sessionId: open, generation: stopped, wasRunning: wasRunning, ifStill: noteWrite) }
                 } catch {
                     if let open, let noteBeforeCancel {
                         self.restoreVoiceCancelNote(in: open, to: noteBeforeCancel, ifStill: noteWrite)
@@ -30447,7 +30447,7 @@ final class AppState: ObservableObject {
                 try await interrupt(client, sessionId)
             } else {
                 let stopped = try await client.cancel(sessionId, profile: presentationProfile(for: sessionId))
-                noteVoiceStoppedTurn(sessionId: sessionId, generation: stopped, wasRunning: wasRunning)
+                noteVoiceStoppedTurn(sessionId: sessionId, generation: stopped, wasRunning: wasRunning, ifStill: noteWrite)
             }
             guard isCurrentOrAliasedComposerSubmission(currentContext) else { return false }
             return true
@@ -37350,9 +37350,11 @@ final class AppState: ObservableObject {
     /// when this socket never saw it start. The note becomes that turn, so
     /// its words stay held and the next turn's are not.
     /// `wasRunning`: whether the chat showed a turn running before the
-    /// cancel; a chat that wasn't notes nothing.
-    func noteVoiceStoppedTurn(sessionId: String, generation: Int?, wasRunning: Bool) {
-        guard wasRunning, let generation, generation != voiceCancelledTurns[sessionId] else { return }
+    /// cancel; a chat that wasn't notes nothing. `write`: the chat's note as
+    /// this cancel left it; one another cancel wrote meanwhile is theirs.
+    func noteVoiceStoppedTurn(sessionId: String, generation: Int?, wasRunning: Bool, ifStill write: Int?) {
+        guard wasRunning, let generation, voiceCancelNoteWrites[sessionId] == write,
+              generation != voiceCancelledTurns[sessionId] else { return }
         noteVoiceCancelledTurn(sessionId: sessionId, generation: generation)
     }
 

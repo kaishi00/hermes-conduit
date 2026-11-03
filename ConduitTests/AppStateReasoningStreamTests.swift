@@ -515,8 +515,8 @@ final class AppStateReasoningStreamTests: XCTestCase {
         defer { state.removeVoiceAssistantObserver(observer) }
 
         state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 4)
-        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: 9, wasRunning: true)
-        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: nil, wasRunning: true)
+        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: 9, wasRunning: true, ifStill: state.voiceCancelNote(in: "stored-a").write)
+        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: nil, wasRunning: true, ifStill: state.voiceCancelNote(in: "stored-a").write)
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "stopped turn"), turnGeneration: 9)
         XCTAssertEqual(events, [], "The note follows the stopped turn")
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "next"), turnGeneration: 10)
@@ -526,7 +526,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
         // turn, so the note comes down to it and the next turn is heard.
         events.removeAll()
         state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 15)
-        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: 11, wasRunning: true)
+        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: 11, wasRunning: true, ifStill: state.voiceCancelNote(in: "stored-a").write)
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "stopped turn"), turnGeneration: 11)
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "next"), turnGeneration: 12)
         XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "next")], "Never held past the stopped turn")
@@ -534,7 +534,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
         // A turn this socket never saw start: nothing was noted before the
         // cancel, and the turn it stopped is noted after.
         events.removeAll()
-        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: 13, wasRunning: true)
+        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: 13, wasRunning: true, ifStill: state.voiceCancelNote(in: "stored-a").write)
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "unseen turn"), turnGeneration: 13)
         XCTAssertEqual(events, [], "The stopped turn is noted though the socket never saw it")
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "next"), turnGeneration: 14)
@@ -542,9 +542,34 @@ final class AppStateReasoningStreamTests: XCTestCase {
 
         // A chat that showed nothing running notes nothing.
         events.removeAll()
-        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: 20, wasRunning: false)
+        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: 20, wasRunning: false, ifStill: state.voiceCancelNote(in: "stored-a").write)
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "idle chat"), turnGeneration: 20)
         XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "idle chat")])
+    }
+
+    /// A failed cancel puts back the note an earlier cancel left, and a
+    /// stopped turn's note waits for the cancel that wrote it.
+    func testFailedCancelRestoresAnEarlierNote() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 7)
+        let earlier = state.voiceCancelNote(in: "stored-a")
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 9)
+        state.restoreVoiceCancelNote(in: "stored-a", to: earlier, ifStill: state.voiceCancelNote(in: "stored-a").write)
+        XCTAssertEqual(state.voiceCancelNote(in: "stored-a"), earlier)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "straggler"), turnGeneration: 7)
+        XCTAssertEqual(events, [], "The earlier note still holds its turn")
+
+        // A cancel whose note another cancel replaced doesn't move it.
+        let stale = state.voiceCancelNote(in: "stored-a").write
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 12)
+        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: 8, wasRunning: true, ifStill: stale)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "newer straggler"), turnGeneration: 12)
+        XCTAssertEqual(events, [], "The other cancel's note stands")
     }
 
     /// A failed cancel takes back only its own note: another cancel that
