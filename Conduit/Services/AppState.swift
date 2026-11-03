@@ -32990,8 +32990,13 @@ final class AppState: ObservableObject {
             if !trimmedIdea.isEmpty {
                 ideaSaved = await writeProjectIdea(trimmedIdea, in: uniqueFolders[0], profile: profile)
             }
-            await loadProjects(using: client, profile: profile)
-            guard profile == activeProfile, self.client === client else { return .failed(nil) }
+            // Hermes made it, so what's left only reports that: a reconnect
+            // that replaced the client mid-create reads the list through
+            // the new one, and an answered create is never a failure, which
+            // a retry would then find as a clash (issue 1688).
+            if profile == activeProfile, let current = self.client {
+                await loadProjects(using: current, profile: profile)
+            }
             return ideaSaved
                 ? .created
                 : .ideaUnsaved(projectID: created.id,
@@ -33001,23 +33006,25 @@ final class AppState: ObservableObject {
             guard let created = try await client.createProject(name: trimmedName, folders: uniqueFolders) else {
                 throw HermesError.invalidResponse
             }
-            guard profile == activeProfile, self.client === client else { return .failed(nil) }
-            projects = [created] + projects.filter { $0.id != created.id }
-            supportsProjects = true
+            if profile == activeProfile, self.client === client {
+                projects = [created] + projects.filter { $0.id != created.id }
+                supportsProjects = true
+            }
             return await finish(created)
         } catch {
-            guard profile == activeProfile, self.client === client else { return .failed(nil) }
-            if isProjectsUnavailable(error) {
+            guard profile == activeProfile, let current = self.client else { return .failed(nil) }
+            if current === client, isProjectsUnavailable(error) {
                 projects = []
                 supportsProjects = false
                 return .failed(nil)
             }
             // Hermes may have made it anyway (an answer Conduit couldn't
-            // read): a new project with this name on this first folder is
-            // this one, and takes the idea; anything else read again lets a
-            // retry see the clash.
-            if await loadProjects(using: client, profile: profile),
-               profile == activeProfile, self.client === client,
+            // read, or a reconnect mid-create, read through the new client):
+            // a new project with this name on this first folder is this one,
+            // and takes the idea; anything else read again lets a retry see
+            // the clash.
+            if await loadProjects(using: current, profile: profile),
+               profile == activeProfile, self.client === current,
                let made = Self.projectMadeAnyway(name: trimmedName, firstFolder: uniqueFolders[0],
                                                  knownIDs: knownIDs, in: projects) {
                 return await finish(made)
@@ -33299,10 +33306,12 @@ final class AppState: ObservableObject {
     }
 
     /// The sheet's Save Idea after a create whose idea wasn't saved.
-    func saveProjectIdea(_ idea: String, in folder: String) async -> Bool {
+    /// `profile` is the one the project was made in, which a profile
+    /// switch while the sheet waits doesn't change.
+    func saveProjectIdea(_ idea: String, in folder: String, profile: String) async -> Bool {
         let trimmed = idea.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return true }
-        return await writeProjectIdea(trimmed, in: folder, profile: activeProfile)
+        return await writeProjectIdea(trimmed, in: folder, profile: profile)
     }
 
     /// Never over an IDEA.md the folder already has: an existing folder
