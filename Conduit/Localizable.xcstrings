@@ -117134,6 +117134,94 @@
         }
       }
     },
+    "Each report shows in the bot's Bot Chat as it is, with no reply. The bot sees it the next time you write.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeder Bericht erscheint unverändert im Bot-Chat des Bots, ohne Antwort. Der Bot sieht ihn, wenn du das nächste Mal schreibst."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Each report shows in the bot's Bot Chat as it is, with no reply. The bot sees it the next time you write."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cada informe aparece tal cual en el Bot Chat del bot, sin respuesta. El bot lo ve la próxima vez que escribas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chaque rapport s’affiche tel quel dans le Bot Chat du bot, sans réponse. Le bot le voit la prochaine fois que tu écris."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Setiap laporan tampil apa adanya di Bot Chat bot, tanpa balasan. Bot melihatnya saat kamu menulis lagi."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ogni report compare così com’è nella Bot Chat del bot, senza risposta. Il bot lo vede la prossima volta che scrivi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "各レポートはそのままボットのボットチャットに表示され、返信はありません。次にあなたが書いたときにボットが目にします。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "보고서는 답변 없이 그대로 봇의 봇 채팅에 표시됩니다. 다음에 메시지를 쓰면 봇이 봅니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Każdy raport pojawia się w Bot Chacie bota bez zmian i bez odpowiedzi. Bot zobaczy go, gdy następnym razem napiszesz."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cada relatório aparece como está no Bot Chat do bot, sem resposta. O bot vê na próxima vez que você escrever."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Каждый отчёт появляется в Bot Chat бота как есть, без ответа. Бот увидит его, когда вы напишете в следующий раз."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her rapor botun Bot Chat’inde olduğu gibi, yanıtsız görünür. Bot onu bir dahaki yazışınızda görür."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每份报告都会原样显示在机器人的机器人聊天中，不会回复。你下次发消息时机器人会看到它。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每份報告都會原樣顯示在機器人的機器人聊天中，不會回覆。你下次傳訊息時機器人會看到它。"
+          }
+        }
+      }
+    },
     "Each run is also saved as its own conversation.": {
       "localizations": {
         "de": {
@@ -175490,6 +175578,94 @@
         }
       }
     },
+    "Just show it": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nur anzeigen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Just show it"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solo mostrarlo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Juste l’afficher"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tampilkan saja"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostralo e basta"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "表示するだけ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "보여주기만"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tylko pokaż"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Só mostrar"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Просто показать"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sadece göster"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅显示"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "僅顯示"
+          }
+        }
+      }
+    },
     "Just thumbs down": {
       "localizations": {
         "de": {
@@ -181989,6 +182165,94 @@
           "stringUnit": {
             "state": "translated",
             "value": "放開以傳送"
+          }
+        }
+      }
+    },
+    "Let the bot act on it": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bot darauf reagieren lassen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Let the bot act on it"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Que el bot actúe"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Laisser le bot agir"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Biarkan bot menindaklanjuti"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lascia agire il bot"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ボットに対応させる"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "봇이 처리하게 하기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Niech bot zareaguje"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deixar o bot agir"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пусть бот действует"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bot gereğini yapsın"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "让机器人处理"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "讓機器人處理"
           }
         }
       }
@@ -279405,6 +279669,94 @@
         }
       }
     },
+    "Scheduled job report": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bericht eines geplanten Jobs"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scheduled job report"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Informe de trabajo programado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rapport de tâche planifiée"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Laporan tugas terjadwal"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Report di job pianificato"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "スケジュールジョブのレポート"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "예약 작업 보고서"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Raport zaplanowanego zadania"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Relatório de tarefa agendada"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отчёт задания по расписанию"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zamanlanmış iş raporu"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "定时任务报告"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "排程任務報告"
+          }
+        }
+      }
+    },
     "Scheduled jobs": {
       "localizations": {
         "de": {
@@ -326378,6 +326730,94 @@
         }
       }
     },
+    "The bot reads each report, acts on what needs it and answers in its Bot Chat. Each run costs a reply from its model.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Bot liest jeden Bericht, kümmert sich um das Nötige und antwortet in seinem Bot-Chat. Jede Ausführung kostet eine Antwort seines Modells."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The bot reads each report, acts on what needs it and answers in its Bot Chat. Each run costs a reply from its model."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El bot lee cada informe, actúa sobre lo que lo necesite y responde en su Bot Chat. Cada ejecución cuesta una respuesta de su modelo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le bot lit chaque rapport, agit sur ce qui le demande et répond dans son Bot Chat. Chaque exécution coûte une réponse de son modèle."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bot membaca setiap laporan, menindaklanjuti yang perlu, dan menjawab di Bot Chat-nya. Setiap jalannya memakan satu balasan dari modelnya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il bot legge ogni report, agisce su ciò che serve e risponde nella sua Bot Chat. Ogni esecuzione costa una risposta del suo modello."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ボットが毎回レポートを読み、必要な対応をしてボットチャットで返信します。実行ごとにモデルの返信1回分がかかります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "봇이 보고서를 매번 읽고 필요한 일을 처리한 뒤 봇 채팅에서 답합니다. 실행할 때마다 모델 답변 한 번이 듭니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bot czyta każdy raport, zajmuje się tym, co tego wymaga, i odpowiada w swoim Bot Chacie. Każde uruchomienie kosztuje odpowiedź jego modelu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O bot lê cada relatório, age no que precisar e responde no Bot Chat dele. Cada execução custa uma resposta do modelo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Бот читает каждый отчёт, делает то, что нужно, и отвечает в своём Bot Chat. Каждый запуск стоит один ответ его модели."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bot her raporu okur, gerekeni yapar ve Bot Chat’inde yanıtlar. Her çalıştırma modelinden bir yanıta mal olur."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "机器人会阅读每份报告，处理需要处理的事项，并在机器人聊天中回复。每次运行都会消耗其模型的一次回复。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "機器人會閱讀每份報告，處理需要處理的事項，並在機器人聊天中回覆。每次執行都會消耗其模型的一次回覆。"
+          }
+        }
+      }
+    },
     "The bot was created, but its picture or look was not saved. Edit the bot to try again.": {
       "localizations": {
         "de": {
@@ -330064,6 +330504,94 @@
           "stringUnit": {
             "state": "translated",
             "value": "安裝沒有完成。"
+          }
+        }
+      }
+    },
+    "The job is saved, but not whether the bot acts on it: %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Job ist gespeichert, aber nicht, ob der Bot darauf reagiert: %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The job is saved, but not whether the bot acts on it: %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El trabajo está guardado, pero no si el bot actúa: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La tâche est enregistrée, mais pas le choix du bot : %@"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tugas tersimpan, tapi pilihan bot belum: %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il job è salvato, ma non se il bot agisce: %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ジョブは保存されましたが、ボットが対応するかどうかは保存されていません: %@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "작업은 저장됐지만 봇 처리 여부는 저장되지 않았습니다: %@"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zadanie zapisano, ale nie to, czy bot ma reagować: %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A tarefa foi salva, mas não se o bot age: %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Задание сохранено, но не выбор, действует ли бот: %@"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İş kaydedildi ama botun gereğini yapıp yapmayacağı kaydedilmedi: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "任务已保存，但未保存机器人是否处理：%@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "任務已儲存，但未儲存機器人是否處理：%@"
           }
         }
       }
@@ -384078,6 +384606,94 @@
           "stringUnit": {
             "state": "translated",
             "value": "可以繼續時，將狀態改為「就緒」並儲存。如果 worker 需要知道什麼，請先新增一則留言。"
+          }
+        }
+      }
+    },
+    "When it runs": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bei jeder Ausführung"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When it runs"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuando se ejecuta"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "À chaque exécution"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saat berjalan"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando viene eseguito"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "実行時"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "실행될 때"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Przy każdym uruchomieniu"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando rodar"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "При запуске"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalıştığında"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行时"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "執行時"
           }
         }
       }
