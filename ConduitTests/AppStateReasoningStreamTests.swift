@@ -360,7 +360,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
         defer { state.removeVoiceAssistantObserver(observer) }
 
         var running: Int? = nil
-        state.runningTurnGeneration = { $0 == "stored-a" ? running : nil }
+        state.runningTurnGenerationLookup = { $0 == "stored-a" ? running : nil }
         _ = await state.interruptForVoice()
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "no turn noted"), turnGeneration: 3)
         XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "no turn noted")], "Nothing ran, so nothing is held")
@@ -371,6 +371,52 @@ final class AppStateReasoningStreamTests: XCTestCase {
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "straggler"), turnGeneration: 7)
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "next"), turnGeneration: 8)
         XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "next")])
+    }
+
+    /// A start a resume held when the turn was cancelled is that turn's own:
+    /// replayed (without its number), it doesn't end the watch.
+    func testVoiceHoldsTheCancelledTurnsOwnBufferedStart() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+
+        let token = state.beginReconciliation()
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"), turnGeneration: 4)
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 4)
+        _ = state.settleReconciliationAndPublish(token)
+        XCTAssertEqual(events, [], "Buffered while the resume ran")
+
+        // The replay, as the resume applies it: numbers lost.
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "straggler"))
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "next"))
+        XCTAssertEqual(events, [
+            .started(sessionID: "stored-a"),
+            .delta(sessionID: "stored-a", text: "next")
+        ])
+    }
+
+    /// The composer's Stop (and /stop) notes the turn as Voice's cancel does.
+    func testComposerStopNotesTheRunningTurn() async {
+        let operations = ChatResumeLifecycleOperations(interrupt: { _, _ in })
+        let state = makeAppState(lifecycleOperations: operations)
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        state.connection = connection
+        state.client = HermesClient(connection: connection, profile: "default")
+        installActiveSession(state, id: "stored-a")
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"), turnGeneration: 3)
+        XCTAssertTrue(state.isBusy)
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+
+        state.runningTurnGenerationLookup = { _ in 3 }
+        _ = await state.cancelCurrent()
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "straggler"), turnGeneration: 3)
+        XCTAssertEqual(events, [])
     }
 
     /// The open chat's events may name it by another of its ids.

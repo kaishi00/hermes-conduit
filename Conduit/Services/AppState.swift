@@ -846,12 +846,12 @@ final class AppState: ObservableObject {
     @Published private(set) var dashboardTicketBridge: DashboardTicketBridge?
     private var voiceAssistantObservers: [UUID: @MainActor (VoiceAssistantEvent) -> Void] = [:]
     /// The turn Voice cancelled, by its execution generation (see
-    /// `isFromVoiceCancelledTurn`).
-    private var voiceCancelledTurn: (sessionId: String, generation: Int)?
+    /// `holdsBackFromVoice`).
+    private var voiceCancelledTurn: (sessionId: String, generation: Int, bufferedStarts: Int)?
     /// The execution generation the stream event being handled names.
     private var handledStreamEventGeneration: Int?
     /// Tests stand in for the client's `runningTurnGeneration(for:)`.
-    var runningTurnGeneration: ((String) -> Int?)?
+    var runningTurnGenerationLookup: ((String) -> Int?)?
 
     // MARK: - Session
 
@@ -30369,6 +30369,7 @@ final class AppState: ObservableObject {
             return false
         }
         guard let client, let sessionId = currentContext.sessionID else { return false }
+        noteRunningTurnBeforeCancel(in: sessionId)
         cancelChatResumeRestoration()
         turnState = .synchronizing
         do {
@@ -30393,6 +30394,7 @@ final class AppState: ObservableObject {
     @discardableResult
     func cancelCurrent() async -> Bool {
         guard isBusy else { return true }
+        if let sessionId = activeSessionId { noteRunningTurnBeforeCancel(in: sessionId) }
         let submissionContext = composerSubmissionContext()
         guard await interruptForReplacement(context: submissionContext) else { return false }
         guard let currentContext = currentComposerSubmissionContextIfOwnedAndAliased(submissionContext) else { return true }
@@ -37197,37 +37199,52 @@ final class AppState: ObservableObject {
     /// barge-in, or Voice orphan cancellation wins the race with model
     /// generation. Reports whether the cancellation succeeded.
     func interruptForVoice() async -> Bool {
-        if let sessionId = activeSessionId,
-           let generation = runningTurnGeneration?(sessionId) ?? client?.runningTurnGeneration(for: sessionId) {
-            noteVoiceCancelledTurn(sessionId: sessionId, generation: generation)
-        }
+        if let sessionId = activeSessionId { noteRunningTurnBeforeCancel(in: sessionId) }
         return await cancelCurrent()
     }
 
-    /// Holds that turn's later events back from Voice (`isFromVoiceCancelledTurn`).
-    func noteVoiceCancelledTurn(sessionId: String, generation: Int) {
-        voiceCancelledTurn = (sessionId, generation)
+    /// Any cancel of the open chat's turn (Voice's, the composer's Stop,
+    /// /stop, a send that replaces the turn) notes it first, so a Voice
+    /// conversation never hears it again (`holdsBackFromVoice`).
+    private func noteRunningTurnBeforeCancel(in sessionId: String) {
+        let generation = runningTurnGenerationLookup.map { $0(sessionId) }
+            ?? client?.runningTurnGeneration(for: sessionId)
+        guard let generation else { return }
+        noteVoiceCancelledTurn(sessionId: sessionId, generation: generation)
     }
 
-    /// Whether the stream event being handled belongs to the turn Voice
-    /// cancelled (or an earlier one). Such a turn can stream a few words
-    /// after its cancel, and once the next question owns the chat they'd be
-    /// taken as its reply (#1696). An event that reaches Voice belongs to the
-    /// open chat (its aliases included), so the watch holds while that chat
-    /// is the one whose turn was cancelled.
+    /// Holds that turn's later events back from Voice (`holdsBackFromVoice`).
+    func noteVoiceCancelledTurn(sessionId: String, generation: Int) {
+        // A start the open resume still holds is that turn's own, not the next one's.
+        let bufferedStarts = reconciliation?.bufferedEvents.filter {
+            if case .messageStart = $0 { return true }
+            return false
+        }.count ?? 0
+        voiceCancelledTurn = (sessionId, generation, bufferedStarts)
+    }
+
+    /// Whether the stream event being handled belongs to the turn that was
+    /// cancelled (or an earlier one), so Voice doesn't hear it; an event of
+    /// a later turn ends the watch. Such a turn can stream a few words after
+    /// its cancel, and once the next question owns the chat they'd be taken
+    /// as its reply (#1696). An event that reaches Voice belongs to the open
+    /// chat (its aliases included), so the watch holds while that chat is
+    /// the one whose turn was cancelled.
     ///
-    /// A live event names its turn by execution generation: a later turn's
-    /// ends the watch. An event replayed after a resume lost its number, so
-    /// it is held until a turn starts: a cancelled turn never starts again,
-    /// so the next `.started` is the next turn's. Only the session authority
-    /// numbers turns, so the watch is never set on `hermes dashboard`.
-    private func isFromVoiceCancelledTurn(_ event: VoiceAssistantEvent) -> Bool {
-        guard let cancelled = voiceCancelledTurn, cancelled.sessionId == activeSessionId else { return false }
+    /// A live event names its turn by execution generation. An event
+    /// replayed after a resume lost its number, so it is held until a turn
+    /// starts: a cancelled turn never starts again, except for a start the
+    /// resume already held when the turn was cancelled. Only the session
+    /// authority numbers turns, so the watch is never set on `hermes dashboard`.
+    private func holdsBackFromVoice(_ event: VoiceAssistantEvent) -> Bool {
+        guard var cancelled = voiceCancelledTurn, cancelled.sessionId == activeSessionId else { return false }
         let fromCancelledTurn: Bool
         if let generation = handledStreamEventGeneration {
             fromCancelledTurn = generation <= cancelled.generation
         } else if case .started = event {
-            fromCancelledTurn = false
+            fromCancelledTurn = cancelled.bufferedStarts > 0
+            cancelled.bufferedStarts = max(0, cancelled.bufferedStarts - 1)
+            voiceCancelledTurn = cancelled
         } else {
             fromCancelledTurn = true
         }
@@ -39127,7 +39144,7 @@ final class AppState: ObservableObject {
     }
 
     private func notifyVoiceAssistant(_ event: VoiceAssistantEvent) {
-        if isFromVoiceCancelledTurn(event) { return }
+        if holdsBackFromVoice(event) { return }
         voiceAssistantObservers.values.forEach { $0(event) }
     }
 
