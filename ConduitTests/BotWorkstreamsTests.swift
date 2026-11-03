@@ -352,6 +352,13 @@ extension BotModeTests {
                 + "[W51](conduit://session/b?profile=furina), not W9.")
         let untouched = "Run `echo W50` in /tmp/W50, see [W50](conduit://session/a) or XW50 and W500."
         XCTAssertEqual(BotWorkLinks.linkingNamedRefs(untouched, chats: chats), untouched)
+        // Inside a link, its address, a bare URL or a file name: still as written.
+        let links = "See [the W50 notes](https://x.dev/a), [docs](https://x.dev/search?q=W50), "
+            + "https://x.dev/?ref=W51 <https://x.dev/W50> and W50.txt."
+        XCTAssertEqual(BotWorkLinks.linkingNamedRefs(links, chats: chats), links)
+        // A sentence that ends on one still links it.
+        XCTAssertEqual(BotWorkLinks.linkingNamedRefs("It was W51.", chats: chats),
+                       "It was [W51](conduit://session/b?profile=furina).")
         XCTAssertTrue(BotWorkLinks.mayNameWork("Done in W3."))
         XCTAssertFalse(BotWorkLinks.mayNameWork("Nothing running. Weather is fine."))
     }

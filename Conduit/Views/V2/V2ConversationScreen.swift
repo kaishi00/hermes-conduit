@@ -78,6 +78,9 @@ struct V2ConversationScreen: View {
     @State private var artifactSessionIDs: ArtifactSheetIDs?
     /// Edit Bot from a Bot Chat's ⋯ menu (Eric 2026-11-03).
     @State private var editedBot: BotEditorSheet.Mode?
+    /// What a save from there couldn't do, said as the Bots list says it.
+    @State private var editBotWarning: String?
+    @State private var pendingEditBotWarning: String?
     /// Artifacts beside the chat, on a window wide enough for both.
     @AppStorage(ChatSidePanel.key) private var sidePanelOpen = false
     @AppStorage(ChatSidePanel.widths.key) private var storedSidePanelWidth = Double(ChatSidePanel.widths.standard)
@@ -227,10 +230,21 @@ struct V2ConversationScreen: View {
             ChatArtifactsSheet(sessionIDs: sheet.ids, tab: sheet.tab) { artifactSessionIDs?.tab = $0 }
                 .environmentObject(appState)
         }
-        .sheet(item: $editedBot) { mode in
+        .sheet(item: $editedBot, onDismiss: {
+            // Shown once the sheet is gone: an alert can't come up over it.
+            editBotWarning = pendingEditBotWarning
+            pendingEditBotWarning = nil
+        }) { mode in
             // Editing makes no new chat: nothing to open when it closes.
-            BotEditorSheet(mode: mode) { _, _, _ in }
+            BotEditorSheet(mode: mode) { _, warning, _ in pendingEditBotWarning = warning }
                 .environmentObject(appState)
+        }
+        .alert(AppLocalization.string("Edit Bot"), isPresented: Binding(
+            get: { editBotWarning != nil }, set: { if !$0 { editBotWarning = nil } }
+        )) {
+            Button(AppLocalization.string("OK"), role: .cancel) { editBotWarning = nil }
+        } message: {
+            Text(verbatim: editBotWarning ?? "")
         }
         .modifier(ConversationDialogs(
             chatTitlePendingRename: $chatTitlePendingRename,

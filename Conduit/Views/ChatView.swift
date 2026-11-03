@@ -1186,6 +1186,29 @@ struct MessageBubble: View, Equatable {
     @Environment(\.openURL) private var openURL
     @Environment(\.chatRowDisclosure) private var rowDisclosure
 
+    /// A reply's bubble; in a Bot Chat, one naming its work ("W50 found …")
+    /// links each ref to that workstream's chat once the bot's work list has it.
+    @ViewBuilder
+    private func botChatReply(_ message: ChatMessage) -> some View {
+        if let profile = appState.activeBotChatProfile, BotWorkLinks.mayNameWork(message.content) {
+            BotChatWorkReply(
+                work: appState.botWork,
+                profile: profile,
+                message: message,
+                readAloudController: appState.messageReadAloudController,
+                gatewayResolver: gatewayResolver,
+                stepsAbove: stepsAbove
+            )
+        } else {
+            AssistantBubble(
+                message: message,
+                readAloudController: appState.messageReadAloudController,
+                gatewayResolver: gatewayResolver,
+                stepsAbove: stepsAbove
+            )
+        }
+    }
+
     var body: some View {
         let _ = TranscriptPerf.note(.settledBubbleBody)
         switch message.role {
@@ -1251,12 +1274,7 @@ struct MessageBubble: View, Equatable {
                         PredictiveFollowUpTag(why: why)
                     }
                     if !split.text.isEmpty {
-                        AssistantBubble(
-                            message: message.withContent(split.text),
-                            readAloudController: appState.messageReadAloudController,
-                            gatewayResolver: gatewayResolver,
-                            stepsAbove: stepsAbove
-                        )
+                        botChatReply(message.withContent(split.text))
                     }
                     ForEach(split.links, id: \.ref) { link in
                         BotWorkLinkCard(work: appState.botWork, link: link,
@@ -1270,31 +1288,10 @@ struct MessageBubble: View, Equatable {
                 // A reply Hermes wrote on its own (Predictive follow-ups).
                 VStack(alignment: .leading, spacing: 4) {
                     PredictiveFollowUpTag(why: why)
-                    AssistantBubble(
-                        message: message,
-                        readAloudController: appState.messageReadAloudController,
-                        gatewayResolver: gatewayResolver,
-                        stepsAbove: stepsAbove
-                    )
+                    botChatReply(message)
                 }
-            } else if let profile = appState.activeBotChatProfile, BotWorkLinks.mayNameWork(message.content) {
-                // A Bot Chat reply naming its work ("W50 found …"): each ref
-                // opens that workstream's chat once the bot's work list has it.
-                BotChatWorkReply(
-                    work: appState.botWork,
-                    profile: profile,
-                    message: message,
-                    readAloudController: appState.messageReadAloudController,
-                    gatewayResolver: gatewayResolver,
-                    stepsAbove: stepsAbove
-                )
             } else {
-                AssistantBubble(
-                    message: message,
-                    readAloudController: appState.messageReadAloudController,
-                    gatewayResolver: gatewayResolver,
-                    stepsAbove: stepsAbove
-                )
+                botChatReply(message)
             }
         case .reasoning:
             if let step {

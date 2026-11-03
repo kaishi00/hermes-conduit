@@ -1544,23 +1544,24 @@ table cells with a link, and every cell once selection is on (see Tables in mess
 Keyboard Access (the text view mounts and lays out when they ask for the
 reply's elements) · long-press Open Link · file paths, linked to the Folder
 (Workspace files) · a reply's `conduit://session/` links to its workstreams,
-drawn as work cards under it (Bot workstreams)
+drawn as work cards under it, and the workstream refs a Bot Chat reply names in its words, linked in place (Bot workstreams, #1677)
 
 **Code**
 - Drawn until touched, mounted on touch: `Conduit/Views/Components/SelectableTextView.swift` (drawsUntilTouched, SelectableTextViewHostView.hitTest and accessibilityElements, mountTextViewForTouch)
 - File paths: `Conduit/Views/Components/SelectableTextView.swift` (bridge), `Conduit/Services/WorkspaceFiles.swift` (WorkspacePathLinks), `Conduit/Services/ConduitAppLink.swift` (file), `Conduit/Services/AppState+Workspace.swift` (absoluteWorkspacePath, revealWorkspaceFile)
 - Test: `ConduitTests/DrawnTextLinkTapTests.swift`
-- Surfaces that draw until touched: `Conduit/Views/ChatView.swift`, `Conduit/Views/GroupChatView.swift` (selectableTextDrawsUntilTouched); work links as cards, `Conduit/Services/BotWorkstreams.swift` (BotWorkLinks) and `Conduit/Views/BotWorkViews.swift` (BotWorkLinkCard); table cells with a link, `Conduit/Views/Components/MarkdownText.swift` (MarkdownTableRowView.cellDrawsAsText)
+- Surfaces that draw until touched: `Conduit/Views/ChatView.swift`, `Conduit/Views/GroupChatView.swift` (selectableTextDrawsUntilTouched); work links as cards, `Conduit/Services/BotWorkstreams.swift` (BotWorkLinks) and `Conduit/Views/BotWorkViews.swift` (BotWorkLinkCard); named refs linked in place, `BotWorkLinks.linkingNamedRefs` and `Conduit/Views/ChatView.swift` (`BotChatWorkReply`, `AssistantBubble.shownContent`); table cells with a link, `Conduit/Views/Components/MarkdownText.swift` (MarkdownTableRowView.cellDrawsAsText)
 
 **Rulings**
 - The touch that mounts a reply's text view is routed to it laid out, so it finds the link under the finger; a link never needs a second tap (2026-10-26, #1303, carried in #1311).
 - A file path in a reply is a `conduit://file` link, drawn as a link, that opens the Folder at that file; only inside the app (2026-10-27, #1399).
 - A reply's "[Open W3](conduit://session/…)" link to a workstream leaves its words and becomes a work card under it, a button (one tap, VoiceOver and Switch Control as any button, so no long-press Open Link); the rest of the reply stays as written (2026-11-01, #1637, Eric's Gridania test).
+- A workstream ref a Bot Chat reply names in its words ("W50 found …") becomes a link to that workstream's chat in place, once the bot's work list has it; never inside code, a link (its text or address), a URL, a path or a file name. Only the drawn text changes: Copy and Read Aloud keep the reply's own words (Eric 2026-11-03: the coordinator should link its work; #1677).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-01, #1637 (a reply's links to its workstreams drawn as work cards); 2026-10-31, #1596 (table cells with a link are always on the drawn-until-touched path); 2026-10-30, #1535 (table cells join the drawn-until-touched path once selection is on); 2026-10-29, #1491 (a room's pictures open in the picture viewer); 2026-10-27, #1399 (file paths); #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
+**Checked:** 2026-11-03, #1677 (on `bot-workstreams`: the workstream refs a Bot Chat reply names linked in place); 2026-11-01, #1637 (a reply's links to its workstreams drawn as work cards); 2026-10-31, #1596 (table cells with a link are always on the drawn-until-touched path); 2026-10-30, #1535 (table cells join the drawn-until-touched path once selection is on); 2026-10-29, #1491 (a room's pictures open in the picture viewer); 2026-10-27, #1399 (file paths); #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
 
 ## Markdown lists in messages
 

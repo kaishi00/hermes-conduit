@@ -752,7 +752,11 @@ enum BotWorkLinks {
 
     /// A ref named in a reply's words ("W50 found …"), not one already a
     /// link's text, a path's or a longer word's part.
-    private static let namedRef = try! NSRegularExpression(pattern: #"(?<![\w/\[])(W\d+)\b(?!\]\()"#)
+    private static let namedRef = try! NSRegularExpression(pattern: #"(?<![\w/\[])(W\d+)\b(?!\]\(|\.\w)"#)
+    /// What's already a link, or part of one: a Markdown link (its text and
+    /// its address), an autolink and a bare URL. A ref inside is left alone.
+    private static let linkSpans = try! NSRegularExpression(
+        pattern: #"!?\[[^\]\n]*\]\([^)\n]*\)|<[^>\s]+>|\b[A-Za-z][A-Za-z0-9+.-]*://[^\s)]+"#)
 
     /// Whether a reply could name a workstream: a cheap check before the
     /// row watches the bot's work list.
@@ -777,7 +781,10 @@ enum BotWorkLinks {
                 let ns = piece as NSString
                 var linked = ""
                 var last = 0
-                for match in namedRef.matches(in: piece, range: NSRange(location: 0, length: ns.length)) {
+                let whole = NSRange(location: 0, length: ns.length)
+                let links = linkSpans.matches(in: piece, range: whole).map(\.range)
+                for match in namedRef.matches(in: piece, range: whole) {
+                    guard !links.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) else { continue }
                     let ref = ns.substring(with: match.range(at: 1))
                     guard let url = chats(ref) else { continue }
                     linked += ns.substring(with: NSRange(location: last, length: match.range.location - last))
