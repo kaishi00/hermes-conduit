@@ -2077,6 +2077,28 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testEventsNameTheirTurnWhileDeliveredAndTheRunningTurnIsKnown() async throws {
+        let (client, socket) = try await authorityClient()
+        var seen: [Int?] = []
+        client.onEvent = { [weak client] _ in seen.append(client?.deliveringEventGeneration) }
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "message.start", "session_id": "sess-1", "execution_generation": 5]
+        ], to: socket)
+        XCTAssertEqual(seen, [5])
+        XCTAssertNil(client.deliveringEventGeneration, "Only while the event is delivered")
+        XCTAssertEqual(client.runningTurnGeneration(for: "sess-1"), 5)
+        XCTAssertNil(client.runningTurnGeneration(for: "sess-2"))
+
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "message.complete", "session_id": "sess-1", "execution_generation": 5,
+                       "payload": ["text": "done"]]
+        ], to: socket)
+        XCTAssertNil(client.runningTurnGeneration(for: "sess-1"), "No turn runs after its end")
+        client.disconnect()
+    }
+
     func testAuthorityAnswersNameThePromptAndTheTurnThatAsked() async throws {
         let (client, socket) = try await authorityClient()
         try await deliverFrame([

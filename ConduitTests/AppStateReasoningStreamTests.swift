@@ -307,6 +307,38 @@ final class AppStateReasoningStreamTests: XCTestCase {
         ])
     }
 
+    /// A turn Voice cancelled can stream a few words after its cancel; once
+    /// the next question owns the chat they'd read as its reply (#1696).
+    /// They're held back by the turn they name, and the next turn's events
+    /// (or events naming no turn) still reach Voice.
+    func testVoiceNeverHearsTheTurnItCancelled() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 4)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "late words"), turnGeneration: 4)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "older turn"), turnGeneration: 3)
+        XCTAssertEqual(events, [], "The cancelled turn's words never reach Voice")
+
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"), turnGeneration: 5)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "new answer"), turnGeneration: 5)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "after the watch"), turnGeneration: 4)
+        XCTAssertEqual(events, [
+            .started(sessionID: "stored-a"),
+            .delta(sessionID: "stored-a", text: "new answer"),
+            .delta(sessionID: "stored-a", text: "after the watch")
+        ], "The next turn ends the watch")
+
+        events.removeAll()
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 6)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "unnumbered"))
+        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "unnumbered")],
+                       "An event naming no turn (hermes dashboard) is never held back")
+    }
+
     /// A gateway frame as HermesClient hands it to AppState.
     private func frame(_ json: String) throws -> StreamEvent {
         let data = try XCTUnwrap(json.data(using: .utf8))

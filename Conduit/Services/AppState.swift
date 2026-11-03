@@ -845,6 +845,11 @@ final class AppState: ObservableObject {
     @Published private(set) var appIconChoice: AppIconChoice
     @Published private(set) var dashboardTicketBridge: DashboardTicketBridge?
     private var voiceAssistantObservers: [UUID: @MainActor (VoiceAssistantEvent) -> Void] = [:]
+    /// The turn Voice cancelled, by its execution generation (see
+    /// `isFromVoiceCancelledTurn`).
+    private var voiceCancelledTurn: (sessionId: String, generation: Int)?
+    /// The execution generation the stream event being handled names.
+    private var handledStreamEventGeneration: Int?
 
     // MARK: - Session
 
@@ -4780,10 +4785,7 @@ final class AppState: ObservableObject {
             guard let self else { return false }
             return self.isSceneActive && self.showVoiceSheet
                 && !self.isCarPlayVoiceSurfaceActive && !self.isNativeHermesCallAnswered
-        },
-        // A cancelled turn's late events wait for its end only while the
-        // chat still runs it (#1696).
-        turnIsRunning: { [weak self] in self?.isBusy ?? false }
+        }
     )
     /// Classic voice audio: the default capture and playback, or one
     /// echo-cancelling engine when speaker talk-over is on, chosen for each
@@ -15422,10 +15424,12 @@ final class AppState: ObservableObject {
         client.setKeepaliveBackgrounded(!isSceneActive && hasEnteredBackgroundScenePhase)
         let epoch = UUID()
         activeClientEpoch = epoch
-        client.onEvent = { [weak self] event in
+        client.onEvent = { [weak self, weak client] event in
+            // Read while the client delivers this event: the turn it names.
+            let turnGeneration = client?.deliveringEventGeneration
             Task { @MainActor in
                 guard let self, self.activeClientEpoch == epoch else { return }
-                self.handleStreamEvent(event)
+                self.handleStreamEvent(event, turnGeneration: turnGeneration)
             }
         }
         client.onDisconnected = { [weak self] in
@@ -35103,7 +35107,11 @@ final class AppState: ObservableObject {
 
     // MARK: - Stream event handling
 
-    func handleStreamEvent(_ event: StreamEvent) {
+    /// `turnGeneration`: the execution generation the event names, when
+    /// the server numbers turns.
+    func handleStreamEvent(_ event: StreamEvent, turnGeneration: Int? = nil) {
+        handledStreamEventGeneration = turnGeneration
+        defer { handledStreamEventGeneration = nil }
         // A step summary's answer is never a /btw reply, in any chat.
         if takeStepSummaryAnswer(event) { return }
         // Voice background jobs are not the active conversation, so they
@@ -37186,7 +37194,32 @@ final class AppState: ObservableObject {
     /// barge-in, or Voice orphan cancellation wins the race with model
     /// generation. Reports whether the cancellation succeeded.
     func interruptForVoice() async -> Bool {
-        await cancelCurrent()
+        if let sessionId = activeSessionId, let generation = client?.runningTurnGeneration(for: sessionId) {
+            noteVoiceCancelledTurn(sessionId: sessionId, generation: generation)
+        }
+        return await cancelCurrent()
+    }
+
+    /// Holds that turn's later events back from Voice (`isFromVoiceCancelledTurn`).
+    func noteVoiceCancelledTurn(sessionId: String, generation: Int) {
+        voiceCancelledTurn = (sessionId, generation)
+    }
+
+    /// Whether the stream event being handled belongs to the turn Voice
+    /// cancelled (or an earlier one), by the execution generation it names.
+    /// Such a turn can stream a few words after its cancel, and once the
+    /// next question owns the chat they'd be taken as its reply (#1696).
+    /// An event of a later turn ends the watch; an event naming no turn
+    /// (`hermes dashboard` numbers none) is never held back.
+    private func isFromVoiceCancelledTurn(_ event: VoiceAssistantEvent) -> Bool {
+        guard let cancelled = voiceCancelledTurn,
+              let generation = handledStreamEventGeneration,
+              event.sessionID == cancelled.sessionId else { return false }
+        guard generation <= cancelled.generation else {
+            voiceCancelledTurn = nil
+            return false
+        }
+        return true
     }
 
     /// Who speaks Classic voice replies for the active profile.
@@ -39081,6 +39114,7 @@ final class AppState: ObservableObject {
     }
 
     private func notifyVoiceAssistant(_ event: VoiceAssistantEvent) {
+        if isFromVoiceCancelledTurn(event) { return }
         voiceAssistantObservers.values.forEach { $0(event) }
     }
 

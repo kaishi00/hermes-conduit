@@ -1881,7 +1881,9 @@ final class HermesClient: ObservableObject {
                 break
             }
             if let event = frame.event {
+                deliveringEventGeneration = Self.exactIntValue(eventObject?["execution_generation"])
                 onEvent?(event)
+                deliveringEventGeneration = nil
             }
         } else {
             logger.debug("Received non-event WebSocket notification without an RPC id")
@@ -2327,6 +2329,18 @@ final class HermesClient: ObservableObject {
     /// send into a running turn as the next turn, with the same receipt
     /// as an idle send, so this is what tells the two apart.
     private var authorityRunningSessions: Set<String> = []
+
+    /// The turn the stream event `onEvent` is delivering belongs to, by the
+    /// `execution_generation` it names: nil when it names none, as
+    /// `hermes dashboard`'s events don't. Read while `onEvent` runs.
+    private(set) var deliveringEventGeneration: Int?
+
+    /// The turn running in a chat, by its execution generation, as this
+    /// socket last saw it: nil when none runs, or the server numbers none.
+    func runningTurnGeneration(for sessionId: String) -> Int? {
+        guard speaksSessionAuthority, authorityRunningSessions.contains(sessionId) else { return nil }
+        return executionGenerations[sessionId]
+    }
 
     private func notePrompt(_ prompt: [String: AnyCodable]?, sessionId: String, askingGeneration: Int? = nil) {
         guard let prompt, let id = prompt["prompt_id"]?.stringValue, !id.isEmpty else { return }
