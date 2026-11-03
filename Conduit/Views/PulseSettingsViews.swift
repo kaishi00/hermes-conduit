@@ -807,7 +807,7 @@ struct PulseSettingsPage: View {
     /// and says so with Try Again.
     private func loadModels(profile: String?) async {
         let dashboard = appState.activeDashboardID
-        if modelsAnswered, modelsProfile != profile {
+        if modelsProfile != profile {
             // Another profile's models never stay up to be picked for this one.
             providers = appState.keptModelProviders(inProfile: profile ?? AppState.pulseDefaultProfile)
             modelsAnswered = false
@@ -815,7 +815,8 @@ struct PulseSettingsPage: View {
         }
         modelsProfile = profile
         let loaded = await appState.loadModelProviders(inProfile: profile ?? AppState.pulseDefaultProfile)
-        guard appState.activeDashboardID == dashboard else { return }
+        // A read for a profile no longer shown never lands on the picker.
+        guard !Task.isCancelled, modelsProfile == profile, appState.activeDashboardID == dashboard else { return }
         if let loaded {
             providers = loaded
             modelsAnswered = true
