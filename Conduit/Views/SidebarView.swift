@@ -1824,6 +1824,7 @@ struct ProjectCreateSheet: View {
                     Section {
                         TextField("e.g. Skunkworks", text: $name)
                             .textInputAutocapitalization(.words)
+                            .disabled(madeProjectID != nil)
                     } header: {
                         Text("Name")
                     } footer: {
@@ -1849,6 +1850,9 @@ struct ProjectCreateSheet: View {
                                 .lineLimit(1)
                         }
                         .onDelete { folders.remove(atOffsets: $0) }
+                        // Once the project is made, Save Idea writes to the
+                        // folder it was made with.
+                        .deleteDisabled(madeProjectID != nil)
 
                         Button {
                             validationMessage = nil
@@ -1860,6 +1864,7 @@ struct ProjectCreateSheet: View {
                         } label: {
                             Label(AppLocalization.string("Add folder"), systemImage: "plus")
                         }
+                        .disabled(madeProjectID != nil)
                     }
 
                     Section {
@@ -1879,6 +1884,10 @@ struct ProjectCreateSheet: View {
                     }
                 }
                 .scrollContentBackground(.hidden)
+                // A failed create's message goes once the name or folders
+                // change, so it never stands in for the current problem.
+                .onChange(of: name) { _, _ in clearStaleMessage() }
+                .onChange(of: folders) { _, _ in clearStaleMessage() }
             }
             .navigationTitle("New Project")
             .navigationBarTitleDisplayMode(.inline)
@@ -1910,6 +1919,10 @@ struct ProjectCreateSheet: View {
             .presentationDragIndicator(.visible)
             .environmentObject(appState)
         }
+    }
+
+    private func clearStaleMessage() {
+        if madeProjectID == nil { validationMessage = nil }
     }
 
     /// The sheet closes only when the project was made with all it was
