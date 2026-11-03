@@ -1868,7 +1868,7 @@ struct ProjectCreateSheet: View {
                         Text(AppLocalization.string("Saved as IDEA.md in the first folder, as in Hermes Desktop, unless the folder already has one."))
                     }
 
-                    if let message = clash ?? validationMessage {
+                    if let message = validationMessage ?? clash {
                         Section {
                             Label(message, systemImage: "exclamationmark.triangle")
                                 .foregroundStyle(.orange)
@@ -1903,15 +1903,20 @@ struct ProjectCreateSheet: View {
         }
     }
 
+    /// The sheet closes only when the project was made with all it was
+    /// given: a message stays on screen with the idea still in its field.
     private func createProject() async {
         isCreating = true
         validationMessage = nil
-        let created = await appState.createProject(name: name, folders: folders, idea: idea)
+        let outcome = await appState.createProject(name: name, folders: folders, idea: idea)
         isCreating = false
-        if created {
+        switch outcome {
+        case .created:
             dismiss()
-        } else if validationMessage == nil {
-            validationMessage = AppLocalization.string("Hermes could not create this project.")
+        case .ideaUnsaved(let message):
+            validationMessage = message
+        case .failed(let message):
+            validationMessage = message ?? AppLocalization.string("Hermes could not create this project.")
         }
     }
 }

@@ -32835,7 +32835,9 @@ final class AppState: ObservableObject {
         await loadProjects(using: client, profile: activeProfile)
     }
 
-    private func loadProjects(using client: HermesClient, profile: String) async {
+    /// True when Hermes' list came in and is the one shown.
+    @discardableResult
+    private func loadProjects(using client: HermesClient, profile: String) async -> Bool {
         projectsRequestGeneration += 1
         let generation = projectsRequestGeneration
         projectsLoading = true
@@ -32850,7 +32852,7 @@ final class AppState: ObservableObject {
             let loaded = try await client.projects()
             guard generation == projectsRequestGeneration,
                   profile == activeProfile,
-                  self.client === client else { return }
+                  self.client === client else { return false }
             projects = loaded.sorted {
                 if $0.isHome != $1.isHome { return $0.isHome }
                 if $0.sessionCount != $1.sessionCount { return $0.sessionCount > $1.sessionCount }
@@ -32858,19 +32860,21 @@ final class AppState: ObservableObject {
             }
             supportsProjects = true
             projectsLoadFailed = false
+            return true
         } catch {
             guard generation == projectsRequestGeneration,
                   profile == activeProfile,
-                  self.client === client else { return }
+                  self.client === client else { return false }
             // A view's load cancelled by leaving it didn't fail.
-            if error is CancellationError || Task.isCancelled { return }
+            if error is CancellationError || Task.isCancelled { return false }
             guard isProjectsUnavailable(error) else {
                 projectsLoadFailed = projects.isEmpty
-                return
+                return false
             }
             projects = []
             supportsProjects = false
             projectsLoadFailed = false
+            return false
         }
     }
 
@@ -32911,27 +32915,40 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// What a New Project create came to, for the sheet, which stays open
+    /// with the message unless the project was made with all it was given.
+    enum ProjectCreateOutcome: Equatable {
+        case created
+        /// Made, but the idea isn't in IDEA.md: the sheet keeps it on
+        /// screen so it isn't lost.
+        case ideaUnsaved(String)
+        case failed(String?)
+    }
+
     @discardableResult
-    func createProject(name: String, folders: [String], idea: String) async -> Bool {
-        guard let client, supportsProjects else { return false }
+    func createProject(name: String, folders: [String], idea: String) async -> ProjectCreateOutcome {
+        guard let client, supportsProjects else { return .failed(nil) }
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let uniqueFolders = folders.reduce(into: [String]()) { result, folder in
             let trimmed = folder.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty, !result.contains(trimmed) { result.append(trimmed) }
         }
-        guard !trimmedName.isEmpty, !uniqueFolders.isEmpty else { return false }
+        guard !trimmedName.isEmpty, !uniqueFolders.isEmpty else { return .failed(nil) }
 
         let profile = activeProfile
         // Checked again on Hermes' list as it is now: another device may
-        // have made the same project since the list was read.
-        await loadProjects(using: client, profile: profile)
-        guard profile == activeProfile, self.client === client,
-              projectCreationProblem(name: trimmedName, folders: uniqueFolders) == nil else { return false }
+        // have made the same project since the list was read, and Hermes
+        // would take a second one. A list that didn't come in checks nothing.
+        guard await loadProjects(using: client, profile: profile) else {
+            return .failed(AppLocalization.string("Couldn’t check Hermes’ projects. Try again."))
+        }
+        guard profile == activeProfile, self.client === client else { return .failed(nil) }
+        if let problem = projectCreationProblem(name: trimmedName, folders: uniqueFolders) { return .failed(problem) }
         do {
             guard let created = try await client.createProject(name: trimmedName, folders: uniqueFolders) else {
                 throw HermesError.invalidResponse
             }
-            guard profile == activeProfile, self.client === client else { return false }
+            guard profile == activeProfile, self.client === client else { return .failed(nil) }
             projects = [created] + projects.filter { $0.id != created.id }
             supportsProjects = true
 
@@ -32940,23 +32957,21 @@ final class AppState: ObservableObject {
             if !trimmedIdea.isEmpty {
                 ideaSaved = await writeProjectIdea(trimmedIdea, in: uniqueFolders[0], profile: profile)
             }
-            if !ideaSaved, profile == activeProfile {
-                errorMessage = AppLocalization.string("\(created.title) is made, but its idea couldn’t be saved as IDEA.md.")
-            }
             await loadProjects(using: client, profile: profile)
-            return true
+            return ideaSaved
+                ? .created
+                : .ideaUnsaved(AppLocalization.string("\(created.title) is made, but its idea couldn’t be saved as IDEA.md."))
         } catch {
-            guard profile == activeProfile, self.client === client else { return false }
+            guard profile == activeProfile, self.client === client else { return .failed(nil) }
             if isProjectsUnavailable(error) {
                 projects = []
                 supportsProjects = false
-            } else {
-                errorMessage = AppLocalization.string("Could not create the project: \(UserFacingError.message(for: error))")
-                // Hermes may have made it anyway (an answer Conduit couldn't
-                // read): the list read again lets a retry see the clash.
-                await loadProjects(using: client, profile: profile)
+                return .failed(nil)
             }
-            return false
+            // Hermes may have made it anyway (an answer Conduit couldn't
+            // read): the list read again lets a retry see the clash.
+            await loadProjects(using: client, profile: profile)
+            return .failed(AppLocalization.string("Could not create the project: \(UserFacingError.message(for: error))"))
         }
     }
 
