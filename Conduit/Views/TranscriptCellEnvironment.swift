@@ -45,6 +45,7 @@ struct TranscriptCellEnvironment: Equatable {
     var gatewayMediaFiles: GatewayMediaDataURLResolver?
     var v2Shell: V2ShellContext
     var v2OpenBeside: V2OpenBeside?
+    var botZoomNamespace: Namespace.ID?
     var v2TabBarClearance: CGFloat
     var v2ComposerRests: Bool
     var groupMemberTints: [String: CustomAccentColor]
@@ -81,6 +82,7 @@ struct TranscriptCellEnvironment: Equatable {
         gatewayMediaFiles = values.gatewayMediaFiles
         v2Shell = values.v2Shell
         v2OpenBeside = values.v2OpenBeside
+        botZoomNamespace = values.botZoomNamespace
         v2TabBarClearance = values.v2TabBarClearance
         v2ComposerRests = values.v2ComposerRests
         groupMemberTints = values.groupMemberTints
@@ -120,6 +122,7 @@ struct TranscriptCellEnvironment: Equatable {
             && lhs.gatewayMediaFiles === rhs.gatewayMediaFiles
             && lhs.v2Shell == rhs.v2Shell
             && lhs.v2OpenBeside == rhs.v2OpenBeside
+            && lhs.botZoomNamespace == rhs.botZoomNamespace
             && lhs.v2TabBarClearance == rhs.v2TabBarClearance
             && lhs.v2ComposerRests == rhs.v2ComposerRests
             && lhs.groupMemberTints == rhs.groupMemberTints
@@ -174,6 +177,7 @@ private struct TranscriptCellConduitEnvironmentMore: ViewModifier {
             .environment(\.gatewayMediaFiles, values.gatewayMediaFiles)
             .environment(\.v2Shell, values.v2Shell)
             .environment(\.v2OpenBeside, values.v2OpenBeside)
+            .environment(\.botZoomNamespace, values.botZoomNamespace)
             .environment(\.v2TabBarClearance, values.v2TabBarClearance)
             .environment(\.v2ComposerRests, values.v2ComposerRests)
             .environment(\.groupMemberTints, values.groupMemberTints)
