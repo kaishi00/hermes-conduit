@@ -1467,6 +1467,7 @@ value while a room is being built) · README.md's Bots Home line
 - The bots' order is by profile name, so a renamed profile goes to the end; Hermes Desktop keeps no order of its own to match.
 - The thread with a spark there and back between two portraits that hand work off isn't drawn: each portrait shows its side. Nor does the waiting badge open the other bot, being inside the portrait's button.
 - The other bot is found by the name it had when it asked, so after a rename its color and face don't show (the words still do).
+- The Bot Overview's header has no finish: its ripple and check play on Bots Home's portrait only.
 - Not yet tried on a device: the portraits' motion and what many working bots cost (one 30 fps timeline each while they move); the zoom's look from a portrait in the grid's list row; whether a drag's lift and the portrait's long-press menu share the hold, the merge dwell's feel, and whether a cancelled drag lets go of its item at once (a portrait reads the dragged bot only while it lives).
 
 **Checked:** 2026-11-03, #1686 (the portraits' motion, the overview header's, and hand-offs between bots); 2026-11-03, #1682 (the portrait-to-chat zoom; a drop on a portrait's pill lands on it); 2026-11-03, #1679 (the bots' order, synced, and starting a room by dropping bots together, with a confirm step); 2026-11-03, #1678 (added).
