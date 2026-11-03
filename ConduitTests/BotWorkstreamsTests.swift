@@ -390,8 +390,11 @@ extension BotModeTests {
         XCTAssertEqual(desktop.links.map(\.sessionID), ["20261103_w12"])
         // Without a work link, a reference stays a chat link (HermesSessionReference).
         XCTAssertNil(BotWorkLinks.split("Open it here: @session:20261103_w12"))
-        let code = try XCTUnwrap(BotWorkLinks.split("Type `@session:x` in Desktop. [Open W3](conduit://session/c)"))
-        XCTAssertEqual(code.text, "Type `@session:x` in Desktop.")
+        // Only the one right after a work link goes: one in code, or another
+        // chat's, stays as written.
+        let other = try XCTUnwrap(BotWorkLinks.split(
+            "Join with `hermes open @session:furina/w12`, see @session:old1 or [Open W3](conduit://session/c)"))
+        XCTAssertEqual(other.text, "Join with `hermes open @session:furina/w12`, see @session:old1 or")
     }
 
     /// A read asked for after an action, while one was under way, makes
