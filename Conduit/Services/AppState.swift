@@ -35155,7 +35155,10 @@ final class AppState: ObservableObject {
             break
         }
         releaseServerCompactionClaimOnAgentOutput(event)
-        if bufferIfReconciling(event) { return }
+        if bufferIfReconciling(event) {
+            noteBufferedStartOfCancelledTurn(event, turnGeneration: turnGeneration)
+            return
+        }
         // Only this event names the turn: anything it replays doesn't.
         handledStreamEventGeneration = turnGeneration
         defer { handledStreamEventGeneration = nil }
@@ -37199,23 +37202,39 @@ final class AppState: ObservableObject {
     /// barge-in, or Voice orphan cancellation wins the race with model
     /// generation. Reports whether the cancellation succeeded.
     func interruptForVoice() async -> Bool {
-        if let sessionId = activeSessionId { noteRunningTurnBeforeCancel(in: sessionId) }
-        return await cancelCurrent()
+        await cancelCurrent()
     }
 
     /// Any cancel of the open chat's turn (Voice's, the composer's Stop,
     /// /stop, a send that replaces the turn) notes it first, so a Voice
     /// conversation never hears it again (`holdsBackFromVoice`).
+    /// Only a turn the chat shows running is cancelled, so only that one is
+    /// noted. The socket may know the chat by any of its ids.
     private func noteRunningTurnBeforeCancel(in sessionId: String) {
-        let generation = runningTurnGenerationLookup.map { $0(sessionId) }
-            ?? client?.runningTurnGeneration(for: sessionId)
-        guard let generation else { return }
+        guard isBusy else { return }
+        let client = self.client
+        let lookup: (String) -> Int? = runningTurnGenerationLookup ?? { client?.runningTurnGeneration(for: $0) }
+        let summary = sessions.first { $0.id == sessionId || $0.alternateIds.contains(sessionId) }
+        let ids = [sessionId] + (summary.map { [$0.id] + $0.alternateIds } ?? [])
+        guard let generation = ids.compactMap(lookup).max() else { return }
         noteVoiceCancelledTurn(sessionId: sessionId, generation: generation)
+    }
+
+    /// A resume replays what it held without numbers: count the cancelled
+    /// turn's own start held after the cancel, so its replay isn't taken
+    /// for the next turn's.
+    private func noteBufferedStartOfCancelledTurn(_ event: StreamEvent, turnGeneration: Int?) {
+        guard case .messageStart = event, let turnGeneration,
+              var cancelled = voiceCancelledTurn, cancelled.sessionId == activeSessionId,
+              turnGeneration <= cancelled.generation else { return }
+        cancelled.bufferedStarts += 1
+        voiceCancelledTurn = cancelled
     }
 
     /// Holds that turn's later events back from Voice (`holdsBackFromVoice`).
     func noteVoiceCancelledTurn(sessionId: String, generation: Int) {
-        // A start the open resume still holds is that turn's own, not the next one's.
+        // A start the open resume still holds was seen before the cancel, so
+        // it is that turn's own (or an earlier one's), not the next one's.
         let bufferedStarts = reconciliation?.bufferedEvents.filter {
             if case .messageStart = $0 { return true }
             return false
@@ -37233,8 +37252,8 @@ final class AppState: ObservableObject {
     ///
     /// A live event names its turn by execution generation. An event
     /// replayed after a resume lost its number, so it is held until a turn
-    /// starts: a cancelled turn never starts again, except for a start the
-    /// resume already held when the turn was cancelled. Only the session
+    /// starts: a cancelled turn never starts again, and its own start held
+    /// by the resume is counted (`bufferedStarts`). Only the session
     /// authority numbers turns, so the watch is never set on `hermes dashboard`.
     private func holdsBackFromVoice(_ event: VoiceAssistantEvent) -> Bool {
         guard var cancelled = voiceCancelledTurn, cancelled.sessionId == activeSessionId else { return false }

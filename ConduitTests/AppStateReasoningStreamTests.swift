@@ -351,31 +351,50 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "this chat")])
     }
 
-    /// Voice's cancel notes the turn the chat runs, and only when one runs.
+    /// Voice's cancel notes the turn the chat runs, only when it runs one,
+    /// under whichever of the chat's ids the socket knows it by.
     func testVoiceCancelNotesTheRunningTurn() async {
         let state = makeAppState()
-        installActiveSession(state, id: "stored-a")
+        state.sessions = [SessionSummary(
+            id: "stored-a", alternateIds: ["runtime-a"], title: "stored-a", model: "Hermes",
+            updatedLabel: "now", profile: "default", source: .chat, isActive: false,
+            isArchived: false, lineageRootId: nil
+        )]
+        state.activeSessionId = "stored-a"
         var events: [VoiceAssistantEvent] = []
         let observer = state.addVoiceAssistantObserver { events.append($0) }
         defer { state.removeVoiceAssistantObserver(observer) }
+        var running: [String: Int] = ["runtime-a": 7]
+        state.runningTurnGenerationLookup = { running[$0] }
 
-        var running: Int? = nil
-        state.runningTurnGenerationLookup = { $0 == "stored-a" ? running : nil }
+        XCTAssertFalse(state.isBusy)
         _ = await state.interruptForVoice()
-        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "no turn noted"), turnGeneration: 3)
-        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "no turn noted")], "Nothing ran, so nothing is held")
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "idle chat"), turnGeneration: 7)
+        XCTAssertEqual(events, [.delta(sessionID: "runtime-a", text: "idle chat")], "Nothing was cancelled, so nothing is held")
+        XCTAssertTrue(state.isBusy)
 
         events.removeAll()
-        running = 7
+        running = [:]
         _ = await state.interruptForVoice()
-        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "straggler"), turnGeneration: 7)
-        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "next"), turnGeneration: 8)
-        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "next")])
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "unknown turn"), turnGeneration: 7)
+        XCTAssertEqual(events, [.delta(sessionID: "runtime-a", text: "unknown turn")], "No running turn known, none noted")
+
+        events.removeAll()
+        running = ["runtime-a": 7]
+        _ = await state.interruptForVoice()
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "straggler"), turnGeneration: 7)
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "next"), turnGeneration: 8)
+        XCTAssertEqual(events, [.delta(sessionID: "runtime-a", text: "next")])
     }
 
     /// A start a resume held when the turn was cancelled is that turn's own:
     /// replayed (without its number), it doesn't end the watch.
     func testVoiceHoldsTheCancelledTurnsOwnBufferedStart() {
+        assertBufferedStartIsHeld(startBufferedBeforeTheCancel: true)
+        assertBufferedStartIsHeld(startBufferedBeforeTheCancel: false)
+    }
+
+    private func assertBufferedStartIsHeld(startBufferedBeforeTheCancel: Bool, line: UInt = #line) {
         let state = makeAppState()
         installActiveSession(state, id: "stored-a")
         var events: [VoiceAssistantEvent] = []
@@ -383,10 +402,16 @@ final class AppStateReasoningStreamTests: XCTestCase {
         defer { state.removeVoiceAssistantObserver(observer) }
 
         let token = state.beginReconciliation()
-        state.handleStreamEvent(.messageStart(sessionId: "stored-a"), turnGeneration: 4)
-        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 4)
+        if startBufferedBeforeTheCancel {
+            state.handleStreamEvent(.messageStart(sessionId: "stored-a"), turnGeneration: 4)
+            state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 4)
+        } else {
+            // Seen by the socket before the cancel, handled here after it.
+            state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 4)
+            state.handleStreamEvent(.messageStart(sessionId: "stored-a"), turnGeneration: 4)
+        }
         _ = state.settleReconciliationAndPublish(token)
-        XCTAssertEqual(events, [], "Buffered while the resume ran")
+        XCTAssertEqual(events, [], "Buffered while the resume ran", line: line)
 
         // The replay, as the resume applies it: numbers lost.
         state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
@@ -396,7 +421,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertEqual(events, [
             .started(sessionID: "stored-a"),
             .delta(sessionID: "stored-a", text: "next")
-        ])
+        ], line: line)
     }
 
     /// The composer's Stop (and /stop) notes the turn as Voice's cancel does.
