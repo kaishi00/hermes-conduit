@@ -847,7 +847,7 @@ final class AppState: ObservableObject {
     private var voiceAssistantObservers: [UUID: @MainActor (VoiceAssistantEvent) -> Void] = [:]
     /// The turn Voice cancelled, by its execution generation (see
     /// `holdsBackFromVoice`).
-    private var voiceCancelledTurn: (sessionId: String, generation: Int)?
+    private var voiceCancelledTurns: [String: Int] = [:]
     /// The execution generation the stream event being handled names.
     private var handledStreamEventGeneration: Int?
     /// Tests stand in for the client's `runningTurnGeneration(for:)`.
@@ -4858,10 +4858,16 @@ final class AppState: ObservableObject {
                 guard let self else { throw HermesError.notConnected }
                 let client = try await self.clientForVoiceRequest()
                 // A job in the open chat: its turn is noted as any cancel there is.
+                let notesBeforeCancel = self.voiceCancelledTurns
                 if let open = self.activeSessionId, self.eventBelongsToActiveSession(sessionID) {
                     self.noteRunningTurnBeforeCancel(in: open)
                 }
-                try await client.cancel(sessionID, profile: self.presentationProfile(for: sessionID))
+                do {
+                    try await client.cancel(sessionID, profile: self.presentationProfile(for: sessionID))
+                } catch {
+                    self.voiceCancelledTurns = notesBeforeCancel
+                    throw error
+                }
             },
             liveSessions: { [weak self] targetProfile in
                 guard let self else { throw HermesError.notConnected }
@@ -30422,6 +30428,7 @@ final class AppState: ObservableObject {
             return false
         }
         guard let client, let sessionId = currentContext.sessionID else { return false }
+        let notesBeforeCancel = voiceCancelledTurns
         noteRunningTurnBeforeCancel(in: sessionId)
         cancelChatResumeRestoration()
         turnState = .synchronizing
@@ -30434,6 +30441,8 @@ final class AppState: ObservableObject {
             guard isCurrentOrAliasedComposerSubmission(currentContext) else { return false }
             return true
         } catch {
+            // The turn wasn't stopped, so Voice may still hear it.
+            voiceCancelledTurns = notesBeforeCancel
             guard isCurrentOrAliasedComposerSubmission(currentContext) else { return false }
             errorMessage = AppLocalization.string("Could not interrupt the active response: \(UserFacingError.message(for: error))")
             await recoverComposerSubmission(using: currentContext)
@@ -30447,7 +30456,6 @@ final class AppState: ObservableObject {
     @discardableResult
     func cancelCurrent() async -> Bool {
         guard isBusy else { return true }
-        if let sessionId = activeSessionId { noteRunningTurnBeforeCancel(in: sessionId) }
         let submissionContext = composerSubmissionContext()
         guard await interruptForReplacement(context: submissionContext) else { return false }
         guard let currentContext = currentComposerSubmissionContextIfOwnedAndAliased(submissionContext) else { return true }
@@ -37290,7 +37298,7 @@ final class AppState: ObservableObject {
 
     /// Holds that turn's later events back from Voice (`holdsBackFromVoice`).
     func noteVoiceCancelledTurn(sessionId: String, generation: Int) {
-        voiceCancelledTurn = (sessionId, generation)
+        voiceCancelledTurns[sessionId] = generation
     }
 
     /// Whether the stream event being handled belongs to the turn that was
@@ -37300,8 +37308,8 @@ final class AppState: ObservableObject {
     /// next question owns the chat they'd be taken as its reply (#1696).
     /// Events a resume held keep their number for the replay. An event that
     /// reaches Voice belongs to the open chat (its aliases included), so the
-    /// watch holds while that chat is the one whose turn was cancelled, under
-    /// whichever id the chat now goes by. Only the session authority numbers
+    /// watch holds while that chat is open, under whichever id it now goes
+    /// by; each chat keeps its own note, so a cancel elsewhere doesn't end it. Only the session authority numbers
     /// turns, so on `hermes dashboard` nothing is noted or held.
     ///
     /// Only the words are held (`.started`, `.delta`, `.interim`). The
@@ -37314,11 +37322,13 @@ final class AppState: ObservableObject {
         case .started, .delta, .interim: break
         case .completed, .failed, .interrupted: return false
         }
-        guard let cancelled = voiceCancelledTurn,
-              cancelled.sessionId == activeSessionId || eventBelongsToActiveSession(cancelled.sessionId),
-              let generation = handledStreamEventGeneration else { return false }
-        guard generation <= cancelled.generation else {
-            voiceCancelledTurn = nil
+        guard let generation = handledStreamEventGeneration,
+              let chat = voiceCancelledTurns.keys.first(where: {
+                  $0 == activeSessionId || eventBelongsToActiveSession($0)
+              }),
+              let cancelled = voiceCancelledTurns[chat] else { return false }
+        guard generation <= cancelled else {
+            voiceCancelledTurns[chat] = nil
             return false
         }
         return true

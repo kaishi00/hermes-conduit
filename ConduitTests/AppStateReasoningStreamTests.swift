@@ -345,17 +345,25 @@ final class AppStateReasoningStreamTests: XCTestCase {
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "unnumbered"))
         XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "unnumbered")])
 
-        // Another chat open: its events are its own.
+        // Another chat's note doesn't hold this chat's turns.
         events.removeAll()
         state.noteVoiceCancelledTurn(sessionId: "stored-b", generation: 9)
-        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "this chat"), turnGeneration: 2)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "this chat"), turnGeneration: 7)
         XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "this chat")])
     }
 
     /// Voice's cancel notes the turn the chat runs, only when it runs one,
-    /// under whichever of the chat's ids the socket knows it by.
+    /// under whichever of the chat's ids the socket knows it by, and only
+    /// when the cancel goes through.
     func testVoiceCancelNotesTheRunningTurn() async {
-        let state = makeAppState()
+        var interruptFails = false
+        let operations = ChatResumeLifecycleOperations(interrupt: { _, _ in
+            if interruptFails { throw URLError(.timedOut) }
+        })
+        let state = makeAppState(lifecycleOperations: operations)
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        state.connection = connection
+        state.client = HermesClient(connection: connection, profile: "default")
         state.sessions = [SessionSummary(
             id: "stored-a", alternateIds: ["runtime-a"], title: "stored-a", model: "Hermes",
             updatedLabel: "now", profile: "default", source: .chat, isActive: false,
@@ -372,41 +380,45 @@ final class AppStateReasoningStreamTests: XCTestCase {
         _ = await state.interruptForVoice()
         state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "idle chat"), turnGeneration: 7)
         XCTAssertEqual(events, [.delta(sessionID: "runtime-a", text: "idle chat")], "Nothing was cancelled, so nothing is held")
-        XCTAssertTrue(state.isBusy)
+
+        func makeBusy() { state.handleStreamEvent(.messageStart(sessionId: "runtime-a")) }
 
         events.removeAll()
+        makeBusy()
         running = [:]
         _ = await state.interruptForVoice()
         state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "unknown turn"), turnGeneration: 7)
-        XCTAssertEqual(events, [.delta(sessionID: "runtime-a", text: "unknown turn")], "No running turn known, none noted")
+        XCTAssertEqual(events.last, .delta(sessionID: "runtime-a", text: "unknown turn"), "No running turn known, none noted")
 
         events.removeAll()
+        makeBusy()
         running = ["runtime-a": 7]
+        interruptFails = true
         _ = await state.interruptForVoice()
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "still running"), turnGeneration: 7)
+        XCTAssertEqual(events.last, .delta(sessionID: "runtime-a", text: "still running"), "A failed cancel notes nothing")
+
+        events.removeAll()
+        makeBusy()
+        interruptFails = false
+        _ = await state.interruptForVoice()
+        events.removeAll()
         state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "straggler"), turnGeneration: 7)
         state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "next"), turnGeneration: 8)
         XCTAssertEqual(events, [.delta(sessionID: "runtime-a", text: "next")])
     }
 
-    /// The composer's Stop (and /stop) notes the turn as Voice's cancel does.
-    func testComposerStopNotesTheRunningTurn() async {
-        var interrupted: [String] = []
-        let operations = ChatResumeLifecycleOperations(interrupt: { _, sessionId in interrupted.append(sessionId) })
-        let state = makeAppState(lifecycleOperations: operations)
-        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
-        state.connection = connection
-        state.client = HermesClient(connection: connection, profile: "default")
+    /// Each chat keeps its own note: a cancel in another chat doesn't end it.
+    func testVoiceKeepsEachChatsCancelledTurn() {
+        let state = makeAppState()
         installActiveSession(state, id: "stored-a")
-        state.handleStreamEvent(.messageStart(sessionId: "stored-a"), turnGeneration: 3)
-        XCTAssertTrue(state.isBusy)
         var events: [VoiceAssistantEvent] = []
         let observer = state.addVoiceAssistantObserver { events.append($0) }
         defer { state.removeVoiceAssistantObserver(observer) }
 
-        state.runningTurnGenerationLookup = { _ in 3 }
-        _ = await state.cancelCurrent()
-        XCTAssertEqual(interrupted, ["stored-a"], "The turn is cancelled, not only noted")
-        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "straggler"), turnGeneration: 3)
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 4)
+        state.noteVoiceCancelledTurn(sessionId: "stored-b", generation: 9)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "straggler"), turnGeneration: 4)
         XCTAssertEqual(events, [])
     }
 
