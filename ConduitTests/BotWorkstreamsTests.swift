@@ -631,21 +631,31 @@ extension BotModeTests {
     }
 
     /// A Bot Chat zooms out of its portrait only when that portrait was
-    /// tapped on Bots Home: a notification's or widget's open, one under
-    /// Pulse, another bot's chat or Reduce Motion pushes as usual.
+    /// just tapped: the push takes the arm and keeps it while the chat is
+    /// in the stack; a stale or failed tap, another bot's chat, or an open
+    /// with nothing tapped (a notification, a widget) pushes as usual.
     func testOnlyATappedPortraitsChatZoomsOutOfIt() {
-        func zoom(_ route: V2Route = .conversation, home: Bool = true, open: String? = "furina",
-                  tapped: String? = "furina", reduce: Bool = false) -> String? {
-            BotZoomDestination.zoomingBot(route: route, fromHome: home, open: open, tapped: tapped, reduceMotion: reduce)
-        }
-        XCTAssertEqual(zoom(), "furina")
-        XCTAssertEqual(zoom(tapped: "Furina"), "furina")
-        XCTAssertNil(zoom(tapped: nil), "a notification or widget opened it")
-        XCTAssertNil(zoom(open: "atlas"), "another bot's chat")
-        XCTAssertNil(zoom(home: false), "under Pulse or Artifacts")
-        XCTAssertNil(zoom(reduce: true))
-        XCTAssertNil(zoom(.pulse))
-        XCTAssertNil(zoom(open: nil), "a plain session")
+        let now = Date()
+        var arm = BotZoomArm()
+        XCTAssertNil(arm.source(open: "furina", now: now), "a notification or widget opened it")
+        arm.tap("Furina", now: now)
+        XCTAssertEqual(arm.source(open: "furina", now: now), "Furina", "the portrait's own id")
+        XCTAssertNil(arm.source(open: "atlas", now: now))
+        XCTAssertNil(arm.source(open: "furina", now: now.addingTimeInterval(BotZoomArm.window + 1)), "stale")
+        arm.pushed(open: "furina", now: now.addingTimeInterval(0.5))
+        XCTAssertEqual(arm.source(open: "furina", now: now.addingTimeInterval(60)), "Furina", "Back shrinks it home")
+        arm.left()
+        XCTAssertNil(arm.source(open: "furina", now: now))
+        // A failed open drops only its own arm.
+        arm.tap("Atlas", now: now)
+        arm.openFailed("Furina")
+        XCTAssertEqual(arm.source(open: "atlas", now: now), "Atlas")
+        arm.openFailed("Atlas")
+        XCTAssertNil(arm.source(open: "atlas", now: now))
+        // A push with a stale arm zooms nothing, then or later.
+        arm.tap("Atlas", now: now)
+        arm.pushed(open: "atlas", now: now.addingTimeInterval(BotZoomArm.window + 1))
+        XCTAssertNil(arm.source(open: "atlas", now: now))
     }
 
     /// A dragged portrait carries a marked name, so text dragged in from
@@ -678,11 +688,39 @@ extension BotModeTests {
         XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: working, profile: "furina")), .working(2))
         var quiet = workResponse()
         quiet["counts"] = ["working": 0, "needs_you": 0, "ready": 1]
+        // Nothing going on but its unanswered ask of Nahida.
+        XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: quiet, profile: "furina")), .waitingOn("Nahida"))
+        quiet["work"] = [] as [[String: Any]]
         XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: quiet, profile: "furina")), .idle)
         var off = workResponse()
         off["policy"] = "off"
         XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: off, profile: "furina")), .idle)
         XCTAssertEqual(BotPortraitStatus.of(nil), .idle)
         XCTAssertEqual(BotPortraitStatus.idle.title, AppLocalization.string("Overview"))
+    }
+
+    /// Hand-offs between bots: answering another bot's ask comes before its
+    /// own work, and an unanswered ask of its own shows when nothing else
+    /// does; a closed or answered one shows nothing.
+    func testThePortraitSaysWhoItHelpsAndWhoItWaitsOn() throws {
+        var response = workResponse()
+        response["counts"] = ["working": 1, "needs_you": 0, "ready": 0, "waiting": 1]
+        var rows = response["work"] as? [[String: Any]] ?? []
+        rows.append(["ref": "A2", "kind": "ask_in", "status": "running", "title": "Trip", "bot": "Hermes"])
+        response["work"] = rows
+        let helping = BotPortraitStatus.of(BotWorkSnapshot(response: response, profile: "furina"))
+        XCTAssertEqual(helping, .helping("Hermes"))
+        XCTAssertTrue(helping.title.contains("Hermes"), helping.title)
+        // No ask in and no work of its own: waiting on Nahida (A1).
+        rows = rows.filter { $0["ref"] as? String != "A2" }
+        rows.append(["ref": "A3", "kind": "ask_in", "status": "done", "title": "Old", "bot": "Hermes"])
+        response["work"] = rows
+        response["counts"] = ["working": 0, "needs_you": 0, "ready": 0, "waiting": 1]
+        let waiting = BotPortraitStatus.of(BotWorkSnapshot(response: response, profile: "furina"))
+        XCTAssertEqual(waiting, .waitingOn("Nahida"))
+        XCTAssertEqual(waiting.otherBot, "Nahida")
+        // Its own work comes before waiting.
+        response["counts"] = ["working": 2, "needs_you": 0, "ready": 0, "waiting": 1]
+        XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: response, profile: "furina")), .working(2))
     }
 }
