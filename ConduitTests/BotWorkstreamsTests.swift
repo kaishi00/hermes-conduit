@@ -339,6 +339,30 @@ extension BotModeTests {
         XCTAssertEqual(asked.approval?.isApprovable, true)
     }
 
+    /// The workstreams a Bot Chat reply names become links to their chats
+    /// (Eric 2026-11-03): only refs the work list has, never in code, a
+    /// link's text, a path or a longer word.
+    func testWorkRefsABotChatReplyNamesBecomeLinks() {
+        let chats: (String) -> URL? = { ref in
+            ["W50": "a", "W51": "b"][ref].map { URL(string: "conduit://session/\($0)?profile=furina")! }
+        }
+        XCTAssertEqual(
+            BotWorkLinks.linkingNamedRefs("The lookups were in **W50** and W51, not W9.", chats: chats),
+            "The lookups were in **[W50](conduit://session/a?profile=furina)** and "
+                + "[W51](conduit://session/b?profile=furina), not W9.")
+        let untouched = "Run `echo W50` in /tmp/W50, see [W50](conduit://session/a) or XW50 and W500."
+        XCTAssertEqual(BotWorkLinks.linkingNamedRefs(untouched, chats: chats), untouched)
+        // Inside a link, its address, a bare URL or a file name: still as written.
+        let links = "See [the W50 notes](https://x.dev/a), [docs](https://x.dev/search?q=W50), "
+            + "https://x.dev/?ref=W51 <https://x.dev/W50> and W50.txt."
+        XCTAssertEqual(BotWorkLinks.linkingNamedRefs(links, chats: chats), links)
+        // A sentence that ends on one still links it.
+        XCTAssertEqual(BotWorkLinks.linkingNamedRefs("It was W51.", chats: chats),
+                       "It was [W51](conduit://session/b?profile=furina).")
+        XCTAssertTrue(BotWorkLinks.mayNameWork("Done in W3."))
+        XCTAssertFalse(BotWorkLinks.mayNameWork("Nothing running. Weather is fine."))
+    }
+
     /// A Bot Chat reply's links to its work become cards under it; other
     /// links stay in its words.
     func testWorkLinksInABotChatReplyBecomeCards() throws {
@@ -493,6 +517,29 @@ extension BotModeTests {
         XCTAssertEqual(change["workstream_approvals"] as? String, "ask")
         XCTAssertEqual(change["max_running"] as? Int, 4)
         XCTAssertEqual(change.count, 2)
+    }
+
+    /// Edit Bot > Work's Workstream Model (Eric 2026-11-03): read from the
+    /// plugin, sent as a pick, and null going back to the Bot Chat's own.
+    func testTheWorkstreamModelIsReadAndSent() throws {
+        let read = try XCTUnwrap(BotWorkSettings(response: [
+            "ok": true, "policy": "strict", "max_running": 2,
+            "workstream_model": ["model": "claude-sonnet-5-5", "provider": "anthropic"],
+        ]))
+        XCTAssertEqual(read.workstreamModel, BotWorkSettings.Model(model: "claude-sonnet-5-5", provider: "anthropic"))
+        XCTAssertNil(try XCTUnwrap(BotWorkSettings(response: [
+            "ok": true, "policy": "strict", "max_running": 2, "workstream_model": NSNull(),
+        ])).workstreamModel)
+        XCTAssertNil(try XCTUnwrap(BotWorkSettings(response: [
+            "ok": true, "policy": "strict", "max_running": 2, "workstream_model": ["model": " "],
+        ])).workstreamModel)
+        let own = BotWorkSettings()
+        var picked = own
+        picked.workstreamModel = BotWorkSettings.Model(model: "gpt-5.5")
+        let sent = try XCTUnwrap(picked.change(from: own)["workstream_model"] as? [String: Any])
+        XCTAssertEqual(sent as? [String: String], ["model": "gpt-5.5"])
+        XCTAssertTrue(own.change(from: picked)["workstream_model"] is NSNull)
+        XCTAssertEqual(own.change(from: picked).count, 1)
     }
 
     func testTheApprovalsCaptionSaysWhenHermesWontAsk() {

@@ -1186,6 +1186,29 @@ struct MessageBubble: View, Equatable {
     @Environment(\.openURL) private var openURL
     @Environment(\.chatRowDisclosure) private var rowDisclosure
 
+    /// A reply's bubble; in a Bot Chat, one naming its work ("W50 found …")
+    /// links each ref to that workstream's chat once the bot's work list has it.
+    @ViewBuilder
+    private func botChatReply(_ message: ChatMessage) -> some View {
+        if let profile = appState.activeBotChatProfile, BotWorkLinks.mayNameWork(message.content) {
+            BotChatWorkReply(
+                work: appState.botWork,
+                profile: profile,
+                message: message,
+                readAloudController: appState.messageReadAloudController,
+                gatewayResolver: gatewayResolver,
+                stepsAbove: stepsAbove
+            )
+        } else {
+            AssistantBubble(
+                message: message,
+                readAloudController: appState.messageReadAloudController,
+                gatewayResolver: gatewayResolver,
+                stepsAbove: stepsAbove
+            )
+        }
+    }
+
     var body: some View {
         let _ = TranscriptPerf.note(.settledBubbleBody)
         switch message.role {
@@ -1251,12 +1274,7 @@ struct MessageBubble: View, Equatable {
                         PredictiveFollowUpTag(why: why)
                     }
                     if !split.text.isEmpty {
-                        AssistantBubble(
-                            message: message.withContent(split.text),
-                            readAloudController: appState.messageReadAloudController,
-                            gatewayResolver: gatewayResolver,
-                            stepsAbove: stepsAbove
-                        )
+                        botChatReply(message.withContent(split.text))
                     }
                     ForEach(split.links, id: \.ref) { link in
                         BotWorkLinkCard(work: appState.botWork, link: link,
@@ -1270,20 +1288,10 @@ struct MessageBubble: View, Equatable {
                 // A reply Hermes wrote on its own (Predictive follow-ups).
                 VStack(alignment: .leading, spacing: 4) {
                     PredictiveFollowUpTag(why: why)
-                    AssistantBubble(
-                        message: message,
-                        readAloudController: appState.messageReadAloudController,
-                        gatewayResolver: gatewayResolver,
-                        stepsAbove: stepsAbove
-                    )
+                    botChatReply(message)
                 }
             } else {
-                AssistantBubble(
-                    message: message,
-                    readAloudController: appState.messageReadAloudController,
-                    gatewayResolver: gatewayResolver,
-                    stepsAbove: stepsAbove
-                )
+                botChatReply(message)
             }
         case .reasoning:
             if let step {
@@ -2662,6 +2670,33 @@ struct ReadAloudButton: View {
     }
 }
 
+/// A Bot Chat reply whose words name the bot's workstreams: each ref a
+/// link to its chat. It watches the bot's work list, so a ref links once
+/// the list that has it is read.
+struct BotChatWorkReply: View {
+    @ObservedObject var work: BotWorkStore
+    let profile: String
+    let message: ChatMessage
+    let readAloudController: MessageReadAloudController
+    let gatewayResolver: GatewayMediaDataURLResolver?
+    var stepsAbove: ChatStepGroup? = nil
+
+    var body: some View {
+        let items = (work.snapshot(profile)?.items ?? []) + (work.resolvedList(profile)?.items ?? [])
+        let shown = BotWorkLinks.linkingNamedRefs(message.content) { ref in
+            guard let item = items.first(where: { $0.ref == ref && !$0.sessionID.isEmpty }) else { return nil }
+            return ConduitAppLink.session(id: item.sessionID, profile: profile).url
+        }
+        AssistantBubble(
+            message: message,
+            readAloudController: readAloudController,
+            gatewayResolver: gatewayResolver,
+            stepsAbove: stepsAbove,
+            shownContent: shown == message.content ? nil : shown
+        )
+    }
+}
+
 struct AssistantBubble: View {
     let message: ChatMessage
     /// Held as a plain reference (not @ObservedObject): forwarding a
@@ -2671,6 +2706,9 @@ struct AssistantBubble: View {
     let gatewayResolver: GatewayMediaDataURLResolver?
     /// The run of steps above the reply, when it has thinking.
     var stepsAbove: ChatStepGroup? = nil
+    /// Other words to draw (a Bot Chat reply with its work refs linked);
+    /// Copy, Read Aloud and the rest keep the reply's own.
+    var shownContent: String? = nil
     @Environment(\.chatRowState) private var rowState
     @Environment(\.chatRowActions) private var rowActions
     @Environment(\.chatRowDisclosure) private var disclosure
@@ -2690,7 +2728,7 @@ struct AssistantBubble: View {
         let identity = rowState.agentIdentity
         VStack(alignment: .leading, spacing: 6) {
             SettledAssistantMessageContent(
-                message: message,
+                message: shownContent.map(message.withContent) ?? message,
                 identity: identity,
                 gatewayResolver: gatewayResolver,
                 sizeCategory: sizeCategory,

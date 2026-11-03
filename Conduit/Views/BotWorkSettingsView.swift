@@ -14,6 +14,9 @@ struct BotWorkSettingsView: View {
     @State private var loadFailed = false
     @State private var isSaving = false
     @State private var saveFailed = false
+    /// The Workstream Model page's pick: it sets the provider, then the
+    /// model, and the model's write saves the two together.
+    @State private var pickedProvider = ""
 
     var body: some View {
         Form {
@@ -94,6 +97,29 @@ struct BotWorkSettingsView: View {
                 Text(AppLocalization.string("When this many are running, \(botName) waits for one to finish or sends new work to one that’s already on it."))
             }
             Section {
+                NavigationLink {
+                    BotModelPicker(provider: providerBinding, model: modelBinding, allowsInherit: true,
+                                   inheritTitle: AppLocalization.string("Same as Bot Chat"))
+                } label: {
+                    LabeledContent(AppLocalization.string("Workstream Model")) {
+                        (settings.workstreamModel.map { Text(verbatim: $0.model) }
+                            ?? Text(AppLocalization.string("Same as Bot Chat")))
+                            .lineLimit(1)
+                    }
+                }
+                if settings.workstreamModel != nil {
+                    // Hermes' per-session reasoning, as the Model sheet offers it.
+                    Picker(AppLocalization.string("Reasoning"), selection: effortBinding) {
+                        Text(AppLocalization.string("Default")).tag(String?.none)
+                        ForEach(ReasoningEffortLevel.allCases) { level in
+                            Text(level.title).tag(Optional(level.rawValue))
+                        }
+                    }
+                }
+            } footer: {
+                Text(AppLocalization.string("New workstreams start on this model. Work that’s already running keeps its own."))
+            }
+            Section {
                 Picker(AppLocalization.string("After a Restart"), selection: binding(\.afterRestart)) {
                     Text(AppLocalization.string("Continue Safe Work")).tag(BotWorkSettings.AfterRestart.continue)
                     Text(AppLocalization.string("Ask Me First")).tag(BotWorkSettings.AfterRestart.ask)
@@ -146,6 +172,52 @@ struct BotWorkSettingsView: View {
                 guard let old = settings, old[keyPath: keyPath] != value, !isSaving else { return }
                 var new = old
                 new[keyPath: keyPath] = value
+                Haptics.light()
+                settings = new
+                Task { await save(new, from: old) }
+            }
+        )
+    }
+
+    /// The workstream model's reasoning: nil for the model's default.
+    private var effortBinding: Binding<String?> {
+        Binding(
+            get: { settings?.workstreamModel.flatMap { $0.reasoningEffort.isEmpty ? nil : $0.reasoningEffort } },
+            set: { effort in
+                guard let old = settings, old.workstreamModel != nil, !isSaving else { return }
+                var new = old
+                new.workstreamModel?.reasoningEffort = effort ?? ""
+                guard new.workstreamModel != old.workstreamModel else { return }
+                Haptics.light()
+                settings = new
+                Task { await save(new, from: old) }
+            }
+        )
+    }
+
+    /// The picker's provider: kept until its model comes.
+    private var providerBinding: Binding<String> {
+        Binding(
+            get: { pickedProvider.isEmpty ? (settings?.workstreamModel?.provider ?? "") : pickedProvider },
+            set: { pickedProvider = $0 }
+        )
+    }
+
+    /// The picker's model: saves the pick with its provider ("" for the
+    /// Bot Chat's own).
+    private var modelBinding: Binding<String> {
+        Binding(
+            get: { settings?.workstreamModel?.model ?? "" },
+            set: { model in
+                let provider = pickedProvider
+                pickedProvider = ""
+                guard let old = settings, !isSaving else { return }
+                // A new model keeps the reasoning picked for the last one.
+                let picked = model.isEmpty ? nil : BotWorkSettings.Model(
+                    model: model, provider: provider, reasoningEffort: old.workstreamModel?.reasoningEffort ?? "")
+                guard picked != old.workstreamModel else { return }
+                var new = old
+                new.workstreamModel = picked
                 Haptics.light()
                 settings = new
                 Task { await save(new, from: old) }

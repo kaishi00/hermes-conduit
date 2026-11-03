@@ -450,20 +450,52 @@ struct BotWorkSettings: Equatable {
     var approvals: Approvals
     /// The bot's approval mode in Hermes ("manual", "smart" or "off").
     var chatApprovals: String
+    /// The model new workstreams start on; nil for the bot's own, the one
+    /// its Bot Chat uses (Eric 2026-11-03).
+    var workstreamModel: Model?
     /// Why workstreams can't run on this Hermes, as the plugin says it.
     var unavailable: String?
+
+    /// A model Hermes' `session.create` takes, as the plugin keeps it.
+    struct Model: Equatable {
+        var model: String
+        var provider: String = ""
+        var reasoningEffort: String = ""
+
+        init(model: String, provider: String = "", reasoningEffort: String = "") {
+            self.model = model
+            self.provider = provider
+            self.reasoningEffort = reasoningEffort
+        }
+
+        init?(_ object: Any?) {
+            guard let object = object as? [String: Any],
+                  let model = (object["model"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !model.isEmpty else { return nil }
+            self.init(model: model, provider: object["provider"] as? String ?? "",
+                      reasoningEffort: object["reasoning_effort"] as? String ?? "")
+        }
+
+        var body: [String: Any] {
+            var body: [String: Any] = ["model": model]
+            if !provider.isEmpty { body["provider"] = provider }
+            if !reasoningEffort.isEmpty { body["reasoning_effort"] = reasoningEffort }
+            return body
+        }
+    }
 
     var isOn: Bool { policy != .off }
 
     init(policy: Policy = .strict, maxRunning: Int = 2, maxRunningLimit: Int = 6,
          afterRestart: AfterRestart = .continue, approvals: Approvals = .chats,
-         chatApprovals: String = "manual", unavailable: String? = nil) {
+         chatApprovals: String = "manual", workstreamModel: Model? = nil, unavailable: String? = nil) {
         self.policy = policy
         self.maxRunning = maxRunning
         self.maxRunningLimit = maxRunningLimit
         self.afterRestart = afterRestart
         self.approvals = approvals
         self.chatApprovals = chatApprovals
+        self.workstreamModel = workstreamModel
         self.unavailable = unavailable
     }
 
@@ -479,6 +511,7 @@ struct BotWorkSettings: Equatable {
             afterRestart: (response["after_restart"] as? String).flatMap(AfterRestart.init(rawValue:)) ?? .continue,
             approvals: (response["workstream_approvals"] as? String).flatMap(Approvals.init(rawValue:)) ?? .chats,
             chatApprovals: (response["chat_approvals"] as? String) ?? "manual",
+            workstreamModel: Model(response["workstream_model"]),
             unavailable: (response["unavailable"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         )
     }
@@ -490,6 +523,10 @@ struct BotWorkSettings: Equatable {
         if maxRunning != old.maxRunning { body["max_running"] = maxRunning }
         if afterRestart != old.afterRestart { body["after_restart"] = afterRestart.rawValue }
         if approvals != old.approvals { body["workstream_approvals"] = approvals.rawValue }
+        if workstreamModel != old.workstreamModel {
+            // null: back to the bot's own.
+            body["workstream_model"] = workstreamModel.map { $0.body as Any } ?? NSNull()
+        }
         return body
     }
 }
@@ -711,6 +748,54 @@ enum BotWorkLinks {
         }
         guard !links.isEmpty else { return nil }
         return (kept.trimmingCharacters(in: .whitespacesAndNewlines), links)
+    }
+
+    /// A ref named in a reply's words ("W50 found …"), not one already a
+    /// link's text, a path's or a longer word's part.
+    private static let namedRef = try! NSRegularExpression(pattern: #"(?<![\w/\[])(W\d+)\b(?!\]\(|\.\w)"#)
+    /// What's already a link, or part of one: a Markdown link (its text and
+    /// its address), an autolink and a bare URL. A ref inside is left alone.
+    private static let linkSpans = try! NSRegularExpression(
+        pattern: #"!?\[[^\]\n]*\]\([^)\n]*\)|<[^>\s]+>|\b[A-Za-z][A-Za-z0-9+.-]*://[^\s)]+"#)
+
+    /// Whether a reply could name a workstream: a cheap check before the
+    /// row watches the bot's work list.
+    static func mayNameWork(_ text: String) -> Bool {
+        text.range(of: #"W\d"#, options: .regularExpression) != nil
+    }
+
+    /// A Bot Chat reply with each workstream it names, as the bot's work
+    /// lists it, made a link to that workstream's chat (Eric 2026-11-03:
+    /// the coordinator names its work, the user taps it). Code is left as
+    /// written; a ref the list doesn't have stays plain.
+    static func linkingNamedRefs(_ text: String, chats: (String) -> URL?) -> String {
+        guard text.contains("W") else { return text }
+        var out = ""
+        var inCode = false
+        // Backtick runs split code from prose: only the prose is linked.
+        for (index, piece) in text.components(separatedBy: "`").enumerated() {
+            if index > 0 { out += "`" }
+            if inCode {
+                out += piece
+            } else {
+                let ns = piece as NSString
+                var linked = ""
+                var last = 0
+                let whole = NSRange(location: 0, length: ns.length)
+                let links = linkSpans.matches(in: piece, range: whole).map(\.range)
+                for match in namedRef.matches(in: piece, range: whole) {
+                    guard !links.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) else { continue }
+                    let ref = ns.substring(with: match.range(at: 1))
+                    guard let url = chats(ref) else { continue }
+                    linked += ns.substring(with: NSRange(location: last, length: match.range.location - last))
+                    linked += "[\(ref)](\(url.absoluteString))"
+                    last = match.range.location + match.range.length
+                }
+                out += linked + ns.substring(from: last)
+            }
+            inCode.toggle()
+        }
+        return out
     }
 
     private static func spacesBefore(_ index: String.Index, in text: String) -> String.Index {

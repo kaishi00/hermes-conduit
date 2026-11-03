@@ -76,6 +76,11 @@ struct V2ConversationScreen: View {
     @State private var choosesRoomPicture: GroupRoomPictureRequest?
     /// The open chat's ids while its Artifacts sheet shows.
     @State private var artifactSessionIDs: ArtifactSheetIDs?
+    /// Edit Bot from a Bot Chat's ⋯ menu (Eric 2026-11-03).
+    @State private var editedBot: BotEditorSheet.Mode?
+    /// What a save from there couldn't do, said as the Bots list says it.
+    @State private var editBotWarning: String?
+    @State private var pendingEditBotWarning: String?
     /// Artifacts beside the chat, on a window wide enough for both.
     @AppStorage(ChatSidePanel.key) private var sidePanelOpen = false
     @AppStorage(ChatSidePanel.widths.key) private var storedSidePanelWidth = Double(ChatSidePanel.widths.standard)
@@ -224,6 +229,22 @@ struct V2ConversationScreen: View {
         .sheet(item: $artifactSessionIDs) { sheet in
             ChatArtifactsSheet(sessionIDs: sheet.ids, tab: sheet.tab) { artifactSessionIDs?.tab = $0 }
                 .environmentObject(appState)
+        }
+        .sheet(item: $editedBot, onDismiss: {
+            // Shown once the sheet is gone: an alert can't come up over it.
+            editBotWarning = pendingEditBotWarning
+            pendingEditBotWarning = nil
+        }) { mode in
+            // Editing makes no new chat: nothing to open when it closes.
+            BotEditorSheet(mode: mode) { _, warning, _ in pendingEditBotWarning = warning }
+                .environmentObject(appState)
+        }
+        .alert(AppLocalization.string("Edit Bot"), isPresented: Binding(
+            get: { editBotWarning != nil }, set: { if !$0 { editBotWarning = nil } }
+        )) {
+            Button(AppLocalization.string("OK"), role: .cancel) { editBotWarning = nil }
+        } message: {
+            Text(verbatim: editBotWarning ?? "")
         }
         .modifier(ConversationDialogs(
             chatTitlePendingRename: $chatTitlePendingRename,
@@ -435,7 +456,8 @@ struct V2ConversationScreen: View {
                 onDelete: { chatTitlePendingDeletion = $0 },
                 onDisbandRoom: { confirmsRoomDisband = true },
                 onChooseRoomPicture: { choosesRoomPicture = $0 },
-                onArtifacts: { openArtifacts(tab: .made) }
+                onArtifacts: { openArtifacts(tab: .made) },
+                onEditBot: { editedBot = .edit($0) }
             )
         }
         // Artifacts beside the chat, on a window with room for both.
@@ -600,6 +622,13 @@ private struct V2ConversationMenu: View {
     let onDisbandRoom: () -> Void
     let onChooseRoomPicture: (GroupRoomPictureRequest) -> Void
     let onArtifacts: () -> Void
+    let onEditBot: (BotProfile) -> Void
+
+    /// The bot whose chat this is, once the roster has it.
+    private var chatBot: BotProfile? {
+        guard let profile = appState.activeBotChatProfile else { return nil }
+        return appState.botRoster.first { $0.name == profile }
+    }
 
     private var statusColor: Color {
         if appState.isConnected { return .green }
@@ -628,6 +657,13 @@ private struct V2ConversationMenu: View {
                 }
                 // A saved copy has no host to ask.
                 .disabled(appState.activeChatArtifactSessionIDs.isEmpty)
+                if let bot = chatBot {
+                    Button { onEditBot(bot) } label: {
+                        Label(AppLocalization.string("Edit Bot"), systemImage: "pencil")
+                    }
+                    // As the Bots list's Edit Bot: Hermes answers its reads and saves.
+                    .disabled(appState.botModePhase != .available || !appState.isConnected)
+                }
                 if let session = appState.activeChatSessionSummary {
                     Section {
                         SessionActionMenuItems(
