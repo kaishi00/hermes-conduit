@@ -1246,4 +1246,77 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             createdAt: 0
         )
     }
+
+    // MARK: - Talking rooms (Bots Home's live rooms)
+
+    /// Bots Home asks each room whether its bots are talking: a working
+    /// driver is talking, a room that doesn't answer keeps what it was,
+    /// and a disconnect clears them.
+    func testTalkingRoomsAreTheRoomsWhoseDriverWorks() async {
+        final class Box {
+            var working: Set<String> = []
+            var failing: Set<String> = []
+            var rooms: [GroupRoom] = []
+            var asked: [String] = []
+        }
+        let box = Box()
+        let planning = room(name: "Planning")
+        let quiet = GroupRoom(roomID: "room-2", name: "Quiet", members: planning.members, authorityGatewayID: "gw-a",
+                              authorityEpoch: 1, revision: 1, createdAt: 0, updatedAt: 5, disbandedAt: nil, latestSeq: 0)
+        box.rooms = [planning, quiet]
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in (box.rooms, nil) },
+            state: { _, roomID in
+                box.asked.append(roomID)
+                if box.failing.contains(roomID) { throw TestError() }
+                let room = box.rooms.first { $0.roomID == roomID } ?? planning
+                return (room, GroupDriverStatus(running: true, working: box.working.contains(roomID), blocked: false,
+                                                counts: [:], pendingActions: []))
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+
+        box.working = [planning.roomID]
+        await appState.refreshTalkingRooms()
+        XCTAssertEqual(appState.talkingRoomIDs, [planning.roomID])
+        XCTAssertEqual(appState.talkingRooms(of: "Researcher").map(\.name), ["Planning"])
+        XCTAssertEqual(BotPortraitStatus.of(nil, talkingIn: ["Planning"]).title,
+                       AppLocalization.string("In \("Planning")"))
+
+        box.working = [quiet.roomID]
+        box.failing = [planning.roomID]
+        await appState.refreshTalkingRooms()
+        XCTAssertEqual(appState.talkingRoomIDs, [planning.roomID, quiet.roomID])
+        // Talked in last first.
+        XCTAssertEqual(appState.talkingRooms.map(\.name), ["Quiet", "Planning"])
+
+        // A room that keeps failing drops out after its third miss.
+        await appState.refreshTalkingRooms()
+        XCTAssertEqual(appState.talkingRoomIDs, [planning.roomID, quiet.roomID])
+        await appState.refreshTalkingRooms()
+        XCTAssertEqual(appState.talkingRoomIDs, [quiet.roomID])
+
+        // Only the rooms talked in last are asked: Planning (the oldest)
+        // falls outside them once eight newer rooms are listed.
+        box.failing = []
+        box.working = [planning.roomID]
+        box.rooms = [planning] + (1...AppState.talkingRoomsRead).map { index in
+            GroupRoom(roomID: "room-n\(index)", name: "Newer \(index)", members: planning.members,
+                      authorityGatewayID: "gw-a", authorityEpoch: 1, revision: 1, createdAt: 0,
+                      updatedAt: Double(10 + index), disbandedAt: nil, latestSeq: 0)
+        }
+        await appState.refreshGroupRooms()
+        box.asked = []
+        await appState.refreshTalkingRooms()
+        XCTAssertFalse(box.asked.contains(planning.roomID))
+        XCTAssertEqual(box.asked.count, AppState.talkingRoomsRead)
+        XCTAssertTrue(appState.talkingRoomIDs.isEmpty)
+
+        appState.isConnected = false
+        await appState.refreshTalkingRooms()
+        XCTAssertTrue(appState.talkingRoomIDs.isEmpty)
+    }
 }

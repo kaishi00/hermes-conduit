@@ -64,6 +64,7 @@ struct BotRosterView: View {
                     }
             } else {
                 rosterList
+                    .environment(\.botsHomeCovered, coveredBySheet)
                     .safeAreaInset(edge: .bottom) {
                         if !newRoom.isEmpty {
                             newRoomBar
@@ -247,6 +248,7 @@ struct BotRosterView: View {
     @ViewBuilder
     private var portraitGrid: some View {
         BotPortraitGrid(bots: visibleBots, onDropAtEnd: dropAtEnd) { portrait($0) }
+            .modifier(BotsTalkingRoomsReader())
             .rosterListRow(divider: false)
         if !hiddenBots.isEmpty {
             hiddenDisclosure
@@ -535,6 +537,12 @@ struct BotRosterView: View {
         }
     }
 
+    /// One of this screen's sheets is up over the grid.
+    private var coveredBySheet: Bool {
+        overviewBot != nil || showingNewRoomSheet || showingReorder || presentedDesktopGroup != nil
+            || repairContext != nil || editorMode != nil || showingGroupCreateSheet || groupSheetBot != nil
+    }
+
     private var rosterList: some View {
         List {
             if createRequest != nil, appState.showsFinishSetup || appState.showsConnectionRepair {
@@ -573,6 +581,10 @@ struct BotRosterView: View {
                 // the bots says what a bot is. A row, not a footer: a plain
                 // List paints footers as an opaque band across the backdrop.
                 Section {
+                    if !appState.talkingRooms.isEmpty {
+                        BotsLiveRooms()
+                            .rosterListRow(divider: false)
+                    }
                     portraitGrid
                     Text("Each bot is its own profile with one ongoing conversation.")
                         .scaledFont(.footnote)

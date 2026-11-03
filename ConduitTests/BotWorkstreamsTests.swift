@@ -696,6 +696,14 @@ extension BotModeTests {
         off["policy"] = "off"
         XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: off, profile: "furina")), .idle)
         XCTAssertEqual(BotPortraitStatus.of(nil), .idle)
+        // Talking in a room: after its own work, before waiting on a bot,
+        // and without the plugin's workstreams too.
+        XCTAssertEqual(BotPortraitStatus.of(nil, talkingIn: ["Trip"]), .inRooms(["Trip"]))
+        XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: working, profile: "furina"), talkingIn: ["Trip"]),
+                       .working(2))
+        quiet["work"] = workResponse()["work"]
+        XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: quiet, profile: "furina"), talkingIn: ["Trip", "Ops"]),
+                       .inRooms(["Trip", "Ops"]))
         XCTAssertEqual(BotPortraitStatus.idle.title, AppLocalization.string("Overview"))
     }
 
