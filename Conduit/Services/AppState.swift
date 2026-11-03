@@ -32974,6 +32974,7 @@ final class AppState: ObservableObject {
         guard !trimmedName.isEmpty, !uniqueFolders.isEmpty else { return .failed(nil) }
 
         let profile = activeProfile
+        let dashboard = activeDashboardID
         // Checked again on Hermes' list as it is now: another device may
         // have made the same project since the list was read, and Hermes
         // would take a second one. A list that didn't come in checks nothing.
@@ -32988,13 +32989,14 @@ final class AppState: ObservableObject {
             let trimmedIdea = idea.trimmingCharacters(in: .whitespacesAndNewlines)
             var ideaSaved = true
             if !trimmedIdea.isEmpty {
-                ideaSaved = await writeProjectIdea(trimmedIdea, in: uniqueFolders[0], profile: profile)
+                ideaSaved = await writeProjectIdea(trimmedIdea, in: uniqueFolders[0], profile: profile,
+                                                   dashboard: dashboard)
             }
             // Hermes made it, so what's left only reports that: a reconnect
             // that replaced the client mid-create reads the list through
             // the new one, and an answered create is never a failure, which
             // a retry would then find as a clash (issue 1688).
-            if profile == activeProfile, let current = self.client {
+            if dashboard == activeDashboardID, profile == activeProfile, let current = self.client {
                 await loadProjects(using: current, profile: profile)
             }
             return ideaSaved
@@ -33012,7 +33014,8 @@ final class AppState: ObservableObject {
             }
             return await finish(created)
         } catch {
-            guard profile == activeProfile, let current = self.client else { return .failed(nil) }
+            guard dashboard == activeDashboardID, profile == activeProfile,
+                  let current = self.client else { return .failed(nil) }
             if current === client, isProjectsUnavailable(error) {
                 projects = []
                 supportsProjects = false
@@ -33024,7 +33027,7 @@ final class AppState: ObservableObject {
             // and takes the idea; anything else read again lets a retry see
             // the clash.
             if await loadProjects(using: current, profile: profile),
-               profile == activeProfile, self.client === current,
+               dashboard == activeDashboardID, profile == activeProfile, self.client === current,
                let made = Self.projectMadeAnyway(name: trimmedName, firstFolder: uniqueFolders[0],
                                                  knownIDs: knownIDs, in: projects) {
                 return await finish(made)
@@ -33306,21 +33309,24 @@ final class AppState: ObservableObject {
     }
 
     /// The sheet's Save Idea after a create whose idea wasn't saved.
-    /// `profile` is the one the project was made in, which a profile
-    /// switch while the sheet waits doesn't change.
-    func saveProjectIdea(_ idea: String, in folder: String, profile: String) async -> Bool {
+    /// `profile` and `dashboard` are the ones the project was made in,
+    /// which a switch while the sheet waits doesn't change.
+    func saveProjectIdea(_ idea: String, in folder: String, profile: String, dashboard: UUID?) async -> Bool {
         let trimmed = idea.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return true }
-        return await writeProjectIdea(trimmed, in: folder, profile: profile)
+        return await writeProjectIdea(trimmed, in: folder, profile: profile, dashboard: dashboard)
     }
 
     /// Never over an IDEA.md the folder already has: an existing folder
     /// keeps its files (issue 1661), and an unreadable one is left alone.
-    /// False when the idea wasn't saved for any other reason.
-    private func writeProjectIdea(_ idea: String, in folder: String, profile: String) async -> Bool {
-        guard let dashboardTicketBridge,
+    /// False when the idea wasn't saved for any other reason, or when
+    /// Conduit has switched to another Hermes since the project was made:
+    /// the folder is that host's, not this one's (issue 1688).
+    private func writeProjectIdea(_ idea: String, in folder: String, profile: String, dashboard: UUID?) async -> Bool {
+        guard dashboard == activeDashboardID,
               let entries = try? await workspaceDirectoryEntries(at: folder, profile: profile) else { return false }
         if Self.folderHasProjectIdea(entries) { return true }
+        guard dashboard == activeDashboardID, let dashboardTicketBridge else { return false }
         let separator = folder.hasSuffix("/") || folder.hasSuffix("\\") ? "" : "/"
         let path = "\(folder)\(separator)IDEA.md"
         return (try? await dashboardTicketBridge.requestJSON(

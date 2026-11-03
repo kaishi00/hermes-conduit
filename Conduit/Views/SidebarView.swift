@@ -1810,6 +1810,8 @@ struct ProjectCreateSheet: View {
     @State private var madeProjectFolder: String?
     /// The profile it was made in: Save Idea writes through that one.
     @State private var madeProjectProfile: String?
+    /// And the Hermes it was made on, which Save Idea writes to or not at all.
+    @State private var madeProjectDashboard: UUID?
 
     /// A name or folder another project already has (issue 1661).
     private var clash: String? {
@@ -1935,7 +1937,8 @@ struct ProjectCreateSheet: View {
         isCreating = true
         if madeProjectID != nil, let folder = madeProjectFolder {
             let saved = await appState.saveProjectIdea(idea, in: folder,
-                                                       profile: madeProjectProfile ?? appState.activeProfile)
+                                                       profile: madeProjectProfile ?? appState.activeProfile,
+                                                       dashboard: madeProjectDashboard)
             isCreating = false
             if saved { dismiss() }
             return
@@ -1943,6 +1946,7 @@ struct ProjectCreateSheet: View {
         validationMessage = nil
         let firstFolder = folders.first
         let profile = appState.activeProfile
+        let dashboard = appState.activeDashboardID
         let outcome = await appState.createProject(name: name, folders: folders, idea: idea)
         isCreating = false
         switch outcome {
@@ -1952,6 +1956,7 @@ struct ProjectCreateSheet: View {
             madeProjectID = projectID
             madeProjectFolder = firstFolder
             madeProjectProfile = profile
+            madeProjectDashboard = dashboard
             validationMessage = message
         case .failed(let message):
             validationMessage = message ?? AppLocalization.string("Hermes could not create this project.")
