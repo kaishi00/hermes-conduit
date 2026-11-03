@@ -58,13 +58,25 @@ extension SidebarLayoutTests {
         ]
         requester.responsesByPath["/api/cron/jobs/bbbbbbbbbbbb/runs"] = ["runs": []]
 
-        await state.loadCronRuns(for: CronJob(enabled: true, id: "aaaaaaaaaaaa"), dashboard: requester)
+        // The gateway's cron.runs lists every job's runs, job A's included.
+        var gatewayReads = 0
+        let gateway: @MainActor () async throws -> [CronRun]? = {
+            gatewayReads += 1
+            return [CronRun(id: "cron_aaaaaaaaaaaa_20261103_090000", lastActive: nil, model: nil, preview: nil, profile: nil, startedAt: nil, title: "Morning brief")]
+        }
+
+        // Job B never ran, and is the first sheet opened: nothing to clear.
+        await state.loadCronRuns(for: CronJob(enabled: true, id: "bbbbbbbbbbbb"), dashboard: requester, gateway: gateway)
+        XCTAssertTrue(state.cronRuns.isEmpty, "an empty per-job answer stands")
+        XCTAssertTrue(state.cronRunsLoaded)
+        XCTAssertEqual(state.cronRunsJobID, "bbbbbbbbbbbb")
+        XCTAssertEqual(gatewayReads, 0, "the dashboard's answer needs no cron.runs")
+
+        await state.loadCronRuns(for: CronJob(enabled: true, id: "aaaaaaaaaaaa"), dashboard: requester, gateway: gateway)
         XCTAssertEqual(state.cronRuns.map(\.id), ["cron_aaaaaaaaaaaa_20261103_090000"])
 
-        // Job B never ran: its sheet says so, never job A's runs.
-        await state.loadCronRuns(for: CronJob(enabled: true, id: "bbbbbbbbbbbb"), dashboard: requester)
+        await state.loadCronRuns(for: CronJob(enabled: true, id: "bbbbbbbbbbbb"), dashboard: requester, gateway: gateway)
         XCTAssertTrue(state.cronRuns.isEmpty)
-        XCTAssertEqual(state.cronRunsJobID, "bbbbbbbbbbbb")
         XCTAssertTrue(requester.paths.last?.hasPrefix("/api/cron/jobs/bbbbbbbbbbbb/runs") == true)
     }
 
@@ -77,15 +89,34 @@ extension SidebarLayoutTests {
         requester.responsesByPath["/api/cron/jobs/bbbbbbbbbbbb/runs"] = ["runs": []]
         requester.holdPrefix = "/api/cron/jobs/aaaaaaaaaaaa/runs"
 
-        let slow = Task { await state.loadCronRuns(for: CronJob(enabled: true, id: "aaaaaaaaaaaa"), dashboard: requester) }
+        let slow = Task { await state.loadCronRuns(for: CronJob(enabled: true, id: "aaaaaaaaaaaa"), dashboard: requester, gateway: nil) }
         while requester.heldCount == 0 { await Task.yield() }
         // The sheet moved on to job B before job A's read came back.
-        await state.loadCronRuns(for: CronJob(enabled: true, id: "bbbbbbbbbbbb"), dashboard: requester)
+        await state.loadCronRuns(for: CronJob(enabled: true, id: "bbbbbbbbbbbb"), dashboard: requester, gateway: nil)
         requester.release()
         await slow.value
 
         XCTAssertEqual(state.cronRunsJobID, "bbbbbbbbbbbb")
         XCTAssertTrue(state.cronRuns.isEmpty)
+    }
+
+    func testWithoutTheDashboardOnlyTheJobsOwnRunsAreKept() async {
+        let state = cronRunHistoryState()
+        func run(_ id: String, job: String? = nil) -> CronRun {
+            CronRun(id: id, lastActive: nil, model: nil, preview: nil, profile: nil, startedAt: nil, title: nil, jobID: job)
+        }
+        let everyJobsRuns = [
+            run("cron_aaaaaaaaaaaa_20261103_090000"),
+            run("cron_bbbbbbbbbbbb_20261103_100000"),
+            run("local-7f3a", job: "aaaaaaaaaaaa"),
+            run("local-9c1d"),
+        ]
+        await state.loadCronRuns(for: CronJob(enabled: true, id: "aaaaaaaaaaaa"), dashboard: nil, gateway: { everyJobsRuns })
+        XCTAssertEqual(state.cronRuns.map(\.id), ["cron_aaaaaaaaaaaa_20261103_090000", "local-7f3a"])
+
+        await state.loadCronRuns(for: CronJob(enabled: true, id: "cccccccccccc"), dashboard: nil, gateway: { everyJobsRuns })
+        XCTAssertTrue(state.cronRuns.isEmpty)
+        XCTAssertTrue(state.cronRunsLoaded)
     }
 
     func testARunBelongsToTheJobItNamesOrItsSessionIDNames() {
@@ -110,5 +141,8 @@ extension SidebarLayoutTests {
         let run = try JSONDecoder().decode(CronRun.self, from: data)
         XCTAssertEqual(run.jobID, "abc123")
         XCTAssertTrue(run.isRun(ofJob: "abc123"))
+
+        let named = try JSONDecoder().decode(CronRun.self, from: Data(#"{"id":"local-7f3a","cron_job_id":"def456"}"#.utf8))
+        XCTAssertEqual(named.jobID, "def456")
     }
 }

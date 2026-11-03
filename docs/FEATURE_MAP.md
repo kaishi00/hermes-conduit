@@ -1682,6 +1682,32 @@ cards) · notifier README.md's Cron jobs delivered to a Bot Chat
 
 **Checked:** 2026-11-03, #1703 (on main now, with notifier #519: the branch notes go and the notifier paths are checked; Eric: lookups is the default, with notifier 0.127.1, in the plugin and in Edit Bot > Work); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1690 (added, with notifier #518).
 
+## A cron job's Run history
+
+A scheduled job's sheet lists that job's past runs, newest first, and a tap
+opens the run's chat. A job that hasn't run says so.
+
+**Siblings:** the sheet in both shells (one `CronJobDetailSheet`, from the
+Cron list and from Tasks › Scheduled) · Run now, which reads the history
+again · the dashboard's per-job route and the gateway's `cron.runs`, read
+without a dashboard · the Scheduled filter in the chats list (not needed: it
+lists `cronSessions`, every run, not one job's) · Watch, CarPlay and the
+notifier (not needed: no cron history there)
+
+**Code**
+- App: `Conduit/Services/AppState.swift` (loadCronRuns, cronRunsJobID, cronRunsLoaded, decodeCronRun), `Conduit/Models/Models.swift` (CronRun, isRun(ofJob:)), `Conduit/Services/HermesClient.swift` (cronRuns), `Conduit/Views/SidebarView.swift` (CronJobDetailSheet's Run history), `Conduit/Views/V2/V2TasksView.swift` (the sheet from Tasks)
+- Test: `ConduitTests/SidebarLayoutTests+CronRunHistory.swift`
+
+**Rulings**
+- The dashboard's per-job route is the job's history, an empty answer too: it never falls back to `cron.runs`, which lists every job's runs (#1707).
+- Without a dashboard, `cron.runs` keeps only the runs that name the job (`job_id` or `cron_job_id`) or carry Hermes' run session id, `cron_<job id>_<YYYYMMDD>_<HHMMSS>`. A run that says neither is no job's: an empty history beats another job's.
+- The list belongs to one job: opening another job shows a spinner until its answer lands, never the last job's runs or "This job has not run yet." before it knows, and only the newest read's answer is kept.
+
+**Open gaps**
+- Without a dashboard, a run of Hermes' unified runtime (a `local-*` id) that `cron.runs` doesn't name a job for is left out of every job's history.
+
+**Checked:** 2026-11-03, #1712 (added, fixing #1707).
+
 ## Links in messages
 
 A tap on a link in a reply opens it, the first time, wherever the reply is

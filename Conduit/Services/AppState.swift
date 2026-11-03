@@ -5426,6 +5426,9 @@ final class AppState: ObservableObject {
     private(set) var cronRunsJobID: String?
     /// The newest Run history read, so an older one that lands last is dropped.
     private var cronRunsLoad = 0
+    /// Whether `cronRuns` holds an answer for `cronRunsJobID` yet, so the
+    /// sheet says a job hasn't run only once it knows.
+    @Published private(set) var cronRunsLoaded = false
     @Published private(set) var cronJobsLoading = false
     @Published private(set) var cronJobActionID: String?
     /// Bumped by a job delete so a list load that started before it can't
@@ -34028,19 +34031,32 @@ final class AppState: ObservableObject {
     }
 
     func loadCronRuns(for job: CronJob) async {
-        await loadCronRuns(for: job, dashboard: dashboardTicketBridge)
+        var gateway: (@MainActor () async throws -> [CronRun]?)?
+        if let client {
+            gateway = { [weak self] in
+                let runs = try await client.cronRuns()
+                // A reconnect's new client answers for itself.
+                return self?.client === client ? runs : nil
+            }
+        }
+        await loadCronRuns(for: job, dashboard: dashboardTicketBridge, gateway: gateway)
     }
 
     /// A job's Run history. The dashboard's per-job route is the answer, an
     /// empty one too (a job that hasn't run yet). The gateway's `cron.runs`
     /// lists every job's runs, so it is read only without the dashboard, and
     /// only the runs it can tell are this job's are kept (#1707). The list
-    /// belongs to one job: opening another clears it, and only the newest
-    /// read's answer is kept.
-    func loadCronRuns(for job: CronJob, dashboard: (any DashboardJSONRequester)?) async {
+    /// belongs to one job: opening another clears it until its answer lands
+    /// (`cronRunsLoaded`), and only the newest read's answer is kept.
+    func loadCronRuns(
+        for job: CronJob,
+        dashboard: (any DashboardJSONRequester)?,
+        gateway: (@MainActor () async throws -> [CronRun]?)?
+    ) async {
         let profile = activeProfile
         if cronRunsJobID != job.id {
             cronRuns = []
+            cronRunsLoaded = false
             cronRunsJobID = job.id
         }
         cronRunsLoad += 1
@@ -34061,13 +34077,15 @@ final class AppState: ObservableObject {
                 )
                 guard profile == activeProfile, cronRunsLoad == load else { return }
                 cronRuns = cronRunValues(from: result).compactMap(decodeCronRun).filter(inProfile)
-            } else if let client {
-                let runs = try await client.cronRuns()
-                guard profile == activeProfile, self.client === client, cronRunsLoad == load else { return }
-                cronRuns = runs.filter { $0.isRun(ofJob: job.id) && inProfile($0) }
+            } else if let gateway {
+                let answer = try await gateway()
+                guard profile == activeProfile, cronRunsLoad == load else { return }
+                if let runs = answer { cronRuns = runs.filter { $0.isRun(ofJob: job.id) && inProfile($0) } }
             }
+            cronRunsLoaded = true
         } catch {
             guard profile == activeProfile, cronRunsLoad == load else { return }
+            cronRunsLoaded = true
             errorMessage = AppLocalization.string("Could not load scheduled-job runs: \(UserFacingError.message(for: error))")
         }
     }
