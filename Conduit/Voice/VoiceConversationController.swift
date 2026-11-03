@@ -1396,7 +1396,15 @@ final class VoiceConversationController: ObservableObject {
             if isWholeUtteranceStopCommand(transcript) {
                 // Spoken Stop proceeds on the attempt: its local semantics
                 // (cancel, stop playback, relisten) do not depend on the
-                // server-side cancellation result.
+                // server-side cancellation result. The turn it cancels is
+                // retired first, as barge-in and Interrupt do: its terminal
+                // event belongs to the retired turn and must not end the
+                // window this Stop reopens (#1691). The steer and approval
+                // bookkeeping that terminal would have closed ends here.
+                isAwaitingVoiceAssistant = false
+                awaitedAssistantResponseStarted = false
+                endSteerBookkeeping()
+                endApprovalNotice()
                 _ = await interrupt()
                 guard isCurrent(generation) else { return }
                 playback.stop()

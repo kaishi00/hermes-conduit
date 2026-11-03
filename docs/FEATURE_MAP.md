@@ -838,7 +838,7 @@ talk, and how long the microphone waits.
 **Siblings:** Classic (phone, CarPlay, locked phone) · Gemini Live · Qwen
 Live · Grok Live · GPT-Live · Local Live · Watch calls · headset, speaker and car routes ·
 push to talk · Continuous Conversation · the Action, headset and CarPlay
-buttons · the Interrupt button, CarPlay's Stop and the Watch orb · the
+buttons · the Interrupt button, CarPlay's Stop, the Watch orb and Classic's spoken Stop phrases · the
 notifier's Local Live read-back relay (phone socket and Watch bridge) · docs/VOICE_SETTINGS.md and
 docs/OWN_VOICE_SERVER.md · the notifier's README (read-back)
 
@@ -852,7 +852,7 @@ Calls from Hermes use the default audio in every mode, so the speaker and car co
 
 **Code**
 - Routes: `Conduit/Voice/VoiceBargeInRoutePolicy.swift`
-- Classic: `Conduit/Voice/VoiceConversationController.swift` (isTalkOverAvailable, isSteerAvailable, isAcknowledgementSteerable, beginPushToTalk), `Conduit/Voice/VoiceSpeechDetector.swift`, `Conduit/Voice/EchoCancellingVoiceConversationAudio.swift`
+- Classic: `Conduit/Voice/VoiceConversationController.swift` (isTalkOverAvailable, isSteerAvailable, isAcknowledgementSteerable, beginPushToTalk, isWholeUtteranceStopCommand), `Conduit/Voice/VoiceSpeechDetector.swift`, `Conduit/Voice/EchoCancellingVoiceConversationAudio.swift`
 - Live modes: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift`, `Conduit/Voice/GeminiLive/LiveVoiceEchoCancellingAudio.swift`, `Conduit/Voice/GPTLive/GPTLiveConversationController.swift`
 - Interrupt: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (interruptSpeaking), `Shared/GeminiLive/GeminiLiveSessionControlling.swift` (cancelResponse), `Shared/LocalLive/LocalLiveSession.swift` (cancelResponse), `Shared/LocalLive/LocalLiveProtocol.swift` (responseCancel), `ConduitWatch/WatchDirectCallModel.swift` (tapOrb), `notifier/dashboard/api/local_live_read_back.py` (_LocalLiveReadBack.from_client, _stop; the phone's socket and the Watch's bridge both run it)
 - Push to talk surfaces: `Conduit/Services/AppState.swift` (pushToTalkSurfaceAvailable)
@@ -866,11 +866,12 @@ Calls from Hermes use the default audio in every mode, so the speaker and car co
 - Push to talk is per profile and off by default. While held no silence timer runs; a press while Hermes speaks interrupts, while it thinks steers. CarPlay and calls from Hermes stay hands-free (2026-10-22, #1106).
 - Interrupt (CarPlay's Stop and the Watch orb too) stops what plays on the device. In Local Live (the phone's Interrupt, CarPlay's Stop and the Watch orb) it also sends the speech server `response.cancel`, which the read-back relay passes on even when no sentence is in progress, so a server that shuts its own microphone while its reply plays listens again; nothing is guessed from the audio, and background jobs go on. Gemini, Grok and Qwen stop only what plays here: their servers hear the user over the reply and keep no gate (2026-10-27, #1331, notifier #404, from #1325).
 - With Continuous Conversation on, the default, Classic keeps listening through silence instead of pausing the microphone (2026-10-10, #520).
+- Every intentional stop of a running turn in Classic (talking over it, Interrupt, CarPlay's Stop, a push to talk press, and a spoken Stop phrase in a steer or approval answer window) retires the turn before it cancels it and listens again: the cancelled turn's late interrupted or cancellation event belongs to it and never ends the window that opened, nor shows a failure for a stop the user asked for (2026-11-03, #PRNUM, issue 1691).
 
 **Open gaps**
 - Push to talk is Classic only: not the live modes, the Watch, or the Action, headset and CarPlay buttons (#1106).
 
-**Checked:** 2026-11-02, #1659 (a call from Hermes takes the default audio with talk-over on); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1390 (Classic: cutting Hermes' acknowledgement short steers); 2026-10-27, #1378 (CarPlay's Stop on Local Live tells the server too); 2026-10-27, #1331 (Interrupt tells a Local Live server, #1325); 2026-10-25, Qwen in the siblings, the table and the shared caption, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-11-03, #PRNUM (a spoken Stop retires the turn it cancels, as talking over and Interrupt do); 2026-11-02, #1659 (a call from Hermes takes the default audio with talk-over on); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1390 (Classic: cutting Hermes' acknowledgement short steers); 2026-10-27, #1378 (CarPlay's Stop on Local Live tells the server too); 2026-10-27, #1331 (Interrupt tells a Local Live server, #1325); 2026-10-25, Qwen in the siblings, the table and the shared caption, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
 
 ## Files Hermes attaches, in what voices say
 
