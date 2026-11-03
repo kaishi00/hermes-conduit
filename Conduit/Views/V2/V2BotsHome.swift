@@ -141,7 +141,6 @@ struct BotPortraitCell<MenuContent: View>: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.v2Shell) private var shell
-    @ScaledMetric(relativeTo: .body) private var portraitSize: CGFloat = 72
 
     private var status: BotPortraitStatus { .of(work.snapshot(bot.name)) }
 
@@ -200,7 +199,10 @@ struct BotPortraitCell<MenuContent: View>: View {
     }
 
     private func portrait(_ status: BotPortraitStatus) -> some View {
-        BotMonogramView(bot: bot, size: portraitSize)
+        // 72 at the default Text Size; the monogram scales it once, up to
+        // accessibility1 (about 115), so a two-column cell still holds it.
+        BotMonogramView(bot: bot, size: 72)
+            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             .padding(4)
             .overlay {
                 Circle()
@@ -242,6 +244,8 @@ struct BotPortraitCell<MenuContent: View>: View {
         // A 44-point target round the smaller pill.
         .frame(minHeight: 44)
         .contentShape(Rectangle())
+        // Past accessibility2 the pill's words outgrow a two-column cell
+        // and truncate to nothing; the overview sheet says them in full.
         .dynamicTypeSize(...DynamicTypeSize.accessibility2)
     }
 
