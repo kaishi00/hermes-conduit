@@ -92,6 +92,9 @@ struct V2ConversationScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.v2Shell) private var shell
     @State private var composerExpanded = false
+    /// Someone is typing in the composer, which stays expanded on a wide
+    /// window: the swipe back waits, so a caret dragged along a line stays.
+    @State private var composerTyping = false
     /// The last resting bar's height: kept while the composer is expanded,
     /// so the button doesn't move as it steps aside.
     @State private var restingComposerHeight: CGFloat = 0
@@ -248,6 +251,9 @@ struct V2ConversationScreen: View {
         .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in
             composerExpanded = expanded
         }
+        .onPreferenceChange(V2ComposerTypingKey.self) { typing in
+            composerTyping = typing
+        }
         .onPreferenceChange(V2RestingComposerHeightKey.self) { height in
             if height > 0 { restingComposerHeight = height }
         }
@@ -256,7 +262,6 @@ struct V2ConversationScreen: View {
         // A workstream's chat goes back to the Bot Chat that started it,
         // by Back and by the edge swipe, not to the list under both.
         .navigationBarBackButtonHidden(workstreamGoesBack != nil)
-        .simultaneousGesture(backSwipe, including: swipesBack ? .all : .subviews)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
@@ -389,6 +394,9 @@ struct V2ConversationScreen: View {
                 // it does; the backdrop still fills it.
                 .readableChatColumn()
         }
+        // The chat's column only: a drag in a panel beside it (Artifacts,
+        // its divider, the Work panel's swipes) is that panel's.
+        .simultaneousGesture(backSwipe, including: swipesBack ? .all : .subviews)
     }
 
     /// The bot whose Bot Chat a workstream's Back returns to; nil for any
@@ -411,7 +419,7 @@ struct V2ConversationScreen: View {
     /// Not while the composer is in use (a caret or selection dragged
     /// along a line) or a held voice message slides to cancel.
     private var swipesBack: Bool {
-        guard !composerExpanded, !voiceMessages.isActive else { return false }
+        guard !composerExpanded, !composerTyping, !voiceMessages.isActive else { return false }
         return workstreamGoesBack != nil || (botChatZoomed && !shell.isSplit && appState.activeBotChatProfile != nil)
     }
 
