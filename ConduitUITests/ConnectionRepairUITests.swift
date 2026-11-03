@@ -2,14 +2,14 @@ import XCTest
 
 /// Round-6 Repair Connection UI coverage. All paths are deterministic:
 /// `-CONDUIT_UI_TEST_FAILED_CONNECTION` starts the app on a failed stubbed
-/// session (Repair Connection visible at the top of V2's Chats, where the
+/// session (Repair Connection visible at the top of Bots Home, where the
 /// app opens), `-CONNECTION_SETUP_TEST_RESULT`
 /// scripts the staged probe, and `-CONDUIT_REPAIR_ACTIVATION` scripts the
 /// explicit activation outcome. No test touches a real Hermes server.
 final class ConnectionRepairUITests: XCTestCase {
     private enum Identity {
         static let stubDashboardURL = "https://repair-uitest.example"
-        static let repairButton = "chats.repair-connection"
+        static let repairButton = "bots.repair-connection"
         static let urlField = "setup.url"
         static let username = "setup.username"
         static let password = "setup.password"

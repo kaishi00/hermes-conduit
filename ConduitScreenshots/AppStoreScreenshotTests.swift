@@ -46,6 +46,9 @@ final class AppStoreScreenshotTests: XCTestCase {
 
     func testCaptureAppStoreScreens() throws {
         signInIfNeeded()
+        // The app opens on Bots; the chats are a tab over.
+        let sessions = app.buttons["Sessions"].firstMatch
+        if sessions.waitForExistence(timeout: 10) { sessions.tap() }
         dismissFinishSetupCard()
         // The list fills from the dashboard; wait for the newest chat.
         if !app.staticTexts["Weekend trip to Big Sur"].waitForExistence(timeout: 30) {
@@ -89,7 +92,7 @@ final class AppStoreScreenshotTests: XCTestCase {
                 }
             }
         }
-        app.buttons["Chats"].tap()
+        app.buttons["Sessions"].tap()
 
         // Live voice: the real call screen over a scripted conversation
         // (Conduit/Services/ScreenshotCallFixture.swift); the sign-in is saved.

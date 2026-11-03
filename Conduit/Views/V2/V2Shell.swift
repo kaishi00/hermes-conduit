@@ -21,14 +21,16 @@ enum V2Tab: String, Identifiable, Hashable {
     case bots
     case settings
 
-    /// The tabs the bar lists.
-    static let destinations: [V2Tab] = [.chats, .tasks, .bots, .settings]
+    /// The tabs the bar lists. Bots comes first: picking a bot and
+    /// talking to it is Conduit's home, and direct sessions are a tab
+    /// over (designs/bot-mode-coordinator/bots-home-ui.md).
+    static let destinations: [V2Tab] = [.bots, .chats, .tasks, .settings]
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .chats: return AppLocalization.string("Chats")
+        case .chats: return AppLocalization.string("Sessions")
         case .tasks: return AppLocalization.string("Tasks")
         case .bots: return AppLocalization.string("Bots")
         case .settings: return AppLocalization.string("Settings")
@@ -403,8 +405,8 @@ struct V2Shell: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.layoutDirection) private var layoutDirection
-    @State private var selectedTab: V2Tab = .chats
-    /// The app opens on the Chats list, or on the chat iOS closed it on
+    @State private var selectedTab: V2Tab = .bots
+    /// The app opens on Bots, or on the chat iOS closed it on
     /// (`V2ReopenedConversation`). Nothing is pushed during the launch's
     /// first layout: a push then, even without animation, left the app
     /// never idle, so a reopened chat is in the path from the start.
@@ -412,7 +414,7 @@ struct V2Shell: View {
     @State private var botsPath: [V2Route] = []
     /// The custom bar keeps a tab alive once it has been opened, so its
     /// scroll position and pushed screens survive switching away.
-    @State private var visitedTabs: Set<V2Tab> = [.chats]
+    @State private var visitedTabs: Set<V2Tab> = [.chats, .bots]
     @State private var contentFaded = false
     @State private var contentShift: CGFloat = 0
     @State private var profileSwitchToken = 0
@@ -446,7 +448,7 @@ struct V2Shell: View {
     ///   - conversationOnLeave: the window's record of the chat showing,
     ///     kept current here.
     ///   - reopening: where this launch opens, from that record
-    ///     (`V2ReopenedConversation.launch`); nil opens on Chats.
+    ///     (`V2ReopenedConversation.launch`); nil opens on Bots.
     init(conversationOnLeave: Binding<String> = .constant(""), reopening launch: V2ReopenedConversation.Launch? = nil) {
         _conversationOnLeave = conversationOnLeave
         _roomToReopen = State(initialValue: launch?.roomID == nil ? nil : launch)
@@ -456,6 +458,7 @@ struct V2Shell: View {
             _botsPath = State(initialValue: launch?.path ?? [])
             _visitedTabs = State(initialValue: [.chats, .bots])
         case .chats?:
+            _selectedTab = State(initialValue: .chats)
             _chatsPath = State(initialValue: launch?.path ?? [])
         case .tasks?, .settings?, nil:
             break
@@ -475,7 +478,7 @@ struct V2Shell: View {
     /// whole window as a chat does: no tabs or voice button. Split, it is a
     /// page in the list column, over the bar like Artifacts.
     private var pulseVisible: Bool {
-        selectedTab == .chats && chatsPath.last == .pulse
+        (selectedTab == .chats && chatsPath.last == .pulse) || (selectedTab == .bots && botsPath.last == .pulse)
     }
 
     /// What the window keeps for a launch after iOS ends Conduit: where
@@ -1060,7 +1063,12 @@ struct V2Shell: View {
         switch target {
         case .bots:
             chatsPath.removeAll { $0 == .conversation }
-            if botsPath.last != .conversation { botsPath.append(.conversation) }
+            if botsPath.last != .conversation {
+                // As in Chats: a chat opened from Pulse over another chat
+                // moves to the top.
+                botsPath.removeAll { $0 == .conversation }
+                botsPath.append(.conversation)
+            }
         default:
             botsPath.removeAll { $0 == .conversation }
             if chatsPath.last != .conversation {
