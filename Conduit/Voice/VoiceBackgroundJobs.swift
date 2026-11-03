@@ -398,7 +398,9 @@ struct VoiceBackgroundJobBackend {
     /// nil for a single question; `answer` nil leaves one of a form blank),
     /// as its card would. The card as it stands after, or nil when Hermes no
     /// longer waits on it.
-    var respondToClarify: @MainActor (_ clarify: ClarifyActivity, _ questionID: String?, _ answer: String?) async throws -> ClarifyActivity? = { _, _, _ in
+    /// `sessionID` and `profile` are the job's chat, where the session
+    /// authority reads a question this socket never saw asked.
+    var respondToClarify: @MainActor (_ clarify: ClarifyActivity, _ questionID: String?, _ answer: String?, _ sessionID: String?, _ profile: String?) async throws -> ClarifyActivity? = { _, _, _, _, _ in
         throw HermesError.notConnected
     }
 }
@@ -753,7 +755,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let value = answer.flatMap { HermesCallWaiting.answerValue(for: $0, question: question) }
         let after: ClarifyActivity?
         do {
-            after = try await backend.respondToClarify(clarify, clarify.questions.count == 1 ? nil : question.id, value)
+            after = try await backend.respondToClarify(clarify, clarify.questions.count == 1 ? nil : question.id, value, job.runtimeSessionID, job.profile)
+        } catch let error where HermesClient.isSessionNotFoundError(error) {
+            // The chat is gone (reaped after a relaunch): nothing waits on
+            // this question any more, as the card reads it.
+            after = nil
         } catch {
             return .failed
         }

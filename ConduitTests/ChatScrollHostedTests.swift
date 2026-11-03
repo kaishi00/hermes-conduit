@@ -800,6 +800,61 @@ final class ChatScrollHostedTests: XCTestCase {
         XCTAssertTrue(mounted.scroller.showsJumpToLatest)
     }
 
+    /// Eric's report (build 246): a Thinking row opened in place drew over
+    /// the rows under it, and closing it left its open height empty, until a
+    /// scroll or another visit laid the chat out again. A row opened and
+    /// closed by its own state (no new rows, no forced layout, only the run
+    /// loop turning as on a phone) takes its new height in its cell, and the
+    /// row under it follows.
+    func testARowOpenedAndClosedInPlaceTakesItsHeightAndMovesTheRowsUnder() throws {
+        let mounted = try mount(Self.transcript(0..<40))
+        let collectionView = try XCTUnwrap(mounted.scrollView as? UICollectionView)
+        // A row in the middle of the screen, with one under it on screen.
+        let cells = collectionView.visibleCells.compactMap { $0 as? TranscriptCell }.sorted { $0.frame.minY < $1.frame.minY }
+        XCTAssertGreaterThanOrEqual(cells.count, 3)
+        let cell = cells[cells.count / 2]
+        let id = try XCTUnwrap(cell.hostedRowID)
+        let hosting = try XCTUnwrap(cell.hosting)
+        let root = hosting.rootView
+        let model = OpeningRowState()
+        hosting.rootView = TranscriptCellRoot(
+            rowID: root.rowID,
+            content: AnyView(OpeningRow(model: model, content: root.content)),
+            rowEnvironment: root.rowEnvironment,
+            appState: root.appState,
+            resized: root.resized
+        )
+        turnRunLoop(seconds: 0.6)
+
+        func frames() -> (cell: CGRect, below: CGRect?) {
+            let visible = collectionView.visibleCells.compactMap { $0 as? TranscriptCell }
+            let mine = visible.first { $0.hostedRowID == id }?.frame ?? .null
+            let below = visible.filter { $0.frame.minY > mine.minY }.min { $0.frame.minY < $1.frame.minY }?.frame
+            return (mine, below)
+        }
+        let closed = frames()
+
+        model.toggle(true)
+        turnRunLoop(seconds: 1.0)
+        let opened = frames()
+        XCTAssertEqual(opened.cell.height, closed.cell.height + OpeningRow.openHeight, accuracy: 1, "the opened row's cell takes its height")
+        XCTAssertEqual(opened.below?.minY ?? 0, opened.cell.maxY, accuracy: 1, "the row under it moves down")
+
+        model.toggle(false)
+        turnRunLoop(seconds: 1.0)
+        let shut = frames()
+        XCTAssertEqual(shut.cell.height, closed.cell.height, accuracy: 1, "the closed row's cell gives its height back")
+        XCTAssertEqual(shut.below?.minY ?? 0, shut.cell.maxY, accuracy: 1, "the row under it moves back up")
+    }
+
+    /// The run loop turning as on a phone: no layout forced.
+    private func turnRunLoop(seconds: TimeInterval) {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+    }
+
     /// A tester's report: at the bottom of a chat, a band of empty space
     /// (~126 pt) sat between the last reply and the composer. The composer
     /// is a bar the transcript insets for, so the latest row ends one row
@@ -1106,5 +1161,32 @@ final class ChatScrollHostedTests: XCTestCase {
         XCTAssertNotNil(mounted.layout.rowFrame(landedID), "the event took the row in place")
         assertAtLatest(mounted, "the room stays at its end")
         XCTAssertTrue(mounted.scroller.isFollowingLatest)
+    }
+}
+
+/// A row that opens and closes by its own state, as Thinking and the tool
+/// cards do: in an animation, its extra part fading in and out.
+@MainActor
+private final class OpeningRowState: ObservableObject {
+    @Published var expanded = false
+
+    func toggle(_ expanded: Bool) {
+        withAnimation(ConduitMotion.response) { self.expanded = expanded }
+    }
+}
+
+private struct OpeningRow: View {
+    static let openHeight: CGFloat = 300
+    @ObservedObject var model: OpeningRowState
+    let content: AnyView
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content
+            if model.expanded {
+                Color.orange.frame(height: Self.openHeight)
+                    .transition(.opacity)
+            }
+        }
     }
 }

@@ -41,7 +41,7 @@ struct SpeechServerSettingsView: View {
                 .foregroundStyle(.secondary)
 
             if let status, status.pluginMissing {
-                Text(SpeechServerStatus.pluginMissingReason)
+                Text(status.reason ?? SpeechServerStatus.pluginMissingReason)
                     .scaledFont(.footnote)
                     .foregroundStyle(.orange)
             } else {

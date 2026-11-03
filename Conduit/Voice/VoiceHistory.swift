@@ -339,7 +339,10 @@ final class VoiceHistoryClient {
     // MARK: Parsing (static for tests)
 
     static func mapped(_ error: DashboardTicketBridgeError) -> VoiceHistoryError? {
-        guard case .http(let status, _) = error else { return nil }
+        guard case .http(let status, let detail) = error else { return nil }
+        // A profile that turned the plugin off isn't a host that can't save:
+        // the call waits and says how to turn it on (issue 1671).
+        if status == 404, DashboardTicketBridgeError.isPluginOffDetail(detail) { return nil }
         switch status {
         case 404, 405: return .pluginMissing
         case 501: return .unsupported

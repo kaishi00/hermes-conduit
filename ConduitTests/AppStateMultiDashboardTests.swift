@@ -1233,6 +1233,97 @@ extension AppStateMultiDashboardTests {
 
     /// Connected to Mac through a bridge whose requests the test answers;
     /// VPS is the dashboard switched to (authless, so nothing connects).
+    /// Helper models read the same kept slots as Voice replies, list
+    /// each slot but Pulse's, and a pick Hermes' price check asks about
+    /// comes back for the user to confirm, not as a refusal.
+    func testHelperModelsShareTheSlotsAndAskBeforeAnExpensivePick() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let load = Task { try await appState.loadHelperModels() }
+        try await held.waitForRequests(1)
+        try await held.answer(["tasks": [
+            ["task": "title_generation", "provider": "auto", "model": ""],
+            ["task": "voice_chat", "provider": "openrouter", "model": "fast/model", "reasoning_effort": "none"],
+            ["task": "pulse_memory", "provider": "auto", "model": "", "label": "Pulse memory", "plugin": "conduit_push"],
+        ]])
+        let slots = try await load.value
+        XCTAssertEqual(slots.map(\.id), ["title_generation", "voice_chat"])
+        XCTAssertEqual(appState.keptHelperModels()?.map(\.id), ["title_generation", "voice_chat"])
+        XCTAssertEqual(appState.keptVoiceReplyModel()?.model, "fast/model", "Voice replies opens on the same read")
+        XCTAssertEqual(appState.keptHelperModel(task: "title_generation")?.followsChats, true)
+
+        let pick = VoiceReplyModelSetting(task: "title_generation", provider: "openrouter", model: "big/model", reasoningEffort: nil)
+        let save = Task { await appState.setHelperModel(pick, confirmed: false) }
+        try await held.waitForRequests(2)
+        try await held.answer(["ok": false, "confirm_required": true, "confirm_message": "big/model costs $75 per million tokens."])
+        let result = await save.value
+        XCTAssertEqual(result, .needsConfirmation("big/model costs $75 per million tokens."))
+        XCTAssertEqual(held.sent.map(\.path), [AppState.KeptRoute.modelAuxiliary, "/api/model/set"])
+
+        // Taken with the user's yes: the kept slots follow the save before
+        // the read after it answers, or if it never does.
+        let confirmed = Task { await appState.setHelperModel(pick, confirmed: true) }
+        try await held.waitForRequests(3)
+        try await held.answer(["ok": true, "scope": "auxiliary", "tasks": ["title_generation"]])
+        let confirmedResult = await confirmed.value
+        XCTAssertEqual(confirmedResult, .saved)
+        XCTAssertEqual(appState.keptHelperModel(task: "title_generation")?.model, "big/model")
+        XCTAssertEqual(appState.keptHelperModel(task: "title_generation")?.provider, "openrouter")
+        XCTAssertEqual(appState.keptVoiceReplyModel()?.model, "fast/model", "the other slots stay as kept")
+        // The read after the save answers before the test ends, so nothing
+        // of this AppState is left running once it's gone.
+        try await held.waitForRequests(4)
+        try await held.answer(["tasks": [
+            ["task": "title_generation", "provider": "openrouter", "model": "big/model"],
+            ["task": "voice_chat", "provider": "openrouter", "model": "fast/model", "reasoning_effort": "none"],
+        ]])
+        for _ in 0..<100 where appState.keptHelperModels(includingSetElsewhere: true)?.count != 2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(appState.keptHelperModels(includingSetElsewhere: true).map { Set($0.map(\.id)) },
+                       Set(["title_generation", "voice_chat"]), "the read after the save is kept")
+    }
+
+    /// The Model page and its Helper models section read together: one
+    /// request answers both.
+    func testHelperModelReadersAskingTogetherShareOneRead() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let page = Task { try await appState.loadHelperModels() }
+        try await held.waitForRequests(1)
+        let section = Task { try await appState.loadHelperModels() }
+        for _ in 0..<5 { await Task.yield() }
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "auto", "model": ""]]])
+        let pageSlots = try await page.value
+        let sectionSlots = try await section.value
+        XCTAssertEqual(pageSlots.map(\.id), ["title_generation"])
+        XCTAssertEqual(sectionSlots.map(\.id), ["title_generation"])
+        XCTAssertEqual(held.sent.map(\.path), [AppState.KeptRoute.modelAuxiliary], "one request for both")
+    }
+
+    /// A read asked after a save isn't answered by one asked before it: it
+    /// joins the read the save starts.
+    func testAHelperModelSaveDropsTheSharedRead() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let before = Task { try await appState.loadHelperModels() }
+        try await held.waitForRequests(1)
+        let pick = VoiceReplyModelSetting(task: "title_generation", provider: "openrouter", model: "big/model", reasoningEffort: nil)
+        let save = Task { await appState.setHelperModel(pick, confirmed: true) }
+        try await held.waitForRequests(2)
+        try await held.answer(["ok": true, "scope": "auxiliary", "tasks": ["title_generation"]], at: 1)
+        let saved = await save.value
+        XCTAssertEqual(saved, .saved)
+        try await held.waitForRequests(3)
+        let after = Task { try await appState.loadHelperModels() }
+        for _ in 0..<5 { await Task.yield() }
+
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "auto", "model": ""]]])
+        _ = try await before.value
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "openrouter", "model": "big/model"]]])
+        let afterSlots = try await after.value
+        XCTAssertEqual(afterSlots.first?.setting.model, "big/model", "the read after the save")
+        XCTAssertEqual(held.sent.map(\.path), [AppState.KeptRoute.modelAuxiliary, "/api/model/set", AppState.KeptRoute.modelAuxiliary],
+                       "the read after the save joined the save's own")
+    }
+
     private func heldSwitchFixture() -> (appState: AppState, held: HeldDashboardRequests, vps: SavedDashboard) {
         let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
         let vps = dashboard("VPS", "https://vps-\(UUID().uuidString.lowercased()).invalid")
@@ -1998,8 +2089,8 @@ extension AppStateMultiDashboardTests {
         let save = Task { await appState.setVoiceReplyModel(fast) }
         try await held.waitForRequests(2)       // the save
         try await held.answer(at: 1)
-        let refusal = await save.value
-        XCTAssertNil(refusal)
+        let result = await save.value
+        XCTAssertEqual(result, .saved)
         try await held.waitForRequests(3)       // the read it asks for
         try await held.answer(["tasks": [["task": "voice_chat", "provider": "auto", "model": ""]]])
         _ = try await older.value
@@ -2511,6 +2602,12 @@ extension AppStateMultiDashboardTests {
             $0.catalog = []
         }
         XCTAssertNil(next.keptBotMcpSetup(profile: "nova"))
+
+        // A sign-in Hermes took, from Edit Bot or the Connectors page,
+        // opens the MCP page signed in.
+        XCTAssertEqual(next.keptBotMcpSetup(profile: "atlas")?.servers["github_token"]?.needsSignIn, true)
+        next.keepMcpSignedIn(profile: "atlas", name: "github_token", on: owner)
+        XCTAssertEqual(next.keptBotMcpSetup(profile: "atlas")?.servers["github_token"]?.needsSignIn, false)
 
         // A save whose tools section Hermes turned down keeps the MCP
         // section it took, and the tools as they were.

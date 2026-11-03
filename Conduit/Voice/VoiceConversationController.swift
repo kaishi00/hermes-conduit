@@ -728,7 +728,7 @@ final class VoiceConversationController: ObservableObject {
         // Manual Interrupt proceeds on the attempt regardless of the
         // cancellation result: the local turn retirement below already
         // re-opened the listening window.
-        if turnStillRunning { _ = await interrupt() }
+        if turnStillRunning { await cancelRetiredTurn() }
         // The interruption is a real re-entrant async boundary (Hermes
         // cancellation/recovery), and the sheet can close while it is in
         // flight — stop() then advances the generation and tears the session
@@ -1417,8 +1417,19 @@ final class VoiceConversationController: ObservableObject {
             if isWholeUtteranceStopCommand(transcript) {
                 // Spoken Stop proceeds on the attempt: its local semantics
                 // (cancel, stop playback, relisten) do not depend on the
-                // server-side cancellation result.
-                _ = await interrupt()
+                // server-side cancellation result. The turn it cancels is
+                // retired first, as barge-in and Interrupt do: its terminal
+                // event belongs to the retired turn and must not end the
+                // window this Stop reopens (#1691). The steer and approval
+                // bookkeeping that terminal would have closed ends here.
+                // A Stop with no turn of this conversation's running still
+                // cancels whatever runs in the chat, without the orphan retry.
+                let turnStillRunning = isAwaitingVoiceAssistant
+                isAwaitingVoiceAssistant = false
+                awaitedAssistantResponseStarted = false
+                endSteerBookkeeping()
+                endApprovalNotice()
+                if turnStillRunning { await cancelRetiredTurn() } else { _ = await interrupt() }
                 guard isCurrent(generation) else { return }
                 playback.stop()
                 await startListening()
@@ -2088,7 +2099,7 @@ final class VoiceConversationController: ObservableObject {
         // The barge-in proceeds on the attempt: its local recovery (stop
         // playback, retire the turn, relisten) does not depend on the
         // server-side cancellation result.
-        if turnStillRunning { _ = await interrupt() }
+        if turnStillRunning { await cancelRetiredTurn() }
         // Cancellation is re-checked after the await: the suspension may have
         // engaged while the interruption was in flight, and reopening capture
         // now would hear the assistant's own speaker output.
@@ -2096,6 +2107,16 @@ final class VoiceConversationController: ObservableObject {
         guard isCurrent(generation) else { return }
         guard !isPlaybackCaptureSuspended else { return }
         await startListening(includePreRoll: true)
+    }
+
+    /// Cancels a turn an intentional stop (talking over, Interrupt,
+    /// CarPlay's Stop, a spoken Stop) already retired. The stop proceeds on
+    /// the attempt; when the cancel fails the turn may still be running, so
+    /// it is kept as an orphan and the next submission cancels it first, as
+    /// after a suspension, so its late reply is never taken as the new one.
+    private func cancelRetiredTurn() async {
+        guard !(await interrupt()), isVoiceSessionActive else { return }
+        suspendedInFlightTurnOrphaned = true
     }
 
     /// A spoken End Conversation phrase consumed the utterance locally: the

@@ -149,6 +149,8 @@ enum ChatTakeoverPreference {
 enum ChatTakeoverError: Error, Equatable {
     /// The plugin predates the takeover route (or isn't installed).
     case pluginMissing
+    /// The profile turned the plugin off: how to turn it on (issue 1671).
+    case pluginOff(String)
     /// The Hermes host has no ownership registry to change.
     case unsupported
     case malformed
@@ -188,16 +190,18 @@ final class ChatTakeoverClient {
 
     func takeOver(sessionIDs: [String], profile: String) async throws -> ChatTakeoverOutcome {
         let body: [String: Any] = ["session_ids": Array(sessionIDs.prefix(Self.maxSessionIDs))]
+        let path = DashboardPath.withProfile(Self.path, profile: profile, parameter: profileParameter())
         do {
-            let response = try await request(DashboardPath.withProfile(Self.path, profile: profile, parameter: profileParameter()), "POST", body)
+            let response = try await request(path, "POST", body)
             return try Self.outcome(from: response)
         } catch let error as DashboardTicketBridgeError {
-            throw Self.mapped(error) ?? error
+            throw Self.mapped(error, path: path) ?? error
         }
     }
 
-    static func mapped(_ error: DashboardTicketBridgeError) -> ChatTakeoverError? {
+    static func mapped(_ error: DashboardTicketBridgeError, path: String? = nil) -> ChatTakeoverError? {
         guard case .http(let status, _) = error else { return nil }
+        if let remedy = DashboardTicketBridgeError.pluginOffDetail(of: error, path: path) { return .pluginOff(remedy) }
         switch status {
         case 404, 405: return .pluginMissing
         case 501: return .unsupported

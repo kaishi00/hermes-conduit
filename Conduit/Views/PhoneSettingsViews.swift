@@ -537,7 +537,11 @@ struct PhoneSettingsPage: View {
         Task {
             let done = await appState.turnOffPhoneSync(deleteFromHost: delete)
             if !done {
-                errorMessage = AppLocalization.string("Sharing is off. The host couldn't be reached, so Conduit deletes the data there the next time it connects.")
+                // A profile that turned the plugin off was reached and refused:
+                // say how to turn it on (issue 1671).
+                errorMessage = appState.phoneSync.deleteRefusedPluginOff.map {
+                    AppLocalization.string("Sharing is off. \($0) Conduit deletes the data there once it's on.")
+                } ?? AppLocalization.string("Sharing is off. The host couldn't be reached, so Conduit deletes the data there the next time it connects.")
             }
             choices = PhoneSyncPreferences(calendar: .full, reminders: true, status: true, focus: true)
             voiceUses = HealthVoiceReadLog()

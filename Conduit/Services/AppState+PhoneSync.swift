@@ -201,7 +201,9 @@ extension AppState {
                 path: DashboardPath.withProfile("\(PhoneSyncEngine.base)/wipe", profile: pending.profile),
                 method: "POST", body: ["device_id": pending.deviceID])
             pending.clear()
-        } catch DashboardTicketBridgeError.http(let status, _) where status == 404 {
+        } catch DashboardTicketBridgeError.http(let status, let detail)
+                    where status == 404 && !DashboardTicketBridgeError.isPluginOffDetail(detail) {
+            // A profile that turned the plugin off deleted nothing: it waits.
             pending.clear()
         } catch {
             Self.phoneSyncLog.info("Phone data deletion still pending: \(LogRedaction.redactingURLs(PhoneSyncEngine.describe(error)), privacy: .public)")

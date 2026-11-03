@@ -20,13 +20,18 @@ struct ProviderModelContext {
     var catalogAnswered = false
     /// Hermes' last catalog read failed.
     var catalogFailed = false
+    /// The helper models `usage` names were asked of Hermes since the page
+    /// opened (answered or not): Remove waits for it.
+    var usageAnswered = true
     /// Reads the catalog again.
     var reloadCatalog: () async -> Void = {}
     /// Makes `model` on the catalog row `provider` the profile's default.
     var makeDefault: (_ provider: String, _ model: String) async -> Bool
-    /// What else on the profile uses the provider (its delegate or fallback
-    /// models), named for Remove's confirmation.
+    /// What else on the profile uses the provider (its delegate, fallback
+    /// and helper models), named for Remove's confirmation.
     var usage: (ProviderEntry) -> [String]
+    /// The order a provider's keys are used in on this profile.
+    var keyOrder: KeyOrderAccess?
 }
 
 // MARK: - On the Model page
@@ -47,6 +52,7 @@ struct ModelPageProviders: View {
     var refresh = 0
     @State private var catalog: ProfileModelDefaults?
     @State private var catalogAnswered = false
+    @State private var helpersRead = false
     @State private var catalogFailed = false
     @State private var catalogGeneration = 0
     /// A model pick on a provider's page is saving and reads the catalog
@@ -76,6 +82,7 @@ struct ModelPageProviders: View {
             catalog: catalog,
             catalogAnswered: catalogAnswered,
             catalogFailed: catalogFailed,
+            usageAnswered: helpersRead,
             reloadCatalog: { await reloadCatalog() },
             makeDefault: { provider, model in
                 // Read here, so the page's spinner stays until the new default
@@ -87,10 +94,24 @@ struct ModelPageProviders: View {
                 return saved
             },
             usage: { entry in Self.usage(of: entry, catalog: catalog, settings: appState.keptProfileSettings(keys: Self.usageKeys),
-                                         fallbacks: appState.keptProfileFallbackModels()) }
+                                         fallbacks: appState.keptProfileFallbackModels(),
+                                         helpers: appState.keptHelperModels(includingSetElsewhere: true)) },
+            keyOrder: KeyOrderAccess(
+                kept: { appState.keptProfileSettings(keys: $0) },
+                load: { await appState.readProfileSettings(keys: $0) },
+                save: { await appState.setProfileSetting($0, value: $1) }
+            )
         ))
         .onAppear { if catalog == nil { catalog = kept() } }
         .task { await reloadCatalog() }
+        // Read apart from the catalog, so a slow answer holds only Remove:
+        // it names the helper models pinned to a provider as Hermes holds
+        // them, not only as this phone last kept them (a read that fails
+        // leaves the kept ones).
+        .task {
+            _ = try? await appState.loadHelperModels()
+            helpersRead = true
+        }
         .onChange(of: service.changes) { _, _ in
             onChange()
             Task { await reloadCatalog() }
@@ -119,9 +140,9 @@ struct ModelPageProviders: View {
     static let usageKeys = ["delegation.provider", "delegation.model"]
 
     /// The other model picks on the profile that run on `entry`: its
-    /// delegate model and fallback models.
+    /// delegate model, fallback models and the helper models pinned to it.
     static func usage(of entry: ProviderEntry, catalog: ProfileModelDefaults? = nil, settings: [String: ProfileSettingValue]?,
-                      fallbacks: [ProfileFallbackModel]?) -> [String] {
+                      fallbacks: [ProfileFallbackModel]?, helpers: [HelperModelSlot]? = nil) -> [String] {
         // A pick can name the provider by its catalog row's display name or
         // an alias, so it's matched the way the catalog matches.
         let row = catalog.flatMap { entry.catalogRow(in: $0.providers) }
@@ -135,6 +156,11 @@ struct ModelPageProviders: View {
         }
         for fallback in fallbacks ?? [] where runsOn(fallback.provider) {
             uses.append(AppLocalization.string("Fallback \(fallback.model)"))
+        }
+        // A helper pinned to the provider, with or without a model of its
+        // own; one that follows the chat model moves with it.
+        for slot in helpers ?? [] where !slot.setting.followsChats && runsOn(slot.setting.provider) {
+            uses.append(slot.title)
         }
         return uses
     }
@@ -242,16 +268,42 @@ private struct ProviderRow: View {
     }
 }
 
+/// A key section kept by a build that didn't count sign-ins: which key the
+/// profile uses waits for Hermes, and a read that fails says so.
+private struct KeyWaitingForHermes: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @ObservedObject var service: ProviderSettingsService
+    let retry: Bool
+
+    var body: some View {
+        if service.loadFailed {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(AppLocalization.string("Could not load providers."))
+                    .scaledFont(.footnote).foregroundStyle(.secondary)
+                if retry {
+                    Button(AppLocalization.string("Try Again")) { Task { await service.reload() } }
+                        .scaledFont(.subheadline.weight(.semibold))
+                        .tint(.conduitAccent)
+                }
+            }
+        } else {
+            ProgressView().frame(maxWidth: .infinity).accessibilityLabel(AppLocalization.string("Loading…"))
+        }
+    }
+}
+
 /// The words for a provider's state, kept in one place.
 enum ProviderText {
     static func status(_ entry: ProviderEntry) -> String {
         switch entry.status {
         case .customEndpoint: return AppLocalization.string("Custom endpoint")
         case .signedIn: return AppLocalization.string("Signed in")
-        case .sharedKey: return AppLocalization.string("Shared key")
+        case .sharedKey: return entry.keyUseUnknown ? AppLocalization.string("Connected") : AppLocalization.string("Shared key")
         case .ownKey: return AppLocalization.string("This profile's own key")
         case .oldCopy: return AppLocalization.string("Old copy of the shared key")
         case .mainProfileOnly: return AppLocalization.string("Saved for the main profile only")
+        case .configured:
+            return entry.key == nil ? AppLocalization.string("Settings saved") : AppLocalization.string("Settings saved, no key yet")
         case .notConnected: return ways(entry)
         }
     }
@@ -262,6 +314,7 @@ enum ProviderText {
         if entry.account?.flow == .deviceCode { ways.append(AppLocalization.string("Sign in")) }
         if entry.account?.flow == .external { ways.append(AppLocalization.string("Sign in on the host")) }
         if entry.key != nil { ways.append(AppLocalization.string("API key")) }
+        if entry.key == nil, entry.account == nil, !entry.settings.isEmpty { ways.append(AppLocalization.string("Settings")) }
         return ways.joined(separator: " · ")
     }
 
@@ -271,7 +324,8 @@ enum ProviderText {
         case .signedIn: return "person.crop.circle.badge.checkmark"
         case .sharedKey, .ownKey: return "checkmark.shield.fill"
         case .oldCopy, .mainProfileOnly: return "exclamationmark.shield"
-        case .notConnected: return entry.key != nil ? "key" : "person.crop.circle"
+        case .configured: return "slider.horizontal.3"
+        case .notConnected: return entry.key != nil ? "key" : (entry.account != nil ? "person.crop.circle" : "slider.horizontal.3")
         }
     }
 
@@ -306,7 +360,7 @@ struct AddProviderSheet: View {
     @State private var query = ""
 
     private var matches: [ProviderEntry] {
-        let listed = service.entries.filter { $0.endpoint == nil && ($0.key != nil || $0.account != nil) }
+        let listed = service.entries.filter { $0.endpoint == nil && ($0.key != nil || $0.account != nil || !$0.settings.isEmpty) }
         let wanted = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !wanted.isEmpty else { return listed }
         return listed.filter { $0.name.localizedCaseInsensitiveContains(wanted) || $0.id.localizedCaseInsensitiveContains(wanted) }
@@ -449,9 +503,14 @@ private struct ProviderConnectPage: View {
                 }
                 if let key = entry.key {
                     ConduitSettingsSection(title: AppLocalization.string("API key"), symbol: "key", tint: .conduitAura) {
-                        ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: onConnected)
+                        if key.signInsKnown {
+                            ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: onConnected)
+                        } else {
+                            KeyWaitingForHermes(service: service, retry: true)
+                        }
                     }
                 }
+                ProviderSettingsRows(service: service, entry: entry)
             }
         }
         .navigationTitle(service.entry(entryID)?.name ?? "")
@@ -517,11 +576,23 @@ struct ProviderDetailPage: View {
                 }
                 if let key = entry.key {
                     ConduitSettingsSection(title: AppLocalization.string("API key"), symbol: "key", tint: .conduitAura) {
-                        ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: {},
-                                          keyRemovable: context.catalogAnswered && !runsDefault(entry),
-                                          usage: context.usage(entry))
+                        // A summary kept by an older build doesn't count
+                        // sign-ins, so which key the profile uses waits
+                        // for Hermes.
+                        if key.signInsKnown {
+                            ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: {},
+                                              keyRemovable: context.catalogAnswered && context.usageAnswered && !runsDefault(entry),
+                                              usage: context.usage(entry))
+                        } else {
+                            // The page's Try Again is above.
+                            KeyWaitingForHermes(service: service, retry: false)
+                        }
+                    }
+                    if key.signInsKnown, key.keysInUse > 1, let order = context.keyOrder, KeyOrder.settingKey(for: entry.id) != nil {
+                        KeyOrderSection(entry: entry, keys: key.keysInUse, signIns: key.signInsInUse, access: order)
                     }
                 }
+                ProviderSettingsRows(service: service, entry: entry)
                 if let error {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .scaledFont(.footnote).foregroundStyle(.red)
@@ -630,7 +701,7 @@ struct ProviderDetailPage: View {
     /// removed in its own section, which says which profiles it reaches.
     private func canRemove(_ entry: ProviderEntry) -> Bool {
         // Until the catalog answers, whether it runs the default is unknown.
-        guard context.catalogAnswered, !runsDefault(entry) else { return false }
+        guard context.catalogAnswered, context.usageAnswered, !runsDefault(entry) else { return false }
         if entry.endpoint != nil { return true }
         return entry.account?.signedIn == true && entry.account?.signsOutHere == true
     }
@@ -698,7 +769,7 @@ private struct ProviderKeyEditor: View {
     /// Hermes' catalog answered and the provider doesn't run the default
     /// model, so its key may go. Off on the Add sheet's pages.
     var keyRemovable = false
-    /// The profile's delegate and fallback models on the provider, named
+    /// The profile's delegate, fallback and helper models on the provider, named
     /// when its key is removed.
     var usage: [String] = []
     @Environment(\.openURL) private var openURL
@@ -710,21 +781,19 @@ private struct ProviderKeyEditor: View {
     @State private var error: String?
     @State private var confirmingUnshare = false
     @State private var confirmingRemoveKey = false
-    @State private var baseURLDraft = ""
-    @State private var editingBaseURL = false
-
-    private static let baseURLPlaceholder = "https://"
 
     private var state: ProviderEntry.KeyAccess.State { entry.keyState }
     private var onMain: Bool { service.isSharedProfile }
     private var hasKey: Bool { state != .none }
     /// A key the other profiles can't read yet is pasted again to share it.
     private var showsField: Bool { state == .none || state == .mainProfileOnly || editing }
-    /// A replacement for a profile's own key stays its own; anything else
-    /// is shared unless picked otherwise.
+    /// A replacement for a profile's own key stays its own, and so does a
+    /// key for a profile whose own pool holds a sign-in (Hermes reads that
+    /// pool, not the shared one); anything else is shared unless picked
+    /// otherwise.
     private var chosenScope: ProviderKeyScope {
         if onMain { return .allProfiles }
-        return scope ?? (state == .own ? .thisProfile : .allProfiles)
+        return scope ?? (state == .own || key.profileSignIns > 0 ? .thisProfile : .allProfiles)
     }
 
     var body: some View {
@@ -800,7 +869,6 @@ private struct ProviderKeyEditor: View {
         if let error {
             Text(verbatim: error).scaledFont(.caption).foregroundStyle(.red)
         }
-        if let baseURLVar = key.baseURLVar { baseURLRows(baseURLVar) }
     }
 
     private var explanation: String {
@@ -853,13 +921,13 @@ private struct ProviderKeyEditor: View {
                     Text(verbatim: AppLocalization.string("Conduit never shows a key, so you'd paste it again to use it.") + usageLine)
                 }
             }
-        } else if state == .own || state == .oldCopy, key.shared || keyRemovable, leavesItsOwnKey {
+        } else if state == .own || state == .oldCopy, goesToShared || keyRemovable, leavesItsOwnKey {
             // Back on the shared key the default model still runs; with no
             // shared key, removing this one would leave it none.
             Button {
-                if key.shared { run { try await service.useShared(entry) } } else { confirmingRemoveKey = true }
+                if goesToShared { run { try await service.useShared(entry) } } else { confirmingRemoveKey = true }
             } label: {
-                Text(key.shared ? AppLocalization.string("Use the shared key") : AppLocalization.string("Remove this profile's key"))
+                Text(goesToShared ? AppLocalization.string("Use the shared key") : AppLocalization.string("Remove this profile's key"))
             }
             .buttonStyle(.settings)
             .disabled(saving || !service.answered)
@@ -873,6 +941,10 @@ private struct ProviderKeyEditor: View {
         }
     }
 
+    /// Removing this profile's key puts it on the shared one, unless its
+    /// own pool holds a sign-in, which Hermes keeps using.
+    private var goesToShared: Bool { key.shared && key.profileSignIns == 0 }
+
     /// Going back to the shared key changes what the profile uses: the row
     /// it uses first is one Conduit may remove, or there are no rows and a
     /// `.env` variable to remove.
@@ -884,63 +956,6 @@ private struct ProviderKeyEditor: View {
     private var usageLine: String {
         guard !usage.isEmpty else { return "" }
         return " " + AppLocalization.string("These stop working until you pick another model: \(usage.joined(separator: ", ")).")
-    }
-
-    @ViewBuilder
-    private func baseURLRows(_ baseURLVar: String) -> some View {
-        Divider()
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(AppLocalization.string("Base URL override"))
-                    .scaledFont(.subheadline)
-                Text(key.baseURLSaved ? AppLocalization.string("Set for this profile") : AppLocalization.string("Not set, uses the provider's own"))
-                    .scaledFont(.caption).foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 8)
-            if !editingBaseURL {
-                Button(key.baseURLSaved ? AppLocalization.string("Change") : AppLocalization.string("Set")) { editingBaseURL = true }
-                    .buttonStyle(.settings)
-                    .disabled(saving)
-            }
-        }
-        if editingBaseURL {
-            TextField(Self.baseURLPlaceholder, text: $baseURLDraft)
-                .textFieldStyle(.roundedBorder)
-                .keyboardType(.URL)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .disabled(saving)
-            HStack {
-                if key.baseURLSaved {
-                    Button(AppLocalization.string("Clear"), role: .destructive) {
-                        run {
-                            try await service.remove(variables: [baseURLVar])
-                            baseURLDraft = ""
-                            editingBaseURL = false
-                        }
-                    }
-                    .buttonStyle(.settings)
-                    .disabled(saving || !service.answered)
-                }
-                Button(AppLocalization.string("Cancel"), role: .cancel) {
-                    baseURLDraft = ""
-                    editingBaseURL = false
-                }
-                .buttonStyle(.settings)
-                .disabled(saving)
-                Spacer()
-                Button(AppLocalization.string("Save")) {
-                    let value = baseURLDraft
-                    run {
-                        try await service.save(key: value, for: baseURLVar)
-                        baseURLDraft = ""
-                        editingBaseURL = false
-                    }
-                }
-                .buttonStyle(.settingsPrimary)
-                .disabled(saving || !service.answered || baseURLDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
     }
 
     private func save() {
@@ -1009,6 +1024,313 @@ private struct ProviderKeyEditor: View {
             } catch {
                 self.error = UserFacingError.message(for: error)
             }
+        }
+    }
+}
+
+// MARK: - Settings that aren't keys
+
+/// A provider's settings in this profile's `.env` that aren't keys: a base
+/// URL override, Bedrock's AWS region, Vertex's credentials file. Their
+/// values are never shown; each can be set again or cleared.
+private struct ProviderSettingsRows: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @ObservedObject var service: ProviderSettingsService
+    let entry: ProviderEntry
+    @State private var editing: String?
+    @State private var draft = ""
+    @State private var saving = false
+    @State private var error: String?
+
+    private static let urlPlaceholder = "https://"
+
+    var body: some View {
+        if !entry.settings.isEmpty {
+            ConduitSettingsSection(title: AppLocalization.string("Settings"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
+                if entry.key == nil, entry.account == nil {
+                    Text(AppLocalization.string("This provider needs no key here. Hermes reaches it with these settings for this profile."))
+                        .scaledFont(.footnote).foregroundStyle(.secondary)
+                }
+                ForEach(Array(entry.settings.enumerated()), id: \.element.variable) { index, setting in
+                    if index > 0 { Divider() }
+                    row(setting)
+                }
+                if let error {
+                    Text(verbatim: error).scaledFont(.caption).foregroundStyle(.red)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func row(_ setting: ProviderEntry.Setting) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: title(setting))
+                    .scaledFont(.subheadline)
+                Text(verbatim: status(setting))
+                    .scaledFont(.caption).foregroundStyle(.secondary)
+                if !setting.description.isEmpty, !setting.isBaseURL {
+                    Text(verbatim: setting.description)
+                        .scaledFont(.caption).foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 8)
+            if editing != setting.variable {
+                Button(setting.saved ? AppLocalization.string("Change") : AppLocalization.string("Set")) {
+                    draft = ""
+                    error = nil
+                    editing = setting.variable
+                }
+                .buttonStyle(.settings)
+                .disabled(saving)
+                .accessibilityLabel(Text(verbatim: (setting.saved ? AppLocalization.string("Change") : AppLocalization.string("Set")) + ", " + title(setting)))
+            }
+        }
+        if editing == setting.variable {
+            let placeholder = setting.isBaseURL ? Self.urlPlaceholder : setting.variable
+            TextField(placeholder, text: $draft)
+                .textFieldStyle(.roundedBorder)
+                .keyboardType(setting.isBaseURL ? .URL : .default)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .disabled(saving)
+            HStack {
+                if setting.saved {
+                    Button(AppLocalization.string("Clear"), role: .destructive) {
+                        run { try await service.remove(variables: [setting.variable]) }
+                    }
+                    .buttonStyle(.settings)
+                    .disabled(saving || !service.answered)
+                    .accessibilityLabel(Text(verbatim: AppLocalization.string("Clear") + ", " + title(setting)))
+                }
+                Button(AppLocalization.string("Cancel"), role: .cancel) {
+                    draft = ""
+                    editing = nil
+                }
+                .buttonStyle(.settings)
+                .disabled(saving)
+                .accessibilityLabel(Text(verbatim: AppLocalization.string("Cancel") + ", " + title(setting)))
+                Spacer()
+                Button(AppLocalization.string("Save")) {
+                    let value = draft
+                    run { try await service.save(key: value, for: setting.variable) }
+                }
+                .buttonStyle(.settingsPrimary)
+                .disabled(saving || !service.answered || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityLabel(Text(verbatim: AppLocalization.string("Save") + ", " + title(setting)))
+            }
+        }
+    }
+
+    private func title(_ setting: ProviderEntry.Setting) -> String {
+        setting.isBaseURL ? AppLocalization.string("Base URL override") : setting.variable
+    }
+
+    private func status(_ setting: ProviderEntry.Setting) -> String {
+        if setting.saved { return AppLocalization.string("Set for this profile") }
+        return setting.isBaseURL ? AppLocalization.string("Not set, uses the provider's own") : AppLocalization.string("Not set")
+    }
+
+    private func run(_ work: @escaping () async throws -> Void) {
+        guard !saving else { return }
+        saving = true
+        error = nil
+        Task {
+            defer { saving = false }
+            do {
+                try await work()
+                draft = ""
+                editing = nil
+            } catch {
+                self.error = UserFacingError.message(for: error)
+            }
+        }
+    }
+}
+
+// MARK: - Key order
+
+/// How Hermes picks among a provider's keys on a profile
+/// (`credential_pool_strategies.<provider>` in its config).
+enum KeyOrder: String, CaseIterable {
+    /// Hermes' default: the first key until it hits a limit, then the next.
+    case fillFirst = "fill_first"
+    case roundRobin = "round_robin"
+    case random
+    case leastUsed = "least_used"
+
+    /// The profile setting for `provider`, nil for an id a dotted config
+    /// key can't name (a custom provider like `custom:together.ai`).
+    static func settingKey(for provider: String) -> String? {
+        provider.isEmpty || provider.contains(".") ? nil : "credential_pool_strategies.\(provider)"
+    }
+
+    /// Hermes' reading of a stored value: anything else is the default.
+    init(stored: String?) {
+        self = KeyOrder(rawValue: (stored ?? "").trimmingCharacters(in: .whitespaces).lowercased()) ?? .fillFirst
+    }
+
+    var title: String {
+        switch self {
+        case .fillFirst: return AppLocalization.string("First key until it runs out")
+        case .roundRobin: return AppLocalization.string("Take turns")
+        case .random: return AppLocalization.string("Random")
+        case .leastUsed: return AppLocalization.string("Least used first")
+        }
+    }
+}
+
+/// What the key order needs from the page: the profile's settings.
+struct KeyOrderAccess {
+    var kept: ([String]) -> [String: ProfileSettingValue]?
+    /// Nil when Hermes didn't answer.
+    var load: ([String]) async -> [String: ProfileSettingValue]?
+    var save: (String, ProfileSettingValue) async -> Bool
+}
+
+/// The key order section's state, apart from its view so the order of
+/// Hermes' answers and the saves can be tested.
+struct KeyOrderPicks: Equatable {
+    /// What's shown: Hermes' order, or the kept one until it answers. Nil
+    /// shows none, Hermes' default included.
+    private(set) var order: KeyOrder?
+    private(set) var answered = false
+    private(set) var loadFailed = false
+    private(set) var saving = false
+    private(set) var error: String?
+    /// Counts finished saves: a read asked before one ended is dropped.
+    private var writes = 0
+    private var beforeSave: KeyOrder?
+
+    /// A read, as it was asked.
+    struct Read: Equatable {
+        fileprivate let writes: Int
+    }
+
+    /// The kept order, until Hermes answers.
+    mutating func showKept(_ stored: String?) {
+        // A kept config without the key says nothing of Hermes' order.
+        guard order == nil, let stored else { return }
+        order = KeyOrder(stored: stored)
+    }
+
+    mutating func readAsked() -> Read {
+        loadFailed = false
+        return Read(writes: writes)
+    }
+
+    /// Hermes' answer to `read`, unless a save was out or ended since it
+    /// was asked: the pick stays then.
+    mutating func hermesAnswered(_ stored: String?, to read: Read) {
+        guard !saving, read.writes == writes else { return }
+        order = KeyOrder(stored: stored)
+        answered = true
+    }
+
+    mutating func readFailed() {
+        loadFailed = true
+    }
+
+    /// A save writes the setting, so it waits for Hermes' answer.
+    var canPick: Bool {
+        KeptAnswerGate.canSave(answered: answered, saving: saving, ready: order != nil)
+    }
+
+    /// The order to save, shown while it's written; nil when there's
+    /// nothing to save or the picker waits.
+    mutating func choose(_ next: KeyOrder) -> KeyOrder? {
+        guard canPick, next != order else { return nil }
+        beforeSave = order
+        order = next
+        saving = true
+        error = nil
+        return next
+    }
+
+    /// A save that fails puts back the order shown before it.
+    mutating func saveEnded(saved: Bool) {
+        saving = false
+        writes += 1
+        guard !saved else { return }
+        order = beforeSave
+        error = AppLocalization.string("Could not save the key order.")
+    }
+}
+
+/// The order a profile's keys for a provider are used in, once it has
+/// more than one.
+private struct KeyOrderSection: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    let entry: ProviderEntry
+    let keys: Int
+    /// Sign-ins (OAuth) among `keys`: Hermes takes turns over them too.
+    let signIns: Int
+    let access: KeyOrderAccess
+    @State private var picks = KeyOrderPicks()
+
+    private var settingKey: String { KeyOrder.settingKey(for: entry.id) ?? "" }
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Key order"), symbol: "arrow.triangle.2.circlepath", tint: .conduitAura) {
+            Group {
+                if signIns > 0 {
+                    Text(AppLocalization.string("This profile has \(String(keys)) keys and sign-ins for \(entry.name). Hermes moves to another when one hits its limit."))
+                } else {
+                    Text(AppLocalization.string("This profile has \(String(keys)) keys for \(entry.name). Hermes moves to another when one hits its limit."))
+                }
+            }
+            .scaledFont(.footnote).foregroundStyle(.secondary)
+            if let order = picks.order {
+                ConduitMenuPicker(
+                    value: order,
+                    choices: KeyOrder.allCases.map { (id: $0, title: $0.title) },
+                    onSelect: choose
+                ) {
+                    Text(AppLocalization.string("Use keys")).foregroundStyle(.secondary)
+                }
+                .disabled(!picks.canPick)
+            } else if !picks.loadFailed {
+                // Nothing kept and Hermes not answered yet: no order is
+                // shown as the profile's, Hermes' default included.
+                ProgressView().frame(maxWidth: .infinity).accessibilityLabel(AppLocalization.string("Loading…"))
+            }
+            if picks.loadFailed && !picks.answered {
+                // The picker waits for Hermes: a kept or default order may not be its own.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(AppLocalization.string("Could not load the key order."))
+                        .scaledFont(.footnote).foregroundStyle(.secondary)
+                    Button(AppLocalization.string("Try Again")) { Task { await read() } }
+                        .scaledFont(.subheadline.weight(.semibold))
+                        .tint(.conduitAccent)
+                }
+            }
+            if let error = picks.error {
+                Text(verbatim: error).scaledFont(.caption).foregroundStyle(.red)
+            }
+        }
+        .onAppear {
+            guard let kept = access.kept([settingKey]) else { return }
+            picks.showKept(kept[settingKey]?.textValue)
+        }
+        .task { await read() }
+    }
+
+    private func read() async {
+        let asked = picks.readAsked()
+        guard let loaded = await access.load([settingKey]) else {
+            picks.readFailed()
+            return
+        }
+        picks.hermesAnswered(loaded[settingKey]?.textValue, to: asked)
+    }
+
+    private func choose(_ next: KeyOrder) {
+        guard let next = picks.choose(next) else { return }
+        Task {
+            let saved = await access.save(settingKey, .text(next.rawValue))
+            picks.saveEnded(saved: saved)
         }
     }
 }

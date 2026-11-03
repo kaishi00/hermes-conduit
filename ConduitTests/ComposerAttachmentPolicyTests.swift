@@ -192,6 +192,18 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
         XCTAssertTrue(AttachmentDrop.isFile(registeredTypeIdentifiers: plainText, suggestedName: "notes.txt"))
         XCTAssertTrue(AttachmentDrop.isFile(registeredTypeIdentifiers: [UTType.pdf.identifier], suggestedName: nil))
         XCTAssertFalse(AttachmentDrop.isFile(registeredTypeIdentifiers: [UTType.url.identifier], suggestedName: "Example"))
+        XCTAssertFalse(
+            AttachmentDrop.isFile(registeredTypeIdentifiers: [UTType.url.identifier, UTType.html.identifier], suggestedName: "Example"),
+            "A browser link that also offers its page stays a link"
+        )
+        XCTAssertTrue(
+            AttachmentDrop.isFile(registeredTypeIdentifiers: [UTType.fileURL.identifier, UTType.jpeg.identifier], suggestedName: "2T3A8639.JPG"),
+            "A file from Finder is still a file"
+        )
+        XCTAssertTrue(
+            AttachmentDrop.isFile(registeredTypeIdentifiers: [UTType.url.identifier, UTType.jpeg.identifier], suggestedName: "photo.jpg"),
+            "A picture dragged from a page, with its address, is still a file"
+        )
     }
 
     func testADroppedFolderIsTakenSoTheComposerCanSayWhy() {

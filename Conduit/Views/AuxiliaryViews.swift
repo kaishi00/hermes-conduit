@@ -662,6 +662,23 @@ struct SettingsView: View {
         )
     }
 
+    /// Models & providers > Helper models, for the profile in use.
+    private var helperModelSettings: HelperModelsSettingsModel {
+        HelperModelsSettingsModel(
+            kept: { appState.keptHelperModels() },
+            load: { try await appState.loadHelperModels() },
+            slot: { slot in
+                VoiceReplyModelSettingsModel(
+                    kept: { appState.keptHelperModel(task: slot.id) },
+                    keptProviders: { appState.keptModelProviders() },
+                    load: { try await appState.loadHelperModel(task: slot.id) },
+                    loadProviders: { await appState.loadModelProviders() },
+                    save: { await appState.setHelperModel($0, confirmed: $1) }
+                )
+            }
+        )
+    }
+
     @ViewBuilder
     private func destinationView(_ destination: SettingsDestination) -> some View {
         switch destination {
@@ -710,14 +727,18 @@ struct SettingsView: View {
                         refresh: providerChanges + mainModelSaves
                     )
                 }),
-                trailingSection: AnyView(FallbackModelsSettings(
-                    keptModels: { appState.keptProfileModelDefaults() },
-                    kept: { appState.keptProfileFallbackModels() },
-                    loadModels: loadProfileModelDefaults,
-                    load: { await appState.loadProfileFallbackModels() },
-                    save: { await appState.setProfileFallbackModels($0) },
-                    refresh: providerChanges
-                )),
+                trailingSection: AnyView(VStack(alignment: .leading, spacing: 24) {
+                    FallbackModelsSettings(
+                        keptModels: { appState.keptProfileModelDefaults() },
+                        kept: { appState.keptProfileFallbackModels() },
+                        loadModels: loadProfileModelDefaults,
+                        load: { await appState.loadProfileFallbackModels() },
+                        save: { await appState.setProfileFallbackModels($0) },
+                        refresh: providerChanges
+                    )
+                    HelperModelsSettingsSection(settings: helperModelSettings)
+                        .id(snapshot.profile)
+                }),
                 loadSchema: { await appState.loadProfileConfigSchema() },
                 keptSchema: { appState.keptProfileConfigSchema() },
                 loadExtraOptions: {
@@ -934,7 +955,7 @@ struct SettingsView: View {
                         keptProviders: { appState.keptModelProviders() },
                         load: { try await appState.loadVoiceReplyModel() },
                         loadProviders: { await appState.loadModelProviders() },
-                        save: { await appState.setVoiceReplyModel($0) }
+                        save: { await appState.setVoiceReplyModel($0, confirmed: $1) }
                     ),
                     wake: wakeSettings(profile: snapshot.profile),
                     lockedListening: VoiceLockedListeningSettingsModel(

@@ -8,12 +8,28 @@ or Local Live), see [Use your own voice server](OWN_VOICE_SERVER.md).
 
 ## Where TTS requests run
 
-All speech synthesis is relayed through the user's Hermes host: Conduit calls
+Speech from a Hermes voice provider is relayed through the user's Hermes host: Conduit calls
 `/api/audio/speak-stream` (streamed PCM) on the Hermes server and falls back
 to `/api/audio/speak` (whole-file) when streaming is unavailable. Conduit
 never talks to TTS providers directly, and it never uses Hermes'
 `voice.client_direct` credential hand-off — provider API keys remain on the
 Hermes host, where Conduit can only see whether each key is set.
+
+## Speaking on this iPhone
+
+With Assistant speech set to On this iPhone (the default without a working
+Hermes voice), Classic voice and Read Aloud speak with iOS's own voices, on
+the device. Conduit uses the best voice installed for the reply's language:
+Premium, then Enhanced, then iOS's default voice. Screen-reader voices
+(Eddy, Flo and the like) are used only when nothing else is installed, and
+Settings says so then, since they're why a reply sounds robotic;
+novelty voices and Personal Voice never. Under
+Assistant speech you can pick the voice for each language instead; the pick
+is kept on this device for every profile. Siri's own voices can't be used:
+iOS doesn't offer them to apps. Premium voices are the closest: search iPhone Settings for "Voices" to
+download them (Accessibility > Read & Speak > Voices on iOS 26, Spoken
+Content before it).
+A voice downloaded while Conduit runs is used from the next sentence.
 
 ## Custom OpenAI-compatible endpoints
 
@@ -122,7 +138,7 @@ In Classic Voice, when Hermes says it's on something ("Checking your calendar no
 
 In the car, a phone call, Siri or another app that takes the audio ends a Classic Voice conversation; once the audio comes back, CarPlay listens again on its own.
 
-"Talk over it on the speaker" (in the Gemini Live and Grok Live sections, shared by both, off by default) is the experimental way out: the call runs its microphone and speaker on one iOS voice-processing engine, so the agent's own voice is cancelled out of the microphone, and the microphone stays open on every route. If the agent keeps cutting itself off, turn it off. It applies from the next call. Classic Voice is unchanged.
+"Talk over it on the speaker" (in the Gemini Live, Grok Live and Classic Voice sections, one setting shared by all of them and Qwen Live, off by default) is the experimental way out: the call runs its microphone and speaker on one iOS voice-processing engine, so the agent's own voice is cancelled out of the microphone, and the microphone stays open on every route. If the agent keeps cutting itself off, turn it off. It applies from the next call. Calls from Hermes don't use it: under the phone call iOS kept restarting that engine, which held up the call's voice, so those calls use the default audio and close the microphone while the agent talks on the speaker or in the car.
 
 ## Live call style
 

@@ -340,8 +340,9 @@ final class KanbanStore {
         for slug in [first] + boards.map(\.slug).filter({ $0 != first }) {
             do {
                 return (slug, try await service.fetchTask(id: id, board: slug).task)
-            } catch DashboardTicketBridgeError.http(let status, _) where status == 404 {
-                continue  // not on this board
+            } catch DashboardTicketBridgeError.http(let status, let detail)
+                        where status == 404 && !DashboardTicketBridgeError.isPluginOffDetail(detail) {
+                continue  // not on this board (a profile that turned Kanban off says so below)
             } catch is CancellationError {
                 throw CancellationError()
             } catch {

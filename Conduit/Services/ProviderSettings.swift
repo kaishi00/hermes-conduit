@@ -38,9 +38,19 @@ struct ProviderEntry: Identifiable, Equatable {
         /// order, first used first: its own, or the shared ones it falls
         /// back to. Empty on the main profile, whose pool is the shared one.
         var profileRows: [PoolRow] = []
-        /// The variable that overrides the provider's base URL, if it has one.
-        var baseURLVar: String?
-        var baseURLSaved = false
+        /// The keys the profile's credentials come from, in the pool it
+        /// uses: its own rows, or the shared ones it falls back to. Hermes
+        /// takes turns over them in the profile's key order.
+        var keysInUse = 0
+        /// How many of `keysInUse` are sign-ins (OAuth), not keys.
+        var signInsInUse = 0
+        /// Sign-ins in this profile's own pool (not the main one's): with
+        /// them Hermes uses that pool, not the shared key.
+        var profileSignIns = 0
+        /// False for a summary kept by a build that didn't count sign-ins:
+        /// its counts and key state may leave one out, so the page waits
+        /// for Hermes before showing them.
+        var signInsKnown = true
         /// Where to get a key.
         var signupURL: String?
         /// `vars` are other providers' variables this one also reads: a
@@ -78,7 +88,14 @@ struct ProviderEntry: Identifiable, Equatable {
             }
             // No rows listed: Hermes falls back to the shared ones, which
             // come ahead of a `.env` key once it reads it.
-            guard let first = profileRows.first else { return shared ? .shared : (saved ? .own : .none) }
+            guard let first = profileRows.first else {
+                // A pool of its own that holds only a sign-in: Hermes uses
+                // it, so no shared key is in use. A key saved in the
+                // profile's `.env` is still its own, and removing it leaves
+                // the sign-in ("Use the shared key" couldn't move it off).
+                if profileSignIns > 0 { return saved ? .own : .none }
+                return shared ? .shared : (saved ? .own : .none)
+            }
             if sharedIDs.contains(first.id) { return .shared }
             return first.label == PoolRow.sharedLabel ? .oldCopy : .own
         }
@@ -96,6 +113,18 @@ struct ProviderEntry: Identifiable, Equatable {
         /// A new or replacement key goes under the provider's own variable,
         /// so a shared fallback another provider reads is never overwritten.
         var writeVar: String { vars.first ?? "" }
+    }
+
+    /// A setting of the provider's in the profile's `.env` that isn't a
+    /// key: a base URL override, or how it reaches its cloud (Bedrock's
+    /// AWS region, Vertex's credentials file). Its value is never read.
+    struct Setting: Equatable {
+        let variable: String
+        /// Hermes' description of it, in English.
+        var description = ""
+        var saved = false
+
+        var isBaseURL: Bool { variable.hasSuffix("_BASE_URL") }
     }
 
     /// One row of a credential pool.
@@ -146,6 +175,9 @@ struct ProviderEntry: Identifiable, Equatable {
 
     enum Status: Equatable {
         case customEndpoint, signedIn, sharedKey, ownKey, oldCopy, mainProfileOnly, notConnected
+        /// No key or sign-in, but settings saved for this profile: a
+        /// provider that needs none (Bedrock, a local server) is set up.
+        case configured
     }
 
     /// The provider's slug, or `endpoint:<key>` for a custom endpoint, so an
@@ -155,6 +187,8 @@ struct ProviderEntry: Identifiable, Equatable {
     var key: KeyAccess?
     var account: AccountAccess?
     var endpoint: EndpointAccess?
+    /// Its settings that aren't keys, by variable name.
+    var settings: [Setting] = []
 
     /// Whether the profile is the main one, whose pool holds the shared keys.
     var onMainProfile = true
@@ -163,15 +197,28 @@ struct ProviderEntry: Identifiable, Equatable {
 
     var keyState: KeyAccess.State { key?.state(onMainProfile: onMainProfile) ?? .none }
 
+    /// Kept by a build that didn't count sign-ins, on a profile with no
+    /// key rows of its own: Hermes uses keys or sign-ins, but whether its
+    /// own sign-in or the shared key isn't known until Hermes answers.
+    var keyUseUnknown: Bool {
+        guard let key, !key.signInsKnown, !onMainProfile else { return false }
+        return key.profileRows.isEmpty && key.keysInUse > 0
+    }
+
     var status: Status {
         if endpoint != nil { return .customEndpoint }
         if account?.signedIn == true { return .signedIn }
+        // Connected either way; ProviderText names it without saying which.
+        if keyUseUnknown { return .sharedKey }
         switch keyState {
         case .shared: return .sharedKey
         case .own: return .ownKey
         case .oldCopy: return .oldCopy
         case .mainProfileOnly: return .mainProfileOnly
-        case .none: return .notConnected
+        case .none:
+            // A pool of the profile's own that holds only a sign-in.
+            if (key?.profileSignIns ?? 0) > 0 { return .signedIn }
+            return account == nil && settings.contains(where: \.saved) ? .configured : .notConnected
         }
     }
 
@@ -223,8 +270,7 @@ enum ProviderCatalog {
             guard let row = value as? [String: Any], row["category"] as? String == "provider" else { continue }
             let isSet = row["is_set"] as? Bool ?? false
             let isPassword = row["is_password"] as? Bool ?? false
-            let advanced = row["advanced"] as? Bool ?? false
-            for profile in providerProfiles(of: row) {
+            for profile in providerProfiles(of: row, isPassword: isPassword) {
                 if isPassword {
                     update(profile.slug, name: profile.label) { entry in
                         var key = entry.key ?? ProviderEntry.KeyAccess(vars: [], savedVars: [])
@@ -238,18 +284,19 @@ enum ProviderCatalog {
                         if key.signupURL == nil { key.signupURL = profile.url }
                         entry.key = key
                     }
-                } else if advanced, variable.hasSuffix("_BASE_URL") {
+                } else if profile.primary {
+                    // Not a key: a base URL override, or how the provider
+                    // reaches its cloud.
                     update(profile.slug, name: profile.label) { entry in
-                        var key = entry.key ?? ProviderEntry.KeyAccess(vars: [], savedVars: [])
-                        key.baseURLVar = variable
-                        key.baseURLSaved = isSet
-                        entry.key = key
+                        entry.settings.append(ProviderEntry.Setting(
+                            variable: variable, description: nonEmpty(row["description"]) ?? "", saved: isSet
+                        ))
                     }
                 }
             }
         }
         // A provider with only borrowed variables still takes a key (named
-        // by the first, for Hermes' check); one with only a base URL has none.
+        // by the first, for Hermes' check); one with only settings has none.
         for id in order {
             guard var key = byID[id]?.key else { continue }
             key.vars.sort()
@@ -265,7 +312,8 @@ enum ProviderCatalog {
         // A key pasted into the main profile's pool is shared. Rows the pool
         // read from that profile's own `.env` (`env:` sources) are not:
         // another profile has no such variable to read them from.
-        for (id, rows) in poolRows(sharedPool) where byID[id]?.key != nil {
+        let sharedRows = poolRows(sharedPool)
+        for (id, rows) in sharedRows where byID[id]?.key != nil {
             byID[id]?.key?.sharedRows = rows.filter { !$0.source.hasPrefix("env:") }
         }
         if !onMainProfile {
@@ -273,7 +321,25 @@ enum ProviderCatalog {
                 byID[id]?.key?.profileRows = rows
             }
         }
-        for id in order { byID[id]?.onMainProfile = onMainProfile }
+        let sharedCounts = credentialCounts(sharedPool)
+        let ownCounts = credentialCounts(profilePool)
+        for id in order {
+            byID[id]?.onMainProfile = onMainProfile
+            byID[id]?.settings.sort { $0.variable < $1.variable }
+            guard let key = byID[id]?.key else { continue }
+            // The main profile reads its whole pool, `.env` rows included;
+            // another reads its own rows (a sign-in of its own is one), or
+            // falls back to the shared ones. Sign-ins count: Hermes takes
+            // turns over them with the keys.
+            let shared = sharedCounts[id] ?? .init()
+            let own = ownCounts[id] ?? .init()
+            let usesShared = onMainProfile || own.all == 0
+            byID[id]?.key?.keysInUse = onMainProfile
+                ? shared.all
+                : (usesShared ? key.sharedRows.count + shared.signIns : own.all)
+            byID[id]?.key?.signInsInUse = usesShared ? shared.signIns : own.signIns
+            if !onMainProfile { byID[id]?.key?.profileSignIns = own.signIns }
+        }
 
         for row in accounts?["providers"] as? [[String: Any]] ?? [] {
             guard let id = nonEmpty(row["id"]), let flow = ProviderEntry.AccountAccess.Flow(rawValue: row["flow"] as? String ?? "") else { continue }
@@ -322,6 +388,26 @@ enum ProviderCatalog {
         return rows
     }
 
+    struct CredentialCount {
+        var all = 0
+        /// Not keys: OAuth and other sign-ins.
+        var signIns = 0
+    }
+
+    /// Every credential a pool holds per provider, sign-ins with the keys.
+    static func credentialCounts(_ answer: [String: Any]?) -> [String: CredentialCount] {
+        var counts: [String: CredentialCount] = [:]
+        for provider in answer?["providers"] as? [[String: Any]] ?? [] {
+            guard let id = nonEmpty(provider["provider"]) else { continue }
+            let entries = provider["entries"] as? [[String: Any]] ?? []
+            counts[id] = CredentialCount(
+                all: entries.count,
+                signIns: entries.filter { ($0["auth_type"] as? String ?? "api_key") != "api_key" }.count
+            )
+        }
+        return counts
+    }
+
     private static func poolRow(_ row: [String: Any]) -> ProviderEntry.PoolRow? {
         guard row["auth_type"] as? String ?? "api_key" == "api_key",
               let rowID = nonEmpty(row["id"]), let index = row["index"] as? Int else { return nil }
@@ -338,7 +424,7 @@ enum ProviderCatalog {
 
     /// One credential can serve several providers (`provider_profiles`);
     /// each gets it on its own card.
-    private static func providerProfiles(of row: [String: Any]) -> [ProviderProfile] {
+    private static func providerProfiles(of row: [String: Any], isPassword: Bool = true) -> [ProviderProfile] {
         let shared = (row["provider_profiles"] as? [[String: Any]] ?? []).compactMap { profile -> ProviderProfile? in
             guard let slug = nonEmpty(profile["provider"]) else { return nil }
             return ProviderProfile(slug: slug, label: nonEmpty(profile["provider_label"]) ?? slug,
@@ -346,9 +432,12 @@ enum ProviderCatalog {
         }
         if !shared.isEmpty { return shared }
         guard let slug = nonEmpty(row["provider"]) else { return [] }
-        // A variable naming a single provider is that provider's own.
+        // A variable naming a single provider is that provider's own. Hermes
+        // marks only a key as primary: a setting (a base URL, Bedrock's
+        // region) comes with `provider_primary: false` and is still its own.
+        let primary = isPassword ? (row["provider_primary"] as? Bool ?? true) : true
         return [ProviderProfile(slug: slug, label: nonEmpty(row["provider_label"]) ?? slug,
-                                url: nonEmpty(row["url"]), primary: row["provider_primary"] as? Bool ?? true)]
+                                url: nonEmpty(row["url"]), primary: primary)]
     }
 
     private static func nonEmpty(_ value: Any?) -> String? {
@@ -366,13 +455,15 @@ enum ProviderCatalog {
             var row: [String: Any] = ["id": entry.id, "name": entry.name, "on_main_profile": entry.onMainProfile]
             if let key = entry.key {
                 var access: [String: Any] = [
-                    "vars": key.vars, "vars_saved": key.savedVars, "base_url_saved": key.baseURLSaved,
+                    "vars": key.vars, "vars_saved": key.savedVars, "keys_in_use": key.keysInUse, "sign_ins_in_use": key.signInsInUse, "profile_sign_ins": key.profileSignIns,
                     "vars_held": key.heldVars, "borrowed_only": key.borrowedOnly,
                     "shared_rows": key.sharedRows.map(encode), "profile_rows": key.profileRows.map(encode),
                 ]
-                if let baseURLVar = key.baseURLVar { access["base_url_var"] = baseURLVar }
                 if let signupURL = key.signupURL { access["signup_url"] = signupURL }
                 row["env"] = access
+            }
+            if !entry.settings.isEmpty {
+                row["settings"] = entry.settings.map { ["variable": $0.variable, "description": $0.description, "saved": $0.saved] }
             }
             if let account = entry.account {
                 var access: [String: Any] = ["flow": account.flow.rawValue, "signed_in": account.signedIn, "signs_out_here": account.signsOutHere]
@@ -418,14 +509,28 @@ enum ProviderCatalog {
                 entry.key = ProviderEntry.KeyAccess(
                     vars: access["vars"] as? [String] ?? [],
                     savedVars: access["vars_saved"] as? [String] ?? [],
-                    baseURLVar: nonEmpty(access["base_url_var"]),
-                    baseURLSaved: access["base_url_saved"] as? Bool ?? false,
+                    keysInUse: access["keys_in_use"] as? Int ?? 0,
+                    signInsInUse: access["sign_ins_in_use"] as? Int ?? 0,
                     signupURL: nonEmpty(access["signup_url"])
                 )
+                // Kept before settings had their own list.
+                if let variable = nonEmpty(access["base_url_var"]) {
+                    entry.settings = [ProviderEntry.Setting(variable: variable, saved: access["base_url_saved"] as? Bool ?? false)]
+                }
                 entry.key?.heldVars = access["vars_held"] as? [String] ?? []
                 entry.key?.borrowedOnly = access["borrowed_only"] as? Bool ?? false
+                entry.key?.profileSignIns = access["profile_sign_ins"] as? Int ?? 0
+                entry.key?.signInsKnown = access["sign_ins_in_use"] != nil
                 entry.key?.sharedRows = (access["shared_rows"] as? [[String: Any]] ?? []).compactMap(poolRow)
                 entry.key?.profileRows = (access["profile_rows"] as? [[String: Any]] ?? []).compactMap(poolRow)
+            }
+            if let settings = row["settings"] as? [[String: Any]] {
+                entry.settings = settings.compactMap { setting in
+                    nonEmpty(setting["variable"]).map {
+                        ProviderEntry.Setting(variable: $0, description: setting["description"] as? String ?? "",
+                                              saved: setting["saved"] as? Bool ?? false)
+                    }
+                }
             }
             if let access = row["account"] as? [String: Any],
                let flow = ProviderEntry.AccountAccess.Flow(rawValue: access["flow"] as? String ?? "") {
@@ -755,8 +860,12 @@ final class ProviderSettingsService: ObservableObject {
         let stale = (entry.key?.sharedIDs ?? []).union((entry.key?.removableRows ?? []).map(\.id))
         _ = try await request(named("/api/credentials/pool", profile: profile), method: "POST",
                               body: ["provider": entry.id, "api_key": value, "label": ProviderEntry.PoolRow.profileLabel])
+        // The key it replaces in this profile's `.env` goes too: Hermes
+        // would read it into the pool again, ahead of the new one.
+        let staleVars = entry.key?.removableVars ?? []
         return await cleanUp {
             try await removeRows(provider: entry.id, ids: stale, profile: profile)
+            try await removeVariables(staleVars)
         }
     }
 
@@ -812,7 +921,8 @@ final class ProviderSettingsService: ObservableObject {
         await changed()
     }
 
-    /// Saves a base URL override to this profile's `.env`.
+    /// Saves one of a provider's settings (a base URL override, a region)
+    /// to this profile's `.env`.
     func save(key value: String, for variable: String) async throws {
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, !variable.isEmpty else { return }

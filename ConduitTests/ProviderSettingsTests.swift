@@ -14,7 +14,8 @@ final class ProviderSettingsTests: XCTestCase {
         ],
         "OPENROUTER_BASE_URL": [
             "category": "provider", "is_password": false, "is_set": false, "advanced": true,
-            "provider": "openrouter", "provider_label": "OpenRouter",
+            // Hermes marks only keys primary (config_env.py's _row).
+            "provider": "openrouter", "provider_label": "OpenRouter", "provider_primary": false,
         ],
         "OPENAI_API_KEY": [
             "category": "provider", "is_password": true, "is_set": false, "advanced": false,
@@ -99,7 +100,7 @@ final class ProviderSettingsTests: XCTestCase {
         XCTAssertEqual(openrouter.key?.vars, ["OPENROUTER_API_KEY"], "another provider's variable it can read isn't its key")
         XCTAssertEqual(openrouter.key?.writeVar, "OPENROUTER_API_KEY")
         XCTAssertEqual(openrouter.key?.savedVars, ["OPENROUTER_API_KEY"])
-        XCTAssertEqual(openrouter.key?.baseURLVar, "OPENROUTER_BASE_URL")
+        XCTAssertEqual(openrouter.settings.map(\.variable), ["OPENROUTER_BASE_URL"])
         XCTAssertEqual(openrouter.key?.signupURL, "https://openrouter.ai/keys")
         XCTAssertEqual(entries[0].status, .notConnected)
     }
@@ -334,6 +335,22 @@ final class ProviderSettingsTests: XCTestCase {
                        ["/api/credentials/pool/openrouter/1?profile=bot"])
     }
 
+    func testAnOverrideRemovesTheProfilesOldVariable() async throws {
+        let requester = FakeProviderRequester()
+        requester.pools["bot"] = pool("openrouter", [("new", ProviderEntry.PoolRow.profileLabel, "manual")])
+        let service = ProviderSettingsService(requester: requester, profile: "bot")
+        var entry = ProviderEntry(id: "openrouter", name: "OpenRouter")
+        entry.onMainProfile = false
+        entry.key = ProviderEntry.KeyAccess(vars: ["OPENROUTER_API_KEY"], savedVars: ["OPENROUTER_API_KEY"])
+        entry.key?.profileSignIns = 1
+
+        let cleaned = try await service.override(key: "sk-bot", for: entry)
+
+        XCTAssertTrue(cleaned)
+        XCTAssertEqual(requester.calls.filter { $0.method == "DELETE" }.map(\.path), ["/api/env?profile=bot"],
+                       "the replaced key in its .env goes, the sign-in stays")
+    }
+
     func testUsingTheSharedKeyAgainRemovesTheProfilesOwnRowsAndVariables() async throws {
         let requester = FakeProviderRequester()
         requester.pools["bot"] = pool("openrouter", [("mine", ProviderEntry.PoolRow.profileLabel, "manual"),
@@ -457,9 +474,190 @@ final class ProviderSettingsTests: XCTestCase {
             of: entry,
             settings: ["delegation.provider": .text("OpenRouter")],
             fallbacks: [ProfileFallbackModel(provider: "openrouter", model: "gpt-x"),
-                        ProfileFallbackModel(provider: "nous", model: "hermes")]
+                        ProfileFallbackModel(provider: "nous", model: "hermes")],
+            helpers: HelperModelSlot.slots(in: ["tasks": [
+                ["task": "title_generation", "provider": "openrouter", "model": "fast/titles"],
+                ["task": "vision", "provider": "openrouter", "model": ""],
+                ["task": "compression", "provider": "auto", "model": ""],
+                ["task": "skills_hub", "provider": "nous", "model": "hermes"],
+                ["task": "pulse_memory", "provider": "openrouter", "model": "fast/pulse", "label": "Pulse memory", "plugin": "conduit_push"],
+            ]], includingSetElsewhere: true)
         )
-        XCTAssertEqual(uses.count, 2)
+        XCTAssertEqual(uses.count, 5)
+        XCTAssertEqual(uses.last, "Pulse memory", "Pulse's slot, set in Settings > Pulse, is named too")
+        XCTAssertEqual(Array(uses[2..<4]), [AppLocalization.string("Chat titles"), AppLocalization.string("Image reading")],
+                       "helpers pinned to it, with or without a model")
+    }
+
+    // MARK: Settings that aren't keys, and key order
+
+    /// A provider Hermes reaches with settings and no key (Bedrock's AWS
+    /// region) gets a card, set up once one is saved; a key provider's
+    /// base URL is among its settings, and a saved one without a key says
+    /// so. The kept summary keeps them, an old one's base URL too.
+    func testAProviderWithOnlySettingsGetsACard() throws {
+        var env = self.env
+        env["AWS_REGION"] = ["category": "provider", "is_password": false, "is_set": false, "advanced": false,
+                             "description": "AWS region for Bedrock API calls", "provider": "bedrock", "provider_label": "AWS Bedrock",
+                             "provider_primary": false]
+        env["AWS_PROFILE"] = ["category": "provider", "is_password": false, "is_set": false, "advanced": false,
+                              "provider": "bedrock", "provider_label": "AWS Bedrock", "provider_primary": false]
+        var entries = ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil)
+        var bedrock = try XCTUnwrap(entries.first { $0.id == "bedrock" })
+        XCTAssertNil(bedrock.key)
+        XCTAssertEqual(bedrock.settings.map(\.variable), ["AWS_PROFILE", "AWS_REGION"])
+        XCTAssertEqual(bedrock.settings[1].description, "AWS region for Bedrock API calls")
+        XCTAssertEqual(bedrock.status, .notConnected)
+
+        var region = env["AWS_REGION"] as! [String: Any]
+        region["is_set"] = true
+        env["AWS_REGION"] = region
+        var baseURL = env["OPENROUTER_BASE_URL"] as! [String: Any]
+        baseURL["is_set"] = true
+        env["OPENROUTER_BASE_URL"] = baseURL
+        var key = env["OPENROUTER_API_KEY"] as! [String: Any]
+        key["is_set"] = false
+        env["OPENROUTER_API_KEY"] = key
+        entries = ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil)
+        bedrock = try XCTUnwrap(entries.first { $0.id == "bedrock" })
+        XCTAssertEqual(bedrock.status, .configured)
+        let openrouter = try XCTUnwrap(entries.first { $0.id == "openrouter" })
+        XCTAssertEqual(openrouter.status, .configured)
+        XCTAssertEqual(ProviderText.status(openrouter), AppLocalization.string("Settings saved, no key yet"))
+        XCTAssertEqual(ProviderText.status(bedrock), AppLocalization.string("Settings saved"))
+        XCTAssertEqual(ProviderCatalog.entries(summary: ProviderCatalog.summary(entries)), entries)
+
+        // One that signs in isn't set up by a base URL alone.
+        var nous = ProviderEntry(id: "nous", name: "Nous Portal")
+        nous.account = .init(flow: .deviceCode, signedIn: false, signsOutHere: true)
+        nous.settings = [.init(variable: "NOUS_BASE_URL", saved: true)]
+        XCTAssertEqual(nous.status, .notConnected)
+
+        let old: [String: Any] = ["providers": [["id": "openrouter", "name": "OpenRouter",
+                                                 "env": ["vars": ["OPENROUTER_API_KEY"], "base_url_var": "OPENROUTER_BASE_URL",
+                                                         "base_url_saved": true]]]]
+        XCTAssertEqual(ProviderCatalog.entries(summary: old)?.first?.settings, [.init(variable: "OPENROUTER_BASE_URL", saved: true)])
+    }
+
+    /// The keys a profile takes turns over: on the main profile its whole
+    /// pool, `.env` rows included; on another its own rows, or the shared
+    /// ones it falls back to. The order is a profile setting, except for an
+    /// id a dotted key can't name.
+    func testTheKeysAProfileTakesTurnsOver() throws {
+        let shared = pool("openrouter", [("s1", ProviderEntry.PoolRow.sharedLabel, "manual"), ("e1", "", "env:OPENROUTER_API_KEY")])
+        let onMain = ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: shared)
+        XCTAssertEqual(onMain.first { $0.id == "openrouter" }?.key?.keysInUse, 2)
+        let fallingBack = ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: shared,
+                                                  profilePool: [:], onMainProfile: false)
+        XCTAssertEqual(fallingBack.first { $0.id == "openrouter" }?.key?.keysInUse, 1, "another profile can't read the main one's .env")
+        let own = ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: shared,
+                                          profilePool: pool("openrouter", [("o1", "", "manual"), ("o2", "", "manual"), ("o3", "", "manual")]),
+                                          onMainProfile: false)
+        let entry = try XCTUnwrap(own.first { $0.id == "openrouter" })
+        XCTAssertEqual(entry.key?.keysInUse, 3)
+        XCTAssertEqual(ProviderCatalog.entries(summary: ProviderCatalog.summary(own))?.first { $0.id == "openrouter" }?.key?.keysInUse, 3)
+
+        var withSignIn = shared
+        var rows = ((withSignIn["providers"] as! [[String: Any]])[0]["entries"] as! [[String: Any]])
+        rows.append(["id": "oauth1", "index": 3, "label": "claude.ai", "source": "oauth", "auth_type": "oauth"])
+        withSignIn["providers"] = [["provider": "openrouter", "entries": rows]]
+        XCTAssertEqual(ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn)
+            .first { $0.id == "openrouter" }?.key?.keysInUse, 3, "a sign-in takes turns with the keys")
+        XCTAssertEqual(ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn)
+            .first { $0.id == "openrouter" }?.key?.signInsInUse, 1, "the page says sign-ins are among them")
+        XCTAssertEqual(ProviderCatalog.entries(summary: ProviderCatalog.summary(
+            ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn)))?
+            .first { $0.id == "openrouter" }?.key?.signInsInUse, 1, "and keeps saying so offline")
+        XCTAssertEqual(ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn,
+                                               profilePool: [:], onMainProfile: false)
+            .first { $0.id == "openrouter" }?.key?.keysInUse, 2)
+        let ownSignIn: [String: Any] = ["providers": [["provider": "openrouter", "entries": [
+            ["id": "oauth2", "index": 0, "label": "claude.ai", "source": "oauth", "auth_type": "oauth"],
+        ]]]]
+        XCTAssertEqual(ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn,
+                                               profilePool: ownSignIn, onMainProfile: false)
+            .first { $0.id == "openrouter" }?.key?.keysInUse, 1, "a sign-in of the profile's own is its own pool")
+        // No key saved in this profile's `.env`: only the sign-in.
+        var unsetEnv = env
+        var unsetKey = try XCTUnwrap(env["OPENROUTER_API_KEY"] as? [String: Any])
+        unsetKey["is_set"] = false
+        unsetEnv["OPENROUTER_API_KEY"] = unsetKey
+        let signInOnlyEntry = try XCTUnwrap(ProviderCatalog.entries(env: unsetEnv, accounts: nil, endpoints: nil, sharedPool: withSignIn,
+                                                                    profilePool: ownSignIn, onMainProfile: false)
+            .first { $0.id == "openrouter" })
+        let signInOnly = try XCTUnwrap(signInOnlyEntry.key)
+        XCTAssertEqual(signInOnly.state(onMainProfile: false), .none, "Hermes uses its own pool, not the shared key")
+        XCTAssertEqual(signInOnlyEntry.status, .signedIn, "still listed as connected, on its own sign-in")
+        var savedToo = signInOnly
+        savedToo.savedVars = ["OPENROUTER_API_KEY"]
+        XCTAssertEqual(savedToo.state(onMainProfile: false), .own, "its saved key stays its own, so it can be removed and saved over as its own")
+        XCTAssertEqual(savedToo.profileSignIns, 1, "the page offers Remove this profile's key, not Use the shared key")
+        XCTAssertEqual(ProviderCatalog.entries(summary: ProviderCatalog.summary(ProviderCatalog.entries(
+            env: unsetEnv, accounts: nil, endpoints: nil, sharedPool: withSignIn, profilePool: ownSignIn, onMainProfile: false)))?
+            .first { $0.id == "openrouter" }?.key?.state(onMainProfile: false), signInOnly.state(onMainProfile: false), "kept the same")
+
+        // A summary kept by a build that didn't count sign-ins: the page
+        // waits for Hermes, and the card says connected without saying how.
+        var older = ProviderCatalog.summary(ProviderCatalog.entries(
+            env: unsetEnv, accounts: nil, endpoints: nil, sharedPool: withSignIn, profilePool: [:], onMainProfile: false))
+        var olderRows = try XCTUnwrap(older["providers"] as? [[String: Any]])
+        let index = try XCTUnwrap(olderRows.firstIndex { $0["id"] as? String == "openrouter" })
+        var access = try XCTUnwrap(olderRows[index]["env"] as? [String: Any])
+        access["sign_ins_in_use"] = nil
+        access["profile_sign_ins"] = nil
+        olderRows[index]["env"] = access
+        older["providers"] = olderRows
+        let olderEntry = try XCTUnwrap(ProviderCatalog.entries(summary: older)?.first { $0.id == "openrouter" })
+        XCTAssertEqual(olderEntry.key?.signInsKnown, false)
+        XCTAssertTrue(olderEntry.keyUseUnknown)
+        XCTAssertTrue(olderEntry.isConnected)
+        XCTAssertEqual(ProviderText.status(olderEntry), AppLocalization.string("Connected"))
+        let fresh = try XCTUnwrap(ProviderCatalog.entries(summary: ProviderCatalog.summary(ProviderCatalog.entries(
+            env: unsetEnv, accounts: nil, endpoints: nil, sharedPool: withSignIn, profilePool: [:], onMainProfile: false)))?
+            .first { $0.id == "openrouter" })
+        XCTAssertEqual(fresh.key?.signInsKnown, true)
+        XCTAssertFalse(fresh.keyUseUnknown)
+        XCTAssertEqual(entry.key?.signInsInUse, 0)
+
+        XCTAssertEqual(KeyOrder.settingKey(for: "openrouter"), "credential_pool_strategies.openrouter")
+        XCTAssertNil(KeyOrder.settingKey(for: "custom:together.ai"))
+        XCTAssertEqual(KeyOrder(stored: " Round_Robin "), .roundRobin)
+        XCTAssertEqual(KeyOrder(stored: "sideways"), .fillFirst, "Hermes reads anything else as its default")
+        XCTAssertEqual(KeyOrder(stored: nil), .fillFirst)
+    }
+
+    /// The key order shows the kept order until Hermes answers, drops an
+    /// answer to a read asked before a save ended, and a failed save puts
+    /// back the order shown before it.
+    func testTheKeyOrderKeepsAPickOverAnOlderAnswer() throws {
+        var picks = KeyOrderPicks()
+        XCTAssertNil(picks.order, "Nothing kept: no order, Hermes' default included")
+        picks.showKept(nil)
+        XCTAssertNil(picks.order, "A kept config without the key says nothing of Hermes' order")
+        picks.showKept("round_robin")
+        XCTAssertEqual(picks.order, .roundRobin)
+        XCTAssertNil(picks.choose(.random), "It waits for Hermes")
+
+        picks.hermesAnswered("fill_first", to: picks.readAsked())
+        XCTAssertEqual(picks.order, .fillFirst)
+        let before = picks.readAsked()
+        XCTAssertEqual(picks.choose(.random), .random)
+        XCTAssertNil(picks.choose(.leastUsed), "One save at a time")
+        picks.saveEnded(saved: true)
+        picks.hermesAnswered("fill_first", to: before)
+        XCTAssertEqual(picks.order, .random, "Asked before the save")
+
+        XCTAssertEqual(picks.choose(.leastUsed), .leastUsed)
+        picks.saveEnded(saved: false)
+        XCTAssertEqual(picks.order, .random)
+        XCTAssertNotNil(picks.error)
+
+        _ = picks.readAsked()
+        picks.readFailed()
+        XCTAssertTrue(picks.loadFailed)
+        picks.hermesAnswered("least_used", to: picks.readAsked())
+        XCTAssertEqual(picks.order, .leastUsed)
+        XCTAssertFalse(picks.loadFailed)
     }
 }
 

@@ -354,6 +354,9 @@ struct SessionCatalogCache {
     private(set) var loadedFullHistoryKeys = Set<String>()
     private(set) var fullHistoryLoadedAt: [String: Date] = [:]
     private(set) var mutationGeneration: UInt64 = 0
+    /// Bumped by every committed listing, so an early chat-list answer
+    /// isn't taken over a newer one another load committed meanwhile.
+    private(set) var commits: UInt64 = 0
 
     func sessions(forKey key: String) -> [SessionSummary] {
         sessionsByKey[key] ?? []
@@ -413,6 +416,7 @@ struct SessionCatalogCache {
         at generation: UInt64
     ) -> Bool {
         guard generation == mutationGeneration else { return false }
+        commits &+= 1
         sessionsByKey[liveKey] = liveSessions
         if let cronSessions {
             sessionsByKey[cronKey] = cronSessions
@@ -632,12 +636,76 @@ final class AppState: ObservableObject {
     var isRecoveringConnection: Bool {
         isConnecting
             || (networkPathUsable && !isConnected && connection != nil
-                && turnState == .reconnecting && reconnectAttempts < 3)
+                && turnState == .reconnecting && reconnectAttempts < Self.quietReconnectAttempts)
+    }
+    /// The retries after a drop that still read as reconnecting, before
+    /// the status says the gateway is likely down and a failed sign-in
+    /// refresh shows its banner.
+    static let quietReconnectAttempts = 3
+    /// A failed sign-in refresh or ticket kept quiet during those retries,
+    /// shown once they have failed, by the next ticket or by a readiness
+    /// probe the gateway doesn't answer (#1624).
+    private var quietReconnectFailure: Error?
+    /// Renewals that have failed quietly since the last one worked. Counted
+    /// apart from the backoff's attempts, which a network change resets, so
+    /// a link that keeps changing still surfaces the failure.
+    private var quietRenewalFailures = 0
+    /// A Reconnect someone asked for (the button, Settings, a gateway
+    /// restart) shows its failure at once, as before #1624: it is an
+    /// answer they are waiting for, not a resume.
+    private var surfacesRenewalFailureAtOnce = false
+    /// What a failure kept quiet would show, for a Siri launch that is
+    /// waiting on the connection: it fails at once on it, as before.
+    var quietReconnectFailureClass: ConnectionFailure? {
+        quietReconnectFailure.map { ConnectionFailureClassifier.classify($0) }
+    }
+
+    /// As when the socket fails: the first retries run quietly (a
+    /// resume's first request often fails before the network is back). The
+    /// banner and the classified failure, which offers Repair, wait until
+    /// they have failed too, when the status already says the dashboard
+    /// looks down (#1624).
+    private func retryQuietlyAfterFailedRenewal(_ error: Error) {
+        isConnected = false
+        isConnecting = false
+        turnState = .reconnecting
+        noteQuietRenewalFailure(error)
+        scheduleReconnectAfterFailedSync()
+    }
+
+    /// Keeps a renewal's failure quiet, or shows it once the quiet retries
+    /// are spent.
+    private func noteQuietRenewalFailure(_ error: Error) {
+        quietReconnectFailure = error
+        quietRenewalFailures += 1
+        // Quiet only on screen: off screen (CarPlay, a locked call, the
+        // Watch) it reports at once, as before, since the quiet is for
+        // coming back to the app.
+        if surfacesRenewalFailureAtOnce
+            || !isSceneActive
+            || quietRenewalFailures > Self.quietReconnectAttempts {
+            surfaceQuietReconnectFailure()
+        }
+    }
+
+    /// Which silent re-auth failures retry quietly instead of asking to
+    /// sign in: those the network cut off. Any answer from the server,
+    /// a 5xx included, still asks, as before #1624.
+    static func reauthFailureRetriesQuietly(_ error: Error) -> Bool {
+        DictationUploadRetry.isTransient(error)
+    }
+
+    private func surfaceQuietReconnectFailure() {
+        guard let error = quietReconnectFailure else { return }
+        quietReconnectFailure = nil
+        lastConnectionFailure = ConnectionFailureClassifier.classify(error)
+        errorMessage = AppLocalization.string("Failed to refresh the dashboard session: \(UserFacingError.message(for: error))")
     }
     /// Just back on screen and reconnecting: the header stays quiet, since
     /// the reconnect usually lands before anyone could read the words.
+    /// Never without a network: that shows at once.
     var hidesBriefReconnect: Bool {
-        isReturningQuietly && isRecoveringConnection
+        isReturningQuietly && networkPathUsable && isRecoveringConnection
     }
     /// The device has a usable network path (the app's one path monitor).
     @Published private(set) var networkPathUsable = true
@@ -2318,7 +2386,16 @@ final class AppState: ObservableObject {
     /// Cleared by any successful connection, by explicit disconnect, and
     /// when the user starts a manual login (which abandons the prior
     /// failure's repair context).
-    @Published var lastConnectionFailure: ConnectionFailure?
+    @Published var lastConnectionFailure: ConnectionFailure? {
+        // Wherever a failure is forgotten (a connect, a sign-out, a
+        // dashboard switch), a quiet one goes with it (#1624).
+        didSet {
+            if lastConnectionFailure == nil {
+                quietReconnectFailure = nil
+                quietRenewalFailures = 0
+            }
+        }
+    }
     @Published var showLogin = true {
         didSet {
             // The sign-in surface never keeps a saved copy in memory: after an
@@ -2365,9 +2442,20 @@ final class AppState: ObservableObject {
     private(set) lazy var pulseRememberedHomes: [String: String] =
         defaults.dictionary(forKey: Self.pulseHomesKey) as? [String: String] ?? [:]
     static let pulseHomesKey = "conduit.pulse.homeChats"
+    /// The profile Pulse runs in per dashboard, as the last feed named it
+    /// (`pulseHomeProfile`); none kept for a plugin that names none.
+    private(set) lazy var pulseRememberedProfiles: [String: String] =
+        defaults.dictionary(forKey: Self.pulseProfilesKey) as? [String: String] ?? [:]
+    static let pulseProfilesKey = "conduit.pulse.homeProfiles"
 
-    func rememberPulseHome(_ chat: String?) {
-        guard let key = activeDashboardID?.uuidString, pulseRememberedHomes[key] != chat else { return }
+    func rememberPulseHome(_ chat: String?, profile: String?) {
+        guard let key = activeDashboardID?.uuidString else { return }
+        if pulseRememberedProfiles[key] != profile {
+            var profiles = pulseRememberedProfiles
+            profiles[key] = profile
+            storePulseProfiles(profiles)
+        }
+        guard pulseRememberedHomes[key] != chat else { return }
         var homes = pulseRememberedHomes
         homes[key] = chat
         storePulseHomes(homes)
@@ -2375,6 +2463,8 @@ final class AppState: ObservableObject {
 
     /// A removed dashboard's Pulse chat goes with it.
     func forgetPulseHome(of dashboardID: UUID) {
+        var profiles = pulseRememberedProfiles
+        if profiles.removeValue(forKey: dashboardID.uuidString) != nil { storePulseProfiles(profiles) }
         var homes = pulseRememberedHomes
         guard homes.removeValue(forKey: dashboardID.uuidString) != nil else { return }
         storePulseHomes(homes)
@@ -2399,13 +2489,19 @@ final class AppState: ObservableObject {
     /// finished with that profile on screen. False when a newer navigation
     /// took the screen meanwhile, which a new chat mustn't replace.
     func switchProfileForPulse() async -> Bool {
-        await switchProfile(to: Self.pulseHomeProfile, reusing: nil)
+        await switchProfile(to: pulseHomeProfile, reusing: nil)
     }
 
     private func storePulseHomes(_ homes: [String: String]) {
         objectWillChange.send()
         pulseRememberedHomes = homes
         defaults.set(homes, forKey: Self.pulseHomesKey)
+    }
+
+    private func storePulseProfiles(_ profiles: [String: String]) {
+        objectWillChange.send()
+        pulseRememberedProfiles = profiles
+        defaults.set(profiles, forKey: Self.pulseProfilesKey)
     }
 
     /// Morning briefs folded on the Pulse screen, per dashboard: each
@@ -2753,6 +2849,25 @@ final class AppState: ObservableObject {
         keptAnswer(KeptRoute.providerQuotas).map(Self.modelProviders(in:)) ?? []
     }
 
+    /// The models Hermes offers in `profile`, which may not be the one
+    /// open: Settings > Pulse's, for the profile Pulse runs in, where its
+    /// model is set (issue 1681). Another profile's come from the
+    /// dashboard's route for it, kept as the Model page keeps them. Nil when
+    /// Hermes didn't answer, or the dashboard changed meanwhile.
+    func loadModelProviders(inProfile profile: String) async -> [ProviderInfo]? {
+        if profilesMatch(profile, activeProfile) { return await loadModelProviders() }
+        guard let owner = currentDashboardRuntimeOwner(),
+              let answer = try? await readKeepingAnswer(KeptRoute.modelOptions, profile: profile, owner: owner),
+              ownsDashboardRuntime(owner) else { return nil }
+        return Self.modelProviders(in: answer)
+    }
+
+    /// `profile`'s models as last read, kept on the phone.
+    func keptModelProviders(inProfile profile: String) -> [ProviderInfo] {
+        if profilesMatch(profile, activeProfile) { return keptModelProviders() }
+        return keptAnswer(KeptRoute.modelOptions, profile: profile).map(Self.modelProviders(in:)) ?? []
+    }
+
     /// The providers of a `model.options` answer.
     static func modelProviders(in answer: [String: Any]) -> [ProviderInfo] {
         (AnyCodable.from(answer).objectValue?["providers"]?.arrayValue ?? []).compactMap(ProviderInfo.init(from:))
@@ -2762,16 +2877,70 @@ final class AppState: ObservableObject {
     /// or nil when this Hermes has no such slot; it throws when Hermes
     /// didn't answer. The answer is kept for the section to open on (#1533).
     func loadVoiceReplyModel() async throws -> VoiceReplyModelSetting? {
-        let profile = activeProfile
-        guard let owner = currentDashboardRuntimeOwner() else { throw DashboardTicketBridgeError.notReady }
-        let response = try await readKeepingAnswer(KeptRoute.modelAuxiliary, profile: profile, owner: owner)
-        guard profile == activeProfile else { throw CancellationError() }
-        return VoiceReplyModelSetting(auxiliaryResponse: response)
+        try await loadHelperModel(task: VoiceReplyModelSetting.task)
     }
 
     /// The voice reply model as Hermes gave it last, kept on the phone.
     func keptVoiceReplyModel() -> VoiceReplyModelSetting? {
-        keptAnswer(KeptRoute.modelAuxiliary).flatMap(VoiceReplyModelSetting.init(auxiliaryResponse:))
+        keptHelperModel(task: VoiceReplyModelSetting.task)
+    }
+
+    /// Hermes' helper model slots (`/api/model/auxiliary`) for this
+    /// profile, as Models & providers lists them; throws when Hermes didn't
+    /// answer. Kept, with Voice replies' read, for the page to open on.
+    func loadHelperModels() async throws -> [HelperModelSlot] {
+        HelperModelSlot.slots(in: try await readHelperModels())
+    }
+
+    /// The helper models as Hermes gave them last, kept on the phone;
+    /// Pulse's too with `includingSetElsewhere`.
+    func keptHelperModels(includingSetElsewhere: Bool = false) -> [HelperModelSlot]? {
+        keptAnswer(KeptRoute.modelAuxiliary).map { HelperModelSlot.slots(in: $0, includingSetElsewhere: includingSetElsewhere) }
+    }
+
+    /// One helper model slot, or nil when this Hermes has no such slot.
+    func loadHelperModel(task: String) async throws -> VoiceReplyModelSetting? {
+        VoiceReplyModelSetting(auxiliaryResponse: try await readHelperModels(), task: task)
+    }
+
+    func keptHelperModel(task: String) -> VoiceReplyModelSetting? {
+        keptAnswer(KeptRoute.modelAuxiliary).flatMap { VoiceReplyModelSetting(auxiliaryResponse: $0, task: task) }
+    }
+
+    /// Whether the kept helper models list the slot, or nil when none are
+    /// kept.
+    func keptHelperModelListed(task: String) -> Bool? {
+        keptAnswer(KeptRoute.modelAuxiliary).map { VoiceReplyModelSetting(auxiliaryResponse: $0, task: task) != nil }
+    }
+
+    /// Hermes' `/api/model/auxiliary` answer, carried from the read to
+    /// every reader sharing it.
+    private struct HelperModelsAnswer: @unchecked Sendable { let json: [String: Any] }
+
+    /// The helper models read in flight. A reader asking meanwhile on the
+    /// same profile and Hermes shares it: the Model page and its Helper
+    /// models section open together. A save drops it, so a read asked
+    /// after the save isn't answered from before it. A reader that leaves
+    /// doesn't cancel it: the next one joins it, and the bridge's request
+    /// timeout ends one Hermes never answers.
+    private var helperModelsRead: (profile: String, owner: DashboardRuntimeOwner, task: Task<HelperModelsAnswer, Error>)?
+
+    private func readHelperModels() async throws -> [String: Any] {
+        let profile = activeProfile
+        guard let owner = currentDashboardRuntimeOwner() else { throw DashboardTicketBridgeError.notReady }
+        let task: Task<HelperModelsAnswer, Error>
+        if let read = helperModelsRead, read.profile == profile, ownsDashboardRuntime(read.owner) {
+            task = read.task
+        } else {
+            task = Task { [self] in
+                HelperModelsAnswer(json: try await readKeepingAnswer(KeptRoute.modelAuxiliary, profile: profile, owner: owner))
+            }
+            helperModelsRead = (profile, owner, task)
+        }
+        let result = await task.result
+        if helperModelsRead?.task == task { helperModelsRead = nil }
+        guard profile == activeProfile else { throw CancellationError() }
+        return try result.get().json
     }
 
     /// A live voice mode's status line on Voice settings as its last check
@@ -2817,13 +2986,30 @@ final class AppState: ObservableObject {
         KeptRoute.liveVoiceStatus + (mode == .gptLive ? "\(mode.storageID)/\(billing.rawValue)" : mode.storageID)
     }
 
-    /// Nil when Hermes took the setting; otherwise why not, for the
-    /// section to show beside the pickers (#1533).
-    func setVoiceReplyModel(_ setting: VoiceReplyModelSetting) async -> String? {
+    /// How Hermes took the voice reply model, for the section to show
+    /// beside the pickers (#1533). `confirmed` answers Hermes' price check.
+    func setVoiceReplyModel(_ setting: VoiceReplyModelSetting, confirmed: Bool = false) async -> HelperModelSaveResult {
+        await setHelperModel(
+            setting, confirmed: confirmed,
+            offline: AppLocalization.string("Connect to Hermes to configure voice for this profile."),
+            failure: { AppLocalization.string("Could not save the voice reply model: \($0)") }
+        )
+    }
+
+    /// Writes a helper model slot (Models & providers > Helper models).
+    func setHelperModel(_ setting: VoiceReplyModelSetting, confirmed: Bool) async -> HelperModelSaveResult {
+        await setHelperModel(
+            setting, confirmed: confirmed,
+            offline: AppLocalization.string("Connect to Hermes to change this profile's models."),
+            failure: { AppLocalization.string("Could not save the helper model: \($0)") }
+        )
+    }
+
+    private func setHelperModel(
+        _ setting: VoiceReplyModelSetting, confirmed: Bool, offline: String, failure: (String) -> String
+    ) async -> HelperModelSaveResult {
         let profile = activeProfile
-        guard let owner = currentDashboardRuntimeOwner() else {
-            return AppLocalization.string("Connect to Hermes to configure voice for this profile.")
-        }
+        guard let owner = currentDashboardRuntimeOwner() else { return .refused(offline) }
         let dashboardTicketBridge = owner.bridge
         do {
             // Hermes writes the profile config for it: in turn with every
@@ -2832,24 +3018,53 @@ final class AppState: ObservableObject {
                 try await dashboardTicketBridge.requestJSON(
                     path: dashboardPath("/api/model/set", profile: profile),
                     method: "POST",
-                    body: setting.assignmentBody(profile: profile)
+                    body: setting.assignmentBody(profile: profile, confirmed: confirmed)
                 )
             }
             if result["confirm_required"] as? Bool == true {
-                return result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
+                return .needsConfirmation(
+                    result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
+                )
             }
-            // The answer to a read asked before the save isn't kept after
-            // it, and the kept slots follow the save, so the section opens
-            // on it next time (#1533).
-            noteKeptAnswerWrite(for: KeptRoute.modelAuxiliary, profile: profile, owner: owner)
-            guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
+            // The kept slots take the save at once, so the pages open on
+            // it even if the read after it never lands, and an answer to a
+            // read asked before it isn't kept over it (#1533).
+            keepHelperModelWrite(setting, profile: profile, owner: owner)
+            helperModelsRead = nil
+            // An open list's read asked before the save is dropped for one
+            // asked after it.
+            NotificationCenter.default.post(name: HelperModelSlot.saved, object: nil)
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return .saved }
+            // The shared read, so the open lists' reads after the save
+            // join it.
             Task { [weak self] in
-                _ = try? await self?.readKeepingAnswer(KeptRoute.modelAuxiliary, profile: profile, owner: owner)
+                _ = try? await self?.readHelperModels()
             }
-            return nil
+            return .saved
         } catch {
-            return AppLocalization.string("Could not save the voice reply model: \(UserFacingError.message(for: error))")
+            return .refused(failure(UserFacingError.message(for: error)))
         }
+    }
+
+    /// The kept `/api/model/auxiliary` answer with `setting`'s slot as
+    /// Hermes took it; with nothing kept, the write is still counted.
+    private func keepHelperModelWrite(_ setting: VoiceReplyModelSetting, profile: String, owner: DashboardRuntimeOwner) {
+        guard var answer = keptAnswer(KeptRoute.modelAuxiliary, profile: profile, on: owner),
+              var tasks = answer["tasks"] as? [[String: Any]],
+              let index = tasks.firstIndex(where: { $0["task"] as? String == setting.task }) else {
+            noteKeptAnswerWrite(for: KeptRoute.modelAuxiliary, profile: profile, owner: owner)
+            return
+        }
+        var row = tasks[index]
+        row["provider"] = setting.provider.isEmpty ? "auto" : setting.provider
+        row["model"] = setting.model
+        row["reasoning_effort"] = setting.reasoningEffort ?? ""
+        // Hermes kept the endpoint (a save never sends one); the kept row
+        // keeps the one it had, as Hermes answered.
+        if setting.baseURL == nil { row["base_url"] = "" }
+        tasks[index] = row
+        answer["tasks"] = tasks
+        keepWrittenAnswer(answer, for: KeptRoute.modelAuxiliary, profile: profile, owner: owner, removals: offlineChatCache.removals)
     }
 
     /// Where Gemini Live's quick lookups search on this profile.
@@ -3009,6 +3224,8 @@ final class AppState: ObservableObject {
     var submissionTurnSurface: (text: String, surface: TurnSurface)?
     /// Seam for tests: takes the plugin's turn-surface reports.
     var turnSurfaceSender: (([String: Any]) async throws -> Void)?
+    /// Seam for tests: takes the discards of failed sends' reports.
+    var turnSurfaceDiscarder: (([String: Any]) async throws -> Void)?
     /// What the host holds as on screen for this device (ChatOnScreen.swift).
     var chatOnScreenTracker = ChatOnScreen.Tracker()
     /// Renews the hold while the open chat's turn runs.
@@ -4344,11 +4561,17 @@ final class AppState: ObservableObject {
                     ?? AppLocalization.string("Hermes could not send this to the chat."))
             }
             await self.reportTurnSurface(self.messageTurnSurface(spoken: true), runtimeSessionID: chat.runtimeID, text: text)?.value
-            let outcome = try await self.sendCallPromptTakingOver(
-                runtimeID: chat.runtimeID, otherSessionIDs: [], profile: chat.profile,
-                stillWanted: self.localLiveTurns.currentTurnCheck()
-            ) {
-                try await client.sendPrompt(chat.runtimeID, text: text, surface: AppState.spokenPromptSurface, voiceTurn: true)
+            let outcome: PromptSubmissionOutcome
+            do {
+                outcome = try await self.sendCallPromptTakingOver(
+                    runtimeID: chat.runtimeID, otherSessionIDs: [], profile: chat.profile,
+                    stillWanted: self.localLiveTurns.currentTurnCheck()
+                ) {
+                    try await client.sendPrompt(chat.runtimeID, text: text, surface: AppState.spokenPromptSurface, voiceTurn: true)
+                }
+            } catch {
+                self.discardTurnSurface(runtimeSessionID: chat.runtimeID, text: text, after: error)
+                throw error
             }
             switch outcome {
             case .accepted:
@@ -4371,9 +4594,11 @@ final class AppState: ObservableObject {
             guard let self else { return false }
             return (try? await self.respondToApprovalByVoice(approval, choice: choice, profile: profile)) ?? false
         },
-        respondToClarify: { [weak self] clarify, questionID, answer in
+        respondToClarify: { [weak self] clarify, questionID, answer, sessionID, profile in
             guard let self else { return nil }
-            return try? await self.respondToClarifyByVoice(clarify, questionID: questionID, answer: answer)
+            return try? await self.respondToClarifyByVoice(
+                clarify, questionID: questionID, answer: answer, sessionID: sessionID, profile: profile
+            )
         }
     ))
 
@@ -4602,7 +4827,7 @@ final class AppState: ObservableObject {
     /// echo-cancelling engine when speaker talk-over is on, chosen for each
     /// conversation.
     lazy var voiceConversationAudio = VoiceConversationAudioSelector(
-        wantsEchoCancellation: { [weak self] in self?.liveVoiceSpeakerBargeInEnabled ?? false },
+        wantsEchoCancellation: { [weak self] in self?.usesEchoCancellingVoiceAudio ?? false },
         standardCapture: AVAudioCaptureService(),
         standardPlayback: AVSpeechPlaybackService(),
         makeEchoCancelling: { EchoCancellingLiveVoiceAudio(outputSampleRate: GeminiLiveProtocol.outputSampleRate) }
@@ -4679,7 +4904,7 @@ final class AppState: ObservableObject {
             cancel: { [weak self] sessionID in
                 guard let self else { throw HermesError.notConnected }
                 let client = try await self.clientForVoiceRequest()
-                try await client.cancel(sessionID)
+                try await client.cancel(sessionID, profile: self.presentationProfile(for: sessionID))
             },
             liveSessions: { [weak self] targetProfile in
                 guard let self else { throw HermesError.notConnected }
@@ -4750,9 +4975,11 @@ final class AppState: ObservableObject {
                 guard let self else { throw HermesError.notConnected }
                 return try await self.respondToApprovalByVoice(approval, choice: choice, profile: profile)
             },
-            respondToClarify: { [weak self] clarify, questionID, answer in
+            respondToClarify: { [weak self] clarify, questionID, answer, sessionID, profile in
                 guard let self else { throw HermesError.notConnected }
-                return try await self.respondToClarifyByVoice(clarify, questionID: questionID, answer: answer)
+                return try await self.respondToClarifyByVoice(
+                    clarify, questionID: questionID, answer: answer, sessionID: sessionID, profile: profile
+                )
             }
         ))
         supervisor.callbacks = self.makeHermesCallbackBackend()
@@ -5331,11 +5558,14 @@ final class AppState: ObservableObject {
     /// off screen, so a quick switch to another app comes back to the same
     /// connection (notifier #296).
     var backgroundConnectionGrace = BackgroundConnectionGrace()
-    /// The first few seconds back on screen: a reconnect that finishes in
-    /// that time doesn't flash "Reconnecting…" over the saved chat.
+    /// The first seconds back on screen: a reconnect that finishes in that
+    /// time doesn't show "Reconnecting…" over the saved chat. Long enough
+    /// for a sign-in refresh, a ticket and the socket over a slow remote
+    /// link; a message sent meanwhile ends it, so its wait is explained
+    /// (#1624).
     @Published private(set) var isReturningQuietly = false
     private var quietReturnTask: Task<Void, Never>?
-    static let quietReturnWindow: TimeInterval = 3
+    static let quietReturnWindow: TimeInterval = 10
     /// Armed only by a real .background phase. Ordinary inactive → active
     /// transitions (Control Center, incoming-call banner) must not be treated
     /// as reopening the app, so they never arm the preferred return surface.
@@ -7797,6 +8027,27 @@ final class AppState: ObservableObject {
         loadVoiceProfilePreferences(profile: activeProfile).liveVoiceSpeakerBargeIn ?? false
     }
 
+    /// Whether the conversation starting now runs on the echo-cancelling
+    /// engine: talk-over is on and no call from Hermes is up in CallKit.
+    var usesEchoCancellingVoiceAudio: Bool {
+        Self.usesEchoCancellingVoiceAudio(
+            talkOver: liveVoiceSpeakerBargeInEnabled,
+            inHermesCall: VoiceAudioSessionCoordinator.shared.isInNativeCall
+        )
+    }
+
+    /// A call from Hermes always takes the default audio. Under CallKit's
+    /// session every voice-processing engine that starts sets a session
+    /// property that changes the route's configuration, which stops that
+    /// engine a moment later; rebuilding it set the property again. The
+    /// call stayed silent for 20 seconds while it looped, or for good when
+    /// the last engine kept running with no speaker side (Ul'dah's logs,
+    /// 2026-11-01/02). The call starts on the earpiece, where talk-over
+    /// adds nothing; the user's own calls keep it.
+    nonisolated static func usesEchoCancellingVoiceAudio(talkOver: Bool, inHermesCall: Bool) -> Bool {
+        talkOver && !inHermesCall
+    }
+
     /// Applies from the next call.
     func setLiveVoiceSpeakerBargeInEnabled(_ enabled: Bool) {
         var preferences = loadVoiceProfilePreferences(profile: activeProfile)
@@ -7898,7 +8149,7 @@ final class AppState: ObservableObject {
     /// each call.
     private func makeLiveVoiceAudio(outputSampleRate: Double) -> LiveVoiceAudioSelector {
         LiveVoiceAudioSelector(
-            wantsEchoCancellation: { [weak self] in self?.liveVoiceSpeakerBargeInEnabled ?? false },
+            wantsEchoCancellation: { [weak self] in self?.usesEchoCancellingVoiceAudio ?? false },
             makeStandard: {
                 (CaptureServiceGeminiLiveInput(capture: AVAudioCaptureService()),
                  PlaybackServiceGeminiLiveOutput(playback: AVSpeechPlaybackService()))
@@ -8401,6 +8652,8 @@ final class AppState: ObservableObject {
     }
 
     private static func voiceCallSaveFailureReason(_ error: Error) -> String {
+        // The profile turned the plugin off: how to turn it on, uncut.
+        if let remedy = DashboardTicketBridgeError.pluginOffDetail(of: error) { return remedy }
         switch error {
         case VoiceHistoryError.pluginMissing, VoiceHistoryError.unsupported:
             return AppLocalization.string("Your Hermes server can't save these calls yet.")
@@ -9424,23 +9677,31 @@ final class AppState: ObservableObject {
         let target = runtimeID.isEmpty ? thread.runtimeSessionID : runtimeID
         // Alongside the read below, so it adds no wait between the read and the send.
         let surfaceReport = reportTurnSurface(messageTurnSurface(spoken: true), runtimeSessionID: target, text: text)
-        // Re-read right before the send: a turn running there (typed on
-        // another device) is waited for. A failed read fails the send rather
-        // than risk steering it.
-        let rows = try await client.activeSessions(inProfile: thread.profile)
-        if rows.contains(where: { row in
-            (row.runtimeSessionId == target || thread.owns(sessionID: row.runtimeSessionId)
-                || thread.owns(sessionID: row.storedSessionId)) && row.isRunning
-        }) {
-            throw VoiceThreadBusyError()
-        }
-        await surfaceReport?.value
-        let outcome = try await sendCallPromptTakingOver(
-            runtimeID: target, otherSessionIDs: [thread.runtimeSessionID, thread.storedSessionID].compactMap { $0 },
-            profile: thread.profile,
-            stillWanted: stillWanted
-        ) {
-            try await client.sendPrompt(target, text: text)
+        let outcome: PromptSubmissionOutcome
+        do {
+            // Re-read right before the send: a turn running there (typed on
+            // another device) is waited for. A failed read fails the send rather
+            // than risk steering it.
+            let rows = try await client.activeSessions(inProfile: thread.profile)
+            if rows.contains(where: { row in
+                (row.runtimeSessionId == target || thread.owns(sessionID: row.runtimeSessionId)
+                    || thread.owns(sessionID: row.storedSessionId)) && row.isRunning
+            }) {
+                throw VoiceThreadBusyError()
+            }
+            await surfaceReport?.value
+            outcome = try await sendCallPromptTakingOver(
+                runtimeID: target, otherSessionIDs: [thread.runtimeSessionID, thread.storedSessionID].compactMap { $0 },
+                profile: thread.profile,
+                stillWanted: stillWanted
+            ) {
+                try await client.sendPrompt(target, text: text)
+            }
+        } catch {
+            // Nothing of it was sent, or Hermes refused it: its report waits for no turn.
+            await surfaceReport?.value
+            discardTurnSurface(runtimeSessionID: target, text: text, after: error)
+            throw error
         }
         switch outcome {
         case .accepted:
@@ -9468,7 +9729,7 @@ final class AppState: ObservableObject {
             if let redirect = chatResumeLifecycleOperations.redirect {
                 outcome = try await redirect(client, sessionID, text)
             } else {
-                outcome = try await client.redirect(sessionID, text: text)
+                outcome = try await client.redirect(sessionID, text: text, profile: presentationProfile(for: sessionID))
             }
             switch outcome {
             case .redirected:
@@ -9486,7 +9747,7 @@ final class AppState: ObservableObject {
                 if let steer = chatResumeLifecycleOperations.steer {
                     try await steer(client, sessionID, text)
                 } else {
-                    try await client.steer(sessionID, text: text)
+                    try await client.steer(sessionID, text: text, profile: presentationProfile(for: sessionID))
                 }
             } catch HermesError.steerRejected {
                 return .notRunning
@@ -9508,7 +9769,7 @@ final class AppState: ObservableObject {
             if let steer = chatResumeLifecycleOperations.steer {
                 try await steer(client, sessionID, text)
             } else {
-                try await client.steer(sessionID, text: text)
+                try await client.steer(sessionID, text: text, profile: presentationProfile(for: sessionID))
             }
         } catch let error as RpcError where Self.isUnsupportedSteer(code: error.code, message: error.message) {
             // Method not found: the words never arrived, so redirecting them is safe.
@@ -10377,6 +10638,165 @@ final class AppState: ObservableObject {
 
     private func clearPendingDecisionRestorationGuard() {
         restoredPendingDecisionCardsAwaitingConfirmation = nil
+    }
+
+    /// A transcript of the same chat rebuilt from the gateway's rows, with
+    /// each message `previous` already showed under another id taking that
+    /// id back (#1648). Hermes' stored rows carry their database ids, and a
+    /// resume's rows take the same ids from their `row_id`
+    /// (MessageNormalizer), but a gateway that sends no `row_id` numbers its
+    /// resume rows by position ("0", "1-reasoning", ...): a refresh that
+    /// switched source then re-keyed every row, so the transcript drew and
+    /// measured them all again from guesses, lost the reader's place, and
+    /// took a re-keyed latest user message for a new turn. A message pairs
+    /// by its role, text and tool call when each list holds it once and
+    /// their times, where both say one, agree. The same pairing gives a
+    /// live turn's resume rows the ids of the stored rows read with them
+    /// (`keepingStoredRowIDs`), so on such a gateway only the rows Hermes
+    /// hasn't stored yet are drawn under positional ids. A row whose id
+    /// `durableIDs` holds keeps it: the delivery checks, the graft of a
+    /// refreshed page onto older history and the merge of newer stored rows
+    /// all find rows by Hermes' stored ids. An id never goes to a row while
+    /// another row of the rebuilt transcript still has it, and an optimistic
+    /// row's id is never carried.
+    static func keepingRowIDs(
+        from previous: [ChatMessage],
+        in rebuilt: [ChatMessage],
+        durableIDs: Set<String>
+    ) -> [ChatMessage] {
+        let previousIDs = Set(previous.map(\.id))
+        let rebuiltIDs = Set(rebuilt.map(\.id))
+        // Nothing re-keyed: every rebuilt row is new or already shown.
+        guard rebuilt.contains(where: { !previousIDs.contains($0.id) }),
+              previous.contains(where: { !rebuiltIDs.contains($0.id) }) else { return rebuilt }
+        struct Signature: Hashable {
+            let role: MessageRole
+            let content: String
+            let tool: String?
+        }
+        func signature(_ message: ChatMessage) -> Signature {
+            let tool = message.tool.map { tool in
+                tool.id.flatMap { $0.isEmpty ? nil : $0 } ?? tool.name
+            }
+            return Signature(role: message.role, content: message.content, tool: tool)
+        }
+        // Only a message both lists hold once pairs: a text repeated ("yes",
+        // "continue") can't tell which copy is which, above all against a
+        // stored page a few rows behind the resume, so its copies keep their
+        // own ids. Pairs keep their order: the longest run of them rising in
+        // both lists stays, so a row moved out of order doesn't pair.
+        var previousCount: [Signature: Int] = [:]
+        var previousIndex: [Signature: Int] = [:]
+        for (index, message) in previous.enumerated() {
+            let key = signature(message)
+            previousCount[key, default: 0] += 1
+            previousIndex[key] = index
+        }
+        var rebuiltCount: [Signature: Int] = [:]
+        for message in rebuilt { rebuiltCount[signature(message), default: 0] += 1 }
+        var candidates: [(rebuilt: Int, previous: Int)] = []
+        for (index, message) in rebuilt.enumerated() {
+            let key = signature(message)
+            guard rebuiltCount[key] == 1, previousCount[key] == 1,
+                  let shownIndex = previousIndex[key],
+                  MessageTimestampFormatter.sameMoment(previous[shownIndex].timestamp, message.timestamp) else { continue }
+            candidates.append((rebuilt: index, previous: shownIndex))
+        }
+        let pairs = Self.risingRun(candidates)
+        var result = rebuilt
+        for pair in pairs {
+            let shown = previous[pair.previous]
+            let message = rebuilt[pair.rebuilt]
+            // An optimistic row's id (`local-`) stays its own: the delivery
+            // and steer checks read it as a row Hermes hasn't stored yet.
+            guard message.id != shown.id,
+                  !shown.id.hasPrefix("local-"),
+                  !previousIDs.contains(message.id),
+                  !durableIDs.contains(message.id),
+                  !rebuiltIDs.contains(shown.id) else { continue }
+            var kept = message.withID(shown.id)
+            // What only the shown row knew: its stored row (reactions and
+            // rewinds address it) and a step's measured time.
+            kept.rowId = kept.rowId ?? shown.rowId
+            kept.stepDuration = kept.stepDuration ?? shown.stepDuration
+            result[pair.rebuilt] = kept
+        }
+        return result
+    }
+
+
+    /// A live turn's resume rows, read with Hermes' stored rows of the same
+    /// chat (`stored`): the ones Hermes has stored take those rows' ids, so
+    /// the turn's end, when the stored rows take over, doesn't re-key the
+    /// chat on a gateway whose resume rows don't name their stored rows
+    /// (`row_id`) (#1648).
+    static func keepingStoredRowIDs(
+        _ result: SessionResumeResult,
+        from stored: [ChatMessage]
+    ) -> SessionResumeResult {
+        guard !stored.isEmpty else { return result }
+        return SessionResumeResult(
+            sessionId: result.sessionId,
+            storedSessionId: result.storedSessionId,
+            messages: keepingRowIDs(from: stored, in: result.messages, durableIDs: []),
+            snapshot: result.snapshot
+        )
+    }
+
+    /// Where a reconcile's rows come from.
+    enum ReconcileRowsSource: Equatable {
+        /// Hermes' stored rows (a settled turn, or a resume with no rows).
+        case stored
+        /// The resume's rows, a live turn's, with the stored ones keeping
+        /// the stored rows' ids (`keepingStoredRowIDs`, #1648).
+        case resumeKeepingStoredIDs
+        /// The resume's rows as they came: no stored rows of this chat.
+        case resume
+    }
+
+    /// A compact resume ships no persisted transcript, so the REST rows are
+    /// the durable base even while a turn is live: the in-flight projection
+    /// rides on top through the streaming bubble, matching Desktop's
+    /// cache-as-base rendering. A resume that carried messages keeps the
+    /// historical precedence where a live projection wins over the REST
+    /// read, its stored rows keeping their ids.
+    static func reconcileRowsSource(
+        transcriptMatches: Bool,
+        storedMessages: [ChatMessage]?,
+        result: SessionResumeResult
+    ) -> ReconcileRowsSource {
+        guard transcriptMatches, let storedMessages else { return .resume }
+        let resumeCarriedTranscript = !result.messages.isEmpty
+        if (!storedMessages.isEmpty || !resumeCarriedTranscript)
+            && (!result.snapshot.hasLiveProjection || !resumeCarriedTranscript) {
+            return .stored
+        }
+        return storedMessages.isEmpty ? .resume : .resumeKeepingStoredIDs
+    }
+
+    /// The longest run of `pairs` (in rebuilt order) whose shown index rises
+    /// too, by patience sorting.
+    private static func risingRun(_ pairs: [(rebuilt: Int, previous: Int)]) -> [(rebuilt: Int, previous: Int)] {
+        // tails[k]: the index in `pairs` ending the best run of length k + 1
+        // found so far; links[i]: the pair before pairs[i] in its run.
+        var tails: [Int] = []
+        var links = [Int](repeating: -1, count: pairs.count)
+        for (index, pair) in pairs.enumerated() {
+            var low = 0, high = tails.count
+            while low < high {
+                let middle = (low + high) / 2
+                if pairs[tails[middle]].previous < pair.previous { low = middle + 1 } else { high = middle }
+            }
+            if low > 0 { links[index] = tails[low - 1] }
+            if low == tails.count { tails.append(index) } else { tails[low] = index }
+        }
+        var run: [(rebuilt: Int, previous: Int)] = []
+        var cursor = tails.last ?? -1
+        while cursor >= 0 {
+            run.append(pairs[cursor])
+            cursor = links[cursor]
+        }
+        return run.reversed()
     }
 
     /// The chat's own notes (slash command output, /btw and /background
@@ -13934,6 +14354,9 @@ final class AppState: ObservableObject {
         widgetLease: WidgetLaunchLease? = nil
     ) async {
         guard widgetLease?.isCurrent != false else { return }
+        // Early reads its connect didn't take (or that a restore given up
+        // left) end with it.
+        defer { startupReads.clear() }
         do {
             let ticket = try await mintChatResumeTicket(for: HermesConnection(baseUrl: baseURL, ticket: ""))
             // A dashboard switch made meanwhile owns the flow.
@@ -13986,7 +14409,8 @@ final class AppState: ObservableObject {
         syncPurpose: ChatResumeSyncPurpose,
         cancelsResumeRestoration: Bool,
         automaticWorkToken existingAutomaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
-        automaticReconnectOperationID: UUID? = nil
+        automaticReconnectOperationID: UUID? = nil,
+        isRenewal: Bool = false
     ) async {
         if cancelsResumeRestoration {
             cancelChatResumeTransportRecovery()
@@ -14031,6 +14455,10 @@ final class AppState: ObservableObject {
                 )
             }
         }
+        // The early reads are this connection's steps' alone: what any other
+        // screen reads after the connection settled (a pull to refresh, the
+        // profile list after a new bot) is read fresh.
+        defer { startupReads.clear() }
         guard automaticChatResumeWorkIsCurrent(
             automaticWorkToken,
             reconnectOperationID: transportOperationID
@@ -14062,6 +14490,9 @@ final class AppState: ObservableObject {
         continueConnectionTimeline("sign-in")
         noteConnectionStep("Connecting")
         prepareDashboardBridge(for: conn.baseUrl)
+        if chatResumeLifecycleOperations.connectClient == nil {
+            sendStartupReads(profile: profile)
+        }
 
         let previousClient = client
         let client = makeClient(connection: conn, profile: profile)
@@ -14160,10 +14591,16 @@ final class AppState: ObservableObject {
             isConnecting = false
             isConnected = false
             turnState = .reconnecting
-            errorMessage = UserFacingError.message(for: error)
-            // The typed classification is retained for Repair Connection's
-            // seeding and routing; the raw error never reaches the UI.
-            lastConnectionFailure = ConnectionFailureClassifier.classify(error)
+            if isRenewal {
+                // A socket after a renewal's silent re-auth: quiet like the
+                // renewal itself (#1624).
+                noteQuietRenewalFailure(error)
+            } else {
+                errorMessage = UserFacingError.message(for: error)
+                // The typed classification is retained for Repair Connection's
+                // seeding and routing; the raw error never reaches the UI.
+                lastConnectionFailure = ConnectionFailureClassifier.classify(error)
+            }
             // Only an explicit dashboard 401/403 may return the user to the
             // sign-in screen. A transient gateway or WebKit startup failure
             // must retain the saved dashboard session and retry.
@@ -14239,7 +14676,14 @@ final class AppState: ObservableObject {
     var showsConnectionRepair: Bool {
         connection != nil
             && !isConnected
-            && (lastConnectionFailure != nil || !(errorMessage ?? "").isEmpty)
+            && (lastConnectionFailure != nil
+                || (!(errorMessage ?? "").isEmpty && !isHoldingQuietReconnectFailure))
+    }
+
+    /// A failed renewal is being kept quiet: an older, unrelated message
+    /// left on screen doesn't offer Repair meanwhile (#1624).
+    var isHoldingQuietReconnectFailure: Bool {
+        quietReconnectFailure != nil && lastConnectionFailure == nil
     }
 
     /// Entering Repair is an explicit user takeover of connection recovery:
@@ -15230,6 +15674,9 @@ final class AppState: ObservableObject {
     /// sign-in screen, while any other connect failure schedules a reconnect.
     private func restoreSavedConnection(_ saved: HermesConnection, switchGeneration: UInt64? = nil, widgetLease: WidgetLaunchLease? = nil) async {
         guard widgetLease?.isCurrent != false else { return }
+        // Early reads its connect didn't take (or that a restore given up
+        // left) end with it.
+        defer { startupReads.clear() }
         if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
             return
         }
@@ -15626,6 +16073,8 @@ final class AppState: ObservableObject {
                 guard let self, let bridge, self.dashboardTicketBridge === bridge else { return }
                 self.noteConnectionStep(event)
             }
+            // Early reads through the bridge this replaces are no one's now.
+            startupReads.clear()
             dashboardTicketBridge = bridge
         } else if let bridge = dashboardTicketBridge, bridge.requiresSignIn {
             // The same dashboard's page settled on sign-in, and a connection
@@ -17372,16 +17821,12 @@ final class AppState: ObservableObject {
                     )
                 )
             }
-            // A compact resume ships no persisted transcript, so the REST rows
-            // are the durable base even while a turn is live: the in-flight
-            // projection rides on top through the streaming bubble, matching
-            // Desktop's cache-as-base rendering. A resume that carried
-            // messages keeps the historical precedence where a live projection
-            // wins over the REST read.
-            let resumeCarriedTranscript = !result.messages.isEmpty
-            let shouldUsePersistedTranscript = transcriptMatches
-                && (transcript.map { !$0.messages.isEmpty || !resumeCarriedTranscript } ?? false)
-                && (!result.snapshot.hasLiveProjection || !resumeCarriedTranscript)
+            // Stored rows or the resume's (reconcileRowsSource).
+            let rowsSource = Self.reconcileRowsSource(
+                transcriptMatches: transcriptMatches,
+                storedMessages: transcript?.messages,
+                result: result
+            )
             let priorWindowForGraft = priorWindowOwnsThisConversation(
                 priorWindow,
                 requestedSessionId: sessionId,
@@ -17391,7 +17836,7 @@ final class AppState: ObservableObject {
             ) ? priorWindow : nil
             let presentationResult: SessionResumeResult
             var graftedBackfilledPrefix = false
-            if let transcript, shouldUsePersistedTranscript {
+            if let transcript, rowsSource == .stored {
                 // A re-reconciliation replaces only the newest page. Keep
                 // everything "Load earlier messages" already backfilled by
                 // re-anchoring the refreshed tail onto the older prefix;
@@ -17413,6 +17858,10 @@ final class AppState: ObservableObject {
                     snapshot: result.snapshot
                 )
                 graftedBackfilledPrefix = grafted.grafted
+            } else if let transcript, rowsSource == .resumeKeepingStoredIDs {
+                // A live turn's rows come from the resume; the ones Hermes
+                // has stored keep the stored rows' ids (#1648).
+                presentationResult = Self.keepingStoredRowIDs(result, from: transcript.messages)
             } else {
                 presentationResult = result
             }
@@ -18084,7 +18533,12 @@ final class AppState: ObservableObject {
         let isSameChat = previousSessionID.map {
             !chatOwnSessionIDs(for: $0).union([$0]).isDisjoint(with: resumedIDs)
         } ?? false
-        let rebuilt = isSameChat ? Self.keepingLocalNotes(from: previousMessages, in: restored) : restored
+        // The same messages from the other source (Hermes' stored rows or a
+        // resume's) keep the ids they're drawn under (#1648).
+        let rekeyed = isSameChat
+            ? Self.keepingRowIDs(from: previousMessages, in: restored, durableIDs: durablePersistedRowIDs)
+            : restored
+        let rebuilt = isSameChat ? Self.keepingLocalNotes(from: previousMessages, in: rekeyed) : rekeyed
         messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: rebuilt, sessionId: result.sessionId), sessionId: result.sessionId)
         if result.snapshot.running == false {
             sessionPresentationCache.removePendingTools(
@@ -19104,6 +19558,9 @@ final class AppState: ObservableObject {
                       self.connection?.baseUrl == baseURL, self.canRunTransportRecovery else { return }
                 if !answered {
                     self.noteConnectionStep("Gateway not answering yet")
+                    if self.reconnectAttempts >= Self.quietReconnectAttempts {
+                        self.surfaceQuietReconnectFailure()
+                    }
                     self.scheduleReconnect(purpose: purpose)
                     return
                 }
@@ -19142,6 +19599,8 @@ final class AppState: ObservableObject {
             return
         }
         cancelChatResumeTransportRecovery()
+        surfacesRenewalFailureAtOnce = true
+        defer { surfacesRenewalFailureAtOnce = false }
         await executeReconnect(purpose: .preserveCurrent)
     }
 
@@ -19215,6 +19674,8 @@ final class AppState: ObservableObject {
             return true
         }
         defer {
+            // Its early reads are its own steps', as connect's are.
+            startupReads.clear()
             finishAutomaticReconnectOperation(
                 id: automaticOperationID,
                 restoringBaseline: !handedOffAutomaticIntent
@@ -19247,6 +19708,9 @@ final class AppState: ObservableObject {
                   activeDashboardID == renewalDashboardID else { return }
             connection = HermesConnection(baseUrl: savedConnection.baseUrl, ticket: ticket)
             self.connection = connection
+            // Only the latest step's failure may surface later.
+            quietReconnectFailure = nil
+            quietRenewalFailures = 0
             if let dashboardID = renewalDashboardID {
                 KeychainHelper.saveConnection(connection, dashboardID: dashboardID)
             }
@@ -19283,7 +19747,8 @@ final class AppState: ObservableObject {
                             syncPurpose: continuationPurpose,
                             cancelsResumeRestoration: false,
                             automaticWorkToken: continuationAutomaticWorkToken,
-                            automaticReconnectOperationID: automaticOperationID
+                            automaticReconnectOperationID: automaticOperationID,
+                            isRenewal: true
                         )
                         guard refreshTransportContinuation() else { return }
                         return
@@ -19294,8 +19759,16 @@ final class AppState: ObservableObject {
                         return
                     } catch {
                         guard refreshTransportContinuation() else { return }
-                        // The silent re-auth failure (429 throttle, 401
-                        // rejection, 503 outage…) is the most diagnostic
+                        // A re-auth the network cut off (a slow link just
+                        // after a resume) says nothing about the sign-in:
+                        // retry quietly, as a failed ticket does (#1624).
+                        if Self.reauthFailureRetriesQuietly(error) {
+                            retryQuietlyAfterFailedRenewal(error)
+                            return
+                        }
+                        // An answer from the server (429 throttle, 401
+                        // rejection, 503 outage…) asks to sign in, as before.
+                        // The silent re-auth failure is the most diagnostic
                         // explanation for the forced sign-in; carry it to the
                         // classifier. This only determines whether recovery
                         // can be silent. Preserve the saved credentials for
@@ -19319,12 +19792,7 @@ final class AppState: ObservableObject {
                 )
             } else {
                 guard refreshTransportContinuation() else { return }
-                isConnected = false
-                isConnecting = false
-                turnState = .reconnecting
-                lastConnectionFailure = ConnectionFailureClassifier.classify(error)
-                errorMessage = AppLocalization.string("Failed to refresh the dashboard session: \(UserFacingError.message(for: error))")
-                scheduleReconnectAfterFailedSync()
+                retryQuietlyAfterFailedRenewal(error)
             }
             return
         }
@@ -19438,13 +19906,21 @@ final class AppState: ObservableObject {
         HermesCallTrace.shared.note("Connection: \(label)", since: startedAt, error: error)
     }
 
-    private func mintChatResumeTicket(for connection: HermesConnection) async throws -> String {
+    /// `readsFor` names the profile the connection will open on, when it
+    /// isn't the active one yet (a profile switch), so the early reads are
+    /// its own.
+    private func mintChatResumeTicket(for connection: HermesConnection, readsFor profile: String? = nil) async throws -> String {
         if let mintTicket = chatResumeLifecycleOperations.mintTicket {
             return try await mintTicket(connection.baseUrl)
         }
         prepareDashboardBridge(for: connection.baseUrl)
         guard let dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        // A switch never reads the profile list, so it doesn't send it.
+        sendStartupReads(profile: profile ?? activeProfile, includingProfiles: profile == nil)
         let startedAt = Date()
+        let signposter = ResponsivenessSignposts.signposter
+        let minting = signposter.beginInterval("Ticket mint", id: signposter.makeSignpostID())
+        defer { signposter.endInterval("Ticket mint", minting) }
         do {
             let ticket = try await dashboardTicketBridge.mintTicket()
             noteConnectionStep("Ticket", since: startedAt)
@@ -19470,6 +19946,9 @@ final class AppState: ObservableObject {
             try await connectClient(client)
         } else {
             let startedAt = Date()
+            let signposter = ResponsivenessSignposts.signposter
+            let connecting = signposter.beginInterval("WebSocket connect", id: signposter.makeSignpostID())
+            defer { signposter.endInterval("WebSocket connect", connecting) }
             do {
                 try await client.connect()
                 noteConnectionStep("Socket open", since: startedAt)
@@ -19931,7 +20410,11 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func endQuietReturn() {
+    func beginQuietReturnForTesting() {
+        beginQuietReturn()
+    }
+
+    func endQuietReturn() {
         quietReturnTask?.cancel()
         quietReturnTask = nil
         if isReturningQuietly { isReturningQuietly = false }
@@ -22869,80 +23352,24 @@ final class AppState: ObservableObject {
         }
         let epoch = botRosterEpoch
         let owner = currentDashboardRuntimeOwner()
-        let moved = BotMcpSignInOutcome.failed(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
-        let loopback = NativeOAuthLoopbackServer(expectedState: nil, relaysCallback: true)
-        defer { loopback.stop() }
-        var sessionID: String?
-        var approved = false
-        defer {
-            // Release Hermes' waiting flow; best effort, and not tied to
-            // this (possibly cancelled) task.
-            if let sessionID, !approved {
-                Task { _ = try? await client.botMcpOAuth("cancel", params: ["profile": profile, "name": name, "session_id": sessionID]) }
-            }
+        let outcome = await NativeMCPSignIn.run(
+            profile: profile, name: name,
+            rpc: { try await client.botMcpOAuth($0, params: $1) },
+            isCurrent: { self.botOpenFenceIsCurrent(epoch: epoch, client: client) },
+            open: open
+        )
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
+            return .failed(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
         }
-        do {
-            let port = try await loopback.start(timeout: 6 * 60)
-            let redirectURI = "http://127.0.0.1:\(port)/callback"
-            let started = try await client.botMcpOAuth(
-                "start",
-                params: ["profile": profile, "name": name, "client_redirect_uri": redirectURI]
-            )
-            if let problem = BotMcpSetup.failure(started) { return .failed(problem) }
-            guard let flow = BotMcpSetup.startedFlow(started, redirectURI: redirectURI) else {
-                sessionID = BotMcpSetup.payload(started)["session_id"]?.stringValue
-                return .failed(AppLocalization.string("Update Hermes to sign in to MCP servers from Conduit."))
-            }
-            sessionID = flow.sessionID
-            loopback.expect(state: flow.state)
-            try Task.checkCancellation()
-            open(flow.authURL)
-            let query = try await loopback.waitForCallback()
-            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return moved }
-            var params = BotMcpSetup.callbackParams(NativeOAuthFlow.queryValues(query))
-            params["profile"] = profile
-            params["name"] = name
-            params["session_id"] = flow.sessionID
-            let relayed = try await client.botMcpOAuth("callback", params: params)
-            if let problem = BotMcpSetup.failure(relayed) { return .failed(problem) }
-            var pollFailures = 0
-            for _ in 0..<BotMcpSetup.pollAttempts {
-                try Task.checkCancellation()
-                guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return moved }
-                let polled: AnyCodable
-                do {
-                    polled = try await client.botMcpOAuth(
-                        "poll",
-                        params: ["profile": profile, "name": name, "session_id": flow.sessionID]
-                    )
-                    pollFailures = 0
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch {
-                    pollFailures += 1
-                    if pollFailures >= BotMcpSetup.pollFailureLimit { throw error }
-                    try await Task.sleep(nanoseconds: 1_000_000_000)
-                    continue
-                }
-                switch BotMcpSetup.pollStatus(polled) {
-                case "approved":
-                    approved = true
-                    // The MCP page opens on it signed in (#1533).
-                    keepWrittenChange(BotMcpSetupSnapshot.self, KeptRoute.botMcpSetup, profile: profile, on: owner) {
-                        $0.servers[name] = BotMcpServerSummary(name: name, auth: "oauth", oauthTokensPresent: true)
-                    }
-                    return .signedIn
-                case "error":
-                    return .failed(BotMcpSetup.pollError(polled))
-                default:
-                    try await Task.sleep(nanoseconds: 1_000_000_000)
-                }
-            }
-            return .failed(AppLocalization.string("Sign-in timed out. Please try again."))
-        } catch is CancellationError {
-            return .cancelled
-        } catch {
-            return .failed(UserFacingError.message(for: error))
+        if outcome == .signedIn { keepMcpSignedIn(profile: profile, name: name, on: owner) }
+        return outcome
+    }
+
+    /// A sign-in Hermes took, from Edit Bot or the Connectors page: the
+    /// bot editor's MCP page opens on it signed in (#1533, #1640).
+    func keepMcpSignedIn(profile: String, name: String, on owner: DashboardRuntimeOwner?) {
+        keepWrittenChange(BotMcpSetupSnapshot.self, KeptRoute.botMcpSetup, profile: profile, on: owner) {
+            $0.servers[name] = BotMcpServerSummary(name: name, auth: "oauth", oauthTokensPresent: true)
         }
     }
 
@@ -24707,6 +25134,33 @@ final class AppState: ObservableObject {
         return outcome == .opened
     }
 
+    /// Every notification tap rereads the chat list, a call notification's
+    /// included. The open of a call answered in CallKit has its caller
+    /// waiting on the voice, so it rereads only when the list on hand lacks
+    /// the call's chat. Runtime and alias ids are never handed to another
+    /// chat, so a row they match is the call's chat.
+    nonisolated static func notificationOpenNeedsAuthoritativeRead(
+        target: ConduitNotificationTarget,
+        callAnswered: Bool,
+        catalog: [SessionSummary]
+    ) -> Bool {
+        // The route resolves to the payload's durable id first, so that id
+        // must be on hand too, or the bot-chat check would miss its row.
+        guard callAnswered, target.call != nil, catalogListsSession(target.sessionId, in: catalog) else { return true }
+        if let durable = target.durableSessionID, !catalogListsSession(durable, in: catalog) { return true }
+        return false
+    }
+
+    /// Whether `sessionID` names a row of `catalog`: its id, stored id or
+    /// one of its alternates.
+    nonisolated static func catalogListsSession(_ sessionID: String, in catalog: [SessionSummary]) -> Bool {
+        guard let wanted = ChatScrollIdentityNormalization.sessionID(sessionID) else { return false }
+        return catalog.contains { row in
+            ([row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds)
+                .contains { ChatScrollIdentityNormalization.sessionID($0) == wanted }
+        }
+    }
+
     /// Routes a notification to its originating profile/session without
     /// allowing the ordinary cold-start session restoration to win first.
     func openNotificationTargetOutcome(_ target: ConduitNotificationTarget) async -> NotificationOpenOutcome {
@@ -24989,14 +25443,31 @@ final class AppState: ObservableObject {
         // ID for the notification's runtime/alternate ID. Otherwise the next
         // cold-start recovery only sees the old normal-session list and jumps
         // back to its newest entry.
-        // Do not share the sidebar refresh guard here. The notification route
-        // needs one authoritative read even if a visual refresh is already in
-        // progress, otherwise it can resolve against the stale catalog.
-        traceStage = "session list"
-        guard await loadSessions(
-            forceRefresh: true,
-            requiredViewportTransitionGeneration: transitionGeneration
-        ) else { return .retry }
+        // Do not share the sidebar refresh guard here. A notification takes
+        // one authoritative read even if a visual refresh is already in
+        // progress, otherwise it can resolve against the stale catalog;
+        // only the open of a call answered in CallKit may skip it. That call
+        // has its caller waiting: when the
+        // list on hand already holds the call's chat, the route resolves
+        // against that list. Reading the whole list again took 2-3 s of every
+        // answered call on a long list (897 rows, Ul'dah 2026-11-02). A row
+        // that matches the call's id by any of its ids is the call's chat
+        // even if the host has since rotated its runtime id, and the chat
+        // sync the call's connection starts refreshes it. A chat the list
+        // lacks still waits for the authoritative read.
+        if !Self.notificationOpenNeedsAuthoritativeRead(
+            target: target,
+            callAnswered: isNativeHermesCallAnswered,
+            catalog: sessions + cronSessions
+        ) {
+            traceStage = "session list (on hand)"
+        } else {
+            traceStage = "session list"
+            guard await loadSessions(
+                forceRefresh: true,
+                requiredViewportTransitionGeneration: transitionGeneration
+            ) else { return .retry }
+        }
         traceStage = "bot chat check"
         guard notificationOpenAttemptIsCurrent(
             id: notificationAttemptID,
@@ -25005,8 +25476,9 @@ final class AppState: ObservableObject {
             return .retry
         }
         let requestedID = target.sessionId
-        // The fresh catalog was just published (its labeled rows are already
-        // committed to the identity index), so resolution runs through the
+        // The catalog is fresh, or (for an answered call) already lists the
+        // call's chat; its labeled rows are committed to the identity index,
+        // so resolution runs through the
         // evidence hierarchy: explicit durable id from the payload, catalog
         // alias, confirmed index alias — and only then the legacy raw
         // runtime resume. An unknown runtime id is never reinterpreted as
@@ -25627,7 +26099,12 @@ final class AppState: ObservableObject {
             let content = (message.role == .user ? message.rawContent : nil) ?? message.content
             let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return nil }
-            return SessionBranchMessage(role: message.role, content: trimmed)
+            return SessionBranchMessage(
+                role: message.role,
+                content: trimmed,
+                rowId: message.rowId,
+                isNewest: message.id == messages.last?.id
+            )
         }
         guard !prefix.isEmpty else {
             errorMessage = AppLocalization.string("There is no message history to branch from.")
@@ -27043,6 +27520,7 @@ final class AppState: ObservableObject {
                       transientFailures < chatTakeoverTransientRetryLimit,
                       clock.now < deadline else {
                     if case ChatTakeoverError.pluginMissing = error { return .unavailable(chatTakeoverFailureMessage(error)) }
+                    if case ChatTakeoverError.pluginOff = error { return .unavailable(chatTakeoverFailureMessage(error)) }
                     if case ChatTakeoverError.unsupported = error { return .unavailable(chatTakeoverFailureMessage(error)) }
                     if case ChatTakeoverError.malformed = error { return .unavailable(chatTakeoverFailureMessage(error)) }
                     return .failed(chatTakeoverFailureMessage(error))
@@ -27214,6 +27692,8 @@ final class AppState: ObservableObject {
         switch error {
         case ChatTakeoverError.pluginMissing:
             return AppLocalization.string("Update the Conduit notifier plugin on your Hermes host to take chats over.")
+        case ChatTakeoverError.pluginOff(let remedy):
+            return remedy
         case ChatTakeoverError.unsupported:
             return AppLocalization.string("This Hermes version can't hand a chat over.")
         case ChatTakeoverError.malformed:
@@ -27316,7 +27796,9 @@ final class AppState: ObservableObject {
         if !joinsRunningTurn { clearStreamingText() }
         turnState = .running
 
-        // Images staged for a Queue, taken back if Hermes refuses it.
+        // Images this send staged, taken back if it fails: left staged, they
+        // would ride on the chat's next message (a Queue's, or on the
+        // session authority any send's, which names its staged pictures).
         var stagedImagePaths: [String] = []
         // Every file that isn't an image (PDFs included) is staged as a file,
         // like Hermes Desktop does: Hermes' PDF route needs poppler on the
@@ -27351,7 +27833,7 @@ final class AppState: ObservableObject {
                     guard let picture, !base64.isEmpty else { throw AttachmentError.unreadableFile(attachment.name) }
                     do {
                         let stagedPath = try await attachImage(client, sessionId, base64, picture.filename)
-                        if queued, let stagedPath { stagedImagePaths.append(stagedPath) }
+                        if let stagedPath { stagedImagePaths.append(stagedPath) }
                         fileReference = nil
                     } catch let error as RpcError where Self.isImageAttachRefusal(error) {
                         // Hermes won't take it as an image (a format it
@@ -27384,7 +27866,7 @@ final class AppState: ObservableObject {
                     )
                 }
             } catch {
-                // Images already staged for this Queue would ride on a later
+                // Images this send already staged would ride on a later
                 // turn; a superseded submission (CancellationError) too.
                 for path in stagedImagePaths {
                     try? await client.detachImage(sessionId, path: path)
@@ -27533,7 +28015,12 @@ final class AppState: ObservableObject {
             }
             return true
         } catch {
-            // Images staged for a Queue that didn't land would ride on a
+            // No turn of it is coming: the same words sent from another
+            // client there mustn't take its line.
+            if surfaceReport != nil {
+                discardTurnSurface(runtimeSessionID: sessionId, text: promptText, after: error)
+            }
+            // Images staged for a send that didn't land would ride on a
             // later turn. One Hermes took was already claimed by it, so
             // taking it back then changes nothing.
             for path in stagedImagePaths {
@@ -27766,7 +28253,7 @@ final class AppState: ObservableObject {
     /// reached Hermes and the turn may already be running — so the
     /// authoritative registry probe decides, and unknown future `HermesError`
     /// cases fail toward the probe rather than toward a blind retry.
-    private static func isAmbiguousPromptDelivery(_ error: Error) -> Bool {
+    static func isAmbiguousPromptDelivery(_ error: Error) -> Bool {
         switch error {
         case HermesError.notConnected:
             return false
@@ -29828,7 +30315,7 @@ final class AppState: ObservableObject {
             if let steer = chatResumeLifecycleOperations.steer {
                 try await steer(client, sessionId, outboundText)
             } else {
-                try await client.steer(sessionId, text: outboundText)
+                try await client.steer(sessionId, text: outboundText, profile: presentationProfile(for: sessionId))
             }
             // A successful steer proves Hermes applied the session's busy
             // policy — the session was RUNNING when the steer landed. That is
@@ -29898,7 +30385,7 @@ final class AppState: ObservableObject {
             if let redirect = chatResumeLifecycleOperations.redirect {
                 outcome = try await redirect(client, sessionId, outboundText)
             } else {
-                outcome = try await client.redirect(sessionId, text: outboundText)
+                outcome = try await client.redirect(sessionId, text: outboundText, profile: presentationProfile(for: sessionId))
             }
             switch outcome {
             case .redirected, .queued:
@@ -30117,7 +30604,7 @@ final class AppState: ObservableObject {
             if let interrupt = chatResumeLifecycleOperations.interrupt {
                 try await interrupt(client, sessionId)
             } else {
-                try await client.cancel(sessionId)
+                try await client.cancel(sessionId, profile: presentationProfile(for: sessionId))
             }
             guard isCurrentOrAliasedComposerSubmission(currentContext) else { return false }
             return true
@@ -30292,7 +30779,12 @@ final class AppState: ObservableObject {
                 // Only gateway-minted qids may address a question. A locally
                 // synthesized id (legacy scalar card) rides the request-level
                 // respond shape every gateway generation accepts.
-                questionId: question.isSyntheticID ? nil : question.id
+                questionId: question.isSyntheticID ? nil : question.id,
+                // The card is in the open chat: on the session authority its
+                // resume names a prompt this socket didn't see asked (#1618),
+                // under the chat's own profile (a bot chat's).
+                sessionId: activeSessionId,
+                profile: presentationProfile(for: activeSessionId)
             )
             guard profile == activeProfile, self.client === client else { return nil }
             applyClarifyResponseOutcome(
@@ -30309,6 +30801,18 @@ final class AppState: ObservableObject {
                 // Older gateways report expiry as RPC 4009 instead of the
                 // typed `expired` status — same teardown either way.
                 expireClarifyRequest(requestId: requestId)
+            } else if HermesClient.isSessionNotFoundError(error) {
+                // The chat's runtime is gone (reaped, or re-opened elsewhere),
+                // as the approval card reads it: nothing waits on this answer.
+                applyClarifyResponseOutcome(.ended, requestId: requestId, questionId: question.id, answer: wireAnswer)
+            } else if let unsent = error as? HermesClient.AnswerNotSent {
+                // Never sent: why Hermes couldn't be reached, and the
+                // question can be answered again.
+                markClarifyQuestionError(
+                    requestId: requestId,
+                    questionId: question.id,
+                    message: UserFacingError.message(for: unsent.underlying)
+                )
             } else {
                 markClarifyQuestionError(
                     requestId: requestId,
@@ -31069,6 +31573,8 @@ final class AppState: ObservableObject {
     ///
     /// Keep the envelope merge and id-key order in sync with
     /// `MessageNormalizer.normalizeMessages`, which consumes the same rows.
+    /// A row's `row_id` comes first, as in the normalizer; `/messages` rows
+    /// carry `id` itself.
     nonisolated static func durablePersistedRowID(from rawRow: Any) -> String? {
         guard let envelope = rawRow as? [String: Any] else { return nil }
         // Same envelope merge as normalizeMessages: `message` / `payload` /
@@ -31082,6 +31588,13 @@ final class AppState: ObservableObject {
         var obj = envelope
         for (key, value) in nested {
             obj[key] = value
+        }
+        // A row naming its stored row (`row_id`) has that row's id first,
+        // as the normalizer gives it.
+        if let rowID = obj["row_id"] as? NSNumber,
+           CFGetTypeID(rowID) != CFBooleanGetTypeID(),
+           let exactRowID = Int(exactly: rowID.doubleValue), exactRowID > 0 {
+            return String(Double(exactRowID))
         }
         for key in ["id", "message_id"] {
             switch obj[key] {
@@ -31485,7 +31998,11 @@ final class AppState: ObservableObject {
 
         for page in 0..<maximumPages {
             let offset = page * 200
-            let response = try await bridge.requestJSON(path: profileSessionsPath(profile, offset: offset))
+            let response = try await startupReads.read(
+                profileSessionsPath(profile, offset: offset),
+                through: bridge,
+                fence: startupReadFence(for: bridge, chatList: true)
+            )
             let batch = response["sessions"] as? [Any] ?? []
             let normalizedBatch = await dashboardOwnedSessions(batch, profile: profile)
             sessions += normalizedBatch
@@ -31714,6 +32231,9 @@ final class AppState: ObservableObject {
         let signposter = ResponsivenessSignposts.signposter
         let switching = signposter.beginInterval("Profile switch", id: signposter.makeSignpostID())
         defer { signposter.endInterval("Profile switch", switching) }
+        // The early reads the switch's ticket sent are its own steps'; what
+        // they didn't take is dropped when it ends, as connect's are.
+        defer { startupReads.clear() }
         let target = profile.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !target.isEmpty, target != activeProfile, let savedConnection = connection else {
             return false
@@ -31729,7 +32249,7 @@ final class AppState: ObservableObject {
             var mintError: Error?
             if socketToKeepForProfileSwitch(within: savedConnection) == nil {
                 do {
-                    sparedCallTicket = try await mintChatResumeTicket(for: savedConnection)
+                    sparedCallTicket = try await mintChatResumeTicket(for: savedConnection, readsFor: profile)
                 } catch {
                     mintError = error
                 }
@@ -31840,7 +32360,7 @@ final class AppState: ObservableObject {
             } else if let sparedCallTicket {
                 ticket = sparedCallTicket
             } else {
-                ticket = try await mintChatResumeTicket(for: savedConnection)
+                ticket = try await mintChatResumeTicket(for: savedConnection, readsFor: profile)
             }
             guard widgetLease?.isCurrent != false else {
                 // Nothing has changed over yet: the previous profile keeps
@@ -32046,16 +32566,19 @@ final class AppState: ObservableObject {
     /// Reads the host's profile list. False when it wasn't read for this
     /// connection (no bridge, a failed or empty reply, or a reply from a
     /// replaced connection): the list then says nothing about a profile.
+    /// True when a list sent after this one was taken first, which stands.
     @discardableResult
     private func readProfiles() async -> Bool {
         guard let bridge = dashboardTicketBridge else { return false }
         let dashboardID = activeDashboardID
+        profileListReadsSent &+= 1
+        let read = profileListReadsSent
         do {
             let response: [String: Any]
             if let profileDiscoveryLoaderOverride {
                 response = try await profileDiscoveryLoaderOverride()
             } else {
-                response = try await bridge.requestJSON(path: "/api/profiles")
+                response = try await startupReads.read("/api/profiles", through: bridge, fence: startupReadFence(for: bridge))
             }
             // Commit gate, same identity pattern as the dashboard catalog
             // loader: a bridge swapped mid-request (server change, re-login,
@@ -32071,6 +32594,15 @@ final class AppState: ObservableObject {
                 if let name = value as? String { return name }
                 return (value as? [String: Any])?["name"] as? String
             }
+            // Two reads through the same bridge can land out of order (one
+            // native, one through the page or read again): one sent after
+            // this that already landed is newer, so this older list must not
+            // undo a bot just made or deleted, nor re-home the profile in use.
+            // Only a list with names takes the place: a degraded empty one
+            // leaves it to an older complete one. A list that lost it was
+            // read all the same, and a newer one stands.
+            guard read > profileListReadCommitted else { return true }
+            if !names.isEmpty { profileListReadCommitted = read }
             // Rows as objects carry `display_name`; a plain-name listing
             // says nothing about it, and the bot roster fills it in.
             let rows = values.compactMap { $0 as? [String: Any] }
@@ -32143,9 +32675,15 @@ final class AppState: ObservableObject {
             let merged = orderedProfiles(profiles + [activeProfile, "default"])
             profiles = merged
             persistKnownProfiles(merged)
-            return false
+            // A list sent after this one was read and taken meanwhile.
+            return read <= profileListReadCommitted
         }
     }
+
+    /// Profile list reads sent, and the newest of them whose list (with
+    /// names) was taken, so an older answer landing after it doesn't commit.
+    private var profileListReadsSent: UInt64 = 0
+    private var profileListReadCommitted: UInt64 = 0
 
     /// Caches the profile list and, when it changed, tells Siri so the
     /// "Start <profile> voice in Conduit" phrases can match the new names.
@@ -32466,17 +33004,17 @@ final class AppState: ObservableObject {
             }
         }
         do {
-            let accepted: Bool
+            let outcome: HermesClient.ApprovalResponseOutcome
             if let respondToApproval = chatResumeLifecycleOperations.respondToApproval {
-                accepted = try await respondToApproval(
+                outcome = try await respondToApproval(
                     client,
                     current.sessionId,
                     answeredRequestId,
                     choice,
                     conversationProfile
-                )
+                ) ? .accepted : .noLongerWaiting
             } else {
-                accepted = try await client.respondToApproval(
+                outcome = try await client.respondToApprovalOutcome(
                     sessionId: current.sessionId,
                     requestId: answeredRequestId,
                     choice: choice,
@@ -32492,12 +33030,22 @@ final class AppState: ObservableObject {
                 schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
                 return
             }
-            if accepted {
+            switch outcome {
+            case .accepted:
                 messages[updatedIndex].approval?.status = choice == "deny" ? .rejected : .approved
-            } else {
+            case .noLongerWaiting:
                 messages[updatedIndex].approval?.status = .expired
                 messages[updatedIndex].approval?.choice = nil
                 messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
+            case .ended:
+                // Its turn ended (stopped, or the chat moved on): not a timeout.
+                messages[updatedIndex].approval?.status = .expired
+                messages[updatedIndex].approval?.choice = nil
+                messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active.")
+            case .answeredElsewhere:
+                messages[updatedIndex].approval?.status = .expired
+                messages[updatedIndex].approval?.choice = nil
+                messages[updatedIndex].approval?.error = AppLocalization.string("This approval was answered elsewhere.")
             }
             cacheMessagePresentation()
             schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
@@ -32516,6 +33064,10 @@ final class AppState: ObservableObject {
                 // elsewhere), so nothing waits on this answer any more.
                 messages[updatedIndex].approval?.status = .expired
                 messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active.")
+            } else if let unsent = error as? HermesClient.AnswerNotSent {
+                // Never sent: why Hermes couldn't be reached, and the card
+                // can be answered again.
+                messages[updatedIndex].approval?.error = UserFacingError.message(for: unsent.underlying)
             } else {
                 messages[updatedIndex].approval?.error = AppLocalization.string("Hermes did not accept that decision.")
                 errorMessage = UserFacingError.message(for: error)
@@ -32567,7 +33119,9 @@ final class AppState: ObservableObject {
         await loadProjects(using: client, profile: activeProfile)
     }
 
-    private func loadProjects(using client: HermesClient, profile: String) async {
+    /// True when Hermes' list came in and is the one shown.
+    @discardableResult
+    private func loadProjects(using client: HermesClient, profile: String) async -> Bool {
         projectsRequestGeneration += 1
         let generation = projectsRequestGeneration
         projectsLoading = true
@@ -32582,7 +33136,7 @@ final class AppState: ObservableObject {
             let loaded = try await client.projects()
             guard generation == projectsRequestGeneration,
                   profile == activeProfile,
-                  self.client === client else { return }
+                  self.client === client else { return false }
             projects = loaded.sorted {
                 if $0.isHome != $1.isHome { return $0.isHome }
                 if $0.sessionCount != $1.sessionCount { return $0.sessionCount > $1.sessionCount }
@@ -32590,19 +33144,21 @@ final class AppState: ObservableObject {
             }
             supportsProjects = true
             projectsLoadFailed = false
+            return true
         } catch {
             guard generation == projectsRequestGeneration,
                   profile == activeProfile,
-                  self.client === client else { return }
+                  self.client === client else { return false }
             // A view's load cancelled by leaving it didn't fail.
-            if error is CancellationError || Task.isCancelled { return }
+            if error is CancellationError || Task.isCancelled { return false }
             guard isProjectsUnavailable(error) else {
                 projectsLoadFailed = projects.isEmpty
-                return
+                return false
             }
             projects = []
             supportsProjects = false
             projectsLoadFailed = false
+            return false
         }
     }
 
@@ -32643,40 +33199,87 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// What a New Project create came to, for the sheet, which stays open
+    /// with the message unless the project was made with all it was given.
+    enum ProjectCreateOutcome: Equatable {
+        case created
+        /// Made (its id), but the idea isn't in IDEA.md: the sheet keeps it
+        /// on screen and Save Idea tries the write again.
+        case ideaUnsaved(projectID: String, message: String)
+        case failed(String?)
+    }
+
     @discardableResult
-    func createProject(name: String, folders: [String], idea: String) async -> Bool {
-        guard let client, supportsProjects else { return false }
+    func createProject(name: String, folders: [String], idea: String) async -> ProjectCreateOutcome {
+        guard let client, supportsProjects else { return .failed(nil) }
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let uniqueFolders = folders.reduce(into: [String]()) { result, folder in
             let trimmed = folder.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty, !result.contains(trimmed) { result.append(trimmed) }
         }
-        guard !trimmedName.isEmpty, !uniqueFolders.isEmpty else { return false }
+        guard !trimmedName.isEmpty, !uniqueFolders.isEmpty else { return .failed(nil) }
 
         let profile = activeProfile
+        let dashboard = activeDashboardID
+        // Checked again on Hermes' list as it is now: another device may
+        // have made the same project since the list was read, and Hermes
+        // would take a second one. A list that didn't come in checks nothing.
+        guard await loadProjects(using: client, profile: profile) else {
+            return .failed(AppLocalization.string("Couldn’t check Hermes’ projects. Try again."))
+        }
+        guard profile == activeProfile, self.client === client else { return .failed(nil) }
+        if let problem = projectCreationProblem(name: trimmedName, folders: uniqueFolders) { return .failed(problem) }
+        let knownIDs = Set(projects.map(\.id))
+        // The idea goes to the first folder of a project that was made.
+        func finish(_ created: ProjectSummary) async -> ProjectCreateOutcome {
+            let trimmedIdea = idea.trimmingCharacters(in: .whitespacesAndNewlines)
+            var ideaSaved = true
+            if !trimmedIdea.isEmpty {
+                ideaSaved = await writeProjectIdea(trimmedIdea, in: uniqueFolders[0], profile: profile,
+                                                   dashboard: dashboard)
+            }
+            // Hermes made it, so what's left only reports that: a reconnect
+            // that replaced the client mid-create reads the list through
+            // the new one, and an answered create is never a failure, which
+            // a retry would then find as a clash (issue 1688).
+            if dashboard == activeDashboardID, profile == activeProfile, let current = self.client {
+                await loadProjects(using: current, profile: profile)
+            }
+            return ideaSaved
+                ? .created
+                : .ideaUnsaved(projectID: created.id,
+                               message: AppLocalization.string("\(created.title) is made, but its idea couldn’t be saved as IDEA.md."))
+        }
         do {
             guard let created = try await client.createProject(name: trimmedName, folders: uniqueFolders) else {
                 throw HermesError.invalidResponse
             }
-            guard profile == activeProfile, self.client === client else { return false }
-            projects = [created] + projects.filter { $0.id != created.id }
-            supportsProjects = true
-
-            let trimmedIdea = idea.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedIdea.isEmpty {
-                await writeProjectIdea(trimmedIdea, in: uniqueFolders[0], profile: profile)
+            // The same Hermes and profile take the row, across a reconnect.
+            if dashboard == activeDashboardID, profile == activeProfile {
+                projects = [created] + projects.filter { $0.id != created.id }
+                supportsProjects = true
             }
-            await loadProjects(using: client, profile: profile)
-            return true
+            return await finish(created)
         } catch {
-            guard profile == activeProfile, self.client === client else { return false }
-            if isProjectsUnavailable(error) {
+            guard dashboard == activeDashboardID, profile == activeProfile,
+                  let current = self.client else { return .failed(nil) }
+            if current === client, isProjectsUnavailable(error) {
                 projects = []
                 supportsProjects = false
-            } else {
-                errorMessage = AppLocalization.string("Could not create the project: \(UserFacingError.message(for: error))")
+                return .failed(nil)
             }
-            return false
+            // Hermes may have made it anyway (an answer Conduit couldn't
+            // read, or a reconnect mid-create, read through the new client):
+            // a new project with this name on this first folder is this one,
+            // and takes the idea; anything else read again lets a retry see
+            // the clash.
+            if await loadProjects(using: current, profile: profile),
+               dashboard == activeDashboardID, profile == activeProfile, self.client === current,
+               let made = Self.projectMadeAnyway(name: trimmedName, firstFolder: uniqueFolders[0],
+                                                 knownIDs: knownIDs, in: projects) {
+                return await finish(made)
+            }
+            return .failed(AppLocalization.string("Could not create the project: \(UserFacingError.message(for: error))"))
         }
     }
 
@@ -32883,10 +33486,66 @@ final class AppState: ObservableObject {
     }
 
     /// The project folder picker starts at the same live workspace the chat
-    /// browser uses. Folder paths are selected from Hermes' filesystem listing,
-    /// not entered as arbitrary strings by the phone.
+    /// browser uses, else at Home's folder, so a project can be made with no
+    /// chat open (issue 1661). Folder paths are selected from Hermes'
+    /// filesystem listing, not entered as arbitrary strings by the phone.
     var projectFolderPickerRoot: String {
-        runtime.cwd
+        // runtime.cwd outlives the chat that set it.
+        if let session = activeSessionId, !session.isEmpty, let folder = chatWorkspaceFolder { return folder }
+        return projects.first(where: \.isHome)?.primaryPath?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    /// Why a new project can't be made as it stands, or nil: Hermes would
+    /// take a second project of the same name, or a folder that is already
+    /// another project's, and list both (issue 1661). Home and the repos
+    /// Hermes found on its own have no record to clash with.
+    func projectCreationProblem(name: String, folders: [String]) -> String? {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let made = projects.filter { !$0.isHome && !$0.isAuto }
+        if !trimmedName.isEmpty,
+           let clash = made.first(where: { $0.title.trimmingCharacters(in: .whitespacesAndNewlines)
+               .caseInsensitiveCompare(trimmedName) == .orderedSame }) {
+            return AppLocalization.string("There’s already a project named \(clash.title).")
+        }
+        for folder in folders {
+            let path = Self.normalizedWorkspacePath(folder.trimmingCharacters(in: .whitespacesAndNewlines))
+            if let owner = made.first(where: { project in
+                project.primaryPath.map { Self.normalizedWorkspacePath($0.trimmingCharacters(in: .whitespacesAndNewlines)) } == path
+            }) {
+                return AppLocalization.string("\(folder) is already the folder of \(owner.title).")
+            }
+        }
+        return nil
+    }
+
+    /// The project a create that failed made anyway: new since the create
+    /// was asked, with its name and first folder. A name alone could be
+    /// another device's.
+    static func projectMadeAnyway(name: String, firstFolder: String, knownIDs: Set<String>,
+                                  in projects: [ProjectSummary]) -> ProjectSummary? {
+        let folder = normalizedWorkspacePath(firstFolder.trimmingCharacters(in: .whitespacesAndNewlines))
+        return projects.first { project in
+            !knownIDs.contains(project.id) && !project.isHome && !project.isAuto
+                && project.title.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(name) == .orderedSame
+                && project.primaryPath.map { normalizedWorkspacePath($0.trimmingCharacters(in: .whitespacesAndNewlines)) } == folder
+        }
+    }
+
+    /// Whether a folder's listing already has an IDEA.md, which a new
+    /// project never writes over (issue 1661).
+    static func folderHasProjectIdea(_ entries: [WorkspaceEntry]) -> Bool {
+        entries.contains { !$0.isDirectory && $0.name.caseInsensitiveCompare("IDEA.md") == .orderedSame }
+    }
+
+    /// A new folder for a project, made in `folder` through the plugin's
+    /// workspace routes, which refuse a name that's already there.
+    func makeProjectFolder(named name: String, in folder: String) async throws -> String? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let entry = try await workspaceFilesClient(profile: activeProfile)
+            .makeFolder(root: folder, in: folder, name: trimmed)
+        return entry?.path
     }
 
     func workspaceDirectoryEntries(at path: String) async throws -> [WorkspaceEntry] {
@@ -32896,15 +33555,32 @@ final class AppState: ObservableObject {
         return entries
     }
 
-    private func writeProjectIdea(_ idea: String, in folder: String, profile: String) async {
-        guard let dashboardTicketBridge else { return }
+    /// The sheet's Save Idea after a create whose idea wasn't saved.
+    /// `profile` and `dashboard` are the ones the project was made in,
+    /// which a switch while the sheet waits doesn't change.
+    func saveProjectIdea(_ idea: String, in folder: String, profile: String, dashboard: UUID?) async -> Bool {
+        let trimmed = idea.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        return await writeProjectIdea(trimmed, in: folder, profile: profile, dashboard: dashboard)
+    }
+
+    /// Never over an IDEA.md the folder already has: an existing folder
+    /// keeps its files (issue 1661), and an unreadable one is left alone.
+    /// False when the idea wasn't saved for any other reason, or when
+    /// Conduit has switched to another Hermes since the project was made:
+    /// the folder is that host's, not this one's (issue 1688).
+    private func writeProjectIdea(_ idea: String, in folder: String, profile: String, dashboard: UUID?) async -> Bool {
+        guard dashboard == activeDashboardID,
+              let entries = try? await workspaceDirectoryEntries(at: folder, profile: profile) else { return false }
+        if Self.folderHasProjectIdea(entries) { return true }
+        guard dashboard == activeDashboardID, let dashboardTicketBridge else { return false }
         let separator = folder.hasSuffix("/") || folder.hasSuffix("\\") ? "" : "/"
         let path = "\(folder)\(separator)IDEA.md"
-        _ = try? await dashboardTicketBridge.requestJSON(
+        return (try? await dashboardTicketBridge.requestJSON(
             path: dashboardPath("/api/fs/write-text", profile: profile),
             method: "POST",
             body: ["path": path, "content": idea.hasSuffix("\n") ? idea : "\(idea)\n"]
-        )
+        )) != nil
     }
 
     private func orderedProfiles(_ values: [String]) -> [String] {
@@ -33507,18 +34183,72 @@ final class AppState: ObservableObject {
     /// Counts display saves that landed, so a config read sent before one
     /// doesn't put the older choice back.
     private var displayPreferencesWriteRevision = 0
+    /// The same for time-zone saves, which come back in that config read
+    /// too but are counted apart, so a display save doesn't cost the zone.
+    private var timeZoneWriteRevision = 0
+    /// Display settings reads sent, and the newest whose answer was taken,
+    /// so an older read landing after it (or failing after it) doesn't put
+    /// its settings back.
+    private var displayPreferencesReadsSent: UInt64 = 0
+    private var displayPreferencesReadCommitted: UInt64 = 0
+
+    /// The reads every connection makes, sent with its ticket rather than
+    /// each after the step before it: the profile list, the chat list's
+    /// newest page and the display settings. Each step takes its answer
+    /// through `startupReads.read`, or reads again when something changed
+    /// since. Only through a saved dashboard's bridge, whose own stores hold
+    /// its session; never through the page.
+    let startupReads = StartupReads()
+
+    func sendStartupReads(profile: String, includingProfiles: Bool = true) {
+        guard let bridge = dashboardTicketBridge,
+              bridge.readsWithoutThePageFirst || bridge.usesNativeOAuth else { return }
+        let chatList = profileSessionsPath(profile)
+        startupReads.send(
+            (includingProfiles ? ["/api/profiles"] : []) + [chatList, dashboardPath("/api/config", profile: profile)],
+            through: bridge,
+            fence: { path in self.startupReadFence(for: bridge, chatList: path == chatList) }
+        )
+    }
+
+    /// What an early read must still match to be used: no write through the
+    /// dashboard, chat list change or display save since it was sent.
+    /// The chat list's own read also needs no listing committed since: one
+    /// another load committed meanwhile is newer than the early answer.
+    private func startupReadFence(for bridge: DashboardTicketBridge, chatList: Bool = false) -> StartupReads.Fence {
+        StartupReads.Fence(
+            writes: bridge.writesSent,
+            catalog: sessionCatalogCache.mutationGeneration,
+            display: displayPreferencesWriteRevision,
+            listings: chatList ? sessionCatalogCache.commits : 0,
+            writesOut: bridge.writesOut
+        )
+    }
 
     private func loadProfileDisplayPreferences() async {
         let profile = activeProfile
         guard let owner = currentDashboardRuntimeOwner() else { return }
         let dashboardTicketBridge = owner.bridge
         let revision = displayPreferencesWriteRevision
+        let zoneRevision = timeZoneWriteRevision
+        displayPreferencesReadsSent &+= 1
+        let read = displayPreferencesReadsSent
         do {
-            let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
+            let config = try await startupReads.read(
+                dashboardPath("/api/config", profile: profile),
+                through: dashboardTicketBridge,
+                fence: startupReadFence(for: dashboardTicketBridge)
+            )
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return }
+            // A read sent after this one that already landed is newer.
+            guard read > displayPreferencesReadCommitted else { return }
+            displayPreferencesReadCommitted = read
             let display = config["display"] as? [String: Any] ?? [:]
-            profileTimeZoneSetting = (profile, config[ProfileTimeZone.configKey] as? String ?? "")
-            // A display save that landed while this read was out is newer.
+            // A time-zone or display save that landed while this read was
+            // out is newer, each for its own setting.
+            if zoneRevision == timeZoneWriteRevision {
+                profileTimeZoneSetting = (profile, config[ProfileTimeZone.configKey] as? String ?? "")
+            }
             guard revision == displayPreferencesWriteRevision else { return }
             let reasoning = ReasoningDisplayMode(display: display)
             displayPreferences = ProfileDisplayPreferences(
@@ -33532,12 +34262,14 @@ final class AppState: ObservableObject {
             // A read cut off by a dashboard switch fails here; it must not
             // reset the next dashboard's preferences for a profile of the
             // same name.
-            guard ownsDashboardRuntime(owner), profile == activeProfile else { return }
+            guard ownsDashboardRuntime(owner), profile == activeProfile,
+                  read > displayPreferencesReadCommitted else { return }
             // Unread (offline, say): what this profile last said, not
             // Hermes' defaults, so thinking set to Off stays off.
             displayPreferences = storedDisplayPreferences(dashboardID: activeDashboardID, profile: profile)
                 ?? ProfileDisplayPreferences()
-            profileTimeZoneSetting = nil
+            // A zone saved while the read was out is still the one on screen.
+            if zoneRevision == timeZoneWriteRevision { profileTimeZoneSetting = nil }
         }
     }
 
@@ -33563,6 +34295,17 @@ final class AppState: ObservableObject {
             errorMessage = AppLocalization.string("Could not load profile settings: \(UserFacingError.message(for: error))")
             return keptProfileSettings(keys: keys) ?? keptDisplaySettings(keys: keys)
         }
+    }
+
+    /// The settings as Hermes answers now, or nil when it didn't: for a
+    /// control that waits for Hermes rather than show a kept value as its
+    /// answer (a provider's key order).
+    func readProfileSettings(keys: [String]) async -> [String: ProfileSettingValue]? {
+        let profile = activeProfile
+        guard let owner = currentDashboardRuntimeOwner(),
+              let config = try? await readKeepingAnswer(KeptRoute.config, profile: profile, owner: owner),
+              ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
+        return profileSettings(in: config, keys: keys)
     }
 
     /// What the settings pages open on before Hermes answers, and keep when
@@ -33893,6 +34636,9 @@ final class AppState: ObservableObject {
             // The write landed on its own profile; what's mirrored on screen
             // must still be that dashboard's and profile's.
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return true }
+            // Only the zone on screen voids a settings read's zone: one saved
+            // for a profile switched away from leaves the new one's read alone.
+            if key == ProfileTimeZone.configKey { timeZoneWriteRevision &+= 1 }
             if key == ProfileTimeZone.configKey, let zone = value.textValue {
                 profileTimeZoneSetting = (profile, zone)
             }
@@ -34245,6 +34991,7 @@ final class AppState: ObservableObject {
         guard keeps else { return }
         // A schema's fields are keyed by config path, not by what they hold.
         let names: Set<String> = route == KeptRoute.configSchema ? ["fields"] : []
+        let answer = route == KeptRoute.modelAuxiliary ? HelperModelSlot.keptAnswer(answer) : answer
         offlineChatCache.recordAnswer(answer, route: route, dashboardID: dashboardID, profile: profile, namesUnder: names)
     }
 
@@ -35992,6 +36739,11 @@ final class AppState: ObservableObject {
     /// may claim Hermes timed out; an interrupt or closed session must not.
     private static func clarifyExpiredNotice(for questionCount: Int, reason: String?) -> String {
         guard let reason, reason != "timeout" else { return clarifyExpiredNotice(for: questionCount) }
+        if reason == "answered_elsewhere" {
+            return questionCount > 1
+                ? AppLocalization.string("These questions were answered elsewhere.")
+                : AppLocalization.string("This question was answered elsewhere.")
+        }
         return questionCount > 1
             ? AppLocalization.string("These questions are no longer active.")
             : AppLocalization.string("This question is no longer active.")
@@ -36047,14 +36799,18 @@ final class AppState: ObservableObject {
         guard let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
               var activity = messages[index].clarify else { return }
         switch outcome {
-        case .expired:
+        case .expired, .answeredElsewhere, .ended:
             activity.isExpired = true
             for questionIndex in activity.questions.indices
             where activity.questions[questionIndex].status != .answered {
                 activity.questions[questionIndex].status = .expired
                 activity.questions[questionIndex].error = nil
             }
-            activity.error = Self.clarifyExpiredNotice(for: activity.questions.count)
+            // Only a timeout may say Hermes timed it out; another surface's
+            // answer, or a turn that ended, says the question is no longer active.
+            activity.error = outcome == .expired
+                ? Self.clarifyExpiredNotice(for: activity.questions.count)
+                : Self.clarifyExpiredNotice(for: activity.questions.count, reason: outcome == .answeredElsewhere ? "answered_elsewhere" : "ended")
         case .accepted(let remaining):
             // A late accepted outcome can never resurrect an expired request.
             guard !activity.isExpired,
@@ -38496,6 +39252,11 @@ final class AppState: ObservableObject {
     /// connection swaps — without the voice capability snapshot plumbing.
     func installDashboardTicketBridgeForTesting(_ bridge: DashboardTicketBridge) {
         dashboardTicketBridge = bridge
+    }
+
+    /// Test-only: the connection's display settings read.
+    func loadProfileDisplayPreferencesForTesting() async {
+        await loadProfileDisplayPreferences()
     }
 
     /// Test-only: what the host's notifier plugin reported serving.

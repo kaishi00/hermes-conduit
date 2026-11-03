@@ -664,6 +664,9 @@ struct PulseFeedPage: Equatable {
     /// Pulse's own chat, behind the screen (0.56.0); nil from an older
     /// plugin, or before the chat is made.
     var homeChatID: String?
+    /// The profile Pulse runs in, where its chat is (0.126.2); nil from an
+    /// older plugin, whose Pulse runs in the dashboard's default profile.
+    var profile: String?
     /// Why Pulse is quiet now, and when it speaks up again (0.80.2); nil
     /// while it isn't, and from an older plugin.
     var quietNow: PulseQuietReason?
@@ -684,6 +687,7 @@ struct PulseFeedPage: Equatable {
         levels = PulseFeedPage.levels(json["levels"])
         let home = (json["home_chat_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         homeChatID = home?.isEmpty == false ? home : nil
+        profile = PulseJSON.profile(json["profile"])
         quietNow = (json["quiet_now"] as? String).flatMap(PulseQuietReason.init(rawValue:))
         quietEndsAt = quietNow == nil ? nil : PulseJSON.date(json["quiet_ends_at"])
         night = PulseNight(json: json["night"])
@@ -1107,12 +1111,19 @@ extension AppState {
         pulseHomeChatID ?? activeDashboardID.flatMap { pulseRememberedHomes[$0.uuidString] }
     }
 
+    /// The profile Pulse runs in, where its chat is: as the feed last named
+    /// it on this dashboard, else the default profile, where an older
+    /// plugin's Pulse runs (issue 1681).
+    var pulseHomeProfile: String {
+        activeDashboardID.flatMap { pulseRememberedProfiles[$0.uuidString] } ?? Self.pulseDefaultProfile
+    }
+
     /// A plugin that answered without the feed (or predates reporting):
     /// this dashboard has no Pulse chat to hide or remember.
     func forgetPulseHomeIfGone() {
         guard !pulsePluginUnanswered, !notifierPlugin.reports(PulseClient.feedCapability) else { return }
         if pulseHomeChatID != nil { pulseHomeChatID = nil }
-        rememberPulseHome(nil)
+        rememberPulseHome(nil, profile: nil)
     }
 
     /// Reads the feed for the button's badge and the chat's Pulse marks.
@@ -1122,7 +1133,7 @@ extension AppState {
             pulseUnseen = 0
             pulseSources = [:]
             pulseHomeChatID = nil
-            if !pulsePluginUnanswered { rememberPulseHome(nil) }  // the plugin said: no Pulse here
+            if !pulsePluginUnanswered { rememberPulseHome(nil, profile: nil) }  // the plugin said: no Pulse here
             return
         }
         let dashboard = activeDashboardID
@@ -1137,13 +1148,13 @@ extension AppState {
         let sources = page.sources
         if sources != pulseSources { pulseSources = sources }
         if page.homeChatID != pulseHomeChatID { pulseHomeChatID = page.homeChatID }
-        rememberPulseHome(page.homeChatID)
+        rememberPulseHome(page.homeChatID, profile: page.profile)
     }
 
     /// Pulse's own chat: Conduit shows it as the Pulse screen, not in Chats.
     func isPulseHomeChat(_ session: SessionSummary) -> Bool {
         // By the row's own profile: in All a row can be another profile's.
-        guard let home = pulseHomeChat, showsPulseScreen, profilesMatch(rowProfile(session), Self.pulseHomeProfile) else {
+        guard let home = pulseHomeChat, showsPulseScreen, profilesMatch(rowProfile(session), pulseHomeProfile) else {
             return false
         }
         return session.nestingIDs.contains(home)
@@ -1154,7 +1165,7 @@ extension AppState {
     /// so does any reply while a sheet is up, which the screen can't cover.
     func opensPulseScreen(for target: ConduitNotificationTarget) async -> Bool {
         guard target.type == "response.ready", target.decision == nil, target.call == nil, !target.isChatLink,
-              target.profile.map({ profilesMatch($0, Self.pulseHomeProfile) }) ?? true,
+              target.profile.map({ profilesMatch($0, pulseHomeProfile) }) ?? true,
               showsPulseScreen, !isModalSheetPresented else { return false }
         if pulseHomeChat == nil { await refreshPulseFeed() }
         guard let home = pulseHomeChat, home == target.sessionId || home == target.durableSessionID else {
@@ -1268,7 +1279,7 @@ extension AppState {
     /// Pulse's own profile's, the one inbox Pulse reads.
     func pulseKeepsDeadlines(from scope: ShortcutInboxScope?) -> Bool {
         guard pulseKeepsInboxDeadlines, let scope, scope.dashboardID == activeDashboardID else { return false }
-        return profilesMatch(scope.profile, Self.pulseHomeProfile)
+        return profilesMatch(scope.profile, pulseHomeProfile)
     }
 
     /// Opens the chat a card came from.
@@ -1277,7 +1288,7 @@ extension AppState {
     func openPulseCardChat(_ card: PulseCard) {
         guard pulseCardHasChat(card) else { return }
         pendingArtifactReveal = card.messageID.map { ArtifactReveal(messageID: $0, opening: card.chatID) }
-        openAppLink(.session(id: card.chatID, profile: card.profile.isEmpty ? Self.pulseHomeProfile : card.profile))
+        openAppLink(.session(id: card.chatID, profile: card.profile.isEmpty ? pulseHomeProfile : card.profile))
     }
 
     /// Opens the Kanban task a card from its worker names, in Tasks.
@@ -1300,10 +1311,10 @@ extension AppState {
             openPulseCardChat(card)
             guard await waitForOpenChat(card.chatID, on: dashboard) else { return false }
         } else {
-            if !profilesMatch(activeProfile, Self.pulseHomeProfile) {
+            if !profilesMatch(activeProfile, pulseHomeProfile) {
                 // The switch returns with Pulse's profile connected and its chat open.
                 guard await switchProfileForPulse(), activeDashboardID == dashboard,
-                      profilesMatch(activeProfile, Self.pulseHomeProfile) else { return false }
+                      profilesMatch(activeProfile, pulseHomeProfile) else { return false }
             }
             guard await startPulseNewChat() != nil, activeDashboardID == dashboard else { return false }
         }
@@ -1321,7 +1332,7 @@ extension AppState {
     /// Chat's (startNewChat(inProfile:)).
     func pulseNewChatRefusal(for card: PulseCard) -> String? {
         guard !pulseCardHasChat(card) else { return nil }
-        if !profilesMatch(activeProfile, Self.pulseHomeProfile), isVoiceCallInProgress {
+        if !profilesMatch(activeProfile, pulseHomeProfile), isVoiceCallInProgress {
             return AppLocalization.string("End the call to open a chat in another profile.")
         }
         guard isConnected || isConnecting else {

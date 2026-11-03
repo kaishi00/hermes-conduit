@@ -164,6 +164,7 @@ final class GPTLiveClient: GPTLiveSessionProviding {
         do {
             response = try await request(scoped(Self.statusPath), "GET", nil, 12_000)
         } catch let error as DashboardTicketBridgeError {
+            if let remedy = DashboardTicketBridgeError.pluginOffDetail(of: error) { return .unavailable(reason: remedy) }
             if GeminiLiveTokenClient.isMissingRoute(error) { return .pluginMissing }
             throw error
         }
@@ -186,6 +187,7 @@ final class GPTLiveClient: GPTLiveSessionProviding {
         do {
             response = try await request(scoped(Self.sessionPath), "POST", body, Self.sessionTimeoutMilliseconds)
         } catch let error as DashboardTicketBridgeError {
+            if let remedy = DashboardTicketBridgeError.pluginOffDetail(of: error) { throw GPTLiveClientError.unavailable(.unavailable(reason: remedy)) }
             if GeminiLiveTokenClient.isMissingRoute(error) { throw GPTLiveClientError.unavailable(.pluginMissing) }
             // The host's `detail` already names the problem and says no API
             // fallback was used: shown as it is.

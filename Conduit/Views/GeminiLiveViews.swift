@@ -199,7 +199,7 @@ struct GeminiLiveSettingsSection: View {
                         model.setSpeakerBargeIn(requested)
                     }
                 ))
-                Text(model.provider == .qwenLive ? AppLocalization.string("Experimental. Keeps the microphone open while Qwen talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Qwen keeps cutting itself off. Shared by Qwen Live, Gemini Live, Grok Live and Classic voice. Applies to the next conversation.") : AppLocalization.string("Experimental. Keeps the microphone open while Gemini talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Gemini keeps cutting itself off. Shared by Qwen Live, Gemini Live, Grok Live and Classic voice. Applies to the next conversation."))
+                Text((model.provider == .qwenLive ? AppLocalization.string("Experimental. Keeps the microphone open while Qwen talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Qwen keeps cutting itself off. Shared by Qwen Live, Gemini Live, Grok Live and Classic voice. Applies to the next conversation.") : AppLocalization.string("Experimental. Keeps the microphone open while Gemini talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Gemini keeps cutting itself off. Shared by Qwen Live, Gemini Live, Grok Live and Classic voice. Applies to the next conversation.")) + " " + AppLocalization.string("Calls from Hermes don't use it, so their voice starts right away."))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Save calls to Sessions", isOn: Binding(
@@ -542,7 +542,11 @@ struct VoiceJobModelSettingsSection: View {
         if selection != defaultTag, !providers.contains(where: { provider in
             provider.models.contains { tag(provider: provider.name, model: $0.id) == selection }
         }) {
-            choices.append((id: selection, title: parse(selection).model))
+            let held = parse(selection)
+            // A provider pinned without a model runs on its default one.
+            choices.append((id: selection, title: held.model.isEmpty
+                ? providerDefaultTitle(held.provider ?? "")
+                : held.model))
         }
         for provider in providers {
             for model in provider.models {
@@ -565,6 +569,11 @@ struct VoiceJobModelSettingsSection: View {
         ]
     }
 
+    /// A provider pinned without a model: Hermes runs its default model.
+    static func providerDefaultTitle(_ provider: String) -> String {
+        AppLocalization.string("Default") + " · " + provider
+    }
+
     /// Picker tag for a provider/model pair (provider may be empty).
     static func tag(provider: String?, model: String) -> String {
         "\(provider ?? "")\u{1F}\(model)"
@@ -577,46 +586,98 @@ struct VoiceJobModelSettingsSection: View {
     }
 }
 
-/// Hermes' model slot for spoken classic-voice turns
-/// (`auxiliary.voice_chat`), read from `/api/model/auxiliary`.
+/// One of Hermes' helper model slots (`auxiliary.<task>`), read from
+/// `/api/model/auxiliary`: spoken classic-voice turns (`voice_chat`) and
+/// the helper models on Models & providers.
 struct VoiceReplyModelSetting: Equatable {
     static let task = "voice_chat"
 
+    /// The slot: `voice_chat` for voice replies.
+    var task: String = Self.task
     /// `auto` with an empty model follows the chat's model.
     var provider: String
     var model: String
     /// Nil follows the chat's reasoning; `none` (Hermes' default) is off.
     var reasoningEffort: String?
+    /// An endpoint of the slot's own (`auxiliary.<task>.base_url`), such as
+    /// a local server. Hermes keeps it while the provider stays, so a save
+    /// never sends it.
+    var baseURL: String?
 
-    /// Nil when this Hermes has no voice reply slot.
-    init?(auxiliaryResponse response: [String: Any]) {
+    /// Nil when this Hermes has no such slot.
+    init?(auxiliaryResponse response: [String: Any], task: String = Self.task) {
         let tasks = response["tasks"] as? [[String: Any]] ?? []
-        guard let row = tasks.first(where: { $0["task"] as? String == Self.task }) else { return nil }
+        guard let row = tasks.first(where: { $0["task"] as? String == task }) else { return nil }
+        self.init(row: row)
+    }
+
+    /// A row of `/api/model/auxiliary`'s tasks; nil without a task name.
+    init?(row: [String: Any]) {
+        let task = (row["task"] as? String ?? "").trimmingCharacters(in: .whitespaces)
+        guard !task.isEmpty else { return nil }
+        self.task = task
         let provider = (row["provider"] as? String ?? "").trimmingCharacters(in: .whitespaces)
         self.provider = provider.isEmpty ? "auto" : provider
         model = (row["model"] as? String ?? "").trimmingCharacters(in: .whitespaces)
         let effort = (row["reasoning_effort"] as? String ?? "").trimmingCharacters(in: .whitespaces)
         reasoningEffort = effort.isEmpty ? nil : effort
+        let url = (row["base_url"] as? String ?? "").trimmingCharacters(in: .whitespaces)
+        baseURL = url.isEmpty ? nil : url
     }
 
-    init(provider: String, model: String, reasoningEffort: String?) {
+    init(task: String = Self.task, provider: String, model: String, reasoningEffort: String?, baseURL: String? = nil) {
+        self.task = task
         self.provider = provider
         self.model = model
         self.reasoningEffort = reasoningEffort
+        self.baseURL = baseURL
+    }
+
+    /// Follows the chat's model.
+    var followsChats: Bool { model.isEmpty && !providerOnly }
+
+    /// A provider pinned without a model: Hermes runs that provider's
+    /// default model, not the chat's.
+    var providerOnly: Bool {
+        model.isEmpty && !provider.isEmpty && provider != "auto"
+    }
+
+    /// The slot's own endpoint by host (and port), never its path or any
+    /// credentials in it.
+    var endpointHost: String? {
+        guard let baseURL else { return nil }
+        guard let components = URLComponents(string: baseURL), let host = components.host, !host.isEmpty else {
+            return nil
+        }
+        return components.port.map { "\(host):\($0)" } ?? host
     }
 
     /// `POST /api/model/set` body. An explicit null reasoning means "same as
     /// chats"; Hermes keeps it from falling back to its off default.
-    func assignmentBody(profile: String) -> [String: Any] {
-        [
+    /// `confirmed` answers Hermes' price check for a model the user chose
+    /// anyway.
+    func assignmentBody(profile: String, confirmed: Bool = false) -> [String: Any] {
+        var body: [String: Any] = [
             "scope": "auxiliary",
-            "task": Self.task,
+            "task": task,
             "provider": provider.isEmpty ? "auto" : provider,
             "model": model,
             "reasoning_effort": reasoningEffort ?? NSNull(),
             "profile": profile
         ]
+        if confirmed { body["confirm_expensive_model"] = true }
+        return body
     }
+}
+
+/// How a helper model save ended.
+enum HelperModelSaveResult: Equatable {
+    case saved
+    /// Hermes didn't take it, saying why.
+    case refused(String)
+    /// Hermes' price check asks before it takes the model: its warning,
+    /// for the user to choose it anyway.
+    case needsConfirmation(String)
 }
 
 /// What Voice settings needs for the voice reply model choice.
@@ -629,8 +690,8 @@ struct VoiceReplyModelSettingsModel {
     /// didn't answer.
     var load: () async throws -> VoiceReplyModelSetting?
     var loadProviders: () async -> [ProviderInfo]?
-    /// Nil when Hermes took the setting; otherwise why not.
-    var save: (VoiceReplyModelSetting) async -> String?
+    /// Writes the setting; `confirmed` answers Hermes' price check.
+    var save: (VoiceReplyModelSetting, _ confirmed: Bool) async -> HelperModelSaveResult
 }
 
 /// The Voice replies section's setting and picks, apart from its view so
@@ -653,6 +714,8 @@ struct VoiceReplyModelPicks {
     private(set) var writing = false
     /// Why Hermes didn't take the last pick, shown under the pickers.
     private(set) var refusal: String?
+    /// The pick Hermes' price check asked about, for Use It Anyway.
+    private(set) var confirmable: VoiceReplyModelSetting?
     /// Counts the writes: an answer to a read asked before one, or while
     /// one was out, may predate it.
     private var writes = 0
@@ -712,7 +775,44 @@ struct VoiceReplyModelPicks {
         writing = true
         writes += 1
         refusal = nil
+        confirmable = nil
         return chosen
+    }
+
+    /// The pick Hermes' price check asked about, written again with the
+    /// user's yes; nil when there's none or a write is out.
+    mutating func confirmAsked() -> VoiceReplyModelSetting? {
+        guard !writing, let confirmable else { return nil }
+        writing = true
+        writes += 1
+        refusal = nil
+        self.confirmable = nil
+        // Shown while it's written; a refusal puts back what Hermes holds.
+        selection = Self.selection(for: confirmable)
+        reasoning = confirmable.reasoningEffort ?? Self.inheritReasoning
+        return confirmable
+    }
+
+    private static func selection(for setting: VoiceReplyModelSetting) -> String {
+        setting.followsChats ? sameAsChats : VoiceJobModelSettingsSection.tag(provider: setting.provider, model: setting.model)
+    }
+
+    /// The model Hermes runs the slot on, its endpoint's host beside it.
+    var endpointCaption: String? {
+        saved?.endpointHost.map { AppLocalization.string("Runs on your endpoint at \($0). A model from another provider moves it off.") }
+    }
+
+    /// How a write ended: Hermes took it, refused it, or asks first.
+    mutating func writeEnded(_ setting: VoiceReplyModelSetting, result: HelperModelSaveResult) {
+        switch result {
+        case .saved:
+            writeEnded(setting, refusal: nil)
+        case .refused(let reason):
+            writeEnded(setting, refusal: reason)
+        case .needsConfirmation(let warning):
+            writeEnded(setting, refusal: warning)
+            confirmable = setting
+        }
     }
 
     /// Hermes took `setting`, or refused it, saying why: the pickers then
@@ -729,12 +829,17 @@ struct VoiceReplyModelPicks {
 
     private var chosen: VoiceReplyModelSetting {
         let pick = selection == Self.sameAsChats ? nil : VoiceJobModelSettingsSection.parse(selection)
-        // "Same as chats" keeps a provider pinned without a model as is.
-        let unpinnedProvider = saved.map { $0.model.isEmpty ? $0.provider : "auto" } ?? "auto"
+        // "Same as chats" unpins the provider too; a provider pinned
+        // without a model is a choice of its own.
+        let provider = pick.map { $0.provider ?? "auto" } ?? "auto"
         return VoiceReplyModelSetting(
-            provider: pick.map { $0.provider ?? "auto" } ?? unpinnedProvider,
+            task: saved?.task ?? VoiceReplyModelSetting.task,
+            provider: provider,
             model: pick?.model ?? "",
-            reasoningEffort: reasoning == Self.inheritReasoning ? nil : reasoning
+            reasoningEffort: reasoning == Self.inheritReasoning ? nil : reasoning,
+            // The slot's endpoint stays while its provider does, as Hermes
+            // keeps it then.
+            baseURL: provider == saved?.provider ? saved?.baseURL : nil
         )
     }
 
@@ -743,19 +848,20 @@ struct VoiceReplyModelPicks {
     private mutating func show(_ setting: VoiceReplyModelSetting?) {
         saved = setting
         guard let setting else { return }
-        selection = setting.model.isEmpty
-            ? Self.sameAsChats
-            : VoiceJobModelSettingsSection.tag(provider: setting.provider, model: setting.model)
+        selection = Self.selection(for: setting)
         reasoning = setting.reasoningEffort ?? Self.inheritReasoning
     }
 }
 
-/// The model and reasoning Hermes answers classic-voice turns with. Hidden
-/// on a Hermes without the slot.
+/// The model and reasoning Hermes answers classic-voice turns with, or
+/// (on a helper model's page) runs one of its helper jobs with. Hidden on
+/// a Hermes without the slot.
 struct VoiceReplyModelSettingsSection: View {
     let settings: VoiceReplyModelSettingsModel
     /// The page is asking Hermes again (Check again too).
     var pageIsChecking = false
+    /// A helper model's own heading and words; nil for Voice replies.
+    var helper: HelperModelSlot?
     @State private var picks = VoiceReplyModelPicks()
     @State private var providers: [ProviderInfo] = []
     @State private var providersFailed = false
@@ -765,11 +871,15 @@ struct VoiceReplyModelSettingsSection: View {
     var body: some View {
         Group {
             if picks.saved != nil {
-                ConduitSettingsSection(title: AppLocalization.string("Voice replies"), symbol: "waveform.circle", tint: .conduitAura) {
+                ConduitSettingsSection(
+                    title: helper?.title ?? AppLocalization.string("Voice replies"),
+                    symbol: helper?.symbol ?? "waveform.circle",
+                    tint: .conduitAura
+                ) {
                     ConduitMenuPicker(
                         value: picks.selection,
                         choices: VoiceJobModelSettingsSection.modelChoices(
-                            defaultTitle: AppLocalization.string("Same as chats"),
+                            defaultTitle: helper?.followTitle ?? AppLocalization.string("Same as chats"),
                             defaultTag: VoiceReplyModelPicks.sameAsChats,
                             selection: picks.selection,
                             providers: providers
@@ -794,12 +904,33 @@ struct VoiceReplyModelSettingsSection: View {
                     if let refusal = picks.refusal {
                         Text(verbatim: refusal)
                             .scaledFont(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(picks.confirmable == nil ? .red : .orange)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    Text("The model Hermes answers you with in a voice conversation. Reasoning is off by default so replies start sooner; typed messages keep the chat's model. Hermes Desktop uses this setting too.")
-                        .scaledFont(.caption)
-                        .foregroundStyle(.secondary)
+                    if picks.confirmable != nil {
+                        // Hermes' price check asked first: the user can
+                        // choose the model anyway.
+                        Button(AppLocalization.string("Use It Anyway")) { confirm() }
+                            .scaledFont(.subheadline.weight(.semibold))
+                            .tint(.conduitAccent)
+                            .disabled(picks.writing)
+                    }
+                    if let endpoint = picks.endpointCaption {
+                        Text(verbatim: endpoint)
+                            .scaledFont(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let helper {
+                        Text(verbatim: helper.caption)
+                            .scaledFont(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("The model Hermes answers you with in a voice conversation. Reasoning is off by default so replies start sooner; typed messages keep the chat's model. Hermes Desktop uses this setting too.")
+                            .scaledFont(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
@@ -870,8 +1001,16 @@ struct VoiceReplyModelSettingsSection: View {
     private func save() {
         guard let next = picks.writeAsked() else { return }
         Task {
-            let refusal = await settings.save(next)
-            picks.writeEnded(next, refusal: refusal)
+            let result = await settings.save(next, false)
+            picks.writeEnded(next, result: result)
+        }
+    }
+
+    private func confirm() {
+        guard let next = picks.confirmAsked() else { return }
+        Task {
+            let result = await settings.save(next, true)
+            picks.writeEnded(next, result: result)
         }
     }
 }

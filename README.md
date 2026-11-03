@@ -47,7 +47,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 - Attach photos, camera shots and any file, or drag them onto a chat (Finder on a Mac, Files on an iPad); a long paste becomes a text attachment you can open, edit or put back as text; quote a message, react to it, copy it
 - Open a picture full screen and swipe through the chat's pictures (or Artifacts' or a folder's): pinch or double-tap to zoom, swipe down to close, share or save
 - Steer, queue or stop a running turn; context meter; slash commands
-- Branch, pin (in the order you set), archive and delete sessions; project chats, with a dot on a project that holds an unread reply; Artifacts browser for every file and page Hermes made
+- Branch, pin (in the order you set), archive and delete sessions; project chats, with a dot on a project that holds an unread reply; make a project from the Projects heading's +, from a new or an existing folder on the Hermes host; Artifacts browser for every file and page Hermes made
 - Browse the chat's folder and your projects' folders beside Artifacts: preview and edit files, search names and contents, make, rename, move and delete files, upload from the phone, and tap a file path in a reply to open it (the folder's search and changes need the plugin)
 - Saved chats open instantly, and you can type while Conduit reconnects
 
@@ -84,6 +84,7 @@ Each is off until you turn it on, and goes only to your own Hermes host, encrypt
 - Home Screen widgets to start a chat or talk in one tap
 - Provider, model and reasoning effort switching mid-conversation
 - Connect model providers in Settings > Models & providers: sign in, paste an API key once for every profile (or give one profile its own), or add your own OpenAI-compatible server. Keys stay on your Hermes host and are never shown again
+- Pick the helper models Hermes runs smaller jobs on (chat titles, compaction, reading images, Conduit predictions and the rest) in Settings > Models & providers > Helper models, and the order a provider's keys take turns in on its page
 - Multiple dashboards and profiles, each with its own credentials and settings; rename a profile or change its photo and glow in Settings > Profiles; All in the profile row lists every profile's chats together, newest first with each row's profile picture, or grouped by profile with each profile's pinned chats and five newest until Show more
 - Capabilities: skills, tools, connectors (MCP servers you can test and edit, by form or as JSON) and plugins, plus Hermes settings and gateway logs
 - Native OAuth sign-in through your dashboard, QR code and setup links, Cloudflare Access service tokens
@@ -163,7 +164,7 @@ On your home network the address is then `http://<nas-ip>:9119`; through Tailsca
 4. **Sign in.** Open Conduit, enter the address and sign in with the username and password from step 1.
 5. **Add the plugin** as described in [Notifications, voice and phone features](#notifications-voice-and-phone-features), or from **Settings > Conduit plugin** once you're signed in.
 
-**Note:** Conduit connects to the native Hermes dashboard, not the separate Hermes WebUI project. The default port is 9119.
+**Note:** Conduit connects to the native Hermes dashboard, not the separate Hermes WebUI project. The default port is 9119. The address of the gateway's own web listener (the one `hermes webapp` serves, port 9120 by default) works too. It serves the gateway's own profile's chats; Bot Chats in other profiles need the dashboard, or a gateway that serves several profiles.
 
 Plain HTTP over Tailscale (MagicDNS `.ts.net` domains and `100.64.0.0/10` tailnet IPs) is supported, since that traffic is already WireGuard-encrypted.
 
@@ -218,7 +219,7 @@ See [the iOS release workflow](docs/RELEASE_WORKFLOW.md) for the TestFlight and 
 
 Conduit is SwiftUI, generated with xcodegen from `project.yml`. Targets: the iPhone and iPad app, the Watch app and its widgets, Home Screen widgets and Live Activities, a Notification Service Extension (decrypts end-to-end encrypted notifications), a Location Push extension, and a share extension.
 
-The app connects to the Hermes dashboard's WebSocket (`/api/ws`) and REST routes after authenticating through the dashboard, as the desktop client does. Plugin features use the notifier's routes under `/api/plugins/conduit_push/`, behind the same dashboard auth.
+The app connects to the Hermes dashboard's WebSocket (`/api/ws`) and REST routes after authenticating through the dashboard, as the desktop client does. On the gateway's own listener the same socket is answered by Hermes' session authority, which takes other shapes for the same requests; Conduit reads which one it reached from the socket's `gateway.ready` and sends each its own. Plugin features use the notifier's routes under `/api/plugins/conduit_push/`, behind the same dashboard auth.
 
 Key places:
 - `Conduit/Services/HermesClient.swift` - WebSocket client and RPC layer

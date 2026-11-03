@@ -11,6 +11,7 @@
 
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 class ReturnKeyTextView: UITextView {
     /// The text size and column `font` was last set for
@@ -21,11 +22,172 @@ class ReturnKeyTextView: UITextView {
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
         inlinePredictionType = Self.inlinePredictionType(onMac: ProcessInfo.processInfo.isiOSAppOnMac)
+        installFieldDrop()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         inlinePredictionType = Self.inlinePredictionType(onMac: ProcessInfo.processInfo.isiOSAppOnMac)
+        installFieldDrop()
+    }
+
+    // MARK: Drops on the field
+
+    // UITextView's own text drop took a file dropped on the field (a
+    // picture from Finder) and never finished it: nothing attached, the
+    // chat's "Drop to attach" outline stayed up and the drag hung on
+    // (issue 1689). So the field has one drop interaction, this one: it
+    // takes words and links into the draft, files only where the field
+    // stages them itself (the chat composer), and turns other files down
+    // so the chat, the room or the full editor around it attaches them.
+
+    /// What a drop on the field does with what is dragged over it.
+    enum FieldDrop: Equatable {
+        /// The field stages the files (and puts any words in the draft).
+        case files
+        /// The words or links go into the draft.
+        case words
+        /// The field turns it down; a drop target around it may take it.
+        case declined
+    }
+
+    static func fieldDrop(
+        registeredTypeIdentifiers: [[String]],
+        suggestedNames: [String?],
+        isEditable: Bool,
+        takesFiles: Bool
+    ) -> FieldDrop {
+        let items = zip(registeredTypeIdentifiers, suggestedNames)
+        if items.contains(where: { AttachmentDrop.takes(registeredTypeIdentifiers: $0, suggestedName: $1) }) {
+            // A locked field takes no files, as its Attach menu is off.
+            return takesFiles && isEditable ? .files : .declined
+        }
+        let hasWords = registeredTypeIdentifiers.contains { identifiers in
+            identifiers.contains { identifier in
+                guard let type = UTType(identifier) else { return false }
+                return type.conforms(to: .text) || type.conforms(to: .url)
+            }
+        }
+        return isEditable && hasWords ? .words : .declined
+    }
+
+    func fieldDrop(for providers: [NSItemProvider]) -> FieldDrop {
+        Self.fieldDrop(
+            registeredTypeIdentifiers: providers.map(\.registeredTypeIdentifiers),
+            suggestedNames: providers.map(\.suggestedName),
+            isEditable: isEditable,
+            takesFiles: takesDroppedFiles
+        )
+    }
+
+    /// Whether the field stages dropped files itself. A field that doesn't
+    /// leaves them to the drop target around it.
+    var takesDroppedFiles: Bool { false }
+
+    /// Stages the files among `providers` (words and links among them go
+    /// into the draft separately). Only called when `takesDroppedFiles`.
+    func takeDroppedFiles(_ providers: [NSItemProvider]) {}
+
+    private let fieldDropHandler = FieldDropHandler()
+
+    private func installFieldDrop() {
+        fieldDropHandler.field = self
+        textDropDelegate = nil
+        textDragDelegate = fieldDropHandler
+        for case let drop as UIDropInteraction in interactions where drop.delegate !== fieldDropHandler {
+            removeInteraction(drop)
+        }
+        if !interactions.contains(where: { ($0 as? UIDropInteraction)?.delegate === fieldDropHandler }) {
+            super.addInteraction(UIDropInteraction(delegate: fieldDropHandler))
+        }
+    }
+
+    override func addInteraction(_ interaction: UIInteraction) {
+        // UIKit's own text drop (or one a paste configuration brings) is
+        // kept off the field: the field's drop is `fieldDropHandler`'s.
+        if let drop = interaction as? UIDropInteraction, drop.delegate !== fieldDropHandler { return }
+        super.addInteraction(interaction)
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        installFieldDrop()
+    }
+
+    /// Takes a drop the field accepted: files to the composer, words and
+    /// links into the draft where they were dropped.
+    func takeDrop(_ providers: [NSItemProvider], at point: CGPoint) {
+        let decision = fieldDrop(for: providers)
+        guard decision != .declined else { return }
+        if decision == .files { takeDroppedFiles(providers) }
+        let words = providers.filter { !AttachmentDrop.takes($0) }
+        guard isEditable, !words.isEmpty else { return }
+        if !isFirstResponder { _ = becomeFirstResponder() }
+        let target = closestPosition(to: point).flatMap { textRange(from: $0, to: $0) }
+        if let target { selectedTextRange = target }
+        Task { @MainActor [weak self] in
+            var pieces: [String] = []
+            for provider in words {
+                if let piece = await Self.droppedWords(from: provider) { pieces.append(piece) }
+            }
+            let text = pieces.joined(separator: " ")
+            // A field the composer replaced meanwhile (a send, another
+            // chat) is out of its window; the words aren't put there.
+            guard let self, self.isEditable, self.window != nil, !text.isEmpty else { return }
+            // At the drop point, even if the caret moved while they loaded.
+            if let target { self.selectedTextRange = target }
+            self.insertText(text)
+        }
+    }
+
+    /// Words dragged within the field move there, as UIKit's own text drop
+    /// moved them: the dragged range leaves and goes in at the drop point.
+    /// A drop inside the dragged range leaves the text as it was.
+    func moveDraggedWords(from source: NSRange, to point: CGPoint) {
+        guard isEditable,
+              let position = closestPosition(to: point),
+              let move = Self.wordsMove(
+                source: source,
+                dropOffset: offset(from: beginningOfDocument, to: position),
+                length: (text as NSString).length
+              ) else { return }
+        let moved = (text as NSString).substring(with: source)
+        if !isFirstResponder { _ = becomeFirstResponder() }
+        // Through the text system, so the composer hears both edits.
+        selectedRange = source
+        deleteBackward()
+        selectedRange = NSRange(location: move.insertOffset, length: 0)
+        insertText(moved)
+    }
+
+    /// Where words dragged from `source` go in once they've left, or nil
+    /// when the drop is inside them (or the range no longer fits).
+    static func wordsMove(source: NSRange, dropOffset: Int, length: Int) -> (deleteRange: NSRange, insertOffset: Int)? {
+        guard source.length > 0, source.location >= 0, NSMaxRange(source) <= length,
+              dropOffset >= 0, dropOffset <= length else { return nil }
+        if dropOffset >= source.location && dropOffset <= NSMaxRange(source) { return nil }
+        let insertOffset = dropOffset > NSMaxRange(source) ? dropOffset - source.length : dropOffset
+        return (source, insertOffset)
+    }
+
+    /// The words a dragged item carries, or its link written out.
+    static func droppedWords(from provider: NSItemProvider) async -> String? {
+        if provider.canLoadObject(ofClass: String.self) {
+            let text: String? = await withCheckedContinuation { continuation in
+                _ = provider.loadObject(ofClass: String.self) { text, _ in
+                    continuation.resume(returning: text)
+                }
+            }
+            if let text { return text }
+        }
+        if provider.canLoadObject(ofClass: URL.self) {
+            return await withCheckedContinuation { continuation in
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    continuation.resume(returning: url?.absoluteString)
+                }
+            }
+        }
+        return nil
     }
 
     /// On a Mac, macOS shows an inline prediction in a correction panel that
@@ -439,5 +601,73 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         func textViewDidEndEditing(_ textView: UITextView) {
             if parent.isFocused { parent.isFocused = false }
         }
+    }
+}
+
+/// The field's only drop interaction (`ReturnKeyTextView.installFieldDrop`).
+/// A drop it turns down goes to the drop target around the field. As the
+/// field's text drag delegate it also keeps the range a drag from the
+/// field took, so a drop back in the field moves those words.
+final class FieldDropHandler: NSObject, UIDropInteractionDelegate, UITextDragDelegate {
+    weak var field: ReturnKeyTextView?
+    /// The drag session a drag of the field's own words started, and the
+    /// range it took. Kept as an object so tests can stand in for it.
+    private weak var draggedSession: AnyObject?
+    private var draggedRange: NSRange?
+
+    func textDraggableView(_ textDraggableView: UIView & UITextDraggable, itemsForDrag dragRequest: UITextDragRequest) -> [UIDragItem] {
+        if let field {
+            let start = field.offset(from: field.beginningOfDocument, to: dragRequest.dragRange.start)
+            let end = field.offset(from: field.beginningOfDocument, to: dragRequest.dragRange.end)
+            noteDrag(dragRequest.dragSession, range: NSRange(location: start, length: max(0, end - start)))
+        }
+        return dragRequest.suggestedItems
+    }
+
+    func textDraggableView(_ textDraggableView: UIView & UITextDraggable, dragSessionDidEnd session: UIDragSession, with operation: UIDropOperation) {
+        if session === draggedSession {
+            draggedSession = nil
+            draggedRange = nil
+        }
+    }
+
+    func noteDrag(_ session: AnyObject, range: NSRange) {
+        draggedSession = session
+        draggedRange = range
+    }
+
+    /// The range of the field's own words a drop carries, if it does.
+    func ownWords(local: AnyObject?) -> NSRange? {
+        guard let local, local === draggedSession else { return nil }
+        return draggedRange
+    }
+
+    func dropInteraction(_ interaction: UIDropInteraction, canHandle session: UIDropSession) -> Bool {
+        guard let field else { return false }
+        return field.fieldDrop(for: session.items.map(\.itemProvider)) != .declined
+    }
+
+    func dropInteraction(_ interaction: UIDropInteraction, sessionDidUpdate session: UIDropSession) -> UIDropProposal {
+        // A copy even for the field's own words: the field moves them
+        // itself (`perform`), so the drag's source never removes them too.
+        UIDropProposal(operation: .copy)
+    }
+
+    func dropInteraction(_ interaction: UIDropInteraction, performDrop session: UIDropSession) {
+        guard let field else { return }
+        perform(session.items.map(\.itemProvider), local: session.localDragSession, at: session.location(in: field))
+    }
+
+    /// A drop of the field's own words moves them; anything else is the
+    /// field's `takeDrop`.
+    func perform(_ providers: [NSItemProvider], local: AnyObject?, at point: CGPoint) {
+        guard let field else { return }
+        if let source = ownWords(local: local) {
+            draggedSession = nil
+            draggedRange = nil
+            field.moveDraggedWords(from: source, to: point)
+            return
+        }
+        field.takeDrop(providers, at: point)
     }
 }

@@ -531,6 +531,9 @@ final class NativeOAuthSession {
         let current = tokens
         let task = Task { @MainActor in
             defer { self.refreshTask = nil }
+            let signposter = ResponsivenessSignposts.signposter
+            let refreshing = signposter.beginInterval("OAuth refresh", id: signposter.makeSignpostID())
+            defer { signposter.endInterval("OAuth refresh", refreshing) }
             do {
                 let refreshed = try await self.client.refresh(current)
                 guard !self.isInvalidated else { throw CancellationError() }

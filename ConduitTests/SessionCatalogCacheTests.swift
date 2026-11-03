@@ -33,6 +33,39 @@ final class SessionCatalogCacheTests: XCTestCase {
         XCTAssertTrue(cache.sessions(forKey: "default:exclude").isEmpty)
     }
 
+    /// What a connection's early chat-list read is fenced on: a removal
+    /// moves the generation, a committed listing moves the commit count,
+    /// and a refused commit moves neither.
+    func testRemovalsAndCommittedListingsMoveTheStartupFence() {
+        var cache = SessionCatalogCache()
+        let start = (cache.mutationGeneration, cache.commits)
+        let listed = session(id: "listed", title: "Listed")
+
+        XCTAssertTrue(cache.commit(
+            liveSessions: [listed], liveKey: "default:exclude",
+            cronSessions: nil, cronKey: "default:cron",
+            historyMarkers: [:], at: start.0
+        ))
+        XCTAssertEqual(cache.commits, start.1 &+ 1)
+
+        cache.removeSession(withIDs: [listed.id])
+        XCTAssertNotEqual(cache.mutationGeneration, start.0)
+
+        XCTAssertFalse(cache.commit(
+            liveSessions: [listed], liveKey: "default:exclude",
+            cronSessions: nil, cronKey: "default:cron",
+            historyMarkers: [:], at: start.0
+        ))
+        XCTAssertEqual(cache.commits, start.1 &+ 1, "a refused commit isn't a listing")
+
+        let generation = cache.mutationGeneration
+        cache.removeValue(forKey: "default:exclude")
+        XCTAssertNotEqual(cache.mutationGeneration, generation)
+        let afterValue = cache.mutationGeneration
+        cache.removeAll()
+        XCTAssertNotEqual(cache.mutationGeneration, afterValue)
+    }
+
     func testRemoveSessionPurgesMatchingAlternateID() {
         var cache = SessionCatalogCache()
         let session = session(
