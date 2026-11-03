@@ -107,6 +107,15 @@ struct BotWorkSettingsView: View {
                             .lineLimit(1)
                     }
                 }
+                if settings.workstreamModel != nil {
+                    // Hermes' per-session reasoning, as the Model sheet offers it.
+                    Picker(AppLocalization.string("Reasoning"), selection: effortBinding) {
+                        Text(AppLocalization.string("Default")).tag(String?.none)
+                        ForEach(ReasoningEffortLevel.allCases) { level in
+                            Text(level.title).tag(Optional(level.rawValue))
+                        }
+                    }
+                }
             } footer: {
                 Text(AppLocalization.string("New workstreams start on this model. Work that’s already running keeps its own."))
             }
@@ -170,6 +179,22 @@ struct BotWorkSettingsView: View {
         )
     }
 
+    /// The workstream model's reasoning: nil for the model's default.
+    private var effortBinding: Binding<String?> {
+        Binding(
+            get: { settings?.workstreamModel.flatMap { $0.reasoningEffort.isEmpty ? nil : $0.reasoningEffort } },
+            set: { effort in
+                guard let old = settings, old.workstreamModel != nil, !isSaving else { return }
+                var new = old
+                new.workstreamModel?.reasoningEffort = effort ?? ""
+                guard new.workstreamModel != old.workstreamModel else { return }
+                Haptics.light()
+                settings = new
+                Task { await save(new, from: old) }
+            }
+        )
+    }
+
     /// The picker's provider: kept until its model comes.
     private var providerBinding: Binding<String> {
         Binding(
@@ -187,7 +212,9 @@ struct BotWorkSettingsView: View {
                 let provider = pickedProvider
                 pickedProvider = ""
                 guard let old = settings, !isSaving else { return }
-                let picked = model.isEmpty ? nil : BotWorkSettings.Model(model: model, provider: provider)
+                // A new model keeps the reasoning picked for the last one.
+                let picked = model.isEmpty ? nil : BotWorkSettings.Model(
+                    model: model, provider: provider, reasoningEffort: old.workstreamModel?.reasoningEffort ?? "")
                 guard picked != old.workstreamModel else { return }
                 var new = old
                 new.workstreamModel = picked

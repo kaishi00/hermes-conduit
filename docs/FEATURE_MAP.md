@@ -2028,7 +2028,7 @@ leaving workstreams out, resolved ones too · the plugin's `/workstreams` routes
 the user's own actions, which skip the Bot Chat's model; `?conduit_profile=`
 for a secondary bot) and the `bot-workstreams` capability · Edit Bot > Work
 (Coordinate Work on or off, what the Bot Chat does itself, how many run at
-once, the model new workstreams start on (Same as Bot Chat, or one from the bot model picker; `work on --model`; #1677, notifier #516), what a restart does, and the workstreams' approvals: Same as Chats,
+once, the model new workstreams start on (Same as Bot Chat, or one from the bot model picker with its Reasoning, the Model sheet's levels; `work on --model`; #1677, notifier #516), what a restart does, and the workstreams' approvals: Same as Chats,
 Ask Me First or Don't Ask, each with its caption; see Bots: create and edit),
 also opened from a Bot Chat's ⋯ menu (#1677), the plugin's `/workstreams/settings` routes and the `bot-work-settings`
 capability, the `work on --approvals` option, and the Bot Chat's note, which
