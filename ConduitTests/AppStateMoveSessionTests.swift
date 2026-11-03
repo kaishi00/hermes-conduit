@@ -308,7 +308,13 @@ extension AppStateDecisionFenceTests {
             try? respond(on: socket, to: request, with: ["error": ["code": -32000, "message": "connection lost"]])
         }
         XCTAssertEqual(reload["method"] as? String, "projects.tree")
-        try respond(on: newSocket, to: reload, with: ["result": treeWithAtlas])
+        // The made one is found, and finishing it reads the list again
+        // through the same new client.
+        let finishRead = try await nextRequest(on: newSocket, "the list read that finishes the found project") {
+            try? respond(on: newSocket, to: reload, with: ["result": treeWithAtlas])
+        }
+        XCTAssertEqual(finishRead["method"] as? String, "projects.tree")
+        try respond(on: newSocket, to: finishRead, with: ["result": treeWithAtlas])
 
         let outcome = await create.value
         XCTAssertEqual(outcome, .created, "the project Hermes made anyway is this one")

@@ -1839,7 +1839,7 @@ struct ProjectCreateSheet: View {
                     // profile whose projects the list shows, so it shows
                     // there at once (issue 1661).
                     Section {
-                        LabeledContent(AppLocalization.string("Profile"), value: appState.profileDisplayName(appState.activeProfile))
+                        LabeledContent(AppLocalization.string("Profile"), value: appState.profileDisplayName(madeProjectProfile ?? appState.activeProfile))
                     } footer: {
                         Text(AppLocalization.string("New projects go to the profile in use. To make one in another profile, switch to it first."))
                     }
