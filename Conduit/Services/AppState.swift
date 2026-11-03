@@ -5372,7 +5372,7 @@ final class AppState: ObservableObject {
             let generations = bufferedGenerations.count == bufferedEvents.count
                 ? bufferedGenerations
                 : Array(repeating: nil, count: bufferedEvents.count)
-            return zip(bufferedEvents, generations).map { ($0, $1) }
+            return zip(bufferedEvents, generations).map { (event: $0, generation: $1) }
         }
 
         func accepts(_ sessionId: String) -> Bool {
