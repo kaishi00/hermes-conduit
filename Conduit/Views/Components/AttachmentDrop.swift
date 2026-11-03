@@ -26,9 +26,19 @@ enum AttachmentDrop {
     /// comes as a named file (a .txt from Finder); a dragged selection of
     /// words has no name and goes into the draft as text.
     static func isFile(registeredTypeIdentifiers identifiers: [String], suggestedName: String?) -> Bool {
+        // A web link stays a link, even when a browser also offers its page
+        // as HTML or a picture under a name (#1695).
+        if isWebLink(registeredTypeIdentifiers: identifiers) { return false }
         guard let type = fileType(registeredTypeIdentifiers: identifiers) else { return false }
         guard type.conforms(to: .text) else { return true }
         return !(suggestedName ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Whether an item is a link to somewhere other than a file.
+    static func isWebLink(registeredTypeIdentifiers identifiers: [String]) -> Bool {
+        let types = identifiers.compactMap { UTType($0) }
+        return types.contains { $0.conforms(to: .url) && !$0.conforms(to: .fileURL) }
+            && !types.contains { $0.conforms(to: .fileURL) }
     }
 
     static func isFile(_ provider: NSItemProvider) -> Bool {

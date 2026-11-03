@@ -131,7 +131,9 @@ class ReturnKeyTextView: UITextView {
                 if let piece = await Self.droppedWords(from: provider) { pieces.append(piece) }
             }
             let text = pieces.joined(separator: " ")
-            guard let self, self.isEditable, !text.isEmpty else { return }
+            // A field the composer replaced meanwhile (a send, another
+            // chat) is out of its window; the words aren't put there.
+            guard let self, self.isEditable, self.window != nil, !text.isEmpty else { return }
             // At the drop point, even if the caret moved while they loaded.
             if let target { self.selectedTextRange = target }
             self.insertText(text)
@@ -171,11 +173,12 @@ class ReturnKeyTextView: UITextView {
     /// The words a dragged item carries, or its link written out.
     static func droppedWords(from provider: NSItemProvider) async -> String? {
         if provider.canLoadObject(ofClass: String.self) {
-            return await withCheckedContinuation { continuation in
+            let text: String? = await withCheckedContinuation { continuation in
                 _ = provider.loadObject(ofClass: String.self) { text, _ in
                     continuation.resume(returning: text)
                 }
             }
+            if let text { return text }
         }
         if provider.canLoadObject(ofClass: URL.self) {
             return await withCheckedContinuation { continuation in
@@ -639,7 +642,7 @@ final class FieldDropHandler: NSObject, UIDropInteractionDelegate, UITextDragDel
     }
 
     func dropInteraction(_ interaction: UIDropInteraction, sessionDidUpdate session: UIDropSession) -> UIDropProposal {
-        UIDropProposal(operation: .copy)
+        UIDropProposal(operation: ownWords(in: session) != nil ? .move : .copy)
     }
 
     func dropInteraction(_ interaction: UIDropInteraction, performDrop session: UIDropSession) {
