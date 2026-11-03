@@ -718,6 +718,38 @@ extension BotModeTests {
         XCTAssertEqual(AppState.botColor(bot(nil), glow: nil), BotAvatarView.color(for: nil, name: "raiden"), "the name's hue")
     }
 
+    /// A workstream opened from its Bot Chat shows in the same pushed
+    /// screen: it slides in from the trailing edge, and Back to the Bot
+    /// Chat slides that in from the leading one. Any other change of chat
+    /// just shows (Eric 2026-11-03).
+    func testABotChatAndItsWorkstreamsSlideLikeAPushAndAPop() {
+        typealias Shown = BotChatSwap.Shown
+        let botChat = Shown(botChat: "furina", workstreamOf: nil)
+        let workstream = Shown(botChat: nil, workstreamOf: "Furina")
+        XCTAssertEqual(BotChatSwap.direction(from: botChat, to: workstream), .forward)
+        XCTAssertEqual(BotChatSwap.direction(from: workstream, to: botChat), .back)
+        XCTAssertEqual(BotChatSwap.direction(from: workstream, to: workstream), .forward, "a workstream's link to another")
+        XCTAssertNil(BotChatSwap.direction(from: workstream, to: Shown(botChat: "atlas")), "another bot's chat")
+        XCTAssertNil(BotChatSwap.direction(from: Shown(), to: workstream), "from a plain session")
+        XCTAssertNil(BotChatSwap.direction(from: botChat, to: Shown()), "to a plain session")
+        XCTAssertTrue(BotChatSwap.isBackSwipe(CGSize(width: 120, height: 30)))
+        XCTAssertFalse(BotChatSwap.isBackSwipe(CGSize(width: 60, height: 0)), "too short")
+        XCTAssertFalse(BotChatSwap.isBackSwipe(CGSize(width: 120, height: 100)), "mostly down")
+        XCTAssertFalse(BotChatSwap.isBackSwipe(CGSize(width: -120, height: 0)), "the other way")
+    }
+
+    /// Bots Home's voice button lists the shown bots to call, the one that
+    /// talked last first, ties in roster order (Eric 2026-11-03).
+    func testBotsHomesVoiceButtonListsTheBotUsedLastFirst() {
+        func bot(_ name: String, _ lastActive: Double?, hidden: Bool = false) -> BotProfile {
+            BotProfile(name: name, botTitle: nil, displayName: name, profileDescription: "", model: nil,
+                       provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: hidden,
+                       appearanceColor: nil, canonicalSession: nil, lastActive: lastActive, lastPreview: nil)
+        }
+        let roster = [bot("atlas", 10), bot("rei", nil), bot("furina", 30), bot("kai", 50, hidden: true), bot("nia", nil)]
+        XCTAssertEqual(V2VoiceButton.botsToCall(roster).map(\.name), ["furina", "atlas", "rei", "nia"])
+    }
+
     /// A dragged portrait carries a marked name, so text dragged in from
     /// another app is never taken for a bot.
     func testABotDragCarriesAMarkedName() {

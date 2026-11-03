@@ -47,6 +47,8 @@ struct TranscriptCellEnvironment: Equatable {
     var v2OpenBeside: V2OpenBeside?
     var botZoomNamespace: Namespace.ID?
     var botsHomeCovered: Bool
+    var botChatZoomed: Bool
+    var rosterRowsInScroll: Bool
     var v2TabBarClearance: CGFloat
     var v2ComposerRests: Bool
     var groupMemberTints: [String: CustomAccentColor]
@@ -85,6 +87,8 @@ struct TranscriptCellEnvironment: Equatable {
         v2OpenBeside = values.v2OpenBeside
         botZoomNamespace = values.botZoomNamespace
         botsHomeCovered = values.botsHomeCovered
+        botChatZoomed = values.botChatZoomed
+        rosterRowsInScroll = values.rosterRowsInScroll
         v2TabBarClearance = values.v2TabBarClearance
         v2ComposerRests = values.v2ComposerRests
         groupMemberTints = values.groupMemberTints
@@ -126,6 +130,8 @@ struct TranscriptCellEnvironment: Equatable {
             && lhs.v2OpenBeside == rhs.v2OpenBeside
             && lhs.botZoomNamespace == rhs.botZoomNamespace
             && lhs.botsHomeCovered == rhs.botsHomeCovered
+            && lhs.botChatZoomed == rhs.botChatZoomed
+            && lhs.rosterRowsInScroll == rhs.rosterRowsInScroll
             && lhs.v2TabBarClearance == rhs.v2TabBarClearance
             && lhs.v2ComposerRests == rhs.v2ComposerRests
             && lhs.groupMemberTints == rhs.groupMemberTints
@@ -182,6 +188,8 @@ private struct TranscriptCellConduitEnvironmentMore: ViewModifier {
             .environment(\.v2OpenBeside, values.v2OpenBeside)
             .environment(\.botZoomNamespace, values.botZoomNamespace)
             .environment(\.botsHomeCovered, values.botsHomeCovered)
+            .environment(\.botChatZoomed, values.botChatZoomed)
+            .environment(\.rosterRowsInScroll, values.rosterRowsInScroll)
             .environment(\.v2TabBarClearance, values.v2TabBarClearance)
             .environment(\.v2ComposerRests, values.v2ComposerRests)
             .environment(\.groupMemberTints, values.groupMemberTints)

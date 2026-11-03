@@ -55,6 +55,38 @@ struct V2ComposerTypingKey: PreferenceKey {
     }
 }
 
+/// A Bot Chat and its workstreams show in one pushed screen (the
+/// conversation in the Bots stack), so going between them pushes nothing:
+/// the screen slides the new chat in instead, a workstream from the
+/// trailing edge and Back to its Bot Chat from the leading one.
+enum BotChatSwap: Equatable {
+    case forward
+    case back
+
+    struct Shown: Equatable {
+        /// The bot whose Bot Chat shows, if one does.
+        var botChat: String?
+        /// The bot whose workstream shows, if one does.
+        var workstreamOf: String?
+    }
+
+    static func direction(from old: Shown, to new: Shown) -> BotChatSwap? {
+        if let bot = old.botChat ?? old.workstreamOf, same(bot, new.workstreamOf) { return .forward }
+        if let bot = old.workstreamOf, same(bot, new.botChat) { return .back }
+        return nil
+    }
+
+    /// A swipe toward the trailing edge, mostly sideways and far enough.
+    static func isBackSwipe(_ translation: CGSize) -> Bool {
+        translation.width > 80 && abs(translation.height) < translation.width * 0.6
+    }
+
+    private static func same(_ a: String, _ b: String?) -> Bool {
+        guard let b else { return false }
+        return a.caseInsensitiveCompare(b) == .orderedSame
+    }
+}
+
 struct V2ConversationScreen: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -96,6 +128,16 @@ struct V2ConversationScreen: View {
     /// The Bot Chat's Work panel: beside the chat on a window with room,
     /// else a sheet.
     @State private var workPanelOpen = false
+    /// Which Bot Chat or workstream the screen showed last, so going from
+    /// one to the other slides (`BotChatSwap`).
+    @State private var shownChat = BotChatSwap.Shown()
+    /// The chat sliding in, as a share of the column's width: 1 from the
+    /// trailing edge (a workstream opening), -1 from the leading edge (Back
+    /// to its Bot Chat).
+    @State private var swapShift: CGFloat = 0
+    /// This Bot Chat grew out of its portrait on Bots Home.
+    @Environment(\.botChatZoomed) private var botChatZoomed
+    @Environment(\.dismiss) private var dismiss
 
     /// The bot whose Work panel can open: the open Bot Chat's.
     private var workProfile: String? {
@@ -188,9 +230,17 @@ struct V2ConversationScreen: View {
             guard id != nil, appState.activeRoomSurface == nil else { return }
             openArtifacts(tab: .folder)
         }
-        .onAppear { sidePanelIDs = appState.activeChatArtifactSessionIDs }
+        .onAppear {
+            sidePanelIDs = appState.activeChatArtifactSessionIDs
+            shownChat = currentShownChat
+        }
         .onChange(of: appState.activeSessionId) { _, _ in
             sidePanelIDs = appState.activeChatArtifactSessionIDs
+            let shown = currentShownChat
+            if !shell.isSplit, !reduceMotion, let swap = BotChatSwap.direction(from: shownChat, to: shown) {
+                slideIn(swap)
+            }
+            shownChat = shown
             // A workstream opened from the panel shows its own chat, and
             // the Bot Chat opens again without it, on any window.
             workPanelOpen = false
@@ -206,7 +256,7 @@ struct V2ConversationScreen: View {
         // A workstream's chat goes back to the Bot Chat that started it,
         // by Back and by the edge swipe, not to the list under both.
         .navigationBarBackButtonHidden(workstreamGoesBack != nil)
-        .simultaneousGesture(workstreamBackSwipe, including: workstreamGoesBack != nil ? .all : .subviews)
+        .simultaneousGesture(backSwipe, including: swipesBack ? .all : .subviews)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
@@ -313,6 +363,10 @@ struct V2ConversationScreen: View {
                         BotWorkHeader(work: appState.botWork)
                     }
                 }
+                // A Bot Chat and its workstreams share this screen: one
+                // slides in over the other as a push or a pop would.
+                .offset(x: swapShift * chatColumnWidth)
+                .opacity(1 - Double(abs(swapShift)) * 0.6)
                 .overlay(alignment: .bottomTrailing) {
                     if appState.activeRoomSurface == nil {
                         // Beside the resting composer; it slides aside,
@@ -350,12 +404,36 @@ struct V2ConversationScreen: View {
         appState.openCoordinator(profile: profile)
     }
 
-    /// The system's edge swipe, which the hidden Back button takes with it.
-    private var workstreamBackSwipe: some Gesture {
+    /// A Bot Chat grown from its portrait goes home by a swipe from
+    /// anywhere, as a session's chat does: the zoom's own swipe starts only
+    /// where the transcript has no text. A workstream's chat, whose hidden
+    /// Back button takes the system's swipe with it, goes to its Bot Chat.
+    private var swipesBack: Bool {
+        workstreamGoesBack != nil || (botChatZoomed && !shell.isSplit && appState.activeBotChatProfile != nil)
+    }
+
+    private var backSwipe: some Gesture {
         DragGesture(minimumDistance: 20).onEnded { drag in
-            guard drag.startLocation.x < 30, drag.translation.width > 80,
-                  abs(drag.translation.height) < abs(drag.translation.width) else { return }
-            backToCoordinator()
+            guard swipesBack, BotChatSwap.isBackSwipe(drag.translation) else { return }
+            if workstreamGoesBack != nil {
+                backToCoordinator()
+            } else {
+                dismiss()
+            }
+        }
+    }
+
+    private var currentShownChat: BotChatSwap.Shown {
+        BotChatSwap.Shown(botChat: appState.activeBotChatProfile, workstreamOf: appState.activeWorkstream?.profile)
+    }
+
+    /// The new chat starts off to one side, then slides into place.
+    private func slideIn(_ swap: BotChatSwap) {
+        var start = Transaction()
+        start.disablesAnimations = true
+        withTransaction(start) { swapShift = swap == .forward ? 1 : -1 }
+        Task { @MainActor in
+            withAnimation(.smooth(duration: 0.32)) { swapShift = 0 }
         }
     }
 
