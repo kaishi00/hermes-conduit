@@ -28,19 +28,21 @@ struct RichBoardLayout: View {
                 RichBoardTabs(titles: cards.enumerated().map { index, card in
                     card.title ?? String(index + 1)
                 }, selected: $selected)
+                // Keyed by the card, so a card's own state (a table's sort)
+                // never carries over to another in its place.
                 RichCardView(card: cards[min(selected, cards.count - 1)])
-                    .id(min(selected, cards.count - 1))
+                    .id(cards[min(selected, cards.count - 1)])
             }
         } else {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(Array(Self.rows(cards, wide: sizeClass == .regular).enumerated()), id: \.offset) { _, row in
                     if row.count == 2 {
                         HStack(alignment: .top, spacing: 12) {
-                            RichCardView(card: row[0])
-                            RichCardView(card: row[1])
+                            RichCardView(card: row[0]).id(row[0])
+                            RichCardView(card: row[1]).id(row[1])
                         }
                     } else if let card = row.first {
-                        RichCardView(card: card)
+                        RichCardView(card: card).id(card)
                     }
                 }
             }

@@ -83,7 +83,9 @@ struct ChatRowState: Equatable {
         displayPreferences = appState.displayPreferences
         voiceCallLinksRevision = appState.voiceCallChatLinksRevision
         latestLiveRows = facts.latestLiveRows
-        followUpBoardRowID = isOffline || isBusy ? nil : facts.followUpBoardRowID
+        // A tap sends, so the chips show only while a send can go.
+        followUpBoardRowID = isOffline || isBusy || !appState.isConnected || !appState.composerIsEnabled
+            ? nil : facts.followUpBoardRowID
         pulseCards = appState.pulseCards(forChat: appState.activeSessionId)
         canPinReplies = appState.canPinReplies
         pinnedMessageIDs = appState.openChatPinnedMessageIDs

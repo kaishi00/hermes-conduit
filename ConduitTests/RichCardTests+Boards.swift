@@ -90,6 +90,8 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(RichTable.sortNumber("-4.5%"), -4.5)
         XCTAssertEqual(RichTable.sortNumber("1,250 kg"), 1250)
         XCTAssertNil(RichTable.sortNumber("n/a"))
+        XCTAssertEqual(table.sorted(by: 5, ascending: true), table.rows, "a sort kept from a wider table changes nothing")
+        XCTAssertFalse(table.isNumeric(5))
     }
 
     func testSmallCardsPairUpOnlyOnAWideWindow() throws {
@@ -148,7 +150,13 @@ extension AppStateVoiceCapabilityTests {
             read: { host },
             save: { body in
                 saved.append(body)
-                host["packing"] = body["ticked"] as? [String]
+                // The plugin applies one tick to its newest ticks.
+                let change = body["change"] as? [String: Any]
+                var done = Set((host["packing"] ?? []).map { $0.lowercased() })
+                if let item = (change?["item"] as? String)?.lowercased() {
+                    if change?["ticked"] as? Bool == true { done.insert(item) } else { done.remove(item) }
+                }
+                host["packing"] = (body["items"] as? [String] ?? []).filter { done.contains($0.lowercased()) }
                 return host
             })
         let memory = RichChecklistMemory(defaults: defaults)
@@ -157,11 +165,19 @@ extension AppStateVoiceCapabilityTests {
 
         memory.toggle("Swimsuit", card: list, key: "packing", context: context)
         for _ in 0..<50 where saved.isEmpty { await Task.yield() }
-        XCTAssertEqual(saved.first?["ticked"] as? [String], ["Rain jacket", "Swimsuit"], "the whole list's state, as written")
+        XCTAssertEqual(saved.first?["change"] as? [String: AnyHashable], ["item": "Swimsuit", "ticked": true], "one tick at a time")
         XCTAssertEqual(saved.first?["sessions"] as? [String], ["s1", "r1"])
         XCTAssertEqual(memory.ticked(scope: "work/s1", key: "packing"), ["rain jacket", "swimsuit"])
         for _ in 0..<50 where memory.entries.values.contains(where: \.unsent) { await Task.yield() }
         XCTAssertFalse(memory.entries.values.contains(where: \.unsent), "saved on the host")
+
+        // Two quick taps reach the host in order, the second after the first.
+        memory.toggle("Swimsuit", card: list, key: "packing", context: context)
+        memory.toggle("Swimsuit", card: list, key: "packing", context: context)
+        for _ in 0..<100 where memory.entries.values.contains(where: \.unsent) { await Task.yield() }
+        XCTAssertEqual(saved.suffix(2).map { $0["change"] as? [String: AnyHashable] },
+                       [["item": "Swimsuit", "ticked": false], ["item": "Swimsuit", "ticked": true]])
+        XCTAssertEqual(host["packing"], ["Rain jacket", "Swimsuit"])
 
         host["packing"] = []
         await memory.refresh(context: context, key: "packing")

@@ -63,6 +63,7 @@ struct RichTable: Equatable, Hashable {
     /// Whether a column reads as numbers (every cell that isn't blank does):
     /// it's sorted by value and aligned to the trailing edge.
     func isNumeric(_ column: Int) -> Bool {
+        guard columns.indices.contains(column) else { return false }
         let cells = rows.map { $0[column] }.filter { $0 != RichCardSchema.blankCell }
         return !cells.isEmpty && cells.allSatisfy { Self.sortNumber($0) != nil }
     }
@@ -70,6 +71,8 @@ struct RichTable: Equatable, Hashable {
     /// The rows sorted by a column: numbers by value in a numeric column,
     /// text by the user's language otherwise, blanks last either way.
     func sorted(by column: Int, ascending: Bool) -> [[String]] {
+        // A sort kept from another table can name a column this one lacks.
+        guard columns.indices.contains(column) else { return rows }
         let numeric = isNumeric(column)
         let blanks = rows.filter { $0[column] == RichCardSchema.blankCell }
         let filled = rows.filter { $0[column] != RichCardSchema.blankCell }

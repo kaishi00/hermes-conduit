@@ -78,6 +78,13 @@ final class RichChecklistMemory: ObservableObject {
         var unsent: Bool
         var items: [String]
         var title: String
+        /// Ticks made here, oldest first, still to reach the host.
+        var changes: [Change]?
+    }
+
+    struct Change: Codable, Equatable {
+        let item: String
+        let ticked: Bool
     }
 
     @Published private(set) var entries: [String: Entry]
@@ -126,33 +133,59 @@ final class RichChecklistMemory: ObservableObject {
         let id = Self.id(scope, key)
         var entry = entries[id] ?? Entry(ticked: [], at: .now, unsent: false, items: [], title: "")
         let folded = text.lowercased()
-        if entry.ticked.contains(folded) {
-            entry.ticked.remove(folded)
-        } else {
+        let ticks = !entry.ticked.contains(folded)
+        if ticks {
             entry.ticked.insert(folded)
+        } else {
+            entry.ticked.remove(folded)
         }
         entry.at = .now
         entry.items = card.checklist.map(\.text)
         entry.title = card.title ?? ""
-        entry.unsent = context != nil
+        if context != nil {
+            entry.unsent = true
+            entry.changes = (entry.changes ?? []) + [Change(item: text, ticked: ticks)]
+        }
         store(entry, id: id)
         guard let context else { return }
         Task { await send(entry, key: key, context: context) }
     }
 
+    /// Checklists whose ticks are on their way to the host.
+    private var sending: Set<String> = []
+
+    /// Sends the ticks made here one after another, each applied on the
+    /// host to the newest ticks any device saved, so two quick taps arrive
+    /// in order and a tick from elsewhere is kept.
     private func send(_ entry: Entry, key: String, context: RichChecklistContext) async {
-        let body: [String: Any] = [
-            "sessions": Array(context.sessionIDs.prefix(4)), "key": key, "title": entry.title,
-            "items": entry.items, "ticked": entry.items.filter { entry.ticked.contains($0.lowercased()) },
-        ]
-        guard let ticks = try? await context.save(body) else { return }
         let id = Self.id(context.scope, key)
-        // A tick made while this one was on its way goes next time.
-        guard entries[id]?.at == entry.at else { return }
-        var sent = entry
-        sent.unsent = false
-        store(sent, id: id)
-        apply(ticks, scope: context.scope)
+        guard !sending.contains(id) else { return }
+        sending.insert(id)
+        defer { sending.remove(id) }
+        while let current = entries[id], current.unsent {
+            var body: [String: Any] = [
+                "sessions": Array(context.sessionIDs.prefix(4)), "key": key, "title": current.title,
+                "items": current.items,
+            ]
+            let change = current.changes?.first
+            if let change {
+                body["change"] = ["item": change.item, "ticked": change.ticked]
+            } else {
+                body["ticked"] = current.items.filter { current.ticked.contains($0.lowercased()) }
+            }
+            guard let ticks = try? await context.save(body), var sent = entries[id] else { return }
+            if change != nil, sent.changes?.first == change {
+                sent.changes?.removeFirst()
+            }
+            if sent.changes?.isEmpty ?? true {
+                sent.unsent = false
+                sent.changes = nil
+                store(sent, id: id)
+                apply(ticks, scope: context.scope)
+            } else {
+                store(sent, id: id)
+            }
+        }
     }
 
     private func apply(_ ticks: [String: [String]], scope: String) {
