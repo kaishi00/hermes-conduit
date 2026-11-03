@@ -1323,12 +1323,13 @@ struct MessageBubble: View, Equatable {
                         RichCardsView(cards: current, tabs: board.tabs && current.count > 1)
                     }
                     if message.id == rowState.followUpBoardRowID, !board.followUps.isEmpty {
-                        RichBoardFollowUps(followUps: board.followUps,
+                        RichBoardFollowUps(followUps: board.followUps, composer: appState.predictive,
                                            send: { appState.requestBoardFollowUp(.send, text: $0) },
                                            edit: { appState.requestBoardFollowUp(.edit, text: $0) })
                     }
                 }
                 .environment(\.richChecklistContext, appState.richChecklistContext)
+                .environment(\.richChecklistInChat, true)
                 .frame(maxWidth: 560, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else if let step {

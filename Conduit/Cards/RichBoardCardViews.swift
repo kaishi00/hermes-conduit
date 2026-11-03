@@ -116,19 +116,32 @@ private struct RichBoardTabs: View {
 }
 
 /// A board's follow-ups under it: tap sends one as the user's message,
-/// long-press puts it in the composer, as Predictive's reply chips do.
+/// long-press puts it in the composer, as Predictive's reply chips do, and
+/// like them they step aside while the user writes a draft (a tap would
+/// replace it) and ignore taps in their first moment on screen.
 struct RichBoardFollowUps: View {
     let followUps: [String]
+    /// Holds the composer's draft (Predictive's store sees every edit).
+    @ObservedObject var composer: PredictiveStore
     let send: (String) -> Void
     let edit: (String) -> Void
 
+    @State private var shownAt = Date.distantFuture
+
     var body: some View {
-        CapabilityFlowLayout(spacing: 8) {
-            ForEach(Array(followUps.enumerated()), id: \.offset) { index, text in
-                PredictiveReplyChip(text: text, isFirst: index == 0, send: send, edit: edit)
+        if composer.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            CapabilityFlowLayout(spacing: 8) {
+                ForEach(Array(followUps.enumerated()), id: \.offset) { index, text in
+                    PredictiveReplyChip(text: text, isFirst: index == 0,
+                                        send: { if ready { send($0) } },
+                                        edit: { if ready { Haptics.light(); edit($0) } })
+                }
             }
+            .onAppear { shownAt = Date() }
         }
     }
+
+    private var ready: Bool { Date().timeIntervalSince(shownAt) >= Predictive.tapGuard }
 }
 
 /// A board Conduit can't draw every card of: the cards' own Markdown, on
@@ -219,7 +232,7 @@ struct RichTableCard: View {
             }
             .scaledFont(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
-            .frame(minHeight: 32)
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -301,7 +314,7 @@ struct RichTimelineCard: View {
                         }
                         .scaledFont(.caption)
                         .foregroundStyle(Color.conduitAccent)
-                        .frame(minHeight: 32, alignment: .leading)
+                        .frame(minHeight: 44, alignment: .leading)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -331,12 +344,14 @@ struct RichChecklistCard: View {
     let card: RichCard
 
     @Environment(\.richChecklistContext) private var context
+    @Environment(\.richChecklistInChat) private var inChat
     @ObservedObject private var memory = RichChecklistMemory.shared
 
     var body: some View {
         let key = RichChecklistMemory.listKey(for: card)
         let scope = context?.scope ?? RichChecklistMemory.localScope
-        let ticked = memory.ticked(scope: scope, key: key)
+        // A chat's ticks are on the host; the call screen's never stand in.
+        let ticked = inChat && context == nil ? [] : memory.ticked(scope: scope, key: key)
         RichInfoCardFrame(title: card.title, source: card.source) {
             VStack(alignment: .leading, spacing: 12) {
                 let done = card.checklist.filter { ticked.contains($0.text.lowercased()) }.count
@@ -386,10 +401,11 @@ struct RichChecklistCard: View {
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(minHeight: 36)
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(inChat && context == nil)
         .accessibilityValue(done ? Text("Done") : Text(verbatim: ""))
     }
 

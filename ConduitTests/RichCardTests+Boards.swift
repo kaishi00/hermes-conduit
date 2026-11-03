@@ -90,6 +90,10 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(RichTable.sortNumber("-4.5%"), -4.5)
         XCTAssertEqual(RichTable.sortNumber("1,250 kg"), 1250)
         XCTAssertNil(RichTable.sortNumber("n/a"))
+        XCTAssertNil(RichTable.sortNumber("Nov 3, 2026"), "a date reads as text")
+        XCTAssertNil(RichTable.sortNumber("2026-11-03"))
+        XCTAssertEqual(RichTable.sortNumber("5 m"), 5)
+        XCTAssertEqual(RichTable.sortNumber("€950K"), 950_000)
         XCTAssertEqual(table.sorted(by: 5, ascending: true), table.rows, "a sort kept from a wider table changes nothing")
         XCTAssertFalse(table.isNumeric(5))
     }

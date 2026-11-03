@@ -53,11 +53,23 @@ private struct RichChecklistContextKey: EnvironmentKey {
     static let defaultValue: RichChecklistContext? = nil
 }
 
+private struct RichChecklistInChatKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 extension EnvironmentValues {
     /// The open chat's checklists on the host; nil where ticks stay on the phone.
     var richChecklistContext: RichChecklistContext? {
         get { self[RichChecklistContextKey.self] }
         set { self[RichChecklistContextKey.self] = newValue }
+    }
+
+    /// A chat's checklist: ticked only where the host keeps its ticks, so
+    /// one in the saved copy or a chat on its way reads but can't be ticked
+    /// (its ticks would land on the call screen's, and never reach the chat).
+    var richChecklistInChat: Bool {
+        get { self[RichChecklistInChatKey.self] }
+        set { self[RichChecklistInChatKey.self] = newValue }
     }
 }
 

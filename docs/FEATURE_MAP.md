@@ -4253,7 +4253,7 @@ notifier README and CHANGELOG
 - Never blank: every answer carries the cards' Markdown. Conduit shows it in the board's place when it can't draw every card, never part of a board, and a model outside Conduit gets it for its reply (Eric, 2026-11-03, #1713 with notifier #528).
 - Exact errors: what normalization leaves out goes back to the model as `problems`, by path, so it can fix the board and show it again (Eric, 2026-11-03, notifier #528).
 - Conduit lays the board out: Hermes picks only stack or tabs; small cards pair up on a wide window (2026-11-03, #1713).
-- Follow-ups are plain messages the user would send, at most four, offered only under the last turn's board while Hermes is free and connected: tap sends, long-press edits, as Predictions' chips (Eric, 2026-11-03, #1713).
+- Follow-ups are plain messages the user would send, at most four, offered only under the last turn's board while Hermes is free and connected and the composer is empty: tap sends, long-press edits, and taps in their first 0.4 s are ignored, as Predictions' chips (Eric, 2026-11-03, #1713).
 - Checklist ticks in a chat are kept on the host for every device, and Hermes hears what changed once, at the chat's next turn; on the call screen they stay on the phone (Eric, 2026-11-03, #1713 with notifier #528).
 - A tick goes to the host on its own, in the order made, and the host applies it to the newest ticks any device saved, so a tick from another device is never undone (2026-11-03, #1713 with notifier #528).
 - In a group room the board goes in the agent's reply as Markdown (`group_room`), until rooms draw cards in a follow-up PR (Eric, 2026-11-03, #1713 with notifier #528).
@@ -4266,6 +4266,7 @@ notifier README and CHANGELOG
 - The call screen draws a board stacked, with no tabs and no follow-ups (the user speaks the next question).
 - The Watch and CarPlay show no cards.
 - Checklist ticks on the call screen don't reach the chat or Hermes.
+- A checklist in the saved copy, or in a chat on its way, can't be ticked and shows no ticks (they're on the host).
 - A checklist that stays on screen reads other devices' ticks only when it's drawn again or ticked here.
 - Boards are parsed again each time a row is drawn; no cache yet, as liveNames has.
 

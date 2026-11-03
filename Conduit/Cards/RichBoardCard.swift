@@ -30,12 +30,15 @@ struct RichTable: Equatable, Hashable {
         self.rows = rows
     }
 
-    /// A cell read as a number to sort by: its digits, sign and decimal
-    /// point, whatever unit or currency is around them ("$1.2M" reads as
-    /// 1.2 million, "4.5%" as 4.5). Nil for text.
+    /// A cell read as a number to sort by: one that starts the cell (after
+    /// a sign or a currency) and is the cell's only number, whatever unit is
+    /// after it ("$1.2M" reads as 1.2 million, "4.5%" as 4.5, "1,250 kg" as
+    /// 1250). A letter before it ("Nov 3") or another number after it
+    /// ("2026-11-03") makes the cell text. Nil for text.
     static func sortNumber(_ cell: String) -> Double? {
         let scalars = Array(cell.unicodeScalars)
         guard let first = scalars.firstIndex(where: { CharacterSet.decimalDigits.contains($0) }) else { return nil }
+        guard !scalars[..<first].contains(where: { CharacterSet.letters.contains($0) }) else { return nil }
         var text = ""
         var index = first
         if first > 0, scalars[first - 1] == "-" || scalars[first - 1] == "\u{2212}" { text = "-" }
@@ -49,13 +52,18 @@ struct RichTable: Equatable, Hashable {
             index += 1
         }
         guard var value = Double(text) else { return nil }
-        let rest = String(String.UnicodeScalarView(scalars[index...])).trimmingCharacters(in: .whitespaces)
-        switch rest.first.map({ String($0).uppercased() }) {
-        case "K": value *= 1e3
-        case "M": value *= 1e6
-        case "B": value *= 1e9
-        case "T": value *= 1e12
-        default: break
+        let rest = Array(scalars[index...])
+        guard !rest.contains(where: { CharacterSet.decimalDigits.contains($0) }) else { return nil }
+        // A multiplier only right after the number, as a word of its own:
+        // "1.2M" and "950K", never "5 m" or "3 kg".
+        if let letter = rest.first, rest.count == 1 || !CharacterSet.letters.contains(rest[1]) {
+            switch letter {
+            case "K", "k": value *= 1e3
+            case "M": value *= 1e6
+            case "B": value *= 1e9
+            case "T": value *= 1e12
+            default: break
+            }
         }
         return value
     }
