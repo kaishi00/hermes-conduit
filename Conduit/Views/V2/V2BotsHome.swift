@@ -939,6 +939,20 @@ extension EnvironmentValues {
     }
 }
 
+private struct BotChatZoomedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// This chat grew out of its portrait on Bots Home. The zoom's own
+    /// swipe back starts only where the transcript has no text, so the chat
+    /// adds one that starts anywhere (V2ConversationScreen).
+    var botChatZoomed: Bool {
+        get { self[BotChatZoomedKey.self] }
+        set { self[BotChatZoomedKey.self] = newValue }
+    }
+}
+
 /// The portrait the chat grows from: a circle, keyed by its bot.
 struct BotZoomSource: ViewModifier {
     let name: String
@@ -981,9 +995,15 @@ struct BotZoomDestination: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
+        // A workstream opened from the Bot Chat shows in the same pushed
+        // screen: it counts as its bot's, so the zoom holds through the
+        // visit and Back still shrinks the Bot Chat home. A transition
+        // changed on a pushed screen leaves Back with no animation.
         if #available(iOS 18.0, *), route == .conversation, fromHome, !reduceMotion,
-           let bot = appState.botZoom.source(open: appState.activeBotChatProfile) {
-            content.navigationTransition(.zoom(sourceID: bot, in: namespace))
+           let bot = appState.botZoom.source(open: appState.activeBotChatProfile ?? appState.activeWorkstream?.profile) {
+            content
+                .navigationTransition(.zoom(sourceID: bot, in: namespace))
+                .environment(\.botChatZoomed, true)
         } else {
             content
         }

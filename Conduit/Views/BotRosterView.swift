@@ -549,73 +549,18 @@ struct BotRosterView: View {
             || repairContext != nil || editorMode != nil || showingGroupCreateSheet || groupSheetBot != nil
     }
 
+    /// Bots Home (V2's Bots tab) is a scroll view, not a List: a List
+    /// takes a touch and hold and a drag for its whole row, so the
+    /// portraits' grid, one row, lifted as one under the first bot's menu,
+    /// and no portrait could be dragged (Eric 2026-11-03).
     private var rosterList: some View {
-        List {
-            if createRequest != nil, appState.showsFinishSetup || appState.showsConnectionRepair {
-                Section {
-                    homeCards
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 12, trailing: 16))
-                }
+        Group {
+            if createRequest != nil {
+                homeScroll
+            } else {
+                plainList
             }
-            if let notice = managementNotice {
-                Section {
-                    managementNoticeCard(notice)
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
-                }
-            }
-            if case .failed(let message) = appState.botModePhase {
-                Section {
-                    BotModeNoticeRow(
-                        icon: "exclamationmark.triangle",
-                        message: message
-                    )
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .conduitGlassSurface(cornerRadius: 18, tint: .yellow.opacity(0.10))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
-                }
-            }
-            if !appState.shownBotRoster.isEmpty && createRequest != nil {
-                // V2's Bots tab: the page title names the list; a line under
-                // the bots says what a bot is. A row, not a footer: a plain
-                // List paints footers as an opaque band across the backdrop.
-                Section {
-                    if !appState.talkingRooms.isEmpty {
-                        BotsLiveRooms()
-                            .rosterListRow(divider: false)
-                    }
-                    portraitGrid
-                    Text("Each bot is its own profile with one ongoing conversation.")
-                        .scaledFont(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 10)
-                        .padding(.bottom, 8)
-                        .rosterListRow(divider: false)
-                }
-                .listSectionSeparator(.hidden)
-            } else if !appState.shownBotRoster.isEmpty {
-                Section(AppLocalization.string("Bots")) {
-                    botRows
-                    if canManageBots {
-                        newBotButton
-                    }
-                }
-            } else if canManageBots && createRequest == nil {
-                Section(AppLocalization.string("Bots")) {
-                    newBotButton
-                }
-            }
-            groupSection
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
         .refreshable {
             await appState.reloadBotRoster()
             await appState.refreshGroupChatSupport()
@@ -630,6 +575,87 @@ struct BotRosterView: View {
         }
     }
 
+    private var homeScroll: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if appState.showsFinishSetup || appState.showsConnectionRepair {
+                    VStack(spacing: 12) { homeCards }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 2)
+                        .padding(.bottom, 12)
+                }
+                if let notice = managementNotice {
+                    managementNoticeCard(notice)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 3)
+                }
+                if case .failed(let message) = appState.botModePhase {
+                    botModeFailure(message)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 3)
+                }
+                if !appState.shownBotRoster.isEmpty {
+                    if !appState.talkingRooms.isEmpty {
+                        BotsLiveRooms()
+                            .rosterListRow(divider: false)
+                    }
+                    portraitGrid
+                        .padding(.bottom, 8)
+                }
+                homeGroupSection
+            }
+            .environment(\.rosterRowsInScroll, true)
+        }
+        .scrollContentBackground(.hidden)
+    }
+
+    private func botModeFailure(_ message: String) -> some View {
+        BotModeNoticeRow(
+            icon: "exclamationmark.triangle",
+            message: message
+        )
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .conduitGlassSurface(cornerRadius: 18, tint: .yellow.opacity(0.10))
+    }
+
+    private var plainList: some View {
+        List {
+            if let notice = managementNotice {
+                Section {
+                    managementNoticeCard(notice)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
+                }
+            }
+            if case .failed(let message) = appState.botModePhase {
+                Section {
+                    botModeFailure(message)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
+                }
+            }
+            if !appState.shownBotRoster.isEmpty {
+                Section(AppLocalization.string("Bots")) {
+                    botRows
+                    if canManageBots {
+                        newBotButton
+                    }
+                }
+            } else if canManageBots {
+                Section(AppLocalization.string("Bots")) {
+                    newBotButton
+                }
+            }
+            groupSection
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+    }
+
     /// Group Chat rows, below the Bots section: hosted rooms (once the
     /// gateway advertised the foundation `groups.*` methods, or the ones it
     /// listed last time until it answers — an unsupported gateway never
@@ -637,65 +663,88 @@ struct BotRosterView: View {
     /// the gateway, which need no `groups.*` support.
     @State private var showingGroupCreateSheet = false
 
+    private var showsGroupSection: Bool {
+        hostedGroupsAvailable || hasGroupRows || groupProbeFailure != nil
+    }
+
+    @ViewBuilder
+    private var groupRows: some View {
+        if let message = groupProbeFailure {
+            // A probe failure must explain itself — an absent section
+            // is indistinguishable from "this gateway has no groups".
+            botModeFailure(message)
+                .padding(.vertical, 3)
+                .rosterListRow(divider: false)
+        }
+        ForEach(appState.shownGroupRooms) { room in
+            GroupRosterRow(room: room)
+        }
+        ForEach(appState.shownDesktopGroupChats) { group in
+            DesktopGroupRosterRow(group: group) {
+                presentedDesktopGroup = group
+            }
+        }
+    }
+
+    private func startNewGroup() {
+        Haptics.light()
+        // The sheet renders the shared error; start clean.
+        appState.errorMessage = nil
+        showingGroupCreateSheet = true
+    }
+
     @ViewBuilder
     private var groupSection: some View {
-        if hostedGroupsAvailable || hasGroupRows || groupProbeFailure != nil {
-            Section {
-                if let message = groupProbeFailure {
-                    // A probe failure must explain itself — an absent section
-                    // is indistinguishable from "this gateway has no groups".
-                    BotModeNoticeRow(
-                        icon: "exclamationmark.triangle",
-                        message: message
-                    )
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .conduitGlassSurface(cornerRadius: 18, tint: .yellow.opacity(0.10))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
-                }
-                ForEach(appState.shownGroupRooms) { room in
-                    GroupRosterRow(room: room)
-                }
-                ForEach(appState.shownDesktopGroupChats) { group in
-                    DesktopGroupRosterRow(group: group) {
-                        presentedDesktopGroup = group
-                    }
-                }
+        if showsGroupSection {
+            Section(AppLocalization.string("Group Chats")) {
+                groupRows
                 if canStartGroups {
-                    Button {
-                        Haptics.light()
-                        // The sheet renders the shared error; start clean.
-                        appState.errorMessage = nil
-                        showingGroupCreateSheet = true
-                    } label: {
+                    Button(action: startNewGroup) {
                         newGroupCard
                     }
                     .buttonStyle(.plain)
                     .rosterListRow(divider: false)
                     .accessibilityLabel(Text(AppLocalization.string("New Group Chat")))
                 }
-            } header: {
-                if createRequest != nil {
-                    // As the Chats list's section headers, in line with the
-                    // pictures.
-                    Text(AppLocalization.string("Group Chats"))
-                        .scaledFont(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .textCase(nil)
-                        .padding(.leading, 16)
-                        .padding(.top, 14)
-                        .padding(.bottom, 2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .listRowInsets(EdgeInsets())
-                        .accessibilityAddTraits(.isHeader)
-                } else {
-                    Text(AppLocalization.string("Group Chats"))
-                }
             }
             .listSectionSeparator(.hidden)
+        }
+    }
+
+    /// Bots Home's Group Chats: a heading in line with the pictures, with
+    /// New Group Chat as its +, as New Bot is the title bar's.
+    @ViewBuilder
+    private var homeGroupSection: some View {
+        if showsGroupSection {
+            HStack(alignment: .center) {
+                Text(AppLocalization.string("Group Chats"))
+                    .scaledFont(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 8)
+                if canStartGroups {
+                    // New Bot's glass +, at its 44 pt size.
+                    Button(action: startNewGroup) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 17, weight: .semibold))
+                            .conduitFixedGlyph()
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    .conduitGlassControl(cornerRadius: 22, interactive: false)
+                    .accessibilityLabel(Text(AppLocalization.string("New Group Chat")))
+                    .accessibilityIdentifier("bots.newGroupChat")
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 4)
+            .frame(minHeight: 44)
+            VStack(spacing: 0) {
+                groupRows
+            }
+            .padding(.bottom, 16)
         }
     }
 
@@ -1171,14 +1220,47 @@ struct RosterGlyphRow: View {
 
 extension View {
     /// A Bots list row's chrome: no system background or separator, 16 pt
-    /// side insets, and the row's hairline from the text column.
+    /// side insets, and the row's hairline from the text column. On Bots
+    /// Home, a scroll view rather than a List, the row pads itself.
     func rosterListRow(divider: Bool = true, selection: V2RowSelection = .none) -> some View {
-        self
-            .listRowBackground(Color.clear.v2RowSelection(selection))
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-            .overlay(alignment: .bottom) {
-                if divider { V2RowDivider(leadingInset: 48) }
-            }
+        modifier(RosterListRow(divider: divider, selection: selection))
+    }
+}
+
+private struct RosterRowsInScrollKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// The roster's rows are in Bots Home's scroll view, not a List.
+    var rosterRowsInScroll: Bool {
+        get { self[RosterRowsInScrollKey.self] }
+        set { self[RosterRowsInScrollKey.self] = newValue }
+    }
+}
+
+private struct RosterListRow: ViewModifier {
+    let divider: Bool
+    let selection: V2RowSelection
+    @Environment(\.rosterRowsInScroll) private var inScroll
+
+    func body(content: Content) -> some View {
+        if inScroll {
+            content
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .v2RowSelection(selection)
+                .overlay(alignment: .bottom) {
+                    if divider { V2RowDivider(leadingInset: 64).padding(.trailing, 16) }
+                }
+        } else {
+            content
+                .listRowBackground(Color.clear.v2RowSelection(selection))
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                .overlay(alignment: .bottom) {
+                    if divider { V2RowDivider(leadingInset: 48) }
+                }
+        }
     }
 }
