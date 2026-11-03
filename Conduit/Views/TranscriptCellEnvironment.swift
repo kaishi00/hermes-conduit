@@ -26,6 +26,7 @@ struct TranscriptCellEnvironment: Equatable {
         "markupDrawsInPlace",
         "markdownReferences",
         "chatPinReplyAction",
+        "richChecklistContext",
     ]
 
     // Conduit's
