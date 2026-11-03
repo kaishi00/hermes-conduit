@@ -12251,11 +12251,17 @@ final class AppState: ObservableObject {
     static let talkingRoomMissesKept = 3
     /// Each room's reads in a row that failed.
     private var talkingRoomMisses: [String: Int] = [:]
+    /// A talking-rooms read is running.
+    private var talkingRoomsReading = false
 
     /// Which hosted rooms are talking now: one `groups.state` per room
     /// (its driver's `working`), the rooms updated last first. Bots Home
     /// reads it while it shows. An unanswered room keeps what it was.
     func refreshTalkingRooms() async {
+        // Bots Home and a bot's overview both ask; one read at a time.
+        guard !talkingRoomsReading else { return }
+        talkingRoomsReading = true
+        defer { talkingRoomsReading = false }
         guard groupChatPhase == .available, groupRoomsListed, let client, isConnected else {
             if !talkingRoomIDs.isEmpty { talkingRoomIDs = [] }
             talkingRoomMisses = [:]
@@ -12266,6 +12272,9 @@ final class AppState: ObservableObject {
             .sorted { $0.updatedAt > $1.updatedAt }
             .prefix(Self.talkingRoomsRead)
         var talking = Set<String>()
+        // Only the rooms read this pass keep a count, so one that left
+        // the read rooms starts over when it comes back.
+        var misses: [String: Int] = [:]
         for room in rooms {
             do {
                 let (_, driver) = try await groupsState(client, roomID: room.roomID)
@@ -12274,17 +12283,15 @@ final class AppState: ObservableObject {
                 return
             } catch {
                 // Kept through a couple of misses, not for good.
-                let misses = (talkingRoomMisses[room.roomID] ?? 0) + 1
-                talkingRoomMisses[room.roomID] = misses
-                if talkingRoomIDs.contains(room.roomID), misses < Self.talkingRoomMissesKept {
+                let missed = (talkingRoomMisses[room.roomID] ?? 0) + 1
+                misses[room.roomID] = missed
+                if talkingRoomIDs.contains(room.roomID), missed < Self.talkingRoomMissesKept {
                     talking.insert(room.roomID)
                 }
-                guard groupRoomEpoch == epoch, self.client === client else { return }
-                continue
             }
-            talkingRoomMisses[room.roomID] = nil
             guard groupRoomEpoch == epoch, self.client === client else { return }
         }
+        talkingRoomMisses = misses
         if talking != talkingRoomIDs { talkingRoomIDs = talking }
     }
 

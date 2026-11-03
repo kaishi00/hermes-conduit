@@ -770,6 +770,16 @@ struct BotOverviewSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        // Opened from a Bot Chat too, where Bots Home doesn't ask, so the
+        // header's "In <room>" doesn't go stale (a read already running
+        // from Bots Home is shared).
+        .task(id: scenePhase == .active) {
+            guard scenePhase == .active else { return }
+            while !Task.isCancelled {
+                await appState.refreshTalkingRooms()
+                try? await Task.sleep(for: BotsTalkingRoomsReader.every)
+            }
+        }
         // A workstream opened from its list shows its own chat.
         .onChange(of: appState.activeSessionId) { _, _ in onClose() }
         .accessibilityIdentifier("botOverview")
