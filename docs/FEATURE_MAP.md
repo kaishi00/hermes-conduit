@@ -1466,7 +1466,7 @@ value while a room is being built) · README.md's Bots Home line
 - The bots' order is by profile name, so a renamed profile goes to the end; Hermes Desktop keeps no order of its own to match.
 - Not yet tried on a device: the zoom's look from a portrait in the grid's list row; whether a drag's lift and the portrait's long-press menu share the hold, the merge dwell's feel, and whether a cancelled drag lets go of its item at once (a portrait reads the dragged bot only while it lives).
 
-**Checked:** 2026-11-03, #PRNUM (the portrait-to-chat zoom; a drop on a portrait's pill lands on it); 2026-11-03, #1679 (the bots' order, synced, and starting a room by dropping bots together, with a confirm step); 2026-11-03, #1678 (added).
+**Checked:** 2026-11-03, #1682 (the portrait-to-chat zoom; a drop on a portrait's pill lands on it); 2026-11-03, #1679 (the bots' order, synced, and starting a room by dropping bots together, with a confirm step); 2026-11-03, #1678 (added).
 
 ## Bots: create and edit
 
