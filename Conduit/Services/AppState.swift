@@ -37381,9 +37381,6 @@ final class AppState: ObservableObject {
     /// that wait.
     private func takeVoiceEventAfterCancel(_ event: VoiceAssistantEvent) -> VoiceAssistantEvent? {
         switch event {
-        case .started, .delta, .interim, .completed, .failed: break
-        case .interrupted: return event
-        }
         guard let generation = handledStreamEventGeneration else { return event }
         // The open chat can hold a note under each of its ids (Voice's
         // cancel names the open chat, the composer's its runtime id): the
@@ -37398,7 +37395,7 @@ final class AppState: ObservableObject {
             return event
         }
         switch event {
-        case .completed, .failed: return .completed(sessionID: event.sessionID, content: nil)
+        case .completed, .failed, .interrupted: return .completed(sessionID: event.sessionID, content: nil)
         default: return nil
         }
     }

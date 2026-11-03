@@ -3439,7 +3439,12 @@ final class HermesClient: ObservableObject {
         let control = try await turnControl("session.interrupt", sessionId: sessionId, profile: profile)
         // Stopped: the stopped turn ends right after, and a send then starts
         // as soon as it does, so it reads as a turn of its own rather than
-        // waiting on an end this socket may never see.
+        // waiting on an end this socket may never see. A turn that started
+        // while the interrupt was in flight is newer than the one it named,
+        // and still runs.
+        if let stopped = control.generation, let newest = executionGenerations[sessionId], newest > stopped {
+            return stopped
+        }
         authorityRunningSessions.remove(sessionId)
         return control.generation
     }

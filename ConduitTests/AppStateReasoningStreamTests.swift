@@ -328,7 +328,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
         // speaking the rest the user stopped; one waiting on the next
         // question ignores it until that reply starts.
         state.handleStreamEvent(.messageInterrupted(sessionId: "stored-a"), turnGeneration: 4)
-        XCTAssertEqual(events, [.interrupted(sessionID: "stored-a")])
+        XCTAssertEqual(events, [.completed(sessionID: "stored-a", content: nil)])
         events.removeAll()
         state.handleStreamEvent(.messageComplete(
             sessionId: "stored-a", messageId: nil, content: "late words and the rest", reasoning: nil

@@ -2116,6 +2116,25 @@ final class HermesClientTests: XCTestCase {
         ])
         let none = try await awaitResult(of: stop, "the interrupt with nothing to stop")
         XCTAssertNil(none)
+
+        // A turn that starts while the interrupt is in flight still runs:
+        // the interrupt stopped the one before it.
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "message.start", "session_id": "sess-1", "execution_generation": 11]
+        ], to: socket)
+        count = socket.sentTexts.count
+        stop = Task<Int?, Error> { try await client.cancel("sess-1") }
+        await waitForSends(count + 1, on: socket)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "message.start", "session_id": "sess-1", "execution_generation": 12]
+        ], to: socket)
+        let named = try await answerRequest(on: socket, after: count, method: "session.interrupt", result: [:])
+        XCTAssertEqual(named["execution_generation"] as? Int, 11)
+        let overtaken = try await awaitResult(of: stop, "the interrupt a newer turn overtook")
+        XCTAssertEqual(overtaken, 11)
+        XCTAssertEqual(client.runningTurnGeneration(for: "sess-1"), 12, "The newer turn still reads as running")
         client.disconnect()
     }
 
