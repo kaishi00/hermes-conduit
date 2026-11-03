@@ -5149,6 +5149,10 @@ final class AppState: ObservableObject {
     /// the dashboard and profile in `cronMutedJobsKey`.
     @Published var cronMutedJobIDs: Set<String> = []
     @Published var cronMutedJobsKey: String?
+    /// Cron jobs delivered to a Bot Chat whose report starts the bot's turn
+    /// (the rest just show it), read with `cronMutedJobIDs` and keyed by
+    /// the same `cronMutedJobsKey`.
+    @Published var cronActingJobIDs: Set<String> = []
     @Published var cronNotificationsChangingJobID: String?
     /// Moves with every save, so a refresh that started before one drops its answer.
     var cronNotificationsGeneration = 0
@@ -33216,6 +33220,7 @@ final class AppState: ObservableObject {
             if profile == activeProfile {
                 cronJobs.removeAll { $0.id == job.id }
                 cronMutedJobIDs.remove(job.id)
+                cronActingJobIDs.remove(job.id)
             }
             return true
         } catch {

@@ -1599,6 +1599,46 @@ move of an old Bot Chat under its gateway, which keeps a bot reachable while its
 
 **Checked:** 2026-11-03, #1679 (on `bot-workstreams`, the @ list and Mention a Bot list the bots in the order set on Bots Home; tags and notes unchanged); 2026-11-01, #1619 (the working line also titles work tools, "Starting work…"; teammate deliveries' titles unchanged); 2026-11-01, #1604 (an old Bot Chat moved under its gateway by the plugin, notifier #492; Siblings, Code, Rulings); 2026-10-31, #1577 (TranscriptScroller is the scroller that hears first, now that chats draw on the transcript; Rulings); 2026-10-31, #1568 (teammates named, the @ list and Mention a Bot offered, and the note to the bot written from the kept bots until Hermes answers; a teammate's note reads the bots again once a change has landed, so the empty roster before Hermes answers never takes its name; Code); 2026-10-31, #1565 (the folded replies are worked out once per change of the rows drawn, not on each publish; Code); 2026-10-30, #1550 (a saved copy's notes and folded replies are drawn by the chat's own rows, folded as Hermes' rows will be); 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1448 (an unnamed teammate is named by its id capitalized in its notes, replies and steps, through displayLabel); 2026-10-25, at #1259.
 
+## Cron jobs delivered to a bot
+
+A scheduled job whose `deliver` is `bot-chat` or `bot-chat:<profile>` sends
+each run's report to that bot's Bot Chat. Hermes delivers it as a turn (the
+bot reads it, acts and summarizes, a model call every run); with the plugin,
+on `bot-workstreams`, it just shows the report there unless the job lets the
+bot act on it.
+
+**Siblings:** the plugin's delivery in front of Hermes' own, in the process
+that runs the jobs (a note in the Bot Chat, as Hermes writes a cron result
+into a local chat, or Hermes' turn) · the per-job choice in the job editor,
+under Delivery, kept by the plugin beside the muted jobs (Cron
+notifications), with its footer · the report's card in the Bot Chat · the
+cron tool's result the model reads when it creates or edits such a job ·
+the job's own run, its push and its session, unchanged (Cron runs) · a Bot
+Chat in another profile (`bot-chat:<name>`), served by this process's
+gateway or another · Hermes Desktop (not needed: it shows the note as
+Hermes' local-chat note) · Watch and CarPlay (not needed: no transcript
+cards) · notifier README.md's Cron jobs delivered to a Bot Chat
+
+**Code**
+- Notifier, on its `bot-workstreams` branch (plain text until it reaches main): cron_bot_chat.py (install, show, the note's HEADER, annotate for the cron tool), cron_store.py (act, set_act, lets_act), dashboard/api/notifications.py (`act` on /cron/notifications), dashboard/api/capabilities.py (cron-bot-chat-reports), __init__.py (install, _transform_tool_result)
+- App: `Conduit/Services/CronNotifications.swift` (Choices, choices, setActs), `Conduit/Services/AppState+CronNotifications.swift` (supportsCronBotChatReports, cronJobLetsBotAct, setCronJobLetsBotAct), `Conduit/Views/V2/CronJobEditorSheet.swift` (botChoiceSection, deliversToBotChat, the save), `Conduit/Views/CronReportCard.swift` (CronBotChatReport, CronReportCard), `Conduit/Views/ChatView.swift` (the card in a system row)
+- Tests: notifier tests/test_cron_bot_chat.py and tests/test_cron_notifications.py; `ConduitTests/GatewayRestartTests+CronNotifications.swift` (testABotChatJobsChoiceIsReadSentAndOptional, testABotChatReportReadsAsTheJobAndItsReport)
+
+**Rulings**
+- Each job has its own choice, Just show it by default, Let the bot act on it when picked (Eric, 2026-11-03: some people want the report in front of them without opening cron sessions, some want the bot to act on it). A job that isn't listed just shows, a new job included, and so does one the agent made.
+- Just show it writes the report into the Bot Chat as a note, the way Hermes writes a cron result into a local chat: no turn, no model call, no reply; the bot sees it as context on its next turn. Its first line names the job and says nobody asked for a reply, and Conduit shows it as a card: the job's name, the first six lines, all of it a tap away.
+- A failure report follows the same choice, and is dropped where the profile hides warning notifications, as Hermes drops its own.
+- The cron tool's result for such a job tells the model which it is, so it doesn't promise to act on a report it will only see.
+
+**Open gaps**
+- A run's push still opens the run's own session, not the Bot Chat with its report.
+- With no Bot Chat yet, a report has nowhere to show: the run records a delivery error (Hermes' turn would have made the chat).
+- A Bot Chat whose owner runs in another process gets the note straight in its history, waiting up to a minute for a running turn; Hermes Desktop or Conduit already showing it see the note on their next read.
+- The model can't change the choice itself; it tells the user to.
+- Not yet tried against a live gateway: the note's place among the chat's own turns, and a report that arrives during a turn.
+
+**Checked:** 2026-11-03, #PRNUM (added).
+
 ## Links in messages
 
 A tap on a link in a reply opens it, the first time, wherever the reply is

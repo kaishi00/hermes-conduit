@@ -35,6 +35,10 @@ struct CronJobEditorSheet: View {
     @State private var seeded = false
     @State private var isSaving = false
     @State private var error: String?
+    /// "Let the bot act on it" for a job delivered to a Bot Chat; off, its
+    /// report just shows there (cron_bot_chat).
+    @State private var botActs = false
+    @State private var originalBotActs = false
 
     private var editedJob: CronJob? {
         if case .edit(let job) = target { return job }
@@ -42,7 +46,16 @@ struct CronJobEditorSheet: View {
     }
 
     private var hasChanges: Bool {
-        editedJob == nil || !draft.updates(from: original).isEmpty
+        editedJob == nil || !draft.updates(from: original).isEmpty || botChoiceChanged
+    }
+
+    /// The job goes to a Bot Chat on a host whose plugin keeps the choice.
+    private var offersBotChoice: Bool {
+        appState.supportsCronBotChatReports && CronDeliveryTarget.deliversToBotChat(draft.deliver)
+    }
+
+    private var botChoiceChanged: Bool {
+        offersBotChoice && botActs != originalBotActs
     }
 
     private var zoneLabel: String? {
@@ -73,6 +86,9 @@ struct CronJobEditorSheet: View {
                 }
                 CronScheduleEditor(schedule: $draft.schedule, zoneLabel: zoneLabel)
                 deliverySection
+                if offersBotChoice {
+                    botChoiceSection
+                }
             }
             .scrollDismissesKeyboard(.interactively)
             .tint(.conduitAccent)
@@ -119,10 +135,25 @@ struct CronJobEditorSheet: View {
         }
     }
 
+    private var botChoiceSection: some View {
+        Section {
+            Picker(AppLocalization.string("When it runs"), selection: $botActs) {
+                Text(AppLocalization.string("Just show it")).tag(false)
+                Text(AppLocalization.string("Let the bot act on it")).tag(true)
+            }
+        } footer: {
+            Text(botActs
+                 ? AppLocalization.string("The bot reads each report, acts on what needs it and answers in its Bot Chat. Each run costs a reply from its model.")
+                 : AppLocalization.string("Each report shows in the bot's Bot Chat as it is, with no reply. The bot sees it the next time you write."))
+        }
+    }
+
     private func seed() async {
         if !seeded {
             if let job = editedJob {
                 draft = CronJobDraft(job: job)
+                botActs = appState.cronJobLetsBotAct(job.id)
+                originalBotActs = botActs
             }
             original = draft
             seeded = true
@@ -139,10 +170,27 @@ struct CronJobEditorSheet: View {
         Task {
             defer { isSaving = false }
             do {
+                let profile = appState.activeProfile
+                var jobID: String?
                 if let job = editedJob {
                     try await appState.updateCronJob(job, updates: draft.updates(from: original))
+                    jobID = job.id
                 } else if let body = draft.createBody {
-                    _ = try await appState.createCronJob(body)
+                    jobID = try await appState.createCronJob(body)?.id
+                }
+                // A new job just shows by default, so only "act" is sent for it.
+                if offersBotChoice, let jobID, editedJob == nil ? botActs : botChoiceChanged {
+                    do {
+                        try await appState.setCronJobLetsBotAct(botActs, jobID: jobID, profile: profile)
+                    } catch {
+                        // The job itself is saved, so the sheet closes (a
+                        // second Create would make it twice); the banner says
+                        // what wasn't.
+                        Haptics.mutationCompleted(false)
+                        appState.errorMessage = AppLocalization.string("The job is saved, but not whether the bot acts on it: \(UserFacingError.message(for: error))")
+                        dismiss()
+                        return
+                    }
                 }
                 Haptics.mutationCompleted(true)
                 dismiss()
@@ -155,6 +203,15 @@ struct CronJobEditorSheet: View {
 }
 
 extension CronDeliveryTarget {
+    /// Whether a job's `deliver` names a Bot Chat (`bot-chat`, or
+    /// `bot-chat:<profile>`), alone or among other targets.
+    static func deliversToBotChat(_ deliver: String) -> Bool {
+        deliver.split(separator: ",").contains { part in
+            let token = part.trimmingCharacters(in: .whitespaces).lowercased()
+            return token == "bot-chat" || token.hasPrefix("bot-chat:")
+        }
+    }
+
     /// A target's name in the pickers: Local and the blueprint's "origin"
     /// in words, a platform by the name Hermes gives it.
     static func title(_ target: CronDeliveryTarget) -> String {
