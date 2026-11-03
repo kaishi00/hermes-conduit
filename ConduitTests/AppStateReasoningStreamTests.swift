@@ -383,7 +383,8 @@ final class AppStateReasoningStreamTests: XCTestCase {
 
     /// The composer's Stop (and /stop) notes the turn as Voice's cancel does.
     func testComposerStopNotesTheRunningTurn() async {
-        let operations = ChatResumeLifecycleOperations(interrupt: { _, _ in })
+        var interrupted: [String] = []
+        let operations = ChatResumeLifecycleOperations(interrupt: { _, sessionId in interrupted.append(sessionId) })
         let state = makeAppState(lifecycleOperations: operations)
         let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
         state.connection = connection
@@ -397,6 +398,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
 
         state.runningTurnGenerationLookup = { _ in 3 }
         _ = await state.cancelCurrent()
+        XCTAssertEqual(interrupted, ["stored-a"], "The turn is cancelled, not only noted")
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "straggler"), turnGeneration: 3)
         XCTAssertEqual(events, [])
     }

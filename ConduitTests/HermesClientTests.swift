@@ -2092,6 +2092,13 @@ final class HermesClientTests: XCTestCase {
 
         try await deliverFrame([
             "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "message.delta", "session_id": "sess-1", "execution_generation": 5,
+                       "payload": ["text": "hi"]]
+        ], to: socket)
+        XCTAssertEqual(seen, [5, 5])
+
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
             "params": ["type": "message.complete", "session_id": "sess-1", "execution_generation": 5,
                        "payload": ["text": "done"]]
         ], to: socket)
