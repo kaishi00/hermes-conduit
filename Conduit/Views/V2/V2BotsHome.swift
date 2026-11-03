@@ -653,7 +653,9 @@ struct BotZoomSource: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *), let namespace, !reduceMotion {
             content.matchedTransitionSource(id: name, in: namespace) { source in
-                source.clipShape(Circle())
+                // Only a RoundedRectangle may clip a source: one rounder
+                // than the portrait is its circle.
+                source.clipShape(RoundedRectangle(cornerRadius: 1000))
             }
         } else {
             content
