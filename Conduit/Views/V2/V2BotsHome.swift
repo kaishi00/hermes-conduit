@@ -68,6 +68,118 @@ struct BotsHomeShortcuts: View {
     }
 }
 
+/// A sheet over Bots Home (an overview, Reorder Bots, a new room or bot)
+/// covers its grid: the portraits keep still under it, and a finish waits
+/// for the grid to show again. Set by BotRosterView.
+private struct BotsHomeCoveredKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var botsHomeCovered: Bool {
+        get { self[BotsHomeCoveredKey.self] }
+        set { self[BotsHomeCoveredKey.self] = newValue }
+    }
+}
+
+/// Bots Home's live rooms: one chip for each group room whose bots are
+/// talking now, with its members' faces; a tap opens the room. A bot can
+/// be in several rooms, so the rooms show here rather than round the
+/// portraits, whose pills say "In <room>". It shows only while a room
+/// talks (BotsTalkingRoomsReader asks which).
+struct BotsLiveRooms: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.v2Shell) private var shell
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.botsHomeCovered) private var covered
+    @ObservedObject private var devicePower = DevicePowerState.shared
+
+    private var isShown: Bool {
+        shell.isTabActive && !shell.isRootCovered && !covered && scenePhase == .active
+            && !devicePower.isLowPowerModeEnabled
+    }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(appState.talkingRooms) { chip($0) }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func chip(_ room: GroupRoom) -> some View {
+        Button {
+            Haptics.light()
+            appState.dismissSidebarDrawer()
+            Task { await appState.openGroupRoom(room) }
+        } label: {
+            HStack(spacing: 8) {
+                GroupRoomIcon(picture: appState.groupRoomPicture(roomID: room.roomID), members: room.members, size: 26)
+                Text(verbatim: room.name)
+                    .scaledFont(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                BotsLiveDot(animates: isShown && !reduceMotion)
+            }
+            .padding(.leading, 5)
+            .padding(.trailing, 12)
+            .frame(minHeight: 36)
+            .background(Capsule().fill(Color.conduitAccent.opacity(0.12)))
+            .overlay(Capsule().strokeBorder(Color.conduitAccent.opacity(0.30), lineWidth: 1))
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle())
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+        .accessibilityLabel(Text(room.name))
+        .accessibilityValue(Text(AppLocalization.string("Talking now")))
+        .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
+        .accessibilityIdentifier("bots.live-room.\(room.roomID)")
+    }
+}
+
+/// While Bots Home shows, asks which group rooms talk every
+/// `BotsTalkingRoomsReader.every` (AppState.refreshTalkingRooms), for the
+/// live rooms and the portraits' "In <room>" pills.
+struct BotsTalkingRoomsReader: ViewModifier {
+    static let every: Duration = .seconds(12)
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.v2Shell) private var shell
+    @Environment(\.scenePhase) private var scenePhase
+
+    func body(content: Content) -> some View {
+        // Under a sheet too: the pills still say where each bot talks.
+        let shown = shell.isTabActive && !shell.isRootCovered && scenePhase == .active
+        content.task(id: "\(shown)\u{1F}\(appState.isConnected)\u{1F}\(appState.groupRoomsListed)") {
+            guard shown else { return }
+            while !Task.isCancelled {
+                await appState.refreshTalkingRooms()
+                try? await Task.sleep(for: Self.every)
+            }
+        }
+    }
+}
+
+/// A live room's dot: it breathes while the room talks and Bots Home shows.
+private struct BotsLiveDot: View {
+    let animates: Bool
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 20, paused: !animates)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let pulse = animates ? CGFloat(1 - cos(t / 1.4 * 2 * .pi)) / 2 : 0
+            Circle()
+                .fill(Color.conduitAccent)
+                .frame(width: 7, height: 7)
+                .opacity(0.55 + 0.45 * Double(pulse))
+                .scaleEffect(1 + 0.25 * pulse)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 /// The bots as a grid of portraits. Three across on a phone; as many as
 /// fit at about the same size on a wider column, and fewer at the largest
 /// Text Sizes, where a name needs the room.
@@ -180,14 +292,19 @@ enum BotPortraitStatus: Equatable {
     /// Answering another bot's ask (an open ask_in), by that bot's name.
     case helping(String)
     case working(Int)
+    /// Talking in group rooms now (their driver works), by room name,
+    /// talked in last first.
+    case inRooms([String])
     /// Its own ask to another bot is unanswered (an ask_out waiting).
     case waitingOn(String)
     case idle
 
     /// What needs the user first, then helping another bot, its own work,
-    /// and waiting on another bot.
-    static func of(_ snapshot: BotWorkSnapshot?) -> BotPortraitStatus {
-        guard let snapshot, snapshot.isOn else { return .idle }
+    /// talking in a room, and waiting on another bot. `rooms`: the talking
+    /// rooms it's in, which show without the plugin's workstreams too.
+    static func of(_ snapshot: BotWorkSnapshot?, talkingIn rooms: [String] = []) -> BotPortraitStatus {
+        let quiet: BotPortraitStatus = rooms.isEmpty ? .idle : .inRooms(rooms)
+        guard let snapshot, snapshot.isOn else { return quiet }
         if snapshot.needsYouCount > 0 { return .needsYou(snapshot.needsYouCount) }
         if let ask = snapshot.items.first(where: {
             $0.kind == .askIn && !$0.isClosed && ["starting", "running"].contains($0.status) && !$0.otherBot.isEmpty
@@ -195,12 +312,13 @@ enum BotPortraitStatus: Equatable {
             return .helping(ask.otherBot)
         }
         if snapshot.workingCount > 0 { return .working(snapshot.workingCount) }
+        if !rooms.isEmpty { return quiet }
         if let ask = snapshot.items.first(where: {
             $0.kind == .askOut && !$0.isClosed && $0.status == "waiting" && !$0.otherBot.isEmpty
         }) {
             return .waitingOn(ask.otherBot)
         }
-        return .idle
+        return quiet
     }
 
     /// The other bot of a hand-off, by the name it had when it asked.
@@ -223,6 +341,8 @@ enum BotPortraitStatus: Equatable {
         case .needsYou(let count): return AppLocalization.string("\(count) needs you")
         case .helping(let name): return AppLocalization.string("Helping \(name)")
         case .working(let count): return AppLocalization.string("\(count) working")
+        case .inRooms(let rooms) where rooms.count == 1: return AppLocalization.string("In \(rooms[0])")
+        case .inRooms(let rooms): return AppLocalization.string("In \(rooms.count) rooms")
         case .waitingOn(let name): return AppLocalization.string("Waiting on \(name)")
         case .idle: return AppLocalization.string("Overview")
         }
@@ -231,7 +351,7 @@ enum BotPortraitStatus: Equatable {
     var tint: Color {
         switch self {
         case .needsYou: return .orange
-        case .helping, .working: return .conduitAccent
+        case .helping, .working, .inRooms: return .conduitAccent
         case .waitingOn, .idle: return .secondary
         }
     }
@@ -241,6 +361,7 @@ enum BotPortraitStatus: Equatable {
         case .needsYou: return "exclamationmark.circle.fill"
         case .helping: return "arrowshape.turn.up.left.fill"
         case .working: return "arrow.triangle.2.circlepath"
+        case .inRooms: return "bubble.left.and.bubble.right.fill"
         case .waitingOn: return "hourglass"
         case .idle: return nil
         }
@@ -279,6 +400,7 @@ struct BotPortraitCell<MenuContent: View>: View {
     @Environment(\.scenePhase) private var scenePhase
     /// Low Power Mode as it changes, so the motion stops when it turns on.
     @ObservedObject private var devicePower = DevicePowerState.shared
+    @Environment(\.botsHomeCovered) private var covered
     /// When the bot last finished something (its ready count went up),
     /// for the ripple; nil once it has settled.
     @State private var finishedAt: Date?
@@ -287,7 +409,8 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// Without the plugin's workstreams, nothing to show, even if a read
     /// from before is still kept (the overview hides Work then too).
     private var status: BotPortraitStatus {
-        appState.servesBotWorkstreams ? .of(work.snapshot(bot.name)) : .idle
+        .of(appState.servesBotWorkstreams ? work.snapshot(bot.name) : nil,
+            talkingIn: appState.talkingRooms(of: bot.name).map(\.name))
     }
 
     private var color: Color { BotAvatarView.color(for: bot.appearanceColor, name: bot.name) }
@@ -501,7 +624,7 @@ struct BotPortraitCell<MenuContent: View>: View {
 
     /// Bots Home is on screen: its tab shows and nothing is pushed over it
     /// (split, the chat beside the grid leaves it showing).
-    private var isShown: Bool { shell.isTabActive && !shell.isRootCovered }
+    private var isShown: Bool { shell.isTabActive && !shell.isRootCovered && !covered }
 
     /// The portrait moves only while Bots Home is on screen and the person
     /// hasn't asked for less motion or for Low Power Mode.
@@ -602,7 +725,7 @@ struct BotOverviewSheet: View {
     private var showsWork: Bool { appState.servesBotWorkstreams }
 
     private var headerStatus: BotPortraitStatus {
-        showsWork ? .of(work.snapshot(profile)) : .idle
+        .of(showsWork ? work.snapshot(profile) : nil, talkingIn: appState.talkingRooms(of: profile).map(\.name))
     }
 
     private var shown: Section { showsWork ? section : .artifacts }

@@ -11714,6 +11714,10 @@ final class AppState: ObservableObject {
     @Published private(set) var groupChatPhase: GroupChatPhase = .idle
     @Published private(set) var groupCapabilities: GroupCapabilities?
     @Published private(set) var groupRooms: [GroupRoom] = []
+    /// The hosted rooms whose bots are talking now (each room's driver is
+    /// working), read while Bots Home shows (`refreshTalkingRooms`), for
+    /// its live-rooms row and the "In <room>" pills.
+    @Published private(set) var talkingRoomIDs: Set<String> = []
     /// `groups.list` has answered since the group state was last cleared:
     /// until then the Bots list shows the rooms kept from its last answer on
     /// this dashboard (`shownGroupRooms`, #1533). Published so a room a
@@ -11889,6 +11893,7 @@ final class AppState: ObservableObject {
         groupRoomsListed = false
         groupRoomsComplete = false
         groupRooms = []
+        talkingRoomIDs = []
         desktopGroupChats = []
         groupRoomPictureData = [:]
         groupRoomPictureRevisions = [:]
@@ -12237,6 +12242,52 @@ final class AppState: ObservableObject {
             // Keep the last known room list; the roster surfaces the probe
             // failure path, and a stale room row is safer than an empty one.
         }
+    }
+
+    /// The most rooms Bots Home asks after at once: the ones talked in
+    /// last (`updatedAt`), so a host with many rooms isn't asked about each.
+    static let talkingRoomsRead = 8
+
+    /// Which hosted rooms are talking now: one `groups.state` per room
+    /// (its driver's `working`), the rooms updated last first. Bots Home
+    /// reads it while it shows. An unanswered room keeps what it was.
+    func refreshTalkingRooms() async {
+        guard groupChatPhase == .available, groupRoomsListed, let client, isConnected else {
+            if !talkingRoomIDs.isEmpty { talkingRoomIDs = [] }
+            return
+        }
+        let epoch = groupRoomEpoch
+        let rooms = groupRooms.filter { !$0.isDisbanded }
+            .sorted { $0.updatedAt > $1.updatedAt }
+            .prefix(Self.talkingRoomsRead)
+        var talking = Set<String>()
+        for room in rooms {
+            do {
+                let (_, driver) = try await groupsState(client, roomID: room.roomID)
+                if driver?.working == true { talking.insert(room.roomID) }
+            } catch is CancellationError {
+                return
+            } catch {
+                if talkingRoomIDs.contains(room.roomID) { talking.insert(room.roomID) }
+            }
+            guard groupRoomEpoch == epoch, self.client === client else { return }
+        }
+        if talking != talkingRoomIDs { talkingRoomIDs = talking }
+    }
+
+    /// The talking rooms `profile` is a member of, talked in last first.
+    func talkingRooms(of profile: String) -> [GroupRoom] {
+        guard !talkingRoomIDs.isEmpty else { return [] }
+        return talkingRooms.filter { room in
+            room.members.contains { $0.profile?.caseInsensitiveCompare(profile) == .orderedSame }
+        }
+    }
+
+    /// The talking rooms, talked in last first.
+    var talkingRooms: [GroupRoom] {
+        guard !talkingRoomIDs.isEmpty else { return [] }
+        return groupRooms.filter { talkingRoomIDs.contains($0.roomID) && !$0.isDisbanded }
+            .sorted { $0.updatedAt > $1.updatedAt }
     }
 
     /// Keeps the listed rooms and their pictures as they are now, as a

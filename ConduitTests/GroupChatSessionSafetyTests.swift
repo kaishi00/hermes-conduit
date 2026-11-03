@@ -1246,4 +1246,48 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             createdAt: 0
         )
     }
+
+    // MARK: - Talking rooms (Bots Home's live rooms)
+
+    /// Bots Home asks each room whether its bots are talking: a working
+    /// driver is talking, a room that doesn't answer keeps what it was,
+    /// and a disconnect clears them.
+    func testTalkingRoomsAreTheRoomsWhoseDriverWorks() async {
+        final class Box { var working: Set<String> = []; var failing: Set<String> = [] }
+        let box = Box()
+        let planning = room(name: "Planning")
+        let quiet = GroupRoom(roomID: "room-2", name: "Quiet", members: planning.members, authorityGatewayID: "gw-a",
+                              authorityEpoch: 1, revision: 1, createdAt: 0, updatedAt: 5, disbandedAt: nil, latestSeq: 0)
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([planning, quiet], nil) },
+            state: { _, roomID in
+                if box.failing.contains(roomID) { throw TestError() }
+                let room = roomID == planning.roomID ? planning : quiet
+                return (room, GroupDriverStatus(running: true, working: box.working.contains(roomID), blocked: false,
+                                                counts: [:], pendingActions: []))
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+
+        box.working = [planning.roomID]
+        await appState.refreshTalkingRooms()
+        XCTAssertEqual(appState.talkingRoomIDs, [planning.roomID])
+        XCTAssertEqual(appState.talkingRooms(of: "Researcher").map(\.name), ["Planning"])
+        XCTAssertEqual(BotPortraitStatus.of(nil, talkingIn: ["Planning"]).title,
+                       AppLocalization.string("In \("Planning")"))
+
+        box.working = [quiet.roomID]
+        box.failing = [planning.roomID]
+        await appState.refreshTalkingRooms()
+        XCTAssertEqual(appState.talkingRoomIDs, [planning.roomID, quiet.roomID])
+        // Talked in last first.
+        XCTAssertEqual(appState.talkingRooms.map(\.name), ["Quiet", "Planning"])
+
+        appState.isConnected = false
+        await appState.refreshTalkingRooms()
+        XCTAssertTrue(appState.talkingRoomIDs.isEmpty)
+    }
 }
