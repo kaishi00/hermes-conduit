@@ -33008,7 +33008,8 @@ final class AppState: ObservableObject {
             guard let created = try await client.createProject(name: trimmedName, folders: uniqueFolders) else {
                 throw HermesError.invalidResponse
             }
-            if profile == activeProfile, self.client === client {
+            // The same Hermes and profile take the row, across a reconnect.
+            if dashboard == activeDashboardID, profile == activeProfile {
                 projects = [created] + projects.filter { $0.id != created.id }
                 supportsProjects = true
             }
