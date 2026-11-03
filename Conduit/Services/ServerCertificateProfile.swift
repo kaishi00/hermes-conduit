@@ -178,10 +178,11 @@ enum ServerCertificateProfile {
         return url
     }
 
-    /// A file name from the host: letters, digits, dots and dashes.
+    /// A file name from the host: letters, digits, dots and dashes, at most
+    /// 100 characters (a host name can be 253, past a file name's limit).
     static func fileStem(_ host: String) -> String {
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: ".-"))
-        let stem = String(host.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" })
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")
+        let stem = String(host.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }.prefix(100))
         return stem.isEmpty ? "dashboard" : stem
     }
 }

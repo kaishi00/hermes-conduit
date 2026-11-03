@@ -80,6 +80,8 @@ final class ServerCertificateProfileTests: XCTestCase {
         XCTAssertEqual(ServerCertificateProfile.fileStem("hermes.home.arpa"), "hermes.home.arpa")
         XCTAssertEqual(ServerCertificateProfile.fileStem("fe80::1%en0"), "fe80--1-en0")
         XCTAssertEqual(ServerCertificateProfile.fileStem(""), "dashboard")
+        XCTAssertEqual(ServerCertificateProfile.fileStem(String(repeating: "a", count: 253)).count, 100)
+        XCTAssertEqual(ServerCertificateProfile.fileStem("é.example"), "-.example")
     }
 
     /// Conduit never accepts a certificate iOS refuses: no source hands

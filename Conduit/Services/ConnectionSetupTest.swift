@@ -372,7 +372,8 @@ struct ConnectionSetupTestRecoveryPlan: Equatable {
             return ConnectionSetupTestRecoveryPlan(
                 remediationStep: .loginCredentials,
                 remediationLabel: AppLocalization.string("Edit Credentials"),
-                offersRetry: failure != .rateLimited
+                offersRetry: failure != .rateLimited,
+                offersCertificateHelp: failure.helpDestination == .tls
             )
         }
     }

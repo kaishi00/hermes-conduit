@@ -611,6 +611,8 @@ final class ConnectionSetupTestTests: XCTestCase {
             XCTAssertFalse(ConnectionSetupTestRecoveryPlan.plan(for: .server, failure: failure).offersCertificateHelp, "\(failure)")
         }
         XCTAssertFalse(ConnectionSetupTestRecoveryPlan.plan(for: .authentication, failure: .authenticationRejected).offersCertificateHelp)
+        XCTAssertTrue(ConnectionSetupTestRecoveryPlan.plan(for: .authentication, failure: .tlsUntrusted).offersCertificateHelp)
+        XCTAssertTrue(ConnectionSetupTestRecoveryPlan.plan(for: .dashboard, failure: .tlsFailure).offersCertificateHelp)
     }
 
     // MARK: - Copy and accessibility pins (spec 10/24)
