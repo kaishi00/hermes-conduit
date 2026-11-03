@@ -1474,7 +1474,7 @@ live room's "Talking now") · README.md's Bots Home line
 - A speaking bot's glint isn't drawn: Hermes' room status says the room works, not which member speaks, so the pill names the room instead. A room past the 8 talked in last, or a Desktop group chat, never shows as live.
 - Not yet tried on a device: the portraits' motion and what many working bots cost (one 30 fps timeline each while they move); the zoom's look from a portrait in the grid's list row; whether a drag's lift and the portrait's long-press menu share the hold, the merge dwell's feel, and whether a cancelled drag lets go of its item at once (a portrait reads the dragged bot only while it lives).
 
-**Checked:** 2026-11-03, #PRNUM (live rooms over the grid and "In <room>" pills; the portraits keep still under Bots Home's own sheets); 2026-11-03, #1686 (the portraits' motion, the overview header's, and hand-offs between bots); 2026-11-03, #1682 (the portrait-to-chat zoom; a drop on a portrait's pill lands on it); 2026-11-03, #1679 (the bots' order, synced, and starting a room by dropping bots together, with a confirm step); 2026-11-03, #1678 (added).
+**Checked:** 2026-11-03, #1698 (live rooms over the grid and "In <room>" pills; the portraits keep still under Bots Home's own sheets); 2026-11-03, #1686 (the portraits' motion, the overview header's, and hand-offs between bots); 2026-11-03, #1682 (the portrait-to-chat zoom; a drop on a portrait's pill lands on it); 2026-11-03, #1679 (the bots' order, synced, and starting a room by dropping bots together, with a confirm step); 2026-11-03, #1678 (added).
 
 ## Bots: create and edit
 
