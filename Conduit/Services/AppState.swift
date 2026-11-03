@@ -11679,6 +11679,17 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// A board's follow-up (conduit_show's next): tap sends it as the
+    /// user's message, long-press puts it in the composer, the same way a
+    /// suggested reply does.
+    func requestBoardFollowUp(_ action: PredictiveComposerRequest.Action, text: String) {
+        guard let session = activeSessionId, !session.isEmpty else { return }
+        predictiveComposerRequest = PredictiveComposerRequest(
+            action: action, text: text, draft: "", sessionID: session,
+            draftKey: ComposerBar.composerDraftKey(for: session, profile: activeProfile)
+        )
+    }
+
     /// The composer took the guess.
     func consumePredictiveComposerRequest(_ id: UUID) {
         guard predictiveComposerRequest?.id == id else { return }

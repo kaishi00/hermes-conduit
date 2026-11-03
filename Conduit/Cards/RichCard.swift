@@ -32,6 +32,12 @@ struct RichCard: Identifiable, Equatable, Hashable {
         case media
         case contact
         case status
+        case table
+        case timeline
+        case checklist
+        case list
+        case progress
+        case callout
     }
 
     enum TravelMode: String {
@@ -67,6 +73,14 @@ struct RichCard: Identifiable, Equatable, Hashable {
     let media: [RichMedia]
     let people: [RichPerson]
     let status: RichStatus?
+    /// The board kinds (RichBoardCard.swift).
+    let table: RichTable?
+    let timeline: [RichTimelineDay]
+    let checklist: [RichChecklistItem]
+    let list: [RichListItem]
+    let ranked: Bool
+    let progress: [RichProgress]
+    let callout: RichCallout?
 
     init?(normalized json: [String: Any], id: Int) {
         guard let kind = (json["type"] as? String).flatMap(Kind.init(rawValue:)) else { return nil }
@@ -96,6 +110,13 @@ struct RichCard: Identifiable, Equatable, Hashable {
         media = (json["media"] as? [[String: Any]] ?? []).compactMap(RichMedia.init(json:))
         people = (json["people"] as? [[String: Any]] ?? []).compactMap(RichPerson.init(json:))
         status = RichStatus(json: json["status"])
+        table = RichTable(json: json["table"])
+        timeline = (json["timeline"] as? [[String: Any]] ?? []).compactMap(RichTimelineDay.init(json:))
+        checklist = (json["checklist"] as? [[String: Any]] ?? []).compactMap(RichChecklistItem.init(json:))
+        list = (json["list"] as? [[String: Any]] ?? []).compactMap(RichListItem.init(json:))
+        ranked = json["ranked"] as? Bool ?? false
+        progress = (json["progress"] as? [[String: Any]] ?? []).compactMap(RichProgress.init(json:))
+        callout = RichCallout(json: json["callout"])
         switch kind {
         case .map, .place, .places: guard !places.isEmpty else { return nil }
         case .stats: guard !stats.isEmpty else { return nil }
@@ -106,6 +127,12 @@ struct RichCard: Identifiable, Equatable, Hashable {
         case .media: guard !media.isEmpty, source != nil else { return nil }
         case .contact: guard !people.isEmpty else { return nil }
         case .status: guard status != nil else { return nil }
+        case .table: guard table != nil else { return nil }
+        case .timeline: guard !timeline.isEmpty else { return nil }
+        case .checklist: guard !checklist.isEmpty else { return nil }
+        case .list: guard !list.isEmpty else { return nil }
+        case .progress: guard !progress.isEmpty else { return nil }
+        case .callout: guard callout != nil else { return nil }
         }
     }
 
@@ -138,10 +165,11 @@ struct RichCard: Identifiable, Equatable, Hashable {
         return cards(raw: jsonObject(tool.input)?["cards"], schema: schema)
     }
 
-    /// Whether a transcript row is a `conduit_show` call that drew cards.
+    /// Whether a transcript row is a `conduit_show` call that showed a
+    /// board: its cards, or their Markdown where they can't be drawn.
     static func hasCards(_ message: ChatMessage) -> Bool {
         guard message.role == .tool, let tool = message.tool else { return false }
-        return !cards(for: tool).isEmpty
+        return RichBoard.board(for: tool) != nil
     }
 
     /// The live names a transcript row's cards carry. Only a row whose
