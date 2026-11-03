@@ -1449,6 +1449,7 @@ needed: it keeps its sidebar) · Watch and CarPlay (not needed: no bots list)
 **Open gaps**
 - The portrait-to-chat transition (a circle growing from the portrait) isn't built yet; it comes in its own PR.
 - A bot made on another device shows its pill words only once Bots Home is opened again or reconnects.
+- Bots Home redraws on each AppState change, unlike the Sessions list (`V2ShownUpdates`); a roster is small, but a cold launch with many bots hasn't been measured.
 
 **Checked:** 2026-11-03, #1678 (added).
 
@@ -3857,7 +3858,7 @@ clips (kaishi00/hermes-conduit-website)
 **Open gaps**
 - No clips yet of an incoming Hermes call, of CarPlay or of a lock-screen approval. A simulator can't show any of them (calls ring through CallKit, and the CarPlay window opens only by hand), so they come from recordings on Eric's devices, then go into the README strip and the site (#1193).
 
-**Checked:** 2026-10-25, at #1228.
+**Checked:** 2026-10-25, at #1228. 2026-11-03, #1678 (on `bot-workstreams` the app opens on Bots, so both the screenshots and the App Preview tap Sessions first).
 
 ## Pictures in messages
 
