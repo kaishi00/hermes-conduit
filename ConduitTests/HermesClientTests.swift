@@ -2096,6 +2096,7 @@ final class HermesClientTests: XCTestCase {
                        "payload": ["text": "hi"]]
         ], to: socket)
         XCTAssertEqual(seen, [5, 5])
+        XCTAssertEqual(client.runningTurnGeneration(for: "sess-1"), 5, "A delta leaves the turn running")
 
         try await deliverFrame([
             "jsonrpc": "2.0", "method": "event",
