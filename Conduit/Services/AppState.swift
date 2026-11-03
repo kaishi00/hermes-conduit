@@ -2239,6 +2239,20 @@ final class AppState: ObservableObject {
     func endOpeningBotChat(_ name: String) {
         if botChatOpening == name { botChatOpening = nil }
     }
+
+    /// The shell placed the conversation for the marked Bot Chat: the mark
+    /// is spent, so a plain session a notification opens before the Bot
+    /// Chat lands still goes to Sessions.
+    func botChatOpeningPlaced() {
+        botChatOpening = nil
+    }
+
+    /// Whether the shell keeps the conversation it's placing in Bots: a
+    /// Bot Chat or a workstream's chat is open, or a list of bots marked
+    /// one as coming.
+    var placesConversationAsBotChat: Bool {
+        activeBotChatProfile != nil || activeWorkstream != nil || botChatOpening != nil
+    }
     @Published var showModelPicker = false
     @Published var showContextSheet = false
     @Published var showWorkspaceSheet = false
@@ -12276,6 +12290,12 @@ final class AppState: ObservableObject {
     /// second's slack): Bots Home and a bot's overview both ask on their
     /// own clocks, and the rooms are read once each round, not by each.
     func refreshTalkingRoomsIfDue(every: Duration) async {
+        // Offline nothing is read, and the first ask back reads at once.
+        guard isConnected else {
+            talkingRoomsReadAt = nil
+            await refreshTalkingRooms()
+            return
+        }
         let interval = Double(every.components.seconds) - 1
         if let at = talkingRoomsReadAt, Date().timeIntervalSince(at) < interval { return }
         talkingRoomsReadAt = Date()
@@ -12310,6 +12330,8 @@ final class AppState: ObservableObject {
                 let (_, driver) = try await groupsState(client, roomID: room.roomID)
                 if driver?.working == true { talking.insert(room.roomID) }
             } catch is CancellationError {
+                // Cut short: the next ask reads again at once.
+                talkingRoomsReadAt = nil
                 return
             } catch {
                 // Kept through a couple of misses, not for good.

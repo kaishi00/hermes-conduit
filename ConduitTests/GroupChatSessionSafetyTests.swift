@@ -1321,10 +1321,11 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         await appState.refreshTalkingRoomsIfDue(every: .seconds(12))
         XCTAssertEqual(box.asked.count, AppState.talkingRoomsRead)
 
+        // Dropped and back within the round: asked at once on return,
+        // through the same ask Bots Home makes.
         appState.isConnected = false
-        await appState.refreshTalkingRooms()
+        await appState.refreshTalkingRoomsIfDue(every: .seconds(12))
         XCTAssertTrue(appState.talkingRoomIDs.isEmpty)
-        // Back, it's asked at once rather than after the round.
         appState.isConnected = true
         box.asked = []
         await appState.refreshTalkingRoomsIfDue(every: .seconds(12))

@@ -697,6 +697,17 @@ extension BotModeTests {
         XCTAssertEqual(appState.botChatOpening, "coach")
         appState.endOpeningBotChat("coach")
         XCTAssertNil(appState.botChatOpening)
+
+        // The shell places the coming Bot Chat in Bots (nothing was open
+        // before), and once placed, a plain session goes to Sessions.
+        XCTAssertFalse(appState.placesConversationAsBotChat)
+        appState.beginOpeningBotChat("chef")
+        XCTAssertTrue(appState.placesConversationAsBotChat)
+        XCTAssertEqual(V2Tab.conversationTab(selected: .bots, isBotsChat: appState.placesConversationAsBotChat), .bots)
+        appState.botChatOpeningPlaced()
+        XCTAssertFalse(appState.placesConversationAsBotChat)
+        appState.endOpeningBotChat("chef")
+        XCTAssertNil(appState.botChatOpening)
     }
 
     /// A portrait's Overview pill: what needs the user first, then what's
