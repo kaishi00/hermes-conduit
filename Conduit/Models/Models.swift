@@ -1247,12 +1247,27 @@ struct CronRun: Codable, Identifiable {
     var profile: String?
     var startedAt: Int?
     var title: String?
+    /// The job the gateway says ran it, when it says.
+    var jobID: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, model, preview, profile
         case lastActive = "last_active"
         case startedAt = "started_at"
         case title
+        case jobID = "job_id"
+    }
+
+    /// Whether this is a run of the job (#1707): the job the gateway names,
+    /// else Hermes' run session id, `cron_<job id>_<YYYYMMDD>_<HHMMSS>`. A run
+    /// that says neither is no job's, so a list of every job's runs never
+    /// lends one to a job that didn't make it.
+    func isRun(ofJob job: String) -> Bool {
+        if let jobID, !jobID.isEmpty { return jobID == job }
+        let prefix = "cron_\(job)_"
+        guard !job.isEmpty, id.hasPrefix(prefix) else { return false }
+        let stamp = id.dropFirst(prefix.count).split(separator: "_", omittingEmptySubsequences: false)
+        return stamp.map(\.count) == [8, 6] && stamp.allSatisfy { part in part.allSatisfy { $0.isASCII && $0.isNumber } }
     }
 }
 

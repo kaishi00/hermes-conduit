@@ -5422,6 +5422,8 @@ final class AppState: ObservableObject {
 
     @Published var cronJobs: [CronJob] = []
     @Published var cronRuns: [CronRun] = []
+    /// The job `cronRuns` is the history of (#1707).
+    private(set) var cronRunsJobID: String?
     @Published private(set) var cronJobsLoading = false
     @Published private(set) var cronJobActionID: String?
     /// Bumped by a job delete so a list load that started before it can't
@@ -34024,37 +34026,44 @@ final class AppState: ObservableObject {
     }
 
     func loadCronRuns(for job: CronJob) async {
+        await loadCronRuns(for: job, dashboard: dashboardTicketBridge)
+    }
+
+    /// A job's Run history. The dashboard's per-job route is the answer, an
+    /// empty one too (a job that hasn't run yet). The gateway's `cron.runs`
+    /// lists every job's runs, so it is read only without the dashboard, and
+    /// only the runs it can tell are this job's are kept (#1707). The list
+    /// belongs to one job: opening another clears it, and an answer for a job
+    /// no longer open is dropped.
+    func loadCronRuns(for job: CronJob, dashboard: (any DashboardJSONRequester)?) async {
         let profile = activeProfile
+        if cronRunsJobID != job.id {
+            cronRuns = []
+            cronRunsJobID = job.id
+        }
+        let inProfile: (CronRun) -> Bool = { run in
+            guard let owner = run.profile, !owner.isEmpty else { return true }
+            return Self.profilesMatch(owner, profile)
+        }
         do {
-            if let dashboardTicketBridge {
+            if let dashboard {
                 let path = cronDashboardPath("/api/cron/jobs/\(job.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? job.id)/runs?limit=20", profile: profile)
-                let result = try await dashboardTicketBridge.requestJSON(path: path)
-                let values = cronRunValues(from: result)
-                guard profile == activeProfile else { return }
-                let decoded = values.compactMap(decodeCronRun).filter { run in
-                    guard let owner = run.profile, !owner.isEmpty else { return true }
-                    return profilesMatch(owner, profile)
-                }
-                if decoded.isEmpty, let client {
-                    let fallback = (try? await client.cronRuns()) ?? []
-                    guard profile == activeProfile, self.client === client else { return }
-                    cronRuns = fallback.filter { run in
-                        guard let owner = run.profile, !owner.isEmpty else { return true }
-                        return profilesMatch(owner, profile)
-                    }
-                } else {
-                    cronRuns = decoded
-                }
+                let result = try await dashboard.requestJSON(
+                    path: path,
+                    method: "GET",
+                    body: nil,
+                    timeoutMilliseconds: 12_000,
+                    maxResponseBytes: DataURLLimits.maxJSONResponseBytes
+                )
+                guard profile == activeProfile, cronRunsJobID == job.id else { return }
+                cronRuns = cronRunValues(from: result).compactMap(decodeCronRun).filter(inProfile)
             } else if let client {
                 let runs = try await client.cronRuns()
-                guard profile == activeProfile, self.client === client else { return }
-                cronRuns = runs.filter { run in
-                    guard let owner = run.profile, !owner.isEmpty else { return true }
-                    return profilesMatch(owner, profile)
-                }
+                guard profile == activeProfile, self.client === client, cronRunsJobID == job.id else { return }
+                cronRuns = runs.filter { $0.isRun(ofJob: job.id) && inProfile($0) }
             }
         } catch {
-            guard profile == activeProfile else { return }
+            guard profile == activeProfile, cronRunsJobID == job.id else { return }
             errorMessage = AppLocalization.string("Could not load scheduled-job runs: \(UserFacingError.message(for: error))")
         }
     }
@@ -34227,7 +34236,8 @@ final class AppState: ObservableObject {
             preview: stringValue(object["preview"] ?? object["summary"]),
             profile: stringValue(object["profile"]),
             startedAt: Self.integerValue(object["started_at"] ?? object["startedAt"]),
-            title: stringValue(object["title"] ?? object["name"])
+            title: stringValue(object["title"] ?? object["name"]),
+            jobID: stringValue(object["job_id"] ?? object["cron_job_id"])
         )
     }
 
