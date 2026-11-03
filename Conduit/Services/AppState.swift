@@ -4858,14 +4858,13 @@ final class AppState: ObservableObject {
                 guard let self else { throw HermesError.notConnected }
                 let client = try await self.clientForVoiceRequest()
                 // A job in the open chat: its turn is noted as any cancel there is.
-                let notesBeforeCancel = self.voiceCancelledTurns
-                if let open = self.activeSessionId, self.eventBelongsToActiveSession(sessionID) {
-                    self.noteRunningTurnBeforeCancel(in: open)
-                }
+                let open = self.activeSessionId.flatMap { self.eventBelongsToActiveSession(sessionID) ? $0 : nil }
+                let noteBeforeCancel = open.flatMap { self.voiceCancelledTurns[$0] }
+                if let open { self.noteRunningTurnBeforeCancel(in: open) }
                 do {
                     try await client.cancel(sessionID, profile: self.presentationProfile(for: sessionID))
                 } catch {
-                    self.voiceCancelledTurns = notesBeforeCancel
+                    if let open { self.voiceCancelledTurns[open] = noteBeforeCancel }
                     throw error
                 }
             },
@@ -30428,7 +30427,7 @@ final class AppState: ObservableObject {
             return false
         }
         guard let client, let sessionId = currentContext.sessionID else { return false }
-        let notesBeforeCancel = voiceCancelledTurns
+        let noteBeforeCancel = voiceCancelledTurns[sessionId]
         noteRunningTurnBeforeCancel(in: sessionId)
         cancelChatResumeRestoration()
         turnState = .synchronizing
@@ -30442,7 +30441,7 @@ final class AppState: ObservableObject {
             return true
         } catch {
             // The turn wasn't stopped, so Voice may still hear it.
-            voiceCancelledTurns = notesBeforeCancel
+            voiceCancelledTurns[sessionId] = noteBeforeCancel
             guard isCurrentOrAliasedComposerSubmission(currentContext) else { return false }
             errorMessage = AppLocalization.string("Could not interrupt the active response: \(UserFacingError.message(for: error))")
             await recoverComposerSubmission(using: currentContext)
