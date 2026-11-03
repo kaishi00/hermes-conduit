@@ -3342,7 +3342,7 @@ in both at once) · README.md
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-03, #PRNUM.
+**Checked:** 2026-11-03, #1685.
 
 ## Pinned chats order
 
