@@ -1,15 +1,16 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
-    "deepseek-custom": {
+    "commandcode": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "DeepSeek",
+      "name": "Command Code",
       "options": {
-        "baseURL": "https://api.deepseek.com",
-        "apiKey": "{env:DEEPSEEK_API_KEY}"
+        "baseURL": "https://api.commandcode.ai/provider/v1",
+        "apiKey": "{env:COMMANDCODE_API_KEY}"
       },
+      "whitelist": ["deepseek/deepseek-v4.1-flash"],
       "models": {
-        "deepseek-flash": {
+        "deepseek/deepseek-v4.1-flash": {
           "name": "DeepSeek V4.1 Flash",
           "interleaved": {
             "field": "reasoning_content"
