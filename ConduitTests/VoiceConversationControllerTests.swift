@@ -465,7 +465,9 @@ final class VoiceConversationControllerTests: XCTestCase {
         steers: SubmitSpy,
         interrupts: AwaitableCounter,
         capture: MockCapture? = nil,
-        playback: MockPlayback? = nil
+        playback: MockPlayback? = nil,
+        turnIsRunning: (@MainActor () -> Bool)? = nil,
+        onInterrupt: (@MainActor () -> Void)? = nil
     ) -> VoiceConversationController {
         let policy = RoutePolicyBox(.fullDuplex)
         return VoiceConversationController(
@@ -474,8 +476,9 @@ final class VoiceConversationControllerTests: XCTestCase {
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { await submitted.submit($0) },
-            interrupt: { interrupts.increment(); return true },
-            steer: { await steers.submit($0) ? .steered : .failed }
+            interrupt: { interrupts.increment(); onInterrupt?(); return true },
+            steer: { await steers.submit($0) ? .steered : .failed },
+            turnIsRunning: turnIsRunning
         )
     }
 
@@ -646,8 +649,10 @@ final class VoiceConversationControllerTests: XCTestCase {
             routePolicyProvider: { policy.policy },
             submit: { await submitted.submit($0) },
             interrupt: { interrupts.increment(); return outcome.succeeds },
-            steer: { await steers.submit($0) ? .steered : .failed }
+            steer: { await steers.submit($0) ? .steered : .failed },
+            turnIsRunning: { true }
         )
+        controller.cancelledTurnEndWindow = 30
         await driveToThinking(controller, submitted: submitted)
 
         outcome.succeeds = false
@@ -668,6 +673,13 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(interrupts.value, 2, "the failed cancel is retried before the next turn")
         XCTAssertEqual(submitted.texts, ["Question", "Next question"])
         XCTAssertEqual(steers.texts, [], "the next turn is not steered into the old one")
+
+        // What the retried turn still streams is not the next reply.
+        await drainPendingMainActorWork()
+        controller.receiveAssistantEvent(.delta(sessionID: "session", text: "Old words."))
+        XCTAssertFalse(controller.conversationTranscript.contains { $0.text.contains("Old") })
+        controller.receiveAssistantEvent(.interrupted(sessionID: "session"))
+        XCTAssertEqual(controller.state, .thinking)
         controller.stop()
     }
 
@@ -701,7 +713,8 @@ final class VoiceConversationControllerTests: XCTestCase {
         let interrupts = AwaitableCounter()
         let capture = MockCapture(permissionGranted: true)
         let controller = makeSteerController(
-            gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts, capture: capture
+            gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts, capture: capture,
+            turnIsRunning: { true }
         )
         await stopAndAskAgain(controller, gateway: gateway, submitted: submitted,
                               interrupts: interrupts, capture: capture)
@@ -732,7 +745,8 @@ final class VoiceConversationControllerTests: XCTestCase {
         let interrupts = AwaitableCounter()
         let capture = MockCapture(permissionGranted: true)
         let controller = makeSteerController(
-            gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts, capture: capture
+            gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts, capture: capture,
+            turnIsRunning: { true }
         )
         controller.cancelledTurnEndWindow = 0
         await stopAndAskAgain(controller, gateway: gateway, submitted: submitted,
@@ -742,6 +756,53 @@ final class VoiceConversationControllerTests: XCTestCase {
         controller.receiveAssistantEvent(.delta(sessionID: "session", text: "New answer."))
         let speaking = await controller.waitForState(.speaking)
         XCTAssertTrue(speaking, "the next turn's reply is spoken once the wait is over")
+        controller.stop()
+    }
+
+    /// A cancelled turn whose end already came while its cancel was answered
+    /// leaves nothing to wait for: the next turn's reply plays.
+    func testACancelledTurnWhoseEndCameDuringItsCancelIsNotWaitedForAgain() async {
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submitted = SubmitSpy()
+        let steers = SubmitSpy()
+        let interrupts = AwaitableCounter()
+        let capture = MockCapture(permissionGranted: true)
+        let box = ControllerBox()
+        let controller = makeSteerController(
+            gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts, capture: capture,
+            turnIsRunning: { true },
+            onInterrupt: { box.controller?.receiveAssistantEvent(.interrupted(sessionID: "session")) }
+        )
+        box.controller = controller
+        await stopAndAskAgain(controller, gateway: gateway, submitted: submitted,
+                              interrupts: interrupts, capture: capture)
+
+        controller.receiveAssistantEvent(.started(sessionID: "session"))
+        controller.receiveAssistantEvent(.delta(sessionID: "session", text: "New answer."))
+        let speaking = await controller.waitForState(.speaking)
+        XCTAssertTrue(speaking, "the next turn's reply is spoken")
+        controller.stop()
+    }
+
+    /// A turn that already ended in the chat when it was cancelled sends no
+    /// end, so nothing is waited for: the next turn's reply plays.
+    func testCancellingATurnTheChatNoLongerRunsWaitsForNothing() async {
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submitted = SubmitSpy()
+        let steers = SubmitSpy()
+        let interrupts = AwaitableCounter()
+        let capture = MockCapture(permissionGranted: true)
+        let controller = makeSteerController(
+            gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts, capture: capture,
+            turnIsRunning: { false }
+        )
+        await stopAndAskAgain(controller, gateway: gateway, submitted: submitted,
+                              interrupts: interrupts, capture: capture)
+
+        controller.receiveAssistantEvent(.started(sessionID: "session"))
+        controller.receiveAssistantEvent(.delta(sessionID: "session", text: "New answer."))
+        let speaking = await controller.waitForState(.speaking)
+        XCTAssertTrue(speaking, "the next turn's reply is spoken")
         controller.stop()
     }
 

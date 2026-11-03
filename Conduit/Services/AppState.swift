@@ -4780,7 +4780,10 @@ final class AppState: ObservableObject {
             guard let self else { return false }
             return self.isSceneActive && self.showVoiceSheet
                 && !self.isCarPlayVoiceSurfaceActive && !self.isNativeHermesCallAnswered
-        }
+        },
+        // A cancelled turn's late events wait for its end only while the
+        // chat still runs it (#1696).
+        turnIsRunning: { [weak self] in self?.isBusy ?? false }
     )
     /// Classic voice audio: the default capture and playback, or one
     /// echo-cancelling engine when speaker talk-over is on, chosen for each
