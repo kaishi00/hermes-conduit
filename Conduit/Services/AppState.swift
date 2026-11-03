@@ -847,7 +847,7 @@ final class AppState: ObservableObject {
     private var voiceAssistantObservers: [UUID: @MainActor (VoiceAssistantEvent) -> Void] = [:]
     /// The turn Voice cancelled, by its execution generation (see
     /// `holdsBackFromVoice`).
-    private var voiceCancelledTurn: (sessionId: String, generation: Int, bufferedStarts: Int)?
+    private var voiceCancelledTurn: (sessionId: String, generation: Int)?
     /// The execution generation the stream event being handled names.
     private var handledStreamEventGeneration: Int?
     /// Tests stand in for the client's `runningTurnGeneration(for:)`.
@@ -5338,6 +5338,10 @@ final class AppState: ObservableObject {
         let streamTextAtBoundary: String?
         let streamSessionIDAtBoundary: String?
         var bufferedEvents: [StreamEvent] = []
+        /// The turn each buffered event named (`execution_generation`), in
+        /// step with `bufferedEvents`, so a replay is told apart as live
+        /// events are (`holdsBackFromVoice`).
+        var bufferedGenerations: [Int?] = []
 
         init(
             token: UUID,
@@ -5348,7 +5352,8 @@ final class AppState: ObservableObject {
             acceptsAnySession: Bool = false,
             streamTextAtBoundary: String? = nil,
             streamSessionIDAtBoundary: String? = nil,
-            bufferedEvents: [StreamEvent] = []
+            bufferedEvents: [StreamEvent] = [],
+            bufferedGenerations: [Int?] = []
         ) {
             self.token = token
             self.requestedSessionId = requestedSessionId
@@ -5359,6 +5364,15 @@ final class AppState: ObservableObject {
             self.streamTextAtBoundary = streamTextAtBoundary
             self.streamSessionIDAtBoundary = streamSessionIDAtBoundary
             self.bufferedEvents = bufferedEvents
+            self.bufferedGenerations = bufferedGenerations
+        }
+
+        /// Each buffered event with the turn it named (nil when none).
+        var bufferedEntries: [(event: StreamEvent, generation: Int?)] {
+            let generations = bufferedGenerations.count == bufferedEvents.count
+                ? bufferedGenerations
+                : Array(repeating: nil, count: bufferedEvents.count)
+            return zip(bufferedEvents, generations).map { ($0, $1) }
         }
 
         func accepts(_ sessionId: String) -> Bool {
@@ -17001,6 +17015,7 @@ final class AppState: ObservableObject {
     func beginReconciliation() -> UUID {
         let token = UUID()
         let bufferedEvents = reconciliation?.bufferedEvents ?? []
+        let bufferedGenerations = reconciliation?.bufferedGenerations ?? []
         let streamTextAtBoundary: String?
         let streamSessionIDAtBoundary: String?
         if let existingReconciliation = reconciliation {
@@ -17017,7 +17032,8 @@ final class AppState: ObservableObject {
             acceptsAnySession: true,
             streamTextAtBoundary: streamTextAtBoundary,
             streamSessionIDAtBoundary: streamSessionIDAtBoundary,
-            bufferedEvents: bufferedEvents
+            bufferedEvents: bufferedEvents,
+            bufferedGenerations: bufferedGenerations
         )
         refreshActiveChatScrollSessionIdentity(isReconciling: true)
         return token
@@ -17250,6 +17266,7 @@ final class AppState: ObservableObject {
             ?? botScopeProfile(forSessionIDs: [sessionId], workspaceProfile: profile)
         let priorReconciliation = reconciliation?.token == token ? reconciliation : nil
         let bufferedEvents = priorReconciliation?.bufferedEvents ?? []
+        let bufferedGenerations = priorReconciliation?.bufferedGenerations ?? []
         reconciliation = Reconciliation(
             token: token,
             requestedSessionId: sessionId,
@@ -17257,7 +17274,8 @@ final class AppState: ObservableObject {
             acceptedSessionIDs: acceptedSessionIDs.union([sessionId]),
             streamTextAtBoundary: priorReconciliation?.streamTextAtBoundary,
             streamSessionIDAtBoundary: priorReconciliation?.streamSessionIDAtBoundary,
-            bufferedEvents: bufferedEvents
+            bufferedEvents: bufferedEvents,
+            bufferedGenerations: bufferedGenerations
         )
         // Any previously held durable anchors belong to a different reconcile
         // transaction; they are re-adopted below only from a transcript this
@@ -17716,11 +17734,13 @@ final class AppState: ObservableObject {
                 return false
             }
 
-            var bufferedEvents = reconciliation?.token == token
-                ? (reconciliation?.bufferedEvents ?? []).filter {
-                    reconciliation?.accepts(sessionID(for: $0)) == true
+            let bufferedEntries = reconciliation?.token == token
+                ? (reconciliation?.bufferedEntries ?? []).filter {
+                    reconciliation?.accepts(sessionID(for: $0.event)) == true
                 }
                 : []
+            var bufferedEvents = bufferedEntries.map { $0.event }
+            var bufferedGenerations = bufferedEntries.map { $0.generation }
             if result.snapshot.hasLiveProjection {
                 let resumedInflightText = streamingBuffer
                 let boundary = reconciliation?.token == token ? reconciliation : nil
@@ -17771,7 +17791,7 @@ final class AppState: ObservableObject {
                 // projection, which already includes deltas emitted while this
                 // reconciliation was in flight. Replay only the portion beyond
                 // the normalized text captured at the same session boundary.
-                bufferedEvents = Self.deduplicatingBufferedEvents(
+                let deduplicated = Self.deduplicatingBufferedEvents(
                     bufferedEvents,
                     againstInflight: resumedInflightText,
                     knownPrefix: knownPrefix,
@@ -17782,15 +17802,20 @@ final class AppState: ObservableObject {
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                         .isEmpty == false
                 )
+                bufferedGenerations = Self.generations(
+                    bufferedGenerations, of: bufferedEvents, keptIn: deduplicated
+                )
+                bufferedEvents = deduplicated
             }
             let bufferedYoloAuthority = reconcileExplicitYolo ? result.snapshot.yolo : nil
             // The approval mode is profile-scoped and independent of the
             // per-session YOLO write gate: a user toggle during the resume must
             // not let a stale buffered event re-impose an outdated floor.
             let bufferedApprovalsModeAuthority = result.snapshot.approvalsMode
-            bufferedEvents.forEach { event in
-                applyStreamEvent(
+            zip(bufferedEvents, bufferedGenerations).forEach { event, generation in
+                applyNumberedStreamEvent(
                     event,
+                    turnGeneration: generation,
                     authoritativeYolo: bufferedYoloAuthority,
                     authoritativeApprovalsMode: bufferedApprovalsModeAuthority
                 )
@@ -18641,6 +18666,30 @@ final class AppState: ObservableObject {
         return String(
             normalizedUnpersistedSnapshot.dropFirst(normalizedUnpersistedBoundary.count)
         )
+    }
+
+    /// The generations of the events `deduplicatingBufferedEvents` kept,
+    /// which drops only the earliest deltas (and may trim the next one in
+    /// place), so the rest keep their slots.
+    nonisolated static func generations(
+        _ generations: [Int?],
+        of events: [StreamEvent],
+        keptIn deduplicated: [StreamEvent]
+    ) -> [Int?] {
+        guard generations.count == events.count else {
+            return Array(repeating: nil, count: deduplicated.count)
+        }
+        var dropped = events.count - deduplicated.count
+        var kept: [Int?] = []
+        kept.reserveCapacity(deduplicated.count)
+        for (event, generation) in zip(events, generations) {
+            if dropped > 0, case .messageDelta = event {
+                dropped -= 1
+                continue
+            }
+            kept.append(generation)
+        }
+        return kept
     }
 
     nonisolated static func deduplicatingBufferedEvents(
@@ -20772,8 +20821,8 @@ final class AppState: ObservableObject {
         setRunning(true)
         turnStateIsStale = false
         // Newer live edges win over the snapshot.
-        let bufferedEvents = reconciliation?.bufferedEvents ?? []
-        bufferedEvents.forEach { applyStreamEvent($0) }
+        let bufferedEntries = reconciliation?.bufferedEntries ?? []
+        bufferedEntries.forEach { applyNumberedStreamEvent($0.event, turnGeneration: $0.generation) }
         _ = settleReconciliationAndPublish(token, automaticWorkToken: automaticWorkToken)
     }
 
@@ -20788,8 +20837,8 @@ final class AppState: ObservableObject {
         automaticWorkToken: ChatResumeAutomaticWorkToken?
     ) {
         guard token == reconciliationToken else { return }
-        let bufferedEvents = reconciliation?.bufferedEvents ?? []
-        bufferedEvents.forEach { applyStreamEvent($0) }
+        let bufferedEntries = reconciliation?.bufferedEntries ?? []
+        bufferedEntries.forEach { applyNumberedStreamEvent($0.event, turnGeneration: $0.generation) }
         _ = settleReconciliationAndPublish(token, automaticWorkToken: automaticWorkToken)
     }
 
@@ -35155,14 +35204,25 @@ final class AppState: ObservableObject {
             break
         }
         releaseServerCompactionClaimOnAgentOutput(event)
-        if bufferIfReconciling(event) {
-            noteBufferedStartOfCancelledTurn(event, turnGeneration: turnGeneration)
-            return
-        }
-        // Only this event names the turn: anything it replays doesn't.
+        if bufferIfReconciling(event, turnGeneration: turnGeneration) { return }
+        applyNumberedStreamEvent(event, turnGeneration: turnGeneration)
+    }
+
+    /// Applies an event with the turn it named, live or replayed after a
+    /// resume, so Voice tells the turns apart the same way (`holdsBackFromVoice`).
+    private func applyNumberedStreamEvent(
+        _ event: StreamEvent,
+        turnGeneration: Int?,
+        authoritativeYolo: Bool? = nil,
+        authoritativeApprovalsMode: String? = nil
+    ) {
         handledStreamEventGeneration = turnGeneration
         defer { handledStreamEventGeneration = nil }
-        applyStreamEvent(event)
+        applyStreamEvent(
+            event,
+            authoritativeYolo: authoritativeYolo,
+            authoritativeApprovalsMode: authoritativeApprovalsMode
+        )
     }
 
     /// Gateway compression lifecycle edges (`status.update`):
@@ -35399,14 +35459,18 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func bufferIfReconciling(_ event: StreamEvent) -> Bool {
+    private func bufferIfReconciling(_ event: StreamEvent, turnGeneration: Int?) -> Bool {
         guard var reconciliation else { return false }
         guard reconciliation.accepts(sessionID(for: event)) else { return false }
         if case .sideAgentComplete = event {
             heldSideAgentCompletions.append(event)
             return true
         }
+        if reconciliation.bufferedGenerations.count != reconciliation.bufferedEvents.count {
+            reconciliation.bufferedGenerations = Array(repeating: nil, count: reconciliation.bufferedEvents.count)
+        }
         reconciliation.bufferedEvents.append(event)
+        reconciliation.bufferedGenerations.append(turnGeneration)
         self.reconciliation = reconciliation
         return true
     }
@@ -37220,55 +37284,30 @@ final class AppState: ObservableObject {
         noteVoiceCancelledTurn(sessionId: sessionId, generation: generation)
     }
 
-    /// A resume replays what it held without numbers: count the cancelled
-    /// turn's own start held after the cancel, so its replay isn't taken
-    /// for the next turn's.
-    private func noteBufferedStartOfCancelledTurn(_ event: StreamEvent, turnGeneration: Int?) {
-        guard case .messageStart = event, let turnGeneration,
-              var cancelled = voiceCancelledTurn, cancelled.sessionId == activeSessionId,
-              turnGeneration <= cancelled.generation else { return }
-        cancelled.bufferedStarts += 1
-        voiceCancelledTurn = cancelled
-    }
-
     /// Holds that turn's later events back from Voice (`holdsBackFromVoice`).
     func noteVoiceCancelledTurn(sessionId: String, generation: Int) {
-        // A start the open resume still holds was seen before the cancel, so
-        // it is that turn's own (or an earlier one's), not the next one's.
-        let bufferedStarts = reconciliation?.bufferedEvents.filter {
-            if case .messageStart = $0 { return true }
-            return false
-        }.count ?? 0
-        voiceCancelledTurn = (sessionId, generation, bufferedStarts)
+        voiceCancelledTurn = (sessionId, generation)
     }
 
     /// Whether the stream event being handled belongs to the turn that was
-    /// cancelled (or an earlier one), so Voice doesn't hear it; an event of
-    /// a later turn ends the watch. Such a turn can stream a few words after
-    /// its cancel, and once the next question owns the chat they'd be taken
-    /// as its reply (#1696). An event that reaches Voice belongs to the open
-    /// chat (its aliases included), so the watch holds while that chat is
-    /// the one whose turn was cancelled.
-    ///
-    /// A live event names its turn by execution generation. An event
-    /// replayed after a resume lost its number, so it is held until a turn
-    /// starts: a cancelled turn never starts again, and its own start held
-    /// by the resume is counted (`bufferedStarts`). Only the session
-    /// authority numbers turns, so the watch is never set on `hermes dashboard`.
+    /// cancelled (or an earlier one), by the execution generation it names,
+    /// so Voice doesn't hear it; an event of a later turn ends the watch.
+    /// Such a turn can stream a few words after its cancel, and once the
+    /// next question owns the chat they'd be taken as its reply (#1696).
+    /// Events a resume held keep their number for the replay. An event that
+    /// reaches Voice belongs to the open chat (its aliases included), so the
+    /// watch holds while that chat is the one whose turn was cancelled, under
+    /// whichever id the chat now goes by. Only the session authority numbers
+    /// turns, so on `hermes dashboard` nothing is noted or held.
     private func holdsBackFromVoice(_ event: VoiceAssistantEvent) -> Bool {
-        guard var cancelled = voiceCancelledTurn, cancelled.sessionId == activeSessionId else { return false }
-        let fromCancelledTurn: Bool
-        if let generation = handledStreamEventGeneration {
-            fromCancelledTurn = generation <= cancelled.generation
-        } else if case .started = event {
-            fromCancelledTurn = cancelled.bufferedStarts > 0
-            cancelled.bufferedStarts = max(0, cancelled.bufferedStarts - 1)
-            voiceCancelledTurn = cancelled
-        } else {
-            fromCancelledTurn = true
+        guard let cancelled = voiceCancelledTurn,
+              cancelled.sessionId == activeSessionId || eventBelongsToActiveSession(cancelled.sessionId),
+              let generation = handledStreamEventGeneration else { return false }
+        guard generation <= cancelled.generation else {
+            voiceCancelledTurn = nil
+            return false
         }
-        if !fromCancelledTurn { voiceCancelledTurn = nil }
-        return fromCancelledTurn
+        return true
     }
 
     /// Who speaks Classic voice replies for the active profile.

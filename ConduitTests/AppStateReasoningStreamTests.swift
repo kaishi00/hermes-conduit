@@ -309,8 +309,8 @@ final class AppStateReasoningStreamTests: XCTestCase {
 
     /// A turn Voice cancelled can stream a few words after its cancel; once
     /// the next question owns the chat they'd read as its reply (#1696).
-    /// They're held back by the turn they name (or, replayed after a resume,
-    /// until a turn starts), and the next turn's events still reach Voice.
+    /// They're held back by the turn they name, and the next turn's events
+    /// still reach Voice.
     func testVoiceNeverHearsTheTurnItCancelled() {
         let state = makeAppState()
         installActiveSession(state, id: "stored-a")
@@ -332,17 +332,11 @@ final class AppStateReasoningStreamTests: XCTestCase {
             .delta(sessionID: "stored-a", text: "after the watch")
         ], "The next turn ends the watch")
 
-        // Replayed after a resume, an event has lost its number: it is held
-        // until a turn starts, since a cancelled turn never starts again.
+        // An event naming no turn (`hermes dashboard`) is never held back.
         events.removeAll()
         state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 6)
-        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "replayed straggler"))
-        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
-        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "replayed answer"))
-        XCTAssertEqual(events, [
-            .started(sessionID: "stored-a"),
-            .delta(sessionID: "stored-a", text: "replayed answer")
-        ])
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "unnumbered"))
+        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "unnumbered")])
 
         // Another chat open: its events are its own.
         events.removeAll()
@@ -385,43 +379,6 @@ final class AppStateReasoningStreamTests: XCTestCase {
         state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "straggler"), turnGeneration: 7)
         state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "next"), turnGeneration: 8)
         XCTAssertEqual(events, [.delta(sessionID: "runtime-a", text: "next")])
-    }
-
-    /// A start a resume held when the turn was cancelled is that turn's own:
-    /// replayed (without its number), it doesn't end the watch.
-    func testVoiceHoldsTheCancelledTurnsOwnBufferedStart() {
-        assertBufferedStartIsHeld(startBufferedBeforeTheCancel: true)
-        assertBufferedStartIsHeld(startBufferedBeforeTheCancel: false)
-    }
-
-    private func assertBufferedStartIsHeld(startBufferedBeforeTheCancel: Bool, line: UInt = #line) {
-        let state = makeAppState()
-        installActiveSession(state, id: "stored-a")
-        var events: [VoiceAssistantEvent] = []
-        let observer = state.addVoiceAssistantObserver { events.append($0) }
-        defer { state.removeVoiceAssistantObserver(observer) }
-
-        let token = state.beginReconciliation()
-        if startBufferedBeforeTheCancel {
-            state.handleStreamEvent(.messageStart(sessionId: "stored-a"), turnGeneration: 4)
-            state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 4)
-        } else {
-            // Seen by the socket before the cancel, handled here after it.
-            state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 4)
-            state.handleStreamEvent(.messageStart(sessionId: "stored-a"), turnGeneration: 4)
-        }
-        _ = state.settleReconciliationAndPublish(token)
-        XCTAssertEqual(events, [], "Buffered while the resume ran", line: line)
-
-        // The replay, as the resume applies it: numbers lost.
-        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
-        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "straggler"))
-        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
-        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "next"))
-        XCTAssertEqual(events, [
-            .started(sessionID: "stored-a"),
-            .delta(sessionID: "stored-a", text: "next")
-        ], line: line)
     }
 
     /// The composer's Stop (and /stop) notes the turn as Voice's cancel does.
