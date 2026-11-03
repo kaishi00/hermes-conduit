@@ -4037,13 +4037,13 @@ hermes-conduit-website)
 **Rulings**
 - No TLS validation override: a certificate iOS refuses is never accepted, on any device (Eric, 2026-10-19, issue #129).
 - A refused certificate names the check iOS failed, read from the peer trust URLSession leaves on the error: the certificate doesn't name the address, it breaks Apple's certificate rules (825 days, serverAuth, key size, SHA-2), its dates, or else its root isn't trusted. The most specific comes first, since trusting the root wouldn't fix the others (2026-10-27, #1405, from issue #129's iPad report).
-- Getting a root onto the device is the supported way to use your own certificate authority or a self-signed certificate (Eric, 2026-11-03, PRNUM). The HTTPS page reads the chain the server presents, on a connection that cancels every trust challenge, and only when the root alone is untrusted saves the top, self-issued certificate as a profile (one com.apple.security.root payload, its identifier from the certificate so a reinstall replaces it) for the user to install and trust in Settings. It shows the SHA-256 fingerprint and an Ask Hermes prompt for the server's, to compare first. A wrong name, Apple's rules or dates get their own message instead, since trusting the root wouldn't fix them, and a server that doesn't send its root is told to install it from where the certificates were made.
+- Getting a root onto the device is the supported way to use your own certificate authority or a self-signed certificate (Eric, 2026-11-03, #1716). The HTTPS page reads the chain the server presents, on a connection that cancels every trust challenge, and only when the root alone is untrusted saves the top, self-issued certificate as a profile (one com.apple.security.root payload, its identifier from the certificate so a reinstall replaces it) for the user to install and trust in Settings. It shows the SHA-256 fingerprint and an Ask Hermes prompt for the server's, to compare first. A wrong name, Apple's rules or dates get their own message instead, since trusting the root wouldn't fix them, and a server that doesn't send its root is told to install it from where the certificates were made.
 
 **Open gaps**
 - The Watch and the dictation clip retry treat TLS failures only as never sent or not transient; they show no classified copy.
 - Not tried on a device yet: opening the saved profile from Files on an iPhone or iPad, and from Finder on a Mac. Whether a root installed on the iPhone also covers the Watch's own connections hasn't been checked.
 
-**Checked:** 2026-11-03, PRNUM.
+**Checked:** 2026-11-03, #1716.
 
 ## Review bots
 
