@@ -119,8 +119,11 @@ struct BotRosterView: View {
                 } : nil,
                 onChat: {
                     overviewBot = nil
-                    appState.dismissSidebarDrawer()
-                    Task { await appState.openBotChat(for: bot) }
+                    appState.beginOpeningBotChat(bot.name)
+                    Task {
+                        await appState.openBotChat(for: bot)
+                        appState.endOpeningBotChat(bot.name)
+                    }
                 },
                 onClose: { overviewBot = nil }
             )
@@ -133,8 +136,11 @@ struct BotRosterView: View {
                       let bot = appState.botRoster.first(where: { $0.name == createdName }) else { return }
                 // Desktop opens a new bot's forever chat straight away, and
                 // the bot introduces itself when it can reach a model.
-                appState.dismissSidebarDrawer()
-                Task { await appState.openNewBotChat(for: bot, introduces: introduces) }
+                appState.beginOpeningBotChat(bot.name)
+                Task {
+                    await appState.openNewBotChat(for: bot, introduces: introduces)
+                    appState.endOpeningBotChat(bot.name)
+                }
             }
             .environmentObject(appState)
         }
@@ -860,8 +866,11 @@ private struct BotRosterRow: View {
     var body: some View {
         Button {
             Haptics.light()
-            appState.dismissSidebarDrawer()
-            Task { await appState.openBotChat(for: bot) }
+            appState.beginOpeningBotChat(bot.name)
+            Task {
+                await appState.openBotChat(for: bot)
+                appState.endOpeningBotChat(bot.name)
+            }
         } label: {
             // V2: a chat-style row, no card. Picture, name and time, then
             // the latest message.

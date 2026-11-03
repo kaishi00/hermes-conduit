@@ -2223,6 +2223,36 @@ final class AppState: ObservableObject {
         guard showSidebar else { return }
         showSidebar = false
     }
+
+    /// The bot whose chat a list of bots is opening. The list closes first
+    /// and the shell routes the chat then, before it lands, so this tells
+    /// it a Bot Chat is coming (it stays in Bots) whatever was open before.
+    private(set) var botChatOpening: String?
+
+    /// Closes the list for `name`'s Bot Chat; `endOpeningBotChat` once the
+    /// open has finished, opened or not.
+    func beginOpeningBotChat(_ name: String) {
+        botChatOpening = name
+        dismissSidebarDrawer()
+    }
+
+    func endOpeningBotChat(_ name: String) {
+        if botChatOpening == name { botChatOpening = nil }
+    }
+
+    /// The shell placed the conversation for the marked Bot Chat: the mark
+    /// is spent, so a plain session a notification opens before the Bot
+    /// Chat lands still goes to Sessions.
+    func botChatOpeningPlaced() {
+        botChatOpening = nil
+    }
+
+    /// Whether the shell keeps the conversation it's placing in Bots: a
+    /// Bot Chat or a workstream's chat is open, or a list of bots marked
+    /// one as coming.
+    var placesConversationAsBotChat: Bool {
+        activeBotChatProfile != nil || activeWorkstream != nil || botChatOpening != nil
+    }
     @Published var showModelPicker = false
     @Published var showContextSheet = false
     @Published var showWorkspaceSheet = false
@@ -12253,6 +12283,24 @@ final class AppState: ObservableObject {
     private var talkingRoomMisses: [String: Int] = [:]
     /// A talking-rooms read is running.
     private var talkingRoomsReading = false
+    /// When the last talking-rooms read began.
+    private var talkingRoomsReadAt: Date?
+
+    /// `refreshTalkingRooms`, unless one began within `every` (less a
+    /// second's slack): Bots Home and a bot's overview both ask on their
+    /// own clocks, and the rooms are read once each round, not by each.
+    func refreshTalkingRoomsIfDue(every: Duration) async {
+        // Offline nothing is read, and the first ask back reads at once.
+        guard isConnected else {
+            talkingRoomsReadAt = nil
+            await refreshTalkingRooms()
+            return
+        }
+        let interval = Double(every.components.seconds) - 1
+        if let at = talkingRoomsReadAt, Date().timeIntervalSince(at) < interval { return }
+        talkingRoomsReadAt = Date()
+        await refreshTalkingRooms()
+    }
 
     /// Which hosted rooms are talking now: one `groups.state` per room
     /// (its driver's `working`), the rooms updated last first. Bots Home
@@ -12265,6 +12313,8 @@ final class AppState: ObservableObject {
         guard groupChatPhase == .available, groupRoomsListed, let client, isConnected else {
             if !talkingRoomIDs.isEmpty { talkingRoomIDs = [] }
             talkingRoomMisses = [:]
+            // Asked again as soon as it can answer.
+            talkingRoomsReadAt = nil
             return
         }
         let epoch = groupRoomEpoch
@@ -12280,6 +12330,8 @@ final class AppState: ObservableObject {
                 let (_, driver) = try await groupsState(client, roomID: room.roomID)
                 if driver?.working == true { talking.insert(room.roomID) }
             } catch is CancellationError {
+                // Cut short: the next ask reads again at once.
+                talkingRoomsReadAt = nil
                 return
             } catch {
                 // Kept through a couple of misses, not for good.
