@@ -14,6 +14,16 @@ import XCTest
 private final class CronRunsRequester: DashboardJSONRequester {
     var responsesByPath: [String: [String: Any]] = [:]
     private(set) var paths: [String] = []
+    /// Reads whose path starts with this wait until `release()`.
+    var holdPrefix: String?
+    private var held: [CheckedContinuation<Void, Never>] = []
+    var heldCount: Int { held.count }
+
+    func release() {
+        holdPrefix = nil
+        held.forEach { $0.resume() }
+        held.removeAll()
+    }
 
     func requestJSON(
         path: String,
@@ -23,6 +33,9 @@ private final class CronRunsRequester: DashboardJSONRequester {
         maxResponseBytes: Int
     ) async throws -> [String: Any] {
         paths.append(path)
+        if let holdPrefix, path.hasPrefix(holdPrefix) {
+            await withCheckedContinuation { held.append($0) }
+        }
         return responsesByPath.first { path.hasPrefix($0.key) }?.value ?? [:]
     }
 }
@@ -53,6 +66,26 @@ extension SidebarLayoutTests {
         XCTAssertTrue(state.cronRuns.isEmpty)
         XCTAssertEqual(state.cronRunsJobID, "bbbbbbbbbbbb")
         XCTAssertTrue(requester.paths.last?.hasPrefix("/api/cron/jobs/bbbbbbbbbbbb/runs") == true)
+    }
+
+    func testAnOlderReadThatLandsLastIsDropped() async {
+        let state = cronRunHistoryState()
+        let requester = CronRunsRequester()
+        requester.responsesByPath["/api/cron/jobs/aaaaaaaaaaaa/runs"] = [
+            "runs": [["id": "cron_aaaaaaaaaaaa_20261103_090000"]],
+        ]
+        requester.responsesByPath["/api/cron/jobs/bbbbbbbbbbbb/runs"] = ["runs": []]
+        requester.holdPrefix = "/api/cron/jobs/aaaaaaaaaaaa/runs"
+
+        let slow = Task { await state.loadCronRuns(for: CronJob(enabled: true, id: "aaaaaaaaaaaa"), dashboard: requester) }
+        while requester.heldCount == 0 { await Task.yield() }
+        // The sheet moved on to job B before job A's read came back.
+        await state.loadCronRuns(for: CronJob(enabled: true, id: "bbbbbbbbbbbb"), dashboard: requester)
+        requester.release()
+        await slow.value
+
+        XCTAssertEqual(state.cronRunsJobID, "bbbbbbbbbbbb")
+        XCTAssertTrue(state.cronRuns.isEmpty)
     }
 
     func testARunBelongsToTheJobItNamesOrItsSessionIDNames() {
