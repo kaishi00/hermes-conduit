@@ -841,7 +841,7 @@ struct BotMonogramView: View {
     @EnvironmentObject private var appState: AppState
     /// Scales with Dynamic Type so the glyph never clips at accessibility
     /// sizes (a fixed 36x36 frame clipped the letter once `.body` grew).
-    @ScaledMetric(relativeTo: .body) private var avatarSize: CGFloat
+    @ScaledMetric private var avatarSize: CGFloat
 
     /// `size` at the default Text Size: 36 on a row, larger on Bots Home's
     /// portraits.

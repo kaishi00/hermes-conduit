@@ -73,7 +73,9 @@ struct BotArtifactsList: View {
     let willShowInChat: () -> Void
 
     var body: some View {
-        ArtifactsList(scope: .bot(profile), chatIsOpen: false) { item in
+        // In a sheet without a navigation bar: search and Show Missing
+        // Files sit in the list itself, as beside the chat.
+        ArtifactsList(scope: .bot(profile), chatIsOpen: false, inPanel: true) { item in
             willShowInChat()
             appState.showArtifactInChat(item, chatIsOpen: false)
         }

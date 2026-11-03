@@ -94,7 +94,7 @@ final class ConnectionRepairUITests: XCTestCase {
         XCTAssertFalse(app.buttons["setup.use-settings"].exists, "Repair mode must not show the login handoff")
         tapVisible(app.buttons[Identity.reconnectNow], in: app)
 
-        // Back on Chats: still the (stubbed) failed session in its stable
+        // Back on Bots Home: still the (stubbed) failed session in its stable
         // state — never the login card.
         XCTAssertTrue(app.buttons[Identity.repairButton].waitForExistence(timeout: 5), "Wizard did not return to chat. Tree:\n\(app.debugDescription)")
         XCTAssertFalse(app.textFields["login.server-url"].exists, "Repair must never strand the user on the login card")

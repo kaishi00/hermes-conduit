@@ -140,6 +140,7 @@ struct BotPortraitCell<MenuContent: View>: View {
     let onOverview: () -> Void
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2OpenBeside) private var openBeside
+    @Environment(\.v2Shell) private var shell
     @ScaledMetric(relativeTo: .body) private var portraitSize: CGFloat = 72
 
     private var status: BotPortraitStatus { .of(work.snapshot(bot.name)) }
@@ -190,7 +191,10 @@ struct BotPortraitCell<MenuContent: View>: View {
         }
         // The pill's words: read once each time Bots Home shows or
         // connects, not polled (the Bot Chat and its overview poll).
-        .task(id: "\(bot.name)\u{1F}\(appState.isConnected)\u{1F}\(appState.servesBotWorkstreams)") {
+        // The shell keeps a visited tab mounted, so the tab showing again is
+        // part of the key.
+        .task(id: "\(bot.name)\u{1F}\(appState.isConnected)\u{1F}\(appState.servesBotWorkstreams)\u{1F}\(shell.isTabActive)") {
+            guard shell.isTabActive else { return }
             await appState.refreshBotWork(profile: bot.name)
         }
     }
