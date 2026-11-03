@@ -4249,12 +4249,12 @@ notifier README and CHANGELOG
 - Tests: `ConduitTests/RichCardTests.swift`, `ConduitTests/RichCardTests+Boards.swift`, `notifier/tests/test_cards.py`, `notifier/tests/test_show.py`, `notifier/tests/test_checklists.py`
 
 **Rulings**
-- One tool: conduit_show grows; there is no second board tool (Eric, 2026-11-03, #PR with notifier #528).
-- Never blank: every answer carries the cards' Markdown. Conduit shows it in the board's place when it can't draw every card, never part of a board, and a model outside Conduit gets it for its reply (Eric, 2026-11-03, #PR with notifier #528).
+- One tool: conduit_show grows; there is no second board tool (Eric, 2026-11-03, #1713 with notifier #528).
+- Never blank: every answer carries the cards' Markdown. Conduit shows it in the board's place when it can't draw every card, never part of a board, and a model outside Conduit gets it for its reply (Eric, 2026-11-03, #1713 with notifier #528).
 - Exact errors: what normalization leaves out goes back to the model as `problems`, by path, so it can fix the board and show it again (Eric, 2026-11-03, notifier #528).
-- Conduit lays the board out: Hermes picks only stack or tabs; small cards pair up on a wide window (2026-11-03, #PR).
-- Follow-ups are plain messages the user would send, at most four, offered only under the last turn's board while Hermes is free and connected: tap sends, long-press edits, as Predictions' chips (Eric, 2026-11-03, #PR).
-- Checklist ticks in a chat are kept on the host for every device, and Hermes hears what changed once, at the chat's next turn; on the call screen they stay on the phone (Eric, 2026-11-03, #PR with notifier #528).
+- Conduit lays the board out: Hermes picks only stack or tabs; small cards pair up on a wide window (2026-11-03, #1713).
+- Follow-ups are plain messages the user would send, at most four, offered only under the last turn's board while Hermes is free and connected: tap sends, long-press edits, as Predictions' chips (Eric, 2026-11-03, #1713).
+- Checklist ticks in a chat are kept on the host for every device, and Hermes hears what changed once, at the chat's next turn; on the call screen they stay on the phone (Eric, 2026-11-03, #1713 with notifier #528).
 - A Conduit without "board-cards" gets at most four cards, no layout and no follow-ups (2026-11-03, notifier #528).
 - Real data only: models are told to fill tables, stats and charts from tools, sites or the user's files, with their source (2026-11-03, notifier #528).
 
@@ -4265,7 +4265,7 @@ notifier README and CHANGELOG
 - The Watch and CarPlay show no cards.
 - Checklist ticks on the call screen don't reach the chat or Hermes.
 
-**Checked:** 2026-11-03, #PR with notifier #528.
+**Checked:** 2026-11-03, #1713 with notifier #528.
 
 ## Cards drawn in web pages
 
@@ -4541,7 +4541,7 @@ follow-ups (the same chip, see Cards Hermes shows)
 - Step summaries still use `prompt.btw`, so Desktop keeps showing their notes; moving them to `/predict` is left for its own change.
 - Which reply is Hermes' own, when other clients' messages are queued around the hidden prompt, is inferred from row timestamps (the phone's clock at sending against the host's) and `user.message` events. Hermes sends no turn ownership, so a message sent within clock skew of the prompt, one read into the chat before its event arrives, another device's message repeating the text this iPhone sent last before that message has its row id (taken for this iPhone's own), a message whose event arrives only after the hidden prompt while its turn is the one the prompt queued behind (counted twice), or a message queued ahead whose row is read in before the turn the prompt queued behind ends and whose event came before the prompt (not counted), can still put the tag on the wrong reply; and this iPhone's own message announced back after a newer one of its own is taken for someone else's, which drops the tag. The event's origin isn't read for this (#1290).
 
-**Checked:** 2026-11-02, #1674 with notifier #515 (draft and reply limits counted the plugin's way, issue 1670); 2026-11-02, #1672 (a follow-up check the host was too busy for, too slow for or couldn't reach is asked again within the 4 checks, issue #1669; the plugin's `/predict`, its README, the captions and guesses needed no change); 2026-11-01, #1631 with notifier #504 (on the gateway's own listener the route forks the authority's chat, see Two Hermes servers); 2026-11-01, #1631 (the hidden turn is taken on the gateway's own listener, probed on the canary; `/predict` there came with notifier #504); 2026-11-01, #1632 (the captions point at Helper models once Hermes lists Conduit predictions, and ask for a plugin update before then; with no slots kept the caption waits for Hermes, and stays off if it never answers); 2026-11-01, #1625 (the fast model is a helper model Conduit sets, notifier 0.124.0; the Model section's captions point there; a gap closed); 2026-10-30, #1527 (a guess sent from the row keeps whatever focus the field had, see Composer focus after a send); 2026-10-29, #1495, carrying #1489 (a guess's fork sends no push, notifier #464); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1455 (carrying #1431; a chip that sends wraps instead of truncating; Rulings); 2026-10-26, #1290 (a follow-up's tag skips replies to other messages); at #1281 (carrying #1242).
+**Checked:** 2026-11-03, #1713 (a board's follow-ups reuse the reply chip and its tap and long-press, see Cards Hermes shows; Siblings); 2026-11-02, #1674 with notifier #515 (draft and reply limits counted the plugin's way, issue 1670); 2026-11-02, #1672 (a follow-up check the host was too busy for, too slow for or couldn't reach is asked again within the 4 checks, issue #1669; the plugin's `/predict`, its README, the captions and guesses needed no change); 2026-11-01, #1631 with notifier #504 (on the gateway's own listener the route forks the authority's chat, see Two Hermes servers); 2026-11-01, #1631 (the hidden turn is taken on the gateway's own listener, probed on the canary; `/predict` there came with notifier #504); 2026-11-01, #1632 (the captions point at Helper models once Hermes lists Conduit predictions, and ask for a plugin update before then; with no slots kept the caption waits for Hermes, and stays off if it never answers); 2026-11-01, #1625 (the fast model is a helper model Conduit sets, notifier 0.124.0; the Model section's captions point there; a gap closed); 2026-10-30, #1527 (a guess sent from the row keeps whatever focus the field had, see Composer focus after a send); 2026-10-29, #1495, carrying #1489 (a guess's fork sends no push, notifier #464); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1455 (carrying #1431; a chip that sends wraps instead of truncating; Rulings); 2026-10-26, #1290 (a follow-up's tag skips replies to other messages); at #1281 (carrying #1242).
 
 ## Linked Rooms
 
