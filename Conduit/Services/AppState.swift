@@ -4857,6 +4857,10 @@ final class AppState: ObservableObject {
             cancel: { [weak self] sessionID in
                 guard let self else { throw HermesError.notConnected }
                 let client = try await self.clientForVoiceRequest()
+                // A job in the open chat: its turn is noted as any cancel there is.
+                if let open = self.activeSessionId, self.eventBelongsToActiveSession(sessionID) {
+                    self.noteRunningTurnBeforeCancel(in: open)
+                }
                 try await client.cancel(sessionID, profile: self.presentationProfile(for: sessionID))
             },
             liveSessions: { [weak self] targetProfile in
@@ -37299,7 +37303,17 @@ final class AppState: ObservableObject {
     /// watch holds while that chat is the one whose turn was cancelled, under
     /// whichever id the chat now goes by. Only the session authority numbers
     /// turns, so on `hermes dashboard` nothing is noted or held.
+    ///
+    /// Only the words are held (`.started`, `.delta`, `.interim`). The
+    /// turn's end still reaches Voice: a conversation that was waiting on
+    /// that turn (stopped from the chat, not by Voice) is released by it,
+    /// and one already waiting on the next question ignores it until that
+    /// question's reply starts.
     private func holdsBackFromVoice(_ event: VoiceAssistantEvent) -> Bool {
+        switch event {
+        case .started, .delta, .interim: break
+        case .completed, .failed, .interrupted: return false
+        }
         guard let cancelled = voiceCancelledTurn,
               cancelled.sessionId == activeSessionId || eventBelongsToActiveSession(cancelled.sessionId),
               let generation = handledStreamEventGeneration else { return false }

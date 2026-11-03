@@ -323,6 +323,13 @@ final class AppStateReasoningStreamTests: XCTestCase {
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "older turn"), turnGeneration: 3)
         XCTAssertEqual(events, [], "The cancelled turn's words never reach Voice")
 
+        // Its end does: a conversation still waiting on that turn (stopped
+        // from the chat) is released by it; one waiting on the next question
+        // ignores it until that reply starts.
+        state.handleStreamEvent(.messageInterrupted(sessionId: "stored-a"), turnGeneration: 4)
+        XCTAssertEqual(events, [.interrupted(sessionID: "stored-a")])
+
+        events.removeAll()
         state.handleStreamEvent(.messageStart(sessionId: "stored-a"), turnGeneration: 5)
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "new answer"), turnGeneration: 5)
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "after the watch"), turnGeneration: 4)
