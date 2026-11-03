@@ -610,15 +610,16 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
 /// field took, so a drop back in the field moves those words.
 final class FieldDropHandler: NSObject, UIDropInteractionDelegate, UITextDragDelegate {
     weak var field: ReturnKeyTextView?
-    private weak var draggedSession: UIDragSession?
+    /// The drag session a drag of the field's own words started, and the
+    /// range it took. Kept as an object so tests can stand in for it.
+    private weak var draggedSession: AnyObject?
     private var draggedRange: NSRange?
 
     func textDraggableView(_ textDraggableView: UIView & UITextDraggable, itemsForDrag dragRequest: UITextDragRequest) -> [UIDragItem] {
         if let field {
             let start = field.offset(from: field.beginningOfDocument, to: dragRequest.dragRange.start)
             let end = field.offset(from: field.beginningOfDocument, to: dragRequest.dragRange.end)
-            draggedSession = dragRequest.dragSession
-            draggedRange = NSRange(location: start, length: max(0, end - start))
+            noteDrag(dragRequest.dragSession, range: NSRange(location: start, length: max(0, end - start)))
         }
         return dragRequest.suggestedItems
     }
@@ -630,9 +631,14 @@ final class FieldDropHandler: NSObject, UIDropInteractionDelegate, UITextDragDel
         }
     }
 
-    /// The range of the field's own words this drop carries, if it does.
-    private func ownWords(in session: UIDropSession) -> NSRange? {
-        guard let local = session.localDragSession, local === draggedSession else { return nil }
+    func noteDrag(_ session: AnyObject, range: NSRange) {
+        draggedSession = session
+        draggedRange = range
+    }
+
+    /// The range of the field's own words a drop carries, if it does.
+    func ownWords(local: AnyObject?) -> NSRange? {
+        guard let local, local === draggedSession else { return nil }
         return draggedRange
     }
 
@@ -642,17 +648,24 @@ final class FieldDropHandler: NSObject, UIDropInteractionDelegate, UITextDragDel
     }
 
     func dropInteraction(_ interaction: UIDropInteraction, sessionDidUpdate session: UIDropSession) -> UIDropProposal {
-        UIDropProposal(operation: ownWords(in: session) != nil ? .move : .copy)
+        UIDropProposal(operation: ownWords(local: session.localDragSession) != nil ? .move : .copy)
     }
 
     func dropInteraction(_ interaction: UIDropInteraction, performDrop session: UIDropSession) {
         guard let field else { return }
-        if let source = ownWords(in: session) {
+        perform(session.items.map(\.itemProvider), local: session.localDragSession, at: session.location(in: field))
+    }
+
+    /// A drop of the field's own words moves them; anything else is the
+    /// field's `takeDrop`.
+    func perform(_ providers: [NSItemProvider], local: AnyObject?, at point: CGPoint) {
+        guard let field else { return }
+        if let source = ownWords(local: local) {
             draggedSession = nil
             draggedRange = nil
-            field.moveDraggedWords(from: source, to: session.location(in: field))
+            field.moveDraggedWords(from: source, to: point)
             return
         }
-        field.takeDrop(session.items.map(\.itemProvider), at: session.location(in: field))
+        field.takeDrop(providers, at: point)
     }
 }

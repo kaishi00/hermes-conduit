@@ -561,6 +561,30 @@ final class ComposerPasteTextViewTests: XCTestCase {
         XCTAssertEqual(view.text, "one threetwo ")
     }
 
+    func testAFieldsDropMovesItsOwnWordsAndInsertsOthers() async throws {
+        let view = ReturnKeyTextView()
+        view.frame = CGRect(x: 0, y: 0, width: 320, height: 44)
+        view.isEditable = true
+        view.text = "one two three"
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 200))
+        window.addSubview(view)
+        defer { view.removeFromSuperview() }
+        let handler = try XCTUnwrap(
+            view.interactions.compactMap { ($0 as? UIDropInteraction)?.delegate as? FieldDropHandler }.first
+        )
+        let end = view.caretRect(for: view.endOfDocument).origin
+        let atEnd = CGPoint(x: end.x + 1, y: end.y + 1)
+        let ownDrag = NSObject()
+        handler.noteDrag(ownDrag, range: NSRange(location: 4, length: 4))
+
+        handler.perform([NSItemProvider(object: NSString(string: "two "))], local: ownDrag, at: atEnd)
+        XCTAssertEqual(view.text, "one threetwo ", "The field's own words move")
+        XCTAssertNil(handler.ownWords(local: ownDrag), "A move is done once")
+
+        handler.perform([NSItemProvider(object: NSString(string: "!"))], local: NSObject(), at: atEnd)
+        await waitForText("one threetwo !", in: view)
+    }
+
     private func waitForText(_ expected: String, in view: UITextView) async {
         let inserted = expectation(description: "words in the field")
         let deadline = Date().addingTimeInterval(3.0)

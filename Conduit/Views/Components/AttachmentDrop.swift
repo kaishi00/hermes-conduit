@@ -34,11 +34,17 @@ enum AttachmentDrop {
         return !(suggestedName ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// Whether an item is a link to somewhere other than a file.
+    /// Whether an item is a link to somewhere other than a file, offered
+    /// at most with its page or title as text. A picture dragged from a
+    /// page, which also carries its address, is still a file.
     static func isWebLink(registeredTypeIdentifiers identifiers: [String]) -> Bool {
         let types = identifiers.compactMap { UTType($0) }
-        return types.contains { $0.conforms(to: .url) && !$0.conforms(to: .fileURL) }
-            && !types.contains { $0.conforms(to: .fileURL) }
+        let isLink = types.contains { $0.conforms(to: .url) && !$0.conforms(to: .fileURL) }
+        let hasFile = types.contains { type in
+            type.conforms(to: .fileURL)
+                || (type.conforms(to: .data) && !type.conforms(to: .url) && !type.conforms(to: .text) && type != .data)
+        }
+        return isLink && !hasFile
     }
 
     static func isFile(_ provider: NSItemProvider) -> Bool {

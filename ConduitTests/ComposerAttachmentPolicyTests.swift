@@ -200,6 +200,10 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
             AttachmentDrop.isFile(registeredTypeIdentifiers: [UTType.fileURL.identifier, UTType.jpeg.identifier], suggestedName: "2T3A8639.JPG"),
             "A file from Finder is still a file"
         )
+        XCTAssertTrue(
+            AttachmentDrop.isFile(registeredTypeIdentifiers: [UTType.url.identifier, UTType.jpeg.identifier], suggestedName: "photo.jpg"),
+            "A picture dragged from a page, with its address, is still a file"
+        )
     }
 
     func testADroppedFolderIsTakenSoTheComposerCanSayWhy() {
