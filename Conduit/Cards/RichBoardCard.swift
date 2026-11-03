@@ -230,6 +230,9 @@ struct RichBoard: Equatable {
         let given = (answer?["cards"] as? [Any])?.count
             ?? (((answer?["ok"] as? Bool) == true) ? (RichBoard.jsonObject(tool.input)?["cards"] as? [Any])?.count : nil)
             ?? 0
+        // No cards given is no board: a Markdown-only show, or an answer
+        // whose Markdown Hermes was told to put in its reply (not_conduit,
+        // group_room), which would show twice.
         guard given > 0 || !cards.isEmpty else { return nil }
         if cards.count < given, let markdown {
             return RichBoard(cards: [], tabs: false, followUps: RichCardSchema.followUps(answer?["next"]),

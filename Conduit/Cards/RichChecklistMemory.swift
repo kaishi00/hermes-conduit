@@ -218,7 +218,9 @@ final class RichChecklistMemory: ObservableObject {
 
     private func store(_ entry: Entry, id: String) {
         entries[id] = entry
-        if entries.count > Self.keptLists, let oldest = entries.min(by: { $0.value.at < $1.value.at })?.key {
+        // The oldest list goes first, one the host has before one it doesn't.
+        if entries.count > Self.keptLists,
+           let oldest = entries.min(by: { ($0.value.unsent ? 1 : 0, $0.value.at) < ($1.value.unsent ? 1 : 0, $1.value.at) })?.key {
             entries.removeValue(forKey: oldest)
         }
         if let data = try? JSONEncoder().encode(entries) {
