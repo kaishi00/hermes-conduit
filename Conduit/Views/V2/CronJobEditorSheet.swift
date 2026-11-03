@@ -51,7 +51,7 @@ struct CronJobEditorSheet: View {
 
     /// The job goes to a Bot Chat on a host whose plugin keeps the choice.
     private var offersBotChoice: Bool {
-        appState.supportsCronBotChatReports && CronDeliveryTarget.deliversToBotChat(draft.deliver)
+        appState.offersCronBotChatChoice && CronDeliveryTarget.deliversToBotChat(draft.deliver)
     }
 
     private var botChoiceChanged: Bool {
@@ -161,6 +161,15 @@ struct CronJobEditorSheet: View {
         // The list Hermes offers; without it the picker keeps Local and the
         // job's own target.
         targets = (try? await appState.loadCronDeliveryTargets()) ?? []
+        // Whether this Hermes shows a Bot Chat job's report without a turn,
+        // and the job's choice, when the Cron tab hasn't read them yet.
+        if !appState.offersCronBotChatChoice, appState.supportsCronBotChatReports {
+            await appState.refreshCronNotifications()
+            if let job = editedJob, !botChoiceChanged {
+                botActs = appState.cronJobLetsBotAct(job.id)
+                originalBotActs = botActs
+            }
+        }
     }
 
     private func save() {
@@ -458,6 +467,15 @@ struct CronBlueprintGallerySheet: View {
             blueprints = try await appState.loadCronBlueprints()
             // Only widens the delivery choices; the blueprint's own stay.
             targets = (try? await appState.loadCronDeliveryTargets()) ?? []
+        // Whether this Hermes shows a Bot Chat job's report without a turn,
+        // and the job's choice, when the Cron tab hasn't read them yet.
+        if !appState.offersCronBotChatChoice, appState.supportsCronBotChatReports {
+            await appState.refreshCronNotifications()
+            if let job = editedJob, !botChoiceChanged {
+                botActs = appState.cronJobLetsBotAct(job.id)
+                originalBotActs = botActs
+            }
+        }
         } catch {
             self.error = UserFacingError.message(for: error)
         }

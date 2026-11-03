@@ -39,16 +39,16 @@ extension GatewayRestartTests {
         var sent: [String: Any]?
         let client = CronNotificationsClient { _, method, body in
             if method == "PUT" { sent = body }
-            return ["ok": true, "muted": ["m1"], "act": ["a1"]]
+            return ["ok": true, "muted": ["m1"], "act": ["a1"], "shows_reports": true]
         }
         let read = try await client.choices(profile: "default")
-        XCTAssertEqual(read, CronNotificationsClient.Choices(muted: ["m1"], act: ["a1"]))
+        XCTAssertEqual(read, CronNotificationsClient.Choices(muted: ["m1"], act: ["a1"], showsReports: true))
         _ = try await client.setActs(true, jobID: "a1", profile: "default")
         XCTAssertEqual(sent?["job_id"] as? String, "a1")
         XCTAssertEqual(sent?["act"] as? Bool, true)
         XCTAssertNil(sent?["notify"])
         // An older plugin lists no `act`, and Conduit offers no choice there.
-        XCTAssertEqual(try CronNotificationsClient.parseChoices(["ok": true, "muted": []]).act, [])
+        XCTAssertEqual(try CronNotificationsClient.parseChoices(["ok": true, "muted": []]), .init())
         XCTAssertThrowsError(try CronNotificationsClient.parseChoices(["ok": true, "muted": [], "act": "a1"]))
     }
 

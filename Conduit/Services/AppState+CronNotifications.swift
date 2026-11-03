@@ -41,6 +41,7 @@ extension AppState {
                   generation == cronNotificationsGeneration else { return }
             cronMutedJobIDs = choices.muted
             cronActingJobIDs = choices.act
+            cronShowsBotChatReports = choices.showsReports
             cronMutedJobsKey = key
         } catch is CancellationError {
             return
@@ -113,6 +114,13 @@ extension AppState {
         notifierPlugin.reports(CronNotificationsClient.botChatReportsCapability)
     }
 
+    /// The job editor offers the choice: the plugin keeps it and the
+    /// profile's Hermes can show a report without a turn, as last read.
+    var offersCronBotChatChoice: Bool {
+        supportsCronBotChatReports && cronMutedJobsKey == cronNotificationsKey(profile: activeProfile)
+            && cronShowsBotChatReports
+    }
+
     /// Whether a job delivered to a Bot Chat lets the bot act on its
     /// report. Unknown (not read yet) counts as just showing it, as the
     /// host defaults.
@@ -132,6 +140,7 @@ extension AppState {
         guard key == cronNotificationsKey(profile: activeProfile) else { return }
         cronMutedJobIDs = choices.muted
         cronActingJobIDs = choices.act
+        cronShowsBotChatReports = choices.showsReports
         cronMutedJobsKey = key
     }
 

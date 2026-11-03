@@ -1620,8 +1620,8 @@ Hermes' local-chat note) · Watch and CarPlay (not needed: no transcript
 cards) · notifier README.md's Cron jobs delivered to a Bot Chat
 
 **Code**
-- Notifier, on its `bot-workstreams` branch (plain text until it reaches main): cron_bot_chat.py (install, show, the note's HEADER, annotate for the cron tool), cron_store.py (act, set_act, lets_act), dashboard/api/notifications.py (`act` on /cron/notifications), dashboard/api/capabilities.py (cron-bot-chat-reports), __init__.py (install, _transform_tool_result)
-- App: `Conduit/Services/CronNotifications.swift` (Choices, choices, setActs), `Conduit/Services/AppState+CronNotifications.swift` (supportsCronBotChatReports, cronJobLetsBotAct, setCronJobLetsBotAct), `Conduit/Views/V2/CronJobEditorSheet.swift` (botChoiceSection, deliversToBotChat, the save), `Conduit/Views/CronReportCard.swift` (CronBotChatReport, CronReportCard), `Conduit/Views/ChatView.swift` (the card in a system row)
+- Notifier, on its `bot-workstreams` branch (plain text until it reaches main): cron_bot_chat.py (install, show, the note's HEADER, annotate for the cron tool), cron_store.py (act, set_act, lets_act), dashboard/api/notifications.py (`act` and `shows_reports` on /cron/notifications), dashboard/api/capabilities.py (cron-bot-chat-reports), __init__.py (install, _transform_tool_result)
+- App: `Conduit/Services/CronNotifications.swift` (Choices with showsReports, choices, setActs), `Conduit/Services/AppState+CronNotifications.swift` (supportsCronBotChatReports, offersCronBotChatChoice, cronJobLetsBotAct, setCronJobLetsBotAct), `Conduit/Views/V2/CronJobEditorSheet.swift` (botChoiceSection, deliversToBotChat, the save), `Conduit/Views/CronReportCard.swift` (CronBotChatReport, CronReportCard), `Conduit/Views/ChatView.swift` (the card in a system row)
 - Tests: notifier tests/test_cron_bot_chat.py and tests/test_cron_notifications.py; `ConduitTests/GatewayRestartTests+CronNotifications.swift` (testABotChatJobsChoiceIsReadSentAndOptional, testABotChatReportReadsAsTheJobAndItsReport)
 
 **Rulings**
@@ -1629,6 +1629,7 @@ cards) · notifier README.md's Cron jobs delivered to a Bot Chat
 - Just show it writes the report into the Bot Chat as a note, the way Hermes writes a cron result into a local chat: no turn, no model call, no reply; the bot sees it as context on its next turn. Its first line names the job and says nobody asked for a reply, and Conduit shows it as a card: the job's name, the first six lines, all of it a tap away.
 - A failure report follows the same choice, and is dropped where the profile hides warning notifications, as Hermes drops its own.
 - The cron tool's result for such a job tells the model which it is, so it doesn't promise to act on a report it will only see.
+- Only a Hermes that can write the note gets it (the route's `shows_reports`; v0.22.5 can't, the canary from late October can). On one that can't, every job keeps Hermes' turn and the editor offers no choice, so it never says a report just shows when it won't.
 
 **Open gaps**
 - A run's push still opens the run's own session, not the Bot Chat with its report.

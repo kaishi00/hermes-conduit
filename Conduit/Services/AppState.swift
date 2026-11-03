@@ -5153,6 +5153,9 @@ final class AppState: ObservableObject {
     /// (the rest just show it), read with `cronMutedJobIDs` and keyed by
     /// the same `cronMutedJobsKey`.
     @Published var cronActingJobIDs: Set<String> = []
+    /// Whether the host's Hermes shows a Bot Chat job's report without a
+    /// turn (the plugin's `shows_reports`), for `cronMutedJobsKey`.
+    @Published var cronShowsBotChatReports = false
     @Published var cronNotificationsChangingJobID: String?
     /// Moves with every save, so a refresh that started before one drops its answer.
     var cronNotificationsGeneration = 0

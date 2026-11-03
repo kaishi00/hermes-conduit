@@ -14,6 +14,9 @@ final class CronNotificationsClient {
     struct Choices: Equatable {
         var muted: Set<String> = []
         var act: Set<String> = []
+        /// Whether this Hermes can show a report without a turn; without
+        /// it every Bot Chat job takes Hermes' turn and there's no choice.
+        var showsReports = false
     }
     static let path = "/api/plugins/conduit_push/cron/notifications"
 
@@ -63,7 +66,7 @@ final class CronNotificationsClient {
         let muted = try parse(response)
         guard let act = response["act"] else { return Choices(muted: muted) }
         guard let ids = act as? [String] else { throw Failure.malformed }
-        return Choices(muted: muted, act: Set(ids))
+        return Choices(muted: muted, act: Set(ids), showsReports: response["shows_reports"] as? Bool ?? false)
     }
 
     static func parse(_ response: [String: Any]) throws -> Set<String> {
