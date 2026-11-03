@@ -14,6 +14,7 @@ import XCTest
 private final class CronRunsRequester: DashboardJSONRequester {
     var responsesByPath: [String: [String: Any]] = [:]
     var failingPrefix: String?
+    var cancelling = false
     private(set) var paths: [String] = []
     /// Reads whose path starts with this wait until `release()`.
     var holdPrefix: String?
@@ -37,6 +38,7 @@ private final class CronRunsRequester: DashboardJSONRequester {
         if let holdPrefix, path.hasPrefix(holdPrefix) {
             await withCheckedContinuation { held.append($0) }
         }
+        if cancelling { throw CancellationError() }
         if let failingPrefix, path.hasPrefix(failingPrefix) {
             throw DashboardTicketBridgeError.http(status: 0, detail: "Load failed")
         }
@@ -139,6 +141,13 @@ extension SidebarLayoutTests {
         await state.loadCronRuns(for: CronJob(enabled: true, id: "bbbbbbbbbbbb"), dashboard: nil, gateway: nil)
         XCTAssertFalse(state.cronRunsLoaded)
         XCTAssertNotNil(state.cronRunsFailure)
+
+        // A sheet closed mid-read is no failure.
+        requester.cancelling = true
+        await state.loadCronRuns(for: CronJob(enabled: true, id: "cccccccccccc"), dashboard: requester, gateway: nil)
+        XCTAssertNil(state.cronRunsFailure)
+        XCTAssertFalse(state.cronRunsLoaded)
+        requester.cancelling = false
 
         // A later answer clears the failure.
         requester.responsesByPath["/api/cron/jobs/bbbbbbbbbbbb/runs"] = ["runs": []]

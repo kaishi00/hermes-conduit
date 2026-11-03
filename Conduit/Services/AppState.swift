@@ -34064,6 +34064,8 @@ final class AppState: ObservableObject {
             cronRunsFailure = nil
             cronRunsJobID = job.id
         }
+        // A retry shows the spinner again, not the last read's failure.
+        cronRunsFailure = nil
         cronRunsLoad += 1
         let load = cronRunsLoad
         let inProfile: (CronRun) -> Bool = { run in
@@ -34091,6 +34093,8 @@ final class AppState: ObservableObject {
                 cronRunsFailure = AppLocalization.string("Connect to Hermes to check.")
             }
         } catch {
+            // A sheet closed mid-read: no failure, the next open reads again.
+            if error is CancellationError || Task.isCancelled { return }
             guard profile == activeProfile, cronRunsLoad == load else { return }
             let message = AppLocalization.string("Could not load scheduled-job runs: \(UserFacingError.message(for: error))")
             if cronRunsLoaded {
