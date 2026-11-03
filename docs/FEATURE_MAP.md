@@ -4052,6 +4052,7 @@ notifier's copies of both
 - Workflow: `.github/workflows/opencode-review.yml` (the reviewer matrix, secrets and prompt)
 - Config: `opencode.json` (providers, models and the reviewer's permissions)
 - Notifier: `notifier/.github/workflows/opencode-review.yml`, `notifier/opencode.json`
+- Review gate: the review job's "Read the verdict" step in `.github/workflows/opencode-review.yml` (and the notifier's); `scripts/tests/test_review_verdict.py` holds its comment filter and verdict parse to opencode's comments
 - CI's smoke skip: the "Does the change need the macOS build" step in `.github/workflows/ci.yml` (its app-folder Markdown rule is the review plan's too; `scripts/tests/test_ci_workflow_contract.py` holds them to the same pattern)
 - Change id: the review plan's inline copy in `.github/workflows/opencode-review.yml` (and the notifier's), and `scripts/pr-change-id.py`, which CI's smoke skip uses; `scripts/tests/test_pr_change_id.py` holds this repo's two to the same ids
 

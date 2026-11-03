@@ -317,7 +317,8 @@ jobs:
       # The slowest reviews that finished took about 26 minutes.
       - name: Note when the review starts
         id: started
-        run: echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+        # A minute early, so a runner clock ahead of GitHub's still matches.
+        run: echo "at=$(date -u -d '1 minute ago' +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
       - name: Run opencode review
         timeout-minutes: 40
         run: GITHUB_EVENT_PATH=${DISPATCH_EVENT_PATH:-$GITHUB_EVENT_PATH} GITHUB_EVENT_NAME=pull_request GITHUB_ACTOR=${{ github.repository_owner }} opencode github run
@@ -427,8 +428,9 @@ jobs:
             lines = [l for l in sys.stdin.read().splitlines() if l.strip()]
             body = json.loads(lines[-1]) if lines else ""
             parts = body.rsplit("## Verdict", 1)
-            m = re.search(r"REQUEST_CHANGES|APPROVE|COMMENT", parts[1]) if len(parts) == 2 else None
-            print(m.group(0) if m else "")
+            # The verdict's own line, so the rubric sentence doesn't count.
+            m = re.search(r"^\W*(REQUEST_CHANGES|APPROVE|COMMENT)\W*$", parts[1], re.M) if len(parts) == 2 else None
+            print(m.group(1) if m else "")
         run: |
           bodies=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?since=$SINCE&per_page=100" \
             --jq '.[] | select(.user.login == "github-actions[bot]" and .created_at >= env.SINCE)
