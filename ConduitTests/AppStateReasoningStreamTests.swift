@@ -335,8 +335,8 @@ final class AppStateReasoningStreamTests: XCTestCase {
         ), turnGeneration: 4)
         XCTAssertEqual(events, [.interrupted(sessionID: "stored-a")], "The stopped reply is never spoken from its end")
         events.removeAll()
-        state.handleStreamEvent(.messageError(sessionId: "stored-a", message: "Interrupted"), turnGeneration: 4)
-        XCTAssertEqual(events, [.failed(sessionID: "stored-a", message: "Interrupted")], "A failure passes as it is")
+        state.handleStreamEvent(.messageError(sessionId: "stored-a", message: "Provider error"), turnGeneration: 4)
+        XCTAssertEqual(events, [.interrupted(sessionID: "stored-a")], "Its failure never fails the next question's wait")
 
         events.removeAll()
         state.handleStreamEvent(.messageStart(sessionId: "stored-a"), turnGeneration: 5)

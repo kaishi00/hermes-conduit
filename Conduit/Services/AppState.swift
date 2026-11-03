@@ -37376,11 +37376,13 @@ final class AppState: ObservableObject {
     /// was: a conversation still waiting on it (stopped from the chat, not
     /// by Voice) is released without speaking or writing the reply the user
     /// stopped, and one already waiting on the next question ignores it
-    /// until that question's reply starts. A failure passes as it is.
+    /// until that question's reply starts. Its failure reaches Voice the
+    /// same way, so it never fails a conversation already waiting on the
+    /// next question.
     private func takeVoiceEventAfterCancel(_ event: VoiceAssistantEvent) -> VoiceAssistantEvent? {
         switch event {
-        case .started, .delta, .interim, .completed: break
-        case .failed, .interrupted: return event
+        case .started, .delta, .interim, .completed, .failed: break
+        case .interrupted: return event
         }
         guard let generation = handledStreamEventGeneration else { return event }
         // The open chat can hold a note under each of its ids (Voice's
@@ -37395,8 +37397,10 @@ final class AppState: ObservableObject {
             }
             return event
         }
-        if case .completed = event { return .interrupted(sessionID: event.sessionID) }
-        return nil
+        switch event {
+        case .completed, .failed: return .interrupted(sessionID: event.sessionID)
+        default: return nil
+        }
     }
 
     /// Who speaks Classic voice replies for the active profile.
