@@ -4266,7 +4266,7 @@ notifier README and CHANGELOG
 - The call screen draws a board stacked, with no tabs and no follow-ups (the user speaks the next question).
 - The Watch and CarPlay show no cards.
 - Checklist ticks on the call screen don't reach the chat or Hermes.
-- A checklist in the saved copy, or in a chat on its way, can't be ticked and shows no ticks (they're on the host).
+- A checklist in the saved copy, a chat on its way or a saved call's transcript can't be ticked and shows no ticks (a chat's are on the host; a call's stay with its live screen).
 - A checklist that stays on screen reads other devices' ticks only when it's drawn again or ticked here.
 - Boards are parsed again each time a row is drawn; no cache yet, as liveNames has.
 

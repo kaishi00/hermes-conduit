@@ -64,9 +64,10 @@ extension EnvironmentValues {
         set { self[RichChecklistContextKey.self] = newValue }
     }
 
-    /// A chat's checklist: ticked only where the host keeps its ticks, so
-    /// one in the saved copy or a chat on its way reads but can't be ticked
-    /// (its ticks would land on the call screen's, and never reach the chat).
+    /// A chat's or a saved call's checklist: ticked only where the host
+    /// keeps its ticks, so one in the saved copy, a chat on its way or a
+    /// saved call reads but can't be ticked (its ticks would land on the
+    /// live call screen's, and never reach the chat).
     var richChecklistInChat: Bool {
         get { self[RichChecklistInChatKey.self] }
         set { self[RichChecklistInChatKey.self] = newValue }
