@@ -4014,7 +4014,7 @@ server, never Tailscale SSH)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-03, #1716 (a certificate failure in the connection test opens HTTPS & certificates, Back returns to the test; its install step is in Connection failure messages); 2026-10-27, at #1377.
+**Checked:** 2026-11-03, #1716 (a certificate failure in the connection test, Settings' Sign In Again or Repair's reconnect opens HTTPS & certificates and Back returns to it; its install step is in Connection failure messages); 2026-10-27, at #1377.
 
 ## Connection failure messages
 
@@ -4044,6 +4044,7 @@ hermes-conduit-website)
 
 **Open gaps**
 - The Watch and the dictation clip retry treat TLS failures only as never sent or not transient; they show no classified copy.
+- The install offer trusts the existing diagnosis: a refused chain whose failed checks aren't a name, Apple's rules or dates counts as an untrusted root, so a rarer failure (revocation, basic constraints) could get the offer and then fail again, named by the classifier. Gating on Security's anchor check names was left out until they're verified on a device (#1716 review).
 - Not tried on a device yet: opening the saved profile from Files on an iPhone or iPad, and from Finder on a Mac. Whether a root installed on the iPhone also covers the Watch's own connections hasn't been checked.
 
 **Checked:** 2026-11-03, #1716.
