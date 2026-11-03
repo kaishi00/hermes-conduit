@@ -37372,15 +37372,14 @@ final class AppState: ObservableObject {
     /// turns, so on `hermes dashboard` nothing is noted or held.
     ///
     /// The words are held (`.started`, `.delta`, `.interim`), and the
-    /// turn's end (or its failure) reaches Voice as an end with no words: a
-    /// conversation still waiting on it (stopped from the chat, not by
+    /// turn's end (its completion, failure or interruption) reaches Voice
+    /// as an end with no words: a conversation still waiting on it (stopped from the chat, not by
     /// Voice) finishes what it already said and listens again, as after any
     /// reply, without speaking or writing the rest the user stopped; one
     /// already waiting on the next question ignores it until that
     /// question's reply starts, so the stopped turn never fails or ends
     /// that wait.
     private func takeVoiceEventAfterCancel(_ event: VoiceAssistantEvent) -> VoiceAssistantEvent? {
-        switch event {
         guard let generation = handledStreamEventGeneration else { return event }
         // The open chat can hold a note under each of its ids (Voice's
         // cancel names the open chat, the composer's its runtime id): the
