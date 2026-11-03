@@ -953,6 +953,10 @@ struct V2Shell: View {
                                                          fromHome: botsPath.first == .conversation))
                     }
             }
+            // The tapped portrait's chat has left: the next open pushes.
+            .onChange(of: botsPath) { _, path in
+                if !path.contains(.conversation) { appState.botZoomArmed = nil }
+            }
         case .settings:
             // Settings puts the clearance inside its own stack, on its home
             // and on every page it pushes (`v2TabBarClearance()`).

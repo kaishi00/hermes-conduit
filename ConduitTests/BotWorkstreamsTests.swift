@@ -630,6 +630,24 @@ extension BotModeTests {
         XCTAssertTrue(build.isEmpty)
     }
 
+    /// A Bot Chat zooms out of its portrait only when that portrait was
+    /// tapped on Bots Home: a notification's or widget's open, one under
+    /// Pulse, another bot's chat or Reduce Motion pushes as usual.
+    func testOnlyATappedPortraitsChatZoomsOutOfIt() {
+        func zoom(_ route: V2Route = .conversation, home: Bool = true, open: String? = "furina",
+                  tapped: String? = "furina", reduce: Bool = false) -> String? {
+            BotZoomDestination.zoomingBot(route: route, fromHome: home, open: open, tapped: tapped, reduceMotion: reduce)
+        }
+        XCTAssertEqual(zoom(), "furina")
+        XCTAssertEqual(zoom(tapped: "Furina"), "furina")
+        XCTAssertNil(zoom(tapped: nil), "a notification or widget opened it")
+        XCTAssertNil(zoom(open: "atlas"), "another bot's chat")
+        XCTAssertNil(zoom(home: false), "under Pulse or Artifacts")
+        XCTAssertNil(zoom(reduce: true))
+        XCTAssertNil(zoom(.pulse))
+        XCTAssertNil(zoom(open: nil), "a plain session")
+    }
+
     /// A dragged portrait carries a marked name, so text dragged in from
     /// another app is never taken for a bot.
     func testABotDragCarriesAMarkedName() {

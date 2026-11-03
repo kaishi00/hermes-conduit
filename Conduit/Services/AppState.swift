@@ -965,6 +965,10 @@ final class AppState: ObservableObject {
     @Published private(set) var pinnedChatOrder = PinnedChatOrder()
     /// The bots' order on Bots Home and every bot list (AppState+BotOrder).
     @Published private(set) var botOrder = BotOrder()
+    /// The bot whose Bots Home portrait was just tapped, so its Bot Chat
+    /// zooms out of it (BotZoomDestination); cleared once the chat leaves
+    /// the Bots stack. Any other open of a Bot Chat pushes as usual.
+    var botZoomArmed: String?
     /// Replies pinned to the top of their chat, per profile (#918). Kept on
     /// this device only (AppState+PinnedReplies).
     @Published var pinnedRepliesByProfile: [String: [PinnedReply]] = [:]

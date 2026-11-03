@@ -265,6 +265,8 @@ struct BotPortraitCell<MenuContent: View>: View {
                     return
                 }
                 appState.dismissSidebarDrawer()
+                // This chat grows out of this portrait (BotZoomDestination).
+                appState.botZoomArmed = bot.name
                 Task { await appState.openBotChat(for: bot) }
             } label: {
                 VStack(spacing: 8) {
@@ -670,11 +672,23 @@ struct BotZoomDestination: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
-        if #available(iOS 18.0, *), route == .conversation, fromHome, !reduceMotion,
-           let bot = appState.activeBotChatProfile {
+        if #available(iOS 18.0, *),
+           let bot = Self.zoomingBot(route: route, fromHome: fromHome, open: appState.activeBotChatProfile,
+                                     tapped: appState.botZoomArmed, reduceMotion: reduceMotion) {
             content.navigationTransition(.zoom(sourceID: bot, in: namespace))
         } else {
             content
         }
+    }
+
+    /// The bot whose portrait the chat grows from, or nil for the usual
+    /// push: only the Bot Chat of the portrait just tapped, pushed on Bots
+    /// Home itself, never one a notification, widget, Shortcut or link
+    /// opened, and nothing under Reduce Motion.
+    static func zoomingBot(route: V2Route, fromHome: Bool, open: String?, tapped: String?,
+                           reduceMotion: Bool) -> String? {
+        guard route == .conversation, fromHome, !reduceMotion, let open, let tapped,
+              open.caseInsensitiveCompare(tapped) == .orderedSame else { return nil }
+        return open
     }
 }
