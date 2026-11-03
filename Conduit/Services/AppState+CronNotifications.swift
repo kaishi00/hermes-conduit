@@ -70,6 +70,8 @@ extension AppState {
         if seeded {
             cronMutedJobIDs = []
             cronActingJobIDs = []
+            // Unknown until a read says this Hermes shows reports.
+            cronShowsBotChatReports = false
             cronMutedJobsKey = key
         }
         let wasMuted = cronMutedJobIDs.contains(job.id)
@@ -92,6 +94,7 @@ extension AppState {
                     cronMutedJobsKey = nil
                     cronMutedJobIDs = []
                     cronActingJobIDs = []
+                    cronShowsBotChatReports = false
                 } else if wasMuted {
                     cronMutedJobIDs.insert(job.id)
                 } else {
