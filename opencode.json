@@ -1,19 +1,21 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
-    "anthropic": {
+    "deepseek-custom": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "DeepSeek",
       "options": {
-        "apiKey": "{env:ANTHROPIC_API_KEY}"
+        "baseURL": "https://api.deepseek.com",
+        "apiKey": "{env:DEEPSEEK_API_KEY}"
       },
-      "whitelist": ["claude-haiku-5-5"],
       "models": {
-        "claude-haiku-5-5": {
-          "name": "Claude Haiku 5.5",
+        "deepseek-flash": {
+          "name": "DeepSeek V4.1 Flash",
+          "interleaved": {
+            "field": "reasoning_content"
+          },
           "options": {
-            "thinking": {
-              "type": "adaptive"
-            },
-            "effort": "high"
+            "reasoningEffort": "max"
           }
         }
       }

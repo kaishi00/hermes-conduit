@@ -66,7 +66,7 @@ jobs:
           EVENT_ACTION: ${{ github.event.action }}
           WORKFLOW_FILE: opencode-review.yml
           ALL_REVIEWERS: >-
-            [{"reviewer": "Claude Haiku 5.5", "model": "anthropic/claude-haiku-5-5"},
+            [{"reviewer": "DeepSeek V4.1 Flash", "model": "deepseek-custom/deepseek-flash"},
              {"reviewer": "GLM-5.3-Flash", "model": "zai-custom/glm-5.3-flash"}]
           DOCS_REVIEWER: GLM-5.3-Flash
           CHANGE_ID_PY: |
@@ -301,7 +301,7 @@ jobs:
         run: GITHUB_EVENT_PATH=${DISPATCH_EVENT_PATH:-$GITHUB_EVENT_PATH} GITHUB_EVENT_NAME=pull_request GITHUB_ACTOR=${{ github.repository_owner }} opencode github run
         env:
           DISPATCH_EVENT_PATH: ${{ steps.dispatch_event.outputs.path }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           # The run's own token: this repo only, the job's permissions above,
           # and it expires when the run ends.
