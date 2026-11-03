@@ -59,12 +59,14 @@ struct RichTable: Equatable, Hashable {
         // A multiplier only right after the number, as a word of its own
         // ("1.2M", "950K", never "5 m" or "3 kg"), or as a size's prefix
         // ("900KB", "2MB", "512GB", "3TB").
-        if let letter = rest.first {
+        // Either case: "$950m", "2b", "512gb".
+        if let first = rest.first {
+            let letter = String(first).uppercased()
             let alone = rest.count == 1 || !CharacterSet.letters.contains(rest[1])
             let size = rest.count >= 2 && (rest[1] == "B" || rest[1] == "b")
                 && (rest.count == 2 || !CharacterSet.letters.contains(rest[2]))
             switch (letter, alone, size) {
-            case ("K", true, _), ("k", true, _), ("K", _, true), ("k", _, true): value *= 1e3
+            case ("K", true, _), ("K", _, true): value *= 1e3
             case ("M", true, _), ("M", _, true): value *= 1e6
             case ("B", true, _), ("G", _, true): value *= 1e9
             case ("T", true, _), ("T", _, true): value *= 1e12

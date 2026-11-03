@@ -84,6 +84,21 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNil(RichBoard.followUpRow(in: [asked, board, later]), "only the turn's last board offers them")
     }
 
+    @MainActor
+    func testFollowUpsShowOnlyWhileASendCanGo() throws {
+        let suite = "RichBoardFollowUpTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        var facts = ChatRowFacts()
+        facts.followUpBoardRowID = "b1"
+        appState.isConnected = false
+        XCTAssertNil(ChatRowState(appState, facts: facts).followUpBoardRowID, "a tap couldn't send")
+        appState.isConnected = true
+        XCTAssertTrue(appState.composerIsEnabled)
+        XCTAssertEqual(ChatRowState(appState, facts: facts).followUpBoardRowID, "b1")
+    }
+
     func testATableSortsNumbersByValueWithBlanksLast() throws {
         let table = RichTable(columns: ["Company", "Revenue"], rows: [
             ["Acme", "$1.2M"], ["Globex", RichCardSchema.blankCell], ["Initech", "$950K"], ["Umbrella", "$3B"],
@@ -103,6 +118,10 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(RichTable.sortNumber("900KB"), 900_000)
         XCTAssertEqual(RichTable.sortNumber("512GB"), 512e9)
         XCTAssertEqual(RichTable.sortNumber("3TB"), 3e12)
+        XCTAssertEqual(RichTable.sortNumber("$950m"), 950e6)
+        XCTAssertEqual(RichTable.sortNumber("$2b"), 2e9)
+        XCTAssertEqual(RichTable.sortNumber("512gb"), 512e9)
+        XCTAssertEqual(RichTable.sortNumber("3tb"), 3e12)
         XCTAssertEqual(RichTable.sortNumber("3 kg"), 3)
         XCTAssertEqual(RichTable.sortNumber("-$4.5M"), -4.5e6)
         XCTAssertEqual(RichTable.sortNumber("($4.5M)"), -4.5e6)
