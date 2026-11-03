@@ -73,6 +73,16 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(verdict([json.dumps("no verdict here")]), "")
 
 
+class GateTests(unittest.TestCase):
+    def test_second_review_waits_on_a_gate_that_passed_without_blockers(self):
+        with open(WORKFLOW, encoding="utf-8") as fh:
+            text = fh.read()
+        job = text[text.index("\n  second-review:\n"):]
+        self.assertIn("    needs: [plan, review]\n", job)
+        self.assertIn("    if: needs.plan.outputs.second != '[]' && needs.review.result == 'success'"
+                      " && needs.review.outputs.verdict != 'REQUEST_CHANGES'\n", job)
+
+
 @unittest.skipUnless(shutil.which("jq"), "jq isn't installed")
 class CommentFilterTests(unittest.TestCase):
     def pick(self, comments):

@@ -448,7 +448,9 @@ jobs:
   second-review:
     name: review (${{ matrix.reviewer }})
     needs: [plan, review]
-    if: needs.plan.outputs.second != '[]' && needs.review.outputs.verdict != 'REQUEST_CHANGES'
+    # GitHub adds success() to an if without a status check, so a failed
+    # gate job skips this already; the result check says so where it's read.
+    if: needs.plan.outputs.second != '[]' && needs.review.result == 'success' && needs.review.outputs.verdict != 'REQUEST_CHANGES'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
