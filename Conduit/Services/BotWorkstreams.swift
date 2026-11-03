@@ -1,7 +1,7 @@
 import Foundation
 
-/// A bot's work as its Bot Chat coordinates it (Bot workstreams, the
-/// notifier's `bot-workstreams` branch): the workstreams it started, hidden
+/// A bot's work as its Bot Chat coordinates it (Bot workstreams, in the
+/// notifier's conduit_push plugin): the workstreams it started, hidden
 /// chats of its own named W1, W2, and its asks to other bots and theirs to
 /// it (A1, A2). The plugin's `/workstreams` route lists them; the user's own
 /// actions on a workstream (Reply, Stop, Continue, Check first) go straight
