@@ -2401,9 +2401,20 @@ final class AppState: ObservableObject {
     private(set) lazy var pulseRememberedHomes: [String: String] =
         defaults.dictionary(forKey: Self.pulseHomesKey) as? [String: String] ?? [:]
     static let pulseHomesKey = "conduit.pulse.homeChats"
+    /// The profile Pulse runs in per dashboard, as the last feed named it
+    /// (`pulseHomeProfile`); none kept for a plugin that names none.
+    private(set) lazy var pulseRememberedProfiles: [String: String] =
+        defaults.dictionary(forKey: Self.pulseProfilesKey) as? [String: String] ?? [:]
+    static let pulseProfilesKey = "conduit.pulse.homeProfiles"
 
-    func rememberPulseHome(_ chat: String?) {
-        guard let key = activeDashboardID?.uuidString, pulseRememberedHomes[key] != chat else { return }
+    func rememberPulseHome(_ chat: String?, profile: String?) {
+        guard let key = activeDashboardID?.uuidString else { return }
+        if pulseRememberedProfiles[key] != profile {
+            var profiles = pulseRememberedProfiles
+            profiles[key] = profile
+            storePulseProfiles(profiles)
+        }
+        guard pulseRememberedHomes[key] != chat else { return }
         var homes = pulseRememberedHomes
         homes[key] = chat
         storePulseHomes(homes)
@@ -2411,6 +2422,8 @@ final class AppState: ObservableObject {
 
     /// A removed dashboard's Pulse chat goes with it.
     func forgetPulseHome(of dashboardID: UUID) {
+        var profiles = pulseRememberedProfiles
+        if profiles.removeValue(forKey: dashboardID.uuidString) != nil { storePulseProfiles(profiles) }
         var homes = pulseRememberedHomes
         guard homes.removeValue(forKey: dashboardID.uuidString) != nil else { return }
         storePulseHomes(homes)
@@ -2435,13 +2448,19 @@ final class AppState: ObservableObject {
     /// finished with that profile on screen. False when a newer navigation
     /// took the screen meanwhile, which a new chat mustn't replace.
     func switchProfileForPulse() async -> Bool {
-        await switchProfile(to: Self.pulseHomeProfile, reusing: nil)
+        await switchProfile(to: pulseHomeProfile, reusing: nil)
     }
 
     private func storePulseHomes(_ homes: [String: String]) {
         objectWillChange.send()
         pulseRememberedHomes = homes
         defaults.set(homes, forKey: Self.pulseHomesKey)
+    }
+
+    private func storePulseProfiles(_ profiles: [String: String]) {
+        objectWillChange.send()
+        pulseRememberedProfiles = profiles
+        defaults.set(profiles, forKey: Self.pulseProfilesKey)
     }
 
     /// Morning briefs folded on the Pulse screen, per dashboard: each
@@ -2787,6 +2806,25 @@ final class AppState: ObservableObject {
     /// open on.
     func keptModelProviders() -> [ProviderInfo] {
         keptAnswer(KeptRoute.providerQuotas).map(Self.modelProviders(in:)) ?? []
+    }
+
+    /// The models Hermes offers in `profile`, which may not be the one
+    /// open: Settings > Pulse's, for the profile Pulse runs in, where its
+    /// model is set (issue 1681). Another profile's come from the
+    /// dashboard's route for it, kept as the Model page keeps them. Nil when
+    /// Hermes didn't answer, or the dashboard changed meanwhile.
+    func loadModelProviders(inProfile profile: String) async -> [ProviderInfo]? {
+        if profilesMatch(profile, activeProfile) { return await loadModelProviders() }
+        guard let owner = currentDashboardRuntimeOwner(),
+              let answer = try? await readKeepingAnswer(KeptRoute.modelOptions, profile: profile, owner: owner),
+              ownsDashboardRuntime(owner) else { return nil }
+        return Self.modelProviders(in: answer)
+    }
+
+    /// `profile`'s models as last read, kept on the phone.
+    func keptModelProviders(inProfile profile: String) -> [ProviderInfo] {
+        if profilesMatch(profile, activeProfile) { return keptModelProviders() }
+        return keptAnswer(KeptRoute.modelOptions, profile: profile).map(Self.modelProviders(in:)) ?? []
     }
 
     /// The providers of a `model.options` answer.

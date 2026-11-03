@@ -27,6 +27,14 @@ final class PulseSettingsTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(PulseState(json: json(#"{"enabled": true}"#))).note, "")
     }
 
+    func testStateNamesTheProfilePulseRunsIn() throws {
+        // Issue 1681: Set up Pulse makes the chat in the profile Pulse names.
+        XCTAssertEqual(try XCTUnwrap(PulseState(json: json(#"{"enabled": true, "profile": "rei-ii"}"#))).profile, "rei-ii")
+        // An older plugin names none: its Pulse runs in the default profile.
+        XCTAssertNil(try XCTUnwrap(PulseState(json: json(#"{"enabled": true}"#))).profile)
+        XCTAssertNil(try XCTUnwrap(PulseState(json: json(#"{"enabled": true, "profile": " "}"#))).profile)
+    }
+
     func testStateSaysWhatDefaultRunsOn() throws {
         // Pulse's chat is hidden, so the model picker's Default names its model (0.120.3).
         // The copy is English here, whatever the test host's language.

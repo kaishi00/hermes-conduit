@@ -46,6 +46,8 @@ struct PulseSettingsPage: View {
     /// Hermes answered the models read: only then is a model picked, as a
     /// list that didn't load is never picked from.
     @State private var modelsAnswered = false
+    /// The profile `providers` are from: Pulse's, as its state names it.
+    @State private var modelsProfile: String?
     /// The note to Pulse as it's being edited; nil shows the plugin's.
     @State private var noteDraft: String?
     @FocusState private var noteFocused: Bool
@@ -179,7 +181,7 @@ struct PulseSettingsPage: View {
                 // whether or not the plugin names it as a problem.
                 Button(AppLocalization.string("Pin it")) {
                     run { _ in
-                        try await appState.pinPulseHomeChat(id: chat.id)
+                        try await appState.pinPulseHomeChat(id: chat.id, profile: state.profile)
                         return nil
                     }
                 }
@@ -210,13 +212,14 @@ struct PulseSettingsPage: View {
 
     private func homeChatSection(_ state: PulseState) -> some View {
         ConduitSettingsSection(title: AppLocalization.string("Set up Pulse"), symbol: "pin", tint: .conduitAccent) {
-            Text(AppLocalization.string("Pulse keeps its reports in a chat of its own in the dashboard's default profile. It stays out of your chats."))
+            Text(AppLocalization.string("Pulse keeps its reports in a chat of its own in the profile it runs in, \(appState.profileDisplayName(state.profile ?? AppState.pulseDefaultProfile)). It stays out of your chats."))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Button(AppLocalization.string("Set up Pulse")) {
                 let title = state.homeTitle
+                let profile = state.profile
                 run { _ in
-                    try await appState.createPulseHomeChat(title: title)
+                    try await appState.createPulseHomeChat(title: title, profile: profile)
                     return nil
                 }
             }
@@ -788,21 +791,32 @@ struct PulseSettingsPage: View {
             .accessibilityIdentifier("settings.pulse.model")
             if modelsFailed {
                 // The models listed stay up; Hermes didn't answer.
-                ModelCatalogPlaceholder(state: .failed) { Task { await loadModels() } }
+                ModelCatalogPlaceholder(state: .failed) { Task { await loadModels(profile: state.profile) } }
             }
             Text("Pulse's reports, morning brief, follow-ups and memory run on this model. A fast, cheap model is plenty.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
-        .task(id: appState.activeDashboardID) { await loadModels() }
+        // Pulse's profile's models, where its model is set (issue 1681).
+        .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(state.profile ?? "")") {
+            await loadModels(profile: state.profile)
+        }
     }
 
     /// One that fails keeps the models listed, the kept ones included,
     /// and says so with Try Again.
-    private func loadModels() async {
+    private func loadModels(profile: String?) async {
         let dashboard = appState.activeDashboardID
-        let loaded = await appState.loadModelProviders()
-        guard appState.activeDashboardID == dashboard else { return }
+        if modelsProfile != profile {
+            // Another profile's models never stay up to be picked for this one.
+            providers = appState.keptModelProviders(inProfile: profile ?? AppState.pulseDefaultProfile)
+            modelsAnswered = false
+            modelsFailed = false
+        }
+        modelsProfile = profile
+        let loaded = await appState.loadModelProviders(inProfile: profile ?? AppState.pulseDefaultProfile)
+        // A read for a profile no longer shown never lands on the picker.
+        guard !Task.isCancelled, modelsProfile == profile, appState.activeDashboardID == dashboard else { return }
         if let loaded {
             providers = loaded
             modelsAnswered = true
@@ -821,7 +835,7 @@ struct PulseSettingsPage: View {
             let next = try await client.update(["model": model?.setting ?? NSNull()])
             guard isShown(client) else { return nil }
             do {
-                try await appState.setPulseMemoryModel(model)
+                try await appState.setPulseMemoryModel(model, profile: shown.profile)
             } catch {
                 if isShown(client) { _ = try? await client.update(["model": previous?.setting ?? NSNull()]) }
                 throw error
@@ -989,8 +1003,13 @@ struct PulseSettingsPage: View {
     /// doesn't stop this iPhone watching shops (`apply` does, on Pulse's
     /// answer), and the days to read follow the answer again.
     private func showKept() {
-        if providers.isEmpty { providers = appState.keptModelProviders() }
-        guard state == nil, let kept = appState.keptPulseState() else { return }
+        let keptState = appState.keptPulseState()
+        if providers.isEmpty {
+            providers = appState.keptModelProviders(
+                inProfile: (state ?? keptState)?.profile ?? AppState.pulseDefaultProfile
+            )
+        }
+        guard state == nil, let kept = keptState else { return }
         state = kept
         dayCount = kept.backfillDays
     }
