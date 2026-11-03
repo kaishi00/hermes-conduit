@@ -657,7 +657,7 @@ struct BotOverviewSheet: View {
                             animates: scenePhase == .active && !reduceMotion
                                 && !ProcessInfo.processInfo.isLowPowerModeEnabled,
                             finishedAt: nil,
-                            askerColor: {
+                            askerColor: { () -> Color? in
                                 guard case .helping = headerStatus,
                                       let asker = headerStatus.otherBot(in: appState.shownBotRoster) else { return nil }
                                 return BotAvatarView.color(for: asker.appearanceColor, name: asker.name)
