@@ -509,6 +509,7 @@ extension BotModeTests {
 
     func testAWorkSettingsChangeSendsOnlyWhatChanged() {
         let old = BotWorkSettings()
+        XCTAssertEqual(old.policy, .lookups)  // the plugin's default (Eric 2026-11-03)
         XCTAssertTrue(old.change(from: old).isEmpty)
         var new = old
         new.approvals = .ask

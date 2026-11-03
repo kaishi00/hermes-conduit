@@ -486,7 +486,7 @@ struct BotWorkSettings: Equatable {
 
     var isOn: Bool { policy != .off }
 
-    init(policy: Policy = .strict, maxRunning: Int = 2, maxRunningLimit: Int = 6,
+    init(policy: Policy = .lookups, maxRunning: Int = 2, maxRunningLimit: Int = 6,
          afterRestart: AfterRestart = .continue, approvals: Approvals = .chats,
          chatApprovals: String = "manual", workstreamModel: Model? = nil, unavailable: String? = nil) {
         self.policy = policy

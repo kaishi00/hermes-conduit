@@ -248,9 +248,10 @@ struct BotWorkSettingsView: View {
 }
 
 private extension BotWorkSettings {
-    /// The toggle's view of the policy: turning it on comes back strict.
+    /// The toggle's view of the policy: turning it on comes back with
+    /// lookups, the plugin's default (Eric 2026-11-03).
     var isOnSetting: Bool {
         get { isOn }
-        set { policy = newValue ? (policy == .off ? .strict : policy) : .off }
+        set { policy = newValue ? (policy == .off ? .lookups : policy) : .off }
     }
 }
