@@ -12719,7 +12719,7 @@ final class AppState: ObservableObject {
             errorMessage = AppLocalization.string("Connect to Hermes to create a group chat.")
             return false
         }
-        guard bots.count >= 2, bots.count <= 6 else {
+        guard bots.count >= 2, bots.count <= GroupRoomLimits.maxMembers else {
             errorMessage = AppLocalization.string("Pick 2 to 6 bots for a group chat.")
             return false
         }

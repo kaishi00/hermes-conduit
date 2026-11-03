@@ -947,7 +947,10 @@ struct V2Shell: View {
                     .environment(\.botZoomNamespace, botZoom)
                     .navigationDestination(for: V2Route.self) { route in
                         destination(route, alone: canSplit)
-                            .modifier(BotZoomDestination(route: route, namespace: botZoom))
+                            // Only straight from Bots Home: under Pulse or
+                            // Artifacts the portrait isn't on screen.
+                            .modifier(BotZoomDestination(route: route, namespace: botZoom,
+                                                         fromHome: botsPath.first == .conversation))
                     }
             }
         case .settings:

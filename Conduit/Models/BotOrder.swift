@@ -13,6 +13,7 @@
 //
 
 import Foundation
+import SwiftUI // Array.move(fromOffsets:toOffset:)
 
 struct BotOrder: Equatable {
     static let storageKey = "conduit.botOrder.v1"

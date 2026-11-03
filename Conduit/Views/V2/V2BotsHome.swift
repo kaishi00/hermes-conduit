@@ -283,18 +283,6 @@ struct BotPortraitCell<MenuContent: View>: View {
             .modifier(BotPortraitDrag(name: bot.name, enabled: onDrop != nil) {
                 BotMonogramView(bot: bot, size: 64)
             })
-            .dropDestination(for: String.self) { items, _ in
-                guard let onDrop, let dragged = items.first.flatMap(BotDragPayload.botName(from:)),
-                      dragged.caseInsensitiveCompare(bot.name) != .orderedSame else { return false }
-                let merge = mergeReady
-                BotDragPayload.lifted = nil
-                endTargeting()
-                onDrop(dragged, merge)
-                return true
-            } isTargeted: { targeted in
-                guard onDrop != nil else { return }
-                targeted ? beginTargeting() : endTargeting()
-            }
             .accessibilityLabel(Text(bot.displayLabel))
             .accessibilityValue(Text(accessibilityValue(status)))
             .accessibilityHint(Text(portraitHint))
@@ -310,6 +298,20 @@ struct BotPortraitCell<MenuContent: View>: View {
             .accessibilityLabel(Text(AppLocalization.string("\(bot.displayLabel)’s overview")))
             .accessibilityValue(Text(verbatim: status == .idle ? "" : status.title))
             .accessibilityIdentifier("bots.overview.\(bot.name)")
+        }
+        // The whole cell, pill included, takes a dropped bot, so a drop
+        // under a face lands there rather than at the end.
+        .dropDestination(for: String.self) { items, _ in
+            guard let onDrop, let dragged = items.first.flatMap(BotDragPayload.botName(from:)),
+                  dragged.caseInsensitiveCompare(bot.name) != .orderedSame else { return false }
+            let merge = mergeReady
+            BotDragPayload.lifted = nil
+            endTargeting()
+            onDrop(dragged, merge)
+            return true
+        } isTargeted: { targeted in
+            guard onDrop != nil else { return }
+            targeted ? beginTargeting() : endTargeting()
         }
         // The pill's words: read once each time Bots Home shows or
         // connects, not polled (the Bot Chat and its overview poll).
@@ -662,11 +664,13 @@ struct BotZoomSource: ViewModifier {
 struct BotZoomDestination: ViewModifier {
     let route: V2Route
     let namespace: Namespace.ID
+    /// The chat was pushed on Bots Home itself, where its portrait shows.
+    let fromHome: Bool
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
-        if #available(iOS 18.0, *), route == .conversation, !reduceMotion,
+        if #available(iOS 18.0, *), route == .conversation, fromHome, !reduceMotion,
            let bot = appState.activeBotChatProfile {
             content.navigationTransition(.zoom(sourceID: bot, in: namespace))
         } else {
