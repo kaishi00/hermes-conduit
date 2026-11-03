@@ -309,8 +309,8 @@ final class AppStateReasoningStreamTests: XCTestCase {
 
     /// A turn Voice cancelled can stream a few words after its cancel; once
     /// the next question owns the chat they'd read as its reply (#1696).
-    /// They're held back by the turn they name, and the next turn's events
-    /// (or events naming no turn) still reach Voice.
+    /// They're held back by the turn they name (or, replayed after a resume,
+    /// until a turn starts), and the next turn's events still reach Voice.
     func testVoiceNeverHearsTheTurnItCancelled() {
         let state = makeAppState()
         installActiveSession(state, id: "stored-a")
@@ -332,11 +332,64 @@ final class AppStateReasoningStreamTests: XCTestCase {
             .delta(sessionID: "stored-a", text: "after the watch")
         ], "The next turn ends the watch")
 
+        // Replayed after a resume, an event has lost its number: it is held
+        // until a turn starts, since a cancelled turn never starts again.
         events.removeAll()
         state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 6)
-        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "unnumbered"))
-        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "unnumbered")],
-                       "An event naming no turn (hermes dashboard) is never held back")
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "replayed straggler"))
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "replayed answer"))
+        XCTAssertEqual(events, [
+            .started(sessionID: "stored-a"),
+            .delta(sessionID: "stored-a", text: "replayed answer")
+        ])
+
+        // Another chat open: its events are its own.
+        events.removeAll()
+        state.noteVoiceCancelledTurn(sessionId: "stored-b", generation: 9)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "this chat"), turnGeneration: 2)
+        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "this chat")])
+    }
+
+    /// Voice's cancel notes the turn the chat runs, and only when one runs.
+    func testVoiceCancelNotesTheRunningTurn() async {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+
+        var running: Int? = nil
+        state.runningTurnGeneration = { $0 == "stored-a" ? running : nil }
+        _ = await state.interruptForVoice()
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "no turn noted"), turnGeneration: 3)
+        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "no turn noted")], "Nothing ran, so nothing is held")
+
+        events.removeAll()
+        running = 7
+        _ = await state.interruptForVoice()
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "straggler"), turnGeneration: 7)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "next"), turnGeneration: 8)
+        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "next")])
+    }
+
+    /// The open chat's events may name it by another of its ids.
+    func testVoiceHoldsTheCancelledTurnUnderTheChatsOtherId() {
+        let state = makeAppState()
+        state.sessions = [SessionSummary(
+            id: "stored-a", alternateIds: ["runtime-a"], title: "stored-a", model: "Hermes",
+            updatedLabel: "now", profile: "default", source: .chat, isActive: false,
+            isArchived: false, lineageRootId: nil
+        )]
+        state.activeSessionId = "stored-a"
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 2)
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "straggler"), turnGeneration: 2)
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "next"), turnGeneration: 3)
+        XCTAssertEqual(events, [.delta(sessionID: "runtime-a", text: "next")])
     }
 
     /// A gateway frame as HermesClient hands it to AppState.

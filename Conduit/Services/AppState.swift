@@ -850,6 +850,8 @@ final class AppState: ObservableObject {
     private var voiceCancelledTurn: (sessionId: String, generation: Int)?
     /// The execution generation the stream event being handled names.
     private var handledStreamEventGeneration: Int?
+    /// Tests stand in for the client's `runningTurnGeneration(for:)`.
+    var runningTurnGeneration: ((String) -> Int?)?
 
     // MARK: - Session
 
@@ -35110,8 +35112,6 @@ final class AppState: ObservableObject {
     /// `turnGeneration`: the execution generation the event names, when
     /// the server numbers turns.
     func handleStreamEvent(_ event: StreamEvent, turnGeneration: Int? = nil) {
-        handledStreamEventGeneration = turnGeneration
-        defer { handledStreamEventGeneration = nil }
         // A step summary's answer is never a /btw reply, in any chat.
         if takeStepSummaryAnswer(event) { return }
         // Voice background jobs are not the active conversation, so they
@@ -35154,6 +35154,9 @@ final class AppState: ObservableObject {
         }
         releaseServerCompactionClaimOnAgentOutput(event)
         if bufferIfReconciling(event) { return }
+        // Only this event names the turn: anything it replays doesn't.
+        handledStreamEventGeneration = turnGeneration
+        defer { handledStreamEventGeneration = nil }
         applyStreamEvent(event)
     }
 
@@ -37194,7 +37197,8 @@ final class AppState: ObservableObject {
     /// barge-in, or Voice orphan cancellation wins the race with model
     /// generation. Reports whether the cancellation succeeded.
     func interruptForVoice() async -> Bool {
-        if let sessionId = activeSessionId, let generation = client?.runningTurnGeneration(for: sessionId) {
+        if let sessionId = activeSessionId,
+           let generation = runningTurnGeneration?(sessionId) ?? client?.runningTurnGeneration(for: sessionId) {
             noteVoiceCancelledTurn(sessionId: sessionId, generation: generation)
         }
         return await cancelCurrent()
@@ -37206,20 +37210,29 @@ final class AppState: ObservableObject {
     }
 
     /// Whether the stream event being handled belongs to the turn Voice
-    /// cancelled (or an earlier one), by the execution generation it names.
-    /// Such a turn can stream a few words after its cancel, and once the
-    /// next question owns the chat they'd be taken as its reply (#1696).
-    /// An event of a later turn ends the watch; an event naming no turn
-    /// (`hermes dashboard` numbers none) is never held back.
+    /// cancelled (or an earlier one). Such a turn can stream a few words
+    /// after its cancel, and once the next question owns the chat they'd be
+    /// taken as its reply (#1696). An event that reaches Voice belongs to the
+    /// open chat (its aliases included), so the watch holds while that chat
+    /// is the one whose turn was cancelled.
+    ///
+    /// A live event names its turn by execution generation: a later turn's
+    /// ends the watch. An event replayed after a resume lost its number, so
+    /// it is held until a turn starts: a cancelled turn never starts again,
+    /// so the next `.started` is the next turn's. Only the session authority
+    /// numbers turns, so the watch is never set on `hermes dashboard`.
     private func isFromVoiceCancelledTurn(_ event: VoiceAssistantEvent) -> Bool {
-        guard let cancelled = voiceCancelledTurn,
-              let generation = handledStreamEventGeneration,
-              event.sessionID == cancelled.sessionId else { return false }
-        guard generation <= cancelled.generation else {
-            voiceCancelledTurn = nil
-            return false
+        guard let cancelled = voiceCancelledTurn, cancelled.sessionId == activeSessionId else { return false }
+        let fromCancelledTurn: Bool
+        if let generation = handledStreamEventGeneration {
+            fromCancelledTurn = generation <= cancelled.generation
+        } else if case .started = event {
+            fromCancelledTurn = false
+        } else {
+            fromCancelledTurn = true
         }
-        return true
+        if !fromCancelledTurn { voiceCancelledTurn = nil }
+        return fromCancelledTurn
     }
 
     /// Who speaks Classic voice replies for the active profile.
@@ -37971,7 +37984,7 @@ final class AppState: ObservableObject {
                 errorMessage = AppLocalization.string("Stop the current response before starting voice in this conversation.")
                 return .failed(AppLocalization.string("Stop the current response before starting voice in this conversation."))
             }
-            await cancelCurrent()
+            _ = await interruptForVoice()
             guard widgetLease?.isCurrent != false else { return .deferred }
         }
         await refreshVoiceCapabilities()
