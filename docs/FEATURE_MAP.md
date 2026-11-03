@@ -1634,9 +1634,10 @@ cards) · notifier README.md's Cron jobs delivered to a Bot Chat
 **Open gaps**
 - A run's push still opens the run's own session, not the Bot Chat with its report.
 - With no Bot Chat yet, a report has nowhere to show: the run records a delivery error (Hermes' turn would have made the chat).
-- A Bot Chat whose owner runs in another process gets the note straight in its history, waiting up to a minute for a running turn; Hermes Desktop or Conduit already showing it see the note on their next read.
+- A Bot Chat whose owner runs in another process, or refuses it (one made in an app that Hermes' door hasn't taken yet), gets the note straight in its history, waiting up to a minute for a running turn; an app already showing it sees the note on its next read.
 - The model can't change the choice itself; it tells the user to.
-- Not yet tried against a live gateway: the note's place among the chat's own turns, and a report that arrives during a turn.
+- Tried on Hermes' canary (notifier upstream/test_cron_bot_chat.py) but not yet on a phone: the card in a real Bot Chat, and a report that arrives during a turn.
+- On Hermes' own side, a job that lets the bot act waits while the app's socket session holds the Bot Chat (`runtime_coordination_required`), as it does without the plugin.
 
 **Checked:** 2026-11-03, #PRNUM (added).
 
