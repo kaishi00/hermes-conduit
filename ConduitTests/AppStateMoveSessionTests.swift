@@ -248,7 +248,7 @@ extension AppStateDecisionFenceTests {
     private var treeWithAtlas: [String: Any] {
         var tree = projectTree
         tree["projects"] = (tree["projects"] as? [[String: Any]] ?? [])
-            + [["id": "p2", "label": "Atlas", "path": "/work/atlas", "session_count": 0]]
+            + [["id": "p_2", "label": "Atlas", "path": "/work/atlas", "session_count": 0]]
         return tree
     }
 
@@ -282,7 +282,7 @@ extension AppStateDecisionFenceTests {
         let second = try await installMoveClient(appState, socket: newSocket, transport: ClarifyFakeTransport())
         let reload = try await nextRequest(on: newSocket, "the list read through the new client") {
             try? respond(on: socket, to: request, with: ["result": [
-                "project": ["id": "p2", "label": "Atlas", "path": "/work/atlas", "session_count": 0]
+                "project": ["id": "p_2", "label": "Atlas", "path": "/work/atlas", "session_count": 0]
             ]])
         }
         XCTAssertEqual(reload["method"] as? String, "projects.tree")
@@ -290,7 +290,7 @@ extension AppStateDecisionFenceTests {
 
         let outcome = await create.value
         XCTAssertEqual(outcome, .created, "Hermes answered the create, so it was made")
-        XCTAssertTrue(appState.projects.contains { $0.id == "p2" })
+        XCTAssertTrue(appState.projects.contains { $0.id == "p_2" })
         first.disconnect()
         second.disconnect()
     }
