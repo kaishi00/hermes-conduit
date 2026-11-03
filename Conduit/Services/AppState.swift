@@ -32931,8 +32931,12 @@ final class AppState: ObservableObject {
             supportsProjects = true
 
             let trimmedIdea = idea.trimmingCharacters(in: .whitespacesAndNewlines)
+            var ideaSaved = true
             if !trimmedIdea.isEmpty {
-                await writeProjectIdea(trimmedIdea, in: uniqueFolders[0], profile: profile)
+                ideaSaved = await writeProjectIdea(trimmedIdea, in: uniqueFolders[0], profile: profile)
+            }
+            if !ideaSaved, profile == activeProfile {
+                errorMessage = AppLocalization.string("\(created.title) is made, but its idea couldn’t be saved as IDEA.md.")
             }
             await loadProjects(using: client, profile: profile)
             return true
@@ -32943,6 +32947,9 @@ final class AppState: ObservableObject {
                 supportsProjects = false
             } else {
                 errorMessage = AppLocalization.string("Could not create the project: \(UserFacingError.message(for: error))")
+                // Hermes may have made it anyway (an answer Conduit couldn't
+                // read): the list read again lets a retry see the clash.
+                await loadProjects(using: client, profile: profile)
             }
             return false
         }
@@ -33155,7 +33162,8 @@ final class AppState: ObservableObject {
     /// chat open (issue 1661). Folder paths are selected from Hermes'
     /// filesystem listing, not entered as arbitrary strings by the phone.
     var projectFolderPickerRoot: String {
-        if let folder = chatWorkspaceFolder { return folder }
+        // runtime.cwd outlives the chat that set it.
+        if let session = activeSessionId, !session.isEmpty, let folder = chatWorkspaceFolder { return folder }
         return projects.first(where: \.isHome)?.primaryPath?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
@@ -33202,18 +33210,18 @@ final class AppState: ObservableObject {
 
     /// Never over an IDEA.md the folder already has: an existing folder
     /// keeps its files (issue 1661), and an unreadable one is left alone.
-    private func writeProjectIdea(_ idea: String, in folder: String, profile: String) async {
+    /// False when the idea wasn't saved for any other reason.
+    private func writeProjectIdea(_ idea: String, in folder: String, profile: String) async -> Bool {
         guard let dashboardTicketBridge,
-              let entries = try? await workspaceDirectoryEntries(at: folder, profile: profile),
-              !entries.contains(where: { $0.name.caseInsensitiveCompare("IDEA.md") == .orderedSame })
-        else { return }
+              let entries = try? await workspaceDirectoryEntries(at: folder, profile: profile) else { return false }
+        if entries.contains(where: { $0.name.caseInsensitiveCompare("IDEA.md") == .orderedSame }) { return true }
         let separator = folder.hasSuffix("/") || folder.hasSuffix("\\") ? "" : "/"
         let path = "\(folder)\(separator)IDEA.md"
-        _ = try? await dashboardTicketBridge.requestJSON(
+        return (try? await dashboardTicketBridge.requestJSON(
             path: dashboardPath("/api/fs/write-text", profile: profile),
             method: "POST",
             body: ["path": path, "content": idea.hasSuffix("\n") ? idea : "\(idea)\n"]
-        )
+        )) != nil
     }
 
     private func orderedProfiles(_ values: [String]) -> [String] {

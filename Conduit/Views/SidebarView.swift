@@ -2015,6 +2015,7 @@ private struct ProjectFolderPickerSheet: View {
                 Button(AppLocalization.string("Create")) {
                     Task { await makeFolder(newFolderName) }
                 }
+                .disabled(newFolderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button(AppLocalization.string("Cancel"), role: .cancel) {}
             }
         }

@@ -248,6 +248,8 @@ extension HermesVoiceGatewayTimeoutTests {
         ])
         XCTAssertEqual(appState.projectFolderPickerRoot, "/home/me", "Home's folder with no chat open")
         appState.runtime.cwd = "/home/me/app"
+        XCTAssertEqual(appState.projectFolderPickerRoot, "/home/me", "a folder left from a chat that's closed isn't used")
+        appState.activeSessionId = "chat"
         XCTAssertEqual(appState.projectFolderPickerRoot, "/home/me/app", "the open chat's folder first")
     }
 

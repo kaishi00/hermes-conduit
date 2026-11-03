@@ -415291,6 +415291,88 @@
           }
         }
       }
+    },
+    "%@ is made, but its idea couldn’t be saved as IDEA.md.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ist erstellt, aber die Idee konnte nicht als IDEA.md gespeichert werden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ se creó, pero su idea no se pudo guardar como IDEA.md."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ est créé, mais son idée n’a pas pu être enregistrée dans IDEA.md."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ sudah dibuat, tetapi idenya tidak dapat disimpan sebagai IDEA.md."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ è stato creato, ma la sua idea non è stata salvata come IDEA.md."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ を作成しましたが、アイデアを IDEA.md として保存できませんでした。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@을(를) 만들었지만 아이디어를 IDEA.md로 저장하지 못했어요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projekt %@ został utworzony, ale jego pomysłu nie udało się zapisać jako IDEA.md."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ foi criado, mas a ideia não pôde ser salva como IDEA.md."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проект %@ создан, но его идею не удалось сохранить в IDEA.md."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ oluşturuldu ancak fikri IDEA.md olarak kaydedilemedi."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已创建 %@，但无法将其想法保存为 IDEA.md。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已建立 %@，但無法將其想法儲存為 IDEA.md。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
