@@ -220,4 +220,54 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(roots.first?.kind, .chat)
         XCTAssertTrue(appState.workspaceRoots(includingChat: false).allSatisfy { $0.kind == .project })
     }
+
+    // MARK: - New Project (issue 1661)
+
+    func testProjectFolderPickerGoesUpToTheTopOfTheDisk() {
+        XCTAssertEqual(AppState.parentWorkspacePath("/home/me/app"), "/home/me")
+        XCTAssertEqual(AppState.parentWorkspacePath("/home/me/app/"), "/home/me")
+        XCTAssertEqual(AppState.parentWorkspacePath("/home"), "/")
+        XCTAssertNil(AppState.parentWorkspacePath("/"))
+        XCTAssertEqual(AppState.parentWorkspacePath("~/work"), "~")
+        XCTAssertNil(AppState.parentWorkspacePath("~"))
+        XCTAssertEqual(AppState.parentWorkspacePath("C:\\Users\\me"), "C:\\Users")
+        XCTAssertEqual(AppState.parentWorkspacePath("C:\\Users"), "C:\\")
+        XCTAssertNil(AppState.parentWorkspacePath("C:\\"))
+        XCTAssertNil(AppState.parentWorkspacePath(""))
+    }
+
+    func testProjectFolderPickerStartsInTheChatsFolderElseHomes() throws {
+        let suite = "WorkspaceFilesTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+
+        XCTAssertEqual(appState.projectFolderPickerRoot, "", "no chat and no projects yet")
+        appState.setProjectsForTesting([
+            ProjectSummary(id: "home", title: "Home", primaryPath: "/home/me", isHome: true, sessionCount: 0, previewSessions: []),
+        ])
+        XCTAssertEqual(appState.projectFolderPickerRoot, "/home/me", "Home's folder with no chat open")
+        appState.runtime.cwd = "/home/me/app"
+        XCTAssertEqual(appState.projectFolderPickerRoot, "/home/me/app", "the open chat's folder first")
+    }
+
+    func testNewProjectRefusesAnotherProjectsNameOrFolder() throws {
+        let suite = "WorkspaceFilesTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.setProjectsForTesting([
+            ProjectSummary(id: "home", title: "Home", primaryPath: "/home/me", isHome: true, sessionCount: 0, previewSessions: []),
+            ProjectSummary(id: "p_1", title: "Skunkworks", primaryPath: "/home/me/skunk", isHome: false, sessionCount: 0, previewSessions: []),
+            ProjectSummary(id: "repo", title: "found-repo", primaryPath: "/home/me/found-repo", isHome: false, isAuto: true,
+                           sessionCount: 0, previewSessions: []),
+        ])
+
+        XCTAssertNil(appState.projectCreationProblem(name: "Atlas", folders: ["/home/me/atlas"]))
+        XCTAssertNotNil(appState.projectCreationProblem(name: " skunkworks ", folders: ["/home/me/atlas"]))
+        XCTAssertNotNil(appState.projectCreationProblem(name: "Atlas", folders: ["/home/me/skunk/"]))
+        XCTAssertNil(appState.projectCreationProblem(name: "Home", folders: ["/home/me"]), "Home has no record to clash with")
+        XCTAssertNil(appState.projectCreationProblem(name: "found-repo", folders: ["/home/me/found-repo"]),
+                     "a repo Hermes found on its own can become a project")
+    }
 }

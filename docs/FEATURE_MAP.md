@@ -3310,6 +3310,40 @@ README.md
 
 **Checked:** 2026-10-29, #1499.
 
+## New project
+
+Making a project from Conduit (issue 1661): the + at the end of the
+Projects heading, the empty Projects list's New Project, the Projects
+filter menu's New project and the classic drawer's buttons all open one
+sheet: a name, the profile it goes to, one or more of the Hermes host's
+folders (an existing one, or a new one made in the picker) and an optional
+idea.
+
+**Siblings:** the V2 Projects list (Chats › Projects: the heading's +, the
+empty state, the filter menu) · the iPad and Mac list (same view) · the
+classic drawer (its New project button and ⋯ menu, its empty state) · the
+Folder tab beside Artifacts (the same plugin route makes its New Folder) ·
+Unread dot on projects and Project chats in Chats (the new project shows
+in both at once) · README.md
+
+**Code**
+- Buttons: `Conduit/Views/V2/V2ChatsView.swift` (projectsHeader, canCreateProject, projectsList's empty state, filterMenu), `Conduit/Views/SidebarView.swift` (the drawer's New project button and menu item)
+- Sheet and picker: `Conduit/Views/SidebarView.swift` (ProjectCreateSheet, ProjectFolderPickerSheet)
+- Create and checks: `Conduit/Services/AppState.swift` (createProject, projectCreationProblem, projectFolderPickerRoot, makeProjectFolder, writeProjectIdea), `Conduit/Services/AppState+Workspace.swift` (parentWorkspacePath), `Conduit/Services/HermesClient.swift` (createProject: `projects.create`)
+- New folder: `Conduit/Services/WorkspaceFiles.swift` (makeFolder), `notifier/dashboard/api/workspace.py` (post_workspace's mkdir)
+- Tests: `ConduitTests/WorkspaceFilesTests.swift` (testProjectFolderPickerGoesUpToTheTopOfTheDisk, testProjectFolderPickerStartsInTheChatsFolderElseHomes, testNewProjectRefusesAnotherProjectsNameOrFolder)
+
+**Rulings**
+- A new project goes to the profile in use, whose projects the list shows, so it shows there as soon as Hermes makes it. All profiles has no Projects list of its own, so the sheet names the profile and says to switch profiles for another one rather than offering a picker that would make a project the list doesn't show (2026-11-03, issue 1661).
+- The folders are the Hermes host's, browsed through Hermes' own listing from the open chat's folder, else Home's; the picker goes into folders and out to the one holding them. The device's own folder picker isn't offered: Conduit's device isn't the host, even on a Mac (2026-11-03, issue 1661).
+- A new folder is made inside the folder shown, through the plugin's workspace route, which refuses a name already there; without the plugin the picker chooses existing folders only.
+- Nothing is overwritten or doubled: a name or folder another made project already has is refused before Create, and the idea is written as IDEA.md only when the first folder has none. Home and the repos Hermes found on its own have no record to clash with.
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-03, #PRNUM.
+
 ## Pinned chats order
 
 The Pinned section in the order the person sets (issue 1354): a pinned chat

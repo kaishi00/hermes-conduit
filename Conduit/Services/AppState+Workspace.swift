@@ -62,6 +62,22 @@ extension AppState {
         return trimmed
     }
 
+    /// The folder holding `path`, or nil at the top of the disk: what the
+    /// project folder picker's Enclosing Folder opens (issue 1661). Hermes
+    /// gives a Windows host's paths with backslashes.
+    static func parentWorkspacePath(_ path: String) -> String? {
+        let normalized = normalizedWorkspacePath(path.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard !normalized.isEmpty, normalized != "/", normalized != "~",
+              normalized.range(of: #"^[A-Za-z]:[\\/]?$"#, options: .regularExpression) == nil,
+              let cut = normalized.lastIndex(where: { $0 == "/" || $0 == "\\" }) else { return nil }
+        let parent = String(normalized[..<cut])
+        if parent.isEmpty { return "/" }
+        if parent.range(of: #"^[A-Za-z]:$"#, options: .regularExpression) != nil {
+            return parent + String(normalized[cut])
+        }
+        return parent
+    }
+
     /// A path a reply named, made absolute: a relative one is in the open
     /// chat's working folder, as Hermes wrote it there.
     func absoluteWorkspacePath(_ path: String) -> String {

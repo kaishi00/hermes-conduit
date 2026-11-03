@@ -243065,88 +243065,6 @@
         }
       }
     },
-    "Projects created in Hermes Desktop will appear here.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "In Hermes Desktop erstellte Projekte erscheinen hier."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Los proyectos creados en Hermes Desktop aparecerán aquí."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Les projets créés dans Hermes Desktop apparaîtront ici."
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Proyek yang dibuat di Hermes Desktop akan muncul di sini."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "I progetti creati in Hermes Desktop appariranno qui."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hermes Desktopで作成したプロジェクトがここに表示されます。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hermes Desktop에서 만든 프로젝트가 여기에 표시돼요."
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tutaj pojawią się projekty utworzone w Hermes Desktop."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Os projetos criados no Hermes Desktop aparecerão aqui."
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Здесь появятся проекты, созданные в Hermes Desktop."
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hermes Desktop'ta oluşturulan projeler burada görünür."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在 Hermes Desktop 中创建的项目会显示在这里。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在 Hermes Desktop 中建立的專案會顯示在這裡。"
-          }
-        }
-      }
-    },
     "Promise": {
       "localizations": {
         "de": {
@@ -273021,88 +272939,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "已儲存的儀表板"
-          }
-        }
-      }
-    },
-    "Saved as IDEA.md in the first folder, just like Hermes Desktop.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wird wie in Hermes Desktop als IDEA.md im ersten Ordner gespeichert."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Se guarda como IDEA.md en la primera carpeta, igual que en Hermes Desktop."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enregistrée sous IDEA.md dans le premier dossier, comme dans Hermes Desktop."
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Disimpan sebagai IDEA.md di folder pertama, sama seperti Hermes Desktop."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Salvata come IDEA.md nella prima cartella, proprio come in Hermes Desktop."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hermes Desktopと同様に、最初のフォルダにIDEA.mdとして保存されます。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hermes Desktop과 마찬가지로 첫 번째 폴더에 IDEA.md로 저장돼요."
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Zapisywany jako IDEA.md w pierwszym folderze, tak jak w Hermes Desktop."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Salvo como IDEA.md na primeira pasta, igual ao Hermes Desktop."
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Сохраняется как IDEA.md в первой папке — так же, как в Hermes Desktop."
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hermes Desktop'ta olduğu gibi ilk klasöre IDEA.md olarak kaydedilir."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "像 Hermes 桌面版一样，以 IDEA.md 保存到第一个文件夹。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "會以 IDEA.md 儲存在第一個資料夾中，與 Hermes Desktop 相同。"
           }
         }
       }
@@ -414960,6 +414796,498 @@
           "stringUnit": {
             "state": "translated",
             "value": "分享已關閉。%@ 開啟後，Conduit 會刪除那裡的資料。"
+          }
+        }
+      }
+    },
+    "Projects you make here or in Hermes Desktop show here.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projekte, die du hier oder in Hermes Desktop erstellst, erscheinen hier."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los proyectos que crees aquí o en Hermes Desktop aparecen aquí."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les projets que vous créez ici ou dans Hermes Desktop apparaissent ici."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proyek yang kamu buat di sini atau di Hermes Desktop muncul di sini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I progetti che crei qui o in Hermes Desktop appaiono qui."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ここまたは Hermes Desktop で作成したプロジェクトがここに表示されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "여기나 Hermes Desktop에서 만든 프로젝트가 여기에 표시돼요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tutaj pojawiają się projekty utworzone tutaj lub w Hermes Desktop."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os projetos que você criar aqui ou no Hermes Desktop aparecem aqui."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Здесь появляются проекты, созданные здесь или в Hermes Desktop."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Burada veya Hermes Desktop'ta oluşturduğun projeler burada görünür."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在此处或 Hermes Desktop 中创建的项目会显示在这里。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在此處或 Hermes Desktop 中建立的專案會顯示在這裡。"
+          }
+        }
+      }
+    },
+    "There’s already a project named %@.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Es gibt bereits ein Projekt namens %@."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya hay un proyecto llamado %@."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un projet nommé %@ existe déjà."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sudah ada proyek bernama %@."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esiste già un progetto chiamato %@."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ という名前のプロジェクトはすでにあります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미 %@(이)라는 프로젝트가 있어요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projekt o nazwie %@ już istnieje."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Já existe um projeto chamado %@."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проект с именем %@ уже есть."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ adlı bir proje zaten var."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已有名为 %@ 的项目。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已有名為 %@ 的專案。"
+          }
+        }
+      }
+    },
+    "%@ is already the folder of %@.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ ist bereits der Ordner von %2$@."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ ya es la carpeta de %2$@."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ est déjà le dossier de %2$@."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ sudah menjadi folder %2$@."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ è già la cartella di %2$@."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ はすでに %2$@ のフォルダです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@은(는) 이미 %2$@의 폴더예요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ jest już folderem projektu %2$@."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ já é a pasta de %2$@."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ уже является папкой проекта %2$@."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ zaten %2$@ projesinin klasörü."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 已是 %2$@ 的文件夹。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 已是 %2$@ 的資料夾。"
+          }
+        }
+      }
+    },
+    "New projects go to the profile in use. To make one in another profile, switch to it first.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neue Projekte gehören zum aktiven Profil. Für ein Projekt in einem anderen Profil wechsle zuerst dorthin."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los proyectos nuevos van al perfil en uso. Para crear uno en otro perfil, cambia primero a ese perfil."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les nouveaux projets vont dans le profil utilisé. Pour en créer un dans un autre profil, passez d’abord à celui-ci."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proyek baru masuk ke profil yang sedang dipakai. Untuk membuatnya di profil lain, beralihlah ke profil itu dulu."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I nuovi progetti vanno nel profilo in uso. Per crearne uno in un altro profilo, passa prima a quel profilo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいプロジェクトは使用中のプロファイルに追加されます。別のプロファイルに作成するには、先にそのプロファイルに切り替えてください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 프로젝트는 사용 중인 프로필에 만들어져요. 다른 프로필에 만들려면 먼저 그 프로필로 전환하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nowe projekty trafiają do używanego profilu. Aby utworzyć projekt w innym profilu, najpierw się na niego przełącz."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Novos projetos vão para o perfil em uso. Para criar um em outro perfil, troque para ele primeiro."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Новые проекты попадают в текущий профиль. Чтобы создать проект в другом профиле, сначала переключитесь на него."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni projeler kullanılan profile eklenir. Başka bir profilde oluşturmak için önce o profile geç."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新项目会归入当前使用的档案。要在其他档案中创建，请先切换到该档案。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新專案會歸入目前使用的設定檔。若要在其他設定檔中建立，請先切換到該設定檔。"
+          }
+        }
+      }
+    },
+    "Saved as IDEA.md in the first folder, as in Hermes Desktop, unless the folder already has one.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wird wie in Hermes Desktop als IDEA.md im ersten Ordner gespeichert, außer der Ordner hat schon eine."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se guarda como IDEA.md en la primera carpeta, como en Hermes Desktop, salvo que la carpeta ya tenga uno."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistré sous IDEA.md dans le premier dossier, comme dans Hermes Desktop, sauf si le dossier en a déjà un."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disimpan sebagai IDEA.md di folder pertama, seperti di Hermes Desktop, kecuali folder itu sudah punya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salvato come IDEA.md nella prima cartella, come in Hermes Desktop, a meno che la cartella non ne abbia già uno."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes Desktop と同じく最初のフォルダに IDEA.md として保存されます。フォルダにすでにある場合は保存しません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes Desktop처럼 첫 번째 폴더에 IDEA.md로 저장돼요. 폴더에 이미 있으면 저장하지 않아요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zapisywane jako IDEA.md w pierwszym folderze, jak w Hermes Desktop, chyba że folder już go zawiera."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salvo como IDEA.md na primeira pasta, como no Hermes Desktop, a menos que a pasta já tenha um."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохраняется как IDEA.md в первой папке, как в Hermes Desktop, если в папке его ещё нет."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes Desktop'taki gibi ilk klasöre IDEA.md olarak kaydedilir; klasörde zaten varsa kaydedilmez."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "与 Hermes Desktop 一样保存为第一个文件夹中的 IDEA.md，除非该文件夹中已有。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "與 Hermes Desktop 一樣儲存為第一個資料夾中的 IDEA.md，除非該資料夾中已有。"
+          }
+        }
+      }
+    },
+    "Enclosing Folder": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Übergeordneter Ordner"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Carpeta contenedora"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dossier parent"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Folder induk"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cartella superiore"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "親フォルダ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "상위 폴더"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Folder nadrzędny"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pasta superior"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Родительская папка"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Üst klasör"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上级文件夹"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上層資料夾"
           }
         }
       }

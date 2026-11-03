@@ -33151,10 +33151,46 @@ final class AppState: ObservableObject {
     }
 
     /// The project folder picker starts at the same live workspace the chat
-    /// browser uses. Folder paths are selected from Hermes' filesystem listing,
-    /// not entered as arbitrary strings by the phone.
+    /// browser uses, else at Home's folder, so a project can be made with no
+    /// chat open (issue 1661). Folder paths are selected from Hermes'
+    /// filesystem listing, not entered as arbitrary strings by the phone.
     var projectFolderPickerRoot: String {
-        runtime.cwd
+        if let folder = chatWorkspaceFolder { return folder }
+        return projects.first(where: \.isHome)?.primaryPath?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    /// Why a new project can't be made as it stands, or nil: Hermes would
+    /// take a second project of the same name, or a folder that is already
+    /// another project's, and list both (issue 1661). Home and the repos
+    /// Hermes found on its own have no record to clash with.
+    func projectCreationProblem(name: String, folders: [String]) -> String? {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let made = projects.filter { !$0.isHome && !$0.isAuto }
+        if !trimmedName.isEmpty,
+           let clash = made.first(where: { $0.title.trimmingCharacters(in: .whitespacesAndNewlines)
+               .caseInsensitiveCompare(trimmedName) == .orderedSame }) {
+            return AppLocalization.string("There’s already a project named \(clash.title).")
+        }
+        for folder in folders {
+            let path = Self.normalizedWorkspacePath(folder.trimmingCharacters(in: .whitespacesAndNewlines))
+            if let owner = made.first(where: { project in
+                project.primaryPath.map { Self.normalizedWorkspacePath($0.trimmingCharacters(in: .whitespacesAndNewlines)) } == path
+            }) {
+                return AppLocalization.string("\(folder) is already the folder of \(owner.title).")
+            }
+        }
+        return nil
+    }
+
+    /// A new folder for a project, made in `folder` through the plugin's
+    /// workspace routes, which refuse a name that's already there.
+    func makeProjectFolder(named name: String, in folder: String) async throws -> String? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let entry = try await workspaceFilesClient(profile: activeProfile)
+            .makeFolder(root: folder, in: folder, name: trimmed)
+        return entry?.path
     }
 
     func workspaceDirectoryEntries(at path: String) async throws -> [WorkspaceEntry] {
@@ -33164,8 +33200,13 @@ final class AppState: ObservableObject {
         return entries
     }
 
+    /// Never over an IDEA.md the folder already has: an existing folder
+    /// keeps its files (issue 1661), and an unreadable one is left alone.
     private func writeProjectIdea(_ idea: String, in folder: String, profile: String) async {
-        guard let dashboardTicketBridge else { return }
+        guard let dashboardTicketBridge,
+              let entries = try? await workspaceDirectoryEntries(at: folder, profile: profile),
+              !entries.contains(where: { $0.name.caseInsensitiveCompare("IDEA.md") == .orderedSame })
+        else { return }
         let separator = folder.hasSuffix("/") || folder.hasSuffix("\\") ? "" : "/"
         let path = "\(folder)\(separator)IDEA.md"
         _ = try? await dashboardTicketBridge.requestJSON(

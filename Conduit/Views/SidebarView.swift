@@ -638,7 +638,7 @@ struct SessionList: View {
                 isSearching ? AppLocalization.string("No Matching Projects") : AppLocalization.string("No Projects"),
                 systemImage: "folder",
                 description: Text(!isSearching
-                    ? AppLocalization.string("Projects created in Hermes Desktop will appear here.")
+                    ? AppLocalization.string("Projects you make here or in Hermes Desktop show here.")
                     : AppLocalization.string("Try a different search."))
             )
         } else {
@@ -1804,8 +1804,13 @@ struct ProjectCreateSheet: View {
     @State private var isCreating = false
     @State private var validationMessage: String?
 
+    /// A name or folder another project already has (issue 1661).
+    private var clash: String? {
+        appState.projectCreationProblem(name: name, folders: folders)
+    }
+
     private var canCreate: Bool {
-        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !folders.isEmpty && !isCreating
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !folders.isEmpty && !isCreating && clash == nil
     }
 
     var body: some View {
@@ -1820,6 +1825,15 @@ struct ProjectCreateSheet: View {
                         Text("Name")
                     } footer: {
                         Text("Name a workspace and add one or more folders.")
+                    }
+
+                    // Projects belong to a profile: the new one goes to the
+                    // profile whose projects the list shows, so it shows
+                    // there at once (issue 1661).
+                    Section {
+                        LabeledContent(AppLocalization.string("Profile"), value: appState.profileDisplayName(appState.activeProfile))
+                    } footer: {
+                        Text(AppLocalization.string("New projects go to the profile in use. To make one in another profile, switch to it first."))
                     }
 
                     Section("Folders") {
@@ -1851,12 +1865,12 @@ struct ProjectCreateSheet: View {
                     } header: {
                         Text("Idea (optional)")
                     } footer: {
-                        Text("Saved as IDEA.md in the first folder, just like Hermes Desktop.")
+                        Text(AppLocalization.string("Saved as IDEA.md in the first folder, as in Hermes Desktop, unless the folder already has one."))
                     }
 
-                    if let validationMessage {
+                    if let message = clash ?? validationMessage {
                         Section {
-                            Label(validationMessage, systemImage: "exclamationmark.triangle")
+                            Label(message, systemImage: "exclamationmark.triangle")
                                 .foregroundStyle(.orange)
                         }
                     }
@@ -1902,6 +1916,10 @@ struct ProjectCreateSheet: View {
     }
 }
 
+/// Hermes' folders, from where the chat works (or Home's): into a folder,
+/// out to the one holding it, and a new folder with the plugin (issue 1661).
+/// The folders are the Hermes host's, so it browses them rather than the
+/// device's own.
 private struct ProjectFolderPickerSheet: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
@@ -1911,6 +1929,12 @@ private struct ProjectFolderPickerSheet: View {
     @State private var entries: [WorkspaceEntry] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var asksFolderName = false
+    @State private var newFolderName = ""
+
+    private var parentPath: String? {
+        currentPath.isEmpty ? nil : AppState.parentWorkspacePath(currentPath)
+    }
 
     var body: some View {
         NavigationStack {
@@ -1926,13 +1950,30 @@ private struct ProjectFolderPickerSheet: View {
                     if isLoading {
                         ProgressView("Loading folders…")
                             .frame(maxWidth: .infinity, minHeight: 120)
-                    } else if let errorMessage {
-                        ContentUnavailableView(
-                            "Folder unavailable",
-                            systemImage: "folder.badge.questionmark",
-                            description: Text(errorMessage)
-                        )
                     } else {
+                        if let errorMessage {
+                            if currentPath.isEmpty {
+                                ContentUnavailableView(
+                                    "Folder unavailable",
+                                    systemImage: "folder.badge.questionmark",
+                                    description: Text(errorMessage)
+                                )
+                            } else {
+                                // A folder that couldn't open (outside what
+                                // Hermes shows, or not writable) leaves the
+                                // picker where it was.
+                                Label(errorMessage, systemImage: "exclamationmark.triangle")
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                        if let parentPath {
+                            Button {
+                                Task { await open(parentPath) }
+                            } label: {
+                                Label(AppLocalization.string("Enclosing Folder"), systemImage: "arrow.turn.left.up")
+                            }
+                            .foregroundStyle(.primary)
+                        }
                         ForEach(entries.filter(\.isDirectory)) { entry in
                             Button {
                                 Task { await open(entry.path) }
@@ -1940,6 +1981,14 @@ private struct ProjectFolderPickerSheet: View {
                                 Label(entry.name, systemImage: "folder.fill")
                             }
                             .foregroundStyle(.primary)
+                        }
+                        if appState.supportsWorkspaceFiles, !currentPath.isEmpty {
+                            Button {
+                                newFolderName = ""
+                                asksFolderName = true
+                            } label: {
+                                Label(AppLocalization.string("New Folder"), systemImage: "folder.badge.plus")
+                            }
                         }
                     }
                 }
@@ -1959,23 +2008,46 @@ private struct ProjectFolderPickerSheet: View {
                     .disabled(currentPath.isEmpty || isLoading)
                 }
             }
+            .alert(AppLocalization.string("New Folder"), isPresented: $asksFolderName) {
+                TextField(AppLocalization.string("Name"), text: $newFolderName)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button(AppLocalization.string("Create")) {
+                    Task { await makeFolder(newFolderName) }
+                }
+                Button(AppLocalization.string("Cancel"), role: .cancel) {}
+            }
         }
         .task {
             await open(rootPath)
         }
     }
 
+    /// On a failure the picker stays on the folder it showed.
     private func open(_ path: String) async {
         isLoading = true
         errorMessage = nil
-        currentPath = path
         do {
-            entries = try await appState.workspaceDirectoryEntries(at: path)
+            let listed = try await appState.workspaceDirectoryEntries(at: path)
+            currentPath = path
+            entries = listed
         } catch {
-            entries = []
+            if currentPath.isEmpty { entries = [] }
             errorMessage = UserFacingError.message(for: error)
         }
         isLoading = false
+    }
+
+    /// Made inside the folder shown, then opened, ready to choose.
+    private func makeFolder(_ name: String) async {
+        let folder = currentPath
+        do {
+            if let made = try await appState.makeProjectFolder(named: name, in: folder) {
+                await open(made)
+            }
+        } catch {
+            errorMessage = UserFacingError.message(for: error)
+        }
     }
 }
 
