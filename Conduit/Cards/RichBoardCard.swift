@@ -40,20 +40,17 @@ struct RichTable: Equatable, Hashable {
         guard let first = scalars.firstIndex(where: { CharacterSet.decimalDigits.contains($0) }) else { return nil }
         let before = scalars[..<first]
         guard !before.contains(where: { CharacterSet.letters.contains($0) }) else { return nil }
-        var text = ""
+        var token = ""
         var index = first
-        // A sign or accounting brackets anywhere before it: "-4.5", "-$4.5M", "($4.5M)".
-        if before.contains(where: { $0 == "-" || $0 == "\u{2212}" || $0 == "(" }) { text = "-" }
         while index < scalars.count {
             let scalar = scalars[index]
-            if CharacterSet.decimalDigits.contains(scalar) || scalar == "." {
-                text.unicodeScalars.append(scalar)
-            } else if scalar != "," {
-                break
-            }
+            guard CharacterSet.decimalDigits.contains(scalar) || scalar == "." || scalar == "," else { break }
+            token.unicodeScalars.append(scalar)
             index += 1
         }
-        guard var value = Double(text) else { return nil }
+        // A sign or accounting brackets anywhere before it: "-4.5", "-$4.5M", "($4.5M)".
+        let sign = before.contains(where: { $0 == "-" || $0 == "\u{2212}" || $0 == "(" }) ? "-" : ""
+        guard let digits = Self.plainDigits(token), var value = Double(sign + digits) else { return nil }
         let rest = Array(scalars[index...])
         guard !rest.contains(where: { CharacterSet.decimalDigits.contains($0) }) else { return nil }
         // A multiplier only right after the number, as a word of its own
@@ -74,6 +71,38 @@ struct RichTable: Equatable, Hashable {
             }
         }
         return value
+    }
+
+    /// A number's digits with "." as its decimal point, either way it was
+    /// written: "1,250.5" and "1.250,5" are both 1250.5, "980,00" is 980,
+    /// "1.250.000" is a million and a quarter. A lone "." stays a decimal
+    /// point ("1.250" is 1.25).
+    static func plainDigits(_ token: String) -> String? {
+        // A sentence's full stop or comma after it isn't part of it.
+        var token = Substring(token)
+        while token.last == "." || token.last == "," { token = token.dropLast() }
+        guard !token.isEmpty else { return nil }
+        let dots = token.filter { $0 == "." }.count, commas = token.filter { $0 == "," }.count
+        let decimal: Character?
+        if let dot = token.lastIndex(of: "."), let comma = token.lastIndex(of: ",") {
+            decimal = dot > comma ? "." : ","
+        } else if commas == 1 {
+            // "1,250" groups thousands; "980,00" and "4,5" have a decimal comma.
+            decimal = token.split(separator: ",", omittingEmptySubsequences: false).last?.count == 3 ? nil : ","
+        } else if dots == 1 {
+            decimal = "."
+        } else {
+            decimal = nil
+        }
+        var digits = ""
+        for character in token {
+            if character == decimal {
+                digits.append(".")
+            } else if character.isNumber {
+                digits.append(character)
+            }
+        }
+        return digits
     }
 
     /// Whether a column reads as numbers (every cell that isn't blank does):
