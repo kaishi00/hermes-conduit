@@ -273,4 +273,23 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(appState.projectCreationProblem(name: "found-repo", folders: ["/home/me/found-repo"]),
                      "a repo Hermes found on its own can become a project")
     }
+
+    func testNewProjectNeverWritesOverAnIdea() {
+        XCTAssertTrue(AppState.folderHasProjectIdea([WorkspaceEntry(name: "idea.MD", path: "/p/idea.MD", isDirectory: false)]))
+        XCTAssertFalse(AppState.folderHasProjectIdea([WorkspaceEntry(name: "README.md", path: "/p/README.md", isDirectory: false)]))
+        XCTAssertFalse(AppState.folderHasProjectIdea([]))
+    }
+
+    func testAFailedCreateFindsTheProjectHermesMadeAnyway() {
+        let old = ProjectSummary(id: "p_1", title: "Atlas", primaryPath: "/home/me/old", isHome: false, sessionCount: 0, previewSessions: [])
+        let other = ProjectSummary(id: "p_2", title: "Atlas", primaryPath: "/home/me/elsewhere", isHome: false, sessionCount: 0, previewSessions: [])
+        let made = ProjectSummary(id: "p_3", title: "Atlas", primaryPath: "/home/me/atlas/", isHome: false, sessionCount: 0, previewSessions: [])
+        let list = [old, other, made]
+
+        XCTAssertEqual(AppState.projectMadeAnyway(name: "atlas", firstFolder: "/home/me/atlas", knownIDs: ["p_1"], in: list)?.id, "p_3")
+        XCTAssertNil(AppState.projectMadeAnyway(name: "Atlas", firstFolder: "/home/me/old", knownIDs: ["p_1"], in: list),
+                     "a project that was there before isn't this one")
+        XCTAssertNil(AppState.projectMadeAnyway(name: "Atlas", firstFolder: "/home/me/new", knownIDs: [], in: list),
+                     "a name alone could be another device's")
+    }
 }

@@ -32944,14 +32944,9 @@ final class AppState: ObservableObject {
         }
         guard profile == activeProfile, self.client === client else { return .failed(nil) }
         if let problem = projectCreationProblem(name: trimmedName, folders: uniqueFolders) { return .failed(problem) }
-        do {
-            guard let created = try await client.createProject(name: trimmedName, folders: uniqueFolders) else {
-                throw HermesError.invalidResponse
-            }
-            guard profile == activeProfile, self.client === client else { return .failed(nil) }
-            projects = [created] + projects.filter { $0.id != created.id }
-            supportsProjects = true
-
+        let knownIDs = Set(projects.map(\.id))
+        // The idea goes to the first folder of a project that was made.
+        func finish(_ created: ProjectSummary) async -> ProjectCreateOutcome {
             let trimmedIdea = idea.trimmingCharacters(in: .whitespacesAndNewlines)
             var ideaSaved = true
             if !trimmedIdea.isEmpty {
@@ -32962,6 +32957,15 @@ final class AppState: ObservableObject {
                 ? .created
                 : .ideaUnsaved(projectID: created.id,
                                message: AppLocalization.string("\(created.title) is made, but its idea couldn’t be saved as IDEA.md."))
+        }
+        do {
+            guard let created = try await client.createProject(name: trimmedName, folders: uniqueFolders) else {
+                throw HermesError.invalidResponse
+            }
+            guard profile == activeProfile, self.client === client else { return .failed(nil) }
+            projects = [created] + projects.filter { $0.id != created.id }
+            supportsProjects = true
+            return await finish(created)
         } catch {
             guard profile == activeProfile, self.client === client else { return .failed(nil) }
             if isProjectsUnavailable(error) {
@@ -32970,8 +32974,15 @@ final class AppState: ObservableObject {
                 return .failed(nil)
             }
             // Hermes may have made it anyway (an answer Conduit couldn't
-            // read): the list read again lets a retry see the clash.
-            await loadProjects(using: client, profile: profile)
+            // read): a new project with this name on this first folder is
+            // this one, and takes the idea; anything else read again lets a
+            // retry see the clash.
+            if await loadProjects(using: client, profile: profile),
+               profile == activeProfile, self.client === client,
+               let made = Self.projectMadeAnyway(name: trimmedName, firstFolder: uniqueFolders[0],
+                                                 knownIDs: knownIDs, in: projects) {
+                return await finish(made)
+            }
             return .failed(AppLocalization.string("Could not create the project: \(UserFacingError.message(for: error))"))
         }
     }
@@ -33212,6 +33223,25 @@ final class AppState: ObservableObject {
         return nil
     }
 
+    /// The project a create that failed made anyway: new since the create
+    /// was asked, with its name and first folder. A name alone could be
+    /// another device's.
+    static func projectMadeAnyway(name: String, firstFolder: String, knownIDs: Set<String>,
+                                  in projects: [ProjectSummary]) -> ProjectSummary? {
+        let folder = normalizedWorkspacePath(firstFolder.trimmingCharacters(in: .whitespacesAndNewlines))
+        return projects.first { project in
+            !knownIDs.contains(project.id) && !project.isHome && !project.isAuto
+                && project.title.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(name) == .orderedSame
+                && project.primaryPath.map { normalizedWorkspacePath($0.trimmingCharacters(in: .whitespacesAndNewlines)) } == folder
+        }
+    }
+
+    /// Whether a folder's listing already has an IDEA.md, which a new
+    /// project never writes over (issue 1661).
+    static func folderHasProjectIdea(_ entries: [WorkspaceEntry]) -> Bool {
+        entries.contains { !$0.isDirectory && $0.name.caseInsensitiveCompare("IDEA.md") == .orderedSame }
+    }
+
     /// A new folder for a project, made in `folder` through the plugin's
     /// workspace routes, which refuse a name that's already there.
     func makeProjectFolder(named name: String, in folder: String) async throws -> String? {
@@ -33242,7 +33272,7 @@ final class AppState: ObservableObject {
     private func writeProjectIdea(_ idea: String, in folder: String, profile: String) async -> Bool {
         guard let dashboardTicketBridge,
               let entries = try? await workspaceDirectoryEntries(at: folder, profile: profile) else { return false }
-        if entries.contains(where: { $0.name.caseInsensitiveCompare("IDEA.md") == .orderedSame }) { return true }
+        if Self.folderHasProjectIdea(entries) { return true }
         let separator = folder.hasSuffix("/") || folder.hasSuffix("\\") ? "" : "/"
         let path = "\(folder)\(separator)IDEA.md"
         return (try? await dashboardTicketBridge.requestJSON(
