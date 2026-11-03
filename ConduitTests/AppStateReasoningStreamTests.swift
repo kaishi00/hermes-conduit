@@ -515,26 +515,34 @@ final class AppStateReasoningStreamTests: XCTestCase {
         defer { state.removeVoiceAssistantObserver(observer) }
 
         state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 4)
-        state.raiseVoiceCancelledTurn(sessionId: "stored-a", to: 9, wasRunning: true)
-        state.raiseVoiceCancelledTurn(sessionId: "stored-a", to: 6, wasRunning: true)
-        state.raiseVoiceCancelledTurn(sessionId: "stored-a", to: nil, wasRunning: true)
+        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: 9, wasRunning: true)
+        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: nil, wasRunning: true)
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "stopped turn"), turnGeneration: 9)
-        XCTAssertEqual(events, [], "Raised to the stopped turn, never lowered")
+        XCTAssertEqual(events, [], "The note follows the stopped turn")
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "next"), turnGeneration: 10)
         XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "next")])
+
+        // This socket's number was too high: the stale retry stopped a lower
+        // turn, so the note comes down to it and the next turn is heard.
+        events.removeAll()
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 15)
+        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: 11, wasRunning: true)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "stopped turn"), turnGeneration: 11)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "next"), turnGeneration: 12)
+        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "next")], "Never held past the stopped turn")
 
         // A turn this socket never saw start: nothing was noted before the
         // cancel, and the turn it stopped is noted after.
         events.removeAll()
-        state.raiseVoiceCancelledTurn(sessionId: "stored-a", to: 12, wasRunning: true)
-        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "unseen turn"), turnGeneration: 12)
+        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: 13, wasRunning: true)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "unseen turn"), turnGeneration: 13)
         XCTAssertEqual(events, [], "The stopped turn is noted though the socket never saw it")
-        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "next"), turnGeneration: 13)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "next"), turnGeneration: 14)
         XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "next")])
 
         // A chat that showed nothing running notes nothing.
         events.removeAll()
-        state.raiseVoiceCancelledTurn(sessionId: "stored-a", to: 20, wasRunning: false)
+        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: 20, wasRunning: false)
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "idle chat"), turnGeneration: 20)
         XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "idle chat")])
     }

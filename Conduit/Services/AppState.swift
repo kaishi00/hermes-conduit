@@ -4869,7 +4869,7 @@ final class AppState: ObservableObject {
                 let noteWrite = open.flatMap { self.voiceCancelNoteWrites[$0] }
                 do {
                     let stopped = try await client.cancel(sessionID, profile: self.presentationProfile(for: sessionID))
-                    if let open { self.raiseVoiceCancelledTurn(sessionId: open, to: stopped, wasRunning: wasRunning) }
+                    if let open { self.noteVoiceStoppedTurn(sessionId: open, generation: stopped, wasRunning: wasRunning) }
                 } catch {
                     if let open, let noteBeforeCancel {
                         self.restoreVoiceCancelNote(in: open, to: noteBeforeCancel, ifStill: noteWrite)
@@ -30447,7 +30447,7 @@ final class AppState: ObservableObject {
                 try await interrupt(client, sessionId)
             } else {
                 let stopped = try await client.cancel(sessionId, profile: presentationProfile(for: sessionId))
-                raiseVoiceCancelledTurn(sessionId: sessionId, to: stopped, wasRunning: wasRunning)
+                noteVoiceStoppedTurn(sessionId: sessionId, generation: stopped, wasRunning: wasRunning)
             }
             guard isCurrentOrAliasedComposerSubmission(currentContext) else { return false }
             return true
@@ -37344,13 +37344,15 @@ final class AppState: ObservableObject {
     }
 
     /// The turn a cancel actually stopped. A stale generation makes the
-    /// cancel read the chat again and stop the turn Hermes names there,
-    /// which can be newer than the one noted before it, or the only one
-    /// known when this socket never saw it start, so the note follows it.
+    /// cancel read the chat again and stop the turn Hermes names there:
+    /// newer than the one noted before it, lower when this socket's number
+    /// was too high (a stale refusal corrects it), or the only one known
+    /// when this socket never saw it start. The note becomes that turn, so
+    /// its words stay held and the next turn's are not.
     /// `wasRunning`: whether the chat showed a turn running before the
     /// cancel; a chat that wasn't notes nothing.
-    func raiseVoiceCancelledTurn(sessionId: String, to generation: Int?, wasRunning: Bool) {
-        guard wasRunning, let generation, generation > (voiceCancelledTurns[sessionId] ?? Int.min) else { return }
+    func noteVoiceStoppedTurn(sessionId: String, generation: Int?, wasRunning: Bool) {
+        guard wasRunning, let generation, generation != voiceCancelledTurns[sessionId] else { return }
         noteVoiceCancelledTurn(sessionId: sessionId, generation: generation)
     }
 
