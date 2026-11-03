@@ -464,6 +464,9 @@ enum VoiceCallbackAvailability: Equatable {
     case notPaired
     /// The Hermes host's Conduit plugin doesn't take call watches.
     case unsupported
+    /// The profile the watch was for turned the plugin off: what to do
+    /// about it (DashboardTicketBridgeError.pluginOffDetail).
+    case pluginOff(String)
 }
 
 /// Which of a live call's work Hermes calls about.
@@ -530,7 +533,8 @@ enum VoiceCallbackRequestOutcome: Equatable {
 }
 
 extension VoiceCallbackAvailability {
-    /// Why Hermes can't call, for the live model. Not localized.
+    /// Why Hermes can't call, for the live model. Not localized, except
+    /// `pluginOff`'s steps: the bridge's words, also shown to the user.
     var refusal: String {
         switch self {
         case .available, .callsOff:
@@ -541,6 +545,8 @@ extension VoiceCallbackAvailability {
             return "Hermes can't call the user: this Hermes profile isn't set up for Conduit notifications. They can turn them on in Conduit's Settings, under Notifications."
         case .unsupported:
             return "Hermes can't call the user yet: the Conduit plugin on their Hermes host needs an update."
+        case .pluginOff(let remedy):
+            return "Hermes can't call the user: " + remedy
         }
     }
 }
@@ -779,10 +785,11 @@ final class HermesCallsClient {
             body["ended_within_s"] = max(0, min(endedWithinSeconds, Self.maximumEndedWithinSeconds))
         }
         let response: [String: Any]
+        let path = DashboardPath.withProfile(Self.watchesPath, profile: profile)
         do {
-            response = try await request(DashboardPath.withProfile(Self.watchesPath, profile: profile), "POST", body)
+            response = try await request(path, "POST", body)
         } catch {
-            throw Self.refusal(from: error) ?? error
+            throw Self.refusal(from: error, path: path) ?? error
         }
         return try Self.watchAnswer(from: response)
     }
@@ -855,9 +862,14 @@ final class HermesCallsClient {
     }
 
     /// The host's refusals of a watch (dashboard/api/hermes_calls.py
-    /// add_call_watch); nil for anything a retry may fix.
-    static func refusal(from error: Error) -> HermesCallRefusal? {
+    /// add_call_watch); nil for anything a retry may fix. A profile that
+    /// turned the plugin off answers 404 too: its remedy is turning it on
+    /// (`path` words Hermes' bare answer), not an update.
+    static func refusal(from error: Error, path: String? = nil) -> HermesCallRefusal? {
         guard case DashboardTicketBridgeError.http(let status, let detail) = error else { return nil }
+        if let remedy = DashboardTicketBridgeError.pluginOffDetail(of: error, path: path) {
+            return .unavailable(.pluginOff(remedy))
+        }
         switch status {
         case 409:
             return .unavailable(detail.localizedCaseInsensitiveContains("paired") ? .notPaired : .callsOff)

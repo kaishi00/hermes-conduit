@@ -481,8 +481,34 @@ enum DashboardTicketBridgeError: LocalizedError {
         do {
             return try await request()
         } catch DashboardTicketBridgeError.http(404, let detail) where detail == pluginRefusedDetail {
-            throw DashboardTicketBridgeError.http(status: 404, detail: pluginOffDetail(path: path) ?? detail)
+            guard let explained = pluginOffDetail(path: path) else { throw DashboardTicketBridgeError.http(status: 404, detail: detail) }
+            pluginOffDetails.withLock { _ = $0.insert(explained) }
+            throw DashboardTicketBridgeError.http(status: 404, detail: explained)
         }
+    }
+
+    /// The words `explainingPluginRefusal` gave so far, so a caller that maps
+    /// a 404 to "update the plugin" can tell the plugin is only turned off.
+    /// A handful at most: one per plugin and profile.
+    private static let pluginOffDetails = OSAllocatedUnfairLock(initialState: Set<String>())
+
+    /// What to do about a request refused because its profile turned the
+    /// plugin off: the error's own words when `explainingPluginRefusal`
+    /// wrote them, or, for Hermes' bare answer, the words for `path`. Nil
+    /// for any other error, a 404 for a missing route included. Callers
+    /// that read a 404 as "the plugin predates this" ask this first, so the
+    /// remedy they give is turning the plugin on, not updating it (issue 1671).
+    static func pluginOffDetail(of error: Error, path: String? = nil) -> String? {
+        guard case DashboardTicketBridgeError.http(404, let detail) = error else { return nil }
+        if detail == pluginRefusedDetail { return path.flatMap { pluginOffDetail(path: $0) } }
+        return pluginOffDetails.withLock { $0.contains(detail) } ? detail : nil
+    }
+
+    /// Whether a 404's detail is a refusal for a plugin the profile turned
+    /// off (Hermes' own words or `explainingPluginRefusal`'s), not a route
+    /// the host lacks: nothing on the host was read, changed or deleted.
+    static func isPluginOffDetail(_ detail: String) -> Bool {
+        detail == pluginRefusedDetail || pluginOffDetails.withLock { $0.contains(detail) }
     }
 
     /// The dashboard answered but handed back no session ticket.

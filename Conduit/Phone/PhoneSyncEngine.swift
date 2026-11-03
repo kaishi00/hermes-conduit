@@ -181,6 +181,9 @@ final class PhoneSyncEngine: ObservableObject {
     @Published private(set) var state: PhoneSyncState
     @Published private(set) var isSyncing = false
     @Published private(set) var lastError: String?
+    /// What to do when the last turn-off's delete met a profile that turned
+    /// the plugin off (nothing was deleted), or nil (issue 1671).
+    private(set) var deleteRefusedPluginOff: String?
     @Published private(set) var preferences: PhoneSyncPreferences
     /// Changes waiting for the user's answer, oldest first.
     @Published private(set) var prompts: [PhoneChangePrompt] = []
@@ -327,14 +330,17 @@ final class PhoneSyncEngine: ObservableObject {
         keys.clear()
         guard readStateIfNeeded() else { return false }
         var deleted = false
+        deleteRefusedPluginOff = nil
         if let request {
             do {
                 _ = try await request("\(Self.base)/wipe", "POST", ["device_id": state.deviceID])
                 deleted = true
-            } catch DashboardTicketBridgeError.http(let status, _) where status == 404 {
+            } catch DashboardTicketBridgeError.http(let status, let detail)
+                        where status == 404 && !DashboardTicketBridgeError.isPluginOffDetail(detail) {
                 deleted = true
             } catch {
                 lastError = Self.describe(error)
+                deleteRefusedPluginOff = DashboardTicketBridgeError.pluginOffDetail(of: error)
             }
         }
         state.startOver()
@@ -379,8 +385,10 @@ final class PhoneSyncEngine: ObservableObject {
                 state.pause = .signInRequired
                 return .paused(.signInRequired)
             case .http(let status, _) where status == 404:
-                state.pause = .pluginMissing
-                return .paused(.pluginMissing)
+                // A profile that turned the plugin off says how to turn it on.
+                let pause = DashboardTicketBridgeError.pluginOffDetail(of: error).map(PhoneSyncPause.pluginOff) ?? .pluginMissing
+                state.pause = pause
+                return .paused(pause)
             case .http(let status, let detail) where status == 409 && HostKeyConflict.isKeyLoss(detail):
                 // The host lost or replaced this phone's key: set it up again.
                 keys.clear()

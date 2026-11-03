@@ -95,6 +95,16 @@ extension HermesClientTests {
         XCTAssertNil(ChatTakeoverClient.mapped(.notReady))
     }
 
+    /// A profile that turned the plugin off is told how to turn it on, not
+    /// to update the plugin (issue 1671).
+    func testAProfileWithThePluginOffSaysHowToTurnItOn() {
+        let path = DashboardPath.withProfile(ChatTakeoverClient.path, profile: "fam")
+        let remedy = DashboardTicketBridgeError.pluginOffDetail(path: path) ?? ""
+        XCTAssertEqual(ChatTakeoverClient.mapped(.http(status: 404, detail: "Plugin not found"), path: path), .pluginOff(remedy))
+        XCTAssertEqual(AppState.chatTakeoverFailureMessage(ChatTakeoverError.pluginOff(remedy)), remedy)
+        XCTAssertEqual(ChatTakeoverClient.mapped(.http(status: 404, detail: "Not Found"), path: path), .pluginMissing)
+    }
+
     func testClientPostsAtMostFourIdsToTheProfilesRoute() async throws {
         var seen: (path: String, method: String, body: [String: Any]?)?
         let client = ChatTakeoverClient(request: { path, method, body in

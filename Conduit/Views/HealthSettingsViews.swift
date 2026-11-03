@@ -384,7 +384,11 @@ struct HealthSettingsPage: View {
         Task {
             let done = await appState.turnOffHealthSync(deleteFromHost: delete)
             if !done {
-                errorMessage = AppLocalization.string("Sharing is off. The host couldn't be reached, so Conduit deletes the data there the next time it connects.")
+                // A profile that turned the plugin off was reached and refused:
+                // say how to turn it on (issue 1671).
+                errorMessage = appState.healthSync.deleteRefusedPluginOff.map {
+                    AppLocalization.string("Sharing is off. \($0) Conduit deletes the data there once it's on.")
+                } ?? AppLocalization.string("Sharing is off. The host couldn't be reached, so Conduit deletes the data there the next time it connects.")
             }
             isWorking = false
         }

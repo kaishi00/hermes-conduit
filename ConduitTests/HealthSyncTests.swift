@@ -429,6 +429,31 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(offlineDeleted)
     }
 
+    /// A profile that turned the plugin off answers the delete with a 404,
+    /// but nothing was deleted: it isn't counted as done, and says how to
+    /// turn the plugin on (issue 1671). A route the host lacks still is.
+    func testTurningOffOnAProfileWithThePluginOffDeletesNothing() async {
+        let host = FakeHealthHost()
+        let engine = makeHealthEngine(source: FakeHealthSource())
+        _ = await engine.sync(preferences: healthPreferences(history: .days30), deadline: .distantFuture, request: host.handle)
+        let deleted = await engine.turnOff(deleteFromHost: { path, _, _ in
+            try await DashboardTicketBridgeError.explainingPluginRefusal(path: path) { () async throws -> [String: Any] in
+                throw DashboardTicketBridgeError.http(status: 404, detail: DashboardTicketBridgeError.pluginRefusedDetail)
+            }
+        })
+        XCTAssertFalse(deleted)
+        XCTAssertNotNil(engine.deleteRefusedPluginOff)
+        XCTAssertEqual(engine.deleteRefusedPluginOff, DashboardTicketBridgeError.pluginOffDetail(path: "\(HealthSyncEngine.base)/wipe"))
+
+        let gone = makeHealthEngine(source: FakeHealthSource())
+        _ = await gone.sync(preferences: healthPreferences(history: .days30), deadline: .distantFuture, request: host.handle)
+        let goneDeleted = await gone.turnOff(deleteFromHost: { _, _, _ in
+            throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found")
+        })
+        XCTAssertTrue(goneDeleted)
+        XCTAssertNil(gone.deleteRefusedPluginOff)
+    }
+
     func testHealthSettingsLinkOpensOnlyInsideTheApp() throws {
         let url = try XCTUnwrap(URL(string: "conduit://settings/health"))
         XCTAssertEqual(ConduitAppLink(url: url), .settings(.health))
