@@ -28,6 +28,13 @@ struct BotRosterView: View {
     @State private var editAfterOverview: BotProfile?
     /// Repair Connection opened from Bots Home's top.
     @State private var repairContext: ConnectionRepairContext?
+    /// A room being started on Bots Home, its bots in the order they came
+    /// (empty: none). Nothing reaches the host until Create.
+    @State private var newRoom: [String] = []
+    @State private var showingNewRoomSheet = false
+    @State private var showingReorder = false
+    @Environment(\.v2Shell) private var shell
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// V2's Bots tab: its title bar's "+" asks for a new bot here, and the
     /// in-list create card steps aside.
     private let createRequest: Binding<Bool>?
@@ -57,7 +64,32 @@ struct BotRosterView: View {
                     }
             } else {
                 rosterList
+                    .safeAreaInset(edge: .bottom) {
+                        if !newRoom.isEmpty {
+                            newRoomBar
+                        }
+                    }
             }
+        }
+        // Leaving Bots, or a room no longer possible, drops the room being
+        // started: nothing was made.
+        .onChange(of: shell.isTabActive) { _, active in
+            if !active { newRoom = [] }
+        }
+        .onChange(of: canStartRoomHere) { _, can in
+            if !can { newRoom = [] }
+        }
+        .sheet(isPresented: $showingNewRoomSheet) {
+            GroupCreateSheet(
+                preselected: Set(newRoom),
+                suggestedName: ListFormatter.localizedString(byJoining: newRoomBots.map(\.displayLabel)),
+                onCreated: { newRoom = [] }
+            )
+            .environmentObject(appState)
+        }
+        .sheet(isPresented: $showingReorder) {
+            BotReorderSheet()
+                .environmentObject(appState)
         }
         .sheet(item: $presentedDesktopGroup) { group in
             DesktopGroupChatView(group: group)
@@ -210,7 +242,7 @@ struct BotRosterView: View {
     /// bots follow under their disclosure, dimmed, as on the list.
     @ViewBuilder
     private var portraitGrid: some View {
-        BotPortraitGrid(bots: visibleBots) { portrait($0) }
+        BotPortraitGrid(bots: visibleBots, onDropAtEnd: dropAtEnd) { portrait($0) }
             .rosterListRow(divider: false)
         if !hiddenBots.isEmpty {
             hiddenDisclosure
@@ -292,8 +324,124 @@ struct BotRosterView: View {
                 canStartGroup: canStartGroups && !bot.isHiddenByMeta,
                 actions: actions(for: bot)
             ),
-            onOverview: { overviewBot = bot }
+            onOverview: { overviewBot = bot },
+            room: newRoom.isEmpty ? .none : (isInNewRoom(bot.name) ? .member : .notMember),
+            onDrop: { dragged, merge in drop(dragged, on: bot, merge: merge) },
+            onToggleRoom: { toggleNewRoom(bot) }
         )
+    }
+
+    // MARK: - Arranging and starting rooms (Bots Home)
+
+    private var canStartRoomHere: Bool {
+        canStartGroups && createRequest != nil
+    }
+
+    private func isInNewRoom(_ name: String) -> Bool {
+        newRoom.contains { $0.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    /// A portrait dropped on another: held over its face, the two start a
+    /// room (or the dropped one joins the room being started); else it
+    /// moves before it.
+    private func drop(_ dragged: String, on target: BotProfile, merge: Bool) {
+        let draggedBot = appState.shownBotRoster.first { $0.name.caseInsensitiveCompare(dragged) == .orderedSame }
+        if merge, canStartRoomHere, !target.isHiddenByMeta, let draggedBot, !draggedBot.isHiddenByMeta {
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                if !isInNewRoom(target.name) { addToNewRoom(target.name) }
+                if !isInNewRoom(draggedBot.name) { addToNewRoom(draggedBot.name) }
+            }
+            return
+        }
+        Haptics.selection()
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            appState.moveBot(dragged, before: target.name, shown: appState.shownBotRoster.map(\.name))
+        }
+    }
+
+    private func dropAtEnd(_ dragged: String) {
+        Haptics.selection()
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            appState.moveBot(dragged, before: nil, shown: appState.shownBotRoster.map(\.name))
+        }
+    }
+
+    private func addToNewRoom(_ name: String) {
+        guard newRoom.count < GroupRoomLimits.maxMembers else {
+            Haptics.warning()
+            managementNotice = AppLocalization.string("A room holds up to 6 bots.")
+            return
+        }
+        newRoom.append(name)
+    }
+
+    private func toggleNewRoom(_ bot: BotProfile) {
+        guard !bot.isHiddenByMeta else { return }
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            if isInNewRoom(bot.name) {
+                newRoom.removeAll { $0.caseInsensitiveCompare(bot.name) == .orderedSame }
+            } else {
+                addToNewRoom(bot.name)
+            }
+        }
+    }
+
+    private func cancelNewRoom() {
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { newRoom = [] }
+    }
+
+    private var newRoomBots: [BotProfile] {
+        newRoom.compactMap { name in
+            appState.shownBotRoster.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+        }
+    }
+
+    /// The bar a room being started shows at the bottom: its bots (a tap
+    /// takes one out), Cancel, and Create, which opens New Group Chat with
+    /// them picked and a name suggested: the confirmation.
+    private var newRoomBar: some View {
+        let bots = newRoomBots
+        return HStack(spacing: 12) {
+            HStack(spacing: -8) {
+                ForEach(bots) { bot in
+                    Button {
+                        toggleNewRoom(bot)
+                    } label: {
+                        BotMonogramView(bot: bot, size: 30)
+                            .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text(AppLocalization.string("Take \(bot.displayLabel) out")))
+                }
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(AppLocalization.string("New room"))
+                    .scaledFont(.subheadline.weight(.semibold))
+                Text(verbatim: bots.count < 2
+                     ? AppLocalization.string("Drag or tap bots to add them.")
+                     : ListFormatter.localizedString(byJoining: bots.map(\.displayLabel)))
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button(AppLocalization.string("Cancel"), action: cancelNewRoom)
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("bots.newRoom.cancel")
+            Button(AppLocalization.string("Create")) {
+                Haptics.light()
+                showingNewRoomSheet = true
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.conduitAccent)
+            .disabled(bots.count < 2)
+            .accessibilityIdentifier("bots.newRoom.create")
+        }
+        .padding(12)
+        .conduitGlassSurface(cornerRadius: 22)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     private func actions(for bot: BotProfile) -> BotRosterRow.Actions {
@@ -321,7 +469,13 @@ struct BotRosterView: View {
                 appState.errorMessage = nil
                 groupSheetBot = bot
             },
-            delete: { pendingDelete = bot }
+            delete: { pendingDelete = bot },
+            startRoom: createRequest == nil || bot.isHiddenByMeta ? nil : {
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                    newRoom = [bot.name]
+                }
+            },
+            reorder: createRequest == nil ? nil : { showingReorder = true }
         )
     }
 
@@ -652,6 +806,10 @@ private struct BotRosterRow: View {
         let openRoom: (GroupRoom) -> Void
         let newGroup: () -> Void
         let delete: () -> Void
+        /// Bots Home only: start a room with this bot, adding others by a
+        /// tap or a drag, and Reorder Bots.
+        var startRoom: (() -> Void)?
+        var reorder: (() -> Void)?
     }
 
     var body: some View {
@@ -800,6 +958,16 @@ private struct BotRosterMenu: View {
                 }
             } label: {
                 Label(AppLocalization.string("Groups"), systemImage: "person.3")
+            }
+        }
+        if canStartGroup, let startRoom = actions.startRoom {
+            Button(action: startRoom) {
+                Label(AppLocalization.string("Start a Room with…"), systemImage: "person.2.badge.plus")
+            }
+        }
+        if let reorder = actions.reorder {
+            Button(action: reorder) {
+                Label(AppLocalization.string("Reorder Bots"), systemImage: "arrow.up.arrow.down")
             }
         }
         if canManage {

@@ -73,6 +73,8 @@ struct BotsHomeShortcuts: View {
 /// Text Sizes, where a name needs the room.
 struct BotPortraitGrid<Cell: View>: View {
     let bots: [BotProfile]
+    /// A portrait dropped past the last one.
+    var onDropAtEnd: ((String) -> Void)?
     @ViewBuilder let cell: (BotProfile) -> Cell
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -87,6 +89,57 @@ struct BotPortraitGrid<Cell: View>: View {
         }
         .padding(.top, 14)
         .padding(.bottom, 4)
+        // A drop between or after the portraits, not on one: the end.
+        .dropDestination(for: String.self) { items, _ in
+            guard let onDropAtEnd, let dragged = items.first.flatMap(BotDragPayload.botName(from:)) else { return false }
+            onDropAtEnd(dragged)
+            return true
+        }
+    }
+}
+
+/// Where Bots Home is in starting a room.
+enum BotPortraitRoom: Equatable {
+    /// No room being started.
+    case none
+    /// One is: this bot is in it, or could be added.
+    case member
+    case notMember
+}
+
+/// A portrait picked up by a touch and hold that moves: dropped between
+/// two others it moves there, held over one's face it starts a room with
+/// it. The payload names the bot, marked, so text dragged in from another
+/// app is never taken for one.
+struct BotPortraitDrag<Preview: View>: ViewModifier {
+    let name: String
+    let enabled: Bool
+    @ViewBuilder let preview: () -> Preview
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.draggable(BotDragPayload.payload(for: name)) { preview() }
+        } else {
+            content
+        }
+    }
+}
+
+/// What a dragged portrait carries.
+enum BotDragPayload {
+    /// How long a dragged bot stays over another's face before letting go
+    /// starts a room instead of moving it (as making a folder on the Home
+    /// Screen).
+    static var mergeDwell: Duration { .milliseconds(500) }
+
+    static let prefix = "conduit-bot:"
+
+    static func payload(for name: String) -> String { prefix + name }
+
+    static func botName(from payload: String) -> String? {
+        guard payload.hasPrefix(prefix) else { return nil }
+        let name = String(payload.dropFirst(prefix.count))
+        return name.isEmpty ? nil : name
     }
 }
 
@@ -138,9 +191,23 @@ struct BotPortraitCell<MenuContent: View>: View {
     @ObservedObject var work: BotWorkStore
     let menu: MenuContent
     let onOverview: () -> Void
+    /// A room being started on Bots Home: whether this bot is in it.
+    /// While one is, a tap on a portrait adds or takes out its bot instead
+    /// of opening its chat.
+    var room: BotPortraitRoom = .none
+    /// Another bot dropped on this one: `merge` when it was held over the
+    /// face long enough to start (or join) a room, else moved before it.
+    var onDrop: ((_ dragged: String, _ merge: Bool) -> Void)?
+    var onToggleRoom: (() -> Void)?
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.v2Shell) private var shell
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// A dragged bot is over this one; `mergeReady` once it has stayed
+    /// over the face for half a second (BotDragPayload.mergeDwell).
+    @State private var isTargeted = false
+    @State private var mergeReady = false
+    @State private var dwell: Task<Void, Never>?
 
     private var status: BotPortraitStatus { .of(work.snapshot(bot.name)) }
 
@@ -156,6 +223,10 @@ struct BotPortraitCell<MenuContent: View>: View {
         VStack(spacing: 6) {
             Button {
                 Haptics.light()
+                if room != .none, let onToggleRoom {
+                    onToggleRoom()
+                    return
+                }
                 appState.dismissSidebarDrawer()
                 Task { await appState.openBotChat(for: bot) }
             } label: {
@@ -172,9 +243,23 @@ struct BotPortraitCell<MenuContent: View>: View {
             }
             .buttonStyle(PressableButtonStyle())
             .contextMenu { menu }
+            .modifier(BotPortraitDrag(name: bot.name, enabled: onDrop != nil) {
+                BotMonogramView(bot: bot, size: 64)
+            })
+            .dropDestination(for: String.self) { items, _ in
+                guard let onDrop, let dragged = items.first.flatMap(BotDragPayload.botName(from:)),
+                      dragged.caseInsensitiveCompare(bot.name) != .orderedSame else { return false }
+                let merge = mergeReady
+                endTargeting()
+                onDrop(dragged, merge)
+                return true
+            } isTargeted: { targeted in
+                guard onDrop != nil else { return }
+                targeted ? beginTargeting() : endTargeting()
+            }
             .accessibilityLabel(Text(bot.displayLabel))
             .accessibilityValue(Text(accessibilityValue(status)))
-            .accessibilityHint(Text(AppLocalization.string("Opens this bot's chat.")))
+            .accessibilityHint(Text(portraitHint))
             .v2SelectedTrait(selection)
 
             Button {
@@ -198,18 +283,71 @@ struct BotPortraitCell<MenuContent: View>: View {
         }
     }
 
+    private var portraitHint: String {
+        switch room {
+        case .none: return AppLocalization.string("Opens this bot's chat.")
+        case .member: return AppLocalization.string("Takes this bot out of the new room.")
+        case .notMember: return AppLocalization.string("Adds this bot to the new room.")
+        }
+    }
+
+    private func beginTargeting() {
+        isTargeted = true
+        dwell?.cancel()
+        dwell = Task { @MainActor in
+            try? await Task.sleep(for: BotDragPayload.mergeDwell)
+            guard !Task.isCancelled, isTargeted else { return }
+            Haptics.medium()
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { mergeReady = true }
+        }
+    }
+
+    private func endTargeting() {
+        dwell?.cancel()
+        dwell = nil
+        isTargeted = false
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { mergeReady = false }
+    }
+
     private func portrait(_ status: BotPortraitStatus) -> some View {
+        let ringed = selection == .open || room == .member || mergeReady
         // 72 at the default Text Size; the monogram scales it once, up to
         // accessibility1 (about 115), so a two-column cell still holds it.
-        BotMonogramView(bot: bot, size: 72)
+        return BotMonogramView(bot: bot, size: 72)
             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             .padding(4)
             .overlay {
                 Circle()
-                    .strokeBorder(selection == .open ? Color.conduitAccent : color.opacity(0.85),
-                                  lineWidth: selection == .open ? 3 : 2)
+                    .strokeBorder(ringed ? Color.conduitAccent : color.opacity(0.85),
+                                  lineWidth: ringed ? 3 : 2)
             }
-            .shadow(color: color.opacity(0.45), radius: 14)
+            .shadow(color: (mergeReady ? Color.conduitAccent : color).opacity(mergeReady ? 0.7 : 0.45),
+                    radius: mergeReady ? 20 : 14)
+            .scaleEffect(mergeReady ? 1.1 : 1)
+            // Held over, not yet merging: a bar where the dragged bot will
+            // land, before this one.
+            .overlay(alignment: .leading) {
+                if isTargeted && !mergeReady {
+                    Capsule()
+                        .fill(Color.conduitAccent)
+                        .frame(width: 4)
+                        .padding(.vertical, 8)
+                        .offset(x: -9)
+                        .accessibilityHidden(true)
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if mergeReady || room == .member {
+                    Image(systemName: mergeReady ? "plus" : "checkmark")
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundStyle(.black)
+                        .frame(width: 24, height: 24)
+                        .background(Circle().fill(Color.conduitAccent))
+                        .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2))
+                        .offset(x: 2, y: 2)
+                        .accessibilityHidden(true)
+                }
+            }
             .overlay(alignment: .topTrailing) {
                 if case .needsYou = status {
                     Image(systemName: "exclamationmark")
@@ -250,7 +388,11 @@ struct BotPortraitCell<MenuContent: View>: View {
     }
 
     private func accessibilityValue(_ status: BotPortraitStatus) -> String {
-        let parts = [bot.isPinned ? AppLocalization.string("Pinned") : "", status == .idle ? "" : status.title]
+        let parts = [
+            bot.isPinned ? AppLocalization.string("Pinned") : "",
+            room == .member ? AppLocalization.string("In the new room") : "",
+            status == .idle ? "" : status.title,
+        ]
         return parts.filter { !$0.isEmpty }.joined(separator: ", ")
     }
 }
@@ -395,5 +537,44 @@ struct BotOverviewSheet: View {
         .padding(.trailing, 10)
         .padding(.top, 18)
         .padding(.bottom, 8)
+    }
+}
+
+/// Reorder Bots, from a portrait's menu: the bots as a list with handles,
+/// for VoiceOver, a pointer, or anyone who'd rather not drag in the grid.
+/// The same order as the grid's drags (BotOrder).
+struct BotReorderSheet: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        let bots = appState.shownBotRoster
+        NavigationStack {
+            List {
+                ForEach(bots) { bot in
+                    HStack(spacing: 12) {
+                        BotMonogramView(bot: bot)
+                        Text(bot.displayLabel)
+                            .scaledFont(.body)
+                        if bot.isHiddenByMeta {
+                            Text("Hidden")
+                                .scaledFont(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .onMove { source, destination in
+                    appState.moveBots(fromOffsets: source, toOffset: destination, shown: bots.map(\.name))
+                }
+            }
+            .environment(\.editMode, .constant(.active))
+            .navigationTitle(AppLocalization.string("Reorder Bots"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(AppLocalization.string("Done")) { dismiss() }
+                }
+            }
+        }
     }
 }

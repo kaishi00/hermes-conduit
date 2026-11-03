@@ -24463,6 +24463,94 @@
         }
       }
     },
+    "A room holds up to 6 bots.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Raum fasst bis zu 6 Bots."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A room holds up to 6 bots."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una sala admite hasta 6 bots."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un salon accueille jusqu’à 6 bots."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Satu ruang muat hingga 6 bot."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una stanza ospita fino a 6 bot."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ルームに入れるボットは6体までです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "방에는 봇을 최대 6개까지 넣을 수 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pokój mieści do 6 botów."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uma sala comporta até 6 bots."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В комнате может быть до 6 ботов."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir oda en fazla 6 bot alır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一个房间最多容纳 6 个机器人。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一個房間最多容納 6 個機器人。"
+          }
+        }
+      }
+    },
     "A saved place": {
       "localizations": {
         "de": {
@@ -30943,6 +31031,94 @@
           "stringUnit": {
             "state": "translated",
             "value": "將這些字詞加入你的訊息。"
+          }
+        }
+      }
+    },
+    "Adds this bot to the new room.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fügt diesen Bot zum neuen Raum hinzu."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adds this bot to the new room."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añade este bot a la sala nueva."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajoute ce bot au nouveau salon."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menambahkan bot ini ke ruang baru."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiunge questo bot alla nuova stanza."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このボットを新しいルームに追加します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 봇을 새 방에 추가합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dodaje tego bota do nowego pokoju."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adiciona este bot à nova sala."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавляет этого бота в новую комнату."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu botu yeni odaya ekler."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将此机器人加入新房间。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "將此機器人加入新房間。"
           }
         }
       }
@@ -115312,6 +115488,94 @@
         }
       }
     },
+    "Drag or tap bots to add them.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ziehe oder tippe Bots, um sie hinzuzufügen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drag or tap bots to add them."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arrastra o toca bots para añadirlos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Faites glisser ou touchez des bots pour les ajouter."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seret atau ketuk bot untuk menambahkannya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trascina o tocca i bot per aggiungerli."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ボットをドラッグまたはタップして追加します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "봇을 끌거나 탭하여 추가하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Przeciągnij lub stuknij boty, aby je dodać."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arraste ou toque nos bots para adicioná-los."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перетащите ботов или коснитесь их, чтобы добавить."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eklemek için botları sürükleyin veya dokunun."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拖动或轻点机器人来添加。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拖移或點一下機器人來加入。"
+          }
+        }
+      }
+    },
     "Drag the line beside the list to make it wider or narrower.": {
       "localizations": {
         "de": {
@@ -169708,6 +169972,94 @@
         }
       }
     },
+    "In the new room": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Im neuen Raum"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In the new room"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En la sala nueva"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dans le nouveau salon"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Di ruang baru"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nella nuova stanza"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいルームに参加"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 방에 있음"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "W nowym pokoju"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Na nova sala"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В новой комнате"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni odada"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在新房间中"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在新房間中"
+          }
+        }
+      }
+    },
     "In use": {
       "localizations": {
         "de": {
@@ -205304,6 +205656,94 @@
           "stringUnit": {
             "state": "translated",
             "value": "新增專案"
+          }
+        }
+      }
+    },
+    "New room": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neuer Raum"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New room"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sala nueva"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouveau salon"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ruang baru"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuova stanza"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいルーム"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 방"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nowy pokój"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nova sala"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Новая комната"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni oda"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新房间"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新房間"
           }
         }
       }
@@ -264385,6 +264825,94 @@
         }
       }
     },
+    "Reorder Bots": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bots neu anordnen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reorder Bots"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reordenar bots"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réorganiser les bots"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atur Ulang Bot"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riordina bot"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ボットを並べ替え"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "봇 순서 변경"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zmień kolejność botów"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reordenar bots"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изменить порядок ботов"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Botları Yeniden Sırala"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新排列机器人"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新排列機器人"
+          }
+        }
+      }
+    },
     "Reorder filters": {
       "localizations": {
         "de": {
@@ -307638,6 +308166,94 @@
         }
       }
     },
+    "Start a Room with…": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Raum starten mit…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start a Room with…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniciar una sala con…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Créer un salon avec…"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mulai Ruang dengan…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avvia una stanza con…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ルームを始める…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "방 시작하기…"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utwórz pokój z…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniciar uma sala com…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Начать комнату с…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Şununla Oda Başlat…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开始房间…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開始房間…"
+          }
+        }
+      }
+    },
     "Start a conversation": {
       "localizations": {
         "de": {
@@ -317262,6 +317878,94 @@
         }
       }
     },
+    "Take %@ out": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ entfernen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Take %@ out"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quitar a %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retirer %@"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keluarkan %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Togli %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@を外す"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 빼기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usuń %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remover %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать %@"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ çıkar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移出%@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移出%@"
+          }
+        }
+      }
+    },
     "Take back": {
       "localizations": {
         "de": {
@@ -317504,6 +318208,94 @@
           "stringUnit": {
             "state": "translated",
             "value": "接管這個聊天"
+          }
+        }
+      }
+    },
+    "Takes this bot out of the new room.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entfernt diesen Bot aus dem neuen Raum."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Takes this bot out of the new room."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quita este bot de la sala nueva."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retire ce bot du nouveau salon."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mengeluarkan bot ini dari ruang baru."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toglie questo bot dalla nuova stanza."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このボットを新しいルームから外します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 봇을 새 방에서 뺍니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usuwa tego bota z nowego pokoju."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove este bot da nova sala."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убирает этого бота из новой комнаты."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu botu yeni odadan çıkarır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将此机器人移出新房间。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "將此機器人移出新房間。"
           }
         }
       }
@@ -393598,84 +394390,84 @@
         }
       }
     },
-    "Your iPhone and iPad share Conduit's preferences through the Conduit plugin on your Hermes host: appearance, chat and voice settings, the order of your pinned chats, CarPlay, and your other saved dashboards (their addresses only).": {
+    "Your iPhone and iPad share Conduit's preferences through the Conduit plugin on your Hermes host: appearance, chat and voice settings, the order of your pinned chats and your bots, CarPlay, and your other saved dashboards (their addresses only).": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dein iPhone und iPad teilen die Einstellungen von Conduit über das Conduit-Plugin auf deinem Hermes-Host: Darstellung, Chat- und Spracheinstellungen, die Reihenfolge deiner angehefteten Chats, CarPlay und deine anderen gespeicherten Dashboards (nur ihre Adressen)."
+            "value": "Dein iPhone und iPad teilen die Einstellungen von Conduit über das Conduit-Plugin auf deinem Hermes-Host: Darstellung, Chat- und Spracheinstellungen, die Reihenfolge deiner angehefteten Chats und deiner Bots, CarPlay und deine anderen gespeicherten Dashboards (nur ihre Adressen)."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tu iPhone y tu iPad comparten las preferencias de Conduit a través del plugin de Conduit en tu host de Hermes: apariencia, ajustes de chat y voz, el orden de tus chats fijados, CarPlay y tus otros paneles guardados (solo sus direcciones)."
+            "value": "Tu iPhone y tu iPad comparten las preferencias de Conduit a través del plugin de Conduit en tu host de Hermes: apariencia, ajustes de chat y voz, el orden de tus chats fijados y de tus bots, CarPlay y tus otros paneles guardados (solo sus direcciones)."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Votre iPhone et votre iPad partagent les préférences de Conduit via le plugin Conduit sur votre hôte Hermes : apparence, réglages de chat et de voix, l’ordre de vos chats épinglés, CarPlay et vos autres tableaux de bord enregistrés (leurs adresses uniquement)."
+            "value": "Votre iPhone et votre iPad partagent les préférences de Conduit via le plugin Conduit sur votre hôte Hermes : apparence, réglages de chat et de voix, l’ordre de vos chats épinglés et de vos bots, CarPlay et vos autres tableaux de bord enregistrés (leurs adresses uniquement)."
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone dan iPad-mu berbagi preferensi Conduit melalui plugin Conduit di host Hermes-mu: tampilan, pengaturan chat dan suara, urutan chat yang disematkan, CarPlay, dan dasbor tersimpan lainnya (hanya alamatnya)."
+            "value": "iPhone dan iPad-mu berbagi preferensi Conduit melalui plugin Conduit di host Hermes-mu: tampilan, pengaturan chat dan suara, urutan chat yang disematkan dan bot-mu, CarPlay, dan dasbor tersimpan lainnya (hanya alamatnya)."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone e iPad condividono le preferenze di Conduit tramite il plugin Conduit sul tuo host Hermes: aspetto, impostazioni di chat e voce, l’ordine delle chat fissate, CarPlay e le altre dashboard salvate (solo gli indirizzi)."
+            "value": "iPhone e iPad condividono le preferenze di Conduit tramite il plugin Conduit sul tuo host Hermes: aspetto, impostazioni di chat e voce, l’ordine delle chat fissate e dei bot, CarPlay e le altre dashboard salvate (solo gli indirizzi)."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone と iPad は、Hermes ホストの Conduit プラグインを通じて Conduit の設定を共有します：外観、チャットと音声の設定、ピンで固定したチャットの順番、CarPlay、保存済みの他のダッシュボード（アドレスのみ）。"
+            "value": "iPhone と iPad は、Hermes ホストの Conduit プラグインを通じて Conduit の設定を共有します：外観、チャットと音声の設定、ピンで固定したチャットとボットの順番、CarPlay、保存済みの他のダッシュボード（アドレスのみ）。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone과 iPad는 Hermes 호스트의 Conduit 플러그인을 통해 Conduit 환경설정을 공유합니다: 화면 모양, 채팅 및 음성 설정, 고정한 채팅의 순서, CarPlay, 저장된 다른 대시보드(주소만)."
+            "value": "iPhone과 iPad는 Hermes 호스트의 Conduit 플러그인을 통해 Conduit 환경설정을 공유합니다: 화면 모양, 채팅 및 음성 설정, 고정한 채팅과 봇의 순서, CarPlay, 저장된 다른 대시보드(주소만)."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Twój iPhone i iPad dzielą preferencje Conduit przez wtyczkę Conduit na hoście Hermes: wygląd, ustawienia czatu i głosu, kolejność przypiętych czatów, CarPlay oraz inne zapisane panele (tylko ich adresy)."
+            "value": "Twój iPhone i iPad dzielą preferencje Conduit przez wtyczkę Conduit na hoście Hermes: wygląd, ustawienia czatu i głosu, kolejność przypiętych czatów i botów, CarPlay oraz inne zapisane panele (tylko ich adresy)."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Seu iPhone e iPad compartilham as preferências do Conduit pelo plugin do Conduit no seu host Hermes: aparência, ajustes de chat e voz, a ordem das suas conversas fixadas, CarPlay e seus outros painéis salvos (só os endereços)."
+            "value": "Seu iPhone e iPad compartilham as preferências do Conduit pelo plugin do Conduit no seu host Hermes: aparência, ajustes de chat e voz, a ordem das suas conversas fixadas e dos seus bots, CarPlay e seus outros painéis salvos (só os endereços)."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ваши iPhone и iPad делят настройки Conduit через плагин Conduit на хосте Hermes: оформление, настройки чата и голоса, порядок закреплённых чатов, CarPlay и другие сохранённые панели (только их адреса)."
+            "value": "Ваши iPhone и iPad делят настройки Conduit через плагин Conduit на хосте Hermes: оформление, настройки чата и голоса, порядок закреплённых чатов и ботов, CarPlay и другие сохранённые панели (только их адреса)."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone ve iPad’in, Hermes ana makinendeki Conduit eklentisi üzerinden Conduit tercihlerini paylaşır: görünüm, sohbet ve ses ayarları, sabitlenen sohbetlerinin sırası, CarPlay ve kayıtlı diğer panoların (yalnızca adresleri)."
+            "value": "iPhone ve iPad’in, Hermes ana makinendeki Conduit eklentisi üzerinden Conduit tercihlerini paylaşır: görünüm, sohbet ve ses ayarları, sabitlenen sohbetlerinin ve botlarının sırası, CarPlay ve kayıtlı diğer panoların (yalnızca adresleri)."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "你的 iPhone 和 iPad 通过 Hermes 主机上的 Conduit 插件共享 Conduit 偏好设置：外观、聊天和语音设置、置顶聊天的顺序、CarPlay，以及你保存的其他仪表板（仅地址）。"
+            "value": "你的 iPhone 和 iPad 通过 Hermes 主机上的 Conduit 插件共享 Conduit 偏好设置：外观、聊天和语音设置、置顶聊天和机器人的顺序、CarPlay，以及你保存的其他仪表板（仅地址）。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "你的 iPhone 和 iPad 透過 Hermes 主機上的 Conduit 外掛共享 Conduit 偏好設定：外觀、聊天和語音設定、釘選聊天的順序、CarPlay，以及你儲存的其他儀表板（僅位址）。"
+            "value": "你的 iPhone 和 iPad 透過 Hermes 主機上的 Conduit 外掛共享 Conduit 偏好設定：外觀、聊天和語音設定、釘選聊天和機器人的順序、CarPlay，以及你儲存的其他儀表板（僅位址）。"
           }
         }
       }

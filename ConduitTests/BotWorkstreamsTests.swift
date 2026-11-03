@@ -563,6 +563,36 @@ extension BotModeTests {
         XCTAssertEqual(V2Tab.chats.title, AppLocalization.string("Sessions"))
     }
 
+    /// Bots Home's order: unset, Hermes' order; a drop moves a bot before
+    /// another; a bot the order doesn't name goes at the end, and a hidden
+    /// one keeps its place.
+    func testTheBotOrderMovesADroppedBotAndKeepsNewOnesLast() {
+        let hermes = ["hermes", "furina", "nahida", "atlas"]
+        var order = BotOrder()
+        XCTAssertEqual(order.arrange(hermes, name: { $0 }), hermes)
+        order = order.moving("atlas", before: "furina", shown: hermes)
+        XCTAssertEqual(order.arrange(hermes, name: { $0 }), ["hermes", "atlas", "furina", "nahida"])
+        // A new bot, and the order saved before it, put it last.
+        XCTAssertEqual(order.arrange(["scout"] + hermes, name: { $0 }), ["hermes", "atlas", "furina", "nahida", "scout"])
+        // Dropped past the last portrait: the end.
+        order = order.moving("hermes", before: nil, shown: ["hermes", "atlas", "furina", "nahida"])
+        XCTAssertEqual(order.names, ["atlas", "furina", "nahida", "hermes"])
+        // Furina hidden (not shown): Reorder Bots' moves keep her place.
+        order = order.moving(fromOffsets: IndexSet(integer: 2), toOffset: 0, shown: ["atlas", "nahida", "hermes"])
+        XCTAssertEqual(order.names, ["hermes", "furina", "atlas", "nahida"])
+        // Names match whatever their case; a bot dropped on itself stays.
+        XCTAssertEqual(order.moving("HERMES", before: "hermes", shown: order.names), order)
+        XCTAssertEqual(BotOrder(names: ["a", "A", "", "b"]).names, ["a", "b"])
+    }
+
+    /// A dragged portrait carries a marked name, so text dragged in from
+    /// another app is never taken for a bot.
+    func testABotDragCarriesAMarkedName() {
+        XCTAssertEqual(BotDragPayload.botName(from: BotDragPayload.payload(for: "furina")), "furina")
+        XCTAssertNil(BotDragPayload.botName(from: "furina"))
+        XCTAssertNil(BotDragPayload.botName(from: BotDragPayload.prefix))
+    }
+
     /// Bots is the launch tab: a plain session opened over it still lands
     /// in Sessions, and only a bot's own chats stay in Bots.
     func testAPlainSessionOpenedOverBotsLandsInSessions() {

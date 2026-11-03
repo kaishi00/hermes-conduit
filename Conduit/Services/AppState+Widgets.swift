@@ -48,7 +48,7 @@ extension AppState {
             )
         }
 
-        for bot in botRoster where !bot.isHiddenByMeta {
+        for bot in orderedBots(botRoster) where !bot.isHiddenByMeta {
             guard let canonical = bot.canonicalSession,
                   !canonical.id.isEmpty else { continue }
             let reference = SessionReference.bot(botName: bot.name, label: bot.displayLabel, sessionID: canonical.id)
