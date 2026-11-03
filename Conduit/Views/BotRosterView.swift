@@ -30,7 +30,7 @@ struct BotRosterView: View {
     @State private var repairContext: ConnectionRepairContext?
     /// A room being started on Bots Home, its bots in the order they came
     /// (empty: none). Nothing reaches the host until Create.
-    @State private var newRoom: [String] = []
+    @State private var newRoom = BotRoomBuild()
     @State private var showingNewRoomSheet = false
     @State private var showingReorder = false
     @Environment(\.v2Shell) private var shell
@@ -74,20 +74,20 @@ struct BotRosterView: View {
         // Leaving Bots, or a room no longer possible, drops the room being
         // started: nothing was made.
         .onChange(of: shell.isTabActive) { _, active in
-            if !active { newRoom = [] }
+            if !active { newRoom.clear() }
         }
         .onChange(of: canStartRoomHere) { _, can in
-            if !can { newRoom = [] }
+            if !can { newRoom.clear() }
         }
         .onChange(of: visibleBotNames) { _, _ in
-            let kept = newRoomBots.map(\.name)
-            if kept.count != newRoom.count { newRoom = kept }
+            let kept = newRoom.pruned(visible: visibleBotNames)
+            if kept != newRoom { newRoom = kept }
         }
         .sheet(isPresented: $showingNewRoomSheet) {
             GroupCreateSheet(
                 preselected: Set(newRoomBots.map(\.name)),
                 suggestedName: joinedNames(newRoomBots),
-                onCreated: { newRoom = [] }
+                onCreated: { newRoom.clear() }
             )
             .environmentObject(appState)
         }
@@ -344,7 +344,7 @@ struct BotRosterView: View {
     }
 
     private func isInNewRoom(_ name: String) -> Bool {
-        newRoom.contains { $0.caseInsensitiveCompare(name) == .orderedSame }
+        newRoom.contains(name)
     }
 
     /// Whether `dragged`, held over `target`'s face, starts a room with it
@@ -355,7 +355,8 @@ struct BotRosterView: View {
               let draggedBot = appState.shownBotRoster.first(where: {
                   $0.name.caseInsensitiveCompare(dragged) == .orderedSame
               }) else { return false }
-        return !draggedBot.isHiddenByMeta
+        // A room that's full takes no one new.
+        return !draggedBot.isHiddenByMeta && newRoom.fits([target.name, draggedBot.name])
     }
 
     /// A portrait dropped on another: held over its face, the two start a
@@ -365,8 +366,7 @@ struct BotRosterView: View {
         if merge, canMerge(dragged, with: target),
            let draggedBot = appState.shownBotRoster.first(where: { $0.name.caseInsensitiveCompare(dragged) == .orderedSame }) {
             withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
-                if !isInNewRoom(target.name) { addToNewRoom(target.name) }
-                if !isInNewRoom(draggedBot.name) { addToNewRoom(draggedBot.name) }
+                addToNewRoom([target.name, draggedBot.name])
             }
             return
         }
@@ -383,34 +383,33 @@ struct BotRosterView: View {
         }
     }
 
-    private func addToNewRoom(_ name: String) {
-        guard newRoom.count < GroupRoomLimits.maxMembers else {
+    private func addToNewRoom(_ names: [String]) {
+        guard newRoom.add(names) else {
             Haptics.warning()
             managementNotice = AppLocalization.string("A room holds up to 6 bots.")
             return
         }
-        newRoom.append(name)
     }
 
     /// Taking a bot out always works; adding one only while it's shown.
     private func toggleNewRoom(_ bot: BotProfile) {
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
             if isInNewRoom(bot.name) {
-                newRoom.removeAll { $0.caseInsensitiveCompare(bot.name) == .orderedSame }
+                newRoom.remove(bot.name)
             } else if !bot.isHiddenByMeta {
-                addToNewRoom(bot.name)
+                addToNewRoom([bot.name])
             }
         }
     }
 
     private func cancelNewRoom() {
-        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { newRoom = [] }
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { newRoom.clear() }
     }
 
     /// The room's bots that are still shown and not hidden: a bot hidden or
     /// deleted meanwhile leaves the room (onChange of visibleBotNames).
     private var newRoomBots: [BotProfile] {
-        newRoom.compactMap { name in
+        newRoom.names.compactMap { name in
             visibleBots.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
         }
     }
@@ -506,7 +505,7 @@ struct BotRosterView: View {
             startRoom: createRequest == nil || bot.isHiddenByMeta ? nil : {
                 // Into the room being started, if there is one.
                 withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
-                    if !isInNewRoom(bot.name) { addToNewRoom(bot.name) }
+                    addToNewRoom([bot.name])
                 }
             },
             reorder: createRequest == nil ? nil : { showingReorder = true }

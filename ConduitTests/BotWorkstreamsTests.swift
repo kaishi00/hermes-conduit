@@ -606,6 +606,30 @@ extension BotModeTests {
         XCTAssertNil(defaults.stringArray(forKey: BotOrder.storageKey))
     }
 
+    /// A room being started: bots join once, whatever their case, all or
+    /// none up to six; a full room takes no one new; a bot hidden or
+    /// deleted meanwhile leaves it.
+    func testARoomBeingStartedHoldsSixAndDropsWhatLeaves() {
+        var build = BotRoomBuild()
+        XCTAssertTrue(build.isEmpty)
+        XCTAssertTrue(build.add(["hermes", "furina"]))
+        XCTAssertTrue(build.add(["FURINA", "atlas"]))
+        XCTAssertEqual(build.names, ["hermes", "furina", "atlas"])
+        XCTAssertTrue(build.add(["nahida", "scout", "zed"]))
+        XCTAssertTrue(build.isFull)
+        // Full: a merge bringing anyone new doesn't fit, one of members does.
+        XCTAssertFalse(build.fits(["hermes", "kai"]))
+        XCTAssertFalse(build.add(["kai"]))
+        XCTAssertTrue(build.fits(["hermes", "atlas"]))
+        // Five in, a merge of two new ones doesn't fit, all or none.
+        build.remove("ZED")
+        XCTAssertFalse(build.add(["kai", "lumi"]))
+        XCTAssertEqual(build.names.count, 5)
+        XCTAssertEqual(build.pruned(visible: ["Atlas", "hermes", "kai"]).names, ["hermes", "atlas"])
+        build.clear()
+        XCTAssertTrue(build.isEmpty)
+    }
+
     /// A dragged portrait carries a marked name, so text dragged in from
     /// another app is never taken for a bot.
     func testABotDragCarriesAMarkedName() {
