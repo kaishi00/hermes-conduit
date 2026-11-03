@@ -1034,9 +1034,15 @@ struct BotZoomArm: Equatable {
         tappedAt = nil
     }
 
-    /// `open` is now the open Bot Chat.
+    /// `open` is now the open Bot Chat. Another bot's chat landing first
+    /// (a notification's, a link's) means the push carried that one: it
+    /// zooms no more.
     mutating func opened(_ open: String?) {
-        if Self.same(zooming, open) { landed = true }
+        if Self.same(zooming, open) {
+            landed = true
+        } else if open != nil, zooming != nil, !landed {
+            zooming = nil
+        }
     }
 
     /// The chat left the Bots stack, or closed.

@@ -666,6 +666,12 @@ extension BotModeTests {
         XCTAssertEqual(arm.source(open: "atlas", now: now), "Atlas")
         arm.openFailed("Atlas")
         XCTAssertNil(arm.source(open: "atlas", now: now))
+        // Another bot's chat landing first: the push carried that one.
+        arm.tap("Atlas", now: now)
+        arm.pushed(open: "furina", now: now)
+        arm.opened("rei")
+        XCTAssertNil(arm.source(open: "rei", now: now))
+        arm.left()
         // A push whose open then fails zooms no more.
         arm.tap("Atlas", now: now)
         arm.pushed(open: "furina", now: now)
