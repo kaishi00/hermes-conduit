@@ -1395,7 +1395,7 @@ README.md
 
 **Code**
 - Client and path links: `Conduit/Services/WorkspaceFiles.swift` (WorkspaceFilesClient and its kept listing and recent files, WorkspacePathLinks, WorkspaceRoot, WorkspaceReveal)
-- Roots, profile, reveal and refresh: `Conduit/Services/AppState+Workspace.swift` (workspaceRoots, workspaceProfile, absoluteWorkspacePath, revealWorkspaceFile, noteWorkspaceToolCompleted, readWorkspaceText, workspaceDirectoryEntries)
+- Roots, profile, reveal and refresh: `Conduit/Services/AppState+Workspace.swift` (workspaceRoots, workspaceProfile, absoluteWorkspacePath, revealWorkspaceFile, noteWorkspaceToolCompleted, readWorkspaceText, workspaceDirectoryEntries, parentWorkspacePath for the project folder picker's Enclosing Folder); `Conduit/Services/AppState.swift` (makeProjectFolder, the project folder picker's New Folder through the same plugin route)
 - Tree, search, viewing and changes: `Conduit/Services/WorkspaceExplorer.swift` (askPluginIfUnanswered, from open and refresh)
 - Screens: `Conduit/Views/V2/V2WorkspaceViews.swift` (WorkspaceFolderView, WorkspaceFileSheet, WorkspaceMoveSheet), `Conduit/Views/V2/V2ArtifactsViews.swift` (ChatArtifactsContent, the page's tabs), `Conduit/Views/V2/V2ConversationScreen.swift` (ChatSidePanel, openArtifacts), `Conduit/Views/ChatSupportSheets.swift` (WorkspaceSheet), `Conduit/Views/RootView.swift`, `Conduit/Views/Components/ComposerBar.swift` (+ › Workspace)
 - Links: `Conduit/Views/Components/SelectableTextView.swift` (bridge), `Conduit/Services/ConduitAppLink.swift` (file)
@@ -1406,7 +1406,7 @@ README.md
 **Rulings**
 - The Folder lives in Artifacts, not behind the composer's +: a tab in the chat's ⋯ › Artifacts sheet, beside the chat on a wide window, and on the Chats bar's Artifacts page. + › Workspace stays only in the drawer shell, which has no Artifacts (2026-10-27, #1399, Eric: "+" hurt visibility).
 - The full explorer: previews, search, Recently Changed, new folder and file, rename, move, duplicate, delete with a confirmation, upload, and text editing that refuses a save over a file changed since it was opened (Replace It or Keep Editing) (2026-10-27, #1399, Eric picked it).
-- The tree starts at the chat's folder and switches to a project's folder, never above them; the plugin keeps every path inside the root it's given and leaves out files holding keys or passwords. Hermes' own file routes already reach the home folder, so this scopes the view rather than guarding the host: on a personal install the plugin takes any folder as a root, and on a hosted or locked install only one inside Hermes' files folder (2026-10-27, #1399).
+- The tree starts at the chat's folder and switches to a project's folder, never above them (the New Project folder picker is not the Folder: it goes up to choose a project's folder, see New project); the plugin keeps every path inside the root it's given and leaves out files holding keys or passwords. Hermes' own file routes already reach the home folder, so this scopes the view rather than guarding the host: on a personal install the plugin takes any folder as a root, and on a hosted or locked install only one inside Hermes' files folder (2026-10-27, #1399).
 - Without the plugin's workspace routes the Folder still browses and opens files through Hermes' own listing; search, Recently Changed and changes ask for a plugin update.
 - A path in a reply is a link when inline code names one, or when plain text names a path with a folder and a known file type; a relative path is in the chat's folder. It opens in the Folder, at the file, switching to the chat's or a project's folder that holds it. A file in none of them opens to read only, outside the tree, as Hermes' own file routes would show it (2026-10-27, #1399).
 - A tool that writes, moves or deletes files, or runs commands, refreshes an open Folder when it completes; nothing polls.
@@ -1416,7 +1416,7 @@ README.md
 **Open gaps**
 - Group rooms have no Artifacts: a path tapped in a room opens the Folder on its own, at the projects' folders.
 
-**Checked:** 2026-10-31, #1584 (from #1582's review, the folder asks a plugin that never answered again as it opens and on a refresh); 2026-10-31, #1582 (a folder opens on its kept listing and recent files, which wait for the plugin's word, and keeps only an answer it can read); 2026-10-29, #1491 (a picture, opened or Share or Save, opens in the picture viewer among its folder's pictures); 2026-10-29, #1492 (ChatSidePanel's width drags; the Folder in it is unchanged); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1407 with notifier #431 and its follow-up; 2026-10-27, #1399 with notifier #431.
+**Checked:** 2026-11-03, #1685 (the New Project folder picker reads the same listing, goes above the chat's folder and makes a folder through the plugin's route; the tree is unchanged); 2026-10-31, #1584 (from #1582's review, the folder asks a plugin that never answered again as it opens and on a refresh); 2026-10-31, #1582 (a folder opens on its kept listing and recent files, which wait for the plugin's word, and keeps only an answer it can read); 2026-10-29, #1491 (a picture, opened or Share or Save, opens in the picture viewer among its folder's pictures); 2026-10-29, #1492 (ChatSidePanel's width drags; the Folder in it is unchanged); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1407 with notifier #431 and its follow-up; 2026-10-27, #1399 with notifier #431.
 
 ## Bots: create and edit
 
@@ -3311,7 +3311,45 @@ README.md
 - The dot reads the chats the project tree lists, as the Running line does, so an unread chat beyond the tree's preview of a big project doesn't light it. A chat the catalog also lists reads its copy there, which stays current between loads of the tree.
 - Projects belong to the profile in use; All profiles has no Projects list of its own.
 
-**Checked:** 2026-10-29, #1499.
+**Checked:** 2026-11-03, #1685 (the Projects list gained New Project controls; a new project's row takes the dot like any other); 2026-10-29, #1499.
+
+## New project
+
+Making a project from Conduit (issue 1661): the + at the end of the
+Projects heading, the empty Projects list's New Project, the Projects
+filter menu's New project and the classic drawer's buttons all open one
+sheet: a name, the profile it goes to, one or more of the Hermes host's
+folders (an existing one, or a new one made in the picker) and an optional
+idea.
+
+**Siblings:** the V2 Projects list (Chats › Projects: the heading's +, the
+empty state, the filter menu) · the iPad and Mac list (same view) · the
+classic drawer (its New project button and ⋯ menu, its empty state) · the
+Folder tab beside Artifacts (the same plugin route makes its New Folder) ·
+Unread dot on projects (the new project's row takes the dot like any
+other) · README.md
+
+**Code**
+- Buttons: `Conduit/Views/V2/V2ChatsView.swift` (projectsHeader, canCreateProject, projectsList's empty state, filterMenu), `Conduit/Views/SidebarView.swift` (the drawer's New project button and menu item)
+- Sheet and picker: `Conduit/Views/SidebarView.swift` (ProjectCreateSheet, ProjectFolderPickerSheet)
+- Create and checks: `Conduit/Services/AppState.swift` (createProject, projectCreationProblem, projectFolderPickerRoot, makeProjectFolder, writeProjectIdea), `Conduit/Services/AppState+Workspace.swift` (parentWorkspacePath), `Conduit/Services/HermesClient.swift` (createProject: `projects.create`)
+- New folder: `Conduit/Services/WorkspaceFiles.swift` (makeFolder), `notifier/dashboard/api/workspace.py` (post_workspace's mkdir)
+- Tests: `ConduitTests/WorkspaceFilesTests.swift` (testProjectFolderPickerGoesUpToTheTopOfTheDisk, testProjectFolderPickerStartsInTheChatsFolderElseHomes, testNewProjectRefusesAnotherProjectsNameOrFolder, testNewProjectNeverWritesOverAnIdea, testAFailedCreateFindsTheProjectHermesMadeAnyway)
+
+**Rulings**
+- A new project goes to the profile in use, whose projects the list shows, so it shows there as soon as Hermes makes it. All profiles has no Projects list of its own, so the sheet names the profile and says to switch profiles for another one rather than offering a picker that would make a project the list doesn't show (2026-11-03, issue 1661).
+- The folders are the Hermes host's, browsed through Hermes' own listing from the open chat's folder (only while a chat is open: the last chat's folder outlives it), else Home's; the picker goes into folders and out to the one holding them. The device's own folder picker isn't offered: Conduit's device isn't the host, even on a Mac (2026-11-03, issue 1661).
+- A new folder is made inside the folder shown, through the plugin's workspace route, which refuses a name already there; without the plugin the picker chooses existing folders only.
+- Nothing is overwritten, and nothing is doubled from this device: a name or folder another made project already has is refused before Create, and the idea is written as IDEA.md only when the first folder has none. Home and the repos Hermes found on its own have no record to clash with. Create reads Hermes' list again and checks it before asking (a list that doesn't come in stops the create), and a create that fails reads it again too: a new project there with this name on this first folder is the one Hermes made anyway and takes the idea as a made one does (a name alone could be another device's), and anything else lets a retry see the clash. The sheet closes only on a full success: a failure stays on screen, and a project made whose idea couldn't be saved keeps the sheet open with the idea in its field and Create turned to Save Idea, which writes only the idea, to the first folder the project was made with (its name and folders are locked while it's made and after). A failure's message goes once the name or folders change.
+
+**Open gaps**
+- The folder clash checks only each project's first folder: the project tree gives Conduit no others.
+- Two devices making the same name at once can both pass the check: it reads Hermes' list just before asking, and Hermes has no unique-name rule, so both are made.
+- New Folder uses the folder shown as the plugin's root, so on a hosted or locked install it works only inside Hermes' files folder (see Folder beside Artifacts); elsewhere the plugin's refusal shows in the picker.
+- IDEA.md is checked by a listing, then written by Hermes' own write route: a file another writer puts there between the two is written over. Hermes has no create-only write.
+- The open chat's folder is `runtime.cwd`, which a chat that reports no folder leaves as the last chat's, here as in the Folder tab.
+
+**Checked:** 2026-11-03, #1685.
 
 ## Pinned chats order
 

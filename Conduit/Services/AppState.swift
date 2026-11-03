@@ -32873,7 +32873,9 @@ final class AppState: ObservableObject {
         await loadProjects(using: client, profile: activeProfile)
     }
 
-    private func loadProjects(using client: HermesClient, profile: String) async {
+    /// True when Hermes' list came in and is the one shown.
+    @discardableResult
+    private func loadProjects(using client: HermesClient, profile: String) async -> Bool {
         projectsRequestGeneration += 1
         let generation = projectsRequestGeneration
         projectsLoading = true
@@ -32888,7 +32890,7 @@ final class AppState: ObservableObject {
             let loaded = try await client.projects()
             guard generation == projectsRequestGeneration,
                   profile == activeProfile,
-                  self.client === client else { return }
+                  self.client === client else { return false }
             projects = loaded.sorted {
                 if $0.isHome != $1.isHome { return $0.isHome }
                 if $0.sessionCount != $1.sessionCount { return $0.sessionCount > $1.sessionCount }
@@ -32896,19 +32898,21 @@ final class AppState: ObservableObject {
             }
             supportsProjects = true
             projectsLoadFailed = false
+            return true
         } catch {
             guard generation == projectsRequestGeneration,
                   profile == activeProfile,
-                  self.client === client else { return }
+                  self.client === client else { return false }
             // A view's load cancelled by leaving it didn't fail.
-            if error is CancellationError || Task.isCancelled { return }
+            if error is CancellationError || Task.isCancelled { return false }
             guard isProjectsUnavailable(error) else {
                 projectsLoadFailed = projects.isEmpty
-                return
+                return false
             }
             projects = []
             supportsProjects = false
             projectsLoadFailed = false
+            return false
         }
     }
 
@@ -32949,40 +32953,76 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// What a New Project create came to, for the sheet, which stays open
+    /// with the message unless the project was made with all it was given.
+    enum ProjectCreateOutcome: Equatable {
+        case created
+        /// Made (its id), but the idea isn't in IDEA.md: the sheet keeps it
+        /// on screen and Save Idea tries the write again.
+        case ideaUnsaved(projectID: String, message: String)
+        case failed(String?)
+    }
+
     @discardableResult
-    func createProject(name: String, folders: [String], idea: String) async -> Bool {
-        guard let client, supportsProjects else { return false }
+    func createProject(name: String, folders: [String], idea: String) async -> ProjectCreateOutcome {
+        guard let client, supportsProjects else { return .failed(nil) }
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let uniqueFolders = folders.reduce(into: [String]()) { result, folder in
             let trimmed = folder.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty, !result.contains(trimmed) { result.append(trimmed) }
         }
-        guard !trimmedName.isEmpty, !uniqueFolders.isEmpty else { return false }
+        guard !trimmedName.isEmpty, !uniqueFolders.isEmpty else { return .failed(nil) }
 
         let profile = activeProfile
+        // Checked again on Hermes' list as it is now: another device may
+        // have made the same project since the list was read, and Hermes
+        // would take a second one. A list that didn't come in checks nothing.
+        guard await loadProjects(using: client, profile: profile) else {
+            return .failed(AppLocalization.string("Couldn’t check Hermes’ projects. Try again."))
+        }
+        guard profile == activeProfile, self.client === client else { return .failed(nil) }
+        if let problem = projectCreationProblem(name: trimmedName, folders: uniqueFolders) { return .failed(problem) }
+        let knownIDs = Set(projects.map(\.id))
+        // The idea goes to the first folder of a project that was made.
+        func finish(_ created: ProjectSummary) async -> ProjectCreateOutcome {
+            let trimmedIdea = idea.trimmingCharacters(in: .whitespacesAndNewlines)
+            var ideaSaved = true
+            if !trimmedIdea.isEmpty {
+                ideaSaved = await writeProjectIdea(trimmedIdea, in: uniqueFolders[0], profile: profile)
+            }
+            await loadProjects(using: client, profile: profile)
+            guard profile == activeProfile, self.client === client else { return .failed(nil) }
+            return ideaSaved
+                ? .created
+                : .ideaUnsaved(projectID: created.id,
+                               message: AppLocalization.string("\(created.title) is made, but its idea couldn’t be saved as IDEA.md."))
+        }
         do {
             guard let created = try await client.createProject(name: trimmedName, folders: uniqueFolders) else {
                 throw HermesError.invalidResponse
             }
-            guard profile == activeProfile, self.client === client else { return false }
+            guard profile == activeProfile, self.client === client else { return .failed(nil) }
             projects = [created] + projects.filter { $0.id != created.id }
             supportsProjects = true
-
-            let trimmedIdea = idea.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedIdea.isEmpty {
-                await writeProjectIdea(trimmedIdea, in: uniqueFolders[0], profile: profile)
-            }
-            await loadProjects(using: client, profile: profile)
-            return true
+            return await finish(created)
         } catch {
-            guard profile == activeProfile, self.client === client else { return false }
+            guard profile == activeProfile, self.client === client else { return .failed(nil) }
             if isProjectsUnavailable(error) {
                 projects = []
                 supportsProjects = false
-            } else {
-                errorMessage = AppLocalization.string("Could not create the project: \(UserFacingError.message(for: error))")
+                return .failed(nil)
             }
-            return false
+            // Hermes may have made it anyway (an answer Conduit couldn't
+            // read): a new project with this name on this first folder is
+            // this one, and takes the idea; anything else read again lets a
+            // retry see the clash.
+            if await loadProjects(using: client, profile: profile),
+               profile == activeProfile, self.client === client,
+               let made = Self.projectMadeAnyway(name: trimmedName, firstFolder: uniqueFolders[0],
+                                                 knownIDs: knownIDs, in: projects) {
+                return await finish(made)
+            }
+            return .failed(AppLocalization.string("Could not create the project: \(UserFacingError.message(for: error))"))
         }
     }
 
@@ -33189,10 +33229,66 @@ final class AppState: ObservableObject {
     }
 
     /// The project folder picker starts at the same live workspace the chat
-    /// browser uses. Folder paths are selected from Hermes' filesystem listing,
-    /// not entered as arbitrary strings by the phone.
+    /// browser uses, else at Home's folder, so a project can be made with no
+    /// chat open (issue 1661). Folder paths are selected from Hermes'
+    /// filesystem listing, not entered as arbitrary strings by the phone.
     var projectFolderPickerRoot: String {
-        runtime.cwd
+        // runtime.cwd outlives the chat that set it.
+        if let session = activeSessionId, !session.isEmpty, let folder = chatWorkspaceFolder { return folder }
+        return projects.first(where: \.isHome)?.primaryPath?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    /// Why a new project can't be made as it stands, or nil: Hermes would
+    /// take a second project of the same name, or a folder that is already
+    /// another project's, and list both (issue 1661). Home and the repos
+    /// Hermes found on its own have no record to clash with.
+    func projectCreationProblem(name: String, folders: [String]) -> String? {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let made = projects.filter { !$0.isHome && !$0.isAuto }
+        if !trimmedName.isEmpty,
+           let clash = made.first(where: { $0.title.trimmingCharacters(in: .whitespacesAndNewlines)
+               .caseInsensitiveCompare(trimmedName) == .orderedSame }) {
+            return AppLocalization.string("There’s already a project named \(clash.title).")
+        }
+        for folder in folders {
+            let path = Self.normalizedWorkspacePath(folder.trimmingCharacters(in: .whitespacesAndNewlines))
+            if let owner = made.first(where: { project in
+                project.primaryPath.map { Self.normalizedWorkspacePath($0.trimmingCharacters(in: .whitespacesAndNewlines)) } == path
+            }) {
+                return AppLocalization.string("\(folder) is already the folder of \(owner.title).")
+            }
+        }
+        return nil
+    }
+
+    /// The project a create that failed made anyway: new since the create
+    /// was asked, with its name and first folder. A name alone could be
+    /// another device's.
+    static func projectMadeAnyway(name: String, firstFolder: String, knownIDs: Set<String>,
+                                  in projects: [ProjectSummary]) -> ProjectSummary? {
+        let folder = normalizedWorkspacePath(firstFolder.trimmingCharacters(in: .whitespacesAndNewlines))
+        return projects.first { project in
+            !knownIDs.contains(project.id) && !project.isHome && !project.isAuto
+                && project.title.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(name) == .orderedSame
+                && project.primaryPath.map { normalizedWorkspacePath($0.trimmingCharacters(in: .whitespacesAndNewlines)) } == folder
+        }
+    }
+
+    /// Whether a folder's listing already has an IDEA.md, which a new
+    /// project never writes over (issue 1661).
+    static func folderHasProjectIdea(_ entries: [WorkspaceEntry]) -> Bool {
+        entries.contains { !$0.isDirectory && $0.name.caseInsensitiveCompare("IDEA.md") == .orderedSame }
+    }
+
+    /// A new folder for a project, made in `folder` through the plugin's
+    /// workspace routes, which refuse a name that's already there.
+    func makeProjectFolder(named name: String, in folder: String) async throws -> String? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let entry = try await workspaceFilesClient(profile: activeProfile)
+            .makeFolder(root: folder, in: folder, name: trimmed)
+        return entry?.path
     }
 
     func workspaceDirectoryEntries(at path: String) async throws -> [WorkspaceEntry] {
@@ -33202,15 +33298,27 @@ final class AppState: ObservableObject {
         return entries
     }
 
-    private func writeProjectIdea(_ idea: String, in folder: String, profile: String) async {
-        guard let dashboardTicketBridge else { return }
+    /// The sheet's Save Idea after a create whose idea wasn't saved.
+    func saveProjectIdea(_ idea: String, in folder: String) async -> Bool {
+        let trimmed = idea.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        return await writeProjectIdea(trimmed, in: folder, profile: activeProfile)
+    }
+
+    /// Never over an IDEA.md the folder already has: an existing folder
+    /// keeps its files (issue 1661), and an unreadable one is left alone.
+    /// False when the idea wasn't saved for any other reason.
+    private func writeProjectIdea(_ idea: String, in folder: String, profile: String) async -> Bool {
+        guard let dashboardTicketBridge,
+              let entries = try? await workspaceDirectoryEntries(at: folder, profile: profile) else { return false }
+        if Self.folderHasProjectIdea(entries) { return true }
         let separator = folder.hasSuffix("/") || folder.hasSuffix("\\") ? "" : "/"
         let path = "\(folder)\(separator)IDEA.md"
-        _ = try? await dashboardTicketBridge.requestJSON(
+        return (try? await dashboardTicketBridge.requestJSON(
             path: dashboardPath("/api/fs/write-text", profile: profile),
             method: "POST",
             body: ["path": path, "content": idea.hasSuffix("\n") ? idea : "\(idea)\n"]
-        )
+        )) != nil
     }
 
     private func orderedProfiles(_ values: [String]) -> [String] {

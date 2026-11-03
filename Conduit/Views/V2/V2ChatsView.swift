@@ -898,9 +898,7 @@ struct V2ChatsView: View, Equatable {
                 } label: {
                     Label("New project", systemImage: "folder.badge.plus")
                 }
-                // Projects shown from the saved list say nothing yet about
-                // whether this Hermes takes new ones.
-                .disabled(!appState.supportsProjects || appState.projectsSeededFromSavedList)
+                .disabled(!canCreateProject)
             } else {
                 filterToggle(.all)
                 filterToggle(.starred)
@@ -2061,13 +2059,22 @@ struct V2ChatsView: View, Equatable {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             } else if displayedProjects.isEmpty && !(isSearching && !pinned.isEmpty) {
-                ContentUnavailableView(
-                    isSearching ? AppLocalization.string("No Matching Projects") : AppLocalization.string("No Projects"),
-                    systemImage: "folder",
-                    description: Text(!isSearching
-                        ? AppLocalization.string("Projects created in Hermes Desktop will appear here.")
+                ContentUnavailableView {
+                    Label(isSearching ? AppLocalization.string("No Matching Projects") : AppLocalization.string("No Projects"),
+                          systemImage: "folder")
+                } description: {
+                    Text(!isSearching
+                        ? AppLocalization.string("Projects you make here or in Hermes Desktop show here.")
                         : AppLocalization.string("Try a different search."))
-                )
+                } actions: {
+                    if !isSearching {
+                        Button(AppLocalization.string("New Project")) {
+                            Haptics.selection()
+                            showProjectCreator = true
+                        }
+                        .disabled(!canCreateProject)
+                    }
+                }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             } else if !displayedProjects.isEmpty {
@@ -2076,7 +2083,7 @@ struct V2ChatsView: View, Equatable {
                         projectRow(project, isUnread: unreadProjects.contains(project.id))
                     }
                 } header: {
-                    sectionHeader(AppLocalization.string("Projects"))
+                    projectsHeader
                 }
             }
         }
@@ -2089,6 +2096,37 @@ struct V2ChatsView: View, Equatable {
         .refreshable {
             await appState.refreshProjects()
         }
+    }
+
+    /// Projects shown from the saved list say nothing yet about whether
+    /// this Hermes takes new ones.
+    private var canCreateProject: Bool {
+        appState.supportsProjects && !appState.projectsSeededFromSavedList
+    }
+
+    /// The Projects heading, with New Project at its end (issue 1661): the
+    /// project goes to the profile whose projects this lists.
+    private var projectsHeader: some View {
+        HStack(spacing: 0) {
+            sectionHeader(AppLocalization.string("Projects"))
+            Button {
+                Haptics.selection()
+                showProjectCreator = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(canCreateProject ? Color.conduitAccent : Color.secondary)
+                    .conduitFixedGlyph()
+                    .frame(width: 44, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canCreateProject)
+            .padding(.trailing, 8)
+            .accessibilityLabel(AppLocalization.string("New Project"))
+            .macTooltip(AppLocalization.string("New Project"))
+        }
+        .listRowInsets(EdgeInsets())
     }
 
     private func projectRow(_ project: ProjectSummary, isUnread: Bool) -> some View {
