@@ -513,6 +513,31 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "idle chat")])
     }
 
+    /// A failed cancel takes back only its own note: another cancel that
+    /// noted the chat meanwhile keeps its note, even naming the same turn.
+    func testFailedCancelTakesBackOnlyItsOwnNote() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+
+        // Alone, a failed cancel leaves no note.
+        let found = state.voiceCancelNote(in: "stored-a")
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 7)
+        state.restoreVoiceCancelNote(in: "stored-a", to: found, ifStill: state.voiceCancelNote(in: "stored-a").write)
+        XCTAssertEqual(state.voiceCancelNote(in: "stored-a"), found)
+
+        // Overlapping: the first cancel fails after a second one noted.
+        let firstFound = state.voiceCancelNote(in: "stored-a")
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 7)
+        let firstWrite = state.voiceCancelNote(in: "stored-a").write
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 7)
+        state.restoreVoiceCancelNote(in: "stored-a", to: firstFound, ifStill: firstWrite)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "straggler"), turnGeneration: 7)
+        XCTAssertEqual(events, [], "The second cancel's note still holds the turn")
+    }
+
     /// A gateway frame as HermesClient hands it to AppState.
     private func frame(_ json: String) throws -> StreamEvent {
         let data = try XCTUnwrap(json.data(using: .utf8))

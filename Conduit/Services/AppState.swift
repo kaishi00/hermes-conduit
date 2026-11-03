@@ -848,6 +848,10 @@ final class AppState: ObservableObject {
     /// The turn Voice cancelled, by its execution generation (see
     /// `voiceEventAfterCancel`).
     private var voiceCancelledTurns: [String: Int] = [:]
+    /// Which write made each chat's note, so a failed cancel takes back
+    /// only its own (`restoreVoiceCancelNote`).
+    private var voiceCancelNoteWrites: [String: Int] = [:]
+    private var lastVoiceCancelNoteWrite = 0
     /// The execution generation the stream event being handled names.
     private var handledStreamEventGeneration: Int?
     /// Tests stand in for the client's `runningTurnGeneration(for:)`.
@@ -4859,14 +4863,17 @@ final class AppState: ObservableObject {
                 let client = try await self.clientForVoiceRequest()
                 // A job in the open chat: its turn is noted as any cancel there is.
                 let open = self.activeSessionId.flatMap { self.eventBelongsToActiveSession(sessionID) ? $0 : nil }
-                let noteBeforeCancel = open.flatMap { self.voiceCancelledTurns[$0] }
+                let noteBeforeCancel = open.map { self.voiceCancelNote(in: $0) }
                 let wasRunning = self.isBusy
                 if let open { self.noteRunningTurnBeforeCancel(in: open) }
+                let noteWrite = open.flatMap { self.voiceCancelNoteWrites[$0] }
                 do {
                     let stopped = try await client.cancel(sessionID, profile: self.presentationProfile(for: sessionID))
                     if let open { self.raiseVoiceCancelledTurn(sessionId: open, to: stopped, wasRunning: wasRunning) }
                 } catch {
-                    if let open { self.voiceCancelledTurns[open] = noteBeforeCancel }
+                    if let open, let noteBeforeCancel {
+                        self.restoreVoiceCancelNote(in: open, to: noteBeforeCancel, ifStill: noteWrite)
+                    }
                     throw error
                 }
             },
@@ -30429,9 +30436,10 @@ final class AppState: ObservableObject {
             return false
         }
         guard let client, let sessionId = currentContext.sessionID else { return false }
-        let noteBeforeCancel = voiceCancelledTurns[sessionId]
+        let noteBeforeCancel = voiceCancelNote(in: sessionId)
         let wasRunning = isBusy
         noteRunningTurnBeforeCancel(in: sessionId)
+        let noteWrite = voiceCancelNoteWrites[sessionId]
         cancelChatResumeRestoration()
         turnState = .synchronizing
         do {
@@ -30445,7 +30453,7 @@ final class AppState: ObservableObject {
             return true
         } catch {
             // The turn wasn't stopped, so Voice may still hear it.
-            voiceCancelledTurns[sessionId] = noteBeforeCancel
+            restoreVoiceCancelNote(in: sessionId, to: noteBeforeCancel, ifStill: noteWrite)
             guard isCurrentOrAliasedComposerSubmission(currentContext) else { return false }
             errorMessage = AppLocalization.string("Could not interrupt the active response: \(UserFacingError.message(for: error))")
             await recoverComposerSubmission(using: currentContext)
@@ -37302,6 +37310,29 @@ final class AppState: ObservableObject {
     /// Holds that turn's later events back from Voice (`voiceEventAfterCancel`).
     func noteVoiceCancelledTurn(sessionId: String, generation: Int) {
         voiceCancelledTurns[sessionId] = generation
+        lastVoiceCancelNoteWrite += 1
+        voiceCancelNoteWrites[sessionId] = lastVoiceCancelNoteWrite
+    }
+
+    /// A chat's note and the write that made it, as a cancel found them.
+    struct VoiceCancelNote: Equatable {
+        let generation: Int?
+        let write: Int?
+    }
+
+    func voiceCancelNote(in sessionId: String) -> VoiceCancelNote {
+        VoiceCancelNote(generation: voiceCancelledTurns[sessionId], write: voiceCancelNoteWrites[sessionId])
+    }
+
+    /// A cancel that failed puts back the note it found, since that turn
+    /// still runs, but only while the note is still the one it left
+    /// (`write`, the write that stood after it noted): another cancel of
+    /// the chat that noted meanwhile keeps its note, even one naming the
+    /// same turn.
+    func restoreVoiceCancelNote(in sessionId: String, to note: VoiceCancelNote, ifStill write: Int?) {
+        guard voiceCancelNoteWrites[sessionId] == write else { return }
+        voiceCancelledTurns[sessionId] = note.generation
+        voiceCancelNoteWrites[sessionId] = note.write
     }
 
     /// The turn a cancel actually stopped. A stale generation makes the
@@ -37312,7 +37343,7 @@ final class AppState: ObservableObject {
     /// cancel; a chat that wasn't notes nothing.
     func raiseVoiceCancelledTurn(sessionId: String, to generation: Int?, wasRunning: Bool) {
         guard wasRunning, let generation, generation > (voiceCancelledTurns[sessionId] ?? Int.min) else { return }
-        voiceCancelledTurns[sessionId] = generation
+        noteVoiceCancelledTurn(sessionId: sessionId, generation: generation)
     }
 
     /// What Voice hears of the stream event being handled, given the turn
@@ -37345,7 +37376,10 @@ final class AppState: ObservableObject {
         let notes = voiceCancelledTurns.filter { $0.key == activeSessionId || eventBelongsToActiveSession($0.key) }
         guard let cancelled = notes.values.max() else { return event }
         guard generation <= cancelled else {
-            notes.keys.forEach { voiceCancelledTurns[$0] = nil }
+            notes.keys.forEach {
+                voiceCancelledTurns[$0] = nil
+                voiceCancelNoteWrites[$0] = nil
+            }
             return event
         }
         if case .completed = event { return .interrupted(sessionID: event.sessionID) }
