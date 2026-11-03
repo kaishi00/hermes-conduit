@@ -725,7 +725,7 @@ final class VoiceConversationController: ObservableObject {
         // Manual Interrupt proceeds on the attempt regardless of the
         // cancellation result: the local turn retirement below already
         // re-opened the listening window.
-        if turnStillRunning { _ = await interrupt() }
+        if turnStillRunning { await cancelRetiredTurn() }
         // The interruption is a real re-entrant async boundary (Hermes
         // cancellation/recovery), and the sheet can close while it is in
         // flight — stop() then advances the generation and tears the session
@@ -1405,7 +1405,7 @@ final class VoiceConversationController: ObservableObject {
                 awaitedAssistantResponseStarted = false
                 endSteerBookkeeping()
                 endApprovalNotice()
-                _ = await interrupt()
+                await cancelRetiredTurn()
                 guard isCurrent(generation) else { return }
                 playback.stop()
                 await startListening()
@@ -2075,7 +2075,7 @@ final class VoiceConversationController: ObservableObject {
         // The barge-in proceeds on the attempt: its local recovery (stop
         // playback, retire the turn, relisten) does not depend on the
         // server-side cancellation result.
-        if turnStillRunning { _ = await interrupt() }
+        if turnStillRunning { await cancelRetiredTurn() }
         // Cancellation is re-checked after the await: the suspension may have
         // engaged while the interruption was in flight, and reopening capture
         // now would hear the assistant's own speaker output.
@@ -2083,6 +2083,16 @@ final class VoiceConversationController: ObservableObject {
         guard isCurrent(generation) else { return }
         guard !isPlaybackCaptureSuspended else { return }
         await startListening(includePreRoll: true)
+    }
+
+    /// Cancels a turn an intentional stop (talking over, Interrupt,
+    /// CarPlay's Stop, a spoken Stop) already retired. The stop proceeds on
+    /// the attempt; when the cancel fails the turn may still be running, so
+    /// it is kept as an orphan and the next submission cancels it first, as
+    /// after a suspension, so its late reply is never taken as the new one.
+    private func cancelRetiredTurn() async {
+        guard !(await interrupt()), isVoiceSessionActive else { return }
+        suspendedInFlightTurnOrphaned = true
     }
 
     /// A spoken End Conversation phrase consumed the utterance locally: the
