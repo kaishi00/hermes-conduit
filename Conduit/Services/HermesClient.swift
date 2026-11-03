@@ -3428,13 +3428,19 @@ final class HermesClient: ObservableObject {
         return SessionRedirectOutcome(gatewayStatus: result.objectValue?["status"]?.stringValue)
     }
 
-    func cancel(_ sessionId: String, profile: String? = nil) async throws {
+    /// Returns the turn the interrupt named, by its execution generation:
+    /// after a `stale_generation` refusal that is the one Hermes gave on
+    /// reading the chat again, which can be newer than the one this socket
+    /// had. Nil on `hermes dashboard`, which numbers no turns.
+    @discardableResult
+    func cancel(_ sessionId: String, profile: String? = nil) async throws -> Int? {
         // Nil: no turn is running, so there is nothing to stop.
         _ = try await turnControl("session.interrupt", sessionId: sessionId, profile: profile)
         // Stopped: the stopped turn ends right after, and a send then starts
         // as soon as it does, so it reads as a turn of its own rather than
         // waiting on an end this socket may never see.
         authorityRunningSessions.remove(sessionId)
+        return speaksSessionAuthority ? executionGenerations[sessionId] : nil
     }
 
     /// A steer, redirect or interrupt of the running turn. The authority

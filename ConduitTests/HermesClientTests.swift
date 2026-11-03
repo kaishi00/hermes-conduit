@@ -2077,6 +2077,36 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testCancelNamesTheTurnItStopped() async throws {
+        let (client, socket) = try await authorityClient()
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "message.start", "session_id": "sess-1", "execution_generation": 5]
+        ], to: socket)
+        var count = socket.sentTexts.count
+        var stop = Task<Int?, Error> { try await client.cancel("sess-1") }
+        let first = try await answerRequest(on: socket, after: count, method: "session.interrupt", result: [:])
+        XCTAssertEqual(first["execution_generation"] as? Int, 5)
+        let stopped = try await awaitResult(of: stop, "the interrupt")
+        XCTAssertEqual(stopped, 5)
+
+        // A turn this socket never saw start: the stale refusal reads the
+        // chat again, and the cancel names the turn it stopped there.
+        count = socket.sentTexts.count
+        stop = Task<Int?, Error> { try await client.cancel("sess-1") }
+        try await answerRequest(on: socket, after: count, method: "session.interrupt", error: [
+            "code": 4001, "message": "stale_generation", "data": ["reason": "stale_generation"]
+        ])
+        try await answerRequest(on: socket, after: count + 1, method: "session.resume", result: [
+            "session_id": "sess-1", "running": true, "execution_generation": 9, "revision": 3
+        ])
+        let retried = try await answerRequest(on: socket, after: count + 2, method: "session.interrupt", result: [:])
+        XCTAssertEqual(retried["execution_generation"] as? Int, 9)
+        let restopped = try await awaitResult(of: stop, "the second interrupt")
+        XCTAssertEqual(restopped, 9)
+        client.disconnect()
+    }
+
     func testEventsNameTheirTurnWhileDeliveredAndTheRunningTurnIsKnown() async throws {
         let (client, socket) = try await authorityClient()
         var seen: [Int?] = []

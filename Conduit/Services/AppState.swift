@@ -4862,7 +4862,8 @@ final class AppState: ObservableObject {
                 let noteBeforeCancel = open.flatMap { self.voiceCancelledTurns[$0] }
                 if let open { self.noteRunningTurnBeforeCancel(in: open) }
                 do {
-                    try await client.cancel(sessionID, profile: self.presentationProfile(for: sessionID))
+                    let stopped = try await client.cancel(sessionID, profile: self.presentationProfile(for: sessionID))
+                    if let open { self.raiseVoiceCancelledTurn(sessionId: open, to: stopped) }
                 } catch {
                     if let open { self.voiceCancelledTurns[open] = noteBeforeCancel }
                     throw error
@@ -30435,7 +30436,8 @@ final class AppState: ObservableObject {
             if let interrupt = chatResumeLifecycleOperations.interrupt {
                 try await interrupt(client, sessionId)
             } else {
-                try await client.cancel(sessionId, profile: presentationProfile(for: sessionId))
+                let stopped = try await client.cancel(sessionId, profile: presentationProfile(for: sessionId))
+                raiseVoiceCancelledTurn(sessionId: sessionId, to: stopped)
             }
             guard isCurrentOrAliasedComposerSubmission(currentContext) else { return false }
             return true
@@ -37300,6 +37302,16 @@ final class AppState: ObservableObject {
         voiceCancelledTurns[sessionId] = generation
     }
 
+    /// The turn a cancel actually stopped. A stale generation makes the
+    /// cancel read the chat again and stop the turn Hermes names there,
+    /// which can be newer than the one noted before it (a turn this socket
+    /// never saw start), so the note follows it. Only a noted turn is
+    /// raised: a chat that wasn't running notes nothing.
+    func raiseVoiceCancelledTurn(sessionId: String, to generation: Int?) {
+        guard let generation, let noted = voiceCancelledTurns[sessionId], generation > noted else { return }
+        voiceCancelledTurns[sessionId] = generation
+    }
+
     /// Whether the stream event being handled belongs to the turn that was
     /// cancelled (or an earlier one), by the execution generation it names,
     /// so Voice doesn't hear it; an event of a later turn ends the watch.
@@ -37321,13 +37333,14 @@ final class AppState: ObservableObject {
         case .started, .delta, .interim: break
         case .completed, .failed, .interrupted: return false
         }
-        guard let generation = handledStreamEventGeneration,
-              let chat = voiceCancelledTurns.keys.first(where: {
-                  $0 == activeSessionId || eventBelongsToActiveSession($0)
-              }),
-              let cancelled = voiceCancelledTurns[chat] else { return false }
+        guard let generation = handledStreamEventGeneration else { return false }
+        // The open chat can hold a note under each of its ids (Voice's
+        // cancel names the open chat, the composer's its runtime id): the
+        // newest one counts, and a later turn ends them all.
+        let notes = voiceCancelledTurns.filter { $0.key == activeSessionId || eventBelongsToActiveSession($0.key) }
+        guard let cancelled = notes.values.max() else { return false }
         guard generation <= cancelled else {
-            voiceCancelledTurns[chat] = nil
+            notes.keys.forEach { voiceCancelledTurns[$0] = nil }
             return false
         }
         return true

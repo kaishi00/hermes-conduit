@@ -441,6 +441,59 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertEqual(events, [.delta(sessionID: "runtime-a", text: "next")])
     }
 
+    /// The open chat can hold a note under each of its ids: the newest
+    /// counts, and a later turn ends them all.
+    func testVoiceHoldsByTheNewestNoteAmongTheChatsIds() {
+        let state = makeAppState()
+        state.sessions = [SessionSummary(
+            id: "stored-a", alternateIds: ["runtime-a"], title: "stored-a", model: "Hermes",
+            updatedLabel: "now", profile: "default", source: .chat, isActive: false,
+            isArchived: false, lineageRootId: nil
+        )]
+        state.activeSessionId = "stored-a"
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 2)
+        state.noteVoiceCancelledTurn(sessionId: "runtime-a", generation: 5)
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "older"), turnGeneration: 2)
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "straggler"), turnGeneration: 5)
+        XCTAssertEqual(events, [], "Held by the newest note, whichever id it is under")
+
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "next"), turnGeneration: 6)
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "older again"), turnGeneration: 2)
+        XCTAssertEqual(events, [
+            .delta(sessionID: "runtime-a", text: "next"),
+            .delta(sessionID: "runtime-a", text: "older again")
+        ], "The next turn ends every note the chat had")
+    }
+
+    /// A cancel that read the chat again (a stale generation) stopped the
+    /// turn Hermes named there: the note follows it, and only a noted chat
+    /// is raised.
+    func testVoiceNoteFollowsTheTurnTheCancelStopped() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 4)
+        state.raiseVoiceCancelledTurn(sessionId: "stored-a", to: 9)
+        state.raiseVoiceCancelledTurn(sessionId: "stored-a", to: 6)
+        state.raiseVoiceCancelledTurn(sessionId: "stored-a", to: nil)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "stopped turn"), turnGeneration: 9)
+        XCTAssertEqual(events, [], "Raised to the stopped turn, never lowered")
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "next"), turnGeneration: 10)
+        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "next")])
+
+        events.removeAll()
+        state.raiseVoiceCancelledTurn(sessionId: "stored-a", to: 12)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "unnoted"), turnGeneration: 12)
+        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "unnoted")], "A chat with no note is not noted")
+    }
+
     /// A gateway frame as HermesClient hands it to AppState.
     private func frame(_ json: String) throws -> StreamEvent {
         let data = try XCTUnwrap(json.data(using: .utf8))
