@@ -137,8 +137,10 @@ final class RichChecklistMemory: ObservableObject {
             await send(entry, key: key, context: context)
             return
         }
+        // A tick made while the read was on its way is newer than its answer.
+        let before = entries.mapValues(\.at)
         guard let ticks = try? await context.read() else { return }
-        apply(ticks, scope: context.scope)
+        apply(ticks, scope: context.scope, unchangedSince: before)
     }
 
     func toggle(_ text: String, card: RichCard, key: String, context: RichChecklistContext?) {
@@ -201,9 +203,10 @@ final class RichChecklistMemory: ObservableObject {
         }
     }
 
-    private func apply(_ ticks: [String: [String]], scope: String) {
+    private func apply(_ ticks: [String: [String]], scope: String, unchangedSince: [String: Date]? = nil) {
         for (key, items) in ticks {
             let id = Self.id(scope, key)
+            if let unchangedSince, entries[id]?.at != unchangedSince[id] { continue }
             var entry = entries[id] ?? Entry(ticked: [], at: .now, unsent: false, items: [], title: "")
             guard !entry.unsent else { continue }
             let ticked = Set(items.map { $0.lowercased() })

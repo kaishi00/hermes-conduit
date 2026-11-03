@@ -38,10 +38,12 @@ struct RichTable: Equatable, Hashable {
     static func sortNumber(_ cell: String) -> Double? {
         let scalars = Array(cell.unicodeScalars)
         guard let first = scalars.firstIndex(where: { CharacterSet.decimalDigits.contains($0) }) else { return nil }
-        guard !scalars[..<first].contains(where: { CharacterSet.letters.contains($0) }) else { return nil }
+        let before = scalars[..<first]
+        guard !before.contains(where: { CharacterSet.letters.contains($0) }) else { return nil }
         var text = ""
         var index = first
-        if first > 0, scalars[first - 1] == "-" || scalars[first - 1] == "\u{2212}" { text = "-" }
+        // A sign or accounting brackets anywhere before it: "-4.5", "-$4.5M", "($4.5M)".
+        if before.contains(where: { $0 == "-" || $0 == "\u{2212}" || $0 == "(" }) { text = "-" }
         while index < scalars.count {
             let scalar = scalars[index]
             if CharacterSet.decimalDigits.contains(scalar) || scalar == "." {
@@ -228,7 +230,8 @@ struct RichBoard: Equatable {
             ?? 0
         guard given > 0 || !cards.isEmpty else { return nil }
         if cards.count < given, let markdown {
-            return RichBoard(cards: [], tabs: false, followUps: [], markdown: markdown)
+            return RichBoard(cards: [], tabs: false, followUps: RichCardSchema.followUps(answer?["next"]),
+                             markdown: markdown)
         }
         guard !cards.isEmpty else {
             // An older plugin's answer has no Markdown: nothing to draw.
@@ -238,13 +241,15 @@ struct RichBoard: Equatable {
                          followUps: RichCardSchema.followUps(answer?["next"]), markdown: markdown)
     }
 
-    /// The newest board in the turn that's last, when it has follow-ups:
-    /// nothing has been sent since, so a tap asks the next question.
+    /// The last turn's last board, when it has follow-ups: nothing has
+    /// been sent since, so a tap asks the next question. A board shown after
+    /// it without follow-ups means there are none to offer.
     static func followUpRow(in rows: [ChatMessage]) -> String? {
         for row in rows.reversed() {
             if row.role == .user { return nil }
-            guard row.role == .tool, let tool = row.tool, tool.name.lowercased() == RichCard.toolName else { continue }
-            if let board = board(for: tool), !board.followUps.isEmpty { return row.id }
+            guard row.role == .tool, let tool = row.tool, tool.name.lowercased() == RichCard.toolName,
+                  let board = board(for: tool) else { continue }
+            return board.followUps.isEmpty ? nil : row.id
         }
         return nil
     }

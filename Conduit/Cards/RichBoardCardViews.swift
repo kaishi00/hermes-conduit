@@ -33,6 +33,10 @@ struct RichBoardLayout: View {
                 RichCardView(card: cards[min(selected, cards.count - 1)])
                     .id(cards[min(selected, cards.count - 1)])
             }
+            // A live update with fewer cards leaves the last one picked.
+            .onChange(of: cards.count) { _, count in
+                if selected >= count { selected = max(count - 1, 0) }
+            }
         } else {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(Array(Self.rows(cards, wide: sizeClass == .regular).enumerated()), id: \.offset) { _, row in

@@ -55,6 +55,9 @@ extension AppStateVoiceCapabilityTests {
         let board = try XCTUnwrap(RichBoard.board(for: boardTool(answer)))
         XCTAssertTrue(board.cards.isEmpty, "never part of a board")
         XCTAssertEqual(board.markdown, "## Trip\n\n- Day 1: Valley")
+        var withNext = answer
+        withNext["next"] = ["Add a day"]
+        XCTAssertEqual(RichBoard.board(for: try boardTool(withNext))?.followUps, ["Add a day"], "the text keeps its follow-ups")
 
         let message = ChatMessage(id: "m1", role: .tool, content: "", timestamp: "2026-11-03T22:00:00Z",
                                   tool: try boardTool(answer))
@@ -76,6 +79,9 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(RichBoard.followUpRow(in: [asked, board, reply]), "b1")
         let next = ChatMessage(id: "u2", role: .user, content: "Add Google", timestamp: "2026-11-03T22:01:00Z")
         XCTAssertNil(RichBoard.followUpRow(in: [asked, board, reply, next]), "something was sent since")
+        let plain: [String: Any] = ["ok": true, "cards": [["type": "callout", "callout": ["text": "Done."]]]]
+        let later = ChatMessage(id: "b2", role: .tool, content: "", timestamp: "2026-11-03T22:00:02Z", tool: try boardTool(plain, id: "t2"))
+        XCTAssertNil(RichBoard.followUpRow(in: [asked, board, later]), "only the turn's last board offers them")
     }
 
     func testATableSortsNumbersByValueWithBlanksLast() throws {
@@ -98,6 +104,8 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(RichTable.sortNumber("512GB"), 512e9)
         XCTAssertEqual(RichTable.sortNumber("3TB"), 3e12)
         XCTAssertEqual(RichTable.sortNumber("3 kg"), 3)
+        XCTAssertEqual(RichTable.sortNumber("-$4.5M"), -4.5e6)
+        XCTAssertEqual(RichTable.sortNumber("($4.5M)"), -4.5e6)
         XCTAssertEqual(table.sorted(by: 5, ascending: true), table.rows, "a sort kept from a wider table changes nothing")
         XCTAssertFalse(table.isNumeric(5))
     }
