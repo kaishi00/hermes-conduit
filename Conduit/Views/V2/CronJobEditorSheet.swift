@@ -136,16 +136,7 @@ struct CronJobEditorSheet: View {
     }
 
     private var botChoiceSection: some View {
-        Section {
-            Picker(AppLocalization.string("When it runs"), selection: $botActs) {
-                Text(AppLocalization.string("Just show it")).tag(false)
-                Text(AppLocalization.string("Let the bot act on it")).tag(true)
-            }
-        } footer: {
-            Text(botActs
-                 ? AppLocalization.string("The bot reads each report, acts on what needs it and answers in its Bot Chat. Each run costs a reply from its model.")
-                 : AppLocalization.string("Each report shows in the bot's Bot Chat as it is, with no reply. The bot sees it the next time you write."))
-        }
+        CronBotChoiceSection(botActs: $botActs)
     }
 
     private func seed() async {
@@ -474,8 +465,33 @@ struct CronBlueprintGallerySheet: View {
             blueprints = try await appState.loadCronBlueprints()
             // Only widens the delivery choices; the blueprint's own stay.
             targets = (try? await appState.loadCronDeliveryTargets()) ?? []
+            // Whether a blueprint delivered to a Bot Chat offers "When it
+            // runs", when the Cron tab hasn't read it yet.
+            if !appState.offersCronBotChatChoice, appState.supportsCronBotChatReports {
+                await appState.refreshCronNotifications()
+            }
         } catch {
             self.error = UserFacingError.message(for: error)
+        }
+    }
+}
+
+/// A Bot Chat job's "When it runs": Just show it (no turn, the default)
+/// or Let the bot act on it (Hermes' turn). The editor's and a
+/// blueprint's.
+struct CronBotChoiceSection: View {
+    @Binding var botActs: Bool
+
+    var body: some View {
+        Section {
+            Picker(AppLocalization.string("When it runs"), selection: $botActs) {
+                Text(AppLocalization.string("Just show it")).tag(false)
+                Text(AppLocalization.string("Let the bot act on it")).tag(true)
+            }
+        } footer: {
+            Text(botActs
+                 ? AppLocalization.string("The bot reads each report, acts on what needs it and answers in its Bot Chat. Each run costs a reply from its model.")
+                 : AppLocalization.string("Each report shows in the bot's Bot Chat as it is, with no reply. The bot sees it the next time you write."))
         }
     }
 }
@@ -491,6 +507,13 @@ private struct CronBlueprintForm: View {
     @State private var values: [String: String] = [:]
     @State private var isSaving = false
     @State private var error: String?
+    /// "Let the bot act on it", for a blueprint delivered to a Bot Chat.
+    @State private var botActs = false
+
+    /// A Bot Chat delivery offers "When it runs", as the editor does.
+    private var offersBotChoice: Bool {
+        appState.offersCronBotChatChoice && CronDeliveryTarget.deliversToBotChat(values["deliver"] ?? "")
+    }
 
     init(blueprint: CronBlueprint, targets: [CronDeliveryTarget], onCreated: @escaping (CronJob?) -> Void) {
         self.blueprint = blueprint
@@ -525,6 +548,9 @@ private struct CronBlueprintForm: View {
                         Text(verbatim: field.help)
                     }
                 }
+            }
+            if offersBotChoice {
+                CronBotChoiceSection(botActs: $botActs)
             }
         }
         .scrollDismissesKeyboard(.interactively)
@@ -621,7 +647,23 @@ private struct CronBlueprintForm: View {
         Task {
             defer { isSaving = false }
             do {
+                let profile = appState.activeProfile
+                let acts = offersBotChoice && botActs
                 let job = try await appState.instantiateCronBlueprint(blueprint, values: values)
+                // A new job just shows by default, so only "act" is sent.
+                if acts {
+                    do {
+                        guard let id = job?.id else { throw HermesError.invalidResponse }
+                        try await appState.setCronJobLetsBotAct(true, jobID: id, profile: profile)
+                    } catch {
+                        // The job is made, so the form closes (a second
+                        // Create would make it twice); the banner says what wasn't.
+                        Haptics.mutationCompleted(false)
+                        appState.errorMessage = AppLocalization.string("The job is saved, but not whether the bot acts on it: \(UserFacingError.message(for: error))")
+                        onCreated(job)
+                        return
+                    }
+                }
                 Haptics.mutationCompleted(true)
                 onCreated(job)
             } catch {
