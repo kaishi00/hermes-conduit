@@ -37372,13 +37372,13 @@ final class AppState: ObservableObject {
     /// turns, so on `hermes dashboard` nothing is noted or held.
     ///
     /// The words are held (`.started`, `.delta`, `.interim`), and the
-    /// turn's end reaches Voice as `.interrupted`, which is what the turn
-    /// was: a conversation still waiting on it (stopped from the chat, not
-    /// by Voice) is released without speaking or writing the reply the user
-    /// stopped, and one already waiting on the next question ignores it
-    /// until that question's reply starts. Its failure reaches Voice the
-    /// same way, so it never fails a conversation already waiting on the
-    /// next question.
+    /// turn's end (or its failure) reaches Voice as an end with no words: a
+    /// conversation still waiting on it (stopped from the chat, not by
+    /// Voice) finishes what it already said and listens again, as after any
+    /// reply, without speaking or writing the rest the user stopped; one
+    /// already waiting on the next question ignores it until that
+    /// question's reply starts, so the stopped turn never fails or ends
+    /// that wait.
     private func takeVoiceEventAfterCancel(_ event: VoiceAssistantEvent) -> VoiceAssistantEvent? {
         switch event {
         case .started, .delta, .interim, .completed, .failed: break
@@ -37398,7 +37398,7 @@ final class AppState: ObservableObject {
             return event
         }
         switch event {
-        case .completed, .failed: return .interrupted(sessionID: event.sessionID)
+        case .completed, .failed: return .completed(sessionID: event.sessionID, content: nil)
         default: return nil
         }
     }

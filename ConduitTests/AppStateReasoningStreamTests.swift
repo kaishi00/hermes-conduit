@@ -323,20 +323,20 @@ final class AppStateReasoningStreamTests: XCTestCase {
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "older turn"), turnGeneration: 3)
         XCTAssertEqual(events, [], "The cancelled turn's words never reach Voice")
 
-        // Its end does, as what it was: a conversation still waiting on that
-        // turn (stopped from the chat) is released by it without speaking
-        // the reply the user stopped; one waiting on the next question
-        // ignores it until that reply starts.
+        // Its end does, with no words: a conversation still waiting on that
+        // turn (stopped from the chat) finishes and listens again without
+        // speaking the rest the user stopped; one waiting on the next
+        // question ignores it until that reply starts.
         state.handleStreamEvent(.messageInterrupted(sessionId: "stored-a"), turnGeneration: 4)
         XCTAssertEqual(events, [.interrupted(sessionID: "stored-a")])
         events.removeAll()
         state.handleStreamEvent(.messageComplete(
             sessionId: "stored-a", messageId: nil, content: "late words and the rest", reasoning: nil
         ), turnGeneration: 4)
-        XCTAssertEqual(events, [.interrupted(sessionID: "stored-a")], "The stopped reply is never spoken from its end")
+        XCTAssertEqual(events, [.completed(sessionID: "stored-a", content: nil)], "An end with no words: the stopped reply is never spoken from it")
         events.removeAll()
         state.handleStreamEvent(.messageError(sessionId: "stored-a", message: "Provider error"), turnGeneration: 4)
-        XCTAssertEqual(events, [.interrupted(sessionID: "stored-a")], "Its failure never fails the next question's wait")
+        XCTAssertEqual(events, [.completed(sessionID: "stored-a", content: nil)], "Its failure never fails the next question's wait")
 
         events.removeAll()
         state.handleStreamEvent(.messageStart(sessionId: "stored-a"), turnGeneration: 5)
