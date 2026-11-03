@@ -69,7 +69,7 @@ struct BotWorkSettingsView: View {
             Toggle(AppLocalization.string("Coordinate Work"), isOn: binding(\.isOnSetting))
         } footer: {
             Text(settings.isOn
-                ? AppLocalization.string("\(botName) starts a chat of its own for each task, works on it in the background, and tells you in its Bot Chat when it’s done.")
+                ? AppLocalization.string("\(botName) starts a chat of its own for longer tasks, works on them in the background, and tells you in its Bot Chat when they’re done.")
                 : AppLocalization.string("\(botName) does everything in its Bot Chat itself. Work that’s already running carries on."))
         }
         if settings.isOn {
@@ -244,13 +244,5 @@ struct BotWorkSettingsView: View {
             saveFailed = true
             settings = old
         }
-    }
-}
-
-private extension BotWorkSettings {
-    /// The toggle's view of the policy: turning it on comes back strict.
-    var isOnSetting: Bool {
-        get { isOn }
-        set { policy = newValue ? (policy == .off ? .strict : policy) : .off }
     }
 }

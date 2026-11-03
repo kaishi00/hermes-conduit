@@ -422816,90 +422816,90 @@
         }
       }
     },
-    "%@ starts a chat of its own for each task, works on it in the background, and tells you in its Bot Chat when it’s done.": {
+    "%@ starts a chat of its own for longer tasks, works on them in the background, and tells you in its Bot Chat when they’re done.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ startet für jede Aufgabe einen eigenen Chat, arbeitet im Hintergrund daran und sagt dir im Bot-Chat, wenn sie fertig ist."
+            "value": "%@ startet für längere Aufgaben einen eigenen Chat, arbeitet im Hintergrund daran und sagt dir im Bot-Chat, wenn sie fertig sind."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ starts a chat of its own for each task, works on it in the background, and tells you in its Bot Chat when it’s done."
+            "value": "%@ starts a chat of its own for longer tasks, works on them in the background, and tells you in its Bot Chat when they’re done."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ abre un chat propio para cada tarea, trabaja en ella en segundo plano y te avisa en su chat de bot cuando termina."
+            "value": "%@ abre un chat propio para las tareas más largas, trabaja en ellas en segundo plano y te avisa en su chat de bot cuando terminan."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ ouvre une discussion à part pour chaque tâche, y travaille en arrière-plan et vous prévient dans sa discussion de bot quand c’est fini."
+            "value": "%@ ouvre une discussion à part pour les tâches plus longues, y travaille en arrière-plan et vous prévient dans sa discussion de bot quand c’est fini."
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ memulai obrolan sendiri untuk setiap tugas, mengerjakannya di latar belakang, dan memberi tahu Anda di Obrolan Bot-nya saat selesai."
+            "value": "%@ memulai obrolan sendiri untuk tugas yang lebih panjang, mengerjakannya di latar belakang, dan memberi tahu Anda di Obrolan Bot-nya saat selesai."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ apre una chat a parte per ogni attività, ci lavora in background e ti avvisa nella sua chat del bot quando ha finito."
+            "value": "%@ apre una chat a parte per le attività più lunghe, ci lavora in background e ti avvisa nella sua chat del bot quando ha finito."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@はタスクごとに専用のチャットを開いてバックグラウンドで作業し、終わるとボットチャットで知らせます。"
+            "value": "%@は時間のかかるタスクには専用のチャットを開いてバックグラウンドで作業し、終わるとボットチャットで知らせます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@이(가) 작업마다 별도의 채팅을 열어 백그라운드에서 처리하고, 끝나면 봇 채팅에서 알려 줘요."
+            "value": "%@이(가) 오래 걸리는 작업은 별도의 채팅을 열어 백그라운드에서 처리하고, 끝나면 봇 채팅에서 알려 줘요."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ zaczyna osobny czat dla każdego zadania, pracuje nad nim w tle i daje znać w czacie z botem, gdy skończy."
+            "value": "%@ zaczyna osobny czat dla dłuższych zadań, pracuje nad nimi w tle i daje znać w czacie z botem, gdy skończy."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ abre um chat próprio para cada tarefa, trabalha nela em segundo plano e avisa no Chat de Bot quando termina."
+            "value": "%@ abre um chat próprio para tarefas mais longas, trabalha nelas em segundo plano e avisa no Chat de Bot quando terminam."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ открывает отдельный чат для каждой задачи, работает над ней в фоне и сообщает в чате с ботом, когда всё готово."
+            "value": "%@ открывает отдельный чат для задач подольше, работает над ними в фоне и сообщает в чате с ботом, когда всё готово."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ her görev için kendi sohbetini açar, arka planda üzerinde çalışır ve bitince Bot Sohbeti’nde size söyler."
+            "value": "%@ uzun görevler için kendi sohbetini açar, arka planda üzerinde çalışır ve bitince Bot Sohbeti’nde size söyler."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 会为每项任务单独开一个聊天，在后台处理，完成后在其 Bot Chat 中告诉你。"
+            "value": "%@ 会为较长的任务单独开一个聊天，在后台处理，完成后在其 Bot Chat 中告诉你。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 會為每項任務另開一個聊天，在背景處理，完成後在機器人聊天中告訴你。"
+            "value": "%@ 會為較長的任務另開一個聊天，在背景處理，完成後在機器人聊天中告訴你。"
           }
         }
       }

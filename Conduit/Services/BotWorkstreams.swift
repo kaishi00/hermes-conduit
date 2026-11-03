@@ -486,7 +486,15 @@ struct BotWorkSettings: Equatable {
 
     var isOn: Bool { policy != .off }
 
-    init(policy: Policy = .strict, maxRunning: Int = 2, maxRunningLimit: Int = 6,
+    /// Edit Bot > Work's Coordinate Work toggle: turning it on comes back
+    /// with lookups, the plugin's default (Eric 2026-11-03); a policy
+    /// already on stays as it is.
+    var isOnSetting: Bool {
+        get { isOn }
+        set { policy = newValue ? (policy == .off ? .lookups : policy) : .off }
+    }
+
+    init(policy: Policy = .lookups, maxRunning: Int = 2, maxRunningLimit: Int = 6,
          afterRestart: AfterRestart = .continue, approvals: Approvals = .chats,
          chatApprovals: String = "manual", workstreamModel: Model? = nil, unavailable: String? = nil) {
         self.policy = policy
