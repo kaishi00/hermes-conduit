@@ -267,9 +267,9 @@ struct BotPortraitCell<MenuContent: View>: View {
                 appState.dismissSidebarDrawer()
                 // This chat grows out of this portrait (BotZoomDestination),
                 // unless it opens beside the list, or doesn't open.
-                appState.botZoomArmed = openBeside == nil ? bot.name : nil
+                if openBeside == nil { appState.botZoom.tap(bot.name) }
                 Task {
-                    if await !appState.openBotChat(for: bot) { appState.botZoomArmed = nil }
+                    if await !appState.openBotChat(for: bot) { appState.botZoom.openFailed(bot.name) }
                 }
             } label: {
                 VStack(spacing: 8) {
@@ -677,23 +677,61 @@ struct BotZoomDestination: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
-        if #available(iOS 18.0, *),
-           let bot = Self.zoomingBot(route: route, fromHome: fromHome, open: appState.activeBotChatProfile,
-                                     tapped: appState.botZoomArmed, reduceMotion: reduceMotion) {
+        if #available(iOS 18.0, *), route == .conversation, fromHome, !reduceMotion,
+           let bot = appState.botZoom.source(open: appState.activeBotChatProfile) {
             content.navigationTransition(.zoom(sourceID: bot, in: namespace))
         } else {
             content
         }
     }
+}
 
-    /// The bot whose portrait the chat grows from, or nil for the usual
-    /// push: only the Bot Chat of the portrait just tapped, pushed on Bots
-    /// Home itself, never one a notification, widget, Shortcut or link
-    /// opened, and nothing under Reduce Motion.
-    static func zoomingBot(route: V2Route, fromHome: Bool, open: String?, tapped: String?,
-                           reduceMotion: Bool) -> String? {
-        guard route == .conversation, fromHome, !reduceMotion, let open, let tapped,
-              open.caseInsensitiveCompare(tapped) == .orderedSame else { return nil }
-        return open
+/// Which Bot Chat grows out of its portrait. A portrait's tap arms it for a
+/// few seconds; the push that follows takes it, and it lasts while that
+/// chat is in the Bots stack, so Back shrinks it home. A Bot Chat a
+/// notification, widget, Shortcut, call or link opens finds nothing armed
+/// and pushes as usual, and so does any open once the arm has gone stale.
+struct BotZoomArm: Equatable {
+    /// How long a tap waits for its chat to be pushed.
+    static let window: TimeInterval = 3
+
+    private(set) var tapped: String?
+    private(set) var tappedAt: Date?
+    /// The bot whose chat is in the Bots stack, grown from its portrait.
+    private(set) var zooming: String?
+
+    mutating func tap(_ name: String, now: Date = Date()) {
+        tapped = name
+        tappedAt = now
+    }
+
+    /// Its open failed: only this tap's arm goes.
+    mutating func openFailed(_ name: String) {
+        guard tapped == name else { return }
+        tapped = nil
+        tappedAt = nil
+    }
+
+    /// The Bots stack now shows `open`'s chat: a fresh arm for it zooms it
+    /// until it leaves; otherwise nothing does.
+    mutating func pushed(open: String?, now: Date = Date()) {
+        zooming = source(open: open, now: now)
+        tapped = nil
+        tappedAt = nil
+    }
+
+    /// The chat left the Bots stack, or closed.
+    mutating func left() {
+        self = BotZoomArm()
+    }
+
+    /// The portrait id `open`'s chat grows from, or nil for the usual push.
+    /// The portrait's own name, as its source is keyed.
+    func source(open: String?, now: Date = Date()) -> String? {
+        guard let open else { return nil }
+        if let zooming, zooming.caseInsensitiveCompare(open) == .orderedSame { return zooming }
+        guard let tapped, let tappedAt, now.timeIntervalSince(tappedAt) < Self.window,
+              tapped.caseInsensitiveCompare(open) == .orderedSame else { return nil }
+        return tapped
     }
 }

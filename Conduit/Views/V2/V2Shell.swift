@@ -954,8 +954,12 @@ struct V2Shell: View {
                     }
             }
             // The tapped portrait's chat has left: the next open pushes.
-            .onChange(of: botsPath) { _, path in
-                if !path.contains(.conversation) { appState.botZoomArmed = nil }
+            .onChange(of: botsPath) { old, path in
+                if path == [.conversation], !old.contains(.conversation) {
+                    appState.botZoom.pushed(open: appState.activeBotChatProfile)
+                } else if !path.contains(.conversation) {
+                    appState.botZoom.left()
+                }
             }
         case .settings:
             // Settings puts the clearance inside its own stack, on its home
@@ -1131,7 +1135,7 @@ struct V2Shell: View {
     }
 
     private func closeConversation() {
-        appState.botZoomArmed = nil
+        appState.botZoom.left()
         switch selectedTab {
         case .chats:
             if chatsPath.last == .conversation { chatsPath.removeLast() }
