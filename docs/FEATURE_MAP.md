@@ -254,9 +254,9 @@ kept as a call's (see Bot workstreams) · `docs/VOICE_BACKGROUND_JOBS.md`
 - Job lists (list_jobs, Classic's status, GPT-Live's status note): `Conduit/Voice/VoiceBackgroundJobs.swift` (listedJobs), `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (listResult); the Watch's: `Shared/WatchVoice/WatchJobRelay.swift` (listing), `ConduitWatch/WatchDirectCallModel.swift` (apply, for the iPhone's answer), `Conduit/Watch/WatchDirectBroker.swift` (listedJobs; result, for the jobs the iPhone runs), `Shared/WatchVoice/WatchVoiceWire.swift` (DirectToolResult.newsJobs), `notifier/dashboard/api/watch_jobs.py` (_WatchJobs.list)
 - Watch: `Shared/WatchVoice/WatchJobRelay.swift` (notice), `ConduitWatch/WatchDirectCallModel.swift` (checkNewsSpoken, answer, lostAnswerText), `ConduitWatch/WatchBridgeCallModel.swift` (checkNewsSpoken), `Conduit/Watch/WatchDirectBroker.swift` (lateAnswers, jobRefusal)
 - Notifier (Watch relay jobs): `notifier/dashboard/api/watch_jobs.py`
-- The bot's registry (on the `bot-workstreams` branches): `Conduit/Voice/VoiceBackgroundJobs.swift` (`keepInRegistry`, once Hermes takes the job's request), notifier watch_jobs.py `_keep_in_registry`
+- The bot's registry: `Conduit/Voice/VoiceBackgroundJobs.swift` (`keepInRegistry`, once Hermes takes the job's request), `notifier/dashboard/api/watch_jobs.py` (`_keep_in_registry`)
 - Background time: `Conduit/Services/BackgroundTaskHold.swift` (the Watch broker's tool and poll answers)
-- Across a relaunch (on the `bot-workstreams` branch, M5b): `Conduit/Voice/SavedVoiceJob.swift`, `Conduit/Voice/VoiceBackgroundJobs.swift` (`savedLedger`, `restore`, `restoredJobBelongsToThisCall`, `VoiceBackgroundJob.callChatIDs` and `isRestored`, `VoiceBackgroundJobBackend.saveLedger`), `Conduit/Services/AppState.swift` (`voiceJobLedgerKey`, `saveVoiceJobLedger`, `scheduleVoiceJobLedgerRestore`)
+- Across a relaunch (M5b): `Conduit/Voice/SavedVoiceJob.swift`, `Conduit/Voice/VoiceBackgroundJobs.swift` (`savedLedger`, `restore`, `restoredJobBelongsToThisCall`, `VoiceBackgroundJob.callChatIDs` and `isRestored`, `VoiceBackgroundJobBackend.saveLedger`), `Conduit/Services/AppState.swift` (`voiceJobLedgerKey`, `saveVoiceJobLedger`, `scheduleVoiceJobLedgerRestore`)
 
 **Rulings**
 - A result never talks over the user: it waits for a quiet moment, and the model answers what the user just said first (2026-10-04, #381).
@@ -1658,7 +1658,7 @@ Hermes' local-chat note) · Watch and CarPlay (not needed: no transcript
 cards) · notifier README.md's Cron jobs delivered to a Bot Chat
 
 **Code**
-- Notifier, on its `bot-workstreams` branch (plain text until it reaches main): cron_bot_chat.py (install, show, the note's HEADER, annotate for the cron tool), cron_store.py (act, set_act, lets_act), dashboard/api/notifications.py (`act` and `shows_reports` on /cron/notifications), dashboard/api/capabilities.py (cron-bot-chat-reports), __init__.py (install, _transform_tool_result)
+- Notifier: `notifier/cron_bot_chat.py` (install, show, the note's HEADER, annotate for the cron tool), `notifier/cron_store.py` (act, set_act, lets_act), `notifier/dashboard/api/notifications.py` (`act` and `shows_reports` on /cron/notifications), `notifier/dashboard/api/capabilities.py` (cron-bot-chat-reports), `notifier/__init__.py` (install, _transform_tool_result)
 - App: `Conduit/Services/CronNotifications.swift` (Choices with showsReports, choices, setActs), `Conduit/Services/AppState+CronNotifications.swift` (supportsCronBotChatReports, offersCronBotChatChoice, cronJobLetsBotAct, setCronJobLetsBotAct), `Conduit/Views/V2/CronJobEditorSheet.swift` (CronBotChoiceSection, deliversToBotChat, the editor's save, CronBlueprintForm's choice and create), `Conduit/Views/CronReportCard.swift` (CronBotChatReport, CronReportCard), `Conduit/Views/ChatView.swift` (the card in a system row)
 - Tests: notifier tests/test_cron_bot_chat.py and tests/test_cron_notifications.py; `ConduitTests/GatewayRestartTests+CronNotifications.swift` (testABotChatJobsChoiceIsReadSentAndOptional, testABotChatReportReadsAsTheJobAndItsReport)
 
@@ -2121,12 +2121,12 @@ ref (W1, W2), and hears back when one finishes, fails, waits on the user or
 has something ready for them to look at.
 It's on for every bot until the user turns it off, in Edit Bot > Work or with
 `hermes -p <bot> conduit-push work off`. It's
-being built on the `bot-workstreams` branches (M0, notifier #484; M1
+built on the `bot-workstreams` branches (M0, notifier #484; M1
 from notifier #490, #491, #493, #495, #497 and #498; M2, the app's Work
 panel, from notifier #499 and #1619; M3, Edit Bot > Work, from notifier
 #509 and #1649; M4, workstreams that read each other and work in worktrees,
 from notifier #510 and #1656; M5a, a voice call's jobs kept in the registry,
-from notifier #511, #512 and #1657), so none of it is on either main yet.
+from notifier #511, #512 and #1657). It reached both mains on 2026-11-03 (#1701, notifier #519, plugin 0.127.0).
 
 **Siblings:** the Bot Chat (the work tools, offered only there and only
 with workstreams on; its policy, strict or lookups, holding its tools and a
@@ -2198,7 +2198,7 @@ restart always left for the user; `POST /workstreams/adopt` and the
 screens (not built)
 
 **Code**
-- Notifier, on its `bot-workstreams` branch (plain text until it reaches main): work_store.py (the registry, conduit/workstreams.db in the bot's home), work_broker.py (Hermes' session API in the dashboard's process), work_tool.py (the tools, the policy, the hooks' work, the note and the updates), __init__.py (the hook calls), cli.py (`work`), tests/test_work.py, upstream/test_bot_work.py
+- Notifier: `notifier/work_store.py` (the registry, conduit/workstreams.db in the bot's home), `notifier/work_broker.py` (Hermes' session API in the dashboard's process), `notifier/work_tool.py` (the tools, the policy, the hooks' work, the note and the updates), `notifier/__init__.py` (the hook calls), `notifier/cli.py` (`work`), `notifier/tests/test_work.py`, `notifier/upstream/test_bot_work.py`
 - Notifier routes: dashboard/api/workstreams.py (`GET /workstreams`, `?resolved=1&before=` for the Resolved list, `POST /workstreams/<ref>/<action>`, `GET` and `POST /workstreams/settings`), work_tool.py's `app_list`, `app_act` and `_app_manage_act` (pin, unpin, resolve, reopen; acting through the copy Hermes loaded for the bot, `copy_for`), `app_settings` and `app_set_settings`
 - Workers that know about each other (M4): work_tool.py (`_worker_read`, `WORKER_READS`; `_start`'s `same_repo` and `worktree`; `_worktree_back`, `_tidy_worktree`; `branch` in `_app_row`), work_trees.py (Hermes' own subagent worktree module, reused), upstream/test_bot_work.py (`test_a_workstreams_worktree_is_hermes_own`); the branch line in `Conduit/Views/BotWorkViews.swift` (`BotWorkRow.branchLine`) and `BotWorkItem.branch`
 - A call's jobs (M5a): work_tool.py (`adopt`, `call_start_failed`, `_with_unsent_brief` for a call's job, `_from_call`, `_call_job` and the public `turn_started`/`turn_ended`/`turn_finished` wrappers; `_recover_one` for call jobs; the digest's call line), work_store.py (`CALL_VIA`, `_FROM_CALL`, out of `_RUNNING` and `session_ids`), dashboard/api/workstreams.py (`POST /workstreams/adopt`, `POST /workstreams/call-ended`), work_tool.py's `call_ended` and the call hold (`_call_on`, `_check_call_hold`, `_release_call_lines`), dashboard/api/voice_calls.py (`_call_left_chat`), dashboard/api/watch_jobs.py (`_keep_in_registry`, from `_start_session`, and `_registry_start_failed`), dashboard/api/capabilities.py (`work-adopt`, `work-call-ended`); `Conduit/Voice/VoiceBackgroundJobs.swift` (`VoiceBackgroundJobBackend.keepInRegistry` and `callLeftChat`, from `detachLiveThread`; `sendToCallWorkstream`, which `startJob` asks first; `VoiceBackgroundJobSupervisor.stoppedFromWorkPanel`), `Conduit/Services/AppState+BotWorkstreams.swift` (`keepVoiceJobInRegistry`, `voiceCallLeftChat`, `sendCallRequestToWorkstream` and `workstreamCallSent` for a workstream's call, `adoptOnce`, `sameDashboard`, `voiceJobAdoptVia`, and `actOnWorkstream`'s Stop on a call's row), `Conduit/Services/BotWorkstreams.swift` (`BotWorkstreamsClient.adopt` and `callEnded`, `BotWorkItem.fromCall`, `BotWorkItem.startedInCall`, `BotWorkItem.call`, and `BotWorkSnapshot.sessionIDs` and `item(forSession:)` leaving call rows out), `BotWorkRow.fromCallLine` A Bot Chat call's reports: VoiceBackgroundJobs.swift (`noteUnownedChatTurn`, `noteChatReport`, `askedFor`, `noteTurnStart`, `turnAsked` and `lastTakenPrompt`, `workUpdatesOut` with `takeNotice`'s work-update branch and `returnUndeliveredNotice`, `queueWorkUpdate`, `linkTextOnly`, `workUpdates`, `VoiceBackgroundJobBackend.isBotChat`, `threadAwaitsSeveralPrompts` and `openThreadMessages`), VoiceConversationController.swift (`receiveAssistantEvent`, `lastOwnReply`), AppState.swift (`isBotChat`, `threadAwaitsSeveralPrompts`, `openThreadMessages`).
@@ -2208,7 +2208,7 @@ screens (not built)
 - Design: designs/bot-mode-coordinator (project files)
 
 **Rulings**
-- Built on the `bot-workstreams` branches, tested apart from public TestFlight, and never merged to main until Eric says so (2026-10-31, notifier #484, Eric).
+- Built on the `bot-workstreams` branches, tested apart from public TestFlight, and merged to main when Eric said so (2026-10-31, notifier #484; merged 2026-11-03, #1701 and notifier #519, Eric).
 - Each bot's Bot Chat coordinates its own work; bots ask each other rather than one coordinator for all (2026-10-31, Eric).
 - The model names work by ref only: a session id appears only inside the link, and a ref from another bot's registry names nothing (2026-10-31, notifier #484).
 - On for every bot (strict, as M0's comparison picked) until the user turns it off, in Edit Bot > Work or with `work off` (design E, M3; notifier #509). A registry that can't be read holds the Bot Chat to strict rather than freeing it (2026-10-31, notifier #484's review).
