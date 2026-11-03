@@ -514,15 +514,12 @@ struct V2VoiceButton: View {
         isStarting = true
         Task { @MainActor in
             defer { isStarting = false }
-            let previous = appState.activeSessionId
             appState.beginOpeningBotChat(bot.name)
             let opened = await appState.openBotChat(for: bot)
             appState.endOpeningBotChat(bot.name)
-            guard opened else {
-                // A newer navigation took over: not a failure, and not this chat.
-                if appState.activeSessionId == previous { reportCouldNotOpen() }
-                return
-            }
+            // A failed open says why itself; a superseded one (a newer
+            // navigation took over) is no failure, so nothing more is said.
+            guard opened else { return }
             await startVoice(
                 PendingVoiceIntent(profile: appState.activeProfile, startsFreshConversation: false, source: .composer)
             )
