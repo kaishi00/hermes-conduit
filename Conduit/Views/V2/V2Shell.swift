@@ -422,6 +422,8 @@ struct V2Shell: View {
     /// never idle, so a reopened chat is in the path from the start.
     @State private var chatsPath: [V2Route] = []
     @State private var botsPath: [V2Route] = []
+    /// Bots Home's portraits and the Bot Chats they open (BotZoomSource).
+    @Namespace private var botZoom
     /// The custom bar keeps a tab alive once it has been opened, so its
     /// scroll position and pushed screens survive switching away.
     @State private var visitedTabs: Set<V2Tab> = [.chats, .bots]
@@ -940,8 +942,13 @@ struct V2Shell: View {
             }
         case .bots:
             NavigationStack(path: $botsPath) {
+                // A Bot Chat grows out of its portrait (BotZoomDestination).
                 listRoot(tabBarClearance(V2BotsView()), alone: canSplit)
-                    .navigationDestination(for: V2Route.self) { destination($0, alone: canSplit) }
+                    .environment(\.botZoomNamespace, botZoom)
+                    .navigationDestination(for: V2Route.self) { route in
+                        destination(route, alone: canSplit)
+                            .modifier(BotZoomDestination(route: route, namespace: botZoom))
+                    }
             }
         case .settings:
             // Settings puts the clearance inside its own stack, on its home

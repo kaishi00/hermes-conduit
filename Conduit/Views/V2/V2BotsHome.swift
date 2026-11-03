@@ -359,6 +359,7 @@ struct BotPortraitCell<MenuContent: View>: View {
         return BotMonogramView(bot: bot, size: 72)
             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             .padding(4)
+            .modifier(BotZoomSource(name: bot.name))
             .overlay {
                 Circle()
                     .strokeBorder(ringed ? Color.conduitAccent : color.opacity(0.85),
@@ -618,6 +619,58 @@ struct BotReorderSheet: View {
                     Button(AppLocalization.string("Done")) { dismiss() }
                 }
             }
+        }
+    }
+}
+
+// MARK: - Portrait to chat
+
+/// The namespace a Bots Home portrait and the Bot Chat it opens share, so
+/// the chat grows out of the portrait (iOS 18's zoom) and Back shrinks it
+/// back in. Nil outside the Bots stack, and split, where the chat opens
+/// beside the list rather than over it.
+private struct BotZoomNamespaceKey: EnvironmentKey {
+    static let defaultValue: Namespace.ID? = nil
+}
+
+extension EnvironmentValues {
+    var botZoomNamespace: Namespace.ID? {
+        get { self[BotZoomNamespaceKey.self] }
+        set { self[BotZoomNamespaceKey.self] = newValue }
+    }
+}
+
+/// The portrait the chat grows from: a circle, keyed by its bot.
+struct BotZoomSource: ViewModifier {
+    let name: String
+    @Environment(\.botZoomNamespace) private var namespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *), let namespace, !reduceMotion {
+            content.matchedTransitionSource(id: name, in: namespace) { source in
+                source.clipShape(Circle())
+            }
+        } else {
+            content
+        }
+    }
+}
+
+/// A Bot Chat pushed in the Bots stack: it zooms from its bot's portrait.
+/// Any other page, a plain session, or Reduce Motion: the usual push.
+struct BotZoomDestination: ViewModifier {
+    let route: V2Route
+    let namespace: Namespace.ID
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *), route == .conversation, !reduceMotion,
+           let bot = appState.activeBotChatProfile {
+            content.navigationTransition(.zoom(sourceID: bot, in: namespace))
+        } else {
+            content
         }
     }
 }
