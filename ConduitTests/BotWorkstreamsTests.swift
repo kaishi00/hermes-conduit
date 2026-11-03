@@ -649,10 +649,15 @@ extension BotModeTests {
         XCTAssertNil(arm.source(open: "furina", now: now), "a notification or widget opened it")
         arm.tap("Furina", now: now)
         XCTAssertEqual(arm.source(open: "furina", now: now), "Furina", "the portrait's own id")
-        XCTAssertNil(arm.source(open: "atlas", now: now))
+        // The shell pushes before the open lands, while the chat open
+        // before is still the active one (build 248).
+        XCTAssertEqual(arm.source(open: "atlas", now: now), "Furina", "pushed before it lands")
         XCTAssertNil(arm.source(open: "furina", now: now.addingTimeInterval(BotZoomArm.window + 1)), "stale")
-        arm.pushed(open: "furina", now: now.addingTimeInterval(0.5))
+        arm.pushed(open: "atlas", now: now.addingTimeInterval(0.5))
+        XCTAssertEqual(arm.source(open: "atlas", now: now.addingTimeInterval(1)), "Furina", "not landed yet")
+        arm.opened("furina")
         XCTAssertEqual(arm.source(open: "furina", now: now.addingTimeInterval(60)), "Furina", "Back shrinks it home")
+        XCTAssertNil(arm.source(open: "atlas", now: now.addingTimeInterval(61)), "another chat opened in its place")
         arm.left()
         XCTAssertNil(arm.source(open: "furina", now: now))
         // A failed open drops only its own arm.
@@ -661,6 +666,12 @@ extension BotModeTests {
         XCTAssertEqual(arm.source(open: "atlas", now: now), "Atlas")
         arm.openFailed("Atlas")
         XCTAssertNil(arm.source(open: "atlas", now: now))
+        // A push whose open then fails zooms no more.
+        arm.tap("Atlas", now: now)
+        arm.pushed(open: "furina", now: now)
+        arm.openFailed("Atlas")
+        XCTAssertNil(arm.source(open: "furina", now: now))
+        arm.left()
         // A push with a stale arm zooms nothing, then or later.
         arm.tap("Atlas", now: now)
         arm.pushed(open: "atlas", now: now.addingTimeInterval(BotZoomArm.window + 1))

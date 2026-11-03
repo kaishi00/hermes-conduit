@@ -953,6 +953,10 @@ struct V2Shell: View {
                                                          fromHome: botsPath.first == .conversation))
                     }
             }
+            // The tapped portrait's chat lands after the push (#1700).
+            .onChange(of: appState.activeBotChatProfile) { _, open in
+                appState.botZoom.opened(open)
+            }
             // The tapped portrait's chat has left: the next open pushes.
             .onChange(of: botsPath) { old, path in
                 if path == [.conversation], !old.contains(.conversation) {
