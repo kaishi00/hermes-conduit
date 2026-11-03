@@ -177,20 +177,53 @@ enum BotDragPayload {
 /// setting, in Edit Bot.
 enum BotPortraitStatus: Equatable {
     case needsYou(Int)
+    /// Answering another bot's ask (an open ask_in), by that bot's name.
+    case helping(String)
     case working(Int)
+    /// Its own ask to another bot is unanswered (an ask_out waiting).
+    case waitingOn(String)
     case idle
 
+    /// What needs the user first, then helping another bot, its own work,
+    /// and waiting on another bot.
     static func of(_ snapshot: BotWorkSnapshot?) -> BotPortraitStatus {
         guard let snapshot, snapshot.isOn else { return .idle }
         if snapshot.needsYouCount > 0 { return .needsYou(snapshot.needsYouCount) }
+        if let ask = snapshot.items.first(where: {
+            $0.kind == .askIn && !$0.isClosed && ["starting", "running"].contains($0.status) && !$0.otherBot.isEmpty
+        }) {
+            return .helping(ask.otherBot)
+        }
         if snapshot.workingCount > 0 { return .working(snapshot.workingCount) }
+        if let ask = snapshot.items.first(where: {
+            $0.kind == .askOut && !$0.isClosed && $0.status == "waiting" && !$0.otherBot.isEmpty
+        }) {
+            return .waitingOn(ask.otherBot)
+        }
         return .idle
+    }
+
+    /// The other bot of a hand-off, by the name it had when it asked.
+    var otherBot: String? {
+        switch self {
+        case .helping(let name), .waitingOn(let name): return name
+        default: return nil
+        }
+    }
+
+    /// That bot among `bots`, by its name or the profile's; nil once it's
+    /// renamed or gone.
+    func otherBot(in bots: [BotProfile]) -> BotProfile? {
+        guard let name = otherBot else { return nil }
+        return bots.first { $0.displayLabel == name || $0.name.caseInsensitiveCompare(name) == .orderedSame }
     }
 
     var title: String {
         switch self {
         case .needsYou(let count): return AppLocalization.string("\(count) needs you")
+        case .helping(let name): return AppLocalization.string("Helping \(name)")
         case .working(let count): return AppLocalization.string("\(count) working")
+        case .waitingOn(let name): return AppLocalization.string("Waiting on \(name)")
         case .idle: return AppLocalization.string("Overview")
         }
     }
@@ -198,15 +231,17 @@ enum BotPortraitStatus: Equatable {
     var tint: Color {
         switch self {
         case .needsYou: return .orange
-        case .working: return .conduitAccent
-        case .idle: return .secondary
+        case .helping, .working: return .conduitAccent
+        case .waitingOn, .idle: return .secondary
         }
     }
 
     var symbol: String? {
         switch self {
         case .needsYou: return "exclamationmark.circle.fill"
+        case .helping: return "arrowshape.turn.up.left.fill"
         case .working: return "arrow.triangle.2.circlepath"
+        case .waitingOn: return "hourglass"
         case .idle: return nil
         }
     }
@@ -383,7 +418,8 @@ struct BotPortraitCell<MenuContent: View>: View {
                 color: mergeReady ? Color.conduitAccent : color,
                 highlighted: ringed,
                 animates: animates,
-                finishedAt: finishedAt
+                finishedAt: finishedAt,
+                askerColor: askerColor(status)
             ))
             .scaleEffect(mergeReady ? 1.1 : 1)
             // Held over, not yet merging: a bar where the dragged bot will
@@ -424,6 +460,17 @@ struct BotPortraitCell<MenuContent: View>: View {
                 }
             }
             .overlay(alignment: .topTrailing) {
+                // Waiting on another bot: its face on the badge.
+                if case .waitingOn = status, finishedAt == nil,
+                   let other = status.otherBot(in: appState.shownBotRoster) {
+                    BotMonogramView(bot: other, size: 24)
+                        .dynamicTypeSize(.large)
+                        .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2))
+                        .offset(x: 2, y: -2)
+                        .accessibilityHidden(true)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
                 if case .needsYou(let count) = status {
                     Image(systemName: "exclamationmark")
                         .font(.system(size: 12, weight: .heavy))
@@ -438,6 +485,11 @@ struct BotPortraitCell<MenuContent: View>: View {
                         .accessibilityHidden(true)
                 }
             }
+    }
+
+    private func askerColor(_ status: BotPortraitStatus) -> Color? {
+        guard case .helping = status, let asker = status.otherBot(in: appState.shownBotRoster) else { return nil }
+        return BotAvatarView.color(for: asker.appearanceColor, name: asker.name)
     }
 
     private func isNeedsYou(_ status: BotPortraitStatus) -> Bool {
@@ -541,6 +593,10 @@ struct BotOverviewSheet: View {
     /// overview is its chat and its artifacts.
     private var showsWork: Bool { appState.servesBotWorkstreams }
 
+    private var headerStatus: BotPortraitStatus {
+        showsWork ? .of(work.snapshot(profile)) : .idle
+    }
+
     private var shown: Section { showsWork ? section : .artifacts }
 
     var body: some View {
@@ -595,12 +651,17 @@ struct BotOverviewSheet: View {
                     // The same life as its portrait on Bots Home.
                     BotMonogramView(bot: bot, size: 52)
                         .modifier(BotPortraitMotion(
-                            status: showsWork ? .of(work.snapshot(profile)) : .idle,
+                            status: headerStatus,
                             color: BotAvatarView.color(for: bot.appearanceColor, name: bot.name),
                             highlighted: false,
                             animates: scenePhase == .active && !reduceMotion
                                 && !ProcessInfo.processInfo.isLowPowerModeEnabled,
-                            finishedAt: nil
+                            finishedAt: nil,
+                            askerColor: {
+                                guard case .helping = headerStatus,
+                                      let asker = headerStatus.otherBot(in: appState.shownBotRoster) else { return nil }
+                                return BotAvatarView.color(for: asker.appearanceColor, name: asker.name)
+                            }()
                         ))
                 } else {
                     ProfileAvatarView(profile: profile, displayName: botName,
@@ -819,6 +880,8 @@ struct BotPortraitMotion: ViewModifier {
     let highlighted: Bool
     let animates: Bool
     let finishedAt: Date?
+    /// Helping another bot: that bot's color, a stripe in the comet.
+    var askerColor: Color? = nil
 
     /// One lap of the working comet.
     static let lap: Double = 6
@@ -828,11 +891,17 @@ struct BotPortraitMotion: ViewModifier {
     static let ripple: Double = 1.2
     static let finishShown: Duration = .milliseconds(1600)
 
-    private var isWorking: Bool { if case .working = status { return true } else { return false } }
+    private var isWorking: Bool {
+        switch status {
+        case .working, .helping: return true
+        default: return false
+        }
+    }
     private var isNeedsYou: Bool { if case .needsYou = status { return true } else { return false } }
+    private var isWaiting: Bool { if case .waitingOn = status { return true } else { return false } }
 
     func body(content: Content) -> some View {
-        let moving = animates && (isWorking || isNeedsYou || finishedAt != nil)
+        let moving = animates && (isWorking || isNeedsYou || isWaiting || finishedAt != nil)
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !moving)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             // 0 to 1 and back, once a breath.
@@ -868,15 +937,7 @@ struct BotPortraitMotion: ViewModifier {
                 Circle().strokeBorder(color.opacity(0.35), lineWidth: 2)
                 Circle()
                     .strokeBorder(
-                        AngularGradient(
-                            gradient: Gradient(stops: [
-                                .init(color: color.opacity(0), location: 0),
-                                .init(color: color.opacity(0), location: 0.55),
-                                .init(color: color, location: 0.97),
-                                .init(color: color.opacity(0), location: 1),
-                            ]),
-                            center: .center
-                        ),
+                        AngularGradient(gradient: Gradient(stops: cometStops), center: .center),
                         lineWidth: 3
                     )
                     .rotationEffect(lap)
@@ -884,9 +945,28 @@ struct BotPortraitMotion: ViewModifier {
             }
         } else if isWorking {
             Circle().strokeBorder(color, lineWidth: 2.5)
+        } else if isWaiting {
+            // Slow dashes: it waits on another bot, whose face is on the
+            // badge. They creep round while Bots Home shows.
+            Circle()
+                .inset(by: 1)
+                .stroke(color.opacity(0.85), style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [5, 6],
+                                                                dashPhase: animates ? -lap.degrees / 9 : 0))
         } else {
             Circle().strokeBorder(color.opacity(0.45), lineWidth: 2)
         }
+    }
+
+    /// The comet's tail: the bot's color, led by the asking bot's when it
+    /// helps another.
+    private var cometStops: [Gradient.Stop] {
+        guard let askerColor else {
+            return [.init(color: color.opacity(0), location: 0), .init(color: color.opacity(0), location: 0.55),
+                    .init(color: color, location: 0.97), .init(color: color.opacity(0), location: 1)]
+        }
+        return [.init(color: askerColor.opacity(0), location: 0), .init(color: askerColor.opacity(0), location: 0.5),
+                .init(color: askerColor, location: 0.8), .init(color: color, location: 0.96),
+                .init(color: color.opacity(0), location: 1)]
     }
 
     @ViewBuilder

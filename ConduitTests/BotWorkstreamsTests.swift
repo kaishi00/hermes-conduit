@@ -695,4 +695,29 @@ extension BotModeTests {
         XCTAssertEqual(BotPortraitStatus.of(nil), .idle)
         XCTAssertEqual(BotPortraitStatus.idle.title, AppLocalization.string("Overview"))
     }
+
+    /// Hand-offs between bots: answering another bot's ask comes before its
+    /// own work, and an unanswered ask of its own shows when nothing else
+    /// does; a closed or answered one shows nothing.
+    func testThePortraitSaysWhoItHelpsAndWhoItWaitsOn() throws {
+        var response = workResponse()
+        response["counts"] = ["working": 1, "needs_you": 0, "ready": 0, "waiting": 1]
+        var rows = response["work"] as? [[String: Any]] ?? []
+        rows.append(["ref": "A2", "kind": "ask_in", "status": "running", "title": "Trip", "bot": "Hermes"])
+        response["work"] = rows
+        let helping = BotPortraitStatus.of(BotWorkSnapshot(response: response, profile: "furina"))
+        XCTAssertEqual(helping, .helping("Hermes"))
+        XCTAssertEqual(helping.title, AppLocalization.string("Helping \("Hermes")"))
+        // No ask in and no work of its own: waiting on Nahida (A1).
+        rows = rows.filter { $0["ref"] as? String != "A2" }
+        rows.append(["ref": "A3", "kind": "ask_in", "status": "done", "title": "Old", "bot": "Hermes"])
+        response["work"] = rows
+        response["counts"] = ["working": 0, "needs_you": 0, "ready": 0, "waiting": 1]
+        let waiting = BotPortraitStatus.of(BotWorkSnapshot(response: response, profile: "furina"))
+        XCTAssertEqual(waiting, .waitingOn("Nahida"))
+        XCTAssertEqual(waiting.otherBot, "Nahida")
+        // Its own work comes before waiting.
+        response["counts"] = ["working": 2, "needs_you": 0, "ready": 0, "waiting": 1]
+        XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: response, profile: "furina")), .working(2))
+    }
 }
