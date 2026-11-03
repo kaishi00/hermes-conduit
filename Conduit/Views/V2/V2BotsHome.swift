@@ -277,6 +277,8 @@ struct BotPortraitCell<MenuContent: View>: View {
     @State private var mergeReady = false
     @State private var dwell: Task<Void, Never>?
     @Environment(\.scenePhase) private var scenePhase
+    /// Low Power Mode as it changes, so the motion stops when it turns on.
+    @ObservedObject private var devicePower = DevicePowerState.shared
     /// When the bot last finished something (its ready count went up),
     /// for the ripple; nil once it has settled.
     @State private var finishedAt: Date?
@@ -501,7 +503,7 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// hasn't asked for less motion or for Low Power Mode.
     private var animates: Bool {
         shell.isTabActive && scenePhase == .active && !reduceMotion
-            && !ProcessInfo.processInfo.isLowPowerModeEnabled
+            && !devicePower.isLowPowerModeEnabled
     }
 
     /// A result came back (the bot's ready count went up): one ripple and a
@@ -566,6 +568,8 @@ struct BotOverviewSheet: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    /// Low Power Mode as it changes, so the motion stops when it turns on.
+    @ObservedObject private var devicePower = DevicePowerState.shared
     @ObservedObject var work: BotWorkStore
     let profile: String
     /// Edit Bot, for a bot that can be edited here; nil hides it.
@@ -655,7 +659,7 @@ struct BotOverviewSheet: View {
                             color: BotAvatarView.color(for: bot.appearanceColor, name: bot.name),
                             highlighted: false,
                             animates: scenePhase == .active && !reduceMotion
-                                && !ProcessInfo.processInfo.isLowPowerModeEnabled,
+                                && !devicePower.isLowPowerModeEnabled,
                             finishedAt: nil,
                             askerColor: { () -> Color? in
                                 guard case .helping = headerStatus,
