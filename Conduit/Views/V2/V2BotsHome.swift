@@ -155,7 +155,7 @@ struct BotsTalkingRoomsReader: ViewModifier {
         content.task(id: "\(shown)\u{1F}\(appState.isConnected)\u{1F}\(appState.groupRoomsListed)") {
             guard shown else { return }
             while !Task.isCancelled {
-                await appState.refreshTalkingRooms()
+                await appState.refreshTalkingRoomsIfDue(every: Self.every)
                 try? await Task.sleep(for: Self.every)
             }
         }
@@ -429,12 +429,13 @@ struct BotPortraitCell<MenuContent: View>: View {
                     onToggleRoom()
                     return
                 }
-                appState.dismissSidebarDrawer()
+                appState.beginOpeningBotChat(bot.name)
                 // This chat grows out of this portrait (BotZoomDestination),
                 // unless it opens beside the list, or doesn't open.
                 if openBeside == nil { appState.botZoom.tap(bot.name) }
                 Task {
                     if await !appState.openBotChat(for: bot) { appState.botZoom.openFailed(bot.name) }
+                    appState.endOpeningBotChat(bot.name)
                 }
             } label: {
                 VStack(spacing: 8) {
@@ -772,11 +773,11 @@ struct BotOverviewSheet: View {
         .presentationDragIndicator(.visible)
         // Opened from a Bot Chat too, where Bots Home doesn't ask, so the
         // header's "In <room>" doesn't go stale (a read already running
-        // from Bots Home is shared).
+        // from Bots Home this round is shared).
         .task(id: scenePhase == .active) {
             guard scenePhase == .active else { return }
             while !Task.isCancelled {
-                await appState.refreshTalkingRooms()
+                await appState.refreshTalkingRoomsIfDue(every: BotsTalkingRoomsReader.every)
                 try? await Task.sleep(for: BotsTalkingRoomsReader.every)
             }
         }

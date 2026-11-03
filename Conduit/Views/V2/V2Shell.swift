@@ -1090,7 +1090,8 @@ struct V2Shell: View {
     private func openConversation() {
         let target = V2Tab.conversationTab(
             selected: selectedTab,
-            isBotsChat: appState.activeBotChatProfile != nil || appState.activeWorkstream != nil,
+            isBotsChat: appState.activeBotChatProfile != nil || appState.activeWorkstream != nil
+                || appState.botChatOpening != nil,
             fromBotsPage: botsPath.last == .pulse || botsPath.last == .artifacts
         )
         switch target {

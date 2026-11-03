@@ -678,6 +678,27 @@ extension BotModeTests {
         XCTAssertEqual(V2Tab.conversationTab(selected: .chats, isBotsChat: false, fromBotsPage: true), .chats)
     }
 
+    /// A Bot Chat opened from a list of bots (a portrait, the overview's
+    /// Chat, a row) says so before the list closes: the shell routes the
+    /// chat then, before it lands, whatever chat was open before.
+    @MainActor
+    func testABotChatOpeningFromBotsSaysSoUntilItsOpenEnds() throws {
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.showSidebar = true
+        appState.beginOpeningBotChat("chef")
+        XCTAssertEqual(appState.botChatOpening, "chef")
+        XCTAssertFalse(appState.showSidebar)
+        // A newer open of another bot keeps its own mark.
+        appState.beginOpeningBotChat("coach")
+        appState.endOpeningBotChat("chef")
+        XCTAssertEqual(appState.botChatOpening, "coach")
+        appState.endOpeningBotChat("coach")
+        XCTAssertNil(appState.botChatOpening)
+    }
+
     /// A portrait's Overview pill: what needs the user first, then what's
     /// working, else just Overview, and Overview while work is off.
     func testThePortraitPillSaysWhatNeedsYouFirst() throws {

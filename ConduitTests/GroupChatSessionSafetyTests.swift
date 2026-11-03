@@ -1315,8 +1315,19 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         XCTAssertEqual(box.asked.count, AppState.talkingRoomsRead)
         XCTAssertTrue(appState.talkingRoomIDs.isEmpty)
 
+        // Bots Home and an overview asking in the same round read once.
+        box.asked = []
+        await appState.refreshTalkingRoomsIfDue(every: .seconds(12))
+        await appState.refreshTalkingRoomsIfDue(every: .seconds(12))
+        XCTAssertEqual(box.asked.count, AppState.talkingRoomsRead)
+
         appState.isConnected = false
         await appState.refreshTalkingRooms()
         XCTAssertTrue(appState.talkingRoomIDs.isEmpty)
+        // Back, it's asked at once rather than after the round.
+        appState.isConnected = true
+        box.asked = []
+        await appState.refreshTalkingRoomsIfDue(every: .seconds(12))
+        XCTAssertEqual(box.asked.count, AppState.talkingRoomsRead)
     }
 }
