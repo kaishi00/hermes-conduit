@@ -1703,13 +1703,13 @@ drawn as work cards under it, and the workstream refs a Bot Chat reply names in 
 **Rulings**
 - The touch that mounts a reply's text view is routed to it laid out, so it finds the link under the finger; a link never needs a second tap (2026-10-26, #1303, carried in #1311).
 - A file path in a reply is a `conduit://file` link, drawn as a link, that opens the Folder at that file; only inside the app (2026-10-27, #1399).
-- A reply's "[Open W3](conduit://session/…)" link to a workstream leaves its words and becomes a work card under it, a button (one tap, VoiceOver and Switch Control as any button, so no long-press Open Link); the rest of the reply stays as written (2026-11-01, #1637, Eric's Gridania test).
+- A reply's "[Open W3](conduit://session/…)" link to a workstream leaves its words and becomes a work card under it, a button (one tap, VoiceOver and Switch Control as any button, so no long-press Open Link); the rest of the reply stays as written (2026-11-01, #1637, Eric's Gridania test). Hermes Desktop's `@session:` reference the plugin puts right after it (Desktop's chip for the workstream) goes with it; any other reference stays (2026-11-03, #1710, notifier #526).
 - A workstream ref a Bot Chat reply names in its words ("W50 found …") becomes a link to that workstream's chat in place, once the bot's work list has it; never inside code, a link (its text or address), a URL, a path or a file name. Only the drawn text changes: Copy and Read Aloud keep the reply's own words (Eric 2026-11-03: the coordinator should link its work; #1677).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1677 (on `bot-workstreams`: the workstream refs a Bot Chat reply names linked in place); 2026-11-01, #1637 (a reply's links to its workstreams drawn as work cards); 2026-10-31, #1596 (table cells with a link are always on the drawn-until-touched path); 2026-10-30, #1535 (table cells join the drawn-until-touched path once selection is on); 2026-10-29, #1491 (a room's pictures open in the picture viewer); 2026-10-27, #1399 (file paths); #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
+**Checked:** 2026-11-03, #1710 (a work link's Desktop reference goes with it into the card); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1677 (on `bot-workstreams`: the workstream refs a Bot Chat reply names linked in place); 2026-11-01, #1637 (a reply's links to its workstreams drawn as work cards); 2026-10-31, #1596 (table cells with a link are always on the drawn-until-touched path); 2026-10-30, #1535 (table cells join the drawn-until-touched path once selection is on); 2026-10-29, #1491 (a room's pictures open in the picture viewer); 2026-10-27, #1399 (file paths); #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
 
 ## Markdown lists in messages
 
