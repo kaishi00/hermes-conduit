@@ -431,13 +431,17 @@ struct BotRosterView: View {
     private var newRoomBar: some View {
         let bots = newRoomBots
         return HStack(spacing: 12) {
-            HStack(spacing: -8) {
+            HStack(spacing: -22) {
                 ForEach(bots) { bot in
                     Button {
                         toggleNewRoom(bot)
                     } label: {
                         BotMonogramView(bot: bot, size: 30)
                             .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2))
+                            // A 44 pt target; the next face's sits on top
+                            // where they overlap, as the faces do.
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text(AppLocalization.string("Take \(bot.displayLabel) out")))
@@ -500,8 +504,9 @@ struct BotRosterView: View {
             },
             delete: { pendingDelete = bot },
             startRoom: createRequest == nil || bot.isHiddenByMeta ? nil : {
+                // Into the room being started, if there is one.
                 withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
-                    newRoom = [bot.name]
+                    if !isInNewRoom(bot.name) { addToNewRoom(bot.name) }
                 }
             },
             reorder: createRequest == nil ? nil : { showingReorder = true }

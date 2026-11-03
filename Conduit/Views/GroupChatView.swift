@@ -1377,9 +1377,15 @@ struct GroupCreateSheet: View {
         appState.orderedBots(appState.botRoster).filter { !$0.isHiddenByMeta }
     }
 
+    /// The picked bots still listed: one hidden or deleted while the sheet
+    /// is open can't be unticked, so it never counts.
+    private var pickedNames: Set<String> {
+        selected.intersection(visibleBots.map(\.name))
+    }
+
     private var canCreate: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && selected.count >= 2 && selected.count <= GroupRoomLimits.maxMembers
+            && pickedNames.count >= 2 && pickedNames.count <= GroupRoomLimits.maxMembers
             && !isCreating
     }
 
@@ -1427,7 +1433,7 @@ struct GroupCreateSheet: View {
                         let roomName = name
                         let inputs = GroupCreateAttempt.Inputs(
                             name: roomName.trimmingCharacters(in: .whitespacesAndNewlines),
-                            members: selected
+                            members: pickedNames
                         )
                         roomID = GroupCreateAttempt.roomID(
                             for: inputs, current: roomID, attempted: attemptedInputs

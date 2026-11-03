@@ -122,8 +122,7 @@ struct BotPortraitDrag<Preview: View>: ViewModifier {
             // onDrag, not draggable: its closure runs as the drag starts,
             // so the portraits can tell which bot is lifted.
             content.onDrag {
-                BotDragPayload.lifted = name
-                return NSItemProvider(object: BotDragPayload.payload(for: name) as NSString)
+                BotDragPayload.lift(name)
             } preview: {
                 preview()
             }
@@ -142,10 +141,27 @@ enum BotDragPayload {
 
     static let prefix = "conduit-bot:"
 
-    /// The bot whose portrait was last picked up, set as its drag starts.
-    /// A drag that's cancelled leaves it set until the next one, which only
-    /// a portrait being targeted reads.
-    static var lifted: String?
+    /// The bot whose portrait is being dragged, set as its drag starts.
+    /// The drag session holds its item provider until it ends, dropped or
+    /// not, so the name counts only while that provider lives: a cancelled
+    /// drag leaves no name for a later drag from another app to borrow.
+    static var lifted: String? {
+        get { liftedProvider == nil ? nil : liftedName }
+        set {
+            liftedName = newValue
+            if newValue == nil { liftedProvider = nil }
+        }
+    }
+    private static var liftedName: String?
+    private static weak var liftedProvider: NSItemProvider?
+
+    /// Starts a portrait's drag: its item, and the name the portraits read.
+    static func lift(_ name: String) -> NSItemProvider {
+        let provider = NSItemProvider(object: payload(for: name) as NSString)
+        liftedName = name
+        liftedProvider = provider
+        return provider
+    }
 
     static func payload(for name: String) -> String { prefix + name }
 
