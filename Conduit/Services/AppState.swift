@@ -12247,6 +12247,10 @@ final class AppState: ObservableObject {
     /// The most rooms Bots Home asks after at once: the ones talked in
     /// last (`updatedAt`), so a host with many rooms isn't asked about each.
     static let talkingRoomsRead = 8
+    /// A talking room that doesn't answer stays talking for this many reads.
+    static let talkingRoomMissesKept = 3
+    /// Each room's reads in a row that failed.
+    private var talkingRoomMisses: [String: Int] = [:]
 
     /// Which hosted rooms are talking now: one `groups.state` per room
     /// (its driver's `working`), the rooms updated last first. Bots Home
@@ -12254,6 +12258,7 @@ final class AppState: ObservableObject {
     func refreshTalkingRooms() async {
         guard groupChatPhase == .available, groupRoomsListed, let client, isConnected else {
             if !talkingRoomIDs.isEmpty { talkingRoomIDs = [] }
+            talkingRoomMisses = [:]
             return
         }
         let epoch = groupRoomEpoch
@@ -12268,8 +12273,16 @@ final class AppState: ObservableObject {
             } catch is CancellationError {
                 return
             } catch {
-                if talkingRoomIDs.contains(room.roomID) { talking.insert(room.roomID) }
+                // Kept through a couple of misses, not for good.
+                let misses = (talkingRoomMisses[room.roomID] ?? 0) + 1
+                talkingRoomMisses[room.roomID] = misses
+                if talkingRoomIDs.contains(room.roomID), misses < Self.talkingRoomMissesKept {
+                    talking.insert(room.roomID)
+                }
+                guard groupRoomEpoch == epoch, self.client === client else { return }
+                continue
             }
+            talkingRoomMisses[room.roomID] = nil
             guard groupRoomEpoch == epoch, self.client === client else { return }
         }
         if talking != talkingRoomIDs { talkingRoomIDs = talking }

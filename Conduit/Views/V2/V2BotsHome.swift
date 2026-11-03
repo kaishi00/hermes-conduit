@@ -812,6 +812,19 @@ struct BotOverviewSheet: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
+                // Where it talks now, as its portrait's pill says.
+                let rooms = appState.talkingRooms(of: profile).map(\.name)
+                if !rooms.isEmpty {
+                    let inRooms = BotPortraitStatus.inRooms(rooms)
+                    Label {
+                        Text(verbatim: inRooms.title)
+                    } icon: {
+                        Image(systemName: inRooms.symbol ?? "bubble.left.and.bubble.right.fill")
+                    }
+                    .scaledFont(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.conduitAccent)
+                    .lineLimit(1)
+                }
             }
             Spacer(minLength: 4)
             if let bot, let onEdit {
