@@ -202,7 +202,7 @@ final class PulseSettingsTests: XCTestCase {
 
     func testStateDecodesThePluginsPayload() throws {
         let state = try XCTUnwrap(PulseState(json: json("""
-        {"ok": true, "enabled": true, "running": false, "stale_build": true,
+        {"ok": true, "enabled": true, "running": false, "stale_build": true, "host_problem": "hermes_too_old",
          "home_chat": {"id": "20261021_080000_abc", "title": "Pulse", "pinned": false},
          "home_problem": "pin the \\"Pulse\\" chat so pruning never removes it", "home_title": "Pulse",
          "checks": {"sent": 4, "failed": 1},
@@ -222,6 +222,7 @@ final class PulseSettingsTests: XCTestCase {
         XCTAssertTrue(state.enabled)
         XCTAssertFalse(state.running)
         XCTAssertTrue(state.staleBuild)
+        XCTAssertEqual(state.hostProblem, "hermes_too_old")
         XCTAssertEqual(state.homeChat, PulseHomeChat(id: "20261021_080000_abc", title: "Pulse", pinned: false))
         XCTAssertEqual(state.homeProblem, "pin the \"Pulse\" chat so pruning never removes it")
         XCTAssertEqual(state.checks, ["sent": 4, "failed": 1])

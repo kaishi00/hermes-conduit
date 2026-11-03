@@ -158,6 +158,10 @@ struct PulseSettingsPage: View {
                     Label(AppLocalization.string("Pulse is running on the dashboard."), systemImage: "checkmark.circle")
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
+                } else if state.hostProblem == "hermes_too_old" {
+                    Text("This Hermes is too old to run Pulse. Update Hermes, then restart the dashboard.")
+                        .scaledFont(.caption)
+                        .foregroundStyle(.orange)
                 } else {
                     Text("The dashboard isn't running Pulse. Restart it after updating the plugin.")
                         .scaledFont(.caption)
