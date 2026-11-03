@@ -21,6 +21,13 @@ struct BotRosterView: View {
     @State private var showsHiddenBots = false
     /// New Group Chat from a bot's Groups menu starts with that bot picked.
     @State private var groupSheetBot: BotProfile?
+    /// The bot whose Bot Overview shows (Bots Home's Overview pill).
+    @State private var overviewBot: BotProfile?
+    /// Edit Bot tapped in the overview: the editor opens once it's gone,
+    /// since a sheet can't open over it from here.
+    @State private var editAfterOverview: BotProfile?
+    /// Repair Connection opened from Bots Home's top.
+    @State private var repairContext: ConnectionRepairContext?
     /// V2's Bots tab: its title bar's "+" asks for a new bot here, and the
     /// in-list create card steps aside.
     private let createRequest: Binding<Bool>?
@@ -40,10 +47,13 @@ struct BotRosterView: View {
             if appState.shownBotRoster.isEmpty && !hasGroupRows && groupProbeFailure == nil {
                 emptyState
                     .safeAreaInset(edge: .top) {
-                        if let notice = managementNotice {
-                            managementNoticeCard(notice)
-                                .padding(.horizontal, 16)
+                        VStack(spacing: 12) {
+                            homeCards
+                            if let notice = managementNotice {
+                                managementNoticeCard(notice)
+                            }
                         }
+                        .padding(.horizontal, 16)
                     }
             } else {
                 rosterList
@@ -52,6 +62,32 @@ struct BotRosterView: View {
         .sheet(item: $presentedDesktopGroup) { group in
             DesktopGroupChatView(group: group)
                 .environmentObject(appState)
+        }
+        .sheet(item: $repairContext) { context in
+            ConnectionRepairSetupSheet(context: context)
+                .environmentObject(appState)
+        }
+        .sheet(item: $overviewBot, onDismiss: {
+            if let bot = editAfterOverview {
+                editAfterOverview = nil
+                editorMode = .edit(bot)
+            }
+        }) { bot in
+            BotOverviewSheet(
+                work: appState.botWork,
+                profile: bot.name,
+                onEdit: canManageBots ? { (edited: BotProfile) in
+                    editAfterOverview = edited
+                    overviewBot = nil
+                } : nil,
+                onChat: {
+                    overviewBot = nil
+                    appState.dismissSidebarDrawer()
+                    Task { await appState.openBotChat(for: bot) }
+                },
+                onClose: { overviewBot = nil }
+            )
+            .environmentObject(appState)
         }
         .sheet(item: $editorMode) { mode in
             BotEditorSheet(mode: mode) { createdName, warning, introduces in
@@ -169,38 +205,30 @@ struct BotRosterView: View {
         return nil
     }
 
+    /// Bots Home: every bot as a portrait, three across on a phone, in
+    /// the roster's own order, so a bot never moves for being busy. Hidden
+    /// bots follow under their disclosure, dimmed, as on the list.
+    @ViewBuilder
+    private var portraitGrid: some View {
+        BotPortraitGrid(bots: visibleBots) { portrait($0) }
+            .rosterListRow(divider: false)
+        if !hiddenBots.isEmpty {
+            hiddenDisclosure
+            if showsHiddenBots {
+                BotPortraitGrid(bots: hiddenBots) { portrait($0) }
+                    .opacity(0.6)
+                    .rosterListRow(divider: false)
+            }
+        }
+    }
+
     @ViewBuilder
     private var botRows: some View {
         ForEach(visibleBots) { bot in
             botRow(bot)
         }
         if !hiddenBots.isEmpty {
-            // Desktop's "Hidden" disclosure: hidden bots keep working, so
-            // they stay one tap away to open or unhide.
-            Button {
-                Haptics.selection()
-                withAnimation(.easeInOut(duration: 0.2)) { showsHiddenBots.toggle() }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: showsHiddenBots ? "chevron.down" : "chevron.right")
-                        .scaledFont(.caption.weight(.semibold))
-                        .accessibilityHidden(true)
-                    Text(AppLocalization.string("Hidden"))
-                    Text(verbatim: String(hiddenBots.count))
-                        .foregroundStyle(.tertiary)
-                    Spacer()
-                }
-                .scaledFont(.footnote.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.vertical, 8)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .rosterListRow(divider: false)
-            .accessibilityLabel(Text(AppLocalization.string("Hidden bots: \(String(hiddenBots.count))")))
-            .accessibilityValue(Text(
-                showsHiddenBots ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed")
-            ))
+            hiddenDisclosure
             if showsHiddenBots {
                 ForEach(hiddenBots) { bot in
                     botRow(bot)
@@ -210,6 +238,35 @@ struct BotRosterView: View {
         }
     }
 
+    /// Desktop's "Hidden" disclosure: hidden bots keep working, so they
+    /// stay one tap away to open or unhide.
+    private var hiddenDisclosure: some View {
+        Button {
+            Haptics.selection()
+            withAnimation(.easeInOut(duration: 0.2)) { showsHiddenBots.toggle() }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: showsHiddenBots ? "chevron.down" : "chevron.right")
+                    .scaledFont(.caption.weight(.semibold))
+                    .accessibilityHidden(true)
+                Text(AppLocalization.string("Hidden"))
+                Text(verbatim: String(hiddenBots.count))
+                    .foregroundStyle(.tertiary)
+                Spacer()
+            }
+            .scaledFont(.footnote.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .rosterListRow(divider: false)
+        .accessibilityLabel(Text(AppLocalization.string("Hidden bots: \(String(hiddenBots.count))")))
+        .accessibilityValue(Text(
+            showsHiddenBots ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed")
+        ))
+    }
+
     private func botRow(_ bot: BotProfile) -> some View {
         BotRosterRow(
             bot: bot,
@@ -217,32 +274,54 @@ struct BotRosterView: View {
             canDelete: appState.canDeleteBot(bot),
             rooms: botRooms(bot),
             canStartGroup: canStartGroups && !bot.isHiddenByMeta,
-            actions: BotRosterRow.Actions(
-                edit: { editorMode = .edit(bot) },
-                togglePin: {
-                    Task { managementNotice = await appState.setBotPinned(bot, pinned: !bot.isPinned) }
-                },
-                toggleHidden: {
-                    Task { managementNotice = await appState.setBotHidden(bot, hidden: !bot.isHiddenByMeta) }
-                },
-                duplicate: {
-                    managementNotice = AppLocalization.string("Duplicating \(bot.displayLabel)…")
-                    Task { managementNotice = await appState.duplicateBot(bot) }
-                },
-                newChat: {
-                    appState.dismissSidebarDrawer()
-                    appState.startNewChat(inProfile: bot.name)
-                },
-                openRoom: { room in
-                    appState.dismissSidebarDrawer()
-                    Task { await appState.openGroupRoom(room) }
-                },
-                newGroup: {
-                    appState.errorMessage = nil
-                    groupSheetBot = bot
-                },
-                delete: { pendingDelete = bot }
-            )
+            actions: actions(for: bot)
+        )
+    }
+
+    /// Bots Home's portrait of a bot: its chat, its Overview and the row's
+    /// menu.
+    private func portrait(_ bot: BotProfile) -> some View {
+        BotPortraitCell(
+            bot: bot,
+            work: appState.botWork,
+            menu: BotRosterMenu(
+                bot: bot,
+                canManage: canManageBots,
+                canDelete: appState.canDeleteBot(bot),
+                rooms: botRooms(bot),
+                canStartGroup: canStartGroups && !bot.isHiddenByMeta,
+                actions: actions(for: bot)
+            ),
+            onOverview: { overviewBot = bot }
+        )
+    }
+
+    private func actions(for bot: BotProfile) -> BotRosterRow.Actions {
+        BotRosterRow.Actions(
+            edit: { editorMode = .edit(bot) },
+            togglePin: {
+                Task { managementNotice = await appState.setBotPinned(bot, pinned: !bot.isPinned) }
+            },
+            toggleHidden: {
+                Task { managementNotice = await appState.setBotHidden(bot, hidden: !bot.isHiddenByMeta) }
+            },
+            duplicate: {
+                managementNotice = AppLocalization.string("Duplicating \(bot.displayLabel)…")
+                Task { managementNotice = await appState.duplicateBot(bot) }
+            },
+            newChat: {
+                appState.dismissSidebarDrawer()
+                appState.startNewChat(inProfile: bot.name)
+            },
+            openRoom: { room in
+                appState.dismissSidebarDrawer()
+                Task { await appState.openGroupRoom(room) }
+            },
+            newGroup: {
+                appState.errorMessage = nil
+                groupSheetBot = bot
+            },
+            delete: { pendingDelete = bot }
         )
     }
 
@@ -255,8 +334,30 @@ struct BotRosterView: View {
         }
     }
 
+    /// Bots Home is where the app opens: finishing setup and a failed
+    /// connection's repair are offered at its top, as on Sessions.
+    @ViewBuilder
+    private var homeCards: some View {
+        if createRequest != nil {
+            if appState.showsFinishSetup {
+                V2FinishSetupCard()
+            }
+            if appState.showsConnectionRepair {
+                V2ConnectionRepairCard(identifier: "bots.repair-connection") { repairContext = $0 }
+            }
+        }
+    }
+
     private var rosterList: some View {
         List {
+            if createRequest != nil, appState.showsFinishSetup || appState.showsConnectionRepair {
+                Section {
+                    homeCards
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 12, trailing: 16))
+                }
+            }
             if let notice = managementNotice {
                 Section {
                     managementNoticeCard(notice)
@@ -285,7 +386,7 @@ struct BotRosterView: View {
                 // the bots says what a bot is. A row, not a footer: a plain
                 // List paints footers as an opaque band across the backdrop.
                 Section {
-                    botRows
+                    portraitGrid
                     Text("Each bot is its own profile with one ongoing conversation.")
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
@@ -601,55 +702,8 @@ private struct BotRosterRow: View {
         .accessibilityHint(Text(AppLocalization.string("Opens this bot's chat.")))
         .v2SelectedTrait(selection)
         .contextMenu {
-            Button(action: actions.newChat) {
-                Label(AppLocalization.string("New Chat"), systemImage: "square.and.pencil")
-            }
-            if !rooms.isEmpty || canStartGroup {
-                Menu {
-                    ForEach(rooms) { room in
-                        Button {
-                            actions.openRoom(room)
-                        } label: {
-                            Text(verbatim: room.name)
-                        }
-                    }
-                    if canStartGroup {
-                        Button(action: actions.newGroup) {
-                            Label(AppLocalization.string("New Group Chat"), systemImage: "plus")
-                        }
-                    }
-                } label: {
-                    Label(AppLocalization.string("Groups"), systemImage: "person.3")
-                }
-            }
-            if canManage {
-                Divider()
-                Button(action: actions.togglePin) {
-                    Label(
-                        bot.isPinned ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
-                        systemImage: bot.isPinned ? "pin.slash" : "pin"
-                    )
-                }
-                Button(action: actions.toggleHidden) {
-                    Label(
-                        bot.isHiddenByMeta ? AppLocalization.string("Unhide") : AppLocalization.string("Hide"),
-                        systemImage: bot.isHiddenByMeta ? "eye" : "eye.slash"
-                    )
-                }
-                Divider()
-                Button(action: actions.edit) {
-                    Label(AppLocalization.string("Edit Bot"), systemImage: "pencil")
-                }
-                Button(action: actions.duplicate) {
-                    Label(AppLocalization.string("Duplicate"), systemImage: "plus.square.on.square")
-                }
-                if canDelete {
-                    Divider()
-                    Button(role: .destructive, action: actions.delete) {
-                        Label(AppLocalization.string("Delete Bot"), systemImage: "trash")
-                    }
-                }
-            }
+            BotRosterMenu(bot: bot, canManage: canManage, canDelete: canDelete, rooms: rooms,
+                          canStartGroup: canStartGroup, actions: actions)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if canManage {
@@ -716,6 +770,69 @@ private struct BotRosterRow: View {
     }
 }
 
+/// A bot's menu, on its Bots list row and its Bots Home portrait
+/// (Desktop's row menu).
+private struct BotRosterMenu: View {
+    let bot: BotProfile
+    let canManage: Bool
+    let canDelete: Bool
+    let rooms: [GroupRoom]
+    let canStartGroup: Bool
+    let actions: BotRosterRow.Actions
+
+    var body: some View {
+        Button(action: actions.newChat) {
+            Label(AppLocalization.string("New Chat"), systemImage: "square.and.pencil")
+        }
+        if !rooms.isEmpty || canStartGroup {
+            Menu {
+                ForEach(rooms) { room in
+                    Button {
+                        actions.openRoom(room)
+                    } label: {
+                        Text(verbatim: room.name)
+                    }
+                }
+                if canStartGroup {
+                    Button(action: actions.newGroup) {
+                        Label(AppLocalization.string("New Group Chat"), systemImage: "plus")
+                    }
+                }
+            } label: {
+                Label(AppLocalization.string("Groups"), systemImage: "person.3")
+            }
+        }
+        if canManage {
+            Divider()
+            Button(action: actions.togglePin) {
+                Label(
+                    bot.isPinned ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
+                    systemImage: bot.isPinned ? "pin.slash" : "pin"
+                )
+            }
+            Button(action: actions.toggleHidden) {
+                Label(
+                    bot.isHiddenByMeta ? AppLocalization.string("Unhide") : AppLocalization.string("Hide"),
+                    systemImage: bot.isHiddenByMeta ? "eye" : "eye.slash"
+                )
+            }
+            Divider()
+            Button(action: actions.edit) {
+                Label(AppLocalization.string("Edit Bot"), systemImage: "pencil")
+            }
+            Button(action: actions.duplicate) {
+                Label(AppLocalization.string("Duplicate"), systemImage: "plus.square.on.square")
+            }
+            if canDelete {
+                Divider()
+                Button(role: .destructive, action: actions.delete) {
+                    Label(AppLocalization.string("Delete Bot"), systemImage: "trash")
+                }
+            }
+        }
+    }
+}
+
 /// A bot's face on the roster and in group pickers: its gateway-stored
 /// picture (the one Hermes Desktop shows) once fetched, else its initial on
 /// its color.
@@ -724,7 +841,14 @@ struct BotMonogramView: View {
     @EnvironmentObject private var appState: AppState
     /// Scales with Dynamic Type so the glyph never clips at accessibility
     /// sizes (a fixed 36x36 frame clipped the letter once `.body` grew).
-    @ScaledMetric(relativeTo: .body) private var avatarSize: CGFloat = 36
+    @ScaledMetric private var avatarSize: CGFloat
+
+    /// `size` at the default Text Size: 36 on a row, larger on Bots Home's
+    /// portraits.
+    init(bot: BotProfile, size: CGFloat = 36) {
+        self.bot = bot
+        _avatarSize = ScaledMetric(wrappedValue: size, relativeTo: .body)
+    }
 
     var body: some View {
         BotAvatarView(

@@ -200,6 +200,8 @@ struct BotWorkPanel: View {
     @ObservedObject var work: BotWorkStore
     let profile: String
     let onClose: () -> Void
+    /// The Bot Overview draws the bot's own header above the list.
+    var showsHeader = true
     /// Rows opened and replies being typed, by ref, here rather than in
     /// each row: a row that moves between sections keeps them.
     @State private var expanded: Set<String> = []
@@ -288,7 +290,9 @@ struct BotWorkPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
+            if showsHeader || showsResolved {
+                header
+            }
             if let refusal = work.refusal(profile) {
                 Text(refusal)
                     .scaledFont(.footnote)

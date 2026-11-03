@@ -555,4 +555,38 @@ extension BotModeTests {
         XCTAssertNotEqual(sameAsChats, BotWorkSettingsView.approvalsCaption(
             BotWorkSettings(approvals: .chats, chatApprovals: "manual"), botName: "Furina"))
     }
+
+    /// Bots Home (Eric 2026-11-03, layout A): Bots is the first tab and
+    /// the old Chats tab is Sessions.
+    func testBotsComeFirstAndChatsIsSessions() {
+        XCTAssertEqual(V2Tab.destinations, [.bots, .chats, .tasks, .settings])
+        XCTAssertEqual(V2Tab.chats.title, AppLocalization.string("Sessions"))
+    }
+
+    /// Bots is the launch tab: a plain session opened over it still lands
+    /// in Sessions, and only a bot's own chats stay in Bots.
+    func testAPlainSessionOpenedOverBotsLandsInSessions() {
+        XCTAssertEqual(V2Tab.conversationTab(selected: .bots, isBotsChat: false), .chats)
+        XCTAssertEqual(V2Tab.conversationTab(selected: .bots, isBotsChat: true), .bots)
+        XCTAssertEqual(V2Tab.conversationTab(selected: .chats, isBotsChat: true), .chats)
+        XCTAssertEqual(V2Tab.conversationTab(selected: .tasks, isBotsChat: false), .chats)
+    }
+
+    /// A portrait's Overview pill: what needs the user first, then what's
+    /// working, else just Overview, and Overview while work is off.
+    func testThePortraitPillSaysWhatNeedsYouFirst() throws {
+        let both = try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina"))
+        XCTAssertEqual(BotPortraitStatus.of(both), .needsYou(1))
+        var working = workResponse()
+        working["counts"] = ["working": 2, "needs_you": 0, "ready": 0]
+        XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: working, profile: "furina")), .working(2))
+        var quiet = workResponse()
+        quiet["counts"] = ["working": 0, "needs_you": 0, "ready": 1]
+        XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: quiet, profile: "furina")), .idle)
+        var off = workResponse()
+        off["policy"] = "off"
+        XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: off, profile: "furina")), .idle)
+        XCTAssertEqual(BotPortraitStatus.of(nil), .idle)
+        XCTAssertEqual(BotPortraitStatus.idle.title, AppLocalization.string("Overview"))
+    }
 }

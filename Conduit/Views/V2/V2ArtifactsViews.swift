@@ -23,6 +23,9 @@ enum ArtifactScope: Equatable {
     case profile
     /// One chat, by every id it's known by.
     case chat([String])
+    /// One bot's profile, its Bot Chat's rows by the bot's name (the Bot
+    /// Overview's Artifacts).
+    case bot(String)
 
     var sessionIDs: [String] {
         if case .chat(let ids) = self { return ids }
@@ -57,6 +60,24 @@ struct V2ArtifactsPage: View {
         .navigationBarTitleDisplayMode(.large)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MinimisedLiveVoiceBar()
+        }
+    }
+}
+
+/// A bot's artifacts in its Bot Overview: everything its profile's chats
+/// produced, its Bot Chat's under the bot's name. A row opens its chat
+/// once the overview has closed (`willShowInChat`).
+struct BotArtifactsList: View {
+    @EnvironmentObject private var appState: AppState
+    let profile: String
+    let willShowInChat: () -> Void
+
+    var body: some View {
+        // In a sheet without a navigation bar: search and Show Missing
+        // Files sit in the list itself, as beside the chat.
+        ArtifactsList(scope: .bot(profile), chatIsOpen: false, inPanel: true) { item in
+            willShowInChat()
+            appState.showArtifactInChat(item, chatIsOpen: false)
         }
     }
 }

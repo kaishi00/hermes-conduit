@@ -81,6 +81,9 @@ struct V2ConversationScreen: View {
     /// What a save from there couldn't do, said as the Bots list says it.
     @State private var editBotWarning: String?
     @State private var pendingEditBotWarning: String?
+    /// Edit Bot tapped in the bot's overview: the editor opens once the
+    /// overview has gone.
+    @State private var editAfterOverview: BotProfile?
     /// Artifacts beside the chat, on a window wide enough for both.
     @AppStorage(ChatSidePanel.key) private var sidePanelOpen = false
     @AppStorage(ChatSidePanel.widths.key) private var storedSidePanelWidth = Double(ChatSidePanel.widths.standard)
@@ -217,12 +220,26 @@ struct V2ConversationScreen: View {
         .sheet(isPresented: Binding(
             get: { workPanelOpen && !fitsSidePanel && workProfile != nil },
             set: { if !$0 { workPanelOpen = false } }
-        )) {
+        ), onDismiss: {
+            if let bot = editAfterOverview {
+                editAfterOverview = nil
+                editedBot = .edit(bot)
+            }
+        }) {
             if let workProfile {
-                BotWorkPanel(work: appState.botWork, profile: workProfile) {
-                    workPanelOpen = false
-                }
-                .presentationDetents([.medium, .large])
+                // On a phone, the bot's overview: the same Work list, its
+                // artifacts, and Chat, which is this chat.
+                BotOverviewSheet(
+                    work: appState.botWork,
+                    profile: workProfile,
+                    onEdit: appState.botModePhase == .available && appState.isConnected
+                        ? { (bot: BotProfile) in
+                            editAfterOverview = bot
+                            workPanelOpen = false
+                        } : nil,
+                    onChat: { workPanelOpen = false },
+                    onClose: { workPanelOpen = false }
+                )
                 .environmentObject(appState)
             }
         }
