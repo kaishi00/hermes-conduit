@@ -541,7 +541,8 @@ file staged with it and a first message sent as Queue included · what an
 action left waiting on it (A new chat that something waits on: Ask Hermes
 About Screen's screenshot, Settings' Hermes test call and watch prompts in the
 composer, New Chat's focus, a Classic voice conversation's filing under
-Voice), handed to the fresh chat · every way New Chat makes the chat (New Chat,
+Voice) and a message typed while it reconnected (Composer drafts),
+handed to the fresh chat · every way New Chat makes the chat (New Chat,
 a project's new chat in its folder, kept as the fresh chat's folder, the empty
 canvas's send, a widget's or Shortcut's New Chat, /new), which all go
 through createNewSession · the chat a sync opens when there is nothing to
@@ -554,7 +555,7 @@ its error shows), the notifier (Hermes' behavior, nothing for the plugin to
 keep) · text: no Settings caption or doc describes it
 
 **Code**
-- `Conduit/Services/AppState.swift` (syncSession's create when there is nothing to resume; lostChatReplacement, read by composerDraftKeysAreSameChat for the draft; openChatIsEmptyNewChat, replaceLostEmptyNewChat, the session-not-found branch in reconcile's catch, resendInPlaceOfLostEmptyChat from sendMessage's attach and prompt.submit catches, Queue kept; handOverWhatWaitsOnLostChat for pendingScreenshots, composerPrefillDraftKey, composerFocusRequest and classicVoiceChatToArchive; newChatOpenedSessionID and newChatOpenedDurableSessionID, set in createAndReconcileSession; the fresh chat's folder from openNewChatAwaitingListing, NewChatAwaitingListing.cwd, see A new chat in the list)
+- `Conduit/Services/AppState.swift` (syncSession's create when there is nothing to resume; lostChatReplacement, read by composerDraftKeysAreSameChat for the draft; openChatIsEmptyNewChat, replaceLostEmptyNewChat, the session-not-found branch in reconcile's catch, resendInPlaceOfLostEmptyChat from sendMessage's attach and prompt.submit catches, Queue kept; handOverWhatWaitsOnLostChat for pendingScreenshots, composerPrefillDraftKey, composerFocusRequest, classicVoiceChatToArchive and pendingComposerSend (`Conduit/Models/PendingComposerSend.swift`); lostChatReplacement carries an earlier replacement's lost ids when its fresh chat is lost in turn; newChatOpenedSessionID and newChatOpenedDurableSessionID, set in createAndReconcileSession; the fresh chat's folder from openNewChatAwaitingListing, NewChatAwaitingListing.cwd, see A new chat in the list)
 - Tests: `ConduitTests/SessionRenameTests.swift` (testAnEmptyNewChatHermesLostIsReplacedOnRefresh, testTheEmptyChatASyncOpenedIsReplacedToo, testALostEmptyNewChatInAFolderIsReplacedInThatFolder, testTheFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne, testAQueuedFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne, testWhatWaitsOnALostEmptyNewChatWaitsOnTheFreshOne, testAFirstMessageWithAFileIntoALostEmptyNewChatIsStagedInTheFreshOne, testAnEmptyNewChatLeftAndReopenedIsNotReplaced, testAFailedFreshChatKeepsTheFirstMessagesWords, testANewChatWithMessagesIsNeverReplaced)
 
 **Rulings**
@@ -2173,7 +2174,7 @@ the composer's Sending… while a send checks Hermes
 - A room's quoted message and its "To" picks aren't kept when the room is left.
 - A room that's disbanded while another dashboard is in use keeps its staged files until that dashboard is opened again or the user signs out.
 
-**Checked:** 2026-11-04, #1752 (an empty chat Hermes lost hands its draft to the fresh chat in its place); 2026-10-30, #1527 (a handoff clears the full editor's kept-focus latch, so a send's focus doesn't follow into the next chat); 2026-10-29, #1515 (a long paste stays words while the chat is on its way); 2026-10-27, #1403 (failed sends' words outlast the composer; Sending… before the message shows); 2026-10-24, at #1185; a failed '/command' put back without its suggestion list over it at #1191 (#891 review).
+**Checked:** 2026-11-04, #1752 (an empty chat Hermes lost hands its draft and a waiting message to the fresh chat in its place); 2026-10-30, #1527 (a handoff clears the full editor's kept-focus latch, so a send's focus doesn't follow into the next chat); 2026-10-29, #1515 (a long paste stays words while the chat is on its way); 2026-10-27, #1403 (failed sends' words outlast the composer; Sending… before the message shows); 2026-10-24, at #1185; a failed '/command' put back without its suggestion list over it at #1191 (#891 review).
 
 ## A new chat that something waits on
 

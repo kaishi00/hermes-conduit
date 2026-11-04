@@ -26127,8 +26127,13 @@ final class AppState: ObservableObject {
             listsBeforeHermes: listsBeforeHermes
         )
         guard let created else { return false }
+        // A fresh chat lost in its turn still answers for the first one's
+        // draft; an unrelated replacement starts over.
+        let earlierLost = lostChatReplacement.flatMap { previous in
+            previous.fresh.isDisjoint(with: lost) ? nil : previous.lost
+        } ?? []
         lostChatReplacement = (
-            lost: lost,
+            lost: earlierLost.union(lost),
             fresh: Set([created, newChatOpenedDurableSessionID].compactMap { $0 })
         )
         handOverWhatWaitsOnLostChat(lost, to: created)
@@ -26160,6 +26165,13 @@ final class AppState: ObservableObject {
         }
         if let chat = classicVoiceChatToArchive, lost.contains(chat.chatID) {
             classicVoiceChatToArchive = (fresh, chat.profile, chat.dashboardID)
+        }
+        // A message typed while it reconnected goes into the fresh chat.
+        if var pending = pendingComposerSend, !pending.isNewChat,
+           !pending.chatSessionIDs.isDisjoint(with: lost) {
+            pending.sessionIDs = Set([fresh, newChatOpenedDurableSessionID].compactMap { $0 })
+            pending.draftSessionID = newChatOpenedDurableSessionID ?? fresh
+            pendingComposerSend = pending
         }
     }
 

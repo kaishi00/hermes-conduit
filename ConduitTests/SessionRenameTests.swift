@@ -719,13 +719,24 @@ final class SessionRenameTests: XCTestCase {
     /// prompt for the composer, its focus) waits on the fresh chat instead.
     func testWhatWaitsOnALostEmptyNewChatWaitsOnTheFreshOne() async {
         var lost: Set<String> = []
-        let appState = makeLostChatAppState(lost: { lost }) { _, _ in }
+        var prompts: [String] = []
+        let appState = makeLostChatAppState(lost: { lost }) { session, _ in prompts.append(session) }
         let shot = Attachment(id: UUID().uuidString, name: "screen.png", uri: "file:///tmp/screen.png", mimeType: "image/png", kind: .image)
 
         await appState.createNewSession()
         appState.pendingScreenshots = [PendingScreenshot(sessionID: "created-runtime-1", attachment: shot, dashboardID: appState.activeDashboardID)]
         appState.prefillComposer("What is on my screen?")
         appState.requestComposerFocus(on: "created-runtime-1")
+        appState.pendingComposerSend = PendingComposerSend(
+            draftText: "typed while it reconnected",
+            replyReference: nil,
+            dashboardID: appState.activeDashboardID ?? UUID(),
+            profile: "default",
+            sessionIDs: ["created-runtime-1", "created-stored-1"],
+            draftSessionID: "created-stored-1",
+            isNewChat: false,
+            title: ""
+        )
         lost = ["created-runtime-1", "created-stored-1"]
         await appState.refreshActiveSession()
 
@@ -735,6 +746,15 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertEqual(appState.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "created-runtime-2", profile: "default"))
         XCTAssertEqual(appState.composerPrefillText, "What is on my screen?")
         XCTAssertEqual(appState.composerFocusRequest?.sessionID, "created-runtime-2")
+        // The waiting message is the fresh chat's: still waiting on it, or
+        // already sent there, never into the lost one.
+        XCTAssertFalse(prompts.contains("created-runtime-1"))
+        if let pending = appState.pendingComposerSend {
+            XCTAssertEqual(pending.draftSessionID, "created-stored-2")
+            XCTAssertEqual(pending.sessionIDs, ["created-runtime-2", "created-stored-2"])
+        } else {
+            XCTAssertEqual(prompts, ["created-runtime-2"])
+        }
     }
 
     func testAFirstMessageWithAFileIntoALostEmptyNewChatIsStagedInTheFreshOne() async {
