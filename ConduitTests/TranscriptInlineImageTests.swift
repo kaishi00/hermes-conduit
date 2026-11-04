@@ -590,6 +590,10 @@ extension MessageNormalizerTests {
         XCTAssertEqual(MessageNormalizer.visibleUserText("No context here"), "No context here")
         // A typed stand-in with nothing after it stays where it is.
         XCTAssertEqual(MessageNormalizer.visibleUserText("hello\n[screenshot]"), "hello\n[screenshot]")
+        // Windows line ends still find the stand-in.
+        XCTAssertEqual(MessageNormalizer.removingTurnContext("Hi\r\n[screenshot]\r\nA plugin note."), "Hi\r\n[screenshot]")
+        // Known gap: a typed full-line stand-in hides the words after it.
+        XCTAssertEqual(MessageNormalizer.visibleUserText("Read this\n[screenshot]\nSee?"), "Read this\n[screenshot]")
     }
 
     func testChatListPreviewShowsNoRecalledMemory() {

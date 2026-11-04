@@ -682,11 +682,15 @@ struct SessionRewindSnapshot: Equatable {
         return Turn(rowID: rowID, text: text(of: row["content"]))
     }
 
-    /// A text turn's words; nil when a part isn't text.
+    /// A text turn's words; nil when a part isn't text. A stored prompt
+    /// that held a picture (Hermes' stand-in lines after its text) held
+    /// more than text, and the context Hermes stored after the picture is
+    /// never the user's words (MessageNormalizer.removingTurnContext).
     static func text(of content: AnyCodable?) -> String? {
         switch content {
         case .string(let text)?:
-            return text
+            let typed = MessageNormalizer.removingTurnContext(text)
+            return MessageNormalizer.trailingInlineImageMarkers(typed).count > 0 ? nil : typed
         case .array(let parts)? where !parts.isEmpty:
             var words: [String] = []
             for part in parts {
@@ -4959,7 +4963,9 @@ enum MessageNormalizer {
                 id: id,
                 storedSessionId: storedSessionId,
                 alternateIds: Array(altIds),
-                title: obj["title"]?.stringValue ?? obj["preview"]?.stringValue ?? AppLocalization.string("Untitled conversation"),
+                title: obj["title"]?.stringValue
+                    ?? obj["preview"]?.stringValue.map(removingTurnContext)
+                    ?? AppLocalization.string("Untitled conversation"),
                 model: obj["model"]?.stringValue ?? "Hermes",
                 updatedLabel: sessionUpdatedLabel(in: obj),
                 lastActivityAt: sessionActivityTimestamp(in: obj),
@@ -6025,7 +6031,8 @@ enum MessageNormalizer {
         }
         var visible = text
         var lines = visible.components(separatedBy: "\n")
-        if let lastPicture = lines.lastIndex(where: isStoredPictureLine), lastPicture < lines.count - 1 {
+        if let lastPicture = lines.lastIndex(where: { isStoredPictureLine($0.trimmingCharacters(in: .whitespacesAndNewlines)) }),
+           lastPicture < lines.count - 1 {
             lines.removeSubrange((lastPicture + 1)...)
             visible = lines.joined(separator: "\n")
         }
