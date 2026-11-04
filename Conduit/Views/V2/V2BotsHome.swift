@@ -742,6 +742,10 @@ struct BotOverviewSheet: View {
     /// Its Bot Chat: opens it from Bots Home, closes the sheet over it.
     let onChat: () -> Void
     let onClose: () -> Void
+    /// Runs just before its Work list opens a workstream's chat. On Bots
+    /// Home it arms the zoom, so that chat, and the Bot Chat after it,
+    /// shrink back into the portrait.
+    var onWillOpenWork: (() -> Void)? = nil
 
     enum Section: Hashable {
         case work
@@ -801,7 +805,7 @@ struct BotOverviewSheet: View {
                 }
                 switch shown {
                 case .work:
-                    BotWorkPanel(work: work, profile: profile, onClose: onClose, showsHeader: false)
+                    BotWorkPanel(work: work, profile: profile, onClose: onClose, showsHeader: false, onWillOpen: onWillOpenWork)
                 case .artifacts:
                     BotArtifactsList(profile: profile, willShowInChat: onClose)
                 }
@@ -969,20 +973,6 @@ extension EnvironmentValues {
     var botZoomNamespace: Namespace.ID? {
         get { self[BotZoomNamespaceKey.self] }
         set { self[BotZoomNamespaceKey.self] = newValue }
-    }
-}
-
-private struct BotWorkWillOpenKey: EnvironmentKey {
-    static let defaultValue: (() -> Void)? = nil
-}
-
-extension EnvironmentValues {
-    /// Runs just before the Work list opens a workstream's chat. The Bot
-    /// Overview on Bots Home arms the zoom with it, so that chat, and the
-    /// Bot Chat after it, shrink back into the portrait.
-    var botWorkWillOpen: (() -> Void)? {
-        get { self[BotWorkWillOpenKey.self] }
-        set { self[BotWorkWillOpenKey.self] = newValue }
     }
 }
 

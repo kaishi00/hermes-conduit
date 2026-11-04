@@ -211,7 +211,9 @@ struct BotWorkPanel: View {
     @State private var replies: [String: String] = [:]
     @State private var showsAllRecent = false
     @State private var showsResolved = false
-    @Environment(\.botWorkWillOpen) private var willOpen
+    /// Runs just before a row opens a workstream's chat (the Bots Home
+    /// overview arms the zoom with it).
+    var onWillOpen: (() -> Void)? = nil
 
     static let recentShown = 3
 
@@ -229,7 +231,8 @@ struct BotWorkPanel: View {
             reply: Binding(
                 get: { replies[item.ref] ?? "" },
                 set: { replies[item.ref] = $0.isEmpty ? nil : $0 }
-            )
+            ),
+            willOpen: onWillOpen
         )
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
@@ -256,7 +259,7 @@ struct BotWorkPanel: View {
             }
             if item.kind == .workstream, !item.sessionID.isEmpty {
                 Button {
-                    willOpen?()
+                    onWillOpen?()
                     appState.openWorkstream(item, profile: profile)
                 } label: {
                     Label(AppLocalization.string("Open \(item.ref)’s chat"), systemImage: "bubble.left.and.bubble.right")
@@ -554,7 +557,7 @@ private struct BotWorkRow: View {
     @Binding var expanded: Bool
     @Binding var reply: String
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.botWorkWillOpen) private var willOpen
+    var willOpen: (() -> Void)? = nil
 
     private var tint: Color { BotWorkLook.tint(item) }
 

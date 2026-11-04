@@ -129,11 +129,11 @@ struct BotRosterView: View {
                         appState.endOpeningBotChat(bot.name)
                     }
                 },
-                onClose: { overviewBot = nil }
+                onClose: { overviewBot = nil },
+                // A workstream opened from its list counts as its bot's, so
+                // it and its Bot Chat shrink back into the portrait too.
+                onWillOpenWork: openBeside == nil ? { appState.botZoom.tap(bot.name) } : nil
             )
-            // A workstream opened from its list counts as its bot's, so it
-            // and its Bot Chat shrink back into the portrait too.
-            .environment(\.botWorkWillOpen, openBeside == nil ? { appState.botZoom.tap(bot.name) } : nil)
             .environmentObject(appState)
         }
         .sheet(item: $editorMode) { mode in
