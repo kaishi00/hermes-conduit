@@ -293,6 +293,56 @@ extension BotModeTests {
         XCTAssertEqual(appState.activeProfileSessions.map(\.id), ["plain"])
     }
 
+    /// A workstream's chat, left out of every list, is never the chat
+    /// Conduit opens on by itself, though it's the newest (#1755): Jump to
+    /// latest activity, and Continue with nothing saved, pick the newest
+    /// listed chat. One the user had open is still resumed by Continue.
+    @MainActor
+    func testTheChatConduitResumesIsNeverAnUnlistedWorkstream() throws {
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let store = ChatResumeStore(defaults: defaults)
+        store.setBehavior(.latestActivity)
+        let coordinator = ChatResumeCoordinator(store: store)
+        let appState = AppState(defaults: defaults, chatResumeCoordinator: coordinator,
+                                loadSavedConnection: false)
+        let now = Date().timeIntervalSince1970
+        func row(_ id: String, stored: String? = nil, at: TimeInterval) -> SessionSummary {
+            SessionSummary(id: id, storedSessionId: stored, alternateIds: [], title: "Chat", model: "Hermes",
+                           updatedLabel: "now", lastActivityAt: at, profile: nil, source: .chat,
+                           isActive: false, isArchived: false, lineageRootId: nil)
+        }
+        // The resolved workstream was re-keyed: only its stored id is listed.
+        let catalog = [row("runtime-w1", stored: "20261101_w1", at: now), row("plain", at: now - 600)]
+        func pick() -> String? {
+            appState.selectChatResumeTarget(in: catalog, profile: "default", purpose: .automaticReturn,
+                                            currentSessionID: nil)?.id
+        }
+        // Before the bot's work is read nothing names it, so it is the newest.
+        XCTAssertEqual(pick(), "runtime-w1")
+
+        var response = workResponse()
+        response["workstream_sessions"] = ["20261101_w1"]
+        appState.botWork.set(try XCTUnwrap(BotWorkSnapshot(response: response, profile: "furina")))
+        XCTAssertEqual(pick(), "plain")
+        XCTAssertEqual(
+            appState.selectChatResumeTarget(in: catalog, profile: "default", purpose: .preserveCurrent,
+                                            currentSessionID: nil)?.id,
+            "plain"
+        )
+
+        coordinator.setBehavior(.continueWhereLeftOff)
+        XCTAssertEqual(pick(), "plain")
+        coordinator.rememberSession(.dashboard(profile: "default", sessionID: "runtime-w1"), for: "default")
+        XCTAssertEqual(pick(), "runtime-w1")
+
+        // With only workstreams listed there's no chat to pick: a new one starts.
+        coordinator.setBehavior(.latestActivity)
+        XCTAssertNil(appState.selectChatResumeTarget(in: [catalog[0]], profile: "default",
+                                                     purpose: .automaticReturn, currentSessionID: nil))
+    }
+
     /// A refused action clears the last refusal, shows its own at once and
     /// frees its buttons, without waiting for the list to be read again.
     @MainActor

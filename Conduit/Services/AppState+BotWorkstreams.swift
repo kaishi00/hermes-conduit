@@ -151,6 +151,16 @@ final class BotWorkStore: ObservableObject {
 
     /// Whether a chat row is one of a bot's workstreams, by any of its ids.
     func isWorkstream(_ session: SessionSummary) -> Bool {
+        Self.isWorkstream(session, among: workstreamSessionIDs)
+    }
+
+    /// The same rule over a list of workstream ids, for the chat Conduit
+    /// resumes on its own (ChatResumeSessionResolver), so the lists and that
+    /// pick never disagree about which rows are workstreams.
+    nonisolated static func isWorkstream(
+        _ session: SessionSummary,
+        among workstreamSessionIDs: Set<String>
+    ) -> Bool {
         guard !workstreamSessionIDs.isEmpty else { return false }
         return !workstreamSessionIDs.isDisjoint(with: SessionContentSearch.identities(of: session))
     }
