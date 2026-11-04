@@ -12102,6 +12102,7 @@ final class AppState: ObservableObject {
     /// mutate state against the outgoing server.
     private func invalidateBotModeState() {
         botRosterEpoch += 1
+        botRosterRetry.succeeded()
         botWork.clear()
         botRosterVerifiedForCurrentConnection = false
         botChatOpenFlights.values.forEach { $0.task?.cancel() }
@@ -12395,6 +12396,7 @@ final class AppState: ObservableObject {
 
     private func invalidateGroupChatState() {
         groupChatPhase = .idle
+        groupChatProbeRetry.succeeded()
         groupCapabilities = nil
         // Whether the gateway can make pictures is the outgoing one's answer.
         canGeneratePictures = false

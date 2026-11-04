@@ -18,7 +18,8 @@ struct TransientReadRetry {
     private(set) var attempts = 0
     private var task: Task<Void, Never>?
 
-    /// The read answered: the next failure starts the delays again.
+    /// The read answered, or a new server or dashboard starts over: the
+    /// next failure starts the delays again.
     mutating func succeeded() {
         attempts = 0
         task?.cancel()
@@ -34,7 +35,10 @@ struct TransientReadRetry {
         task = Task { @MainActor in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
-            await retry()
+            // In a task of its own: the read's success resets this retry,
+            // which cancels the waiting task, and the rest of the read (the
+            // room list after the probe) must not run cancelled.
+            Task { @MainActor in await retry() }
         }
     }
 
