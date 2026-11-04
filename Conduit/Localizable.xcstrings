@@ -425267,6 +425267,1564 @@
           }
         }
       }
+    },
+    "Ask Hermes for the certificate’s fingerprint": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frag Hermes nach dem Fingerabdruck des Zertifikats"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pide a Hermes la huella del certificado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demander à Hermes l’empreinte du certificat"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tanyakan sidik jari sertifikat ke Hermes"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiedi a Hermes l’impronta del certificato"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "証明書のフィンガープリントをHermesに聞く"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes에게 인증서 지문 묻기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Poproś Hermesa o odcisk certyfikatu"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pedir ao Hermes a impressão digital do certificado"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Спросить у Hermes отпечаток сертификата"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sertifikanın parmak izini Hermes’e sor"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "向 Hermes 询问证书指纹"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "向 Hermes 詢問憑證指紋"
+          }
+        }
+      }
+    },
+    "Check this server’s certificate": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zertifikat dieses Servers prüfen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comprobar el certificado de este servidor"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vérifier le certificat de ce serveur"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Periksa sertifikat server ini"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controlla il certificato di questo server"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このサーバの証明書を確認"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 서버의 인증서 확인"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sprawdź certyfikat tego serwera"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verificar o certificado deste servidor"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проверить сертификат этого сервера"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu sunucunun sertifikasını denetle"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查此服务器的证书"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "檢查此伺服器的憑證"
+          }
+        }
+      }
+    },
+    "Checking the certificate…": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zertifikat wird geprüft …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comprobando el certificado…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vérification du certificat…"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memeriksa sertifikat…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controllo del certificato…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "証明書を確認しています…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "인증서 확인 중…"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sprawdzanie certyfikatu…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verificando o certificado…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проверка сертификата…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sertifika denetleniyor…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查证书…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在檢查憑證⋯"
+          }
+        }
+      }
+    },
+    "Come back here and connect again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Komm danach hierher zurück und verbinde dich erneut."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vuelve aquí y conéctate de nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revenez ici et reconnectez-vous."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kembali ke sini dan hubungkan lagi."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Poi torna qui e connettiti di nuovo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ここに戻って、もう一度接続してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "여기로 돌아와 다시 연결하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wróć tutaj i połącz się ponownie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Volte aqui e conecte de novo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Затем вернитесь сюда и подключитесь снова."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buraya dönüp yeniden bağlanın."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回到这里重新连接。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回到這裡重新連線。"
+          }
+        }
+      }
+    },
+    "Conduit couldn’t save the profile. Try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit konnte das Profil nicht sichern. Versuch es noch einmal."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit no ha podido guardar el perfil. Inténtalo de nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit n’a pas pu enregistrer le profil. Réessayez."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit tidak dapat menyimpan profil. Coba lagi."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit non è riuscito a salvare il profilo. Riprova."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プロファイルを保存できませんでした。もう一度お試しください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit이 프로파일을 저장하지 못했습니다. 다시 시도하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit nie mógł zapisać profilu. Spróbuj ponownie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Conduit não conseguiu salvar o perfil. Tente de novo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit не удалось сохранить профиль. Попробуйте ещё раз."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit profili kaydedemedi. Yeniden deneyin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 无法保存描述文件。请重试。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 無法儲存描述檔。請再試一次。"
+          }
+        }
+      }
+    },
+    "If your dashboard uses its own certificate authority or a self-signed certificate, Conduit can save it as a profile for you to install and trust in Settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wenn dein Dashboard eine eigene Zertifizierungsstelle oder ein selbstsigniertes Zertifikat nutzt, kann Conduit es als Profil sichern, das du in den Einstellungen installierst und dem du dort vertraust."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si tu panel usa su propia autoridad de certificación o un certificado autofirmado, Conduit puede guardarlo como un perfil para que lo instales y confíes en él en Ajustes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si votre tableau de bord utilise sa propre autorité de certification ou un certificat autosigné, Conduit peut l’enregistrer comme profil à installer et approuver dans Réglages."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jika dasbor Anda memakai otoritas sertifikat sendiri atau sertifikat yang ditandatangani sendiri, Conduit dapat menyimpannya sebagai profil untuk Anda instal dan percayai di Pengaturan."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se la tua dashboard usa una propria autorità di certificazione o un certificato autofirmato, Conduit può salvarlo come profilo da installare e rendere attendibile in Impostazioni."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ダッシュボードが独自の認証局や自己署名証明書を使っている場合、Conduitはそれをプロファイルとして保存できます。設定でインストールして信頼してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "대시보드가 자체 인증 기관이나 자체 서명 인증서를 사용한다면 Conduit이 이를 프로파일로 저장해 드립니다. ‘설정’에서 설치하고 신뢰하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeśli Twój panel używa własnego urzędu certyfikacji lub certyfikatu z podpisem własnym, Conduit może zapisać go jako profil, który zainstalujesz i oznaczysz jako zaufany w Ustawieniach."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se o seu painel usa uma autoridade certificadora própria ou um certificado autoassinado, o Conduit pode salvá-lo como um perfil para você instalar e confiar nos Ajustes."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Если ваша панель использует собственный центр сертификации или самоподписанный сертификат, Conduit может сохранить его как профиль, который вы установите и сделаете доверенным в Настройках."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Panonuz kendi sertifika yetkilinizi veya kendinden imzalı bir sertifika kullanıyorsa Conduit bunu, Ayarlar’da yükleyip güveneceğiniz bir profil olarak kaydedebilir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如果你的控制台使用自己的证书颁发机构或自签名证书，Conduit 可以将其保存为描述文件，供你在“设置”中安装并信任。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如果你的儀表板使用自己的憑證授權單位或自簽憑證，Conduit 可以將其儲存為描述檔，讓你在「設定」中安裝並信任。"
+          }
+        }
+      }
+    },
+    "Install it in Settings → General → VPN & Device Management.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installiere es unter Einstellungen → Allgemein → VPN und Geräteverwaltung."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instálalo en Ajustes → General → VPN y gestión de dispositivos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installez-le dans Réglages → Général → VPN et gestion de l’appareil."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instal di Pengaturan → Umum → VPN & Manajemen Perangkat."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installalo in Impostazioni → Generali → VPN e gestione dispositivi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定 → 一般 → VPNとデバイス管理 でインストールします。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "‘설정’ → ‘일반’ → ‘VPN 및 기기 관리’에서 설치하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zainstaluj go w Ustawienia → Ogólne → VPN i zarządzanie urządzeniem."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instale-o em Ajustes → Geral → VPN e Gerenciamento de Dispositivos."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Установите его в «Настройки» → «Основные» → «VPN и управление устройством»."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayarlar → Genel → VPN ve Aygıt Yönetimi’nden yükleyin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在“设置”→“通用”→“VPN 与设备管理”中安装。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在「設定」→「一般」→「VPN 與裝置管理」中安裝。"
+          }
+        }
+      }
+    },
+    "Install it in System Settings → General → Device Management.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installiere es unter Systemeinstellungen → Allgemein → Geräteverwaltung."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instálalo en Ajustes del Sistema → General → Gestión de dispositivos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installez-le dans Réglages Système → Général → Gestion des appareils."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instal di Pengaturan Sistem → Umum → Manajemen Perangkat."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installalo in Impostazioni di Sistema → Generali → Gestione dispositivi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "システム設定 → 一般 → デバイス管理 でインストールします。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "‘시스템 설정’ → ‘일반’ → ‘기기 관리’에서 설치하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zainstaluj go w Ustawienia systemowe → Ogólne → Zarządzanie urządzeniem."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instale-o em Ajustes do Sistema → Geral → Gerenciamento de Dispositivos."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Установите его в «Системные настройки» → «Основные» → «Управление устройством»."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sistem Ayarları → Genel → Aygıt Yönetimi’nden yükleyin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在“系统设置”→“通用”→“设备管理”中安装。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在「系統設定」→「一般」→「裝置管理」中安裝。"
+          }
+        }
+      }
+    },
+    "Install this server’s certificate": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zertifikat dieses Servers installieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instalar el certificado de este servidor"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installer le certificat de ce serveur"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instal sertifikat server ini"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installa il certificato di questo server"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このサーバの証明書をインストール"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 서버의 인증서 설치"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zainstaluj certyfikat tego serwera"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instalar o certificado deste servidor"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Установить сертификат этого сервера"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu sunucunun sertifikasını yükle"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装此服务器的证书"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安裝此伺服器的憑證"
+          }
+        }
+      }
+    },
+    "Lets this device trust the certificate of your Hermes dashboard at %@.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lässt dieses Gerät dem Zertifikat deines Hermes-Dashboards unter %@ vertrauen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permite que este dispositivo confíe en el certificado de tu panel de Hermes en %@."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permet à cet appareil de faire confiance au certificat de votre tableau de bord Hermes à l’adresse %@."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Membuat perangkat ini memercayai sertifikat dasbor Hermes Anda di %@."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consente a questo dispositivo di considerare attendibile il certificato della tua dashboard Hermes su %@."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ のHermesダッシュボードの証明書をこのデバイスで信頼できるようにします。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 기기가 %@에 있는 Hermes 대시보드의 인증서를 신뢰하도록 합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pozwala temu urządzeniu ufać certyfikatowi Twojego panelu Hermes pod adresem %@."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Faz este aparelho confiar no certificado do seu painel do Hermes em %@."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Позволяет этому устройству доверять сертификату вашей панели Hermes по адресу %@."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu cihazın %@ adresindeki Hermes panonuzun sertifikasına güvenmesini sağlar."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "让本设备信任你位于 %@ 的 Hermes 控制台的证书。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "讓此裝置信任你位於 %@ 的 Hermes 儀表板憑證。"
+          }
+        }
+      }
+    },
+    "Please tell me the SHA-256 fingerprint of the TLS certificate my Hermes dashboard serves, and of the root certificate that issued it if there is one, so I can check it before I trust it on my iPhone. Only read the certificates; don't change them. Keep dashboard authentication enabled.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenne mir bitte den SHA-256-Fingerabdruck des TLS-Zertifikats, das mein Hermes-Dashboard ausliefert, und den des Root-Zertifikats, das es ausgestellt hat, falls es eines gibt, damit ich ihn prüfen kann, bevor ich ihm auf meinem iPhone vertraue. Lies die Zertifikate nur, ändere sie nicht. Lass die Dashboard-Authentifizierung aktiviert."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dime la huella SHA-256 del certificado TLS que sirve mi panel de Hermes, y la del certificado raíz que lo emitió si lo hay, para que pueda comprobarla antes de confiar en él en mi iPhone. Solo lee los certificados; no los cambies. Mantén activada la autenticación del panel."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Donne-moi l’empreinte SHA-256 du certificat TLS que sert mon tableau de bord Hermes, et celle du certificat racine qui l’a émis s’il y en a un, pour que je la vérifie avant de lui faire confiance sur mon iPhone. Lis seulement les certificats, ne les modifie pas. Garde l’authentification du tableau de bord activée."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tolong beri tahu saya sidik jari SHA-256 dari sertifikat TLS yang disajikan dasbor Hermes saya, dan dari sertifikat root yang menerbitkannya jika ada, agar saya dapat memeriksanya sebelum memercayainya di iPhone saya. Hanya baca sertifikatnya; jangan ubah. Tetap aktifkan autentikasi dasbor."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dimmi l’impronta SHA-256 del certificato TLS servito dalla mia dashboard Hermes, e quella del certificato radice che l’ha emesso se c’è, così posso controllarla prima di considerarlo attendibile sul mio iPhone. Leggi soltanto i certificati, non modificarli. Mantieni attiva l’autenticazione della dashboard."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermesダッシュボードが提供しているTLS証明書のSHA-256フィンガープリントと、発行元のルート証明書があればそのフィンガープリントも教えてください。iPhoneで信頼する前に確認したいです。証明書は読むだけで、変更しないでください。ダッシュボードの認証は有効のままにしてください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 Hermes 대시보드가 제공하는 TLS 인증서의 SHA-256 지문과, 발급한 루트 인증서가 있다면 그 지문도 알려 줘. iPhone에서 신뢰하기 전에 확인하고 싶어. 인증서는 읽기만 하고 바꾸지 마. 대시보드 인증은 계속 켜 둬."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Podaj mi odcisk SHA-256 certyfikatu TLS, który udostępnia mój panel Hermes, oraz certyfikatu głównego, który go wystawił, jeśli taki jest, żebym mógł go sprawdzić, zanim zaufam mu na iPhonie. Tylko odczytaj certyfikaty, nie zmieniaj ich. Pozostaw włączone uwierzytelnianie panelu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Por favor, me diga a impressão digital SHA-256 do certificado TLS que meu painel do Hermes serve, e a do certificado raiz que o emitiu, se houver, para eu conferir antes de confiar nele no meu iPhone. Apenas leia os certificados; não os altere. Mantenha a autenticação do painel ativada."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пожалуйста, сообщи мне отпечаток SHA-256 TLS-сертификата, который отдаёт моя панель Hermes, и корневого сертификата, который его выпустил, если он есть, чтобы я проверил его, прежде чем доверять ему на iPhone. Только прочитай сертификаты, не меняй их. Оставь аутентификацию панели включённой."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lütfen Hermes panomun sunduğu TLS sertifikasının ve varsa onu veren kök sertifikanın SHA-256 parmak izini söyle; iPhone’umda güvenmeden önce denetleyebileyim. Sertifikaları yalnızca oku, değiştirme. Pano kimlik doğrulamasını etkin tut."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请告诉我我的 Hermes 控制台所使用的 TLS 证书的 SHA-256 指纹，如果有签发它的根证书，也告诉我根证书的指纹，以便我在 iPhone 上信任它之前核对。只读取证书，不要修改。保持控制台身份验证处于启用状态。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請告訴我我的 Hermes 儀表板所提供的 TLS 憑證的 SHA-256 指紋，若有簽發它的根憑證，也請告訴我根憑證的指紋，讓我在 iPhone 上信任它之前先核對。只讀取憑證，不要修改。保持儀表板驗證為啟用狀態。"
+          }
+        }
+      }
+    },
+    "SHA-256 fingerprint": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SHA-256-Fingerabdruck"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Huella SHA-256"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Empreinte SHA-256"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sidik jari SHA-256"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impronta SHA-256"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SHA-256フィンガープリント"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SHA-256 지문"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odcisk SHA-256"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impressão digital SHA-256"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отпечаток SHA-256"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SHA-256 parmak izi"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SHA-256 指纹"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SHA-256 指紋"
+          }
+        }
+      }
+    },
+    "Save Certificate Profile": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zertifikatsprofil sichern"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardar perfil del certificado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistrer le profil du certificat"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simpan Profil Sertifikat"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salva profilo del certificato"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "証明書プロファイルを保存"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "인증서 프로파일 저장"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zapisz profil certyfikatu"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salvar perfil do certificado"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить профиль сертификата"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sertifika Profilini Kaydet"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存证书描述文件"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "儲存憑證描述檔"
+          }
+        }
+      }
+    },
+    "Save the profile to Files, then open it in the Files app.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sichere das Profil in „Dateien“ und öffne es dann in der Dateien-App."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guarda el perfil en Archivos y después ábrelo en la app Archivos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistrez le profil dans Fichiers, puis ouvrez-le dans l’app Fichiers."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simpan profil ke File, lalu buka di app File."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salva il profilo in File, poi aprilo nell’app File."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プロファイルを「ファイル」に保存し、「ファイル」アプリで開きます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "프로파일을 ‘파일’에 저장한 다음 ‘파일’ 앱에서 여세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zapisz profil w Plikach, a potem otwórz go w aplikacji Pliki."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salve o perfil em Arquivos e depois abra-o no app Arquivos."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохраните профиль в «Файлы», затем откройте его в приложении «Файлы»."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profili Dosyalar’a kaydedin, ardından Dosyalar uygulamasında açın."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将描述文件存储到“文件”，然后在“文件”App 中打开它。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "將描述檔儲存到「檔案」，然後在「檔案」App 中打開。"
+          }
+        }
+      }
+    },
+    "Save the profile, then open it in Finder.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sichere das Profil und öffne es dann im Finder."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guarda el perfil y después ábrelo en el Finder."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistrez le profil, puis ouvrez-le dans le Finder."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simpan profil, lalu buka di Finder."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salva il profilo, poi aprilo nel Finder."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プロファイルを保存し、Finderで開きます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "프로파일을 저장한 다음 Finder에서 여세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zapisz profil, a potem otwórz go w Finderze."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salve o perfil e depois abra-o no Finder."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохраните профиль, затем откройте его в Finder."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profili kaydedin, ardından Finder’da açın."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存描述文件，然后在访达中打开它。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "儲存描述檔，然後在 Finder 中打開。"
+          }
+        }
+      }
+    },
+    "The server doesn’t send its certificate authority’s root, so Conduit can’t save it. Install the root certificate from wherever you made your certificates, then turn on full trust for it.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Server sendet das Root-Zertifikat seiner Zertifizierungsstelle nicht mit, deshalb kann Conduit es nicht sichern. Installiere das Root-Zertifikat von dort, wo du deine Zertifikate erstellt hast, und aktiviere dann das volle Vertrauen dafür."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El servidor no envía el certificado raíz de su autoridad de certificación, así que Conduit no puede guardarlo. Instala el certificado raíz desde donde creaste tus certificados y después activa la confianza total en él."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le serveur n’envoie pas le certificat racine de son autorité de certification, donc Conduit ne peut pas l’enregistrer. Installez le certificat racine depuis l’endroit où vous avez créé vos certificats, puis activez la confiance totale pour lui."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server tidak mengirim sertifikat root dari otoritas sertifikatnya, jadi Conduit tidak dapat menyimpannya. Instal sertifikat root dari tempat Anda membuat sertifikat, lalu nyalakan kepercayaan penuh untuknya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il server non invia il certificato radice della sua autorità di certificazione, quindi Conduit non può salvarlo. Installa il certificato radice da dove hai creato i tuoi certificati, poi attiva l’attendibilità completa."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバが認証局のルート証明書を送信していないため、Conduitでは保存できません。証明書を作成した場所からルート証明書をインストールし、全面的に信頼してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버가 인증 기관의 루트 인증서를 보내지 않아 Conduit이 저장할 수 없습니다. 인증서를 만든 곳에서 루트 인증서를 설치한 다음 완전 신뢰를 켜세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serwer nie wysyła certyfikatu głównego swojego urzędu certyfikacji, więc Conduit nie może go zapisać. Zainstaluj certyfikat główny z miejsca, w którym utworzono Twoje certyfikaty, a potem włącz dla niego pełne zaufanie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O servidor não envia o certificado raiz da autoridade certificadora, então o Conduit não consegue salvá-lo. Instale o certificado raiz de onde você criou seus certificados e depois ative a confiança total nele."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сервер не отправляет корневой сертификат своего центра сертификации, поэтому Conduit не может его сохранить. Установите корневой сертификат оттуда, где вы создавали свои сертификаты, затем включите полное доверие к нему."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucu, sertifika yetkilisinin kök sertifikasını göndermiyor, bu yüzden Conduit onu kaydedemiyor. Kök sertifikayı sertifikalarınızı oluşturduğunuz yerden yükleyin, ardından onun için tam güveni açın."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器没有发送其证书颁发机构的根证书，因此 Conduit 无法保存。请从你制作证书的地方安装根证书，然后为其开启完全信任。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "伺服器沒有傳送其憑證授權單位的根憑證，因此 Conduit 無法儲存。請從你製作憑證的地方安裝根憑證，然後為其開啟完全信任。"
+          }
+        }
+      }
+    },
+    "Turn on full trust for it in Settings → General → About → Certificate Trust Settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktiviere das volle Vertrauen dafür unter Einstellungen → Allgemein → Info → Zertifikatsvertrauenseinstellungen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activa la confianza total en él en Ajustes → General → Información → Ajustes de confianza de certificados."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activez la confiance totale pour lui dans Réglages → Général → Informations → Réglages de confiance des certificats."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nyalakan kepercayaan penuh untuknya di Pengaturan → Umum → Mengenai → Pengaturan Kepercayaan Sertifikat."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attiva l’attendibilità completa in Impostazioni → Generali → Info → Impostazioni attendibilità certificati."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定 → 一般 → 情報 → 証明書信頼設定 で全面的に信頼をオンにします。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "‘설정’ → ‘일반’ → ‘정보’ → ‘인증서 신뢰 설정’에서 완전 신뢰를 켜세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Włącz dla niego pełne zaufanie w Ustawienia → Ogólne → To urządzenie → Ustawienia zaufania certyfikatów."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ative a confiança total nele em Ajustes → Geral → Sobre → Ajustes de Confiança de Certificado."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Включите полное доверие к нему в «Настройки» → «Основные» → «Об этом устройстве» → «Доверие сертификатам»."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayarlar → Genel → Hakkında → Sertifika Güvenilirlik Ayarları’ndan tam güveni açın."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在“设置”→“通用”→“关于本机”→“证书信任设置”中为其开启完全信任。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在「設定」→「一般」→「關於本機」→「憑證信任設定」中為其開啟完全信任。"
+          }
+        }
+      }
+    },
+    "iOS already trusts this server’s certificate, so certificates aren’t what’s stopping Conduit.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iOS vertraut dem Zertifikat dieses Servers bereits, am Zertifikat liegt es also nicht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iOS ya confía en el certificado de este servidor, así que el problema no son los certificados."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iOS fait déjà confiance au certificat de ce serveur : le problème ne vient pas des certificats."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iOS sudah memercayai sertifikat server ini, jadi masalahnya bukan sertifikat."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iOS considera già attendibile il certificato di questo server, quindi il problema non sono i certificati."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iOSはすでにこのサーバの証明書を信頼しているため、原因は証明書ではありません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iOS가 이미 이 서버의 인증서를 신뢰하므로 인증서 문제는 아닙니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iOS już ufa certyfikatowi tego serwera, więc problem nie leży w certyfikatach."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O iOS já confia no certificado deste servidor, então o problema não são os certificados."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iOS уже доверяет сертификату этого сервера, так что дело не в сертификатах."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iOS bu sunucunun sertifikasına zaten güveniyor, yani sorun sertifikalarda değil."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iOS 已经信任此服务器的证书，所以问题不在证书。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iOS 已經信任此伺服器的憑證，所以問題不在憑證。"
+          }
+        }
+      }
+    },
+    "Only install it if this fingerprint matches the one your server reports for this certificate. Anyone between you and the server could present a different one.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installiere es nur, wenn dieser Fingerabdruck mit dem übereinstimmt, den dein Server für dieses Zertifikat angibt. Jemand zwischen dir und dem Server könnte ein anderes vorlegen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instálalo solo si esta huella coincide con la que tu servidor indica para este certificado. Alguien entre tú y el servidor podría presentar otro distinto."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ne l’installez que si cette empreinte correspond à celle que votre serveur indique pour ce certificat. Quelqu’un placé entre vous et le serveur pourrait en présenter un autre."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instal hanya jika sidik jari ini cocok dengan yang dilaporkan server Anda untuk sertifikat ini. Siapa pun di antara Anda dan server dapat menyajikan sertifikat lain."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installalo solo se questa impronta corrisponde a quella che il tuo server indica per questo certificato. Qualcuno tra te e il server potrebbe presentarne uno diverso."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このフィンガープリントが、サーバがこの証明書について示すものと一致する場合にのみインストールしてください。あなたとサーバの間にいる第三者が別の証明書を提示する可能性があります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 지문이 서버가 이 인증서에 대해 알려 주는 지문과 일치할 때만 설치하세요. 사용자와 서버 사이에 있는 누군가가 다른 인증서를 제시할 수 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instaluj go tylko wtedy, gdy ten odcisk zgadza się z tym, który Twój serwer podaje dla tego certyfikatu. Ktoś między Tobą a serwerem mógłby przedstawić inny."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Só instale se esta impressão digital corresponder à que o seu servidor informa para este certificado. Alguém entre você e o servidor poderia apresentar outro."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Устанавливайте его, только если этот отпечаток совпадает с тем, который ваш сервер сообщает для этого сертификата. Кто-то между вами и сервером может подставить другой."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yalnızca bu parmak izi, sunucunuzun bu sertifika için bildirdiğiyle eşleşiyorsa yükleyin. Sizinle sunucu arasındaki biri farklı bir sertifika sunabilir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只有当此指纹与你的服务器为此证书报告的指纹一致时才安装。你与服务器之间的任何人都可能出示另一个证书。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只有在此指紋與你的伺服器為此憑證回報的指紋相符時才安裝。你與伺服器之間的任何人都可能出示另一張憑證。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

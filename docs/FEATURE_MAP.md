@@ -4010,7 +4010,9 @@ home network, your own domain) and what to tell Hermes to set it up.
 **Siblings:** README.md (Connecting: the ask-Hermes prompt, Docker or a NAS,
 by hand) · the website's setup page (setup/index.html, written by
 scripts/build_site.py in hermes-conduit-website) · the sign-in screen's Need
-help connecting? assistant and the prompts it hands out ·
+help connecting? assistant and the prompts it hands out (the certificate
+fingerprint prompt on HTTPS & certificates included) · the connection test's
+HTTPS & certificates action on a certificate failure ·
 docs/OWN_VOICE_SERVER.md (names Tailscale only as a way to reach the speech
 server, never Tailscale SSH)
 
@@ -4024,7 +4026,7 @@ server, never Tailscale SSH)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-27, at #1377.
+**Checked:** 2026-11-03, #1716 (a certificate failure in the connection test, Settings' Sign In Again or Repair's reconnect opens HTTPS & certificates and Back returns to it; its install step is in Connection failure messages); 2026-10-27, at #1377.
 
 ## Connection failure messages
 
@@ -4032,25 +4034,32 @@ What Conduit says when it can't connect or sign in, classified from the
 error's type and code (never its text), and the troubleshooting it points to.
 
 **Siblings:** the sign-in screen's failure card · the setup assistant's
-connection test · Repair's Reconnect Now · Settings' Sign In Again · Siri's
-voice launch notice · the HTTPS & certificates troubleshooting page · the
+connection test (a certificate failure there also offers HTTPS &
+certificates) · Repair's Reconnect Now · Settings' Sign In Again · Siri's
+voice launch notice · the HTTPS & certificates troubleshooting page and its
+Install this server's certificate step (the check, the saved profile, the
+Ask Hermes fingerprint prompt) · the
 website's setup page (When it doesn't connect, in scripts/build_site.py in
 hermes-conduit-website)
 
 **Code**
 - Classification and copy: `Conduit/Services/ConnectionFailure.swift` (ConnectionFailureClassifier, TLSTrustDiagnosis, userTitle, userMessage, helpDestination)
-- Where it lands: `Conduit/Services/ConnectionSetupFlow.swift` (repairPath), `Conduit/Services/ConnectionSetupTest.swift` (ConnectionSetupTestRecoveryPlan)
+- Where it lands: `Conduit/Services/ConnectionSetupFlow.swift` (repairPath, showTroubleshooting), `Conduit/Services/ConnectionSetupTest.swift` (ConnectionSetupTestRecoveryPlan, offersCertificateHelp)
+- Install this server's certificate: `Conduit/Services/ServerCertificateProfile.swift` (ServerCertificateCheck, ServerCertificateInspector, ServerCertificateProfile), `Conduit/Views/ServerCertificateSection.swift`, `Conduit/Services/ConnectionSetupFlow.swift` (ConnectionSetupPrompt.certificateFingerprint)
 - Shown: `Conduit/Views/ConnectionSetupForm.swift`, `Conduit/Views/ConnectionSetupView.swift` (the troubleshooting checks), `Conduit/Voice/Wake/PendingVoiceLaunchPolicy.swift`
-- Tests: `ConduitTests/ConnectionFailureTests.swift`, `ConduitTests/ConnectionSetupTestTests.swift`, `ConduitTests/ConnectionRepairTests.swift`
+- Tests: `ConduitTests/ConnectionFailureTests.swift`, `ConduitTests/ConnectionSetupTestTests.swift`, `ConduitTests/ConnectionRepairTests.swift`, `ConduitTests/ServerCertificateProfileTests.swift` (also fails any source that hands a server trust a credential)
 
 **Rulings**
 - No TLS validation override: a certificate iOS refuses is never accepted, on any device (Eric, 2026-10-19, issue #129).
 - A refused certificate names the check iOS failed, read from the peer trust URLSession leaves on the error: the certificate doesn't name the address, it breaks Apple's certificate rules (825 days, serverAuth, key size, SHA-2), its dates, or else its root isn't trusted. The most specific comes first, since trusting the root wouldn't fix the others (2026-10-27, #1405, from issue #129's iPad report).
+- Getting a root onto the device is the supported way to use your own certificate authority or a self-signed certificate (Eric, 2026-11-03, #1716). The HTTPS page reads the chain the server presents, on a connection that cancels every trust challenge, and only when the root alone is untrusted saves the top, self-issued certificate as a profile (one com.apple.security.root payload, its identifier from the certificate so a reinstall replaces it) for the user to install and trust in Settings. It shows the SHA-256 fingerprint and an Ask Hermes prompt for the server's, to compare first. A wrong name, Apple's rules or dates get their own message instead, since trusting the root wouldn't fix them, and a server that doesn't send its root is told to install it from where the certificates were made.
 
 **Open gaps**
 - The Watch and the dictation clip retry treat TLS failures only as never sent or not transient; they show no classified copy.
+- The install offer trusts the existing diagnosis: a refused chain whose failed checks aren't a name, Apple's rules or dates counts as an untrusted root, so a rarer failure (revocation, basic constraints) could get the offer and then fail again, named by the classifier. Gating on Security's anchor check names was left out until they're verified on a device (#1716 review).
+- Not tried on a device yet: opening the saved profile from Files on an iPhone or iPad, and from Finder on a Mac. Whether a root installed on the iPhone also covers the Watch's own connections hasn't been checked.
 
-**Checked:** 2026-10-27, #1405.
+**Checked:** 2026-11-03, #1716.
 
 ## Review bots
 

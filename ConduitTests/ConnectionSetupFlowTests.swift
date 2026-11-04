@@ -327,6 +327,23 @@ final class ConnectionSetupFlowTests: XCTestCase {
         XCTAssertEqual(flow.step, .tlsTroubleshooting, "Same-topic switch is a no-op")
     }
 
+    func testAFailedTestOpensTheHTTPSPageWithBackToTheTest() {
+        // The connection test's certificate failure offers HTTPS &
+        // certificates (its Install this server's certificate step); Back
+        // returns to where the test failed.
+        var flow = ConnectionSetupFlow(
+            entry: .currentConnection,
+            draft: ConnectionSetupDraft(existingServerURL: "https://hermes.home.arpa")
+        )
+        let before = flow.step
+        let depth = flow.path.count
+        flow.showTroubleshooting(.tls)
+        XCTAssertEqual(flow.step, .tlsTroubleshooting)
+        XCTAssertEqual(flow.path.count, depth + 1)
+        flow.back()
+        XCTAssertEqual(flow.step, before)
+    }
+
     func testWizardDestinationsDoNotJumpOutOfTheQuestionSequence() {
         // The troubleshooting switch is only for the tls/cloudflare surfaces;
         // it must not be usable to skip straight to branches.
