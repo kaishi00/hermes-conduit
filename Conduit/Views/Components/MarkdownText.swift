@@ -1587,8 +1587,9 @@ enum MarkdownTableLayout {
         // decision, and on the reference definitions (they change how cell
         // source measures). A chat-size change must never serve stale
         // measurements from the previous size.
-        // Each row is led by its cell count, so the cells keep their rows.
-        var cells = headers
+        // The header and each row are led by their cell count, so the cells
+        // keep their rows.
+        var cells = ["\u{1F}\(headers.count)"] + headers
         for row in rows {
             cells.append("\u{1F}\(row.count)")
             cells.append(contentsOf: row)

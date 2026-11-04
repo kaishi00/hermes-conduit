@@ -280,6 +280,14 @@ struct StreamingText: View {
                 revealAllLargeImmediately()
             }
         }
+        // Under Reduce Motion no reveal tick runs to drain the scanner when
+        // the stream ends, so the end itself does it: a reply whose last line
+        // closes a fence still promotes instead of staying one live tail.
+        .onChange(of: active) { _, isActive in
+            guard !isActive, reduceMotion, largeScanner.hasPendingLine else { return }
+            largeScanner.finish()
+            promoteLargeChunks()
+        }
     }
 
     /// The revealed-but-unpromoted window — the only part that re-renders
