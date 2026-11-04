@@ -66,7 +66,7 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(MarkdownParser.parse("- \(Self.boardLine)"), [])
         XCTAssertEqual(MarkdownParser.parse(Self.boardLine), [], "a reply that's only the line stays empty")
         XCTAssertEqual(MarkdownParser.parse("Here \(Self.boardLine) it is."), [.paragraph("Here it is.")])
-        XCTAssertEqual(PinnedReplies.excerpt(of: "Your plan:\n\(Self.boardLine)"), "Your plan:")
+        XCTAssertEqual(PinnedReply.excerpt(of: "Your plan:\n\(Self.boardLine)"), "Your plan:")
         // Beside a preview with no host to read it, the preview stays text and the line still goes.
         let besidePreview = MarkdownParser.parse(#"::preview{file="/tmp/a.html"} \#(Self.boardLine)"#)
         XCTAssertEqual(besidePreview, [.paragraph(#"::preview{file="/tmp/a.html"}"#)])
