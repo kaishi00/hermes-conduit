@@ -73,7 +73,7 @@ jobs:
           EVENT_ACTION: ${{ github.event.action }}
           WORKFLOW_FILE: opencode-review.yml
           ALL_REVIEWERS: >-
-            [{"reviewer": "Crouton Alpha", "model": "go-custom/crouton-alpha-free"},
+            [{"reviewer": "Beam", "model": "go-custom/beam-free"},
              {"reviewer": "GLM-5.3-Flash", "model": "zai-custom/glm-5.3-flash"}]
           DOCS_REVIEWER: GLM-5.3-Flash
           GATE_REVIEWER: GLM-5.3-Flash

@@ -9,8 +9,11 @@
         "apiKey": "{env:OPENCODE_GO_API_KEY}"
       },
       "models": {
-        "crouton-alpha-free": {
-          "name": "Crouton Alpha"
+        "beam-free": {
+          "name": "Beam",
+          "interleaved": {
+            "field": "reasoning_content"
+          }
         }
       }
     },
