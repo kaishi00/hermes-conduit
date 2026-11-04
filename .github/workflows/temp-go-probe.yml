@@ -1,0 +1,22 @@
+name: temp-go-probe
+on:
+  pull_request:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: List Go models and ask crouton-alpha-free
+        env:
+          KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
+        run: |
+          echo "key set: $([ -n "$KEY" ] && echo yes || echo no)"
+          for base in https://opencode.ai/zen/go/v1 https://opencode.ai/zen/v1; do
+            echo "== $base/models"
+            curl -sS -m 30 "$base/models" -H "Authorization: Bearer $KEY" -H "x-opencode-session: probe-$GITHUB_RUN_ID" | jq -r '.data[]?.id' 2>/dev/null | sort | tr '\n' ' ' || true
+            echo
+            echo "== $base/chat/completions crouton-alpha-free"
+            curl -sS -m 90 "$base/chat/completions" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -H "x-opencode-session: probe-$GITHUB_RUN_ID" \
+              -d '{"model":"crouton-alpha-free","messages":[{"role":"user","content":"Reply with the word ok."}],"max_tokens":200}' | head -c 1500
+            echo
+          done
