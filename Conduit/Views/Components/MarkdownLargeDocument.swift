@@ -814,7 +814,7 @@ struct MarkdownStableBoundaryScanner {
     /// block opened with one cannot close on the other.
     private var mathClose: String?
     private var inDirective = false
-    /// Inside a run of table rows (lines starting with `|`). A table has no
+    /// Inside a run of table rows (lines with a `|`). A table has no
     /// blank line in it, so a long one would otherwise take a hard cut
     /// mid-table and leave the tail's rows without their header.
     private var inTable = false
@@ -947,12 +947,14 @@ struct MarkdownStableBoundaryScanner {
         consumedOffset += line.utf8.count
     }
 
-    /// Opens a table span at its first `|` row and closes it at the start
-    /// of the first line that isn't one, so a cut lands before or after a
-    /// table, never inside it. Called only outside fences, math and
+    /// Opens a table span at its first row and closes it at the start of
+    /// the first line that isn't one, so a cut lands before or after a
+    /// table, never inside it. A row is any line with a `|`, as the parser
+    /// reads one (a table may leave out its outer pipes); prose with a `|`
+    /// only holds a cut off that line. Called only outside fences, math and
     /// directives.
     private mutating func noteTableRow(_ trimmedLine: String, lineStartOffset: Int) {
-        let isRow = trimmedLine.hasPrefix("|")
+        let isRow = trimmedLine.contains("|")
         if isRow, !inTable {
             inTable = true
             constructIntervals.append((start: lineStartOffset, end: nil))

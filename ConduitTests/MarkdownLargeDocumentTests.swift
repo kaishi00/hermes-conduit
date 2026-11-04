@@ -1394,7 +1394,7 @@ extension MarkdownLargeDocumentTests {
     /// span, so the stream never hard-cuts mid-table and leaves the tail's
     /// rows without their header (review of #1734).
     func testALongStreamingTableIsNeverCutInside() {
-        let rows = (0..<900).map { "| row \($0) | value \($0) | note \($0) |" }.joined(separator: "\n")
+        let rows = (0..<2_000).map { "| row \($0) | value \($0) | note \($0) |" }.joined(separator: "\n")
         let text = "intro\n\n| a | b | c |\n| --- | --- | --- |\n\(rows)\n\nafter table\n"
         var scanner = MarkdownStableBoundaryScanner()
         let boundaries = scanner.append(text)
@@ -1418,6 +1418,17 @@ extension MarkdownLargeDocumentTests {
                 XCTAssertFalse(next > span.start && next < span.end!, "cut \(next) lands inside the table")
             }
         }
+    }
+
+    /// A table written without its outer pipes is one span too.
+    func testATableWithoutOuterPipesIsOneSpan() {
+        let rows = (0..<50).map { "row \($0) | value \($0)" }.joined(separator: "\n")
+        let text = "intro\n\na | b\n--- | ---\n\(rows)\n\nafter\n"
+        var scanner = MarkdownStableBoundaryScanner()
+        _ = scanner.append(text)
+        XCTAssertEqual(scanner.constructIntervals.count, 1)
+        XCTAssertEqual(scanner.constructIntervals[0].start, "intro\n\n".utf8.count)
+        XCTAssertEqual(scanner.constructIntervals[0].end, text.utf8.count - "\nafter\n".utf8.count)
     }
 
     /// A table still streaming when the reply ends is closed by `finish()`.
