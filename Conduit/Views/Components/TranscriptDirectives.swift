@@ -16,8 +16,13 @@ import Foundation
 /// `key="value"` or `key='value'`, and a preview without a file stays the
 /// text it is. `::preview{file="…"}` draws its file; any other directive is
 /// a Desktop plugin's card (#1522), which Conduit names instead of showing
-/// the raw line.
+/// the raw line. The plugin's own `::conduit-board{id="…"}` says where Hermes
+/// Desktop draws a conduit_show board; Conduit draws that board from the tool
+/// call already, so the line is hidden everywhere: no segment, said or shown.
 enum TranscriptDirectives {
+    /// The directive the plugin's Desktop half draws (notifier's desktop/plugin.js).
+    static let conduitBoardName = "conduit-board"
+
     enum Segment: Equatable {
         case text(String)
         case preview(file: String)
@@ -41,7 +46,7 @@ enum TranscriptDirectives {
     )
 
     /// The line split into text, previews and Desktop cards, or nil when it
-    /// holds none.
+    /// holds none. A line that was only a hidden board is empty.
     static func segments(in line: String) -> [Segment]? {
         guard line.contains("::") else { return nil }
         let nsLine = line as NSString
@@ -54,7 +59,12 @@ enum TranscriptDirectives {
             let name = nsLine.substring(with: match.range(at: 1))
             let body = nsLine.substring(with: match.range(at: 2))
             let segment: Segment
-            if name == "preview" {
+            if name == conduitBoardName {
+                // Conduit's own board for Desktop: hidden, with the text around it kept.
+                appendText(nsLine.substring(with: NSRange(location: cursor, length: match.range.location - cursor)), to: &segments)
+                cursor = NSMaxRange(match.range)
+                continue
+            } else if name == "preview" {
                 guard let file = attributes(in: body)["file"]?.trimmingCharacters(in: .whitespaces),
                       !file.isEmpty else { continue }
                 segment = .preview(file: file)

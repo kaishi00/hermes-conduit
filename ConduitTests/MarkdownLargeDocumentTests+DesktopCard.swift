@@ -51,6 +51,37 @@ extension MarkdownLargeDocumentTests {
         XCTAssertNil(card.richUICardID)
     }
 
+    // MARK: - Conduit's own board line
+
+    private static let boardLine = #"::conduit-board{id="cb-0123456789ab"}"#
+
+    func testConduitBoard_LineIsHiddenWhereTheReplyIsDrawn() {
+        XCTAssertEqual(TranscriptDirectives.segments(in: Self.boardLine), [])
+        XCTAssertEqual(TranscriptDirectives.segments(in: "Here: \(Self.boardLine)"), [.text("Here:")])
+        let source = "Your plan:\n\(Self.boardLine)\nAnything else?"
+        for recognizesGatewayMedia in [true, false] {
+            let blocks = MarkdownParser.parse(source, recognizesGatewayMedia: recognizesGatewayMedia)
+            XCTAssertEqual(blocks, [.paragraph("Your plan:"), .paragraph("Anything else?")], "\(blocks)")
+        }
+        XCTAssertEqual(MarkdownParser.parse("- \(Self.boardLine)"), [])
+    }
+
+    func testConduitBoard_LineIsNeverSaidOrPreviewed() {
+        let text = "Your plan:\n\(Self.boardLine)\nDone."
+        XCTAssertEqual(TranscriptDirectives.readable(from: text), "Your plan:\nDone.")
+        XCTAssertFalse(VoiceReadBack.plainSpeech(text).contains("conduit-board"))
+        XCTAssertFalse(VoiceReadBack.plainSpeech(text).contains(DesktopCardDirective.spokenNote))
+        XCTAssertEqual(GatewayMediaTags.namingFiles(in: text), "Your plan:\nDone.")
+        XCTAssertEqual(PreviewText.plain("Done. \(Self.boardLine)"), "Done.")
+        XCTAssertEqual(ChatQuote.excerpt(of: "Your plan:\n\(Self.boardLine)"), "Your plan:")
+    }
+
+    func testConduitBoard_AnExampleStaysAsWritten() {
+        XCTAssertNil(TranscriptDirectives.segments(in: "`\(Self.boardLine)`"))
+        let fenced = "```\n\(Self.boardLine)\n```"
+        XCTAssertEqual(TranscriptDirectives.readable(from: fenced), fenced)
+    }
+
     // MARK: - Parsing
 
     func testDesktopCard_ParsesIntoACardOnEverySurface() {

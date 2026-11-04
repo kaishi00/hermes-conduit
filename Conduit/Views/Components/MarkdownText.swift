@@ -3643,7 +3643,11 @@ enum MarkdownParser {
     private static func directiveSegments(in trimmed: String, recognizesGatewayMedia: Bool) -> [TranscriptDirectives.Segment]? {
         guard !trimmed.hasPrefix(">"), let segments = TranscriptDirectives.segments(in: trimmed) else { return nil }
         if recognizesGatewayMedia { return segments }
-        return segments.contains { if case .desktopCard = $0 { return true } else { return false } } ? segments : nil
+        // Without a host a lone preview stays text; a Desktop card, or a
+        // board line that's hidden (no segment of its own), is still taken.
+        let holdsPreview = segments.contains { if case .preview = $0 { return true } else { return false } }
+        let holdsCard = segments.contains { if case .desktopCard = $0 { return true } else { return false } }
+        return !holdsPreview || holdsCard ? segments : nil
     }
     /// Whether the gateway-media branches of `parseBlocks` take `line`.
     private static func claimsGatewayMedia(_ line: String) -> Bool {
