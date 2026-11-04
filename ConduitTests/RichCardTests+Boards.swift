@@ -68,6 +68,11 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNotNil(RichBoard.board(for: try boardTool(older)), "an older plugin's answer draws what it can")
         older["cards"] = [["type": "hologram"]]
         XCTAssertNil(RichBoard.board(for: try boardTool(older)))
+
+        // No cards given is a Markdown-only show, or Markdown Hermes puts in
+        // its reply (a room, Desktop): drawing it would show it twice.
+        let textOnly: [String: Any] = ["ok": false, "error": "group_room", "markdown": "**Kin Khao**", "cards": []]
+        XCTAssertNil(RichBoard.board(for: try boardTool(textOnly)))
     }
 
     func testFollowUpsAreOfferedOnlyUnderTheLastTurnsBoard() throws {
