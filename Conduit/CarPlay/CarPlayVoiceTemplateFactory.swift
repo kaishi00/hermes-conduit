@@ -20,6 +20,7 @@
 //
 
 import CarPlay
+import os
 import UIKit
 
 /// Handlers the template's buttons invoke. MainActor-facing; the coordinator
@@ -134,6 +135,34 @@ enum CarPlayVoiceButton: Equatable {
     }
 }
 
+/// Runs a CarPlay template handler on the main thread. CarPlay can call
+/// handlers from its connection's queue rather than the main thread: the
+/// voice template's End came on a 512 KB dispatch worker on iOS 26, where
+/// ending the call ran SwiftUI's update off the main thread and overflowed
+/// that stack (eight crash reports, builds 223 to 246). Every template
+/// handler, voice and browse, goes through here. On the main thread with
+/// nothing queued it runs at once, so a tap acts in the same turn it always
+/// did; otherwise it waits its turn on the main queue, so taps keep the
+/// order they came in (a main-thread Listen never overtakes a queued End).
+enum CarPlayMainThread {
+    private static let queued = OSAllocatedUnfairLock(initialState: 0)
+
+    nonisolated static func run(_ action: @escaping @MainActor () -> Void) {
+        // Counting and queueing are one step under the lock, so a tap that
+        // has entered here is ordered before any that check after it.
+        let runsNow = queued.withLockUnchecked { count -> Bool in
+            if Thread.isMainThread, count == 0 { return true }
+            count += 1
+            DispatchQueue.main.async {
+                queued.withLock { $0 -= 1 }
+                action()
+            }
+            return false
+        }
+        if runsNow { MainActor.assumeIsolated { action() } }
+    }
+}
+
 @MainActor
 enum CarPlayVoiceTemplateFactory {
     static func makeVoiceControlState(
@@ -195,7 +224,7 @@ enum CarPlayVoiceTemplateFactory {
     ) -> CPButton {
         let button = CPButton(
             image: UIImage(systemName: symbol) ?? UIImage(systemName: "circle.fill") ?? UIImage(),
-            handler: handler
+            handler: { button in CarPlayMainThread.run { handler(button) } }
         )
         button.title = title
         return button

@@ -217,10 +217,10 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             throw VoiceAudioError.unavailable(AppLocalization.string("The gateway changed PCM sample rates during a stream."))
         }
         remainder.append(data)
-        let alignedBytes = remainder.count - (remainder.count % 2)
+        let (pcm, leftover) = VoicePCMEncoding.splitPCM16(remainder)
+        let alignedBytes = pcm.count
         guard alignedBytes > 0 else { return 0 }
-        let pcm = remainder.prefix(alignedBytes)
-        remainder.removeFirst(alignedBytes)
+        remainder = leftover
         let frames = AVAudioFrameCount(alignedBytes / 2)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { return 0 }
         buffer.frameLength = frames

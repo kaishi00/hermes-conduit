@@ -750,6 +750,19 @@ extension BotModeTests {
         XCTAssertEqual(V2VoiceButton.botsToCall(roster).map(\.name), ["furina", "atlas", "rei", "nia"])
     }
 
+    /// Bots Home's Group Chats probe and the roster ask again on their own
+    /// after a failure, four times at most, so their notice clears once
+    /// Hermes answers (Eric 2026-11-04).
+    @MainActor
+    func testANoticesReadAsksAgainFourTimesThenStops() async {
+        XCTAssertEqual((0..<5).map(TransientReadRetry.delay(after:)), [2, 4, 8, 16, nil])
+        var retry = TransientReadRetry()
+        for _ in 0..<6 { retry.schedule {} }
+        XCTAssertEqual(retry.attempts, 4, "no fifth try")
+        retry.succeeded()
+        XCTAssertEqual(retry.attempts, 0, "an answer starts the delays again")
+    }
+
     /// A dragged portrait carries a marked name, so text dragged in from
     /// another app is never taken for a bot.
     func testABotDragCarriesAMarkedName() {

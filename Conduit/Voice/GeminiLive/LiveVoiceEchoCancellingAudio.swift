@@ -183,15 +183,15 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         }
         guard let format = playerFormat else { return }
         remainder.append(pcm)
-        let alignedBytes = remainder.count - (remainder.count % 2)
-        let frames = AVAudioFrameCount(alignedBytes / 2)
+        let (samples, leftover) = VoicePCMEncoding.splitPCM16(remainder)
+        let frames = AVAudioFrameCount(samples.count / 2)
         guard frames > 0, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames),
               let channel = buffer.floatChannelData?[0] else { return }
         buffer.frameLength = frames
-        remainder.prefix(alignedBytes).withUnsafeBytes { raw in
+        samples.withUnsafeBytes { raw in
             AVSpeechPlaybackService.convertPCM16(raw, into: channel, frames: Int(frames))
         }
-        remainder.removeFirst(alignedBytes)
+        remainder = leftover
         schedule(buffer, on: player)
     }
 

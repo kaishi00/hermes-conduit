@@ -261,7 +261,7 @@ enum CarPlayBarButtonKind: Equatable {
 @MainActor
 enum CarPlayBrowseTemplateFactory {
     static func barButton(_ kind: CarPlayBarButtonKind, action: @escaping () -> Void) -> CPBarButton {
-        CPBarButton(title: kind.title) { _ in action() }
+        CPBarButton(title: kind.title) { _ in CarPlayMainThread.run(action) }
     }
 
     /// The car screen's appearance at connect. Icons start in its colours.
@@ -323,7 +323,7 @@ enum CarPlayBrowseTemplateFactory {
             (AppLocalization.string("Shortcuts"), "bolt.fill", handlers.showShortcuts),
             (AppLocalization.string("Voice"), "waveform.circle.fill", handlers.showVoiceOptions),
         ].map { title, symbol, action in
-            CPGridButton(titleVariants: [title], image: symbolImage(symbol)) { _ in action() }
+            CPGridButton(titleVariants: [title], image: symbolImage(symbol)) { _ in CarPlayMainThread.run(action) }
         }
         return CPGridTemplate(title: AppLocalization.string("More"), gridButtons: buttons)
     }
@@ -345,8 +345,10 @@ enum CarPlayBrowseTemplateFactory {
             image: symbolImage("plus.bubble.fill")
         )
         newChat.handler = { _, completion in
-            handlers.newVoiceChat()
-            completion()
+            CarPlayMainThread.run {
+                handlers.newVoiceChat()
+                completion()
+            }
         }
         var sections = [CPListSection(items: [newChat])]
         if !chats.pinned.isEmpty {
@@ -387,8 +389,10 @@ enum CarPlayBrowseTemplateFactory {
                 item.playingIndicatorLocation = .trailing
             }
             item.handler = { _, completion in
-                handlers.openChat(row)
-                completion()
+                CarPlayMainThread.run {
+                    handlers.openChat(row)
+                    completion()
+                }
             }
             return item
         }
@@ -405,8 +409,10 @@ enum CarPlayBrowseTemplateFactory {
         let items = rows.map { row in
             let item = CPListItem(text: row.title, detailText: row.status, image: symbolImage(row.symbol))
             item.handler = { _, completion in
-                if row.canReplay { handlers.replayJob(row.id) }
-                completion()
+                CarPlayMainThread.run {
+                    if row.canReplay { handlers.replayJob(row.id) }
+                    completion()
+                }
             }
             return item
         }
@@ -427,7 +433,7 @@ enum CarPlayBrowseTemplateFactory {
                 titleVariants: [shortcut.title],
                 image: symbolImage(CarPlayBrowse.shortcutSymbol(at: index))
             ) { _ in
-                handlers.runShortcut(shortcut)
+                CarPlayMainThread.run { handlers.runShortcut(shortcut) }
             }
         }
         return CPGridTemplate(title: title, gridButtons: Array(buttons))
@@ -466,8 +472,10 @@ enum CarPlayBrowseTemplateFactory {
             accessoryType: .none
         )
         item.handler = { _, completion in
-            select()
-            completion()
+            CarPlayMainThread.run {
+                select()
+                completion()
+            }
         }
         return item
     }
