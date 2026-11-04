@@ -126,6 +126,13 @@ enum TranscriptDirectives {
         }.joined(separator: "\n")
     }
 
+    /// `text` without the plugin's hidden board lines, every other
+    /// directive kept as written.
+    static func removingBoards(from text: String) -> String {
+        guard text.contains("::\(conduitBoardName){") else { return text }
+        return rewriting(text, preview: { "::preview{file=\"\($0)\"}" }, card: { $0.source })
+    }
+
     /// A file's name from its path.
     static func fileName(_ path: String) -> String {
         path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path

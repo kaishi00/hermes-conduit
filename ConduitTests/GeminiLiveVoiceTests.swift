@@ -2753,6 +2753,10 @@ extension HermesVoiceGatewayTimeoutTests {
             // plugin's card a short note.
             ("Rents below:\n::richui{id=\"ru-c91286278685\"}\nDone.", "Rents below:\n\(DesktopCardDirective.spokenNote)\nDone."),
             ("Chart ::preview{file=\"/tmp/a.html\"} here.", "Chart here."),
+            // The plugin's board line for Hermes Desktop says nothing at all.
+            ("Your plan:\n::conduit-board{id=\"cb-0123456789ab\"}\nDone.", "Your plan:\nDone."),
+            ("Here ::conduit-board{id=\"cb-0123456789ab\"} it is.", "Here it is."),
+            ("::conduit-board{id=\"cb-0123456789ab\"}", ""),
             ("Use ::selection{color:red} in CSS.", "Use ::selection{color:red} in CSS."),
             // One in a code block is code, said as written.
             ("Write:\n```\n::richui{id=\"x\"}\n```\nDone.", "Write:\n```\n::richui{id=\"x\"}\n```\nDone."),

@@ -3313,9 +3313,11 @@ enum MarkdownParser {
         // walker ever produces nothing for non-whitespace input, surface the
         // stripped body rather than rendering an empty message. Definitions
         // were already removed from visibleSource, so they cannot resurface
-        // here even in that fallback.
-        let finalBlocks = blocks.isEmpty && !visibleSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? [.paragraph(visibleSource)]
+        // here even in that fallback, nor can the plugin's hidden board line:
+        // a reply that was only that line stays empty.
+        let fallbackSource = blocks.isEmpty ? TranscriptDirectives.removingBoards(from: visibleSource) : visibleSource
+        let finalBlocks = blocks.isEmpty && !fallbackSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? [.paragraph(fallbackSource)]
             : blocks
         return MarkdownParsedDocument(
             blocks: finalBlocks,

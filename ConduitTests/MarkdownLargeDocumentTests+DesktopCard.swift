@@ -64,6 +64,7 @@ extension MarkdownLargeDocumentTests {
             XCTAssertEqual(blocks, [.paragraph("Your plan:"), .paragraph("Anything else?")], "\(blocks)")
         }
         XCTAssertEqual(MarkdownParser.parse("- \(Self.boardLine)"), [])
+        XCTAssertEqual(MarkdownParser.parse(Self.boardLine), [], "a reply that's only the line stays empty")
     }
 
     func testConduitBoard_LineIsNeverSaidOrPreviewed() {
