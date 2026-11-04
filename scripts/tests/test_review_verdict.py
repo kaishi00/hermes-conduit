@@ -36,9 +36,9 @@ def _jq_filter():
     return text[start:text.index("| .body | @json'", start) + len("| .body | @json")]
 
 
-def comment(verdict_text, run_id="41", model="zai-custom/glm-5.3-flashx", created="2026-11-03T23:00:05Z",
+def comment(verdict_text, run_id="41", model="zai-custom/glm-5.3-flash", created="2026-11-03T23:00:05Z",
             login="github-actions[bot]"):
-    body = ("Review by GLM-5.3-FlashX\n\n## Summary\nx\n\n## Findings\nnone\n\n## Verdict\n" + verdict_text
+    body = ("Review by GLM-5.3-Flash\n\n## Summary\nx\n\n## Findings\nnone\n\n## Verdict\n" + verdict_text
             + f'\n\n<a href="https://opencode.ai/s/a"><img src="https://x/y.png?model={model}&version=1&id=a" /></a>\n'
             + f"[opencode session](https://opencode.ai/s/a)&nbsp;|&nbsp;[github run](/o/r/actions/runs/{run_id})")
     return {"user": {"login": login}, "created_at": created, "body": body}
@@ -86,7 +86,7 @@ class GateTests(unittest.TestCase):
 @unittest.skipUnless(shutil.which("jq"), "jq isn't installed")
 class CommentFilterTests(unittest.TestCase):
     def pick(self, comments):
-        env = dict(os.environ, SINCE="2026-11-03T23:00:00Z", GITHUB_RUN_ID="41", MODEL="zai-custom/glm-5.3-flashx")
+        env = dict(os.environ, SINCE="2026-11-03T23:00:00Z", GITHUB_RUN_ID="41", MODEL="zai-custom/glm-5.3-flash")
         run = subprocess.run(["jq", "-r", _jq_filter()], input=json.dumps(comments), env=env,
                              capture_output=True, text=True, check=True)
         return [l for l in run.stdout.split("\n") if l]
