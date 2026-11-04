@@ -18,7 +18,7 @@ extension AppState {
         guard !sessionIDs.isEmpty else { return nil }
         let profile = activeProfile
         let dashboardID = activeDashboardID
-        let scope = "\(profile)\u{1E}\(sessionIDs.joined(separator: "\u{1D}"))"
+        let scope = RichChecklistContext.scope(profile: profile, sessionIDs: sessionIDs)
         return RichChecklistContext(
             scope: scope,
             sessionIDs: sessionIDs,
