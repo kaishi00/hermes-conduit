@@ -238,4 +238,29 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(RichTimelineCard.mapsURL("Glacier Point, Yosemite")?.absoluteString,
                        "https://maps.apple.com/?q=Glacier%20Point,%20Yosemite")
     }
+
+    func testARoomsBoardsGoUnderTheNextMessageTheirAgentPosts() throws {
+        let callout: [String: Any] = ["cards": [["type": "callout", "callout": ["text": "Book early", "tone": "tip"]]],
+                                      "markdown": "Book early"]
+        let boards = RoomBoard.boards(["boards": [
+            ["profile": "researcher", "at": 1_000, "board": callout],
+            ["profile": "researcher", "at": 1_010, "board": callout],
+            ["profile": "writer", "at": 1_020, "board": callout],
+            ["profile": "researcher", "at": 5_000, "board": callout],
+            ["profile": "nobody", "at": 1_000, "board": ["cards": [["type": "hologram"]]]],
+        ]])
+        XCTAssertEqual(boards.count, 4, "a board Conduit can't draw at all is left out")
+        func message(_ seq: Int, _ profile: String, at: Double) -> GroupEvent {
+            GroupEvent(roomID: "r", seq: seq, eventID: "e\(seq)", kind: "message.member",
+                       actor: GroupActor(kind: "member", id: profile, profile: profile, displayName: nil, connectionID: nil),
+                       authorityEpoch: nil, payload: ["text": .string("Here"), "thread_id": .string("main")], createdAt: at)
+        }
+        let events = [message(1, "researcher", at: 990), message(2, "researcher", at: 1_030), message(3, "writer", at: 1_040)]
+        let placed = RoomBoard.placed(boards, in: events)
+        XCTAssertNil(placed["e1"], "a message from before the board")
+        XCTAssertEqual(placed["e2"]?.count, 2, "both of the turn's boards under its message")
+        XCTAssertEqual(placed["e3"]?.count, 1)
+        XCTAssertEqual(placed.values.map(\.count).reduce(0, +), 3, "a board whose message never came lands on none")
+        XCTAssertTrue(RoomBoard.readPath(profile: "work", roomID: "room 1").hasSuffix("?profile=work&room_id=room%201"))
+    }
 }

@@ -135,7 +135,8 @@ struct GroupChatView: View {
                 members: members,
                 pending: appState.pendingRoomMessage,
                 isSending: appState.activeRoomSendInFlight,
-                responder: respondingMember
+                responder: respondingMember,
+                boards: appState.activeRoomPlacedBoards
             ),
             scroller: scroller
         )
@@ -212,8 +213,8 @@ struct GroupChatView: View {
     @ViewBuilder
     private func roomRow(_ row: TranscriptRow) -> some View {
         switch row.kind {
-        case .room(.event(let event, let members, let continuesRun)):
-            GroupEventRow(event: event, members: members, continuesRun: continuesRun)
+        case .room(.event(let event, let members, let continuesRun, let boards)):
+            GroupEventRow(event: event, members: members, continuesRun: continuesRun, boards: boards)
         case .room(.pending(let text, let members, let isSending)):
             GroupUserBubble(text: text, members: members, timestamp: nil, eventID: row.id) {
                 if isSending {
@@ -593,6 +594,8 @@ struct GroupEventRow: View {
     let members: [GroupMember]
     /// The previous row is the same speaker's: no picture or name again.
     var continuesRun = false
+    /// The boards the agent showed for this message (RoomBoards).
+    var boards: [RichBoard] = []
 
     var body: some View {
         if event.isUserMessage {
@@ -607,7 +610,8 @@ struct GroupEventRow: View {
                 members: members,
                 timestamp: event.createdAt,
                 continuesRun: continuesRun,
-                roomEventID: event.id
+                roomEventID: event.id,
+                boards: boards
             )
         } else {
             GroupSystemEventCaption(event: event, members: members)
@@ -761,6 +765,8 @@ struct GroupMemberBubble: View {
     /// A hosted room's event id: its messages can be quoted and read
     /// aloud. A Desktop group, read-only here, passes none.
     var roomEventID: String? = nil
+    /// The boards the agent showed with this message, under its bubble.
+    var boards: [RichBoard] = []
     @Environment(\.groupMemberTints) private var tints
 
     static let avatarSize: CGFloat = 30
@@ -816,6 +822,11 @@ struct GroupMemberBubble: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .groupMemberBubbleSurface(tint: tint)
+                if !boards.isEmpty {
+                    RoomBoardsView(boards: boards)
+                        .frame(maxWidth: 560, alignment: .leading)
+                        .padding(.top, 6)
+                }
                 if !parts.text.isEmpty {
                     HStack(spacing: 2) {
                         GroupMessageCopyButton(text: GroupRoomMentions.refanged(parts.text), label: .response)
