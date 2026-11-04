@@ -71,7 +71,7 @@ jobs:
           EVENT_ACTION: ${{ github.event.action }}
           WORKFLOW_FILE: opencode-review.yml
           ALL_REVIEWERS: >-
-            [{"reviewer": "DeepSeek V4.1 Flash", "model": "go-custom/deepseek-flash"},
+            [{"reviewer": "DeepSeek V4.1 Flash", "model": "go-custom/deepseek-v4.1-flash"},
              {"reviewer": "GLM-5.3-FlashX", "model": "zai-custom/glm-5.3-flashx"}]
           DOCS_REVIEWER: GLM-5.3-FlashX
           GATE_REVIEWER: GLM-5.3-FlashX
