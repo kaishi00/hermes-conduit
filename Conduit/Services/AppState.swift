@@ -12329,6 +12329,12 @@ final class AppState: ObservableObject {
     /// a dashboard switch, and when a session open takes the viewport back.
     private(set) var groupRoomEpoch = 0
     private var groupRoomPollTask: Task<Void, Never>?
+    /// The Group Chats probe asked again after a transient failure, so its
+    /// notice clears on its own once Hermes answers (Eric 2026-11-04: it
+    /// stayed after a reconnect the app never saw as a disconnect).
+    private var groupChatProbeRetry = TransientReadRetry()
+    /// The same for the bot roster's "Could not refresh bots".
+    private var botRosterRetry = TransientReadRetry()
 
     // Group Chat RPC routing: the injectable seam first (tests), then the
     // production client call.
@@ -12692,6 +12698,7 @@ final class AppState: ObservableObject {
             let capabilities = try await groupsCapabilities(client)
             guard groupRoomEpoch == epoch, activeDashboardID == dashboard else { return }
             groupCapabilities = capabilities
+            groupChatProbeRetry.succeeded()
             guard capabilities.foundationSupported else {
                 groupChatPhase = .gatewayUnsupported
                 groupRooms = []
@@ -12709,6 +12716,12 @@ final class AppState: ObservableObject {
                 groupRooms = []
             } else if groupChatPhase != .available {
                 groupChatPhase = .failed(message: UserFacingError.message(for: error))
+                groupChatProbeRetry.schedule { [weak self] in
+                    guard let self, self.isConnected, self.groupRoomEpoch == epoch,
+                          self.activeDashboardID == dashboard,
+                          case .failed = self.groupChatPhase else { return }
+                    await self.refreshGroupChatSupport()
+                }
             }
             // A transient failure while already .available keeps the last
             // known rooms and phase — same contract as the roster notice.
@@ -23128,6 +23141,7 @@ final class AppState: ObservableObject {
             botRosterSupportsProtocol = snapshot.supportsBotProtocol
             botModePhase = .available
             botRosterVerifiedForCurrentConnection = true
+            botRosterRetry.succeeded()
             syncProfileAvatarsWithHermes(rosterWriteSerial: avatarWriteSerial)
         } catch {
             guard botModeStateIsCurrent(epoch: epoch, dashboardID: dashboardID),
@@ -23144,6 +23158,14 @@ final class AppState: ObservableObject {
                 botModePhase = .failed(
                     message: AppLocalization.string("Could not refresh bots.")
                 )
+            }
+            if case .failed = botModePhase {
+                botRosterRetry.schedule { [weak self] in
+                    guard let self, self.isConnected,
+                          self.botModeStateIsCurrent(epoch: epoch, dashboardID: dashboardID),
+                          case .failed = self.botModePhase else { return }
+                    await self.refreshBotRoster()
+                }
             }
         }
     }
