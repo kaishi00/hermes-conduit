@@ -86,6 +86,13 @@ extension MarkdownLargeDocumentTests {
         XCTAssertNil(TranscriptDirectives.segments(in: "`\(Self.boardLine)`"))
         let fenced = "```\n\(Self.boardLine)\n```"
         XCTAssertEqual(TranscriptDirectives.readable(from: fenced), fenced)
+        // A table's cells are table text: drawn as written, so read as written too.
+        let table = "| Board | Note |\n| --- | --- |\n| \(Self.boardLine) | the plan |"
+        XCTAssertEqual(TranscriptDirectives.readable(from: table), table)
+        XCTAssertEqual(TranscriptDirectives.removingBoards(from: table), table)
+        // A pin drops only the board line; a preview beside it keeps its own spelling.
+        let preview = #"::preview{file='/tmp/a.html' title="Chart"}"#
+        XCTAssertEqual(PinnedReply.excerpt(of: "\(preview)\n\(Self.boardLine)"), preview)
     }
 
     // MARK: - Parsing

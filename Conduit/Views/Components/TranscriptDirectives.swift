@@ -110,18 +110,8 @@ enum TranscriptDirectives {
     /// `text` with each directive written as `preview` and `card` say; nil
     /// drops it. A line left empty goes; a fenced code block is code.
     static func rewriting(_ text: String, preview: (String) -> String?, card: (DesktopCardDirective) -> String?) -> String {
-        guard text.contains("::") else { return text }
-        // Line endings normalized as the parser does, so its table check sees the same lines.
-        let lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
-        var fence = CodeFence()
-        return lines.indices.compactMap { index -> String? in
-            let line = lines[index]
-            if fence.isCode(line) { return line }
-            // A quoted directive is an example and a table header cell is
-            // table text; the chat shows both as written.
-            guard !line.trimmingCharacters(in: .whitespaces).hasPrefix(">"),
-                  let segments = segments(in: line),
-                  !isTableHeader(lines, at: index) else { return line }
+        rewritingLines(text) { line in
+            guard let segments = segments(in: line) else { return line }
             let kept = segments.compactMap { segment -> String? in
                 switch segment {
                 case .text(let value): return value
@@ -130,14 +120,57 @@ enum TranscriptDirectives {
                 }
             }
             return kept.isEmpty ? nil : kept.joined(separator: " ")
-        }.joined(separator: "\n")
+        }
     }
 
     /// `text` without the plugin's hidden board lines, every other
     /// directive kept as written.
     static func removingBoards(from text: String) -> String {
         guard text.contains("::\(conduitBoardName){") else { return text }
-        return rewriting(text, preview: { "::preview{file=\"\($0)\"}" }, card: { $0.source })
+        return rewritingLines(text) { line in
+            guard let segments = segments(in: line) else { return line }
+            let nsLine = line as NSString
+            let codeSpans = inlineCodeSpans(in: line)
+            let boards = directiveExpression.matches(in: line, range: NSRange(location: 0, length: nsLine.length)).filter { match in
+                nsLine.substring(with: match.range(at: 1)) == conduitBoardName
+                    && !codeSpans.contains(where: { $0.location < match.range.location && match.range.location < NSMaxRange($0) })
+            }
+            guard !boards.isEmpty else { return line }
+            // A line that was only the board goes, as the transcript drops it.
+            guard !segments.isEmpty else { return nil }
+            var kept = line
+            for match in boards.reversed() {
+                kept = (kept as NSString).replacingCharacters(in: match.range, with: "")
+            }
+            return kept.replacingOccurrences(of: #"(?<=\S)[ \t]{2,}(?=\S)"#, with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespaces)
+        }
+    }
+
+    /// `text` with `rewrite` applied to each line the chat would read
+    /// directives in. A fenced code block is code, a quoted directive an
+    /// example, and a table's lines (header, rule and rows) table text: the
+    /// chat shows all three as written. nil drops the line.
+    private static func rewritingLines(_ text: String, _ rewrite: (String) -> String?) -> String {
+        guard text.contains("::") else { return text }
+        // Line endings normalized as the parser does, so its table check sees the same lines.
+        let lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        var fence = CodeFence()
+        var tableEnd = -1
+        var result: [String] = []
+        for index in lines.indices {
+            let line = lines[index]
+            if fence.isCode(line) { result.append(line); continue }
+            if index > tableEnd, isTableHeader(lines, at: index) {
+                // The parser reads the rows that follow while each holds a pipe.
+                tableEnd = index + 1
+                while tableEnd + 1 < lines.count, lines[tableEnd + 1].contains("|"),
+                      !lines[tableEnd + 1].trimmingCharacters(in: .whitespaces).isEmpty { tableEnd += 1 }
+            }
+            if index <= tableEnd || line.trimmingCharacters(in: .whitespaces).hasPrefix(">") { result.append(line); continue }
+            if let rewritten = rewrite(line) { result.append(rewritten) }
+        }
+        return result.joined(separator: "\n")
     }
 
     /// A file's name from its path.
