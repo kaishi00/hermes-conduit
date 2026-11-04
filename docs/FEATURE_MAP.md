@@ -552,13 +552,13 @@ keep) · text: no Settings caption or doc describes it
 - Tests: `ConduitTests/SessionRenameTests.swift` (testAnEmptyNewChatHermesLostIsReplacedOnRefresh, testTheFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne, testANewChatWithMessagesIsNeverReplaced)
 
 **Rulings**
-- Only the chat New Chat made here, still open, with nothing in it but notices: nothing was said in it, so a fresh chat in its place loses nothing and says nothing. Any other chat that Hermes says is gone shows its error as before (Eric, 2026-11-04, PR_NUMBER).
-- Its first message goes, as typed, into the fresh chat, once; a refusal there shows as any failed send does. The lost chat's row leaves the list at once (2026-11-04, PR_NUMBER).
+- Only the chat New Chat made here, still open, with nothing in it but notices: nothing was said in it, so a fresh chat in its place loses nothing and says nothing. Any other chat that Hermes says is gone shows its error as before (Eric, 2026-11-04, #1752).
+- Its first message goes, as typed, into the fresh chat, once; a refusal there shows as any failed send does. The lost chat's row leaves the list at once (2026-11-04, #1752).
 
 **Open gaps**
-- Not reproduced on a device: Hermes v0.22.7 kept an idle new chat on both servers in a probe, so the reviewer's trigger (likely an older Hermes with a dropped socket) is inferred (2026-11-04, PR_NUMBER).
+- Not reproduced on a device: Hermes v0.22.7 kept an idle new chat on both servers in a probe, so the reviewer's trigger (likely an older Hermes with a dropped socket) is inferred (2026-11-04, #1752).
 
-**Checked:** 2026-11-04, PR_NUMBER (added).
+**Checked:** 2026-11-04, #1752 (added).
 
 ## Chat open elsewhere
 
