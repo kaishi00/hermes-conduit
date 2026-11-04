@@ -131,7 +131,9 @@ struct BotRosterView: View {
                 },
                 onClose: { overviewBot = nil },
                 // A workstream opened from its list counts as its bot's, so
-                // it and its Bot Chat shrink back into the portrait too.
+                // it and its Bot Chat shrink back into the portrait too. Its
+                // open (a link) says nothing when it fails, so a failed one
+                // leaves the arm to go stale (BotZoomArm.window).
                 onWillOpenWork: openBeside == nil ? { appState.botZoom.tap(bot.name) } : nil
             )
             .environmentObject(appState)
