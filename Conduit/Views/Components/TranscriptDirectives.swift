@@ -61,6 +61,8 @@ enum TranscriptDirectives {
             let segment: Segment
             if name == conduitBoardName {
                 // Conduit's own board for Desktop: hidden, with the text around it kept.
+                // Only attributes make one, as for a plugin's card.
+                guard isAttributesOnly(body) else { continue }
                 appendText(nsLine.substring(with: NSRange(location: cursor, length: match.range.location - cursor)), to: &segments)
                 cursor = NSMaxRange(match.range)
                 continue
@@ -69,7 +71,7 @@ enum TranscriptDirectives {
                       !file.isEmpty else { continue }
                 segment = .preview(file: file)
             } else {
-                guard attributesOnlyExpression.firstMatch(in: body, range: NSRange(location: 0, length: (body as NSString).length)) != nil else { continue }
+                guard isAttributesOnly(body) else { continue }
                 segment = .desktopCard(DesktopCardDirective(
                     name: name,
                     attributes: attributes(in: body),
@@ -133,6 +135,7 @@ enum TranscriptDirectives {
             let codeSpans = inlineCodeSpans(in: line)
             let boards = directiveExpression.matches(in: line, range: NSRange(location: 0, length: nsLine.length)).filter { match in
                 nsLine.substring(with: match.range(at: 1)) == conduitBoardName
+                    && isAttributesOnly(nsLine.substring(with: match.range(at: 2)))
                     && !codeSpans.contains(where: { $0.location < match.range.location && match.range.location < NSMaxRange($0) })
             }
             guard !boards.isEmpty else { return line }
@@ -183,6 +186,10 @@ enum TranscriptDirectives {
     static func isTableHeader(_ lines: [String], at index: Int) -> Bool {
         guard index + 1 < lines.count, lines[index].contains("|") else { return false }
         return lines[index + 1].trimmingCharacters(in: .whitespaces).range(of: #"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$"#, options: .regularExpression) != nil
+    }
+
+    private static func isAttributesOnly(_ body: String) -> Bool {
+        attributesOnlyExpression.firstMatch(in: body, range: NSRange(location: 0, length: (body as NSString).length)) != nil
     }
 
     private static func attributes(in body: String) -> [String: String] {

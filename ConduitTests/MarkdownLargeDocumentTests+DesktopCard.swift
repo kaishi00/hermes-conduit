@@ -84,6 +84,9 @@ extension MarkdownLargeDocumentTests {
 
     func testConduitBoard_AnExampleStaysAsWritten() {
         XCTAssertNil(TranscriptDirectives.segments(in: "`\(Self.boardLine)`"))
+        // Like a card's, a board line is only attributes: anything else stays text.
+        XCTAssertNil(TranscriptDirectives.segments(in: "::conduit-board{}"))
+        XCTAssertNil(TranscriptDirectives.segments(in: "::conduit-board{color:red}"))
         let fenced = "```\n\(Self.boardLine)\n```"
         XCTAssertEqual(TranscriptDirectives.readable(from: fenced), fenced)
         // A table's cells are table text: drawn as written, so read as written too.
