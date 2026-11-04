@@ -3313,9 +3313,11 @@ enum MarkdownParser {
         // walker ever produces nothing for non-whitespace input, surface the
         // stripped body rather than rendering an empty message. Definitions
         // were already removed from visibleSource, so they cannot resurface
-        // here even in that fallback.
-        let finalBlocks = blocks.isEmpty && !visibleSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? [.paragraph(visibleSource)]
+        // here even in that fallback, nor can the plugin's hidden board line:
+        // a reply that was only that line stays empty.
+        let fallbackSource = blocks.isEmpty ? TranscriptDirectives.removingBoards(from: visibleSource) : visibleSource
+        let finalBlocks = blocks.isEmpty && !fallbackSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? [.paragraph(fallbackSource)]
             : blocks
         return MarkdownParsedDocument(
             blocks: finalBlocks,
@@ -3643,7 +3645,13 @@ enum MarkdownParser {
     private static func directiveSegments(in trimmed: String, recognizesGatewayMedia: Bool) -> [TranscriptDirectives.Segment]? {
         guard !trimmed.hasPrefix(">"), let segments = TranscriptDirectives.segments(in: trimmed) else { return nil }
         if recognizesGatewayMedia { return segments }
-        return segments.contains { if case .desktopCard = $0 { return true } else { return false } } ? segments : nil
+        // Without a host a lone preview stays text; a Desktop card, or a
+        // board line that's hidden (no segment of its own), is still taken.
+        let holdsPreview = segments.contains { if case .preview = $0 { return true } else { return false } }
+        let holdsCard = segments.contains { if case .desktopCard = $0 { return true } else { return false } }
+        // A board the grammar took (not an example in a code span).
+        let holdsBoard = TranscriptDirectives.removingBoards(from: trimmed) != trimmed
+        return !holdsPreview || holdsCard || holdsBoard ? segments : nil
     }
     /// Whether the gateway-media branches of `parseBlocks` take `line`.
     private static func claimsGatewayMedia(_ line: String) -> Bool {

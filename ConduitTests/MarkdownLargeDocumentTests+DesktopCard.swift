@@ -51,6 +51,53 @@ extension MarkdownLargeDocumentTests {
         XCTAssertNil(card.richUICardID)
     }
 
+    // MARK: - Conduit's own board line
+
+    private static let boardLine = #"::conduit-board{id="cb-0123456789ab"}"#
+
+    func testConduitBoard_LineIsHiddenWhereTheReplyIsDrawn() {
+        XCTAssertEqual(TranscriptDirectives.segments(in: Self.boardLine), [])
+        XCTAssertEqual(TranscriptDirectives.segments(in: "Here: \(Self.boardLine)"), [.text("Here:")])
+        let source = "Your plan:\n\(Self.boardLine)\nAnything else?"
+        for recognizesGatewayMedia in [true, false] {
+            let blocks = MarkdownParser.parse(source, recognizesGatewayMedia: recognizesGatewayMedia)
+            XCTAssertEqual(blocks, [.paragraph("Your plan:"), .paragraph("Anything else?")], "\(blocks)")
+        }
+        XCTAssertEqual(MarkdownParser.parse("- \(Self.boardLine)"), [])
+        XCTAssertEqual(MarkdownParser.parse(Self.boardLine), [], "a reply that's only the line stays empty")
+        XCTAssertEqual(MarkdownParser.parse("Here \(Self.boardLine) it is."), [.paragraph("Here it is.")])
+        XCTAssertEqual(PinnedReply.excerpt(of: "Your plan:\n\(Self.boardLine)"), "Your plan:")
+        // Beside a preview with no host to read it, the preview stays text and the line still goes.
+        let besidePreview = MarkdownParser.parse(#"::preview{file="/tmp/a.html"} \#(Self.boardLine)"#)
+        XCTAssertEqual(besidePreview, [.paragraph(#"::preview{file="/tmp/a.html"}"#)])
+    }
+
+    func testConduitBoard_LineIsNeverSaidOrPreviewed() {
+        let text = "Your plan:\n\(Self.boardLine)\nDone."
+        XCTAssertEqual(TranscriptDirectives.readable(from: text), "Your plan:\nDone.")
+        XCTAssertFalse(VoiceReadBack.plainSpeech(text).contains("conduit-board"))
+        XCTAssertFalse(VoiceReadBack.plainSpeech(text).contains(DesktopCardDirective.spokenNote))
+        XCTAssertEqual(GatewayMediaTags.namingFiles(in: text), "Your plan:\nDone.")
+        XCTAssertEqual(PreviewText.plain("Done. \(Self.boardLine)"), "Done.")
+        XCTAssertEqual(ChatQuote.excerpt(of: "Your plan:\n\(Self.boardLine)"), "Your plan:")
+    }
+
+    func testConduitBoard_AnExampleStaysAsWritten() {
+        XCTAssertNil(TranscriptDirectives.segments(in: "`\(Self.boardLine)`"))
+        // Like a card's, a board line is only attributes: anything else stays text.
+        XCTAssertNil(TranscriptDirectives.segments(in: "::conduit-board{}"))
+        XCTAssertNil(TranscriptDirectives.segments(in: "::conduit-board{color:red}"))
+        let fenced = "```\n\(Self.boardLine)\n```"
+        XCTAssertEqual(TranscriptDirectives.readable(from: fenced), fenced)
+        // A table's cells are table text: drawn as written, so read as written too.
+        let table = "| Board | Note |\n| --- | --- |\n| \(Self.boardLine) | the plan |"
+        XCTAssertEqual(TranscriptDirectives.readable(from: table), table)
+        XCTAssertEqual(TranscriptDirectives.removingBoards(from: table), table)
+        // A pin drops only the board line; a preview beside it keeps its own spelling.
+        let preview = #"::preview{file='/tmp/a.html' title="Chart"}"#
+        XCTAssertEqual(PinnedReply.excerpt(of: "\(preview)\n\(Self.boardLine)"), preview)
+    }
+
     // MARK: - Parsing
 
     func testDesktopCard_ParsesIntoACardOnEverySurface() {

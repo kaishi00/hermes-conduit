@@ -1090,7 +1090,7 @@ chat's saved copy, whose rows stand in while it opens or offline
 **Open gaps**
 - Group rooms still show Copy, Quote and Read aloud as three icons, with no React and no ⋯ (#1156). Edit and resend and Retry are not needed there: a room is shared and has no rewind.
 
-**Checked:** 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-10-31, #1590 (a group room's jump goes through its own TranscriptScroller too, the quoted message at the top with the room browsing there, without the animation the room's stack gave it; Code); 2026-10-31, #1577 (the jump goes through TranscriptScroller now that chats draw on the transcript; Code); 2026-10-31, #1566 (the jump's rule in TranscriptScroller, not called yet; Code); 2026-10-31, #1565 (the reply offering Retry, and the latest one reactions go to, are worked out once per change of the rows drawn; Code); 2026-10-31, #1552 (a deleted bot's kept settings answers go with its pins and held rows; pins unchanged); 2026-10-30, #1550 (the saved copy's rows are drawn by the chat's own row view while they stand in; their cards still don't jump and Hermes' actions stay off); 2026-10-30, #1524 (Read Aloud says a Desktop card's note, and a quote chip names one); 2026-10-28, #1446 (your own message's ⋯ with Quote and Edit and resend, Retry in the newest reply's ⋯, the "Replying to" card's jump in chats and group rooms, ComposerDraft.restoring keeps a second chip as a quote for failed sends too, the saved copy's cards don't jump, /undo and /retry words kept when the chat changes; selection and long-press menus unchanged); 2026-10-27, #1402 (Branch opens the new chat by its stored id; the row, menus and pins needed no change); 2026-10-26, #1311 (a drawn reply's text view is laid out as it mounts; selection and long-press menus unchanged); #1282 (carrying the ⋯'s Show thinking from #1243); the pinned replies sheet's This chat / All chats filter at #1269; 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
+**Checked:** 2026-11-04, #1751 (a pin's excerpt leaves out the plugin's hidden `::conduit-board` line, see Cards Hermes shows); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-10-31, #1590 (a group room's jump goes through its own TranscriptScroller too, the quoted message at the top with the room browsing there, without the animation the room's stack gave it; Code); 2026-10-31, #1577 (the jump goes through TranscriptScroller now that chats draw on the transcript; Code); 2026-10-31, #1566 (the jump's rule in TranscriptScroller, not called yet; Code); 2026-10-31, #1565 (the reply offering Retry, and the latest one reactions go to, are worked out once per change of the rows drawn; Code); 2026-10-31, #1552 (a deleted bot's kept settings answers go with its pins and held rows; pins unchanged); 2026-10-30, #1550 (the saved copy's rows are drawn by the chat's own row view while they stand in; their cards still don't jump and Hermes' actions stay off); 2026-10-30, #1524 (Read Aloud says a Desktop card's note, and a quote chip names one); 2026-10-28, #1446 (your own message's ⋯ with Quote and Edit and resend, Retry in the newest reply's ⋯, the "Replying to" card's jump in chats and group rooms, ComposerDraft.restoring keeps a second chip as a quote for failed sends too, the saved copy's cards don't jump, /undo and /retry words kept when the chat changes; selection and long-press menus unchanged); 2026-10-27, #1402 (Branch opens the new chat by its stored id; the row, menus and pins needed no change); 2026-10-26, #1311 (a drawn reply's text view is laid out as it mounts; selection and long-press menus unchanged); #1282 (carrying the ⋯'s Show thinking from #1243); the pinned replies sheet's This chat / All chats filter at #1269; 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
 
 ## Conduit plugin update
 
@@ -1804,7 +1804,7 @@ Read Aloud and live voice read-back · chat list previews and quotes
 **Rulings**
 - Ordered lists number as CommonMark and Hermes Desktop do: blank lines between items keep one list (2026-10-23, #1168), and a list starts at its first item's number, so steps split by a code block carry on; a marker is one to nine ASCII digits, anything else is text (2026-10-23, #1175, Eric).
 - Every view that draws a list reads the parsed block, so a numbering change is a parser change plus each renderer's marker; long replies bake ordinals into continuation chunks (#1168).
-- An item that is a Hermes Desktop card, or a preview where previews draw (`holdsDirective`), ends the list: the block draws on its own, and the items after it start a new list from the number written on the first of them (2026-10-30, #1524, see Cards made for Hermes Desktop).
+- An item that is a Hermes Desktop card, or a preview where previews draw (`holdsDirective`), ends the list: the block draws on its own, and the items after it start a new list from the number written on the first of them (2026-10-30, #1524, see Cards made for Hermes Desktop). An item that is only the plugin's hidden `::conduit-board` line ends it the same way, with nothing drawn between, so the next items carry on from their written number (2026-11-04, #1751).
 
 **Open gaps**
 - Nested lists are flattened: an indented sub-list draws as its own list at the left edge.
@@ -1816,7 +1816,7 @@ Read Aloud and live voice read-back · chat list previews and quotes
 - A single list item too big for one long-reply chunk is split into paragraphs that each repeat its number.
 - A long reply's continuation chunks draw list items as paragraphs with the number baked in, so they lose the list's styled marker column.
 
-**Checked:** 2026-11-04, #1734 (a streaming reply is promoted into slices from 16 KB rather than the large-document size, issue 1720; the settled reply unchanged); 2026-10-30, #1524 (a Desktop card ends a list; previews and quotes name it); 2026-10-28, #1449 (speech leaves Hermes' file tags out, see Files Hermes attaches); 2026-10-28, #1430 (speech no longer takes a `* ` item marker for the start of a narrated action); 2026-10-23, at #1175.
+**Checked:** 2026-11-04, #1751 (an item that is only the hidden board line ends a list, as a card does); 2026-11-04, #1734 (a streaming reply is promoted into slices from 16 KB rather than the large-document size, issue 1720; the settled reply unchanged); 2026-10-30, #1524 (a Desktop card ends a list; previews and quotes name it); 2026-10-28, #1449 (speech leaves Hermes' file tags out, see Files Hermes attaches); 2026-10-28, #1430 (speech no longer takes a `* ` item marker for the start of a narrated action); 2026-10-23, at #1175.
 
 ## Tables in messages
 
@@ -4440,7 +4440,8 @@ with show_on_screen.
 **Siblings:** chats, project chats and Bot Chat (the tool row) · the saved-chat
 copy · the call screen (Gemini, Grok, Qwen and Local Live show_on_screen;
 Classic and GPT-Live through Hermes) · saved call transcripts · group rooms ·
-Hermes Desktop and messaging apps (not Conduit) · the Watch and CarPlay ·
+Hermes Desktop (the plugin's Desktop half draws the board) and messaging apps
+(the Markdown) · the Watch and CarPlay ·
 Predictions' reply chips (the follow-ups are the same chip) · what models read:
 conduit_show's description and answers, the drawing rule, the
 `conduit_push:drawing-boards` skill, show_on_screen's description · the
@@ -4453,7 +4454,8 @@ notifier README and CHANGELOG
 - Cards and views: `Conduit/Cards/RichCard.swift`, `Conduit/Cards/RichBoardCard.swift` (RichBoard, RichTable…), `Conduit/Cards/RichBoardCardViews.swift` (RichBoardLayout, RichBoardFollowUps, RichBoardMarkdown), `Conduit/Cards/RichCardViews.swift`; the chat row in `Conduit/Views/ChatView.swift`, its follow-ups in `Conduit/Views/ChatRowState.swift` (followUpBoardRowID) and `Conduit/Services/AppState.swift` (requestBoardFollowUp)
 - Live models: `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (showOnScreenDeclaration, invalidCardsNote)
 - Group rooms: `notifier/room_boards.py`, `_save_room_board` in `notifier/__init__.py`, `notifier/dashboard/api/boards.py` (`/boards/rooms`, capability "room-boards"); in Conduit `Conduit/Cards/RoomBoards.swift` (RoomBoard.placed, RoomBoardsView), `Conduit/Services/AppState+RoomBoards.swift`, the row in `Conduit/Views/GroupChatView.swift` (GroupMemberBubble) and `Conduit/Views/TranscriptModel.swift` (GroupRoomRow.event)
-- Tests: `ConduitTests/RichCardTests.swift`, `ConduitTests/RichCardTests+Boards.swift`, `notifier/tests/test_cards.py`, `notifier/tests/test_show.py`, `notifier/tests/test_checklists.py`, `notifier/tests/test_room_boards.py`
+- Hermes Desktop: the half `notifier/desktop/plugin.js` (the `::conduit-board{id="cb-…"}` directive, its cards, the "seen" handshake), `DesktopBoards` in `notifier/room_boards.py`, `_save_desktop_board` and `_desktop_half_live` in `notifier/__init__.py`, the Desktop branch and DESKTOP_BOARD_RULE in `notifier/show_tool.py`, `notifier/dashboard/api/boards.py` (`/boards/desktop`, `/boards/desktop/seen`, capability "desktop-boards"); Conduit hides the line in `Conduit/Views/Components/TranscriptDirectives.swift` (conduitBoardName, removingBoards), and `Conduit/Views/Components/MarkdownText.swift` keeps it hidden (directiveSegments, and parseDocument's empty-blocks fallback, so a reply that is only the line stays empty), as does a pin's excerpt in `Conduit/Models/PinnedReplies.swift`
+- Tests: `ConduitTests/RichCardTests.swift`, `ConduitTests/RichCardTests+Boards.swift`, `ConduitTests/MarkdownLargeDocumentTests+DesktopCard.swift` (testConduitBoard_…), `notifier/tests/test_cards.py`, `notifier/tests/test_show.py`, `notifier/tests/test_checklists.py`, `notifier/tests/test_room_boards.py`, `notifier/tests/test_desktop_boards.py`, `notifier/upstream/test_desktop_half.py` (Hermes' own Desktop lint over the half)
 
 **Rulings**
 - One tool: conduit_show grows; there is no second board tool (Eric, 2026-11-03, #1713 with notifier #528).
@@ -4466,12 +4468,13 @@ notifier README and CHANGELOG
 - A chat's ticks are read and saved only through its own dashboard: after a switch to another Hermes they stay unsent on the phone, in order, and go when the chat is drawn on its own dashboard again, since the other Hermes would take the chat's ids and answer as saved (2026-11-04, #1748, issue 1745).
 - A chat's ticks belong to the chat, not to the ids it's known by: when its ids grow while it's open (the durable id confirmed, an alias from the catalog, a Bot Chat's roster ids), the phone's copy moves to the new ids, and a tick not yet sent still goes to the host and stays shown (2026-11-04, #1748, issue 1746).
 - In a group room this host runs, the board is kept on the host and drawn under the agent's next message there (within 15 minutes), for every Conduit saying "room-boards"; the room's other agents read only the message, and are told so. A room run elsewhere, or an older Conduit, gets it in the agent's reply as Markdown (`group_room`) (Eric, 2026-11-03: text first, cards in a follow-up PR; 2026-11-04, notifier 0.129). Other people's agents may read a room, so contact cards (a person's numbers, a text drafted for the user) stay out of it, with a problems line, whatever the turn's surface. A room's board has no follow-ups (a tap would speak for the user to the whole room) and its checklists keep no ticks.
-- A Conduit without "board-cards" gets at most four cards, no layout and no follow-ups (2026-11-03, notifier #528).
+- In Hermes Desktop the plugin's Desktop half ("Conduit boards", off until the user turns it on in Desktop) draws the board: conduit_show keeps it on the host (root home, the newest 500, a month) and asks the agent for `::conduit-board{id="cb-…"}` on a line of its own, only while the half has said it's loaded in the last two hours; otherwise Desktop gets the Markdown as before. The half draws the native kinds (stats, charts, comparisons, steps, status, tables, timelines, checklists with the chat's ticks, lists, progress, callouts) and each other card's own Markdown, with tabs and follow-ups. Conduit draws the same board from the tool row, so it hides the line on every surface (Eric, 2026-11-04, chose to build the half after the probe, notifier #539 with #1751).
+- A Conduit without "board-cards" gets at most four cards, no layout and no follow-ups (2026-11-03, notifier #528). Only the Conduits used in the last three days count, for board-cards, room-boards and the other card features, and the drawing rule names the weather and how to reach conduit_show behind Tool Search: on .52 four installs last used days before kept the rule off and trimmed the phone's boards (Eric, 2026-11-04, notifier #539).
 - Real data only: models are told to fill tables, stats and charts from tools, sites or the user's files, with their source (2026-11-03, notifier #528).
 
 **Open gaps**
 - A room's checklists can't be ticked, and a board in a room another host runs (Linked Rooms) goes as text.
-- Hermes Desktop draws the Markdown, not the cards: drawing them natively waits on a probe of Desktop's plugin SDK.
+- Desktop's half draws maps, places, weather, media and contacts as their Markdown, not natively.
 - The call screen draws a board stacked, with no tabs and no follow-ups (the user speaks the next question).
 - The Watch and CarPlay show no cards.
 - Checklist ticks on the call screen don't reach the chat or Hermes.
@@ -4479,7 +4482,7 @@ notifier README and CHANGELOG
 - A checklist that stays on screen reads other devices' ticks only when it's drawn again or ticked here.
 - Boards are parsed again each time a row is drawn; no cache yet, as liveNames has.
 
-**Checked:** 2026-11-04, #1748 (ticks fenced to their own dashboard; unsent ticks follow the chat's ids); 2026-11-04, #1736 with notifier #536 (boards drawn in group rooms); 2026-11-03, #1713 with notifier #528.
+**Checked:** 2026-11-04, #1751 with notifier #539 (boards drawn in Hermes Desktop by the plugin's Desktop half; Conduit hides its line; Siblings, Code, Rulings, gaps); 2026-11-04, #1748 (ticks fenced to their own dashboard; unsent ticks follow the chat's ids); 2026-11-04, #1736 with notifier #536 (boards drawn in group rooms); 2026-11-03, #1713 with notifier #528.
 
 ## Cards drawn in web pages
 
@@ -4540,7 +4543,8 @@ split · live read-backs and a Hermes call's result · what live models are
 handed, on the phone and the Watch · chat list and bot list previews and
 quote chips · the
 notifier's push text and the README line that describes it · `::preview`
-(the same grammar, see Cards drawn in web pages)
+(the same grammar, see Cards drawn in web pages) · the plugin's own
+`::conduit-board` (see Cards Hermes shows)
 
 **Code**
 - The grammar: `Conduit/Views/Components/TranscriptDirectives.swift` (segments, rewriting, naming, DesktopCardDirective; also built into the Watch app, `project.yml`)
@@ -4554,18 +4558,18 @@ notifier's push text and the README line that describes it · `::preview`
 
 **Rulings**
 - A card's line, and a preview's where previews draw, leaves a list (the list carries on after it), and a list or heading marker before it on its line goes with the directive; a directive in a table cell is table text, as a preview's is. A directive still being written while the reply streams shows as text until its closing brace, as a preview does.
-- Never hidden without a trace: every directive Conduit can't draw becomes a visible card naming its plugin, and a tap shows the directive as written. Maintainer's ruling (2026-10-30, #1522).
+- Never hidden without a trace: every directive Conduit can't draw becomes a visible card naming its plugin, and a tap shows the directive as written. Maintainer's ruling (2026-10-30, #1522). The one exception is the plugin's own `::conduit-board{…}`: Conduit already draws that board from conduit_show's tool row, so the line is hidden everywhere (no card, nothing said, previewed or handed to live models), the text around it kept; like a card's, it holds only attributes, so `::conduit-board{}` or CSS stays text; one in a code span, fence, quote or table cell stays as written, and is read as written (a table's rows are table text, as its header is); a pinned reply that is only the line keeps it as the pin's excerpt, which is how the pin finds its reply again; and a push reads "🗂 Board" (Eric, 2026-11-04, building the Desktop half, #1751 with notifier #539).
 - Conduit doesn't draw a plugin's components (Table, Chart, Metric…) as its own cards: that would be the plugin's Desktop half rebuilt, kept in step with a plugin we don't control. Agents that want cards in both apps use `conduit_show` (2026-10-30, issue #1522).
 - hermes-rich-ui's card shows its own plain-text fallback, `meta.title` and `meta.summary`, from `GET /api/plugins/hermes-rich-ui/cards/<id>` on the connected Hermes, only for a well-formed id (`ru-` and 12 hex). Without it (plugin not installed, card gone, no network, no connected Hermes as in the saved copy) the card says "Card for Hermes Desktop" and to open the chat there. A read is kept for the launch; a failed one is tried again after five minutes, by a card on screen too, waiting only for what's left of them, and one shown before Hermes connected or while its page loads asks again within seconds (nothing is kept for it).
 - The card holds one title line and two summary lines from its first frame, so it never changes height as its text arrives; the whole summary is in the details sheet. VoiceOver hears that a tap shows the full summary and the line Hermes wrote.
-- A directive is one at a word's start, `::name{…}` holding only `key="value"` attributes, at least one: prose, code spans and CSS (`::selection{color:red}`) stay text. A quoted directive is an example and a table header cell is table text, as for previews. Desktop cards show on every Markdown surface; previews still need the connected Hermes.
+- A directive is one at a word's start, `::name{…}` holding only `key="value"` attributes, at least one: prose, code spans and CSS (`::selection{color:red}`) stay text. A quoted directive is an example and a table cell (header or row) is table text, read as written as it's drawn, as for previews (#1751). Desktop cards show on every Markdown surface; previews still need the connected Hermes.
 - Read Aloud and voices say "(There's a card here for Hermes Desktop.)" and leave a preview out, as Read Aloud already did; live models are told "(a card in the chat made for Hermes Desktop, from <plugin>)" and a preview as its file; previews and quote chips read "Card for Hermes Desktop" and a preview as its file; a push reads "🗂 <plugin> card" and a preview as its file, named as a MEDIA tag's (notifier 0.120.4). Lines in a fenced code block and directives in a code span stay as written everywhere.
 
 **Open gaps**
 - The on-screen retry loop has no unit test: it lives in the view's task (the read cache and the wait it sleeps for are tested).
 - Two rows showing the same card while it is first read each ask for it.
 
-**Checked:** 2026-10-30, #1524.
+**Checked:** 2026-11-04, #1751 with notifier #539 (the plugin's `::conduit-board` line is hidden, not a card; Siblings, Rulings); 2026-10-30, #1524.
 
 ## Self-improvement updates
 
