@@ -536,8 +536,21 @@ fresh chat in its place rather than showing a restore error no refresh can
 clear (an App Store review, 2026-11-02: "you can't make that same chat re
 enable again").
 
+When Hermes still holds the empty chat and only the socket dropped (Conduit
+left and come back to), its resume reattaches the live chat and leaves out
+`running` and `status` (v0.22.7 and main, `_resume_live_unpersisted`). That
+read as a gateway too old to say, so the composer showed "Update this Hermes
+gateway" and "Update Hermes to send, stop, and steer" and took sending away
+until a new chat. Such a resume (`info.lazy`) is now idle: nothing was ever
+sent in it, since a first message writes its row (Eric, 2026-11-04, a
+Pulse-prefilled New Chat; likely the App Store review's own case).
+
 **Siblings:** the chat's refresh, the return-to-app and reconnect syncs (all
-resume through reconcile) · the composer's first send into it, a picture or
+resume through reconcile) · every resume through HermesClient's
+resumeResult, a fresh Bot Chat's included (also live and rowless until its
+first message), for the lazy reattach read as idle · text: the
+"Update this Hermes gateway" and "Update Hermes to send, stop, and steer"
+notices still name a gateway that says nothing, which stays unsupported · the composer's first send into it, a picture or
 file staged with it and a first message sent as Queue included · what an
 action left waiting on it (A new chat that something waits on: Ask Hermes
 About Screen's screenshot, Settings' Hermes test call and watch prompts in the
@@ -558,18 +571,20 @@ keep) · text: no Settings caption or doc describes it
 
 **Code**
 - `Conduit/Services/AppState.swift` (syncSession's create when there is nothing to resume; lostChatReplacement, read by composerDraftKeysAreSameChat for the draft; openChatIsEmptyNewChat, replaceLostEmptyNewChat, the session-not-found branch in reconcile's catch, resendInPlaceOfLostEmptyChat from sendMessage's attach and prompt.submit catches, Queue kept; handOverWhatWaitsOnLostChat for pendingScreenshots, composerPrefillDraftKey, composerFocusRequest, classicVoiceChatToArchive with its Voice tag, and pendingComposerSend with its saved copy (`Conduit/Models/PendingComposerSend.swift`); lostChatReplacement carries an earlier replacement's lost ids when its fresh chat is lost in turn; newChatOpenedSessionID and newChatOpenedDurableSessionID, set in createAndReconcileSession; the fresh chat's folder from openNewChatAwaitingListing, NewChatAwaitingListing.cwd, see A new chat in the list)
-- Tests: `ConduitTests/SessionRenameTests.swift` (testAnEmptyNewChatHermesLostIsReplacedOnRefresh, testTheEmptyChatASyncOpenedIsReplacedToo, testALostEmptyNewChatInAFolderIsReplacedInThatFolder, testTheFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne, testAQueuedFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne, testWhatWaitsOnALostEmptyNewChatWaitsOnTheFreshOne, testAFirstMessageWithAFileIntoALostEmptyNewChatIsStagedInTheFreshOne, testAnEmptyNewChatLeftAndReopenedIsNotReplaced, testAFailedFreshChatKeepsTheFirstMessagesWords, testANewChatWithASlashAnswerIsNotReplaced, testANewChatWithMessagesIsNeverReplaced)
+- `Conduit/Services/HermesClient.swift` (resumeLiveness and resumeSnapshotFields, read by resumeResult: a lazy reattach without `running` is idle; a JSON null says nothing)
+- Tests: `ConduitTests/TurnStateTests.swift` (testALazyResumeWithoutRunningIsIdle, testAResumeThatSaysItRunsKeepsItsWordAndAnOldOneStillCantSay), `ConduitTests/SessionRenameTests.swift` (testAnEmptyNewChatHermesLostIsReplacedOnRefresh, testTheEmptyChatASyncOpenedIsReplacedToo, testALostEmptyNewChatInAFolderIsReplacedInThatFolder, testTheFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne, testAQueuedFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne, testWhatWaitsOnALostEmptyNewChatWaitsOnTheFreshOne, testAFirstMessageWithAFileIntoALostEmptyNewChatIsStagedInTheFreshOne, testAnEmptyNewChatLeftAndReopenedIsNotReplaced, testAFailedFreshChatKeepsTheFirstMessagesWords, testANewChatWithASlashAnswerIsNotReplaced, testANewChatWithMessagesIsNeverReplaced)
 
 **Rulings**
 - Only a chat Conduit made here (New Chat's, or the one a sync opened because there was nothing to resume), still open, with nothing in it but notices (a slash command's answer is not one; GLM's review, #1752): nothing was said in it, so a fresh chat in its place loses nothing and says nothing. Any other chat that Hermes says is gone shows its error as before (Eric, 2026-11-04, #1752: "an empty chat made here that Hermes lost"; the sync's chat named after GLM's review).
 - A draft typed in it and not sent (words, files, a quote) is the fresh chat's: the composer keeps it across the switch, as from New Chat to the chat it made (Composer drafts; Step 5's review, 2026-11-04, #1752).
 - What an action left waiting on it (a screenshot, a prompt for the composer, its focus, a Classic voice conversation's filing) waits on the fresh chat instead, as the draft does (Step 5's review, 2026-11-04, #1752).
 - Its first message goes, as typed (Queue too), into the fresh chat, once; a refusal there, or a fresh chat that fails to open, shows as any failed send does and keeps the words. Only the resume's own refusal counts, never a history read's 404 (GLM's review). The lost chat's row leaves the list at once (2026-11-04, #1752).
+- A resume with `info.lazy` set and nothing else saying (no `running` at the top or in `info`, no status but idle) is idle; any other resume without `running` is still an old gateway (2026-11-04, #1758).
 
 **Open gaps**
-- Not reproduced on a device: Hermes v0.22.7 kept an idle new chat on both servers in a probe, so the reviewer's trigger (likely an older Hermes with a dropped socket) is inferred (2026-11-04, #1752).
+- Upstream: Hermes' `_resume_live_unpersisted` should send `running: false` and `status` like every other resume; Conduit no longer depends on it (2026-11-04, #1758).
 
-**Checked:** 2026-11-04, #1752 (added).
+**Checked:** 2026-11-04, #1758 (a lazy reattach without `running` reads idle; the old not-reproduced gap closed: Eric's screenshot showed the cause); 2026-11-04, #1752 (added).
 
 ## Chat open elsewhere
 
