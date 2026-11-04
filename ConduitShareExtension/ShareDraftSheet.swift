@@ -44,7 +44,7 @@ struct ShareDraftSheet: View {
             form
         case .saved:
             saved
-        case .failed where !model.collection.problems.isEmpty:
+        case .failed where model.collection.isEmpty && !model.collection.problems.isEmpty:
             // Nothing could be added: what was left out, and why, as a
             // list that scrolls however many there are (#1747).
             Form { leftOut }

@@ -372,6 +372,15 @@ final class ShareDraftTests: XCTestCase {
         XCTAssertEqual(result.attachments.first?.typeIdentifier, UTType.png.identifier)
         let stored = try Data(contentsOf: staging.url.appendingPathComponent("1.png"))
         XCTAssertEqual(Array(stored.prefix(4)), [0x89, 0x50, 0x4E, 0x47], "written as PNG")
+
+        // A suggested name keeps its stem and takes .png, multi-dot names too.
+        for (suggested, expected) in [("shot.jpg", "shot.png"), ("photo.edited.heic", "photo.edited.png")] {
+            let (named, _) = try collector()
+            provider.suggestedName = suggested
+            let renamed = await named.collect(providers: [provider])
+            XCTAssertEqual(renamed.attachments.map(\.displayName), [expected])
+            XCTAssertEqual(renamed.attachments.map(\.storedName), ["1.png"])
+        }
     }
 
     /// A provider that also offers the picture as a file is read as that
