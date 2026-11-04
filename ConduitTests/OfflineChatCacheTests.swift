@@ -580,6 +580,30 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(store.loadChatList(dashboardID: dashboard, profile: "default"), list, "Its saved list too")
     }
 
+    /// A row that shows warms its chat's copy (issue 1725): the tap then
+    /// opens it from memory, with no file read on the main thread.
+    func testARowThatShowsWarmsItsChatsCopy() throws {
+        let writer = makeStore()
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        for id in ["a", "b"] {
+            writer.record(dashboardID: dashboard, profile: "default", sessionID: id, title: id, messages: row, sessions: [])
+        }
+        let directory = writer.fileURL(dashboardID: dashboard, profile: "default").deletingLastPathComponent()
+        let store = OfflineChatCacheStore(directory: directory, writesAsynchronously: true)
+
+        store.warmTranscript("a", dashboardID: dashboard, profile: "default")
+        store.warmTranscript("never-saved", dashboardID: dashboard, profile: "default")
+        store.waitForPendingWrites()
+
+        for id in ["a", "b"] {
+            try FileManager.default.removeItem(at: store.transcriptFileURL(id, dashboardID: dashboard, profile: "default"))
+        }
+        XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: "default")?.messages.map(\.id), ["m"], "The warmed copy is in memory")
+        XCTAssertNil(store.loadTranscript("b", dashboardID: dashboard, profile: "default"), "Only the row that showed is warmed")
+        XCTAssertNil(store.loadTranscript("never-saved", dashboardID: dashboard, profile: "default"))
+    }
+
     /// A profile read ahead for a switch (its last chat) is read further
     /// once it's the one open and asks for more copies.
     func testAScopeReadAheadForASwitchIsReadFurtherOnceOpen() throws {

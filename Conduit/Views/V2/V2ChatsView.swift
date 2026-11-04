@@ -1759,6 +1759,7 @@ struct V2ChatsView: View, Equatable {
         .buttonStyle(.plain)
         if let session = row.session {
             button
+                .onAppear { appState.warmSavedCopy(of: session) }
                 .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
                 .v2ListRow()
                 .sessionActions(
@@ -2404,6 +2405,7 @@ private struct V2ChatsRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onAppear { appState.warmSavedCopy(of: session) }
         .dynamicTypeSize(...DynamicTypeSize.listRowCap)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(session.title))

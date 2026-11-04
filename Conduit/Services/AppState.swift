@@ -6469,8 +6469,10 @@ final class AppState: ObservableObject {
     /// its row shows, so tapping it shows the copy from memory rather than
     /// reading its file first (issue 1725).
     func warmSavedCopy(of session: SessionSummary) {
-        guard let dashboardID = activeDashboardID, !isOtherProfileRow(session) else { return }
-        offlineChatCache.warmTranscript(session.storedSessionId ?? session.id, dashboardID: dashboardID, profile: activeProfile)
+        guard let dashboardID = activeDashboardID else { return }
+        // Another profile's row in All opens in its own profile: its copy is
+        // kept under that one.
+        offlineChatCache.warmTranscript(session.storedSessionId ?? session.id, dashboardID: dashboardID, profile: rowProfile(session))
     }
 
     /// A chat opened while connected shows its saved copy until its own
@@ -21864,15 +21866,18 @@ final class AppState: ObservableObject {
         let readTicket = takeSessionListReadTicket()
         do {
             let loadedSessions: [SessionSummary]
+            var olderPagesDeferred = false
             if let sessionCatalogLoaderOverride {
                 loadedSessions = try await sessionCatalogLoaderOverride(forceRefresh)
             } else if let activeClient {
-                loadedSessions = try await profileCatalog(
+                let catalogLoad = try await profileCatalog(
                     using: activeClient,
                     forceRefresh: forceRefresh,
                     deferringOlderPages: deferringOlderPages,
                     yieldsToNewerReads: yieldsToNewerReads
-                ).sessions
+                )
+                loadedSessions = catalogLoad.sessions
+                olderPagesDeferred = catalogLoad.olderPagesDeferred
             } else {
                 return false
             }
@@ -21886,8 +21891,13 @@ final class AppState: ObservableObject {
             // older than the one shown.
             guard claimSessionListListing(readTicket) else { return true }
             let awaitingListing = newChatRowAwaitingListing(loaded: loadedSessions)
+            // The newest page alone (a pull to refresh, whose older pages
+            // are read right after) keeps the older rows already listed
+            // until they land, so the list never shrinks to one page
+            // meanwhile, and a failed read after it leaves them.
+            let olderListed = olderPagesDeferred ? sessions + cronSessions : []
             let allSessions = uniqueSessions(
-                [retainedActiveTurn, awaitingListing].compactMap { $0 } + loadedSessions
+                [retainedActiveTurn, awaitingListing].compactMap { $0 } + loadedSessions + olderListed
             )
             let listedSessions = allSessions.filter { $0.source != .cron }
             let listedCron = allSessions.filter { $0.source == .cron }
@@ -21898,7 +21908,7 @@ final class AppState: ObservableObject {
             settleNewChatAwaitingListing(loaded: loadedSessions)
             chatListCatalogFreshness.noteLoaded(at: chatSyncNow())
             observeOpenChatCatalog()
-            savedChatListReplacedByLiveList(newestPageOnly: false, dashboardID: dashboardID)
+            savedChatListReplacedByLiveList(newestPageOnly: olderPagesDeferred, dashboardID: dashboardID)
             sessionCatalogLoadState.markLoaded(SessionCatalogOwner(dashboardID: dashboardID, profile: profile))
             refreshVoiceSessionTags()
             // Labeled rows are positive identity evidence; commit them so
@@ -25571,7 +25581,15 @@ final class AppState: ObservableObject {
         var readsListAfterOpen = false
         defer {
             if readsListAfterOpen {
-                Task { @MainActor [weak self] in await self?.loadSessions(forceRefresh: true) }
+                // Quiet: the chat opened, and a failed list read after it
+                // is no error on it; the list's poll reads again.
+                Task { @MainActor [weak self] in
+                    _ = await self?.loadSessions(
+                        forceRefresh: true,
+                        requiredViewportTransitionGeneration: nil,
+                        reportsFailure: false
+                    )
+                }
             }
         }
         if !Self.notificationOpenNeedsAuthoritativeRead(
@@ -36268,11 +36286,17 @@ final class AppState: ObservableObject {
             activity.sessionId = sessionId
             var updated = delegateAgents
             if let index = updated.firstIndex(where: { $0.id == activity.id }) {
-                updated[index] = updated[index].merged(with: activity)
+                let card = updated[index].merged(with: activity)
+                // Every event stamps a fresh time: an event that changes
+                // nothing the card shows leaves the cards unpublished.
+                var unstamped = card
+                unstamped.updatedAt = updated[index].updatedAt
+                guard unstamped != updated[index] else { break }
+                updated[index] = card
             } else {
                 updated.append(activity)
             }
-            if updated != delegateAgents { delegateAgents = updated }
+            delegateAgents = updated
             setActiveAgents(updated.filter { $0.status.isActive }.count)
 
         case .statusUpdate:

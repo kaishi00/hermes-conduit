@@ -651,7 +651,7 @@ extension MarkdownBlock {
 ///
 /// With no boundary in the window:
 /// - if the stable target sits inside a known construct span (fence/math/
-///   directive), promotion WAITS — a hard cut must never split a construct;
+///   directive/table), promotion WAITS — a hard cut must never split a construct;
 /// - otherwise the text is genuinely unstructured prose and a bounded,
 ///   grapheme-aligned hard cut advances one piece.
 enum LargeStreamPromotion {
@@ -791,8 +791,8 @@ enum MarkdownReferenceResolver {
 
 /// Incremental scanner that finds *safe* split points in a growing streamed
 /// document — positions where slicing the source leaves both sides as
-/// well-formed Markdown (never inside a fenced code block, math block, or
-/// `:::` directive). Used by the large streaming path to promote a stable
+/// well-formed Markdown (never inside a fenced code block, math block,
+/// `:::` directive, or table). Used by the large streaming path to promote a stable
 /// prefix into immutable chunks while only re-parsing the live tail.
 ///
 /// The scanner is resumable: it consumes only complete new lines each call,
@@ -814,14 +814,18 @@ struct MarkdownStableBoundaryScanner {
     /// block opened with one cannot close on the other.
     private var mathClose: String?
     private var inDirective = false
+    /// Inside a run of table rows (lines starting with `|`). A table has no
+    /// blank line in it, so a long one would otherwise take a hard cut
+    /// mid-table and leave the tail's rows without their header.
+    private var inTable = false
 
     /// True when the scanner sits inside a fenced/math/directive region at
     /// the end of everything consumed — callers avoid promoting a prefix
     /// that ends mid-construct.
     var isInOpenConstruct: Bool { fenceMarker != nil || mathClose != nil || inDirective }
 
-    /// Absolute byte spans of every fenced/math/directive construct seen so
-    /// far (an open construct has a nil end). The streaming promotion policy
+    /// Absolute byte spans of every fenced/math/directive construct and
+    /// table seen so far (an open construct has a nil end). The streaming promotion policy
     /// refuses to hard-cut through a span that contains the current stable
     /// target. One interval per construct — bounded by construct count.
     private(set) var constructIntervals: [(start: Int, end: Int?)] = []
@@ -886,12 +890,14 @@ struct MarkdownStableBoundaryScanner {
         let normalized = line.hasSuffix("\r") ? String(line.dropLast()) : line
         let wasInConstruct = fenceMarker != nil || mathClose != nil || inDirective
         let lineStartOffset = consumedOffset
+        if !wasInConstruct {
+            noteTableRow(normalized.trimmingCharacters(in: .whitespaces), lineStartOffset: lineStartOffset)
+        }
         updateStateForLine(normalized.trimmingCharacters(in: .whitespaces), lineStartOffset: lineStartOffset, lineBytes: lineBytes)
         let isInConstruct = fenceMarker != nil || mathClose != nil || inDirective
         if wasInConstruct && !isInConstruct, !constructIntervals.isEmpty {
             constructIntervals[constructIntervals.count - 1].end = consumedOffset + lineBytes
         }
-        _ = boundaries
 
         // A blank line outside every construct ends a block: everything
         // after this line is a fresh block, so the split point moves to the
@@ -916,6 +922,14 @@ struct MarkdownStableBoundaryScanner {
         pendingLine = ""
         let normalized = line.hasSuffix("\r") ? String(line.dropLast()) : line
         let wasInConstruct = fenceMarker != nil || mathClose != nil || inDirective
+        if !wasInConstruct {
+            noteTableRow(normalized.trimmingCharacters(in: .whitespaces), lineStartOffset: consumedOffset)
+        }
+        // The stream ended: a table still open ends with it.
+        if inTable, !constructIntervals.isEmpty {
+            constructIntervals[constructIntervals.count - 1].end = consumedOffset + line.utf8.count
+            inTable = false
+        }
         updateStateForLine(
             normalized.trimmingCharacters(in: .whitespaces),
             lineStartOffset: consumedOffset,
@@ -931,6 +945,23 @@ struct MarkdownStableBoundaryScanner {
             lastSafeBoundary = consumedOffset + line.utf8.count
         }
         consumedOffset += line.utf8.count
+    }
+
+    /// Opens a table span at its first `|` row and closes it at the start
+    /// of the first line that isn't one, so a cut lands before or after a
+    /// table, never inside it. Called only outside fences, math and
+    /// directives.
+    private mutating func noteTableRow(_ trimmedLine: String, lineStartOffset: Int) {
+        let isRow = trimmedLine.hasPrefix("|")
+        if isRow, !inTable {
+            inTable = true
+            constructIntervals.append((start: lineStartOffset, end: nil))
+        } else if !isRow, inTable {
+            inTable = false
+            if !constructIntervals.isEmpty {
+                constructIntervals[constructIntervals.count - 1].end = lineStartOffset
+            }
+        }
     }
 
     private mutating func updateStateForLine(_ trimmedLine: String, lineStartOffset: Int, lineBytes: Int) {

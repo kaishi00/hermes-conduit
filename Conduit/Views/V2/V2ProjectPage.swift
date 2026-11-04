@@ -309,6 +309,8 @@ struct V2ProjectPage: View {
             }
         }
         .buttonStyle(.plain)
+        // Its saved copy comes into memory as it shows (issue 1725).
+        .onAppear { appState.warmSavedCopy(of: session) }
         .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
         .v2SelectedTrait(.chat(isActive: appState.isOpenChatRow(session), beside: openBeside))
     }

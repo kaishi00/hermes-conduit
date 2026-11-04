@@ -1390,6 +1390,45 @@ extension MarkdownLargeDocumentTests {
         }
     }
 
+    /// A long table has no blank line in it: the scanner records it as one
+    /// span, so the stream never hard-cuts mid-table and leaves the tail's
+    /// rows without their header (review of #1734).
+    func testALongStreamingTableIsNeverCutInside() {
+        let rows = (0..<900).map { "| row \($0) | value \($0) | note \($0) |" }.joined(separator: "\n")
+        let text = "intro\n\n| a | b | c |\n| --- | --- | --- |\n\(rows)\n\nafter table\n"
+        var scanner = MarkdownStableBoundaryScanner()
+        let boundaries = scanner.append(text)
+        XCTAssertEqual(scanner.constructIntervals.count, 1, "the table must be one span")
+        let span = scanner.constructIntervals[0]
+        let tableStart = text.utf8.count - text.drop(while: { $0 != "|" }).utf8.count
+        XCTAssertEqual(span.start, tableStart)
+        XCTAssertNotNil(span.end, "the line after the table closes its span")
+        XCTAssertGreaterThan(span.end! - span.start, 2 * MarkdownLargeDocumentPolicy.maxStreamChunkBytes)
+
+        // Every stable target inside the table: promotion waits or uses the
+        // boundary before it, never a hard cut through the rows.
+        for target in stride(from: span.start + 1, to: span.end!, by: 997) {
+            let next = LargeStreamPromotion.nextPromotionBoundary(
+                promotedBytes: span.start,
+                revealedBytes: target + MarkdownLargeDocumentPolicy.chunkTargetBytes,
+                boundaries: boundaries,
+                constructIntervals: scanner.constructIntervals
+            )
+            if let next {
+                XCTAssertFalse(next > span.start && next < span.end!, "cut \(next) lands inside the table")
+            }
+        }
+    }
+
+    /// A table still streaming when the reply ends is closed by `finish()`.
+    func testATableOpenAtTheEndClosesOnFinish() {
+        var scanner = MarkdownStableBoundaryScanner()
+        _ = scanner.append("| a | b |\n| --- | --- |\n| 1 | 2 |")
+        XCTAssertNil(scanner.constructIntervals.last?.end)
+        scanner.finish()
+        XCTAssertNotNil(scanner.constructIntervals.last?.end)
+    }
+
     // Case 7: giant unbroken CJK paragraph -> bounded grapheme-safe hard
     // cut still allowed (complements the existing CJK alignment test).
     func testGiantUnbrokenPlainTextHardCutAllowed() {
