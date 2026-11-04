@@ -229,14 +229,17 @@ struct AttachmentDropDelegate: DropDelegate {
     @Binding var isTargeted: Bool
     let onDrop: ([NSItemProvider]) -> Void
 
+    /// A drag came over the chat or room: the outline goes up.
     func dropEntered(info: DropInfo) {
         isTargeted = true
     }
 
+    /// The drag left (or moved onto a field that took it): outline down.
     func dropExited(info: DropInfo) {
         isTargeted = false
     }
 
+    /// Dropped here: the outline goes down whether or not files are taken.
     func performDrop(info: DropInfo) -> Bool {
         isTargeted = false
         return take(info.itemProviders(for: [.item]))

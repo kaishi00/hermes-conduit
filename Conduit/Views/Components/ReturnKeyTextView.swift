@@ -658,6 +658,7 @@ final class FieldDropHandler: NSObject, UIDropInteractionDelegate, UITextDragDel
         perform(session.items.map(\.itemProvider), local: session.localDragSession, at: session.location(in: field))
     }
 
+    /// Called for every drag that reached the field, however it ended.
     func dropInteraction(_ interaction: UIDropInteraction, sessionDidEnd session: UIDropSession) {
         dragEnded()
     }
