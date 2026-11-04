@@ -2610,7 +2610,7 @@ chat's saved copy and the reply's notification (the settled message)
 - Tests: `ConduitTests/AppStateReasoningStreamTests.swift` (testBackgroundHoldsLiveTextUntilActive, testInactiveHoldsLiveTextUntilActiveOffAMac, testBackgroundHoldsLiveReasoningUntilActive, testInactiveHoldsLiveReasoningUntilActiveOffAMac; the drawer's pause flushes the other tests)
 
 **Rulings**
-- The pause starts on `.inactive` on an iPhone or iPad (the app switcher, Control Center, a system alert), since a swipe away from the switcher asks Conduit to quit while the reply still redraws (2026-11-04, #1744, recommended to Eric, his call pending); on an iPad app on a Mac only on `.background`, since it goes inactive whenever another app is in front, where the reply stays in view (#1743).
+- The pause starts on `.inactive` on an iPhone or iPad (the app switcher, Control Center, a system alert), since a swipe away from the switcher asks Conduit to quit while the reply still redraws (Eric chose it, 2026-11-04, #1744); on an iPad app on a Mac only on `.background`, since it goes inactive whenever another app is in front, where the reply stays in view (#1743).
 - In the background a streaming reply kept the main thread redrawing the whole growing reply on each publish, near a full core with tables, so iOS's watchdog killed Conduit going to the background or quitting (0x8BADF00D, 85% of the relay's crash reports; Time Profiler on a phone, 2026-11-04, #1743).
 - A turn that completes while hidden still publishes its final text at once (scheduleStreamingCompletion), one publish (#1743).
 - A thinking card's first words still mount it while hidden, one publish per card; the words after it wait (#1744, from #1743's review).
