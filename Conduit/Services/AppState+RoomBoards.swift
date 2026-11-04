@@ -29,11 +29,18 @@ extension AppState {
             if !activeRoomBoards.isEmpty { activeRoomBoards = [] }
             return
         }
-        let profile = activeProfile
+        let path = RoomBoard.readPath(profile: activeProfile, roomID: roomID)
+        let read = roomBoardsReadOverride
         roomBoardsTask = Task { [weak self] in
-            guard let bridge = self?.dashboardTicketBridge,
-                  let answer = try? await bridge.requestJSON(path: RoomBoard.readPath(profile: profile, roomID: roomID))
-            else { return }
+            let answer: [String: Any]?
+            if let read {
+                answer = try? await read(path)
+            } else if let bridge = self?.dashboardTicketBridge {
+                answer = try? await bridge.requestJSON(path: path)
+            } else {
+                answer = nil
+            }
+            guard let answer else { return }
             guard let self, !Task.isCancelled, self.activeRoomReplay.roomID == roomID else { return }
             let boards = RoomBoard.boards(answer)
             if boards != self.activeRoomBoards { self.activeRoomBoards = boards }

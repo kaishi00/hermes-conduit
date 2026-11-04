@@ -12271,6 +12271,8 @@ final class AppState: ObservableObject {
     /// The open room's boards on the host, oldest first (AppState+RoomBoards).
     @Published var activeRoomBoards: [RoomBoard] = []
     var roomBoardsTask: Task<Void, Never>?
+    /// Tests read a room's boards here in place of the dashboard.
+    var roomBoardsReadOverride: ((String) async throws -> [String: Any])?
     @Published private(set) var activeRoomDriverStatus: GroupDriverStatus?
 
     /// Where the user's answer to each of the open room's pending approvals

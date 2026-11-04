@@ -330,7 +330,7 @@ final class TranscriptLayoutTests: XCTestCase {
                 actor: GroupActor(kind: "member", id: "furina", profile: "furina", displayName: nil, connectionID: nil),
                 authorityEpoch: nil, payload: payload, createdAt: 1
             )
-            return .event(event, members: [], continuesRun: false)
+            return .event(event, members: [], continuesRun: false, boards: [])
         }
         XCTAssertEqual(guess(event("turn.failed", nil)), TranscriptLayout.rowGap + 24, "a caption is a line")
         let long = String(repeating: "A member's reply runs on for a while. ", count: 30)
