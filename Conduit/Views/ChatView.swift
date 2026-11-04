@@ -1307,19 +1307,29 @@ struct MessageBubble: View, Equatable {
             if let tool = message.tool,
                let clarify = ClarifyActivity.historyRecord(for: tool, rowID: message.id) {
                 ClarifyCard(message: message.presenting(clarify))
-            } else if let tool = message.tool, case let cards = RichCard.cards(for: tool), !cards.isEmpty {
-                // Maps and places Hermes showed (conduit_show): drawn from
-                // the call's saved answer, so they come back with the chat,
+            } else if let tool = message.tool, let board = RichBoard.board(for: tool) {
+                // The board Hermes showed (conduit_show): drawn from the
+                // call's saved answer, so it comes back with the chat,
                 // whatever the tool-progress setting. A live card shows
-                // only where it was last brought up to date.
-                let current = RichCard.current(cards, row: message.id, latestLiveRows: rowState.latestLiveRows)
-                Group {
-                    if current.isEmpty {
-                        RichLiveUpdatedLine(title: cards.first?.title)
+                // only where it was last brought up to date. A board this
+                // Conduit can't draw every card of shows as its Markdown.
+                let current = RichCard.current(board.cards, row: message.id, latestLiveRows: rowState.latestLiveRows)
+                VStack(alignment: .leading, spacing: 10) {
+                    if board.cards.isEmpty, let markdown = board.markdown {
+                        RichBoardMarkdown(markdown: markdown)
+                    } else if current.isEmpty {
+                        RichLiveUpdatedLine(title: board.cards.first?.title)
                     } else {
-                        RichCardsView(cards: current)
+                        RichCardsView(cards: current, tabs: board.tabs && current.count > 1)
+                    }
+                    if message.id == rowState.followUpBoardRowID, !board.followUps.isEmpty {
+                        RichBoardFollowUps(followUps: board.followUps, composer: appState.predictive,
+                                           send: { appState.requestBoardFollowUp(.send, text: $0) },
+                                           edit: { appState.requestBoardFollowUp(.edit, text: $0) })
                     }
                 }
+                .environment(\.richChecklistContext, appState.richChecklistContext)
+                .environment(\.richChecklistInChat, true)
                 .frame(maxWidth: 560, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else if let step {

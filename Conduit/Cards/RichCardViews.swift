@@ -12,16 +12,14 @@
 import MapKit
 import SwiftUI
 
-/// A list of cards, one under another.
+/// A board's cards, as RichBoardLayout lays them out: one under another
+/// (small ones side by side on a wide window), or one at a time as tabs.
 struct RichCardsView: View {
     let cards: [RichCard]
+    var tabs = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(cards) { card in
-                RichCardView(card: card)
-            }
-        }
+        RichBoardLayout(cards: cards, tabs: tabs)
     }
 }
 
@@ -54,6 +52,18 @@ struct RichCardView: View {
             RichContactCard(card: card)
         case .status:
             RichStatusCard(card: card)
+        case .table:
+            RichTableCard(card: card)
+        case .timeline:
+            RichTimelineCard(card: card)
+        case .checklist:
+            RichChecklistCard(card: card)
+        case .list:
+            RichListCard(card: card)
+        case .progress:
+            RichProgressCard(card: card)
+        case .callout:
+            RichCalloutCard(card: card)
         }
     }
 }

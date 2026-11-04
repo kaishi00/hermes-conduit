@@ -4308,6 +4308,56 @@ pictures' VoiceOver hint "Opens full screen with save and share")
 
 **Checked:** 2026-10-30, #1550 (a saved copy's pictures page through the chat's own list, from the rows drawn); 2026-10-29, #1491.
 
+## Cards Hermes shows
+
+Boards: one `conduit_show` call shows up to 12 native cards in the chat
+(maps and places, stats, charts, weather, comparisons, steps, media, people,
+status, and since plugin 0.128 tables to sort, day-by-day timelines,
+checklists, lists, progress and callouts), stacked or as tabs, with up to
+four follow-ups under it. Live models put the same cards on the call screen
+with show_on_screen.
+
+**Siblings:** chats, project chats and Bot Chat (the tool row) · the saved-chat
+copy · the call screen (Gemini, Grok, Qwen and Local Live show_on_screen;
+Classic and GPT-Live through Hermes) · saved call transcripts · group rooms ·
+Hermes Desktop and messaging apps (not Conduit) · the Watch and CarPlay ·
+Predictions' reply chips (the follow-ups are the same chip) · what models read:
+conduit_show's description and answers, the drawing rule, the
+`conduit_push:drawing-boards` skill, show_on_screen's description · the
+notifier README and CHANGELOG
+
+**Code**
+- Schema, shared byte for byte: `notifier/cards/card-schema.json`, `notifier/cards/card-vectors.json`, copied to `Conduit/Cards/card-schema.json` and `ConduitTests/Fixtures/card-vectors.json` (`scripts/check-card-schema.py`); normalized the same way in `notifier/card_schema.py` (normalize_cards with notes, normalize_next, normalize_layout, the Markdown) and `Conduit/Cards/RichCardSchema.swift` (prepared, cell, followUps)
+- The tool: `notifier/show_tool.py` (problems, markdown, the old-Conduit cap, BOARD_RULE), the rule and the checklist note in `notifier/__init__.py`, recipes in `notifier/skills/drawing-boards/SKILL.md`; the phone's features in `Conduit/Services/PresentedScreens.swift` ("board-cards") and `notifier/present_store.py`
+- Checklist ticks on the host: `notifier/checklist_store.py`, `notifier/dashboard/api/boards.py` (`/boards/checklists`, capability "board-checklists"); in Conduit `Conduit/Cards/RichChecklistMemory.swift`, `Conduit/Services/AppState+Boards.swift`
+- Cards and views: `Conduit/Cards/RichCard.swift`, `Conduit/Cards/RichBoardCard.swift` (RichBoard, RichTable…), `Conduit/Cards/RichBoardCardViews.swift` (RichBoardLayout, RichBoardFollowUps, RichBoardMarkdown), `Conduit/Cards/RichCardViews.swift`; the chat row in `Conduit/Views/ChatView.swift`, its follow-ups in `Conduit/Views/ChatRowState.swift` (followUpBoardRowID) and `Conduit/Services/AppState.swift` (requestBoardFollowUp)
+- Live models: `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (showOnScreenDeclaration, invalidCardsNote)
+- Tests: `ConduitTests/RichCardTests.swift`, `ConduitTests/RichCardTests+Boards.swift`, `notifier/tests/test_cards.py`, `notifier/tests/test_show.py`, `notifier/tests/test_checklists.py`
+
+**Rulings**
+- One tool: conduit_show grows; there is no second board tool (Eric, 2026-11-03, #1713 with notifier #528).
+- Never blank: every answer carries the cards' Markdown. Conduit shows it in the board's place when it can't draw every card, never part of a board, and a model outside Conduit gets it for its reply (Eric, 2026-11-03, #1713 with notifier #528).
+- Exact errors: what normalization leaves out goes back to the model as `problems`, by path, so it can fix the board and show it again (Eric, 2026-11-03, notifier #528).
+- Conduit lays the board out: Hermes picks only stack or tabs; small cards pair up on a wide window (2026-11-03, #1713).
+- Follow-ups are plain messages the user would send, at most four, offered only under the last turn's board while Hermes is free and connected and the composer is empty: tap sends, long-press edits, and taps in their first 0.4 s are ignored, as Predictions' chips (Eric, 2026-11-03, #1713).
+- Checklist ticks in a chat are kept on the host for every device, and Hermes hears what changed once, at the chat's next turn; on the call screen they stay on the phone (Eric, 2026-11-03, #1713 with notifier #528), kept by the list's name as a chat's are, so a list of that name on another call's screen shows the same ticks (#1713).
+- A tick goes to the host on its own, in the order made, and the host applies it to the newest ticks any device saved, so a tick from another device is never undone (2026-11-03, #1713 with notifier #528).
+- In a group room the board goes in the agent's reply as Markdown (`group_room`), until rooms draw cards in a follow-up PR (Eric, 2026-11-03, #1713 with notifier #528). Other people's agents read a room, so contact cards (a person's numbers, a text drafted for the user) stay out of it, with a problems line, whatever the turn's surface.
+- A Conduit without "board-cards" gets at most four cards, no layout and no follow-ups (2026-11-03, notifier #528).
+- Real data only: models are told to fill tables, stats and charts from tools, sites or the user's files, with their source (2026-11-03, notifier #528).
+
+**Open gaps**
+- Group rooms draw no cards yet: room messages carry text only, so cards there need the room format to carry them, the next PR.
+- Hermes Desktop draws the Markdown, not the cards: drawing them natively waits on a probe of Desktop's plugin SDK.
+- The call screen draws a board stacked, with no tabs and no follow-ups (the user speaks the next question).
+- The Watch and CarPlay show no cards.
+- Checklist ticks on the call screen don't reach the chat or Hermes.
+- A checklist in the saved copy, a chat on its way or a saved call's transcript can't be ticked and shows no ticks (a chat's are on the host; a call's stay with its live screen).
+- A checklist that stays on screen reads other devices' ticks only when it's drawn again or ticked here.
+- Boards are parsed again each time a row is drawn; no cache yet, as liveNames has.
+
+**Checked:** 2026-11-03, #1713 with notifier #528.
+
 ## Cards drawn in web pages
 
 How an HTML preview (`::preview{file=…}`), a Mermaid diagram or a LaTeX
@@ -4545,7 +4595,8 @@ group rooms · the Apple Watch · voice modes and CarPlay · Hermes Desktop and
 the TUI on the same chat · the reply push while the chat is on screen · step
 summaries' /btw · the composer's draft and Send · the plugin's `/predict`
 route, its README section and the CHANGELOG · the Predictive page's captions ·
-Helper models (the fast model is the Conduit predictions slot)
+Helper models (the fast model is the Conduit predictions slot) · a board's
+follow-ups (the same chip, see Cards Hermes shows)
 
 **Code**
 - Model and store: `Conduit/Services/Predictive.swift` (Predictive, PredictiveStore, PredictiveComposerRequest, PredictiveFollowUpState)
@@ -4581,7 +4632,7 @@ Helper models (the fast model is the Conduit predictions slot)
 - Step summaries still use `prompt.btw`, so Desktop keeps showing their notes; moving them to `/predict` is left for its own change.
 - Which reply is Hermes' own, when other clients' messages are queued around the hidden prompt, is inferred from row timestamps (the phone's clock at sending against the host's) and `user.message` events. Hermes sends no turn ownership, so a message sent within clock skew of the prompt, one read into the chat before its event arrives, another device's message repeating the text this iPhone sent last before that message has its row id (taken for this iPhone's own), a message whose event arrives only after the hidden prompt while its turn is the one the prompt queued behind (counted twice), or a message queued ahead whose row is read in before the turn the prompt queued behind ends and whose event came before the prompt (not counted), can still put the tag on the wrong reply; and this iPhone's own message announced back after a newer one of its own is taken for someone else's, which drops the tag. The event's origin isn't read for this (#1290).
 
-**Checked:** 2026-11-02, #1674 with notifier #515 (draft and reply limits counted the plugin's way, issue 1670); 2026-11-02, #1672 (a follow-up check the host was too busy for, too slow for or couldn't reach is asked again within the 4 checks, issue #1669; the plugin's `/predict`, its README, the captions and guesses needed no change); 2026-11-01, #1631 with notifier #504 (on the gateway's own listener the route forks the authority's chat, see Two Hermes servers); 2026-11-01, #1631 (the hidden turn is taken on the gateway's own listener, probed on the canary; `/predict` there came with notifier #504); 2026-11-01, #1632 (the captions point at Helper models once Hermes lists Conduit predictions, and ask for a plugin update before then; with no slots kept the caption waits for Hermes, and stays off if it never answers); 2026-11-01, #1625 (the fast model is a helper model Conduit sets, notifier 0.124.0; the Model section's captions point there; a gap closed); 2026-10-30, #1527 (a guess sent from the row keeps whatever focus the field had, see Composer focus after a send); 2026-10-29, #1495, carrying #1489 (a guess's fork sends no push, notifier #464); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1455 (carrying #1431; a chip that sends wraps instead of truncating; Rulings); 2026-10-26, #1290 (a follow-up's tag skips replies to other messages); at #1281 (carrying #1242).
+**Checked:** 2026-11-03, #1713 (a board's follow-ups reuse the reply chip and its tap and long-press, see Cards Hermes shows; Siblings); 2026-11-02, #1674 with notifier #515 (draft and reply limits counted the plugin's way, issue 1670); 2026-11-02, #1672 (a follow-up check the host was too busy for, too slow for or couldn't reach is asked again within the 4 checks, issue #1669; the plugin's `/predict`, its README, the captions and guesses needed no change); 2026-11-01, #1631 with notifier #504 (on the gateway's own listener the route forks the authority's chat, see Two Hermes servers); 2026-11-01, #1631 (the hidden turn is taken on the gateway's own listener, probed on the canary; `/predict` there came with notifier #504); 2026-11-01, #1632 (the captions point at Helper models once Hermes lists Conduit predictions, and ask for a plugin update before then; with no slots kept the caption waits for Hermes, and stays off if it never answers); 2026-11-01, #1625 (the fast model is a helper model Conduit sets, notifier 0.124.0; the Model section's captions point there; a gap closed); 2026-10-30, #1527 (a guess sent from the row keeps whatever focus the field had, see Composer focus after a send); 2026-10-29, #1495, carrying #1489 (a guess's fork sends no push, notifier #464); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1455 (carrying #1431; a chip that sends wraps instead of truncating; Rulings); 2026-10-26, #1290 (a follow-up's tag skips replies to other messages); at #1281 (carrying #1242).
 
 ## Linked Rooms
 
