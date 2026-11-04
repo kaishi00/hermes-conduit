@@ -4985,7 +4985,9 @@ enum MessageNormalizer {
     static func sessionListPreview(in obj: [String: AnyCodable]) -> String? {
         guard let title = obj["title"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
               !title.isEmpty,
-              let preview = obj["preview"]?.stringValue?
+              // A chat opening with a picture: its preview is that prompt,
+              // with the context Hermes stored after the picture.
+              let preview = obj["preview"]?.stringValue.map(removingTurnContext)?
                 .replacingOccurrences(of: "\n", with: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines),
               !preview.isEmpty,
@@ -5240,7 +5242,11 @@ enum MessageNormalizer {
             let projectedContent = isToolResult ? nil : projectedDisplayContent(in: obj)
             let extractedContent = isToolResult
                 ? extractToolOutput(obj)
-                : projectedContent ?? extractContent(obj["content"] ?? obj["text"] ?? .null)
+                : projectedContent ?? extractContent(
+                    role == .user
+                        ? droppingTurnContextPart(obj["content"] ?? obj["text"] ?? .null)
+                        : obj["content"] ?? obj["text"] ?? .null
+                )
             // Compaction bookkeeping is removed before role/system/runtime
             // normalization so no summary text — standalone or merged onto a
             // real prompt — can reach a ChatMessage and the renderer.
@@ -5961,8 +5967,9 @@ enum MessageNormalizer {
         rowId: Int? = nil,
         imageScope: TranscriptImageScope? = nil
     ) -> (content: String, rawContent: String?, attachments: [Attachment]?) {
+        let typed = removingTurnContext(source)
         let images = splitUserImageReferences(
-            source,
+            typed,
             messageId: messageId,
             rowId: rowId,
             imageScope: imageScope
@@ -5974,7 +5981,62 @@ enum MessageNormalizer {
         guard files.content != images.content else { return images }
         let attachments = files.attachments + (images.attachments ?? [])
         // Without Hermes' picture stand-ins, which a branch must not replay.
-        return (files.content, images.rawContent ?? source, attachments.isEmpty ? nil : attachments)
+        return (files.content, images.rawContent ?? typed, attachments.isEmpty ? nil : attachments)
+    }
+
+    /// A prompt kept as parts (text, then its pictures) without the text
+    /// part Hermes adds after the pictures for the model: that turn's
+    /// recalled memory and plugin notes (Hermes #71998).
+    static func droppingTurnContextPart(_ content: AnyCodable) -> AnyCodable {
+        guard case .array(let parts) = content,
+              let lastPicture = parts.lastIndex(where: { $0.objectValue.map(isInlineImagePart) ?? false }),
+              lastPicture < parts.count - 1 else { return content }
+        return .array(Array(parts[...lastPicture]))
+    }
+
+    /// Hermes' own fence around recalled memory (`agent/memory_context.py`),
+    /// to the end of the text when its closing tag was cut off.
+    private static let memoryContextFence = try? NSRegularExpression(
+        pattern: #"<\s*memory-context\s*>[\s\S]*?(?:<\s*/\s*memory-context\s*>|\z)"#,
+        options: [.caseInsensitive]
+    )
+
+    /// One line Hermes writes in a stored prompt for each picture it held
+    /// as a part (`agent/session_persistence.py` `_image_marker`).
+    private static let storedPictureLine = try? NSRegularExpression(
+        pattern: #"^[ \t]*\[screenshot(?: detail=(?:low|high|auto))?\][ \t]*$"#
+    )
+
+    static func isStoredPictureLine(_ line: String) -> Bool {
+        guard let storedPictureLine else { return false }
+        return storedPictureLine.firstMatch(in: line, range: NSRange(line.startIndex..<line.endIndex, in: line)) != nil
+    }
+
+    /// A prompt without the context Hermes added for the model on that turn:
+    /// recalled memory (`<memory-context>`) and plugins' `pre_llm_call`
+    /// notes. On a turn with a picture Hermes adds them as one more text
+    /// part after the pictures, and the stored row keeps it (Hermes #71998),
+    /// flattened to the text after the pictures' `[screenshot]` lines. The
+    /// bubble shows only what the user wrote, as a text turn's does (its
+    /// context rides in `api_content`, never in `content`).
+    static func removingTurnContext(_ text: String) -> String {
+        guard text.contains("[screenshot") || text.range(of: "memory-context", options: .caseInsensitive) != nil else {
+            return text
+        }
+        var visible = text
+        var lines = visible.components(separatedBy: "\n")
+        if let lastPicture = lines.lastIndex(where: isStoredPictureLine), lastPicture < lines.count - 1 {
+            lines.removeSubrange((lastPicture + 1)...)
+            visible = lines.joined(separator: "\n")
+        }
+        if let memoryContextFence {
+            visible = memoryContextFence.stringByReplacingMatches(
+                in: visible,
+                range: NSRange(visible.startIndex..<visible.endIndex, in: visible),
+                withTemplate: ""
+            )
+        }
+        return visible == text ? text : visible.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Hermes appends what it expanded for `@file:`/`@url:` references below
@@ -6086,20 +6148,23 @@ enum MessageNormalizer {
         return ["image_url", "image", "source", "data", "file_id"].contains { part[$0] != nil }
     }
 
-    /// Splits Hermes' trailing picture stand-ins off a persisted prompt.
+    /// Splits Hermes' trailing picture stand-ins (`[image]`, and the
+    /// `[screenshot]` lines a stored prompt keeps) off a persisted prompt.
     /// Hermes appends one line per picture after the text, so only a
     /// trailing run counts and a typed "[image]" inside the text stays. A
     /// bare `data:image/…` line (a gateway that writes pictures out as text)
     /// counts as one too and is never shown.
     static func trailingInlineImageMarkers(_ text: String) -> (text: String, count: Int) {
-        guard text.contains(inlineImageMarker) || text.contains("data:image/") else { return (text, 0) }
+        guard text.contains(inlineImageMarker) || text.contains("[screenshot") || text.contains("data:image/") else {
+            return (text, 0)
+        }
         var lines = text.components(separatedBy: "\n")
         var count = 0
         while let last = lines.last {
             let line = last.trimmingCharacters(in: .whitespacesAndNewlines)
             if line.isEmpty {
                 lines.removeLast()
-            } else if line == inlineImageMarker
+            } else if line == inlineImageMarker || isStoredPictureLine(line)
                         || (line.hasPrefix("data:image/") && line.contains(";base64,") && !line.contains(" ")) {
                 lines.removeLast()
                 count += 1
