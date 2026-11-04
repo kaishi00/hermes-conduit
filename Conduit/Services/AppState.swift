@@ -1953,7 +1953,24 @@ final class AppState: ObservableObject {
            let openID = activeSessionId,
            activeBotChatProfile == bot.name {
             let openIDs = presentationCacheSessionIDs(for: openID)
+            // Hermes' own card for the question already on screen means the
+            // copy stays out: one question is one card.
+            let hermesCardIsThere = Self.notificationClarifyActivity(for: decision).map { pushed in
+                messages.contains { message in
+                    guard let live = message.clarify,
+                          !live.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) else { return false }
+                    return Self.pushCardSupersededBy(pushed, live: live)
+                }
+            } ?? false
+            if hermesCardIsThere {
+                sessionPresentationCache.removePendingDecision(
+                    key: evictionKey,
+                    profile: bot.name,
+                    sessionIDs: [requestedID] + [target.durableSessionID].compactMap { $0 } + openIDs
+                )
+            }
             let restoresClarify = evictionKey.hasPrefix("clarify:")
+                && !hermesCardIsThere
                 && !messages.contains(where: { SessionPresentationCache.decisionKey(for: $0) == evictionKey })
             if restoresClarify {
                 recordNotificationDecision(
@@ -18725,6 +18742,12 @@ final class AppState: ObservableObject {
             : restored
         let rebuilt = isSameChat ? Self.keepingLocalNotes(from: previousMessages, in: rekeyed) : rekeyed
         messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: rebuilt, sessionId: result.sessionId), sessionId: result.sessionId)
+        // A cached push copy of a clarify the transcript already holds from
+        // Hermes goes, so one question never shows as two cards.
+        for live in messages.compactMap(\.clarify)
+        where !live.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) {
+            removePushCardsSuperseded(by: live)
+        }
         if result.snapshot.running == false {
             sessionPresentationCache.removePendingTools(
                 profile: presentationProfile(for: result.sessionId),
@@ -25904,6 +25927,26 @@ final class AppState: ObservableObject {
     /// `approval.respond` and would only duplicate or contradict the live card.
     /// `cacheSessionIDs` is the (durable-owned) key set the card persists
     /// under; `sessionIDs` remains the answerability guard.
+    /// The card a notification's clarify would draw, for matching it
+    /// against Hermes' own card. Nil for an approval.
+    static func notificationClarifyActivity(for decision: PendingDecisionPayload) -> ClarifyActivity? {
+        switch decision {
+        case .approval:
+            return nil
+        case let .clarify(requestId, question, choices):
+            return ClarifyActivity(
+                requestId: requestId,
+                question: question,
+                choices: choices.map { ClarifyChoice(label: $0, value: $0) },
+                status: .pending,
+                answer: nil,
+                error: nil
+            )
+        case let .clarifyBatch(requestId, questions):
+            return ClarifyActivity(requestId: requestId, questions: questions)
+        }
+    }
+
     private func recordNotificationDecision(
         _ decision: PendingDecisionPayload,
         sessionIDs: [String],
@@ -37018,13 +37061,42 @@ final class AppState: ObservableObject {
             }
             messages[index].content = merged.displayQuestion
             messages[index].clarify = merged
+            // A push copy that came in after this card (a resume's cached
+            // decisions, a notification while it showed) goes too, or the
+            // one question shows as two answerable cards (Eric 2026-11-04).
+            removePushCardsSuperseded(by: merged)
             return
         }
 
+        removePushCardsSuperseded(by: activity)
+        // The clarify row must sit below everything the turn produced before
+        // it: settle the live reasoning segment, then commit streamed
+        // assistant text (the explanation leading up to the question).
+        // Hermes' clarify tool.start is skipped above, so nothing else
+        // flushes that text and it would render below the card (#572).
+        // Only the live event does this: a resume snapshot lands before the
+        // stream buffer is rebuilt from the recovered in-flight text.
+        settleReasoningSegmentIntoTranscript()
+        if source == .streamEvent { flushStreamingPartial() }
+        messages.append(ChatMessage(
+            id: "clarify-\(activity.requestId)",
+            role: .clarify,
+            content: activity.displayQuestion,
+            timestamp: Self.localTimestamp(),
+            clarify: activity
+        ))
+    }
+
+    /// Takes still-pending push-delivered cards for the same logical clarify
+    /// as `activity` out of the transcript and the presentation cache.
+    private func removePushCardsSuperseded(by activity: ClarifyActivity) {
+        guard !activity.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) else { return }
         // A still-pending push-delivered card for the same logical clarify is
         // superseded by the live event (different ids: gateway vs
         // plugin-minted), so one logical clarify never renders two
-        // answerable cards. Resolved history stays visible, and a
+        // answerable cards. A copy whose relay answer failed (.error) goes
+        // too: it is still answerable, and Hermes' card is the answer path
+        // now. Resolved history stays visible, and a
         // .submitting card is left alone: its relay answer may already
         // be in flight and will settle it by request id.
         //
@@ -37037,7 +37109,7 @@ final class AppState: ObservableObject {
         messages.removeAll { message in
             guard let clarify = message.clarify,
                   clarify.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
-                  clarify.presentationStatus == .pending,
+                  clarify.presentationStatus == .pending || clarify.presentationStatus == .error,
                   Self.pushCardSupersededBy(clarify, live: activity) else {
                 return false
             }
@@ -37060,22 +37132,6 @@ final class AppState: ObservableObject {
                 sessionIDs: cacheSessionIDs
             )
         }
-        // The clarify row must sit below everything the turn produced before
-        // it: settle the live reasoning segment, then commit streamed
-        // assistant text (the explanation leading up to the question).
-        // Hermes' clarify tool.start is skipped above, so nothing else
-        // flushes that text and it would render below the card (#572).
-        // Only the live event does this: a resume snapshot lands before the
-        // stream buffer is rebuilt from the recovered in-flight text.
-        settleReasoningSegmentIntoTranscript()
-        if source == .streamEvent { flushStreamingPartial() }
-        messages.append(ChatMessage(
-            id: "clarify-\(activity.requestId)",
-            role: .clarify,
-            content: activity.displayQuestion,
-            timestamp: Self.localTimestamp(),
-            clarify: activity
-        ))
     }
 
     /// Applies `clarify.expire { request_id }`: unanswered questions stop
