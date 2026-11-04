@@ -13,11 +13,12 @@ final class BotWorkStore: ObservableObject {
             let ids = snapshots.values.reduce(into: Set<String>()) { $0.formUnion($1.sessionIDs) }
             guard ids != workstreamSessionIDs else { return }
             workstreamSessionIDs = ids
+            workstreamsGeneration &+= 1
             onWorkstreamsChanged?()
         }
     }
     /// Called when the set of workstream chats changes, so lists already
-    /// shown (All profiles, search) leave out one that just became known.
+    /// shown (All profiles, search, the Chats list) leave out one that just became known.
     var onWorkstreamsChanged: (@MainActor () -> Void)?
     /// What the last action on each bot's work said when it did nothing
     /// ("W3 can't continue while it's running"), for its panel to show.
@@ -35,6 +36,8 @@ final class BotWorkStore: ObservableObject {
     /// Every workstream's chat Conduit knows of, on every bot, worked out
     /// once per list rather than for each chat row.
     private(set) var workstreamSessionIDs: Set<String> = []
+    /// Bumped when `workstreamSessionIDs` changes, for the lists kept by it.
+    private(set) var workstreamsGeneration = 0
     /// Bots whose list is being read, so two views showing it share one read.
     private var reading: Set<String> = []
     /// When a call's request last read a bot's work before deciding it isn't
@@ -576,10 +579,23 @@ extension AppState {
         openAppLink(.bot(profile: profile))
     }
 
-    /// Whether a row is one of a bot's workstreams: hidden in Hermes, and
-    /// left out of Chats, search and All profiles here, as a Bot Chat is.
+    /// Whether a row is one of a bot's workstreams, left out of Chats,
+    /// search and All profiles here, as a Bot Chat is. Hermes hides an open
+    /// one; a resolved one is shown there so Desktop's links open it
+    /// (notifier #540), so these lists go by the plugin's list of them.
     func isWorkstreamRow(_ session: SessionSummary) -> Bool {
         botWork.isWorkstream(session)
+    }
+
+    /// Each bot whose work this app hasn't read yet, read once as the
+    /// roster lands: a resolved workstream is shown in Hermes (notifier
+    /// #540), so its chat leaves the Chats list only once its bot's list of
+    /// workstreams is known, whether or not its Bot Chat was opened.
+    func readUnreadBotsWork() {
+        guard servesBotWorkstreams else { return }
+        for bot in botRoster where botWork.snapshot(bot.name) == nil {
+            Task { await refreshBotWork(profile: bot.name) }
+        }
     }
 
     func isWorkstreamSession(_ id: String) -> Bool {
@@ -587,7 +603,7 @@ extension AppState {
     }
 
     /// A workstream that just became known leaves the lists already shown:
-    /// All profiles drops its row, and search redraws without it.
+    /// All profiles drops its row, and search and the Chats list redraw without it.
     func workstreamsChanged() {
         if allProfilesCatalog.sessions.contains(where: isWorkstreamRow) {
             allProfilesCatalog.sessions.removeAll(where: isWorkstreamRow)

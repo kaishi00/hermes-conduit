@@ -271,6 +271,28 @@ extension BotModeTests {
         XCTAssertEqual(appState.allProfilesCatalog.sessions.map(\.id), ["plain"])
     }
 
+    /// A resolved workstream is shown in Hermes so Desktop's links open it
+    /// (notifier #540), so the Chats list leaves it out by the plugin's
+    /// list, including once that list is read after the Chats list was.
+    @MainActor
+    func testAResolvedWorkstreamStaysOutOfTheChatsList() throws {
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        func row(_ id: String) -> SessionSummary {
+            SessionSummary(id: id, storedSessionId: nil, alternateIds: [], title: "Chat", model: "Hermes",
+                           updatedLabel: "now", lastActivityAt: nil, profile: nil, source: .chat,
+                           isActive: false, isArchived: false, lineageRootId: nil)
+        }
+        appState.sessions = [row("20261031_old"), row("plain")]
+        XCTAssertEqual(appState.activeProfileSessions.map(\.id), ["20261031_old", "plain"])
+        var response = workResponse()
+        response["workstream_sessions"] = ["20261101_w1", "20261031_old"]
+        appState.botWork.set(try XCTUnwrap(BotWorkSnapshot(response: response, profile: "furina")))
+        XCTAssertEqual(appState.activeProfileSessions.map(\.id), ["plain"])
+    }
+
     /// A refused action clears the last refusal, shows its own at once and
     /// frees its buttons, without waiting for the list to be read again.
     @MainActor
