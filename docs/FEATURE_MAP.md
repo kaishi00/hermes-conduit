@@ -2593,31 +2593,32 @@ devices)
 
 A reply or thinking card streaming into the open chat redraws at stream
 cadence only while it can be seen: the sessions drawer over the chat, or
-Conduit in the background, pauses the live publishes, and what streamed
+Conduit in the background or inactive, pauses the live publishes, and what streamed
 shows in one publish when the chat is seen again.
 
 **Siblings:** chats, project chats, Bot Chat and Kanban workers' transcripts
 (one ChatView, whose live rows are the only views that observe `liveTurn`) ·
-the sessions drawer over the chat · Conduit in the background · not needed:
+the sessions drawer over the chat · Conduit in the background · Conduit inactive (the app switcher, Control Center; not on a Mac) · not needed:
 group rooms (their messages arrive whole, nothing streams), voice modes,
 CarPlay and the Watch (they hear the stream through the voice observers,
 not the drawn text), the Live Activity (it reads the stream events), the
 chat's saved copy and the reply's notification (the settled message)
 
 **Code**
-- Pausing and resuming: `Conduit/Services/AppState.swift` (liveRowsHidden, pauseLivePublishes, resumeLivePublishesIfShown; showSidebar's didSet; handleScenePhase's .background and .active; scheduleStreamingPublish and scheduleReasoningPublish); the projection, LiveTurnProjection
+- Pausing and resuming: `Conduit/Services/AppState.swift` (liveRowsHidden, sceneHidesLiveRows, pauseLivePublishes, resumeLivePublishesIfShown; showSidebar's didSet; handleScenePhase's .inactive, .background and .active; scheduleStreamingPublish and scheduleReasoningPublish); the projection, LiveTurnProjection
 - The live rows: `Conduit/Views/ChatView.swift` (ChatLiveStreamingRow, ChatLiveThinkingRow)
-- Tests: `ConduitTests/AppStateReasoningStreamTests.swift` (testBackgroundHoldsLiveTextUntilActive, testBackgroundHoldsLiveReasoningUntilActive; the drawer's pause flushes the other tests)
+- Tests: `ConduitTests/AppStateReasoningStreamTests.swift` (testBackgroundHoldsLiveTextUntilActive, testInactiveHoldsLiveTextUntilActiveOffAMac, testBackgroundHoldsLiveReasoningUntilActive; the drawer's pause flushes the other tests)
 
 **Rulings**
-- The background pauses on `.background` only, not `.inactive`: Control Center or a system alert over the chat keeps it streaming, and an iPad app on a Mac goes inactive whenever another app is in front, where a reply should keep streaming in view (2026-11-04, #1743).
+- The pause starts on `.inactive` on an iPhone or iPad (the app switcher, Control Center, a system alert), since a swipe away from the switcher asks Conduit to quit while the reply still redraws (2026-11-04, #1744, recommended to Eric, his call pending); on an iPad app on a Mac only on `.background`, since it goes inactive whenever another app is in front, where the reply stays in view (#1743).
 - In the background a streaming reply kept the main thread redrawing the whole growing reply on each publish, near a full core with tables, so iOS's watchdog killed Conduit going to the background or quitting (0x8BADF00D, 85% of the relay's crash reports; Time Profiler on a phone, 2026-11-04, #1743).
 - A turn that completes while hidden still publishes its final text at once (scheduleStreamingCompletion), one publish (#1743).
+- A thinking card's first words still mount it while hidden, one publish per card; the words after it wait (#1744, from #1743's review).
 
 **Open gaps**
 - The rest of the chat (the transcript's rows, the composer) still updates in the background on a turn's boundaries: a tool card or a settled message lands as it comes, which is one update each, not stream cadence.
 
-**Checked:** 2026-11-04, #1743 (the background pauses the live publishes as the drawer did).
+**Checked:** 2026-11-04, #1744 (inactive pauses too, off a Mac); 2026-11-04, #1743 (the background pauses the live publishes as the drawer did).
 
 ## Reconnecting to Hermes
 

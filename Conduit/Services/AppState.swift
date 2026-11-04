@@ -2293,14 +2293,20 @@ final class AppState: ObservableObject {
     }
 
     /// The open chat's live rows can't be seen: the sessions drawer covers
-    /// them, or Conduit is in the background. Their text and reasoning
+    /// them, or Conduit is in the background or inactive (sceneHidesLiveRows). Their text and reasoning
     /// publishes (to `liveTurn`, which only those rows observe) pause then.
     /// In the background a reply streaming in otherwise kept the main
     /// thread drawing it, the whole growing reply on each publish, so iOS's
     /// watchdog killed Conduit when it couldn't finish going to the
     /// background or quitting (8BADF00D). The live buffers stay
     /// authoritative and are republished once the rows show again.
-    private var liveRowsHidden: Bool { showSidebar || hasEnteredBackgroundScenePhase }
+    private var liveRowsHidden: Bool { showSidebar || sceneHidesLiveRows }
+    /// Conduit is in the background, or inactive on an iPhone or iPad (the
+    /// app switcher, Control Center, a system alert), where a swipe away
+    /// from the switcher asks Conduit to quit while a reply still redraws.
+    /// An iPad app on a Mac is inactive whenever another app is in front,
+    /// where the reply stays in view, so there only the background counts.
+    private var sceneHidesLiveRows = false
 
     private func pauseLivePublishes() {
         streamingPublishTask?.cancel()
@@ -20263,8 +20269,11 @@ final class AppState: ObservableObject {
             // a stale request after the user signs back in.
             let didReturnFromBackground = hasEnteredBackgroundScenePhase
             hasEnteredBackgroundScenePhase = false
-            // What streamed in the background shows, in one publish.
-            if didReturnFromBackground { resumeLivePublishesIfShown() }
+            // What streamed while hidden shows, in one publish.
+            if sceneHidesLiveRows {
+                sceneHidesLiveRows = false
+                resumeLivePublishesIfShown()
+            }
             if showLogin, signInWaitsForForeground {
                 // The freshness arming belongs to the session that was torn
                 // down; the retry's connect syncs from scratch.
@@ -20422,6 +20431,7 @@ final class AppState: ObservableObject {
             isSceneActive = false
             disarmWakeListeningForBackground()
             hasEnteredBackgroundScenePhase = true
+            sceneHidesLiveRows = true
             pauseLivePublishes()
             // Audio may keep the socket open off screen; it pings less.
             client?.setKeepaliveBackgrounded(true)
@@ -20512,6 +20522,10 @@ final class AppState: ObservableObject {
                 noteChatLeft(activeSessionId)
             }
             isSceneActive = false
+            if !ProcessInfo.processInfo.isiOSAppOnMac {
+                sceneHidesLiveRows = true
+                pauseLivePublishes()
+            }
             disarmWakeListeningForBackground()
             // Same reasoning as .background: a dip through Control Center or a
             // system overlay can miss turn edges. This never causes a resume —
