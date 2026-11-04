@@ -985,6 +985,24 @@ extension AppStateMultiDashboardTests {
         ))
     }
 
+    func testAChatsChecklistIsSavedOnlyThroughItsOwnDashboard() throws {
+        // #1745: a tick queued on one Hermes must not be sent to the other
+        // after a switch, which would accept the chat's ids and answer saved.
+        let primary = dashboard("Primary", "https://mac.tailnet.ts.net")
+        let review = dashboard("Review", "https://review.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: primary.id, dashboards: [primary, review]))
+        let bridge = DashboardTicketBridge(baseURL: primary.normalizedURL)
+        appState.installDashboardTicketBridgeForTesting(bridge)
+        XCTAssertTrue(try appState.richChecklistBridge(for: primary.id) === bridge)
+
+        appState.selectDashboardTarget(review.id)
+        XCTAssertThrowsError(try appState.richChecklistBridge(for: primary.id), "the switch is under way")
+        let reviewBridge = DashboardTicketBridge(baseURL: review.normalizedURL)
+        appState.installDashboardTicketBridgeForTesting(reviewBridge)
+        XCTAssertThrowsError(try appState.richChecklistBridge(for: primary.id), "the other Hermes")
+        XCTAssertTrue(try appState.richChecklistBridge(for: review.id) === reviewBridge)
+    }
+
     func testHiddenModelsAreRememberedPerDashboard() {
         let primary = dashboard("Primary", "https://mac.tailnet.ts.net")
         let review = dashboard("Review", "https://review.example.com")

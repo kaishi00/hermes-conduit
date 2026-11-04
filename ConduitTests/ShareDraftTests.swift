@@ -1,3 +1,4 @@
+import UIKit
 import UniformTypeIdentifiers
 import XCTest
 @testable import Conduit
@@ -343,6 +344,60 @@ final class ShareDraftTests: XCTestCase {
             XCTAssertTrue(FileManager.default.fileExists(atPath: staging.url.appendingPathComponent(attachment.storedName).path))
         }
         XCTAssertTrue(result.problems.isEmpty)
+    }
+
+    /// The screenshot editor's Share offers the picture only as an image
+    /// object, under UIKit's own type (#1747): it's attached as a PNG.
+    func testAPictureOfferedOnlyAsAnImageObjectIsAttachedAsPNG() async throws {
+        let (collector, staging) = try collector()
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+        let archived = try NSKeyedArchiver.archivedData(withRootObject: image, requiringSecureCoding: true)
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: ShareDraftCollector.imageObjectType, visibility: .all) { completion in
+            completion(archived, nil)
+            return nil
+        }
+        XCTAssertTrue(provider.canLoadObject(ofClass: UIImage.self), "UIKit reads its own image type")
+        XCTAssertNil(ShareDraftCollector.fileType(of: provider), "an archived image object is not a picture file")
+        XCTAssertEqual(ShareDraftCollector.kind(of: provider), .file)
+
+        let result = await collector.collect(providers: [provider])
+
+        XCTAssertEqual(result.problems, [])
+        XCTAssertEqual(result.attachments.map(\.storedName), ["1.png"])
+        XCTAssertEqual(result.attachments.map(\.displayName), ["photo.png"])
+        XCTAssertEqual(result.attachments.first?.typeIdentifier, UTType.png.identifier)
+        let stored = try Data(contentsOf: staging.url.appendingPathComponent("1.png"))
+        XCTAssertEqual(Array(stored.prefix(4)), [0x89, 0x50, 0x4E, 0x47], "written as PNG")
+
+        // A suggested name keeps its stem and takes .png, multi-dot names too.
+        for (suggested, expected) in [("shot.jpg", "shot.png"), ("photo.edited.heic", "photo.edited.png")] {
+            let (named, _) = try self.collector()
+            provider.suggestedName = suggested
+            let renamed = await named.collect(providers: [provider])
+            XCTAssertEqual(renamed.attachments.map(\.displayName), [expected])
+            XCTAssertEqual(renamed.attachments.map(\.storedName), ["1.png"])
+        }
+    }
+
+    /// A provider that also offers the picture as a file is read as that
+    /// file, never as UIKit's archived object.
+    func testAPictureFileWinsOverItsImageObject() async throws {
+        let (collector, _) = try collector()
+        let provider = try fileProvider(named: "shot.png", bytes: 10, type: .png)
+        provider.registerDataRepresentation(forTypeIdentifier: ShareDraftCollector.imageObjectType, visibility: .all) { completion in
+            completion(Data([1]), nil)
+            return nil
+        }
+        XCTAssertEqual(ShareDraftCollector.fileType(of: provider), .png)
+
+        let result = await collector.collect(providers: [provider])
+
+        XCTAssertEqual(result.attachments.map(\.displayName), ["shot.png"])
+        XCTAssertEqual(result.attachments.map(\.byteCount), [10], "the PNG file, not the image object")
     }
 
     func testCapsLeaveFilesOutAndSayWhy() async throws {

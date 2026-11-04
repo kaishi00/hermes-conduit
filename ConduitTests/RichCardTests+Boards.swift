@@ -230,6 +230,135 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertTrue(memory.ticked(scope: RichChecklistMemory.localScope, key: "packing").isEmpty, "a chat's ticks aren't the call screen's")
     }
 
+    @MainActor
+    func testARefusedChecklistSaveKeepsTheTickToSendLater() async throws {
+        // #1745: after a dashboard switch the chat's saves are refused; the
+        // tick stays unsent, in order, and goes when the chat is drawn on
+        // its own dashboard again.
+        let suite = "RichChecklistMemoryTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let list = try card(["type": "checklist", "title": "Packing",
+                             "checklist": [["text": "Rain jacket"], ["text": "Swimsuit"]]])
+        var refused = 0
+        let elsewhere = RichChecklistContext(
+            scope: "work/s1", sessionIDs: ["s1"],
+            read: { refused += 1; throw DashboardTicketBridgeError.notReady },
+            save: { _ in refused += 1; throw DashboardTicketBridgeError.notReady })
+        let memory = RichChecklistMemory(defaults: defaults)
+        memory.toggle("Swimsuit", card: list, key: "packing", context: elsewhere)
+        memory.toggle("Rain jacket", card: list, key: "packing", context: elsewhere)
+        for _ in 0..<50 where refused < 1 { await Task.yield() }
+        for _ in 0..<20 { await Task.yield() }
+        let entry = try XCTUnwrap(memory.entries.values.first)
+        XCTAssertTrue(entry.unsent, "not saved anywhere")
+        XCTAssertEqual(entry.changes, [RichChecklistMemory.Change(item: "Swimsuit", ticked: true),
+                                       RichChecklistMemory.Change(item: "Rain jacket", ticked: true)])
+
+        var saved: [[String: AnyHashable]] = []
+        let home = RichChecklistContext(
+            scope: "work/s1", sessionIDs: ["s1"],
+            read: { [:] },
+            save: { body in
+                saved.append(body["change"] as? [String: AnyHashable] ?? [:])
+                return ["packing": ["Rain jacket", "Swimsuit"]]
+            })
+        await memory.refresh(context: home, key: "packing")
+        XCTAssertEqual(saved, [["item": "Swimsuit", "ticked": true], ["item": "Rain jacket", "ticked": true]])
+        XCTAssertFalse(memory.entries.values.contains(where: \.unsent))
+        XCTAssertEqual(memory.ticked(scope: "work/s1", key: "packing"), ["rain jacket", "swimsuit"])
+    }
+
+    @MainActor
+    func testAnUnsentTickFollowsTheChatWhenItsIdsGrow() async throws {
+        let suite = "RichChecklistMemoryTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let list = try card(["type": "checklist", "title": "Packing",
+                             "checklist": [["text": "Rain jacket"], ["text": "Swimsuit"]]])
+        var online = false
+        var saved: [[String: Any]] = []
+        var host: [String: [String]] = ["packing": ["Rain jacket"]]
+        func context(_ profile: String, _ ids: [String]) -> RichChecklistContext {
+            RichChecklistContext(
+                scope: RichChecklistContext.scope(profile: profile, sessionIDs: ids), sessionIDs: ids,
+                read: { host },
+                save: { body in
+                    guard online else { throw URLError(.notConnectedToInternet) }
+                    saved.append(body)
+                    let change = body["change"] as? [String: Any]
+                    var done = Set((host["packing"] ?? []).map { $0.lowercased() })
+                    if let item = (change?["item"] as? String)?.lowercased() {
+                        if change?["ticked"] as? Bool == true { done.insert(item) } else { done.remove(item) }
+                    }
+                    host["packing"] = (body["items"] as? [String] ?? []).filter { done.contains($0.lowercased()) }
+                    return host
+                })
+        }
+        let before = context("work", ["r1"])
+        let memory = RichChecklistMemory(defaults: defaults)
+        await memory.refresh(context: before, key: "packing")
+        memory.toggle("Swimsuit", card: list, key: "packing", context: before)
+        for _ in 0..<50 { await Task.yield() }
+        XCTAssertTrue(saved.isEmpty, "offline: the tick waits on the phone")
+        // Another chat, and the same ids in another profile, keep their own.
+        memory.toggle("Rain jacket", card: list, key: "packing", context: context("work", ["other"]))
+        memory.toggle("Rain jacket", card: list, key: "packing", context: context("home", ["r1"]))
+        for _ in 0..<50 { await Task.yield() }
+
+        // The chat's durable id is confirmed: its scope grows.
+        online = true
+        let after = context("work", ["r1", "s1"])
+        XCTAssertEqual(memory.ticked(scope: after.scope, key: "packing"), [], "not read yet")
+        await memory.refresh(context: after, key: "packing")
+        for _ in 0..<100 where memory.ticked(scope: after.scope, key: "packing").isEmpty
+            || memory.entries.contains(where: { $0.key.hasPrefix(after.scope) && $0.value.unsent }) { await Task.yield() }
+        XCTAssertEqual(saved.first?["change"] as? [String: AnyHashable], ["item": "Swimsuit", "ticked": true])
+        XCTAssertEqual(saved.first?["sessions"] as? [String], ["r1", "s1"])
+        XCTAssertEqual(host["packing"], ["Rain jacket", "Swimsuit"], "the tick reached the host")
+        XCTAssertEqual(memory.ticked(scope: after.scope, key: "packing"), ["rain jacket", "swimsuit"], "and still shows")
+        XCTAssertEqual(memory.ticked(scope: before.scope, key: "packing"), [], "nothing left under the old ids")
+        XCTAssertEqual(memory.ticked(scope: context("work", ["other"]).scope, key: "packing"), ["rain jacket"])
+        XCTAssertEqual(memory.ticked(scope: context("home", ["r1"]).scope, key: "packing"), ["rain jacket"])
+    }
+
+    @MainActor
+    func testUnsentTicksFromTwoEarlierScopesGoInTheOrderMade() async throws {
+        let suite = "RichChecklistMemoryTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let list = try card(["type": "checklist", "title": "Packing",
+                             "checklist": [["text": "Rain jacket"], ["text": "Swimsuit"]]])
+        var online = false
+        var saved: [[String: AnyHashable]] = []
+        func context(_ ids: [String]) -> RichChecklistContext {
+            RichChecklistContext(
+                scope: RichChecklistContext.scope(profile: "work", sessionIDs: ids), sessionIDs: ids,
+                read: { [:] },
+                save: { body in
+                    guard online else { throw URLError(.notConnectedToInternet) }
+                    saved.append(body["change"] as? [String: AnyHashable] ?? [:])
+                    return [:]
+                })
+        }
+        let memory = RichChecklistMemory(defaults: defaults)
+        // The chat known by two ids not yet tied together, offline: a tick
+        // under one, then the untick under the other.
+        memory.toggle("Swimsuit", card: list, key: "packing", context: context(["r1"]))
+        for _ in 0..<20 { await Task.yield() }
+        memory.toggle("Swimsuit", card: list, key: "packing", context: context(["s1"]))
+        memory.toggle("Swimsuit", card: list, key: "packing", context: context(["s1"]))
+        for _ in 0..<20 { await Task.yield() }
+
+        online = true
+        let both = context(["r1", "s1"])
+        await memory.refresh(context: both, key: "packing")
+        XCTAssertEqual(saved, [["item": "Swimsuit", "ticked": true], ["item": "Swimsuit", "ticked": true],
+                               ["item": "Swimsuit", "ticked": false]], "older ticks first, the last one made last")
+        XCTAssertTrue(memory.ticked(scope: both.scope, key: "packing").isEmpty, "the last tick made shows")
+        XCTAssertEqual(memory.entries.count, 1)
+    }
+
     func testProgressNeedsAGoalAndAStopOpensInMaps() throws {
         XCTAssertNil(RichCard(normalized: ["type": "progress", "progress": [["label": "Saved", "value": 10, "goal": 0]]], id: 0))
         let saved = try XCTUnwrap(try card(["type": "progress", "progress": [

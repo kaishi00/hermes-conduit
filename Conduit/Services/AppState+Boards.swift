@@ -17,19 +17,33 @@ extension AppState {
         let sessionIDs = activeChatArtifactSessionIDs
         guard !sessionIDs.isEmpty else { return nil }
         let profile = activeProfile
-        let scope = "\(profile)\u{1E}\(sessionIDs.joined(separator: "\u{1D}"))"
+        let dashboardID = activeDashboardID
+        let scope = RichChecklistContext.scope(profile: profile, sessionIDs: sessionIDs)
         return RichChecklistContext(
             scope: scope,
             sessionIDs: sessionIDs,
             read: { [weak self] in
-                guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+                guard let bridge = try self?.richChecklistBridge(for: dashboardID) else { throw DashboardTicketBridgeError.notReady }
                 return RichChecklistContext.ticks(try await bridge.requestJSON(
                     path: RichChecklistContext.readPath(profile: profile, sessionIDs: sessionIDs)))
             },
             save: { [weak self] body in
-                guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+                guard let bridge = try self?.richChecklistBridge(for: dashboardID) else { throw DashboardTicketBridgeError.notReady }
                 return RichChecklistContext.ticks(try await bridge.requestJSON(
                     path: RichChecklistContext.savePath(profile: profile), method: "POST", body: body))
             })
+    }
+
+    /// The bridge a chat's checklists go through, taken when each read or
+    /// save starts: only the chat's own dashboard's. After a switch the
+    /// other Hermes would accept the chat's ids and answer as saved, so the
+    /// tick stays unsent here and goes when the chat is drawn on its own
+    /// dashboard again (#1745). A request already on its way when the
+    /// switch lands is refused by the old bridge (answeredAfterSwitch).
+    func richChecklistBridge(for dashboardID: UUID?) throws -> DashboardTicketBridge {
+        guard activeDashboardID == dashboardID, let bridge = dashboardTicketBridge else {
+            throw DashboardTicketBridgeError.notReady
+        }
+        return bridge
     }
 }

@@ -2593,31 +2593,33 @@ devices)
 
 A reply or thinking card streaming into the open chat redraws at stream
 cadence only while it can be seen: the sessions drawer over the chat, or
-Conduit in the background, pauses the live publishes, and what streamed
+Conduit in the background or inactive, pauses the live publishes, and what streamed
 shows in one publish when the chat is seen again.
 
 **Siblings:** chats, project chats, Bot Chat and Kanban workers' transcripts
 (one ChatView, whose live rows are the only views that observe `liveTurn`) ·
-the sessions drawer over the chat · Conduit in the background · not needed:
+the sessions drawer over the chat · Conduit in the background · Conduit inactive (the app switcher, Control Center; not on a Mac) · not needed:
 group rooms (their messages arrive whole, nothing streams), voice modes,
 CarPlay and the Watch (they hear the stream through the voice observers,
 not the drawn text), the Live Activity (it reads the stream events), the
 chat's saved copy and the reply's notification (the settled message)
 
 **Code**
-- Pausing and resuming: `Conduit/Services/AppState.swift` (liveRowsHidden, pauseLivePublishes, resumeLivePublishesIfShown; showSidebar's didSet; handleScenePhase's .background and .active; scheduleStreamingPublish and scheduleReasoningPublish); the projection, LiveTurnProjection
+- Pausing and resuming: `Conduit/Services/AppState.swift` (liveRowsHidden, sceneHidesLiveRows, pauseLivePublishes, resumeLivePublishesIfShown; showSidebar's didSet; handleScenePhase's .inactive, .background and .active; scheduleStreamingPublish and scheduleReasoningPublish); the projection, LiveTurnProjection
 - The live rows: `Conduit/Views/ChatView.swift` (ChatLiveStreamingRow, ChatLiveThinkingRow)
-- Tests: `ConduitTests/AppStateReasoningStreamTests.swift` (testBackgroundHoldsLiveTextUntilActive, testBackgroundHoldsLiveReasoningUntilActive; the drawer's pause flushes the other tests)
+- Tests: `ConduitTests/AppStateReasoningStreamTests.swift` (testBackgroundHoldsLiveTextUntilActive, testInactiveHoldsLiveTextUntilActiveOffAMac, testBackgroundHoldsLiveReasoningUntilActive, testInactiveHoldsLiveReasoningUntilActiveOffAMac; the drawer's pause flushes the other tests)
 
 **Rulings**
-- The background pauses on `.background` only, not `.inactive`: Control Center or a system alert over the chat keeps it streaming, and an iPad app on a Mac goes inactive whenever another app is in front, where a reply should keep streaming in view (2026-11-04, #1743).
+- The pause starts on `.inactive` on an iPhone or iPad (the app switcher, Control Center, a system alert), since a swipe away from the switcher asks Conduit to quit while the reply still redraws (Eric chose it, 2026-11-04, #1744); on an iPad app on a Mac only on `.background`, since it goes inactive whenever another app is in front, where the reply stays in view (#1743).
 - In the background a streaming reply kept the main thread redrawing the whole growing reply on each publish, near a full core with tables, so iOS's watchdog killed Conduit going to the background or quitting (0x8BADF00D, 85% of the relay's crash reports; Time Profiler on a phone, 2026-11-04, #1743).
 - A turn that completes while hidden still publishes its final text at once (scheduleStreamingCompletion), one publish (#1743).
+- A thinking card's first words still mount it while hidden, one publish per card; the words after it wait (#1744, from #1743's review).
 
 **Open gaps**
+- If an iPad window that is on screen but not receiving events (Split View or Slide Over beside another app, Stage Manager) reports `.inactive`, its streaming reply waits until the window is touched or focused, then catches up at once; not checked on an iPad (#1744, from the reviews).
 - The rest of the chat (the transcript's rows, the composer) still updates in the background on a turn's boundaries: a tool card or a settled message lands as it comes, which is one update each, not stream cadence.
 
-**Checked:** 2026-11-04, #1743 (the background pauses the live publishes as the drawer did).
+**Checked:** 2026-11-04, #1744 (inactive pauses too, off a Mac); 2026-11-04, #1743 (the background pauses the live publishes as the drawer did).
 
 ## Reconnecting to Hermes
 
@@ -3031,6 +3033,34 @@ README, docs or Settings caption describes the pickers)
 - A hardware keyboard connected while the sheet is open doesn't turn on the highlight until the sheet opens again.
 
 **Checked:** 2026-10-31, #1567 (the sheet and a bot's picker search the models kept from Hermes' last answer until it answers, their matches waiting for it like their rows, and the sheet says a failed read under its matches); 2026-10-27, at #1395.
+
+## Sharing into Conduit
+
+What the share extension takes from another app's Share sheet (text, links,
+pictures, videos and files) into a draft, and what it says about anything it
+leaves out.
+
+**Siblings:** the share extension · pasting into the composer · dropping on a
+chat, a room or the composer field · Ask Hermes About Screen · Files over the
+size limit (its own entry) · README.md (the share sheet line)
+
+**Code**
+- Reading the share: `Shared/ShareDraft/ShareDraftCollector.swift` (kind, fileType, offersImageObjectOnly, stageFile)
+- The sheet: `ConduitShareExtension/ShareDraftModel.swift` (collect, ShareDraftProblem.message), `ConduitShareExtension/ShareDraftSheet.swift`
+- Paste: `Conduit/Views/Components/ComposerPasteTextView.swift` (canLoadImageProvider, loadImageObject)
+- Drop: `Conduit/Views/Components/AttachmentDrop.swift`, `Conduit/Views/Components/ReturnKeyTextView.swift` (fieldDrop)
+- Tests: `ConduitTests/ShareDraftTests.swift`
+
+**Rulings**
+- A picture offered only as an image object (the screenshot editor's Share hands over UIKit's own `com.apple.uikit.image`) is attached as a PNG, as a pasted one is. UIKit's archived image type is never read as a picture file; a provider that also offers a picture file is read as that file (2026-11-04, #1750, issue 1747).
+- A picture offered only as an image object takes its suggested name without that name's extension: it is always written as PNG (2026-11-04, #1750 review).
+- When nothing could be added, the sheet shows the Left out list a draft has, each thing with why (too large, unreadable), scrolling however many there are; the general "nothing here" line is only for a share that offered nothing Conduit reads (2026-11-04, #1750, issue 1747).
+
+**Open gaps**
+- A drop decides from the dragged item's listed types alone, so a drag that offers only UIKit's image object isn't taken by a chat, a room or the composer field (no source is known to send one; pasting one works).
+- Something the share offered under a type Conduit doesn't read at all is skipped without a line, alongside things that were added.
+
+**Checked:** 2026-11-04, #1750 (issue 1747: the screenshot editor's picture is attached; the failed sheet names what was left out).
 
 ## Files over the size limit
 
@@ -4435,6 +4465,8 @@ notifier README and CHANGELOG
 - Follow-ups are plain messages the user would send, at most four, offered only under the last turn's board while Hermes is free and connected and the composer is empty: tap sends, long-press edits, and taps in their first 0.4 s are ignored, as Predictions' chips (Eric, 2026-11-03, #1713).
 - Checklist ticks in a chat are kept on the host for every device, and Hermes hears what changed once, at the chat's next turn; on the call screen they stay on the phone (Eric, 2026-11-03, #1713 with notifier #528), kept by the list's name as a chat's are, so a list of that name on another call's screen shows the same ticks (#1713).
 - A tick goes to the host on its own, in the order made, and the host applies it to the newest ticks any device saved, so a tick from another device is never undone (2026-11-03, #1713 with notifier #528).
+- A chat's ticks are read and saved only through its own dashboard: after a switch to another Hermes they stay unsent on the phone, in order, and go when the chat is drawn on its own dashboard again, since the other Hermes would take the chat's ids and answer as saved (2026-11-04, #1748, issue 1745).
+- A chat's ticks belong to the chat, not to the ids it's known by: when its ids grow while it's open (the durable id confirmed, an alias from the catalog, a Bot Chat's roster ids), the phone's copy moves to the new ids, and a tick not yet sent still goes to the host and stays shown (2026-11-04, #1748, issue 1746).
 - In a group room this host runs, the board is kept on the host and drawn under the agent's next message there (within 15 minutes), for every Conduit saying "room-boards"; the room's other agents read only the message, and are told so. A room run elsewhere, or an older Conduit, gets it in the agent's reply as Markdown (`group_room`) (Eric, 2026-11-03: text first, cards in a follow-up PR; 2026-11-04, notifier 0.129). Other people's agents may read a room, so contact cards (a person's numbers, a text drafted for the user) stay out of it, with a problems line, whatever the turn's surface. A room's board has no follow-ups (a tap would speak for the user to the whole room) and its checklists keep no ticks.
 - In Hermes Desktop the plugin's Desktop half ("Conduit boards", off until the user turns it on in Desktop) draws the board: conduit_show keeps it on the host (root home, the newest 500, a month) and asks the agent for `::conduit-board{id="cb-…"}` on a line of its own, only while the half has said it's loaded in the last two hours; otherwise Desktop gets the Markdown as before. The half draws the native kinds (stats, charts, comparisons, steps, status, tables, timelines, checklists with the chat's ticks, lists, progress, callouts) and each other card's own Markdown, with tabs and follow-ups. Conduit draws the same board from the tool row, so it hides the line on every surface (Eric, 2026-11-04, chose to build the half after the probe, notifier #539 with #1751).
 - A Conduit without "board-cards" gets at most four cards, no layout and no follow-ups (2026-11-03, notifier #528). Only the Conduits used in the last three days count, for board-cards, room-boards and the other card features, and the drawing rule names the weather and how to reach conduit_show behind Tool Search: on .52 four installs last used days before kept the rule off and trimmed the phone's boards (Eric, 2026-11-04, notifier #539).
@@ -4450,7 +4482,7 @@ notifier README and CHANGELOG
 - A checklist that stays on screen reads other devices' ticks only when it's drawn again or ticked here.
 - Boards are parsed again each time a row is drawn; no cache yet, as liveNames has.
 
-**Checked:** 2026-11-04, #1751 with notifier #539 (boards drawn in Hermes Desktop by the plugin's Desktop half; Conduit hides its line; Siblings, Code, Rulings, gaps); 2026-11-04, #1736 with notifier #536 (boards drawn in group rooms); 2026-11-03, #1713 with notifier #528.
+**Checked:** 2026-11-04, #1751 with notifier #539 (boards drawn in Hermes Desktop by the plugin's Desktop half; Conduit hides its line; Siblings, Code, Rulings, gaps); 2026-11-04, #1748 (ticks fenced to their own dashboard; unsent ticks follow the chat's ids); 2026-11-04, #1736 with notifier #536 (boards drawn in group rooms); 2026-11-03, #1713 with notifier #528.
 
 ## Cards drawn in web pages
 
