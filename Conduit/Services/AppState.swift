@@ -26167,6 +26167,8 @@ final class AppState: ObservableObject {
         }
         if let chat = classicVoiceChatToArchive, lost.contains(chat.chatID) {
             classicVoiceChatToArchive = (fresh, chat.profile, chat.dashboardID)
+            // Filed under Voice as the lost chat was.
+            tagVoiceSessions(Array(knownSessionIDs(for: fresh)), kind: .classic)
         }
         // A message typed while it reconnected goes into the fresh chat.
         if var pending = pendingComposerSend, !pending.isNewChat,
@@ -26174,6 +26176,8 @@ final class AppState: ObservableObject {
             pending.sessionIDs = Set([fresh, newChatOpenedDurableSessionID].compactMap { $0 })
             pending.draftSessionID = newChatOpenedDurableSessionID ?? fresh
             pendingComposerSend = pending
+            // Its saved copy follows, so a relaunch brings it back here.
+            _ = recordPendingComposerSendFile(pending)
         }
     }
 
