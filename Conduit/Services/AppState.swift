@@ -25707,9 +25707,10 @@ final class AppState: ObservableObject {
             presentationMigrationSessionIDs: [requestedID]
         )
         let opened = outcome == .opened
-        // Only an open that landed reads the list after it: a failed or
-        // superseded one leaves it to the list's poll and whatever replaced it.
-        readsListAfterOpen = openedFromListOnHand && opened
+        // An open that landed, or one Hermes refused (the chat is gone, so
+        // the list drops its row), reads the list after it; a superseded or
+        // passing failure leaves it to the list's poll.
+        readsListAfterOpen = openedFromListOnHand && (opened || refused)
         traceStage = "session open, \(outcome)"
         // Commit the payload's dual identity as positive evidence only once
         // the open actually succeeded — a failed resume (e.g. the durable

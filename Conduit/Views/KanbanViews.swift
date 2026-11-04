@@ -980,6 +980,9 @@ struct KanbanView: View {
                     break
                 }
                 guard !Task.isCancelled else { break }
+                // poll skips a read under a write or another load: that tick
+                // isn't a read, so it doesn't count.
+                guard !store.isMutating, !store.isLoading else { continue }
                 let before = store.board
                 await store.poll(includeArchived: includeArchived)
                 // A failed read keeps the base pace, so a recovery shows soon.

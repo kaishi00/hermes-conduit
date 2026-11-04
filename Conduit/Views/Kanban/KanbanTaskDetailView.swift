@@ -283,6 +283,9 @@ struct KanbanTaskDetailView: View {
                         break
                     }
                     guard !Task.isCancelled else { break }
+                    // loadDetail skips a read under a write or another load:
+                    // that tick isn't a read, so it doesn't count.
+                    guard !isSaving, !isAddingComment, !isRequeuing, !isUnblocking, !isLoadingDetail else { continue }
                     let before = detail
                     await loadDetail()
                     // Only a read that landed and found nothing new counts:

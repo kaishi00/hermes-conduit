@@ -1151,7 +1151,9 @@ extension AppState {
     /// page's own read, while it is open, serves the Chats button too.
     func pulseFeedIsFresh(within interval: TimeInterval) -> Bool {
         guard let applied = pulseFeedAppliedAt, applied.dashboard == activeDashboardID else { return false }
-        return Date().timeIntervalSince(applied.at) < interval
+        // A clock set back makes the read look newer than now: not fresh.
+        let age = Date().timeIntervalSince(applied.at)
+        return age >= 0 && age < interval
     }
 
     func refreshPulseFeed() async {
