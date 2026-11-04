@@ -5587,12 +5587,20 @@ enum MessageNormalizer {
         }
     }
 
+    // Compiled once: the normalizer runs this on every row of every page it
+    // reads (issue 1721).
+    private static let modelChangePattern = try? NSRegularExpression(
+        pattern: #"^\s*\[?System:\s*The active model for this chat has changed to\s+(\S+)\s+via provider\s+(.+?)(?:\.\s+From this point forward\b|\.?\]\s*$|$)"#,
+        options: [.caseInsensitive]
+    )
+
     static func modelChangeActivity(fromText text: String) -> (model: String, provider: String)? {
-        let pattern = #"^\s*\[?System:\s*The active model for this chat has changed to\s+(\S+)\s+via provider\s+(.+?)(?:\.\s+From this point forward\b|\.?\]\s*$|$)"#
-        guard let expression = try? NSRegularExpression(
-            pattern: pattern,
-            options: [.caseInsensitive]
-        ) else { return nil }
+        // Almost no row is a model change; the pattern needs "System:" after
+        // optional whitespace and "[", so anything else is turned away here.
+        var head = text.drop(while: \.isWhitespace)
+        if head.first == "[" { head = head.dropFirst() }
+        guard head.prefix(7).lowercased() == "system:",
+              let expression = modelChangePattern else { return nil }
 
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         guard let match = expression.firstMatch(in: text, range: range),

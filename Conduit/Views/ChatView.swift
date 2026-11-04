@@ -189,34 +189,23 @@ struct ChatView: View {
     }
 
     /// What the working line says: the tool running in this turn and when
-    /// the turn began.
+    /// the turn began. The body reads it on every AppState change, so the
+    /// turn's rows are looked through once (issue 1722).
     private var workingLine: TranscriptWorkingLine {
-        TranscriptWorkingLine(
-            toolName: runningToolName,
-            toolInput: runningToolInput,
-            toolTitle: runningToolTitle,
+        let tool = appState.isBusy ? Self.runningTool(in: appState.messages) : nil
+        return TranscriptWorkingLine(
+            toolName: tool?.name,
+            // Its input, so a Tool Search batch names what it runs.
+            toolInput: tool?.input,
+            toolTitle: tool.flatMap(runningToolTitle(for:)),
             startedAt: turnStartedAt
         )
-    }
-
-    /// The tool running in this turn, for the working line. Looks back only
-    /// to the turn's own rows.
-    private var runningToolName: String? {
-        guard appState.isBusy else { return nil }
-        return Self.runningToolName(in: appState.messages)
-    }
-
-    /// Its input, so a Tool Search batch names what it runs.
-    private var runningToolInput: String? {
-        guard appState.isBusy else { return nil }
-        return Self.runningTool(in: appState.messages)?.input
     }
 
     /// "Messaging Atlas…" while a delivery to a teammate runs, "Starting
     /// work…" while a work tool does, as their steps say; nil for any other
     /// tool.
-    private var runningToolTitle: String? {
-        guard appState.isBusy, let tool = Self.runningTool(in: appState.messages) else { return nil }
+    private func runningToolTitle(for tool: ToolActivity) -> String? {
         if let key = BotTeammateMessages.deliveryTarget(toolName: tool.name, input: tool.input) {
             let name = BotTeammateMessages.displayName(for: key, in: appState.shownBotRoster)
             return AppLocalization.string("Messaging \(name)…")

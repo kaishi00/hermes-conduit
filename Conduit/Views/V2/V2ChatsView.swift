@@ -2311,6 +2311,9 @@ private struct V2ChatsRow: View {
             )
         }
         .buttonStyle(.plain)
+        // Its saved copy comes into memory as it shows, so a tap opens on it
+        // without a read on the main thread.
+        .onAppear { appState.warmSavedCopy(of: session) }
         .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
         .v2SelectedTrait(selection(session))
         .v2ListRow(divider: !hasChildren, dividerInset: V2SessionRow.iconTextInset)

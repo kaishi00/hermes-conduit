@@ -12,10 +12,24 @@ enum KanbanPollingPolicy {
     }
 
     /// The open task's poll: 4 s, or 60 s while the stream is connected (a
-    /// batch touching the task reads it at once).
-    static func detailInterval(streaming: Bool, conditions: DeviceConditions) -> UInt64 {
-        nanoseconds(PollCadence.stretched(streaming ? PollCadence.kanbanWhileStreaming : PollCadence.kanbanTaskDetail, by: conditions))
+    /// batch touching the task reads it at once). Without the stream, a task
+    /// that stays the same read after read is read less often: 15 s after a
+    /// minute unchanged, 30 s after three, and 4 s again once it changes
+    /// (issue 1728).
+    static func detailInterval(streaming: Bool, unchangedReads: Int = 0, conditions: DeviceConditions) -> UInt64 {
+        let interval: TimeInterval
+        if streaming {
+            interval = PollCadence.kanbanWhileStreaming
+        } else {
+            interval = detailSteps[min(unchangedReads / readsPerDetailStep, detailSteps.count - 1)]
+        }
+        return nanoseconds(PollCadence.stretched(interval, by: conditions))
     }
+
+    /// The detail poll's steps without the stream, each taken after
+    /// `readsPerDetailStep` reads saw no change.
+    private static let detailSteps: [TimeInterval] = [PollCadence.kanbanTaskDetail, 15, 15, 30]
+    private static let readsPerDetailStep = 15
 
     private static func nanoseconds(_ seconds: TimeInterval) -> UInt64 {
         UInt64(seconds * 1_000_000_000)

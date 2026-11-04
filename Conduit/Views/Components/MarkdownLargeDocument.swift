@@ -94,6 +94,18 @@ enum MarkdownLargeDocumentPolicy {
         source.utf8.count >= documentThresholdBytes
     }
 
+    /// A streaming reply at least this long renders as promoted chunks and a
+    /// live tail rather than whole each tick: a whole pass costs about a
+    /// chunk's milliseconds per 8 KB and runs up to 30 times a second while
+    /// the reply streams, so past two chunks the tick outgrows a frame
+    /// (issue 1720). The settled reply still renders whole below
+    /// `documentThresholdBytes`.
+    static let streamChunkingThresholdBytes = 2 * chunkTargetBytes
+
+    static func isChunkedStream(_ source: String) -> Bool {
+        source.utf8.count >= streamChunkingThresholdBytes
+    }
+
     static func isLargeCodeBlock(_ source: String) -> Bool {
         source.utf8.count >= codeBlockThresholdBytes
     }
@@ -795,6 +807,8 @@ struct MarkdownStableBoundaryScanner {
     private(set) var consumedOffset: Int = 0
     /// Trailing partial line awaiting its newline.
     private var pendingLine = ""
+    /// Whether a partial last line waits for `finish()`.
+    var hasPendingLine: Bool { !pendingLine.isEmpty }
     private var fenceMarker: MarkdownFence?
     /// The close marker the open math region expects (`$$` or `\]`), so a
     /// block opened with one cannot close on the other.

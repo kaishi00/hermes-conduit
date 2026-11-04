@@ -82,6 +82,28 @@ final class ChatMessageScrollTargetCacheIncrementalTests: XCTestCase {
         )
     }
 
+    /// Load earlier messages: only the page put in above is hashed, and the
+    /// result is the full rebuild's, duplicates across the page included
+    /// (issue 1726).
+    func testPrependHashesOnlyThePrependedPage() {
+        let loaded = (120..<240).map { message("m\($0)", "settled content \($0)") }
+            + [message("dup-late", "ok", role: .user)]
+        var cache = prime(loaded)
+        let page = (0..<120).map { message("m\($0)", "settled content \($0)") }
+            + [message("dup-early", "ok", role: .user)]
+
+        TranscriptPerf.reset()
+        let result = cache.update(for: page + loaded)
+
+        XCTAssertEqual(result, .semanticsChanged)
+        XCTAssertEqual(
+            TranscriptPerf.lastFingerprintedMessageCount, page.count,
+            "a prepend must fingerprint only the prepended page"
+        )
+        XCTAssertEqual(cache.targets, referenceTargets(for: page + loaded))
+        XCTAssertEqual(cache.targets.map(\.order), Array(0..<(page.count + loaded.count)))
+    }
+
     func testUnchangedTranscriptHashesNothing() {
         let base = (0..<50).map { message("m\($0)", "content \($0)") }
         var cache = prime(base)

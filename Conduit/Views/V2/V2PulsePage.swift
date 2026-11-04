@@ -61,7 +61,12 @@ struct V2PulseButton: View {
                                   served: appState.notifierPlugin.reports(PulseClient.feedCapability))) {
             guard scenePhase == .active, shell.isTabActive else { return }
             while !Task.isCancelled {
-                await appState.refreshPulseFeed()
+                // The Pulse page, open over or beside the list, reads the
+                // feed every minute itself; a read of its that just landed
+                // stands for this one (issue 1728).
+                if !appState.pulseFeedIsFresh(within: 50) {
+                    await appState.refreshPulseFeed()
+                }
                 try? await Task.sleep(for: .seconds(60))
             }
         }

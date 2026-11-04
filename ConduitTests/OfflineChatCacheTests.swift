@@ -3471,4 +3471,19 @@ extension OfflineChatCacheTests {
         XCTAssertNil(kept["api_key"], "Only the names under fields are spared")
         XCTAssertEqual(kept["category_order"] as? [String], ["model", "providers"])
     }
+
+    /// A copy keeps the last saved rows, mapping only those (issue 1725):
+    /// rows that aren't saved, at the end, don't shorten it.
+    func testACopyKeepsTheLastRowsItSaves() {
+        let limit = OfflineChatCacheStore.maxMessagesPerTranscript
+        var messages = (0..<(limit + 100)).map { index in
+            ChatMessage(id: "m\(index)", role: index.isMultiple(of: 2) ? .user : .assistant, content: "row \(index)", timestamp: "\(index)")
+        }
+        messages.append(ChatMessage(id: "approval", role: .approval, content: "Approve?", timestamp: "x"))
+        let rows = OfflineChatCacheStore.keptRows(of: messages)
+        XCTAssertEqual(rows.count, limit)
+        XCTAssertEqual(rows.first?.id, "m100")
+        XCTAssertEqual(rows.last?.id, "m\(limit + 99)")
+        XCTAssertEqual(OfflineChatCacheStore.keptRows(of: Array(messages.prefix(3))).map(\.id), ["m0", "m1", "m2"])
+    }
 }

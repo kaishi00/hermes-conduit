@@ -2218,6 +2218,10 @@ final class AppState: ObservableObject {
 
     // MARK: - Runtime
 
+    /// When a Pulse feed read last landed, and for which dashboard
+    /// (PulseFeed.swift).
+    var pulseFeedAppliedAt: (dashboard: UUID?, at: Date)?
+
     @Published var runtime = RuntimeState()
     @Published var activeAgents = 0
     @Published private(set) var delegateAgents: [DelegateAgentActivity] = []
@@ -6459,6 +6463,14 @@ final class AppState: ObservableObject {
             },
             picked: OfflineChatPresentation.PickedChat(title: session.title, sessionIDs: ids, durableSessionID: durableID)
         )
+    }
+
+    /// Reads a listed chat's saved copy into memory off the main thread as
+    /// its row shows, so tapping it shows the copy from memory rather than
+    /// reading its file first (issue 1725).
+    func warmSavedCopy(of session: SessionSummary) {
+        guard let dashboardID = activeDashboardID, !isOtherProfileRow(session) else { return }
+        offlineChatCache.warmTranscript(session.storedSessionId ?? session.id, dashboardID: dashboardID, profile: activeProfile)
     }
 
     /// A chat opened while connected shows its saved copy until its own
@@ -14610,19 +14622,14 @@ final class AppState: ObservableObject {
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent
                 || continuation.handedOffAutomaticIntent
-            await loadChatResumeBusyInputMode(using: client)
-            guard let continuation = transportContinuation(
-                    purpose: continuationPurpose,
-                    automaticWorkToken: continuationAutomaticWorkToken,
-                    automaticReconnectOperationID: transportOperationID
-                  ),
-                  let activeClient = self.client, activeClient === client else { return }
-            continuationPurpose = continuation.purpose
-            continuationAutomaticWorkToken = continuation.automaticWorkToken
-            handedOffAutomaticIntent = handedOffAutomaticIntent
-                || continuation.handedOffAutomaticIntent
-            await loadChatResumeProfileDisplayPreferences()
-            guard let continuation = transportContinuation(
+            // Two independent reads, each guarding its own answer against a
+            // switch while it was out: sent together, so the connect waits
+            // one round trip for them, not two (issue 1727).
+            async let busyInputModeRead: Void = loadChatResumeBusyInputMode(using: client)
+            async let displayPreferencesRead: Void = loadChatResumeProfileDisplayPreferences()
+            _ = await (busyInputModeRead, displayPreferencesRead)
+            guard let activeClient = self.client, activeClient === client,
+                  let continuation = transportContinuation(
                 purpose: continuationPurpose,
                 automaticWorkToken: continuationAutomaticWorkToken,
                 automaticReconnectOperationID: transportOperationID
@@ -36215,29 +36222,40 @@ final class AppState: ObservableObject {
         case .approvalWithdrawn(_, let requestId, let reason):
             withdrawApproval(requestId: requestId, reason: reason)
 
+        // These arrive with most gateway frames of a turn, mostly unchanged:
+        // each is written once, and only when it changes, since every write
+        // publishes AppState and redraws what observes it (issue 1722).
         case .contextUpdate(_, let percent, let used, let max):
-            runtime.contextPercent = normalizedContextPercent(percent, used: used, max: max)
-            runtime.contextUsed = used
-            runtime.contextMax = max
+            var updated = runtime
+            updated.contextPercent = normalizedContextPercent(percent, used: used, max: max)
+            updated.contextUsed = used
+            updated.contextMax = max
+            setRuntime(updated)
 
         case .cwdUpdate(_, let cwd):
-            runtime.cwd = cwd
+            var updated = runtime
+            updated.cwd = cwd
+            setRuntime(updated)
 
         case .modelUpdate(_, let model, let provider):
-            runtime.model = model
-            runtime.provider = provider
+            var updated = runtime
+            updated.model = model
+            updated.provider = provider
+            setRuntime(updated)
 
         case .agentCount(_, let count):
-            activeAgents = count
+            setActiveAgents(count)
 
         case .delegateAgent(let sessionId, var activity):
             activity.sessionId = sessionId
-            if let index = delegateAgents.firstIndex(where: { $0.id == activity.id }) {
-                delegateAgents[index] = delegateAgents[index].merged(with: activity)
+            var updated = delegateAgents
+            if let index = updated.firstIndex(where: { $0.id == activity.id }) {
+                updated[index] = updated[index].merged(with: activity)
             } else {
-                delegateAgents.append(activity)
+                updated.append(activity)
             }
-            activeAgents = delegateAgents.filter { $0.status.isActive }.count
+            if updated != delegateAgents { delegateAgents = updated }
+            setActiveAgents(updated.filter { $0.status.isActive }.count)
 
         case .statusUpdate:
             // Lifecycle bookkeeping — handled in handleStreamEvent before
@@ -37374,6 +37392,16 @@ final class AppState: ObservableObject {
             logs: (logs?["lines"] as? [Any] ?? []).map { String(describing: $0) },
             error: status == nil ? AppLocalization.string("Could not refresh dashboard status.") : nil
         )
+    }
+
+    /// Takes `updated` as the runtime only when it differs: a same-value
+    /// write still publishes AppState once per gateway frame.
+    private func setRuntime(_ updated: RuntimeState) {
+        if runtime != updated { runtime = updated }
+    }
+
+    private func setActiveAgents(_ count: Int) {
+        if activeAgents != count { activeAgents = count }
     }
 
     private func setRunning(_ running: Bool) {
@@ -40639,10 +40667,12 @@ extension AppState {
     }
 
     /// All's poll while the list shows. Slower than the profile in use's
-    /// own: Hermes opens every profile's database for it.
+    /// own: Hermes opens every profile's database for it. Off screen (voice,
+    /// Read Aloud or CarPlay keeping the app running) nothing reads, as with
+    /// the chat list's own poll (issue 1728).
     func runAllProfilesCatalogPolling() async {
         while !Task.isCancelled {
-            refreshAllProfilesCatalog()
+            if isSceneActive { refreshAllProfilesCatalog() }
             try? await Task.sleep(for: .seconds(20))
         }
     }

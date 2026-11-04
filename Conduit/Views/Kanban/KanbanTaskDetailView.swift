@@ -267,20 +267,25 @@ struct KanbanTaskDetailView: View {
                 await loadDetail(force: true)
             }
             // The poll stops in the background, and slows to a backstop
-            // while the board's live stream is connected.
+            // while the board's live stream is connected. Without the
+            // stream, reads that find nothing new space themselves out.
             .task(id: "\(displayedTaskID)|\(scenePhase == .background)|\(store.liveStreamConnected)") {
                 guard scenePhase != .background else { return }
+                var unchangedReads = 0
                 while !Task.isCancelled {
                     do {
                         try await Task.sleep(nanoseconds: KanbanPollingPolicy.detailInterval(
                             streaming: store.liveStreamConnected,
+                            unchangedReads: unchangedReads,
                             conditions: DeviceConditionsMonitor.shared.current
                         ))
                     } catch {
                         break
                     }
                     guard !Task.isCancelled else { break }
+                    let before = detail
                     await loadDetail()
+                    unchangedReads = detail == before ? unchangedReads + 1 : 0
                 }
             }
             // V3D: a coalesced live-event batch that TOUCHES the displayed

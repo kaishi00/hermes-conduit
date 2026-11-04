@@ -873,6 +873,37 @@ final class MarkdownLargeDocumentTests: XCTestCase {
         }
     }
 
+    /// A mid-size streaming reply, well under the large-document size, is
+    /// promoted into chunks too, so a tick never parses the whole reply
+    /// (issue 1720).
+    @MainActor
+    func testMidSizeStreamRenderingParsesOnlyBoundedSources() throws {
+        let source = mixedSoup(targetBytes: 60_000)
+        XCTAssertFalse(MarkdownLargeDocumentPolicy.isLargeDocument(source))
+        XCTAssertTrue(MarkdownLargeDocumentPolicy.isChunkedStream(source))
+
+        MarkdownParser.parseSourceSizes = []
+        let host = UIHostingController(rootView: StreamingText(text: source, active: true))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        host.view.layoutIfNeeded()
+        let streamDeadline = Date().addingTimeInterval(1.0)
+        while Date() < streamDeadline {
+            pumpForSwiftUICommit(host: host)
+        }
+
+        XCTAssertGreaterThan(MarkdownParser.parseSourceSizes.count, 0, "stream content must have rendered")
+        for size in MarkdownParser.parseSourceSizes {
+            XCTAssertLessThan(size, 30_000, "a mid-size stream must parse only chunks and its tail (saw \(size))")
+        }
+    }
+
+    func testAShortStreamStaysWhole() {
+        XCTAssertFalse(MarkdownLargeDocumentPolicy.isChunkedStream(String(repeating: "a", count: MarkdownLargeDocumentPolicy.streamChunkingThresholdBytes - 1)))
+        XCTAssertTrue(MarkdownLargeDocumentPolicy.isChunkedStream(String(repeating: "a", count: MarkdownLargeDocumentPolicy.streamChunkingThresholdBytes)))
+    }
+
     /// Requirement: switching sources mid-flight cannot let a stale async
     /// preparation populate the wrong message. The identity guard drops
     /// mismatched results; assert the visible end state matches the new
