@@ -376,13 +376,19 @@ final class ShareDraftTests: XCTestCase {
 
     /// A provider that also offers the picture as a file is read as that
     /// file, never as UIKit's archived object.
-    func testAPictureFileWinsOverItsImageObject() throws {
+    func testAPictureFileWinsOverItsImageObject() async throws {
+        let (collector, _) = try collector()
         let provider = try fileProvider(named: "shot.png", bytes: 10, type: .png)
         provider.registerDataRepresentation(forTypeIdentifier: ShareDraftCollector.imageObjectType, visibility: .all) { completion in
             completion(Data([1]), nil)
             return nil
         }
         XCTAssertEqual(ShareDraftCollector.fileType(of: provider), .png)
+
+        let result = await collector.collect(providers: [provider])
+
+        XCTAssertEqual(result.attachments.map(\.displayName), ["shot.png"])
+        XCTAssertEqual(result.attachments.map(\.byteCount), [10], "the PNG file, not the image object")
     }
 
     func testCapsLeaveFilesOutAndSayWhy() async throws {

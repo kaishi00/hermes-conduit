@@ -258,8 +258,8 @@ struct ShareDraftCollector {
                 }
             }
             // Written as PNG, so a suggested name's own extension goes.
-            let stem = suggestedName.map { ($0 as NSString).deletingPathExtension }
-            let name = Self.displayName(suggested: stem, type: .png, ordinal: ordinal)
+            let stem = ((suggestedName ?? "") as NSString).deletingPathExtension
+            let name = Self.displayName(suggested: stem.isEmpty ? nil : "\(stem).png", type: .png, ordinal: ordinal)
             return write(image?.pngData(), type: .png, displayName: name, ordinal: ordinal)
         }
         // A file offered as a file URL, or an image offered as an object.
