@@ -25,9 +25,9 @@ struct PendingComposerSend: Codable, Equatable, Identifiable {
     let dashboardID: UUID
     let profile: String
     /// Every id its chat is known by. Empty for a New Chat.
-    let sessionIDs: Set<String>
+    var sessionIDs: Set<String>
     /// The id its chat's draft is kept under.
-    let draftSessionID: String
+    var draftSessionID: String
     /// Sent in a New Chat Hermes hadn't created yet.
     let isNewChat: Bool
     /// Its chat's title, for the notice when it isn't sent.
