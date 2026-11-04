@@ -8,6 +8,31 @@ final class TurnStateTests: XCTestCase {
         XCTAssertEqual(TurnState.fromGatewayRunning(nil), .unsupportedGateway)
     }
 
+    /// Hermes reattaches a live empty chat (no stored row yet) without
+    /// `running`: it is idle, not an old gateway (App Store review
+    /// 2026-11-02; Eric, 2026-11-04, a New Chat left and come back to).
+    func testALazyResumeWithoutRunningIsIdle() {
+        let lazy: [String: AnyCodable] = [
+            "session_id": .string("rt-1"),
+            "info": .object(["lazy": .bool(true), "model": .string("glm")])
+        ]
+        let liveness = HermesClient.resumeLiveness(lazy)
+        XCTAssertEqual(liveness["running"], .bool(false))
+        XCTAssertEqual(liveness["status"], .string("idle"))
+        XCTAssertEqual(TurnState.fromGatewayRunning(SessionRuntimeSnapshot(object: liveness).running), .idle)
+    }
+
+    func testAResumeThatSaysItRunsKeepsItsWordAndAnOldOneStillCantSay() {
+        let running: [String: AnyCodable] = [
+            "running": .bool(true), "status": .string("streaming"),
+            "info": .object(["lazy": .bool(true)])
+        ]
+        XCTAssertEqual(HermesClient.resumeLiveness(running)["running"], .bool(true))
+        XCTAssertEqual(HermesClient.resumeLiveness(running)["status"], .string("streaming"))
+        let old: [String: AnyCodable] = ["session_id": .string("rt-1"), "info": .object(["model": .string("glm")])]
+        XCTAssertNil(HermesClient.resumeLiveness(old)["running"], "a gateway that never says stays unsupported")
+    }
+
     func testOnlyResolvedStatesEnableComposerActions() {
         XCTAssertTrue(TurnState.idle.acceptsComposerActions)
         XCTAssertTrue(TurnState.running.acceptsComposerActions)

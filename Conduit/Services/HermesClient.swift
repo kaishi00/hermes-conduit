@@ -2937,6 +2937,24 @@ final class HermesClient: ObservableObject {
         return object
     }
 
+    /// A resume's `running` and `status`. Hermes leaves both out when it
+    /// reattaches a live chat that has no stored row yet (`info.lazy`): an
+    /// empty new chat whose socket dropped while Conduit was away. Nothing
+    /// was ever sent in it (its first message writes the row), so it is
+    /// idle, not an old gateway that can't say (an App Store review,
+    /// 2026-11-02, and Eric's, 2026-11-04).
+    static func resumeLiveness(_ object: [String: AnyCodable]) -> [String: AnyCodable] {
+        var liveness: [String: AnyCodable] = [:]
+        for key in ["running", "status"] {
+            if let value = object[key] { liveness[key] = value }
+        }
+        if liveness["running"] == nil, object["info"]?.objectValue?["lazy"]?.boolValue == true {
+            liveness["running"] = .bool(false)
+            if liveness["status"] == nil { liveness["status"] = .string("idle") }
+        }
+        return liveness
+    }
+
     private func resumeResult(from object: [String: AnyCodable], sessionId: String) -> SessionResumeResult {
         let resolvedId = object["session_id"]?.stringValue ?? sessionId
         // The durable stored key is parsed separately from the runtime id and
@@ -2951,11 +2969,7 @@ final class HermesClient: ObservableObject {
         var snapshotObject = object["info"]?.objectValue ?? [:]
         // The resume response owns the liveness fields. Keep `info` for the
         // rest of the runtime metadata, but let top-level values win.
-        for key in ["running", "status"] {
-            if let value = object[key] {
-                snapshotObject[key] = value
-            }
-        }
+        snapshotObject.merge(Self.resumeLiveness(object)) { _, top in top }
         // Pending decisions and the plan ride the resume response top level.
         // Hoist them so the snapshot parser sees the same contract as
         // session.info.
