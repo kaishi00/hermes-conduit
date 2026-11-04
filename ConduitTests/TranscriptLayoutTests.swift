@@ -338,6 +338,8 @@ final class TranscriptLayoutTests: XCTestCase {
         let board = RichBoard(cards: [], tabs: false, followUps: [], markdown: "Book early")
         XCTAssertGreaterThan(guess(event("message.member", "Hi", boards: [board])), guess(event("message.member", "Hi")),
                              "a message's boards are guessed under it")
+        XCTAssertGreaterThan(guess(event("message.member", nil, boards: [board])), guess(event("message.member", nil)),
+                             "a message with no text still guesses its boards")
         XCTAssertEqual(
             guess(.pending(text: long, members: [], isSending: true)),
             guess(event("message.user", long)),
