@@ -1014,11 +1014,11 @@ tell models · Settings > Contacts' caption
 **Open gaps**
 - No queued send for when the user isn't looking: CarPlay and the Watch show no card, and a locked phone waits for the user to open the chat (#1159).
 - GPT-Live can't put the card on the call screen itself; it asks Hermes (#366).
-- Group rooms draw no cards, so no Send text there.
+- A room's boards leave contact cards out, so no Send text in group rooms.
 - Line breaks in the text become spaces, as in every card's text.
 - Hermes doesn't hear whether the user sent or cancelled it.
 
-**Checked:** 2026-10-23, at #1174.
+**Checked:** 2026-11-04, #1736 (room boards leave contact cards out); 2026-10-23, at #1174.
 
 ## Message row actions
 
