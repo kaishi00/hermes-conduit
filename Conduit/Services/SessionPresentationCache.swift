@@ -190,7 +190,10 @@ final class SessionPresentationCache {
             var keptRows: [String: [String: (record: CachedMessage, data: Data)]] = [:]
             var output = Data("{".utf8)
             var firstSession = true
-            for (key, session) in store {
+            // In key order, so the same chats always write the same bytes:
+            // the move out of UserDefaults recognizes one cut short by
+            // comparing stores byte for byte (`storage(movingFrom:to:)`).
+            for (key, session) in store.sorted(by: { $0.key < $1.key }) {
                 // The session without its rows, then its rows spliced in
                 // where the empty list is: every other field stays the
                 // encoder's own, so one added to CachedSession is kept.
@@ -199,6 +202,9 @@ final class SessionPresentationCache {
                 guard let keyData = try? encoder.encode(key),
                       let headerData = try? encoder.encode(header),
                       let emptyRows = headerData.range(of: Data(#""messages":[]"#.utf8)) else {
+                    // Only a change to CachedSession's encoding gets here,
+                    // and it would stop every presentation write.
+                    assertionFailure("A cached session no longer encodes an empty messages list")
                     rows = [:]
                     return nil
                 }

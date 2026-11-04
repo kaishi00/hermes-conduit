@@ -3763,6 +3763,58 @@ extension SessionPresentationCacheTests {
         XCTAssertEqual(restoredTimestamp("Hello, all done"), "2024-01-01T10:00:05Z", "The streamed row's new text and time")
     }
 
+    /// A saved row takes its kept presentation from the first cached row
+    /// that matches it by id or by content, whichever comes first: here
+    /// the content match, ahead of the row with its id.
+    func testASavedRowKeepsTheEarliestMatchingRowsPresentation() throws {
+        let suiteName = "conduit.tests.presentation-first-match-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let cache = SessionPresentationCache(defaults: defaults)
+        cache.save(
+            [
+                ChatMessage(id: "old", role: .assistant, content: "Same words", timestamp: "2024-01-01T10:00:00Z"),
+                ChatMessage(id: "new", role: .assistant, content: "Other words", timestamp: "2024-01-01T10:00:09Z")
+            ],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        cache.save(
+            [ChatMessage(id: "new", role: .assistant, content: "Same words", timestamp: "")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+
+        let restored = SessionPresentationCache(defaults: defaults).merge(
+            [ChatMessage(id: "new", role: .assistant, content: "Same words", timestamp: "")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        XCTAssertEqual(restored.map(\.timestamp), ["2024-01-01T10:00:00Z"])
+    }
+
+    /// The same chats write the same bytes, whatever order they were saved
+    /// in: the move out of UserDefaults compares stores byte for byte.
+    func testTheSameChatsWriteTheSameBytes() throws {
+        let fixed = Date(timeIntervalSince1970: 1_000_000)
+        func storedBytes(_ order: [String]) throws -> Data {
+            let suiteName = "conduit.tests.presentation-bytes-\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            let cache = SessionPresentationCache(defaults: defaults, now: { fixed })
+            for sessionID in order {
+                cache.save(
+                    [ChatMessage(id: "row-\(sessionID)", role: .user, content: sessionID, timestamp: "2024-01-01T10:00:00Z")],
+                    profile: "default",
+                    sessionIDs: [sessionID]
+                )
+            }
+            return try XCTUnwrap(defaults.data(forKey: "conduit.sessionPresentation.v1"))
+        }
+        let chats = (1...12).map { "chat-\($0)" }
+        XCTAssertEqual(try storedBytes(chats), try storedBytes(Array(chats.reversed())))
+    }
+
     /// The suspend path must not block the main thread on the write queue
     /// (a UserDefaults write there can wait on SwiftUI's lock, which the
     /// main thread holds during a view update: a watchdog-killed deadlock).
