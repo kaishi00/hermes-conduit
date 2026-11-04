@@ -1,20 +1,16 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
-    "stepfun": {
+    "go-custom": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "StepFun",
+      "name": "OpenCode Go (Custom)",
       "options": {
-        "baseURL": "https://api.stepfun.ai/step_plan/v1",
-        "apiKey": "{env:STEPFUN_API_KEY}"
+        "baseURL": "https://opencode.ai/zen/go/v1",
+        "apiKey": "{env:OPENCODE_GO_API_KEY}"
       },
-      "whitelist": ["step-5-preview"],
       "models": {
-        "step-5-preview": {
-          "name": "Step 5 Preview",
-          "interleaved": {
-            "field": "reasoning_content"
-          }
+        "crouton-alpha-free": {
+          "name": "Crouton Alpha"
         }
       }
     },
