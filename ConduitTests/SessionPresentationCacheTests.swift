@@ -3795,6 +3795,8 @@ extension SessionPresentationCacheTests {
 
     /// The same chats write the same bytes, whatever order they were saved
     /// in: the move out of UserDefaults compares stores byte for byte.
+    /// (The pending-tools store is encoded with `.sortedKeys` for the same
+    /// reason.)
     func testTheSameChatsWriteTheSameBytes() throws {
         let fixed = Date(timeIntervalSince1970: 1_000_000)
         func storedBytes(_ order: [String]) throws -> Data {

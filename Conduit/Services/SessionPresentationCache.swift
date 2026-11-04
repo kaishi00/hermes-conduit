@@ -174,7 +174,8 @@ final class SessionPresentationCache {
         var unconfirmedPendingDecisionAt: Date?
     }
 
-    /// Encodes the sessions store as `JSONEncoder` would, reusing each row's
+    /// Encodes the sessions store as `JSONEncoder` would, but with the chats
+    /// in key order (as `.sortedKeys` orders them), reusing each row's
     /// bytes from the last encode when the row is unchanged. A streaming
     /// flush changes a row or two of one chat, but encoding the whole store
     /// (up to `maxSessions` chats of `maxMessagesPerSession` rows) again made
@@ -1490,12 +1491,22 @@ final class SessionPresentationCache {
             memoryPendingToolsData = nil
             return
         }
-        guard let data = try? JSONEncoder().encode(store) else {
+        guard let data = try? Self.encodePendingTools(store) else {
             memoryPendingTools = nil
             return
         }
         storage.storeData(data, forKey: key)
         memoryPendingToolsData = data
+    }
+
+    /// The pending-tools store with its keys sorted, so the same content
+    /// always writes the same bytes, as the sessions store does (see
+    /// `SessionsStoreEncoder`): the move out of UserDefaults compares
+    /// stores byte for byte. The tombstones are an array, already stable.
+    private static func encodePendingTools(_ store: [String: [CachedMessage]]) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return try encoder.encode(store)
     }
 
     private enum StoreKind {
@@ -1551,7 +1562,7 @@ final class SessionPresentationCache {
         case .pendingTools:
             key = pendingToolsStorageKey
             let snapshot: [String: [CachedMessage]]? = memoryLock.withLock { memoryPendingTools }
-            encoded = snapshot.map { $0.isEmpty ? nil : (try? JSONEncoder().encode($0)) }
+            encoded = snapshot.map { $0.isEmpty ? nil : (try? Self.encodePendingTools($0)) }
             if let snapshot, !snapshot.isEmpty, encoded == .some(nil) { return }
         }
         guard let encoded, memoryLock.withLock({ isNewest() }) else { return }
