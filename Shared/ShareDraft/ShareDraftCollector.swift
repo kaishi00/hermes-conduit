@@ -5,8 +5,9 @@
 //  Reads what another app shared (#812) through the documented
 //  NSExtensionItem / NSItemProvider path: text, links, pictures, videos and
 //  files. Files are copied straight into the draft's staging folder (never
-//  read into memory whole), checked against the share's caps, and named by
-//  the collector; the sending app's file name is only a label.
+//  read into memory whole, except a picture offered only as an image
+//  object, which is drawn as PNG), checked against the share's caps, and
+//  named by the collector; the sending app's file name is only a label.
 //
 
 import Foundation
@@ -256,7 +257,9 @@ struct ShareDraftCollector {
                     continuation.resume(returning: object as? UIImage)
                 }
             }
-            let name = Self.displayName(suggested: suggestedName, type: .png, ordinal: ordinal)
+            // Written as PNG, so a suggested name's own extension goes.
+            let stem = suggestedName.map { ($0 as NSString).deletingPathExtension }
+            let name = Self.displayName(suggested: stem, type: .png, ordinal: ordinal)
             return write(image?.pngData(), type: .png, displayName: name, ordinal: ordinal)
         }
         // A file offered as a file URL, or an image offered as an object.

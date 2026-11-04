@@ -3051,7 +3051,8 @@ size limit (its own entry) · README.md (the share sheet line)
 
 **Rulings**
 - A picture offered only as an image object (the screenshot editor's Share hands over UIKit's own `com.apple.uikit.image`) is attached as a PNG, as a pasted one is. UIKit's archived image type is never read as a picture file; a provider that also offers a picture file is read as that file (2026-11-04, #1750, issue 1747).
-- When nothing could be added, the sheet says why for each thing it left out (too large, unreadable); the general "nothing here" line is only for a share that offered nothing Conduit reads (2026-11-04, #1750, issue 1747).
+- A picture offered only as an image object takes its suggested name without that name's extension: it is always written as PNG (2026-11-04, #1750 review).
+- When nothing could be added, the sheet shows the Left out list a draft has, each thing with why (too large, unreadable), scrolling however many there are; the general "nothing here" line is only for a share that offered nothing Conduit reads (2026-11-04, #1750, issue 1747).
 
 **Open gaps**
 - A drop decides from the dragged item's listed types alone, so a drag that offers only UIKit's image object isn't taken by a chat, a room or the composer field (no source is known to send one; pasting one works).

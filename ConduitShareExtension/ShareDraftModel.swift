@@ -80,12 +80,7 @@ final class ShareDraftModel: ObservableObject {
         notifiesWhenSaved = settings.authorizationStatus == .authorized
         collection = collected
         if collected.isEmpty {
-            // What was left out, and why, when the share offered something;
-            // the general line only when it offered nothing at all (#1747).
-            let reasons = collected.problems.map { $0.message(composerLimitMegabytes: composerLimitMegabytes) }
-            phase = .failed(reasons.isEmpty
-                ? AppLocalization.string("There's nothing here Conduit can add to a chat.")
-                : reasons.joined(separator: "\n"))
+            phase = .failed(AppLocalization.string("There's nothing here Conduit can add to a chat."))
         } else {
             phase = .ready
         }
