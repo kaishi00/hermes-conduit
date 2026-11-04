@@ -794,7 +794,13 @@ final class SessionRenameTests: XCTestCase {
         var lost: Set<String> = []
         var createFails = false
         var created = 0
-        let appState = makeLostChatAppState(lost: { lost }, onCreate: { created += 1 }, createFails: { createFails }) { _, _ in }
+        var attempts = 0
+        let appState = makeLostChatAppState(
+            lost: { lost },
+            onCreate: { created += 1 },
+            onCreateAttempt: { attempts += 1 },
+            createFails: { createFails }
+        ) { _, _ in }
 
         await appState.createNewSession()
         lost = ["created-runtime-1", "created-stored-1"]
@@ -802,9 +808,28 @@ final class SessionRenameTests: XCTestCase {
         let sent = await appState.sendMessage("hello")
 
         XCTAssertFalse(sent)
-        XCTAssertEqual(created, 1, "one try at a fresh chat, not one per retry")
+        XCTAssertEqual(created, 1)
+        XCTAssertEqual(attempts, 2, "New Chat's create, then one try at a fresh chat, not one per retry")
         XCTAssertTrue(appState.messages.contains { $0.role == .user && $0.content == "hello" }, "the words stay, as for any failed send")
         XCTAssertNotNil(appState.errorMessage)
+    }
+
+    /// A slash command's answer (/btw's among them) is the user's, and
+    /// Hermes keeps no copy: the chat isn't empty, so it stays with its
+    /// error.
+    func testANewChatWithASlashAnswerIsNotReplaced() async {
+        var lost: Set<String> = []
+        var created = 0
+        let appState = makeLostChatAppState(lost: { lost }, onCreate: { created += 1 }) { _, _ in }
+
+        await appState.createNewSession()
+        appState.messages.append(ChatMessage(id: "slash-answer", role: .system, content: "The answer", timestamp: "2026-11-04T11:00:00Z"))
+        lost = ["created-runtime-1", "created-stored-1"]
+        await appState.refreshActiveSession()
+
+        XCTAssertEqual(created, 1)
+        XCTAssertEqual(appState.activeSessionId, "created-runtime-1")
+        XCTAssertTrue(appState.messages.contains { $0.id == "slash-answer" })
     }
 
     func testANewChatWithMessagesIsNeverReplaced() async {
@@ -912,6 +937,7 @@ final class SessionRenameTests: XCTestCase {
         lost: @escaping @MainActor () -> Set<String>,
         onCreate: @escaping @MainActor () -> Void = {},
         onCreateIn: @escaping @MainActor (String?) -> Void = { _ in },
+        onCreateAttempt: @escaping @MainActor () -> Void = {},
         createFails: @escaping @MainActor () -> Bool = { false },
         onUpload: @escaping @MainActor (String) -> Void = { _ in },
         onQueuedPrompt: @escaping @MainActor (String, String) -> Void = { _, _ in },
@@ -957,6 +983,7 @@ final class SessionRenameTests: XCTestCase {
         appState.isConnected = true
         var count = 0
         appState.widgetSessionCreatorOverride = { _, cwd in
+            onCreateAttempt()
             if createFails() { throw URLError(.notConnectedToInternet) }
             count += 1
             onCreate()

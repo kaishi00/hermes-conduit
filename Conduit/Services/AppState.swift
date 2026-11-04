@@ -26091,7 +26091,9 @@ final class AppState: ObservableObject {
               sessionIDs.contains(created)
                 || newChatOpenedDurableSessionID.map(sessionIDs.contains) == true
         else { return false }
-        return messages.allSatisfy { $0.role == .system }
+        // A slash command's answer (/btw's too) is the user's and lives only
+        // here, so it counts as something in the chat; other notices don't.
+        return messages.allSatisfy { $0.role == .system && !$0.id.hasPrefix("slash-") }
     }
 
     /// Opens a fresh chat in place of the empty one New Chat made here that
