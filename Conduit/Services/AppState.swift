@@ -619,7 +619,13 @@ final class AppState: ObservableObject {
                 widgetLaunchCoordinator.readinessChanged()
                 // Back from a drop or a gateway restart: the list reads at
                 // once rather than waiting out a long backoff step.
-                if !oldValue { noteChatListInteraction() }
+                if !oldValue {
+                    noteChatListInteraction()
+                    // A new connection is a new run of tries: what the last
+                    // one spent doesn't leave this one without retries.
+                    groupChatProbeRetry.succeeded()
+                    botRosterRetry.succeeded()
+                }
             }
             if oldValue != isConnected { schedulePendingComposerSendCheck() }
             // Nothing left to keep answering pings for off screen.
@@ -15040,6 +15046,7 @@ final class AppState: ObservableObject {
         // sign-in never crosses the server-identity boundary, so without
         // this the previous session's room would be restored as it was.
         invalidateGroupChatState()
+        botRosterRetry.succeeded()
         // Background jobs keep running on the server as ordinary chats; the
         // signed-out ledger just stops following them.
         retireVoiceBackgroundJobs()
