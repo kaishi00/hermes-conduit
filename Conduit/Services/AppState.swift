@@ -1953,7 +1953,24 @@ final class AppState: ObservableObject {
            let openID = activeSessionId,
            activeBotChatProfile == bot.name {
             let openIDs = presentationCacheSessionIDs(for: openID)
+            // Hermes' own card for the question already on screen means the
+            // copy stays out: one question is one card.
+            let hermesCardIsThere = Self.notificationClarifyActivity(for: decision).map { pushed in
+                messages.contains { message in
+                    guard let live = message.clarify,
+                          !live.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) else { return false }
+                    return Self.pushCardSupersededBy(pushed, live: live)
+                }
+            } ?? false
+            if hermesCardIsThere {
+                sessionPresentationCache.removePendingDecision(
+                    key: evictionKey,
+                    profile: bot.name,
+                    sessionIDs: [requestedID] + [target.durableSessionID].compactMap { $0 } + openIDs
+                )
+            }
             let restoresClarify = evictionKey.hasPrefix("clarify:")
+                && !hermesCardIsThere
                 && !messages.contains(where: { SessionPresentationCache.decisionKey(for: $0) == evictionKey })
             if restoresClarify {
                 recordNotificationDecision(
@@ -25907,6 +25924,26 @@ final class AppState: ObservableObject {
     /// `approval.respond` and would only duplicate or contradict the live card.
     /// `cacheSessionIDs` is the (durable-owned) key set the card persists
     /// under; `sessionIDs` remains the answerability guard.
+    /// The card a notification's clarify would draw, for matching it
+    /// against Hermes' own card. Nil for an approval.
+    static func notificationClarifyActivity(for decision: PendingDecisionPayload) -> ClarifyActivity? {
+        switch decision {
+        case .approval:
+            return nil
+        case let .clarify(requestId, question, choices):
+            return ClarifyActivity(
+                requestId: requestId,
+                question: question,
+                choices: choices.map { ClarifyChoice(label: $0, value: $0) },
+                status: .pending,
+                answer: nil,
+                error: nil
+            )
+        case let .clarifyBatch(requestId, questions):
+            return ClarifyActivity(requestId: requestId, questions: questions)
+        }
+    }
+
     private func recordNotificationDecision(
         _ decision: PendingDecisionPayload,
         sessionIDs: [String],
