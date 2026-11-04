@@ -737,23 +737,12 @@ private struct BotWorkRow: View {
         .accessibilityLabel(AppLocalization.string("\(String(item.doneCount)) of \(String(item.checklist.count))"))
     }
 
+    /// Drawn as a chat's Tasks plan is (PlanItemRow), so a checklist reads
+    /// the same here and in the workstream's chat.
     private var checklist: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(item.checklist) { line in
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Image(systemName: line.state == .done ? "checkmark.circle.fill"
-                          : line.state == .doing ? "circle.dotted" : "circle")
-                        .scaledFont(.footnote)
-                        .foregroundStyle(line.state == .done ? Color.green
-                                         : line.state == .doing ? tint : Color.secondary)
-                        .accessibilityHidden(true)
-                    Text(line.text)
-                        .scaledFont(.footnote)
-                        .foregroundStyle(line.state == .todo ? Color.secondary : Color.primary)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityValue(BotWorkItem.statusWord(line.state == .done ? "done"
-                                                           : line.state == .doing ? "running" : "waiting"))
+            ForEach(item.checklistPlan?.items ?? []) { line in
+                PlanItemRow(item: line, depth: 0)
             }
         }
         .padding(12)

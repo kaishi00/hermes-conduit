@@ -25,8 +25,19 @@ extension AppState {
         !showsOfflineChatCopy && !showsPendingNewChat
     }
 
-    /// Hands the cards the transcript on screen.
+    /// Hands the cards the transcript on screen, and in a workstream's
+    /// chat its checklist, which is the plan that chat shows.
     func refreshChatCards() {
-        chatCards.transcriptChanged(messages, for: chatCardsChat())
+        let chat = chatCardsChat()
+        chatCards.transcriptChanged(messages, for: chat)
+        refreshWorkPlan(for: chat)
+    }
+
+    /// The open workstream's checklist as its chat's Tasks line. Only once
+    /// the bot's work has been read: until then the chat isn't known to
+    /// be a workstream's, and its first read isn't news.
+    func refreshWorkPlan(for chat: ChatCardsChat? = nil) {
+        guard let workstream = activeWorkstream else { return }
+        chatCards.applyWorkPlan(workstream.item.checklistPlan, for: chat ?? chatCardsChat())
     }
 }

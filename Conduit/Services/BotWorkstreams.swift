@@ -157,6 +157,22 @@ struct BotWorkItem: Identifiable, Equatable {
 
     var doneCount: Int { checklist.filter { $0.state == .done }.count }
 
+    /// Its checklist as the chat's Tasks line draws a plan, so a
+    /// workstream's chat shows it the way any chat shows Hermes' own.
+    /// Nil when it keeps none.
+    var checklistPlan: AgentPlan? {
+        guard !checklist.isEmpty else { return nil }
+        return AgentPlan(items: checklist.map { line in
+            let status: AgentPlanItem.Status
+            switch line.state {
+            case .done: status = .completed
+            case .doing: status = .inProgress
+            case .todo: status = .pending
+            }
+            return AgentPlanItem(id: "work-\(line.index)", content: line.text, status: status, parent: nil)
+        }, revision: nil)
+    }
+
     var shownTitle: String {
         if !title.isEmpty { return title }
         return goal.isEmpty ? ref : goal
