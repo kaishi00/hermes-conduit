@@ -4407,6 +4407,35 @@ clips (kaishi00/hermes-conduit-website)
 
 **Checked:** 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-10-25, at #1228. 2026-11-03, #1678 (on `bot-workstreams` the app opens on Bots, so both the screenshots and the App Preview tap Sessions first).
 
+## What your sent message shows
+
+Your message in a chat shows what you wrote, never the context Hermes added
+for the model on that turn.
+
+**Siblings:** chats, project chats and Bot Chat · iPad and Mac (the same
+transcript) · the chat list's preview, and CarPlay's chat list, which shows
+the same summaries · the saved copy of a chat · voice's reads of a chat
+(VoiceHistory) · a send's check that Hermes took it (the same projection on
+both sides) · Pulse reading a chat (notifier) · group rooms (not needed: a
+room message is the room's own text, not a Hermes row) · Hermes Desktop
+(upstream) · text that describes it (none)
+
+**Code**
+- The projection: `Conduit/Services/HermesClient.swift` (MessageNormalizer: removingTurnContext, droppingTurnContextPart, isStoredPictureLine, trailingInlineImageMarkers, splitUserAttachmentReferences, visibleUserText, removingContextFooter, sessionListPreview)
+- Pulse: `notifier/pulse_hermes.py` (typed, _row)
+- Tests: `ConduitTests/TranscriptInlineImageTests.swift`, `ConduitTests/MessageNormalizerTests.swift`
+
+**Rulings**
+- Hermes gives the model a turn's context with the user's message: the memory provider's recall, fenced in `<memory-context>`, and every plugin's `pre_llm_call` notes, conduit_push's included. A text turn keeps it in `api_content`; a turn with a picture appends it as a text part after the pictures and stores it in the row, flattened after the pictures' `[screenshot]` lines (Hermes #71998). The bubble, the preview and Pulse drop everything after the last `[screenshot]` line, the text parts after a parts row's last picture, and any `<memory-context>` fence (to the end when cut off). Only what's shown changes: the stored row, and what a branch replays, stay Hermes' (2026-11-04, #1760, notifier #544).
+- `[screenshot]` and `[screenshot detail=…]` are Hermes' picture stand-ins like `[image]`: a trailing run becomes the message's pictures, and a typed one with nothing after it stays text (2026-11-04, #1760).
+- Expanded `@file:`/`@url:` context below the typed text ("--- Attached Context ---") is dropped as Desktop drops it, only when the text holds a reference (#1515 and before).
+
+**Open gaps**
+- Hermes Desktop still shows a picture turn's stored context after a reload (upstream; its transcript reconciliation strips it only to match rows).
+- A caption sent after its picture through the API server (parts in that order) would be read as context and hidden; Hermes' own ingress, Conduit and Desktop put the text first.
+
+**Checked:** 2026-11-04, #1760 (new entry: a picture turn's recalled memory and plugin notes left the bubble, the preview and Pulse's reads, notifier #544).
+
 ## Pictures in messages
 
 How a picture in a transcript loads, and the room its row takes before it
