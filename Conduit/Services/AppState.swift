@@ -17497,7 +17497,10 @@ final class AppState: ObservableObject {
             // conversation must never be adopted by the workspace because the
             // evidence arrived a moment after the decision.
             botOwnedSessionIDs: botOwnedSessionIDs,
-            savedSelectionIsAuthoritative: savedReferenceIsAuthoritative
+            savedSelectionIsAuthoritative: savedReferenceIsAuthoritative,
+            // Read at the moment of selection too: a bot's work read that
+            // lands mid-sync names its workstreams for this pick.
+            workstreamSessionIDs: botWork.workstreamSessionIDs
         )
     }
 
