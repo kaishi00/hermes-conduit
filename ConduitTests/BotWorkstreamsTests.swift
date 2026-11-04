@@ -308,10 +308,11 @@ extension BotModeTests {
         let appState = AppState(defaults: defaults, chatResumeCoordinator: coordinator,
                                 loadSavedConnection: false)
         let now = Date().timeIntervalSince1970
-        func row(_ id: String, stored: String? = nil, at: TimeInterval) -> SessionSummary {
-            SessionSummary(id: id, storedSessionId: stored, alternateIds: [], title: "Chat", model: "Hermes",
+        func row(_ id: String, stored: String? = nil, alternates: [String] = [], lineageRoot: String? = nil,
+                 at: TimeInterval) -> SessionSummary {
+            SessionSummary(id: id, storedSessionId: stored, alternateIds: alternates, title: "Chat", model: "Hermes",
                            updatedLabel: "now", lastActivityAt: at, profile: nil, source: .chat,
-                           isActive: false, isArchived: false, lineageRootId: nil)
+                           isActive: false, isArchived: false, lineageRootId: lineageRoot)
         }
         // The resolved workstream was re-keyed: only its stored id is listed.
         let catalog = [row("runtime-w1", stored: "20261101_w1", at: now), row("plain", at: now - 600)]
@@ -336,6 +337,14 @@ extension BotModeTests {
         XCTAssertEqual(pick(), "plain")
         coordinator.rememberSession(.dashboard(profile: "default", sessionID: "runtime-w1"), for: "default")
         XCTAssertEqual(pick(), "runtime-w1")
+
+        // A row linked to the workstream only by an alternate id, or only by
+        // its lineage root (a compacted workstream's tip), is one too.
+        let tips = [row("tip-a", alternates: ["20261101_w1"], at: now + 60),
+                    row("tip-b", lineageRoot: "20261101_w1", at: now + 30),
+                    row("plain", at: now - 600)]
+        XCTAssertEqual(appState.selectChatResumeTarget(in: tips, profile: "default", purpose: .automaticReturn,
+                                                       currentSessionID: nil)?.id, "plain")
 
         // With only workstreams listed there's no chat to pick: a new one starts.
         coordinator.setBehavior(.latestActivity)

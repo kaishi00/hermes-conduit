@@ -2300,7 +2300,8 @@ W3 is now, "Asked Nahida", with Open W3), a ref a Bot Chat reply names in its wo
 work…"), the Artifacts column beside the chat (done: one of the two shows at a
 time), Screens that open on their last answer (done: the line, panel and bar
 open on the kept list), and the Chats list, Chats search and All profiles
-leaving workstreams out, resolved ones too · the plugin's `/workstreams` routes (the list and
+leaving workstreams out, resolved ones too, and the chat Conduit opens on
+by itself (its newest-chat pick) skipping them the same way · the plugin's `/workstreams` routes (the list and
 the user's own actions, which skip the Bot Chat's model; `?conduit_profile=`
 for a secondary bot) and the `bot-workstreams` capability · Edit Bot > Work
 (Coordinate Work on or off, what the Bot Chat does itself, how many run at
