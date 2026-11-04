@@ -4357,7 +4357,8 @@ notifier README and CHANGELOG
 - Checklist ticks on the host: `notifier/checklist_store.py`, `notifier/dashboard/api/boards.py` (`/boards/checklists`, capability "board-checklists"); in Conduit `Conduit/Cards/RichChecklistMemory.swift`, `Conduit/Services/AppState+Boards.swift`
 - Cards and views: `Conduit/Cards/RichCard.swift`, `Conduit/Cards/RichBoardCard.swift` (RichBoard, RichTable…), `Conduit/Cards/RichBoardCardViews.swift` (RichBoardLayout, RichBoardFollowUps, RichBoardMarkdown), `Conduit/Cards/RichCardViews.swift`; the chat row in `Conduit/Views/ChatView.swift`, its follow-ups in `Conduit/Views/ChatRowState.swift` (followUpBoardRowID) and `Conduit/Services/AppState.swift` (requestBoardFollowUp)
 - Live models: `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (showOnScreenDeclaration, invalidCardsNote)
-- Tests: `ConduitTests/RichCardTests.swift`, `ConduitTests/RichCardTests+Boards.swift`, `notifier/tests/test_cards.py`, `notifier/tests/test_show.py`, `notifier/tests/test_checklists.py`
+- Group rooms: `notifier/room_boards.py`, `_save_room_board` in `notifier/__init__.py`, `notifier/dashboard/api/boards.py` (`/boards/rooms`, capability "room-boards"); in Conduit `Conduit/Cards/RoomBoards.swift` (RoomBoard.placed, RoomBoardsView), `Conduit/Services/AppState+RoomBoards.swift`, the row in `Conduit/Views/GroupChatView.swift` (GroupMemberBubble) and `Conduit/Views/TranscriptModel.swift` (GroupRoomRow.event)
+- Tests: `ConduitTests/RichCardTests.swift`, `ConduitTests/RichCardTests+Boards.swift`, `notifier/tests/test_cards.py`, `notifier/tests/test_show.py`, `notifier/tests/test_checklists.py`, `notifier/tests/test_room_boards.py`
 
 **Rulings**
 - One tool: conduit_show grows; there is no second board tool (Eric, 2026-11-03, #1713 with notifier #528).
@@ -4367,12 +4368,12 @@ notifier README and CHANGELOG
 - Follow-ups are plain messages the user would send, at most four, offered only under the last turn's board while Hermes is free and connected and the composer is empty: tap sends, long-press edits, and taps in their first 0.4 s are ignored, as Predictions' chips (Eric, 2026-11-03, #1713).
 - Checklist ticks in a chat are kept on the host for every device, and Hermes hears what changed once, at the chat's next turn; on the call screen they stay on the phone (Eric, 2026-11-03, #1713 with notifier #528), kept by the list's name as a chat's are, so a list of that name on another call's screen shows the same ticks (#1713).
 - A tick goes to the host on its own, in the order made, and the host applies it to the newest ticks any device saved, so a tick from another device is never undone (2026-11-03, #1713 with notifier #528).
-- In a group room the board goes in the agent's reply as Markdown (`group_room`), until rooms draw cards in a follow-up PR (Eric, 2026-11-03, #1713 with notifier #528). Other people's agents read a room, so contact cards (a person's numbers, a text drafted for the user) stay out of it, with a problems line, whatever the turn's surface.
+- In a group room this host runs, the board is kept on the host and drawn under the agent's next message there (within 15 minutes), for every Conduit saying "room-boards"; the room's other agents read only the message, and are told so. A room run elsewhere, or an older Conduit, gets it in the agent's reply as Markdown (`group_room`) (Eric, 2026-11-03: text first, cards in a follow-up PR; 2026-11-04, notifier 0.129). Other people's agents may read a room, so contact cards (a person's numbers, a text drafted for the user) stay out of it, with a problems line, whatever the turn's surface. A room's board has no follow-ups (a tap would speak for the user to the whole room) and its checklists keep no ticks.
 - A Conduit without "board-cards" gets at most four cards, no layout and no follow-ups (2026-11-03, notifier #528).
 - Real data only: models are told to fill tables, stats and charts from tools, sites or the user's files, with their source (2026-11-03, notifier #528).
 
 **Open gaps**
-- Group rooms draw no cards yet: room messages carry text only, so cards there need the room format to carry them, the next PR.
+- A room's checklists can't be ticked, and a board in a room another host runs (Linked Rooms) goes as text.
 - Hermes Desktop draws the Markdown, not the cards: drawing them natively waits on a probe of Desktop's plugin SDK.
 - The call screen draws a board stacked, with no tabs and no follow-ups (the user speaks the next question).
 - The Watch and CarPlay show no cards.
@@ -4381,7 +4382,7 @@ notifier README and CHANGELOG
 - A checklist that stays on screen reads other devices' ticks only when it's drawn again or ticked here.
 - Boards are parsed again each time a row is drawn; no cache yet, as liveNames has.
 
-**Checked:** 2026-11-03, #1713 with notifier #528.
+**Checked:** 2026-11-04, #1736 with notifier #536 (boards drawn in group rooms); 2026-11-03, #1713 with notifier #528.
 
 ## Cards drawn in web pages
 

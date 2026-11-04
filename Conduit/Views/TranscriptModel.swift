@@ -381,9 +381,10 @@ final class TranscriptModelBox {
 /// What one of a group room's rows draws (GroupChatView). The room's members
 /// ride along: a change of name redraws the rows naming them.
 enum GroupRoomRow: Equatable {
-    /// A room event (GroupEventRow), and whether it continues the run of
-    /// the row above (the speaker's picture and name once).
-    case event(GroupEvent, members: [GroupMember], continuesRun: Bool)
+    /// A room event (GroupEventRow), whether it continues the run of the
+    /// row above (the speaker's picture and name once), and the boards its
+    /// agent showed for it (RoomBoards).
+    case event(GroupEvent, members: [GroupMember], continuesRun: Bool, boards: [RichBoard])
     /// The user's message on its way, under the id its event will have:
     /// "Sending…" while its send is out, else Retry.
     case pending(text: String, members: [GroupMember], isSending: Bool)
@@ -410,7 +411,8 @@ enum GroupRoomTranscript {
         members: [GroupMember],
         pending: GroupRoomOutbox.Pending?,
         isSending: Bool,
-        responder: GroupMember?
+        responder: GroupMember?,
+        boards: [String: [RichBoard]] = [:]
     ) -> [TranscriptRow] {
         var rows: [TranscriptRow] = []
         rows.reserveCapacity(events.count + 2)
@@ -423,7 +425,7 @@ enum GroupRoomTranscript {
             // A member's run of replies shows its picture and name once,
             // like a group thread in Messages.
             let continuesRun = index > 0 && GroupEventRow.sameSpeaker(events[index - 1], event)
-            add(event.id, .event(event, members: members, continuesRun: continuesRun))
+            add(event.id, .event(event, members: members, continuesRun: continuesRun, boards: boards[event.id] ?? []))
         }
         if let pending {
             add(
@@ -468,6 +470,7 @@ final class GroupRoomTranscriptBox {
         var pending: GroupRoomOutbox.Pending?
         var isSending = false
         var responder: GroupMember?
+        var boards: [String: [RichBoard]] = [:]
     }
 
     private var input: Input?
@@ -486,7 +489,8 @@ final class GroupRoomTranscriptBox {
             members: input.members,
             pending: input.pending,
             isSending: input.isSending,
-            responder: input.responder
+            responder: input.responder,
+            boards: input.boards
         )
         let ids = events.map(\.id)
         // Only an event at the end is new: the oldest rows trimmed, or a

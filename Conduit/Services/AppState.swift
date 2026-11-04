@@ -12271,7 +12271,15 @@ final class AppState: ObservableObject {
         // A room takes the chat's place without changing the open chat.
         didSet { if (oldValue == nil) != (activeRoomSurface == nil) { updateChatOnScreen() } }
     }
-    @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "")
+    @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "") {
+        // An agent's new message may have a board kept for it (RoomBoards).
+        didSet { roomReplayChanged(from: oldValue) }
+    }
+    /// The open room's boards on the host, oldest first (AppState+RoomBoards).
+    @Published var activeRoomBoards: [RoomBoard] = []
+    var roomBoardsTask: Task<Void, Never>?
+    /// Tests read a room's boards here in place of the dashboard.
+    var roomBoardsReadOverride: ((String) async throws -> [String: Any])?
     @Published private(set) var activeRoomDriverStatus: GroupDriverStatus?
 
     /// Where the user's answer to each of the open room's pending approvals
@@ -27249,6 +27257,10 @@ final class AppState: ObservableObject {
                 updateChatOnScreen()
                 forgetPulseHomeIfGone()
                 sharePulseQuiet()
+            }
+            // An open room's boards, once the plugin says it keeps them.
+            if oldValue.reports(RoomBoard.capability) != notifierPlugin.reports(RoomBoard.capability) {
+                refreshActiveRoomBoards()
             }
         }
     }

@@ -371,6 +371,85 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
     }
 
+    /// A room's boards are read when it opens and when one of its agents
+    /// posts, not when the user does, go under the agent's message, and are
+    /// gone once the room closes; a plugin without the route isn't asked.
+    func testRoomBoardsAreReadWhenTheRoomOpensAndWhenAnAgentPosts() async throws {
+        final class Box {
+            var events: [GroupEvent] = []
+            var reads: [String] = []
+        }
+        let box = Box()
+        let room = self.room()
+        func message(_ seq: Int, fromMember: Bool) -> GroupEvent {
+            let actor: [String: String] = fromMember ? ["kind": "member", "id": "researcher", "profile": "researcher"]
+                : ["kind": "user", "id": "human"]
+            return GroupDecoders.event(AnyCodable.from([
+                "room_id": room.roomID,
+                "seq": seq,
+                "event_id": "srv-\(seq)",
+                "kind": fromMember ? "message.member" : "message.user",
+                "actor": actor,
+                "payload": ["text": "hello \(seq)", "thread_id": "main"],
+                "created_at": Double(seq) * 100,
+            ]))!
+        }
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                let latest = box.events.last?.seq ?? 0
+                return GroupLogPage(events: box.events.filter { $0.seq > sinceSeq }, cursor: latest,
+                                    latestSeq: latest, hasMore: false, authorityGatewayID: "gw-a", authorityEpoch: 1)
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        appState.roomBoardsReadOverride = { path in
+            box.reads.append(path)
+            return ["boards": [["profile": "researcher", "at": 190.0, "board": [
+                "cards": [["type": "callout", "callout": ["text": "Book early", "tone": "tip"]]],
+                "markdown": "Book early",
+            ]]]]
+        }
+        await appState.refreshGroupChatSupport()
+
+        box.events = [message(1, fromMember: false), message(2, fromMember: true)]
+        await appState.openGroupRoom(room)
+        await appState.roomBoardsTask?.value
+        XCTAssertTrue(box.reads.isEmpty, "A plugin without the route isn't asked")
+
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.129.0", capabilities: [RoomBoard.capability]))
+        await appState.roomBoardsTask?.value
+        XCTAssertEqual(box.reads.count, 1, "Read once the plugin says it keeps them, the room still open")
+        XCTAssertTrue(box.reads.first?.contains("room_id=room-1") == true)
+        XCTAssertEqual(appState.activeRoomPlacedBoards["srv-2"]?.count, 1, "Under the agent's message")
+        appState.closeGroupRoom()
+        XCTAssertTrue(appState.activeRoomBoards.isEmpty, "Gone once the room closes")
+
+        // Reopened: the kept events show (read once), then the tail lands.
+        await appState.openGroupRoom(room)
+        await appState.roomBoardsTask?.value
+        XCTAssertEqual(box.reads.count, 2, "Read when the room opens")
+        XCTAssertEqual(appState.activeRoomPlacedBoards["srv-2"]?.count, 1)
+        appState.closeGroupRoom()
+
+        box.events.append(message(3, fromMember: false))
+        await appState.openGroupRoom(room)
+        await appState.roomBoardsTask?.value
+        XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1, 2, 3])
+        XCTAssertEqual(box.reads.count, 3, "The user's message doesn't read them again")
+        appState.closeGroupRoom()
+
+        box.events.append(message(4, fromMember: true))
+        await appState.openGroupRoom(room)
+        await appState.roomBoardsTask?.value
+        XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1, 2, 3, 4])
+        XCTAssertGreaterThan(box.reads.count, 3, "Read again when the agent's message lands")
+        appState.closeGroupRoom()
+    }
+
     /// A dictation Retry that lands after its room was left: the words go
     /// after the room's kept draft and are there on reopen.
     func testRetriedDictationWordsReachALeftRoomsDraft() async throws {
