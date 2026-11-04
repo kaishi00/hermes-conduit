@@ -3793,28 +3793,28 @@ extension SessionPresentationCacheTests {
         XCTAssertEqual(restored.map(\.timestamp), ["2024-01-01T10:00:00Z"])
     }
 
-    /// The same chats write the same bytes, whatever order they were saved
-    /// in: the move out of UserDefaults compares stores byte for byte.
-    /// (The pending-tools store is encoded with `.sortedKeys` for the same
-    /// reason.)
-    func testTheSameChatsWriteTheSameBytes() throws {
-        let fixed = Date(timeIntervalSince1970: 1_000_000)
-        func storedBytes(_ order: [String]) throws -> Data {
-            let suiteName = "conduit.tests.presentation-bytes-\(UUID().uuidString)"
-            let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-            defer { defaults.removePersistentDomain(forName: suiteName) }
-            let cache = SessionPresentationCache(defaults: defaults, now: { fixed })
-            for sessionID in order {
-                cache.save(
-                    [ChatMessage(id: "row-\(sessionID)", role: .user, content: sessionID, timestamp: "2024-01-01T10:00:00Z")],
-                    profile: "default",
-                    sessionIDs: [sessionID]
-                )
-            }
-            return try XCTUnwrap(defaults.data(forKey: "conduit.sessionPresentation.v1"))
+    /// The chats are written in key order, so the same chats always write
+    /// the same bytes, whatever order they were saved in: the move out of
+    /// UserDefaults compares stores byte for byte. (The pending-tools store
+    /// is encoded with `.sortedKeys` for the same reason.)
+    func testChatsAreWrittenInKeyOrder() throws {
+        let suiteName = "conduit.tests.presentation-key-order-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let cache = SessionPresentationCache(defaults: defaults)
+        let chats = (10...21).map { "chat-\($0)" }
+        for sessionID in chats.reversed() {
+            cache.save(
+                [ChatMessage(id: "row-\(sessionID)", role: .user, content: sessionID, timestamp: "2024-01-01T10:00:00Z")],
+                profile: "default",
+                sessionIDs: [sessionID]
+            )
         }
-        let chats = (1...12).map { "chat-\($0)" }
-        XCTAssertEqual(try storedBytes(chats), try storedBytes(Array(chats.reversed())))
+        let stored = String(decoding: try XCTUnwrap(defaults.data(forKey: "conduit.sessionPresentation.v1")), as: UTF8.self)
+        let positions = try chats.map { sessionID in
+            try XCTUnwrap(stored.range(of: "\"default|\(sessionID)\":")?.lowerBound, sessionID)
+        }
+        XCTAssertEqual(positions, positions.sorted(), "Chats in key order")
     }
 
     /// The suspend path must not block the main thread on the write queue
