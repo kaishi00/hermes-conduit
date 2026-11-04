@@ -39,7 +39,8 @@ extension AppState {
     func refreshWorkPlan(for chat: ChatCardsChat? = nil) {
         // Resolved work, or work that left the bot's list, keeps no
         // checklist on its chat: a step left "doing" would read as still
-        // under way. The Work panel shows resolved work without one too.
+        // under way (the Work panel draws a resolved row's stopped step as
+        // not started, see checklistPlan).
         guard let workstream = activeWorkstream, !workstream.item.isClosed else {
             chatCards.clearWorkPlan()
             return

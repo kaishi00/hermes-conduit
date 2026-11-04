@@ -170,6 +170,10 @@ extension GatewayRestartTests {
         XCTAssertEqual(plan.current?.content, "Fix it")
         XCTAssertEqual(plan.completedCount, 1)
         XCTAssertNil(workItem([])?.checklistPlan, "no checklist, no plan")
+        let resolved = BotWorkItem(row: ["ref": "W3", "kind": "workstream", "status": "stopped", "closed": true,
+                                         "checklist": [["step": "Fix it", "state": "doing"]]])
+        XCTAssertEqual(resolved?.checklistPlan?.items.map(\.status), [.pending],
+                       "resolved work's stopped step isn't drawn as under way")
     }
 
     func testAWorkstreamsChatShowsItsChecklistAheadOfHermesTodo() throws {

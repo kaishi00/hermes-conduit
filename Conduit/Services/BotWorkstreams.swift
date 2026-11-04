@@ -166,7 +166,8 @@ struct BotWorkItem: Identifiable, Equatable {
             let status: AgentPlanItem.Status
             switch line.state {
             case .done: status = .completed
-            case .doing: status = .inProgress
+            // Resolved work isn't under way, whatever step it stopped on.
+            case .doing: status = isClosed ? .pending : .inProgress
             case .todo: status = .pending
             }
             return AgentPlanItem(id: "work-\(line.index)", content: line.text, status: status, parent: nil)
