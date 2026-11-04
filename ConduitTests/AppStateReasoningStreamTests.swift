@@ -160,6 +160,38 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertEqual(publications, 1)
     }
 
+    /// The app switcher is inactive, not background: a swipe away from it
+    /// asks Conduit to quit while the reply would still redraw. An iPad app
+    /// on a Mac keeps streaming while inactive (another app in front).
+    func testInactiveHoldsLiveTextUntilActiveOffAMac() async throws {
+        try XCTSkipIf(ProcessInfo.processInfo.isiOSAppOnMac, "a Mac keeps streaming while inactive")
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        state.handleScenePhase(.inactive)
+
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "In the switcher"))
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(state.streamingText, "")
+
+        state.handleScenePhase(.active)
+        XCTAssertEqual(state.streamingText, "In the switcher")
+    }
+
+    func testInactiveHoldsLiveReasoningUntilActiveOffAMac() async throws {
+        try XCTSkipIf(ProcessInfo.processInfo.isiOSAppOnMac, "a Mac keeps streaming while inactive")
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        feedReasoning(["Step one."], sessionId: "stored-a", state: state)
+
+        state.handleScenePhase(.inactive)
+        feedReasoning([" Step two."], sessionId: "stored-a", state: state)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(liveReasoningContent(on: state), "Step one.")
+
+        state.handleScenePhase(.active)
+        XCTAssertEqual(liveReasoningContent(on: state), "Step one. Step two.")
+    }
+
     func testBackgroundHoldsLiveReasoningUntilActive() async throws {
         let state = makeAppState()
         installActiveSession(state, id: "stored-a")
