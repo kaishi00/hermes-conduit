@@ -22227,8 +22227,9 @@ final class AppState: ObservableObject {
         }
         var registry: Set<String>?
         let listed = chatListListedIDs()
-        // Only the chats the list shows pace it: not a Bot Chat or another
-        // profile's chat the catalog has but the list hides.
+        // Only the chats the list shows pace it: not a Bot Chat, a
+        // workstream or another profile's chat the catalog has but the list
+        // hides.
         let displayed = chatListDisplayedIDs()
         // The open chat's turn paces the list only when it is one of the
         // list's chats: a Bot Chat's turn behind it isn't (see below).
@@ -22282,7 +22283,7 @@ final class AppState: ObservableObject {
     }
 
     /// Every id the chats the list shows go by: the profile's own, without
-    /// the Bot Chats it hides.
+    /// the Bot Chats and workstreams it hides.
     private func chatListDisplayedIDs() -> Set<String> {
         Self.chatListIDs(of: activeProfileSessions + activeProfileCronSessions + archivedSessions)
     }
