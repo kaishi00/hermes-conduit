@@ -2616,7 +2616,7 @@ chat's saved copy and the reply's notification (the settled message)
 - A thinking card's first words still mount it while hidden, one publish per card; the words after it wait (#1744, from #1743's review).
 
 **Open gaps**
-- If an iPad window that is visible but not focused (Stage Manager) reports `.inactive`, its streaming reply waits until the window is focused, then catches up at once; not checked on an iPad (#1744, from the review).
+- If an iPad window that is on screen but not receiving events (Split View or Slide Over beside another app, Stage Manager) reports `.inactive`, its streaming reply waits until the window is touched or focused, then catches up at once; not checked on an iPad (#1744, from the reviews).
 - The rest of the chat (the transcript's rows, the composer) still updates in the background on a turn's boundaries: a tool card or a settled message lands as it comes, which is one update each, not stream cadence.
 
 **Checked:** 2026-11-04, #1744 (inactive pauses too, off a Mac); 2026-11-04, #1743 (the background pauses the live publishes as the drawer did).
