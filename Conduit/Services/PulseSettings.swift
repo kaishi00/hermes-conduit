@@ -119,6 +119,11 @@ struct PulseState: Equatable {
     var enabled = false
     var running = false
     var staleBuild = false
+    /// Why the dashboard can't run Pulse while it isn't running: "hermes_too_old"
+    /// (notifier 0.127.6), or empty, the restart hint.
+    var hostProblem = ""
+    /// Settings > Pulse says to update Hermes rather than restart the dashboard.
+    var hermesTooOld: Bool { enabled && !running && hostProblem == "hermes_too_old" }
     var homeChat: PulseHomeChat?
     var homeProblem = ""
     /// The profile Pulse runs in, whose chats it reads (0.126.2); nil from
@@ -208,6 +213,7 @@ struct PulseState: Equatable {
         self.enabled = enabled
         running = PulseJSON.bool(json["running"]) ?? false
         staleBuild = PulseJSON.bool(json["stale_build"]) ?? false
+        hostProblem = json["host_problem"] as? String ?? ""
         if let chat = json["home_chat"] as? [String: Any], let id = chat["id"] as? String, !id.isEmpty {
             homeChat = PulseHomeChat(
                 id: id,
