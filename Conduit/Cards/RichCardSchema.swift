@@ -3,7 +3,8 @@
 //  Conduit
 //
 //  Rich cards (maps, places, stats, charts, forecasts, comparisons, steps,
-//  media, contacts and statuses) are defined once, in hermes-conduit-notifier's
+//  media, contacts, statuses, and the board kinds: tables, timelines,
+//  checklists, lists, progress and callouts) are defined once, in hermes-conduit-notifier's
 //  cards/card-schema.json. This app ships a byte-identical copy
 //  (card-schema.json beside this file); scripts/check-card-schema.py fails
 //  CI when it differs from the plugin's main. Only the rules name a card's
@@ -11,6 +12,8 @@
 //  copy, and normalizing walks it, the same way the plugin's card_schema.py
 //  does. Both run the plugin's cards/card-vectors.json (RichCardSchemaTests):
 //
+//  - a table's cells and column names are made text first, so each keeps
+//    its place (prepared);
 //  - unknown keys are dropped;
 //  - text has control characters turned into spaces, is trimmed, and is cut
 //    to maxLength code points (a URL that's too long, or holds a space,
@@ -30,7 +33,9 @@
 //    recommends one option at most; media needs a source and https links,
 //    and an image has no duration or artwork; a contact keeps only a phone and an email
 //    that look like one, and a person's message only with their phone; a
-//    live name is kept on the first card of a set that has it.
+//    table keeps the rows with one cell per column; a checklist keeps one
+//    item per text; a list item's photo needs an https url; a progress goal
+//    is above 0; a live name is kept on the first card of a set that has it.
 //
 
 import Foundation
@@ -79,10 +84,44 @@ struct RichCardSchema {
 
     /// One card, or nil when it isn't valid.
     func normalizeCard(_ raw: Any) -> [String: Any]? {
+        let raw = Self.prepared(raw)
         guard case .valid(let value) = Self.normalize(card, raw), let normalized = value as? [String: Any] else {
             return nil
         }
         return Self.applyRules(normalized, raw: raw as? [String: Any] ?? [:])
+    }
+
+    /// What a table cell with nothing in it reads as.
+    static let blankCell = "\u{2013}"
+
+    /// A table's cells and column names as text, so a number, a blank or a
+    /// null keeps its place in the row (the plugin's _prepared): a string
+    /// stays as it is (an empty one is a dash), a number becomes its digits,
+    /// anything else is a dash.
+    static func prepared(_ raw: Any) -> Any {
+        guard var object = raw as? [String: Any], (object["type"] as? String)?.lowercased() == "table",
+              var table = object["table"] as? [String: Any] else { return raw }
+        if let columns = table["columns"] as? [Any] {
+            table["columns"] = columns.map(cell)
+        }
+        if let rows = table["rows"] as? [Any] {
+            table["rows"] = rows.map { row -> Any in (row as? [Any]).map { $0.map(cell) } ?? row }
+        }
+        object["table"] = table
+        return object
+    }
+
+    static func cell(_ value: Any) -> Any {
+        if let text = value as? String {
+            return cleanText(text).isEmpty ? blankCell : text
+        }
+        guard let number = value as? NSNumber, !isBoolean(number) else { return blankCell }
+        let double = number.doubleValue
+        guard double.isFinite, abs(double) < 1e15 else { return blankCell }
+        if double.rounded() == double {
+            return String(Int(double))
+        }
+        return "\(double)"
     }
 
     private enum Outcome {
@@ -192,7 +231,9 @@ struct RichCardSchema {
     private static let typeFields: [String: [String]] = [
         "map": ["places", "route"], "place": ["places"], "places": ["places"], "stats": ["stats"],
         "chart": ["chart"], "weather": ["weather"], "comparison": ["options"], "steps": ["steps", "needs"],
-        "media": ["media"], "contact": ["people"], "status": ["status"],
+        "media": ["media"], "contact": ["people"], "status": ["status"], "table": ["table"],
+        "timeline": ["timeline"], "checklist": ["checklist"], "list": ["list", "ranked"],
+        "progress": ["progress"], "callout": ["callout"],
     ]
 
     /// The cards about places; every other type can name a source.
@@ -279,10 +320,63 @@ struct RichCardSchema {
                 if let photo = person["photo"] as? [String: Any], !isHTTPS(photo["url"]) { person["photo"] = nil }
                 return person
             }
+        case "table":
+            var table = card["table"] as? [String: Any] ?? [:]
+            let width = (table["columns"] as? [Any])?.count ?? 0
+            let rows = (table["rows"] as? [[Any]] ?? []).filter { $0.count == width }
+            guard !rows.isEmpty else { return nil }
+            table["rows"] = rows
+            card["table"] = table
+        case "checklist":
+            var seen: Set<String> = []
+            card["checklist"] = (card["checklist"] as? [[String: Any]] ?? []).filter { item in
+                seen.insert((item["text"] as? String ?? "").lowercased()).inserted
+            }
+        case "list":
+            card["list"] = (card["list"] as? [[String: Any]] ?? []).map { item in
+                var item = item
+                // The phone loads photos over https only.
+                if let photo = item["photo"] as? [String: Any], !isHTTPS(photo["url"]) { item["photo"] = nil }
+                return item
+            }
+        case "progress":
+            let items = (card["progress"] as? [[String: Any]] ?? []).filter {
+                (($0["goal"] as? NSNumber)?.doubleValue ?? 0) > 0
+            }
+            guard !items.isEmpty else { return nil }
+            card["progress"] = items
         default:
             break
         }
         return card
+    }
+
+    // MARK: A board's follow-ups
+
+    /// The most follow-ups a board shows (the schema's board.next).
+    static let maxFollowUps = 4
+    private static let followUpMention = try! NSRegularExpression(pattern: #"@[\w/.~]"#)
+
+    /// The follow-ups worth offering under a board (the plugin's
+    /// normalize_next): plain messages only, each once, the first four.
+    static func followUps(_ value: Any?) -> [String] {
+        guard let list = value as? [Any] else { return [] }
+        var kept: [String] = []
+        for raw in list {
+            guard let given = raw as? String else { continue }
+            var text = cleanText(given)
+            guard !text.isEmpty else { continue }
+            if text.unicodeScalars.count > 200 {
+                text = trimmingTrailingWhitespace(String(String.UnicodeScalarView(text.unicodeScalars.prefix(200))))
+            }
+            if text.hasPrefix("/") || text.hasPrefix("!") || text.contains("`") || matches(followUpMention, text) {
+                continue
+            }
+            if kept.contains(where: { $0.lowercased() == text.lowercased() }) { continue }
+            if kept.count == maxFollowUps { break }
+            kept.append(text)
+        }
+        return kept
     }
 
     private static func placeRules(_ card: inout [String: Any], raw: [String: Any]) {

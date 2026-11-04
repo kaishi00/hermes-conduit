@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "about": "Shared examples for card-schema.json: normalize_cards(input) must equal output, in the plugin (tests/test_cards.py) and in Conduit (RichCardSchemaTests). Regenerate only when the schema changes, and copy both files to Conduit together.",
   "cases": [
     {
@@ -518,7 +518,7 @@
       ]
     },
     {
-      "name": "At most four cards and ten places",
+      "name": "At most twelve cards and ten places",
       "input": [
         {
           "type": "map",
@@ -565,44 +565,532 @@
           }
         },
         {
-          "type": "place",
+          "type": "map",
           "places": [
             {
-              "name": "C0"
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
             }
-          ]
+          ],
+          "route": {
+            "to": 3
+          }
         },
         {
-          "type": "place",
+          "type": "map",
           "places": [
             {
-              "name": "C1"
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
             }
-          ]
+          ],
+          "route": {
+            "to": 3
+          }
         },
         {
-          "type": "place",
+          "type": "map",
           "places": [
             {
-              "name": "C2"
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
             }
-          ]
+          ],
+          "route": {
+            "to": 3
+          }
         },
         {
-          "type": "place",
+          "type": "map",
           "places": [
             {
-              "name": "C3"
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
             }
-          ]
+          ],
+          "route": {
+            "to": 3
+          }
         },
         {
-          "type": "place",
+          "type": "map",
           "places": [
             {
-              "name": "C4"
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
             }
-          ]
+          ],
+          "route": {
+            "to": 3
+          }
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
+            }
+          ],
+          "route": {
+            "to": 3
+          }
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
+            }
+          ],
+          "route": {
+            "to": 3
+          }
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
+            }
+          ],
+          "route": {
+            "to": 3
+          }
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
+            }
+          ],
+          "route": {
+            "to": 3
+          }
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
+            }
+          ],
+          "route": {
+            "to": 3
+          }
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
+            }
+          ],
+          "route": {
+            "to": 3
+          }
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
+            }
+          ],
+          "route": {
+            "to": 3
+          }
         }
       ],
       "output": [
@@ -642,26 +1130,387 @@
           ]
         },
         {
-          "type": "place",
+          "type": "map",
           "places": [
             {
-              "name": "C0"
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
             }
           ]
         },
         {
-          "type": "place",
+          "type": "map",
           "places": [
             {
-              "name": "C1"
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
             }
           ]
         },
         {
-          "type": "place",
+          "type": "map",
           "places": [
             {
-              "name": "C2"
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
             }
           ]
         }
@@ -2016,6 +2865,439 @@
               "name": "Cy"
             }
           ]
+        }
+      ]
+    },
+    {
+      "name": "A table's numbers, blanks and nulls become text in their places, and a row that doesn't fit is dropped",
+      "input": [
+        {
+          "type": "table",
+          "title": "Top companies",
+          "source": {
+            "name": "Yahoo Finance"
+          },
+          "table": {
+            "columns": [
+              "Company",
+              "Cap ($T)",
+              "Change",
+              4
+            ],
+            "rows": [
+              [
+                "Apple",
+                3.1,
+                "+1.2%",
+                1
+              ],
+              [
+                "Nvidia",
+                2.95,
+                -0.5,
+                null
+              ],
+              [
+                "Microsoft",
+                "",
+                "  ",
+                true
+              ],
+              [
+                "Alphabet",
+                2
+              ],
+              [
+                " Meta\n",
+                1.5,
+                0.25,
+                -7
+              ]
+            ]
+          },
+          "places": [
+            {
+              "name": "x"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "table",
+          "title": "Top companies",
+          "source": {
+            "name": "Yahoo Finance"
+          },
+          "table": {
+            "columns": [
+              "Company",
+              "Cap ($T)",
+              "Change",
+              "4"
+            ],
+            "rows": [
+              [
+                "Apple",
+                "3.1",
+                "+1.2%",
+                "1"
+              ],
+              [
+                "Nvidia",
+                "2.95",
+                "-0.5",
+                "–"
+              ],
+              [
+                "Microsoft",
+                "–",
+                "–",
+                "–"
+              ],
+              [
+                "Meta",
+                "1.5",
+                "0.25",
+                "-7"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "A table with no row that fits is dropped",
+      "input": [
+        {
+          "type": "table",
+          "table": {
+            "columns": [
+              "A",
+              "B"
+            ],
+            "rows": [
+              [
+                "1"
+              ],
+              [
+                "1",
+                "2",
+                "3"
+              ]
+            ]
+          }
+        },
+        {
+          "type": "table",
+          "table": {
+            "columns": [],
+            "rows": [
+              [
+                "1"
+              ]
+            ]
+          }
+        }
+      ],
+      "output": []
+    },
+    {
+      "name": "A timeline keeps days with stops and stops with text",
+      "input": [
+        {
+          "type": "timeline",
+          "title": "Yosemite in May",
+          "timeline": [
+            {
+              "label": "Day 1",
+              "title": "The Valley",
+              "stops": [
+                {
+                  "time": "09:00",
+                  "text": "Mist Trail to Vernal Fall",
+                  "place": "Vernal Fall, Yosemite",
+                  "note": "Start early"
+                },
+                {
+                  "text": ""
+                },
+                {
+                  "time": "Evening",
+                  "text": "Dinner at the Ahwahnee"
+                }
+              ]
+            },
+            {
+              "label": "Day 2",
+              "stops": []
+            },
+            {
+              "title": "No label",
+              "stops": [
+                {
+                  "text": "x"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "timeline",
+          "title": "Yosemite in May",
+          "timeline": [
+            {
+              "label": "Day 1",
+              "title": "The Valley",
+              "stops": [
+                {
+                  "time": "09:00",
+                  "text": "Mist Trail to Vernal Fall",
+                  "place": "Vernal Fall, Yosemite",
+                  "note": "Start early"
+                },
+                {
+                  "time": "Evening",
+                  "text": "Dinner at the Ahwahnee"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A checklist keeps one item per text, whatever its case",
+      "input": [
+        {
+          "type": "checklist",
+          "title": "Iceland in June",
+          "live": "packing",
+          "checklist": [
+            {
+              "text": "Rain jacket",
+              "group": "Clothes"
+            },
+            {
+              "text": "rain jacket",
+              "group": "Gear"
+            },
+            {
+              "text": "Swimsuit",
+              "group": "Clothes"
+            },
+            {
+              "text": "Passport"
+            },
+            {
+              "group": "Gear"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "checklist",
+          "title": "Iceland in June",
+          "live": "packing",
+          "checklist": [
+            {
+              "text": "Rain jacket",
+              "group": "Clothes"
+            },
+            {
+              "text": "Swimsuit",
+              "group": "Clothes"
+            },
+            {
+              "text": "Passport"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A list keeps https photos and its ranking",
+      "input": [
+        {
+          "type": "list",
+          "ranked": true,
+          "title": "Biggest companies",
+          "list": [
+            {
+              "title": "Apple",
+              "detail": "Phones and services",
+              "value": "$3.1T",
+              "url": "https://apple.com",
+              "photo": {
+                "url": "https://img.test/a.jpg",
+                "source": "Wikimedia"
+              }
+            },
+            {
+              "title": "Nvidia",
+              "value": "$2.9T",
+              "photo": {
+                "url": "http://img.test/n.jpg",
+                "source": "Wikimedia"
+              }
+            },
+            {
+              "title": "Microsoft",
+              "photo": {
+                "url": "https://img.test/m.jpg"
+              }
+            },
+            {
+              "detail": "no title"
+            }
+          ]
+        },
+        {
+          "type": "list",
+          "ranked": "yes",
+          "list": [
+            {
+              "title": "Only"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "list",
+          "title": "Biggest companies",
+          "list": [
+            {
+              "title": "Apple",
+              "detail": "Phones and services",
+              "value": "$3.1T",
+              "url": "https://apple.com",
+              "photo": {
+                "url": "https://img.test/a.jpg",
+                "source": "Wikimedia"
+              }
+            },
+            {
+              "title": "Nvidia",
+              "value": "$2.9T"
+            },
+            {
+              "title": "Microsoft"
+            }
+          ],
+          "ranked": true
+        },
+        {
+          "type": "list",
+          "list": [
+            {
+              "title": "Only"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A progress card keeps goals above 0",
+      "input": [
+        {
+          "type": "progress",
+          "title": "Goals",
+          "progress": [
+            {
+              "label": "Savings",
+              "value": 1250,
+              "goal": 5000,
+              "unit": "USD"
+            },
+            {
+              "label": "Pages",
+              "value": 12,
+              "goal": 0
+            },
+            {
+              "label": "Runs",
+              "value": -1,
+              "goal": 10
+            },
+            {
+              "label": "Over",
+              "value": 12,
+              "goal": 10
+            }
+          ]
+        },
+        {
+          "type": "progress",
+          "progress": [
+            {
+              "label": "None",
+              "value": 1,
+              "goal": 0
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "progress",
+          "title": "Goals",
+          "progress": [
+            {
+              "label": "Savings",
+              "value": 1250,
+              "goal": 5000,
+              "unit": "USD"
+            },
+            {
+              "label": "Over",
+              "value": 12,
+              "goal": 10
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A callout's tone matches without regard to case",
+      "input": [
+        {
+          "type": "callout",
+          "callout": {
+            "text": "Book Half Dome permits months ahead.",
+            "tone": "WARNING"
+          }
+        },
+        {
+          "type": "callout",
+          "callout": {
+            "text": "No tone",
+            "tone": "loud"
+          }
+        },
+        {
+          "type": "callout",
+          "callout": {
+            "tone": "tip"
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "callout",
+          "callout": {
+            "text": "Book Half Dome permits months ahead.",
+            "tone": "warning"
+          }
+        },
+        {
+          "type": "callout",
+          "callout": {
+            "text": "No tone"
+          }
         }
       ]
     }
