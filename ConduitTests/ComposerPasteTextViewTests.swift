@@ -438,6 +438,37 @@ final class ComposerPasteTextViewTests: XCTestCase {
         }
     }
 
+    // Issue 1689, build 250: a file dropped on the field attached, but the
+    // chat's "Drop to attach" outline stayed up, since the chat never
+    // heard the drag end. The field says when a drag that reached it ends.
+    func testAFieldSaysWhenADragThatReachedItEnds() {
+        let ended = expectation(forNotification: .attachmentDragEnded, object: nil)
+        FieldDropHandler().dragEnded()
+        wait(for: [ended], timeout: 1.0)
+    }
+
+    // The chat's or room's own drop hands on files and turns down words,
+    // links and a locked composer.
+    func testTheChatsDropTakesFilesOnlyWhileTheComposerIsOpen() {
+        let file = NSItemProvider()
+        file.suggestedName = "report.pdf"
+        file.registerDataRepresentation(forTypeIdentifier: UTType.pdf.identifier, visibility: .all) { completion in
+            completion(Data("%PDF".utf8), nil)
+            return nil
+        }
+        let words = NSItemProvider(object: NSString(string: "dragged words"))
+        var dropped: [NSItemProvider] = []
+
+        XCTAssertFalse(AttachmentDrop.take([words], isEnabled: true) { dropped = $0 })
+        XCTAssertTrue(AttachmentDrop.take([file, words], isEnabled: true) { dropped = $0 })
+        XCTAssertEqual(dropped.count, 1)
+        XCTAssertTrue(dropped.first === file)
+
+        dropped = []
+        XCTAssertFalse(AttachmentDrop.take([file], isEnabled: false) { dropped = $0 })
+        XCTAssertTrue(dropped.isEmpty)
+    }
+
     func testAFieldTakesFilesOnlyWhenItStagesThemAndWordsWhenEditable() {
         let jpeg = [UTType.jpeg.identifier]
         let words = [UTType.utf8PlainText.identifier]

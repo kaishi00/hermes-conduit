@@ -115,6 +115,17 @@ enum AttachmentDrop {
         )
     }
 
+    /// A drop on a chat or room: hands its files to `onDrop` and says
+    /// whether it was taken. Words and links, or a locked composer, turn
+    /// it down.
+    static func take(_ providers: [NSItemProvider], isEnabled: Bool, onDrop: ([NSItemProvider]) -> Void) -> Bool {
+        guard isEnabled else { return false }
+        let found = files(in: providers)
+        guard !found.isEmpty else { return false }
+        onDrop(found)
+        return true
+    }
+
     /// Copies one dropped item into the staging folder under its own name.
     /// The system's copy is only readable inside the load callback, so the
     /// copy happens there.
@@ -167,6 +178,13 @@ struct AttachmentDropRequest: Equatable {
     }
 }
 
+extension Notification.Name {
+    /// A drag that reached a composer field has ended, dropped or not.
+    /// The drop target around the field clears its outline on it: a drag
+    /// that ends on the field never tells the target it left (issue 1689).
+    static let attachmentDragEnded = Notification.Name("ConduitAttachmentDragEnded")
+}
+
 /// A chat or room that takes dropped files: the whole screen is the
 /// target, outlined while something is dragged over it.
 struct AttachmentDropTarget: ViewModifier {
@@ -177,12 +195,18 @@ struct AttachmentDropTarget: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            // SwiftUI raises and lowers the outline as the drag comes and
+            // goes, and lowers it when a drag over the chat is called off.
+            // But a drag that moves onto the composer field and is dropped
+            // there never reaches this target again, so the outline stayed
+            // up until a restart (issue 1689). So the drop here and the
+            // field's drag ending lower it too.
             .onDrop(of: [.item], isTargeted: $isTargeted) { providers in
-                guard isEnabled else { return false }
-                let files = AttachmentDrop.files(in: providers)
-                guard !files.isEmpty else { return false }
-                onDrop(files)
-                return true
+                isTargeted = false
+                return AttachmentDrop.take(providers, isEnabled: isEnabled, onDrop: onDrop)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .attachmentDragEnded)) { _ in
+                isTargeted = false
             }
             .overlay {
                 if isTargeted && isEnabled {
