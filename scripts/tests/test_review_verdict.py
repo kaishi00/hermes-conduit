@@ -95,7 +95,7 @@ class CommentFilterTests(unittest.TestCase):
         mine = comment("APPROVE")
         others = [comment("REQUEST_CHANGES", run_id="40"),
                   comment("REQUEST_CHANGES", run_id="411"),
-                  comment("REQUEST_CHANGES", model="commandcode/deepseek/deepseek-v4.1-flash"),
+                  comment("REQUEST_CHANGES", model="go-custom/deepseek-flash"),
                   comment("REQUEST_CHANGES", created="2026-11-03T22:59:59Z"),
                   comment("REQUEST_CHANGES", login="someone")]
         self.assertEqual(self.pick(others + [mine]), [json.dumps(mine["body"])])

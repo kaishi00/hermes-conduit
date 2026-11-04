@@ -1,16 +1,15 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
-    "commandcode": {
+    "go-custom": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "Command Code",
+      "name": "OpenCode Go (Custom)",
       "options": {
-        "baseURL": "https://api.commandcode.ai/provider/v1",
-        "apiKey": "{env:COMMANDCODE_API_KEY}"
+        "baseURL": "https://opencode.ai/zen/go/v1",
+        "apiKey": "{env:OPENCODE_GO_API_KEY}"
       },
-      "whitelist": ["deepseek/deepseek-v4.1-flash"],
       "models": {
-        "deepseek/deepseek-v4.1-flash": {
+        "deepseek-flash": {
           "name": "DeepSeek V4.1 Flash",
           "interleaved": {
             "field": "reasoning_content"
