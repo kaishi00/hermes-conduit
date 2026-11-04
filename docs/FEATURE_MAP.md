@@ -422,7 +422,7 @@ Conduit sends" preview, docs/VOICE_SETTINGS.md, the notifier README
 **Open gaps**
 - An older plugin still reports `greeting_applied: true` for a greeting or a call from Hermes, so a GPT-Live call there waits about 4 seconds for the phone's second ask; the Watch has no second ask and stays silent until the user speaks. Updating the plugin fixes both.
 
-**Checked:** 2026-11-04, #PRNUM (added: GPT-Live's opening is Conduit's turn everywhere, notifier #NPRNUM).
+**Checked:** 2026-11-04, #1769 (added: GPT-Live's opening is Conduit's turn everywhere, notifier #548).
 
 ## Switching voice mode in a call
 
