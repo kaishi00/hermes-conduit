@@ -177,6 +177,21 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertEqual(state.streamingText, "In the switcher")
     }
 
+    func testInactiveHoldsLiveReasoningUntilActiveOffAMac() async throws {
+        try XCTSkipIf(ProcessInfo.processInfo.isiOSAppOnMac, "a Mac keeps streaming while inactive")
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        feedReasoning(["Step one."], sessionId: "stored-a", state: state)
+
+        state.handleScenePhase(.inactive)
+        feedReasoning([" Step two."], sessionId: "stored-a", state: state)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(liveReasoningContent(on: state), "Step one.")
+
+        state.handleScenePhase(.active)
+        XCTAssertEqual(liveReasoningContent(on: state), "Step one. Step two.")
+    }
+
     func testBackgroundHoldsLiveReasoningUntilActive() async throws {
         let state = makeAppState()
         installActiveSession(state, id: "stored-a")
