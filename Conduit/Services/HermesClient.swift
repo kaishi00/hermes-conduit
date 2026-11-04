@@ -2943,21 +2943,29 @@ final class HermesClient: ObservableObject {
     /// was ever sent in it (its first message writes the row), so it is
     /// idle, not an old gateway that can't say (an App Store review,
     /// 2026-11-02, and Eric's, 2026-11-04).
-    static func resumeLiveness(_ object: [String: AnyCodable]) -> [String: AnyCodable] {
+    nonisolated static func resumeLiveness(_ object: [String: AnyCodable]) -> [String: AnyCodable] {
         var liveness: [String: AnyCodable] = [:]
         for key in ["running", "status"] {
             if let value = object[key] { liveness[key] = value }
         }
         let info = object["info"]?.objectValue
-        // Only when nothing else says: `info.running`, or a status other
-        // than idle, still speaks for itself.
-        let status = (liveness["status"] ?? info?["status"])?.stringValue
-        if liveness["running"] == nil, info?["running"] == nil, info?["lazy"]?.boolValue == true,
-           status == nil || status == "idle" {
+        // Only when nothing else says: `running` in `info`, or a status
+        // other than idle, still speaks for itself. A JSON null says nothing.
+        let status = object["status"]?.stringValue ?? info?["status"]?.stringValue
+        if object["running"]?.boolValue == nil, info?["running"]?.boolValue == nil,
+           info?["lazy"]?.boolValue == true, status == nil || status == "idle" {
             liveness["running"] = .bool(false)
-            if liveness["status"] == nil { liveness["status"] = .string("idle") }
+            if object["status"]?.stringValue == nil { liveness["status"] = .string("idle") }
         }
         return liveness
+    }
+
+    /// The fields a resume's runtime snapshot reads: `info`, with the
+    /// resume's own liveness fields over it.
+    nonisolated static func resumeSnapshotFields(_ object: [String: AnyCodable]) -> [String: AnyCodable] {
+        var fields = object["info"]?.objectValue ?? [:]
+        fields.merge(resumeLiveness(object)) { _, top in top }
+        return fields
     }
 
     private func resumeResult(from object: [String: AnyCodable], sessionId: String) -> SessionResumeResult {
@@ -2971,10 +2979,7 @@ final class HermesClient: ObservableObject {
         let messages = MessageNormalizer.normalizeMessages(
             object["messages"]?.arrayValue ?? []
         )
-        var snapshotObject = object["info"]?.objectValue ?? [:]
-        // The resume response owns the liveness fields. Keep `info` for the
-        // rest of the runtime metadata, but let top-level values win.
-        snapshotObject.merge(Self.resumeLiveness(object)) { _, top in top }
+        var snapshotObject = Self.resumeSnapshotFields(object)
         // Pending decisions and the plan ride the resume response top level.
         // Hoist them so the snapshot parser sees the same contract as
         // session.info.

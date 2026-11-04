@@ -19,7 +19,13 @@ final class TurnStateTests: XCTestCase {
         let liveness = HermesClient.resumeLiveness(lazy)
         XCTAssertEqual(liveness["running"], .bool(false))
         XCTAssertEqual(liveness["status"], .string("idle"))
-        XCTAssertEqual(TurnState.fromGatewayRunning(SessionRuntimeSnapshot(object: liveness).running), .idle)
+        XCTAssertEqual(TurnState.fromGatewayRunning(SessionRuntimeSnapshot(object: HermesClient.resumeSnapshotFields(lazy)).running), .idle)
+        XCTAssertEqual(SessionRuntimeSnapshot(object: HermesClient.resumeSnapshotFields(lazy)).model, "glm", "info's other fields stay")
+        // A JSON null says nothing either way.
+        let nulls: [String: AnyCodable] = ["running": .null, "status": .null, "info": .object(["lazy": .bool(true)])]
+        XCTAssertEqual(SessionRuntimeSnapshot(object: HermesClient.resumeSnapshotFields(nulls)).running, false)
+        let nullOverBusy: [String: AnyCodable] = ["status": .null, "info": .object(["lazy": .bool(true), "status": .string("working")])]
+        XCTAssertNil(SessionRuntimeSnapshot(object: HermesClient.resumeSnapshotFields(nullOverBusy)).running)
     }
 
     func testAResumeThatSaysItRunsKeepsItsWordAndAnOldOneStillCantSay() {
@@ -35,6 +41,7 @@ final class TurnStateTests: XCTestCase {
         // isn't overruled.
         let saysInInfo: [String: AnyCodable] = ["info": .object(["lazy": .bool(true), "running": .bool(true)])]
         XCTAssertNil(HermesClient.resumeLiveness(saysInInfo)["running"])
+        XCTAssertEqual(SessionRuntimeSnapshot(object: HermesClient.resumeSnapshotFields(saysInInfo)).running, true)
         let busy: [String: AnyCodable] = ["status": .string("streaming"), "info": .object(["lazy": .bool(true)])]
         XCTAssertNil(HermesClient.resumeLiveness(busy)["running"])
     }
