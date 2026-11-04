@@ -27227,6 +27227,10 @@ final class AppState: ObservableObject {
                 forgetPulseHomeIfGone()
                 sharePulseQuiet()
             }
+            // An open room's boards, once the plugin says it keeps them.
+            if oldValue.reports(RoomBoard.capability) != notifierPlugin.reports(RoomBoard.capability) {
+                refreshActiveRoomBoards()
+            }
         }
     }
     /// The plugin on its repository's main branch, once read. A reset for

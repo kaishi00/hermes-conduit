@@ -419,30 +419,34 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         await appState.openGroupRoom(room)
         await appState.roomBoardsTask?.value
         XCTAssertTrue(box.reads.isEmpty, "A plugin without the route isn't asked")
-        appState.closeGroupRoom()
 
         appState.setNotifierPluginStateForTesting(.reported(version: "0.129.0", capabilities: [RoomBoard.capability]))
-        await appState.openGroupRoom(room)
         await appState.roomBoardsTask?.value
-        XCTAssertEqual(box.reads.count, 1, "Read when the room opens")
+        XCTAssertEqual(box.reads.count, 1, "Read once the plugin says it keeps them, the room still open")
         XCTAssertTrue(box.reads.first?.contains("room_id=room-1") == true)
         XCTAssertEqual(appState.activeRoomPlacedBoards["srv-2"]?.count, 1, "Under the agent's message")
         appState.closeGroupRoom()
         XCTAssertTrue(appState.activeRoomBoards.isEmpty, "Gone once the room closes")
 
         // Reopened: the kept events show (read once), then the tail lands.
+        await appState.openGroupRoom(room)
+        await appState.roomBoardsTask?.value
+        XCTAssertEqual(box.reads.count, 2, "Read when the room opens")
+        XCTAssertEqual(appState.activeRoomPlacedBoards["srv-2"]?.count, 1)
+        appState.closeGroupRoom()
+
         box.events.append(message(3, fromMember: false))
         await appState.openGroupRoom(room)
         await appState.roomBoardsTask?.value
         XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1, 2, 3])
-        XCTAssertEqual(box.reads.count, 2, "The user's message doesn't read them again")
+        XCTAssertEqual(box.reads.count, 3, "The user's message doesn't read them again")
         appState.closeGroupRoom()
 
         box.events.append(message(4, fromMember: true))
         await appState.openGroupRoom(room)
         await appState.roomBoardsTask?.value
         XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1, 2, 3, 4])
-        XCTAssertGreaterThan(box.reads.count, 2, "Read again when the agent's message lands")
+        XCTAssertGreaterThan(box.reads.count, 3, "Read again when the agent's message lands")
         appState.closeGroupRoom()
     }
 

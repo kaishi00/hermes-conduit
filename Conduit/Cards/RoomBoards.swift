@@ -78,7 +78,7 @@ struct RoomBoardsView: View {
                     // A board this Conduit can't fully draw: its text.
                     RichBoardMarkdown(markdown: markdown)
                 } else {
-                    RichCardsView(cards: board.cards, tabs: board.tabs && board.cards.count > 1)
+                    RichCardsView(cards: board.cards, tabs: board.tabs)
                 }
             }
         }
