@@ -3763,6 +3763,78 @@ extension SessionPresentationCacheTests {
         XCTAssertEqual(restoredTimestamp("Hello, all done"), "2024-01-01T10:00:05Z", "The streamed row's new text and time")
     }
 
+    /// A saved row takes its kept presentation from the first cached row
+    /// that matches it by id or by content, whichever comes first: here
+    /// the content match, ahead of the row with its id.
+    func testASavedRowKeepsTheEarliestMatchingRowsPresentation() throws {
+        let suiteName = "conduit.tests.presentation-first-match-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let cache = SessionPresentationCache(defaults: defaults)
+        cache.save(
+            [
+                ChatMessage(id: "old", role: .assistant, content: "Same words", timestamp: "2024-01-01T10:00:00Z"),
+                ChatMessage(id: "new", role: .assistant, content: "Other words", timestamp: "2024-01-01T10:00:09Z")
+            ],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        cache.save(
+            [ChatMessage(id: "new", role: .assistant, content: "Same words", timestamp: "")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+
+        let restored = SessionPresentationCache(defaults: defaults).merge(
+            [ChatMessage(id: "new", role: .assistant, content: "Same words", timestamp: "")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        XCTAssertEqual(restored.map(\.timestamp), ["2024-01-01T10:00:00Z"])
+    }
+
+    /// The chats are written in key order, in both stores the move out of
+    /// UserDefaults compares byte for byte, so the same chats always write
+    /// the same bytes, whatever order they were saved in.
+    func testChatsAreWrittenInKeyOrder() throws {
+        let suiteName = "conduit.tests.presentation-key-order-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let cache = SessionPresentationCache(defaults: defaults)
+        let chats = (10...21).map { "chat-\($0)" }
+        for sessionID in chats.reversed() {
+            cache.save(
+                [ChatMessage(id: "row-\(sessionID)", role: .user, content: sessionID, timestamp: "2024-01-01T10:00:00Z")],
+                profile: "default",
+                sessionIDs: [sessionID]
+            )
+        }
+        let stored = String(decoding: try XCTUnwrap(defaults.data(forKey: "conduit.sessionPresentation.v1")), as: UTF8.self)
+        let positions = try chats.map { sessionID in
+            try XCTUnwrap(stored.range(of: "\"default|\(sessionID)\":")?.lowerBound, sessionID)
+        }
+        XCTAssertEqual(positions, positions.sorted(), "Chats in key order")
+
+        for sessionID in chats.reversed() {
+            cache.recordPendingToolStart(
+                ChatMessage(
+                    id: "tool-\(sessionID)", role: .tool, content: "", timestamp: "now",
+                    tool: ToolActivity(id: "call-\(sessionID)", name: "terminal", input: "pwd", output: nil, status: .running)
+                ),
+                profile: "default",
+                sessionIDs: [sessionID]
+            )
+        }
+        let pendingTools = String(
+            decoding: try XCTUnwrap(defaults.data(forKey: "conduit.sessionPresentation.pendingTools.v1")),
+            as: UTF8.self
+        )
+        let pendingPositions = try chats.map { sessionID in
+            try XCTUnwrap(pendingTools.range(of: "\"default|\(sessionID)\":")?.lowerBound, sessionID)
+        }
+        XCTAssertEqual(pendingPositions, pendingPositions.sorted(), "Pending tools in key order")
+    }
+
     /// The suspend path must not block the main thread on the write queue
     /// (a UserDefaults write there can wait on SwiftUI's lock, which the
     /// main thread holds during a view update: a watchdog-killed deadlock).

@@ -174,7 +174,9 @@ final class SessionPresentationCache {
         var unconfirmedPendingDecisionAt: Date?
     }
 
-    /// Encodes the sessions store as `JSONEncoder` would, reusing each row's
+    /// Encodes the sessions store as `JSONEncoder` would, but with the chats
+    /// sorted by key (`String.<`, so the bytes are deterministic; not
+    /// necessarily `.sortedKeys`' order for non-ASCII keys), reusing each row's
     /// bytes from the last encode when the row is unchanged. A streaming
     /// flush changes a row or two of one chat, but encoding the whole store
     /// (up to `maxSessions` chats of `maxMessagesPerSession` rows) again made
@@ -190,7 +192,10 @@ final class SessionPresentationCache {
             var keptRows: [String: [String: (record: CachedMessage, data: Data)]] = [:]
             var output = Data("{".utf8)
             var firstSession = true
-            for (key, session) in store {
+            // In key order, so the same chats always write the same bytes:
+            // the move out of UserDefaults recognizes one cut short by
+            // comparing stores byte for byte (`storage(movingFrom:to:)`).
+            for (key, session) in store.sorted(by: { $0.key < $1.key }) {
                 // The session without its rows, then its rows spliced in
                 // where the empty list is: every other field stays the
                 // encoder's own, so one added to CachedSession is kept.
@@ -199,6 +204,9 @@ final class SessionPresentationCache {
                 guard let keyData = try? encoder.encode(key),
                       let headerData = try? encoder.encode(header),
                       let emptyRows = headerData.range(of: Data(#""messages":[]"#.utf8)) else {
+                    // Only a change to CachedSession's encoding gets here,
+                    // and it would stop every presentation write.
+                    assertionFailure("A cached session no longer encodes an empty messages list")
                     rows = [:]
                     return nil
                 }
@@ -1484,12 +1492,22 @@ final class SessionPresentationCache {
             memoryPendingToolsData = nil
             return
         }
-        guard let data = try? JSONEncoder().encode(store) else {
+        guard let data = try? Self.encodePendingTools(store) else {
             memoryPendingTools = nil
             return
         }
         storage.storeData(data, forKey: key)
         memoryPendingToolsData = data
+    }
+
+    /// The pending-tools store with its keys sorted, so the same content
+    /// always writes the same bytes, as the sessions store does (see
+    /// `SessionsStoreEncoder`): the move out of UserDefaults compares
+    /// stores byte for byte. The tombstones are an array, already stable.
+    private static func encodePendingTools(_ store: [String: [CachedMessage]]) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return try encoder.encode(store)
     }
 
     private enum StoreKind {
@@ -1545,7 +1563,7 @@ final class SessionPresentationCache {
         case .pendingTools:
             key = pendingToolsStorageKey
             let snapshot: [String: [CachedMessage]]? = memoryLock.withLock { memoryPendingTools }
-            encoded = snapshot.map { $0.isEmpty ? nil : (try? JSONEncoder().encode($0)) }
+            encoded = snapshot.map { $0.isEmpty ? nil : (try? Self.encodePendingTools($0)) }
             if let snapshot, !snapshot.isEmpty, encoded == .some(nil) { return }
         }
         guard let encoded, memoryLock.withLock({ isNewest() }) else { return }
