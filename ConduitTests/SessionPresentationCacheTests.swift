@@ -3813,6 +3813,54 @@ extension SessionPresentationCacheTests {
             ""
         )
     }
+
+    /// A save re-encodes only the rows that changed (#1730); the store it
+    /// writes must still read back whole, for every chat, as a fresh
+    /// instance reads it at launch.
+    func testStreamingSavesWriteAStoreAnotherInstanceReadsWhole() throws {
+        let suiteName = "conduit.tests.presentation-rows-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let writer = SessionPresentationCache(defaults: defaults)
+        let quietChat = #"quiet "chat"/1"#
+        writer.save(
+            [ChatMessage(id: "q-1", role: .user, content: "Hi", timestamp: "2024-01-01T09:00:00Z")],
+            profile: "default",
+            sessionIDs: [quietChat]
+        )
+        var streamed = [
+            ChatMessage(id: "s-1", role: .user, content: "Tell me", timestamp: "2024-01-01T10:00:00Z"),
+            ChatMessage(id: "s-2", role: .assistant, content: "Once", timestamp: "2024-01-01T10:00:01Z")
+        ]
+        for word in ["upon", "a", "time"] {
+            streamed[1].content += " " + word
+            writer.save(streamed, profile: "default", sessionIDs: ["streaming"])
+        }
+        streamed.append(ChatMessage(id: "s-3", role: .user, content: "More", timestamp: "2024-01-01T10:00:09Z"))
+        writer.save(streamed, profile: "default", sessionIDs: ["streaming"])
+
+        let stored = try XCTUnwrap(defaults.data(forKey: "conduit.sessionPresentation.v1"))
+        let sessions = try XCTUnwrap(JSONSerialization.jsonObject(with: stored) as? [String: [String: Any]])
+        XCTAssertEqual(Set(sessions.keys), ["default|" + quietChat, "default|streaming"])
+        XCTAssertEqual((sessions["default|streaming"]?["messages"] as? [Any])?.count, 3)
+
+        let reader = SessionPresentationCache(defaults: defaults)
+        let gatewayStream = streamed.map {
+            ChatMessage(id: $0.id, role: $0.role, content: $0.content, timestamp: "")
+        }
+        XCTAssertEqual(
+            reader.merge(gatewayStream, profile: "default", sessionIDs: ["streaming"]).map(\.timestamp),
+            ["2024-01-01T10:00:00Z", "2024-01-01T10:00:01Z", "2024-01-01T10:00:09Z"]
+        )
+        XCTAssertEqual(
+            reader.merge(
+                [ChatMessage(id: "q-1", role: .user, content: "Hi", timestamp: "")],
+                profile: "default",
+                sessionIDs: [quietChat]
+            ).map(\.timestamp),
+            ["2024-01-01T09:00:00Z"]
+        )
+    }
 }
 
 /// Test-scope clock whose value only moves when a test advances it. Gives

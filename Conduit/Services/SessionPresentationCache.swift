@@ -174,6 +174,67 @@ final class SessionPresentationCache {
         var unconfirmedPendingDecisionAt: Date?
     }
 
+    /// Encodes the sessions store as `JSONEncoder` would, reusing each row's
+    /// bytes from the last encode when the row is unchanged. A streaming
+    /// flush changes a row or two of one chat, but encoding the whole store
+    /// (up to `maxSessions` chats of `maxMessagesPerSession` rows) again made
+    /// each write cost the size of every cached chat (#1730). Used only
+    /// where the store is written: the write queue, or the main thread for a
+    /// synchronous cache, never both.
+    private final class SessionsStoreEncoder {
+        private let encoder = JSONEncoder()
+        /// Each row's bytes as last encoded, by store key and row id.
+        private var rows: [String: [String: (record: CachedMessage, data: Data)]] = [:]
+
+        func encode(_ store: [String: CachedSession]) -> Data? {
+            var keptRows: [String: [String: (record: CachedMessage, data: Data)]] = [:]
+            var output = Data("{".utf8)
+            var firstSession = true
+            for (key, session) in store {
+                // The session without its rows, then its rows spliced in
+                // where the empty list is: every other field stays the
+                // encoder's own, so one added to CachedSession is kept.
+                var header = session
+                header.messages = []
+                guard let keyData = try? encoder.encode(key),
+                      let headerData = try? encoder.encode(header),
+                      let emptyRows = headerData.range(of: Data(#""messages":[]"#.utf8)) else {
+                    rows = [:]
+                    return nil
+                }
+                let earlierRows = rows[key] ?? [:]
+                var sessionRows: [String: (record: CachedMessage, data: Data)] = [:]
+                var rowsData = Data(#""messages":["#.utf8)
+                for (index, record) in session.messages.enumerated() {
+                    let data: Data
+                    if let earlier = earlierRows[record.id], earlier.record == record {
+                        data = earlier.data
+                    } else if let encoded = try? encoder.encode(record) {
+                        data = encoded
+                    } else {
+                        rows = [:]
+                        return nil
+                    }
+                    sessionRows[record.id] = (record, data)
+                    if index > 0 { rowsData.append(UInt8(ascii: ",")) }
+                    rowsData.append(data)
+                }
+                rowsData.append(UInt8(ascii: "]"))
+                keptRows[key] = sessionRows
+                var sessionData = headerData
+                sessionData.replaceSubrange(emptyRows, with: rowsData)
+                if !firstSession { output.append(UInt8(ascii: ",")) }
+                firstSession = false
+                output.append(keyData)
+                output.append(UInt8(ascii: ":"))
+                output.append(sessionData)
+            }
+            output.append(UInt8(ascii: "}"))
+            rows = keptRows
+            return output
+        }
+    }
+
     /// A resume without explicit active-turn confirmation is inherently
     /// ambiguous for pending decisions. Keep an unconfirmed decision across a
     /// cold launch for a bounded grace period, then prefer a stale-card miss
@@ -207,6 +268,8 @@ final class SessionPresentationCache {
     /// except `prewarm()`, which decodes on a background queue outside the
     /// lock and installs its result under it.
     private let memoryLock = NSLock()
+    /// Encodes the sessions store for each write; see `SessionsStoreEncoder`.
+    private let sessionsEncoder = SessionsStoreEncoder()
     /// Removals the stores on disk may not reflect yet (asynchronous mode),
     /// each with the write ticket both stores must reach before it can be
     /// dropped; see `removingDurably`. Guarded by `memoryLock`; nil until
@@ -918,9 +981,13 @@ final class SessionPresentationCache {
         var store = load()
         // Masked input prompts are live-only: never written to disk.
         var savedRecords: [String: (message: ChatMessage, record: CachedMessage)] = [:]
-        let freshRecords = messages
-            .filter { $0.role != .inputPrompt }
-            .suffix(maxMessagesPerSession)
+        // Lazily, so a long chat is walked only as far back as the rows kept.
+        let keptMessages = Array(
+            messages.lazy
+                .filter { $0.role != .inputPrompt }
+                .suffix(maxMessagesPerSession)
+        )
+        let freshRecords = keptMessages
             .map { message -> CachedMessage in
                 // A row as it was last saved keeps its record.
                 let record: CachedMessage
@@ -1380,7 +1447,7 @@ final class SessionPresentationCache {
         memoryLock.lock()
         defer { memoryLock.unlock() }
         memoryStore = store
-        guard let data = try? JSONEncoder().encode(store) else {
+        guard let data = sessionsEncoder.encode(store) else {
             memoryStore = nil
             return
         }
@@ -1473,7 +1540,7 @@ final class SessionPresentationCache {
         case .sessions:
             key = storageKey
             let snapshot: [String: CachedSession]? = memoryLock.withLock { memoryStore }
-            encoded = snapshot.map { $0.isEmpty ? nil : (try? JSONEncoder().encode($0)) }
+            encoded = snapshot.map { $0.isEmpty ? nil : sessionsEncoder.encode($0) }
             if let snapshot, !snapshot.isEmpty, encoded == .some(nil) { return }
         case .pendingTools:
             key = pendingToolsStorageKey
@@ -1707,11 +1774,23 @@ final class SessionPresentationCache {
         from existing: [CachedMessage],
         preservePendingDecisionCards: Bool
     ) -> [CachedMessage] {
-        fresh.enumerated().map { position, record in
+        // The first existing row matching by id or by content, found through
+        // two indexes: a scan of `existing` for each fresh row made every
+        // streaming flush quadratic in the chat's length, on the main thread.
+        var firstIndexByID: [String: Int] = [:]
+        var firstIndexByContent: [RowContentKey: Int] = [:]
+        for (index, row) in existing.enumerated() {
+            if firstIndexByID[row.id] == nil { firstIndexByID[row.id] = index }
+            let content = RowContentKey(role: row.role, signature: row.signature)
+            if firstIndexByContent[content] == nil { firstIndexByContent[content] = index }
+        }
+        return fresh.enumerated().map { position, record in
             var merged = record
-            let exact = existing.first {
-                $0.id == record.id || ($0.role == record.role && $0.signature == record.signature)
-            }
+            let exactIndex = [
+                firstIndexByID[record.id],
+                firstIndexByContent[RowContentKey(role: record.role, signature: record.signature)]
+            ].compactMap { $0 }.min()
+            let exact = exactIndex.map { existing[$0] }
             let positional: CachedMessage? = existing.indices.contains(position) && existing[position].role == record.role
                 ? existing[position]
                 : nil
@@ -1744,6 +1823,11 @@ final class SessionPresentationCache {
             }
             return merged
         }
+    }
+
+    private struct RowContentKey: Hashable {
+        var role: MessageRole
+        var signature: String
     }
 
     private static func fingerprint(_ value: String) -> String {
