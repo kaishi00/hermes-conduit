@@ -103,7 +103,8 @@ struct PinnedReply: Codable, Equatable, Identifiable, Hashable {
     }
 
     /// The reply's text on one line, cut to `excerptLength`. Reads only as
-    /// much of a long reply as the excerpt needs.
+    /// much of a long reply as the excerpt needs, unless it holds the
+    /// plugin's board line, when the whole reply is read to leave it out.
     static func excerpt(of content: String) -> String {
         // The plugin's board line for Hermes Desktop is hidden here too,
         // unless it's all there is: the excerpt is also how a pin is found.
