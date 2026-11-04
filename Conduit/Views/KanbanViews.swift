@@ -982,7 +982,8 @@ struct KanbanView: View {
                 guard !Task.isCancelled else { break }
                 let before = store.board
                 await store.poll(includeArchived: includeArchived)
-                unchangedReads = store.board == before ? unchangedReads + 1 : 0
+                // A failed read keeps the base pace, so a recovery shows soon.
+                unchangedReads = store.errorMessage == nil && store.board == before ? unchangedReads + 1 : 0
             }
         }
     }

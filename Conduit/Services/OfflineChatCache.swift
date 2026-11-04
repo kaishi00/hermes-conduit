@@ -1467,15 +1467,20 @@ final class OfflineChatCacheStore {
     /// instead of reading and decoding its file on the main thread
     /// (issue 1725). Like the read-ahead, only while there is room, and the
     /// first copy to go.
-    func warmTranscript(_ sessionID: String, dashboardID: UUID, profile: String) {
-        guard let ioQueue else { return }
-        let url = transcriptFileURL(sessionID, dashboardID: dashboardID, profile: profile)
-        guard memoryLock.withLock({ fitsAheadLocked(url, bytes: 0) }) else { return }
+    /// `sessionIDs` are the ids the chat's row answers to, the one its copy
+    /// is most likely saved under first; the first one the index lists is
+    /// read.
+    func warmTranscript(_ sessionIDs: [String], dashboardID: UUID, profile: String) {
+        guard let ioQueue, !sessionIDs.isEmpty else { return }
+        // Already in memory under one of its ids, or no room: nothing to do,
+        // without a hop to the store's queue for every row that shows.
+        let urls = sessionIDs.map { transcriptFileURL($0, dashboardID: dashboardID, profile: profile) }
+        guard memoryLock.withLock({ urls.allSatisfy { fitsAheadLocked($0, bytes: 0) } }) else { return }
         ioQueue.async { [self] in
             guard memoryLock.withLock({ waitingRemovals == 0 }),
                   // Only a chat the scope's index lists has a copy to read.
-                  let entry = load(dashboardID: dashboardID, profile: profile)?
-                    .transcripts.first(where: { $0.sessionID == sessionID }),
+                  let transcripts = load(dashboardID: dashboardID, profile: profile)?.transcripts,
+                  let entry = sessionIDs.lazy.compactMap({ id in transcripts.first(where: { $0.sessionID == id }) }).first,
                   (entry.bytes ?? 0) <= Self.maxPrefetchedTranscriptBytes else { return }
             prefetchTranscript(entry, dashboardID: dashboardID, profile: profile)
         }

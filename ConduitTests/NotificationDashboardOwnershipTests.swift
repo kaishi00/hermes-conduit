@@ -711,7 +711,9 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertFalse(needsRead(target("durable-1", call: call)))
         XCTAssertTrue(needsRead(target("unseen", call: call)), "a call whose chat the list lacks reads it again")
         XCTAssertFalse(needsRead(target("durable-1", call: nil)), "a plain notification whose chat is listed opens at once (issue 1724)")
-        XCTAssertFalse(needsRead(target("runtime-1", call: nil)), "by any id its row answers to")
+        XCTAssertTrue(needsRead(target("runtime-1", call: nil)),
+                      "a runtime id alone can name another conversation now, so the list is read first")
+        XCTAssertFalse(needsRead(target("runtime-1", durable: "durable-1", call: nil)), "with its durable id on hand it opens at once")
         XCTAssertTrue(needsRead(target("unseen", call: nil)), "a chat the list lacks waits for the full read")
         XCTAssertTrue(needsRead(target("runtime-1", durable: "durable-new", call: call)),
                       "the route resolves to the payload's durable id, so a list without it is read again")

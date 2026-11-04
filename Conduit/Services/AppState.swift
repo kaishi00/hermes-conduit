@@ -2225,6 +2225,10 @@ final class AppState: ObservableObject {
     @Published var runtime = RuntimeState()
     @Published var activeAgents = 0
     @Published private(set) var delegateAgents: [DelegateAgentActivity] = []
+    /// When each delegate agent last sent an event. An event that changes
+    /// nothing its card shows renews this without publishing the cards, and
+    /// the roster check counts it as the card's latest news.
+    private var delegateAgentSeenAt: [String: Date] = [:]
     /// A card with an event this recent may belong to an agent the gateway
     /// roster hasn't registered yet, so the roster check leaves it alone.
     static let delegateAgentRosterGrace: TimeInterval = 30
@@ -6472,7 +6476,10 @@ final class AppState: ObservableObject {
         guard let dashboardID = activeDashboardID else { return }
         // Another profile's row in All opens in its own profile: its copy is
         // kept under that one.
-        offlineChatCache.warmTranscript(session.storedSessionId ?? session.id, dashboardID: dashboardID, profile: rowProfile(session))
+        // Its stored id first, where a copy is most often saved, then every
+        // other id the row answers to, as the open looks it up.
+        let ids = [session.storedSessionId].compactMap { $0 } + session.nestingIDs
+        offlineChatCache.warmTranscript(ids, dashboardID: dashboardID, profile: rowProfile(session))
     }
 
     /// A chat opened while connected shows its saved copy until its own
@@ -25258,9 +25265,10 @@ final class AppState: ObservableObject {
     /// 2-3 s on a long one (897 rows), seconds more over a remote dashboard,
     /// and the tap waited for it. A chat the list holds opens at once, and
     /// the list is read again after (Eric, 2026-11-04, issue 1724; answered
-    /// calls first did this, 2026-11-02). Runtime and alias ids are never
-    /// handed to another chat, so a row they match is the notification's
-    /// chat.
+    /// calls first did this, 2026-11-02). A notification with no durable id
+    /// opens at once only when its id is a row's stored id: a runtime id can
+    /// be handed to another conversation, so a row that matches it alone
+    /// may not be the notification's chat.
     /// A bot's workstream never needs it: Hermes hides it from the list, so
     /// the read can't find its row and only held the open up for seconds
     /// (Eric's build 248 test, a secondary bot's work link or card).
@@ -25273,8 +25281,18 @@ final class AppState: ObservableObject {
         // The route resolves to the payload's durable id first, so that id
         // must be on hand too, or the bot-chat check would miss its row.
         guard catalogListsSession(target.sessionId, in: catalog) else { return true }
-        if let durable = target.durableSessionID, !catalogListsSession(durable, in: catalog) { return true }
-        return false
+        guard let durable = target.durableSessionID else {
+            return !catalogListsStoredSession(target.sessionId, in: catalog)
+        }
+        return !catalogListsSession(durable, in: catalog)
+    }
+
+    /// Whether `sessionID` is a row's stored (durable) id.
+    nonisolated static func catalogListsStoredSession(_ sessionID: String, in catalog: [SessionSummary]) -> Bool {
+        guard let wanted = ChatScrollIdentityNormalization.sessionID(sessionID) else { return false }
+        return catalog.contains { row in
+            row.storedSessionId.map { ChatScrollIdentityNormalization.sessionID($0) == wanted } ?? false
+        }
     }
 
     /// Whether `sessionID` names a row of `catalog`: its id, stored id or
@@ -25579,6 +25597,7 @@ final class AppState: ObservableObject {
         // has since rotated its runtime id, and the read after the open
         // brings the row up to date (issue 1724).
         var readsListAfterOpen = false
+        var openedFromListOnHand = false
         defer {
             if readsListAfterOpen {
                 // Quiet: the chat opened, and a failed list read after it
@@ -25598,7 +25617,7 @@ final class AppState: ObservableObject {
             isWorkstream: isWorkstreamSession(target.sessionId)
         ) {
             traceStage = "session list (on hand)"
-            readsListAfterOpen = true
+            openedFromListOnHand = true
         } else {
             traceStage = "session list"
             guard await loadSessions(
@@ -25688,6 +25707,9 @@ final class AppState: ObservableObject {
             presentationMigrationSessionIDs: [requestedID]
         )
         let opened = outcome == .opened
+        // Only an open that landed reads the list after it: a failed or
+        // superseded one leaves it to the list's poll and whatever replaced it.
+        readsListAfterOpen = openedFromListOnHand && opened
         traceStage = "session open, \(outcome)"
         // Commit the payload's dual identity as positive evidence only once
         // the open actually succeeded — a failed resume (e.g. the durable
@@ -36284,6 +36306,7 @@ final class AppState: ObservableObject {
 
         case .delegateAgent(let sessionId, var activity):
             activity.sessionId = sessionId
+            delegateAgentSeenAt[activity.id] = activity.updatedAt
             var updated = delegateAgents
             if let index = updated.firstIndex(where: { $0.id == activity.id }) {
                 let card = updated[index].merged(with: activity)
@@ -36328,16 +36351,23 @@ final class AppState: ObservableObject {
         let sessionIDs = Set(delegateAgents.lazy
             .filter { $0.status == .running && $0.hasGatewayID && !$0.sessionId.isEmpty }
             .map(\.sessionId))
+        delegateAgentSeenAt = delegateAgentSeenAt.filter { id, _ in delegateAgents.contains { $0.id == id } }
         for sessionID in sessionIDs {
             guard let liveIDs = try? await client.liveSubagentIDs(sessionId: sessionID) else { continue }
+            // A card's latest news is its last event, published or not.
+            let seen = delegateAgents.map { agent -> DelegateAgentActivity in
+                var stamped = agent
+                if let at = delegateAgentSeenAt[agent.id], at > stamped.updatedAt { stamped.updatedAt = at }
+                return stamped
+            }
             let reconciled = DelegateAgentActivity.reconciled(
-                delegateAgents,
+                seen,
                 sessionId: sessionID,
                 liveIDs: liveIDs,
                 changedBefore: cutoff
             )
             // Unchanged cards leave the gateway's own agent count alone.
-            guard reconciled != delegateAgents else { continue }
+            guard reconciled != seen else { continue }
             delegateAgents = reconciled
             activeAgents = delegateAgents.filter { $0.status.isActive }.count
         }

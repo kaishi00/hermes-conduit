@@ -592,8 +592,9 @@ final class OfflineChatCacheTests: XCTestCase {
         let directory = writer.fileURL(dashboardID: dashboard, profile: "default").deletingLastPathComponent()
         let store = OfflineChatCacheStore(directory: directory, writesAsynchronously: true)
 
-        store.warmTranscript("a", dashboardID: dashboard, profile: "default")
-        store.warmTranscript("never-saved", dashboardID: dashboard, profile: "default")
+        // Warmed by an alias the row answers to, after an id with no copy.
+        store.warmTranscript(["runtime-a", "a"], dashboardID: dashboard, profile: "default")
+        store.warmTranscript(["never-saved"], dashboardID: dashboard, profile: "default")
         store.waitForPendingWrites()
 
         for id in ["a", "b"] {

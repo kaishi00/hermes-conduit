@@ -814,10 +814,13 @@ struct MarkdownStableBoundaryScanner {
     /// block opened with one cannot close on the other.
     private var mathClose: String?
     private var inDirective = false
-    /// Inside a run of table rows (lines with a `|`). A table has no
-    /// blank line in it, so a long one would otherwise take a hard cut
-    /// mid-table and leave the tail's rows without their header.
-    private var inTable = false
+    /// The open table's span in `constructIntervals`. A table has no blank
+    /// line in it, so a long one would otherwise take a hard cut mid-table
+    /// and leave the tail's rows without their header.
+    private var openTableIndex: Int?
+    /// Where the line before started, when it had a `|` and no table was
+    /// open: a table's header, if the line after it is a separator row.
+    private var previousPipeLineStart: Int?
 
     /// True when the scanner sits inside a fenced/math/directive region at
     /// the end of everything consumed — callers avoid promoting a prefix
@@ -926,9 +929,9 @@ struct MarkdownStableBoundaryScanner {
             noteTableRow(normalized.trimmingCharacters(in: .whitespaces), lineStartOffset: consumedOffset)
         }
         // The stream ended: a table still open ends with it.
-        if inTable, !constructIntervals.isEmpty {
-            constructIntervals[constructIntervals.count - 1].end = consumedOffset + line.utf8.count
-            inTable = false
+        if let index = openTableIndex {
+            constructIntervals[index].end = consumedOffset + line.utf8.count
+            openTableIndex = nil
         }
         updateStateForLine(
             normalized.trimmingCharacters(in: .whitespaces),
@@ -947,23 +950,30 @@ struct MarkdownStableBoundaryScanner {
         consumedOffset += line.utf8.count
     }
 
-    /// Opens a table span at its first row and closes it at the start of
-    /// the first line that isn't one, so a cut lands before or after a
-    /// table, never inside it. A row is any line with a `|`, as the parser
-    /// reads one (a table may leave out its outer pipes); prose with a `|`
-    /// only holds a cut off that line. Called only outside fences, math and
-    /// directives.
+    /// Opens a table span at its header once the separator row under it
+    /// confirms it, as the parser reads a table, and closes it at the start
+    /// of the first line without a `|`, so a cut lands before or after a
+    /// table, never inside it. A row is any line with a `|` (a table may
+    /// leave out its outer pipes); prose with a `|` and no separator under
+    /// it opens nothing. A fence opener is never a row, even with a `|` in
+    /// its info string. Called only outside fences, math and directives.
     private mutating func noteTableRow(_ trimmedLine: String, lineStartOffset: Int) {
-        let isRow = trimmedLine.contains("|")
-        if isRow, !inTable {
-            inTable = true
-            constructIntervals.append((start: lineStartOffset, end: nil))
-        } else if !isRow, inTable {
-            inTable = false
-            if !constructIntervals.isEmpty {
-                constructIntervals[constructIntervals.count - 1].end = lineStartOffset
-            }
+        let hasPipe = trimmedLine.contains("|") && MarkdownFence.opening(trimmedLine) == nil
+        if let index = openTableIndex {
+            guard !hasPipe else { return }
+            constructIntervals[index].end = lineStartOffset
+            openTableIndex = nil
+        } else if hasPipe, let headerStart = previousPipeLineStart, Self.isTableSeparator(trimmedLine) {
+            constructIntervals.append((start: headerStart, end: nil))
+            openTableIndex = constructIntervals.count - 1
         }
+        previousPipeLineStart = hasPipe && openTableIndex == nil ? lineStartOffset : nil
+    }
+
+    /// A table's separator row: dashes, colons, pipes and spaces only.
+    static func isTableSeparator(_ trimmedLine: String) -> Bool {
+        trimmedLine.contains("-") && trimmedLine.contains("|")
+            && trimmedLine.allSatisfy { "|:- \t".contains($0) }
     }
 
     private mutating func updateStateForLine(_ trimmedLine: String, lineStartOffset: Int, lineBytes: Int) {

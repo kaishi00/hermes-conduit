@@ -285,7 +285,10 @@ struct KanbanTaskDetailView: View {
                     guard !Task.isCancelled else { break }
                     let before = detail
                     await loadDetail()
-                    unchangedReads = detail == before ? unchangedReads + 1 : 0
+                    // Only a read that landed and found nothing new counts:
+                    // a failed one keeps the base pace, so a recovery shows soon.
+                    let landed = detail != nil && refreshErrorMessage == nil
+                    unchangedReads = landed && detail == before ? unchangedReads + 1 : 0
                 }
             }
             // V3D: a coalesced live-event batch that TOUCHES the displayed

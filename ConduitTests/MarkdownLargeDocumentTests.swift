@@ -1431,6 +1431,19 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(scanner.constructIntervals[0].end, text.utf8.count - "\nafter\n".utf8.count)
     }
 
+    /// Prose with a `|` and no separator row under it is no table, and a
+    /// fence opener with a `|` in its info string opens no table: the
+    /// fence's own span keeps its end.
+    func testPipesOutsideATableOpenNoSpan() {
+        var scanner = MarkdownStableBoundaryScanner()
+        _ = scanner.append("this | that\nand more | prose\n```a|b\ncode\n```\nafter\n")
+        XCTAssertEqual(scanner.constructIntervals.count, 1, "only the fence")
+        XCTAssertNotNil(scanner.constructIntervals[0].end)
+        XCTAssertTrue(MarkdownStableBoundaryScanner.isTableSeparator("| --- | :---: |"))
+        XCTAssertTrue(MarkdownStableBoundaryScanner.isTableSeparator("--- | ---"))
+        XCTAssertFalse(MarkdownStableBoundaryScanner.isTableSeparator("a | b"))
+    }
+
     /// A table still streaming when the reply ends is closed by `finish()`.
     func testATableOpenAtTheEndClosesOnFinish() {
         var scanner = MarkdownStableBoundaryScanner()
