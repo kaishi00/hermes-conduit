@@ -76,7 +76,7 @@ jobs:
             [{"reviewer": "Beam", "model": "go-custom/beam-free"},
              {"reviewer": "GLM-5.3-Flash", "model": "zai-custom/glm-5.3-flash"}]
           DOCS_REVIEWER: GLM-5.3-Flash
-          GATE_REVIEWER: GLM-5.3-Flash
+          GATE_REVIEWER: Beam
           CHANGE_ID_PY: |
             import collections, hashlib, sys
             out, md, index = [], False, ""
