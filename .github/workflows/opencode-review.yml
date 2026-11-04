@@ -26,6 +26,10 @@ jobs:
   # docs and config files (Markdown, text, JSON, YAML, TOML; not .github/,
   # opencode.json, or manifests that declare code or dependencies) to GLM-5.3-FlashX
   # alone. A manual run, or adding run-review to a fork's PR, always reviews.
+  # GLM-5.3-FlashX (GATE_REVIEWER) reviews first, in the review job; the other
+  # reviewers run in second-review only when its verdict isn't
+  # REQUEST_CHANGES, so they argue a PR isn't ready rather than repeat the
+  # blockers GLM already found.
   plan:
     name: plan
     # The reviewer is an agent holding the review secrets, and a PR's title,
@@ -51,7 +55,8 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      reviewers: ${{ steps.pick.outputs.reviewers }}
+      first: ${{ steps.pick.outputs.first }}
+      second: ${{ steps.pick.outputs.second }}
     steps:
       - name: Debounce (wait for rapid commits to settle)
         if: github.event_name == 'pull_request_target' && github.event.action != 'labeled'
@@ -66,9 +71,10 @@ jobs:
           EVENT_ACTION: ${{ github.event.action }}
           WORKFLOW_FILE: opencode-review.yml
           ALL_REVIEWERS: >-
-            [{"reviewer": "DeepSeek V4.1 Flash", "model": "deepseek-custom/deepseek-flash"},
+            [{"reviewer": "DeepSeek V4.1 Flash", "model": "commandcode/deepseek/deepseek-v4.1-flash"},
              {"reviewer": "GLM-5.3-FlashX", "model": "zai-custom/glm-5.3-flashx"}]
           DOCS_REVIEWER: GLM-5.3-FlashX
+          GATE_REVIEWER: GLM-5.3-FlashX
           CHANGE_ID_PY: |
             import collections, hashlib, sys
             out, md, index = [], False, ""
@@ -105,8 +111,16 @@ jobs:
             '' | *[!0-9]*) echo "pr_number must be a PR number, not '$PR_NUMBER'" >&2; exit 1 ;;
           esac
           repo="repos/$GITHUB_REPOSITORY"
+          # The gate reviewer goes first and the rest wait on its verdict.
+          # Without the gate reviewer in the list, everyone goes first.
           pick() {
-            echo "reviewers=$(jq -c . <<<"$1")" >> "$GITHUB_OUTPUT"
+            local all first second
+            all=$(jq -c . <<<"$1")
+            first=$(jq -c --arg r "$GATE_REVIEWER" 'map(select(.reviewer == $r))' <<<"$all")
+            second=$(jq -c --arg r "$GATE_REVIEWER" 'map(select(.reviewer != $r))' <<<"$all")
+            if [ "$first" = '[]' ]; then first=$all; second='[]'; fi
+            echo "first=$first" >> "$GITHUB_OUTPUT"
+            echo "second=$second" >> "$GITHUB_OUTPUT"
             echo "$2" | tee -a "$GITHUB_STEP_SUMMARY"
           }
           # Every lookup below fails open: when one doesn't load, every
@@ -189,21 +203,24 @@ jobs:
             fi
           fi
 
+  # The gate reviewer. Its verdict decides whether second-review runs.
   review:
     name: review (${{ matrix.reviewer }})
     needs: plan
-    if: needs.plan.outputs.reviewers != '[]'
+    if: needs.plan.outputs.first != '[]'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.plan.outputs.reviewers) }}
+        include: ${{ fromJSON(needs.plan.outputs.first) }}
+    outputs:
+      verdict: ${{ steps.verdict.outputs.verdict }}
     # No id-token: opencode uses the run's token (USE_GITHUB_TOKEN), not OIDC.
     permissions:
       contents: read
       pull-requests: write
       issues: write
-    steps:
+    steps: &review-steps
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -296,12 +313,16 @@ jobs:
       # hold the job for the 6-hour default; opencode.json now denies every
       # prompt it would ask, and this bounds whatever else can stall a run.
       # The slowest reviews that finished took about 26 minutes.
+      - name: Note when the review starts
+        id: started
+        # A minute early, so a runner clock ahead of GitHub's still matches.
+        run: echo "at=$(date -u -d '1 minute ago' +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
       - name: Run opencode review
         timeout-minutes: 40
         run: GITHUB_EVENT_PATH=${DISPATCH_EVENT_PATH:-$GITHUB_EVENT_PATH} GITHUB_EVENT_NAME=pull_request GITHUB_ACTOR=${{ github.repository_owner }} opencode github run
         env:
           DISPATCH_EVENT_PATH: ${{ steps.dispatch_event.outputs.path }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          COMMANDCODE_API_KEY: ${{ secrets.COMMANDCODE_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           # The run's own token: this repo only, the job's permissions above,
           # and it expires when the run ends.
@@ -388,3 +409,53 @@ jobs:
 
             If you find no issues, say so explicitly. Don't summarize what you did
             or describe your process. Output only the review.
+      # The verdict of the comment this job just posted: the newest bot
+      # comment since the review started that links this run and names this
+      # job's model (opencode's footer has both). Empty when none is found or
+      # the lookup fails, which second-review treats as no blockers.
+      - name: Read the verdict
+        id: verdict
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+          SINCE: ${{ steps.started.outputs.at }}
+          MODEL: ${{ matrix.model }}
+          VERDICT_PY: |
+            import json, re, sys
+            lines = [l for l in sys.stdin.read().splitlines() if l.strip()]
+            body = json.loads(lines[-1]) if lines else ""
+            parts = body.rsplit("## Verdict", 1)
+            # The verdict's own line, so the rubric sentence doesn't count.
+            m = re.search(r"^\W*(REQUEST_CHANGES|APPROVE|COMMENT)\W*$", parts[1], re.M) if len(parts) == 2 else None
+            print(m.group(1) if m else "")
+        run: |
+          bodies=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?since=$SINCE&per_page=100" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and .created_at >= env.SINCE)
+                  | select(.body | contains("actions/runs/" + env.GITHUB_RUN_ID + ")") and contains("model=" + env.MODEL + "&"))
+                  | .body | @json') || bodies=''
+          verdict=$(python3 -I -c "$VERDICT_PY" <<<"$bodies" || true)
+          echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+          echo "${{ matrix.reviewer }} verdict: ${verdict:-not found}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # The other reviewers, once the gate reviewer has no blockers. A
+  # REQUEST_CHANGES from it, or a failed gate job, skips this job: a skipped
+  # second review is never an approval, and the PR is reviewed by both again
+  # after the push that fixes it. Re-running a failed gate job re-runs this
+  # one too.
+  second-review:
+    name: review (${{ matrix.reviewer }})
+    needs: [plan, review]
+    # GitHub adds success() to an if without a status check, so a failed
+    # gate job skips this already; the result check says so where it's read.
+    if: needs.plan.outputs.second != '[]' && needs.review.result == 'success' && needs.review.outputs.verdict != 'REQUEST_CHANGES'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.second) }}
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps: *review-steps

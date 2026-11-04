@@ -607,6 +607,11 @@ struct V2Shell: View {
         if selectedTab == .chats, case .project(let project)? = V2SplitLayout.listRoutes(chatsPath).last {
             return .project(project)
         }
+        // Bots Home itself, not Pulse or Artifacts over it: a call to one
+        // of the bots.
+        if selectedTab == .bots, V2SplitLayout.listRoutes(botsPath).isEmpty {
+            return .bots
+        }
         return .home
     }
 
