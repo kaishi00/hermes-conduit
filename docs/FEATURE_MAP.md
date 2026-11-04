@@ -842,7 +842,7 @@ kept on the iPhone's headset (the Watch's Mute and End)
 
 **Code**
 - Session owner: `Conduit/Voice/VoiceAudioSessionCoordinator.swift` (ensureConversationSpeaker, isNativeCallAudioActive), `Conduit/Voice/VoiceAudioSessionConfiguration.swift`
-- Playback: `Conduit/Voice/AVSpeechPlaybackService.swift` (resumeOnFreshEngine), `Conduit/Voice/VoiceAudioEngineRecovery.swift`
+- Playback: `Conduit/Voice/AVSpeechPlaybackService.swift` (resumeOnFreshEngine), `Conduit/Voice/VoiceAudioEngineRecovery.swift`, `Conduit/Voice/AVAudioCaptureService.swift` (VoicePCMEncoding.splitPCM16: a stream's odd byte, for both playbacks)
 - Live audio: `Conduit/Voice/GPTLive/GPTLiveAudioLink.swift`, `Conduit/Voice/GeminiLive/LiveVoiceEchoCancellingAudio.swift`, `Conduit/Voice/EchoCancellingVoiceConversationAudio.swift`
 - Mute and Silence: `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Views/MinimisedLiveVoiceBar.swift`, `Conduit/Voice/HeadsetMicrophoneMute.swift`
 - A Watch answer kept on the iPhone's headset: `Conduit/Voice/HermesNativeCalls.swift` (keepsWatchAnswer, muteOnWatch, inAppMuteChanged), `Conduit/Services/AppState+HermesCalls.swift` (nativeCallVoiceMuted), `ConduitWatch/HermesWatchCalls.swift` (phoneCallMuted)
@@ -857,13 +857,14 @@ kept on the iPhone's headset (the Watch's Mute and End)
 - An alarm or phone call pauses a live call, which comes back when the audio does (2026-10-04, #380).
 - A call from Hermes answered on the Watch plays on the iPhone's headset when one is on there (AirPods, wired, never the car's); the Watch's Mute and End control it like a phone call's, and a mute from any of Conduit's own controls reaches the Watch (Eric 2026-10-24, #1225).
 - A route change mid-reply (AirPods, Speaker, a dock) never drops speech: a conversation's reply, Read Aloud and the speech test play on from where they were on a fresh engine; an encoded clip follows the route itself, and a fresh engine that won't start ends Read Aloud rather than restarting past the dropped audio (Eric 2026-11-02, from issue 1641, #1650).
+- A streamed reply's odd trailing byte waits for the next chunk on storage of its own (VoicePCMEncoding.splitPCM16), in the live modes' echo-cancelling audio and the default playback alike. A route change's restart copies it and tears down: left as an emptied slice of the stream, clearing it made Foundation trap (29 crash reports from build 244, 2026-11-04, #1733).
 - Headphones taken out (AirPods back in the case, a cable pulled) pause Read Aloud, as iOS media does, instead of reading on from the speaker; Resume carries on. Live calls and Classic keep talking, like a phone call (Eric 2026-11-02, #1650).
 
 **Open gaps**
 - Silence isn't on CarPlay or the minimised bar (#488).
 - Classic still ends with "Audio was interrupted." when an alarm or phone call takes the audio, where live calls pause; only CarPlay and calls from Hermes restart it (#380, #1155).
 
-**Checked:** 2026-11-02, #1650 (Read Aloud and the speech test play on after a route change instead of restarting with the queued middle dropped, issue 1641; headphones taken out pause Read Aloud); 2026-10-30, #1524 (Read Aloud reads a Desktop card as a short note; route, Speaker and mute unchanged); 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
+**Checked:** 2026-11-04, #1733 (a stream's odd byte kept on its own storage, so a route change's restart no longer traps); 2026-11-02, #1650 (Read Aloud and the speech test play on after a route change instead of restarting with the queued middle dropped, issue 1641; headphones taken out pause Read Aloud); 2026-10-30, #1524 (Read Aloud reads a Desktop card as a short note; route, Speaker and mute unchanged); 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
 
 ## Talking over Hermes
 
