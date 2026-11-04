@@ -1584,7 +1584,8 @@ final class AppState: ObservableObject {
         let key = ActiveProfileSessionsKey(
             sessionsRevision: sessionsRevision,
             profile: activeProfile,
-            botOwnershipGeneration: botOwnershipGeneration
+            botOwnershipGeneration: botOwnershipGeneration,
+            workstreamsGeneration: botWork.workstreamsGeneration
         )
         if let cached = activeProfileSessionsCache, cached.key == key { return cached.rows }
         let botOwned = botOwnedSessionIDs
@@ -1592,6 +1593,7 @@ final class AppState: ObservableObject {
             sessionBelongsToProfile($0, profile: activeProfile)
                 && !BotChatHygiene.isCanonicalBotChatRow($0, roster: botRoster)
                 && !BotChatHygiene.isBotOwnedRow($0, botOwnedSessionIDs: botOwned)
+                && !isWorkstreamRow($0)
         }
         activeProfileSessionsCache = (key, rows)
         return rows
@@ -1601,6 +1603,7 @@ final class AppState: ObservableObject {
         let sessionsRevision: Int
         let profile: String
         let botOwnershipGeneration: Int
+        let workstreamsGeneration: Int
     }
 
     /// Bumped on every write to `sessions`.
@@ -1638,7 +1641,8 @@ final class AppState: ObservableObject {
             rows: ActiveProfileSessionsKey(
                 sessionsRevision: sessionsRevision,
                 profile: activeProfile,
-                botOwnershipGeneration: botOwnershipGeneration
+                botOwnershipGeneration: botOwnershipGeneration,
+                workstreamsGeneration: botWork.workstreamsGeneration
             ),
             savedChatListRevision: savedChatListRevision
         )
@@ -6186,8 +6190,9 @@ final class AppState: ObservableObject {
         let title = offlineChatPresentation?.picked?.title
             ?? offlineChatPresentation?.displayedTranscript?.title
             ?? activeSessionTitle
-        // A workstream's chat is hidden from Hermes' lists, so it has no
-        // title here: it takes its task's.
+        // A workstream's chat isn't in the list here (Hermes hides an open
+        // one, and this app leaves a resolved one out), so it has no title
+        // here: it takes its task's.
         if title == AppLocalization.string("New conversation"), let workstream = activeWorkstream {
             return workstream.item.shownTitle
         }
@@ -7105,7 +7110,8 @@ final class AppState: ObservableObject {
             rows: ActiveProfileSessionsKey(
                 sessionsRevision: sessionsRevision,
                 profile: activeProfile,
-                botOwnershipGeneration: botOwnershipGeneration
+                botOwnershipGeneration: botOwnershipGeneration,
+                workstreamsGeneration: botWork.workstreamsGeneration
             ),
             cronSessionsRevision: cronSessionsRevision,
             sessionId: sessionId,
@@ -9136,7 +9142,8 @@ final class AppState: ObservableObject {
         Task { @MainActor [weak self] in
             guard let self else { return }
             var target = self.linkedSessionTarget(id)
-            // A bot's workstream is hidden from Hermes' list, so a refresh
+            // A bot's workstream isn't in the list here (Hermes hides an
+            // open one, and this app leaves a resolved one out), so a refresh
             // never finds its row: it only held the open up for seconds
             // (Eric's build 248 test). It resumes by its id straight away.
             if target == nil, !self.isWorkstreamSession(id) {
@@ -9408,6 +9415,7 @@ final class AppState: ObservableObject {
                     sessionBelongsToProfile($0, profile: profile)
                         && !BotChatHygiene.isCanonicalBotChatRow($0, roster: botRoster)
                         && !BotChatHygiene.isBotOwnedRow($0, botOwnedSessionIDs: botOwned)
+                        && !isWorkstreamRow($0)
                 }
             } ?? activeProfileSessions
             return VoiceChatFinder.titleMatches(in: listed, query: query)
@@ -23236,6 +23244,7 @@ final class AppState: ObservableObject {
             adoptProfileHermesNames(snapshot.bots.map { (profile: $0.name, displayName: $0.displayName) })
             adoptProfileBotTitles(snapshot.bots.map { (profile: $0.name, title: $0.botTitle ?? "") })
             botRoster = BotProfile.displayOrder(snapshot.bots)
+            readUnreadBotsWork()
             desktopGroupChats = snapshot.desktopGroups
             botRosterSupportsProtocol = snapshot.supportsBotProtocol
             botModePhase = .available
@@ -25353,8 +25362,9 @@ final class AppState: ObservableObject {
     /// opens at once only when its id is a row's stored id: a runtime id can
     /// be handed to another conversation, so a row that matches it alone
     /// may not be the notification's chat.
-    /// A bot's workstream never needs it: Hermes hides it from the list, so
-    /// the read can't find its row and only held the open up for seconds
+    /// A bot's workstream never needs it: it isn't in the list here (Hermes
+    /// hides an open one, and this app leaves a resolved one out), so the
+    /// read can't find its row and only held the open up for seconds
     /// (Eric's build 248 test, a secondary bot's work link or card).
     nonisolated static func notificationOpenNeedsAuthoritativeRead(
         target: ConduitNotificationTarget,
@@ -27361,6 +27371,11 @@ final class AppState: ObservableObject {
             // An open room's boards, once the plugin says it keeps them.
             if oldValue.reports(RoomBoard.capability) != notifierPlugin.reports(RoomBoard.capability) {
                 refreshActiveRoomBoards()
+            }
+            // Each bot's workstreams, once the plugin says it keeps them, so
+            // a resolved one leaves the Chats list.
+            if !oldValue.reports(BotWorkstreamsClient.capability), servesBotWorkstreams {
+                readUnreadBotsWork()
             }
         }
     }
