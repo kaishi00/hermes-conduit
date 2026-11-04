@@ -67,7 +67,8 @@ panel always show the same steps, and both draw them with the plan card's
 row. Its steps map done, doing and todo to completed, in progress and
 pending. The checklist the chat opens with is read quietly, like a plan on
 open; a change while the chat is open is announced like a new `todo` row.
-When the worker clears its checklist, the chat's own `todo` plan shows again.
+When the worker clears its checklist, or the work is resolved or leaves the
+bot's list, the chat's own `todo` plan shows again.
 
 ## Plan card
 
