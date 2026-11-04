@@ -6,30 +6,33 @@ enum KanbanPollingPolicy {
 
     /// The board's poll: 8 s, or 60 s while the live event stream is
     /// connected and says when to read; stretched in Low Power and Low Data
-    /// Mode.
-    static func boardInterval(streaming: Bool, conditions: DeviceConditions) -> UInt64 {
-        nanoseconds(PollCadence.stretched(streaming ? PollCadence.kanbanWhileStreaming : PollCadence.kanbanBoard, by: conditions))
+    /// Mode. Without the stream, a board that stays the same read after read
+    /// is read less often (`withoutStream`).
+    static func boardInterval(streaming: Bool, unchangedReads: Int = 0, conditions: DeviceConditions) -> UInt64 {
+        nanoseconds(PollCadence.stretched(
+            streaming ? PollCadence.kanbanWhileStreaming : withoutStream(PollCadence.kanbanBoard, unchangedReads: unchangedReads),
+            by: conditions
+        ))
     }
 
     /// The open task's poll: 4 s, or 60 s while the stream is connected (a
-    /// batch touching the task reads it at once). Without the stream, a task
-    /// that stays the same read after read is read less often: 15 s after a
-    /// minute unchanged, 30 s after three, and 4 s again once it changes
-    /// (issue 1728).
+    /// batch touching the task reads it at once), and less often without the
+    /// stream while it stays the same (`withoutStream`).
     static func detailInterval(streaming: Bool, unchangedReads: Int = 0, conditions: DeviceConditions) -> UInt64 {
-        let interval: TimeInterval
-        if streaming {
-            interval = PollCadence.kanbanWhileStreaming
-        } else {
-            interval = detailSteps[min(unchangedReads / readsPerDetailStep, detailSteps.count - 1)]
-        }
-        return nanoseconds(PollCadence.stretched(interval, by: conditions))
+        nanoseconds(PollCadence.stretched(
+            streaming ? PollCadence.kanbanWhileStreaming : withoutStream(PollCadence.kanbanTaskDetail, unchangedReads: unchangedReads),
+            by: conditions
+        ))
     }
 
-    /// The detail poll's steps without the stream, each taken after
-    /// `readsPerDetailStep` reads saw no change.
-    private static let detailSteps: [TimeInterval] = [PollCadence.kanbanTaskDetail, 15, 15, 30]
-    private static let readsPerDetailStep = 15
+    /// A poll standing in for the live stream (a network that refuses the
+    /// socket): its usual interval, then 15 s after 15 reads that found
+    /// nothing new, 30 s after 45, and its usual interval again once a read
+    /// finds a change (issue 1728).
+    static func withoutStream(_ interval: TimeInterval, unchangedReads: Int) -> TimeInterval {
+        let steps: [TimeInterval] = [interval, 15, 15, 30]
+        return max(interval, steps[min(max(unchangedReads, 0) / 15, steps.count - 1)])
+    }
 
     private static func nanoseconds(_ seconds: TimeInterval) -> UInt64 {
         UInt64(seconds * 1_000_000_000)
@@ -963,17 +966,23 @@ struct KanbanView: View {
             if store.loadedBoardSlug != nil, !store.liveStreamConnected {
                 await store.poll(includeArchived: includeArchived)
             }
+            // Without the stream, reads that find nothing new space
+            // themselves out.
+            var unchangedReads = 0
             while !Task.isCancelled {
                 do {
                     try await Task.sleep(nanoseconds: KanbanPollingPolicy.boardInterval(
                         streaming: store.liveStreamConnected,
+                        unchangedReads: unchangedReads,
                         conditions: DeviceConditionsMonitor.shared.current
                     ))
                 } catch {
                     break
                 }
                 guard !Task.isCancelled else { break }
+                let before = store.board
                 await store.poll(includeArchived: includeArchived)
+                unchangedReads = store.board == before ? unchangedReads + 1 : 0
             }
         }
     }
