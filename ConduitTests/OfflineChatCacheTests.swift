@@ -580,6 +580,31 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(store.loadChatList(dashboardID: dashboard, profile: "default"), list, "Its saved list too")
     }
 
+    /// A row that shows warms its chat's copy (issue 1725): the tap then
+    /// opens it from memory, with no file read on the main thread.
+    func testARowThatShowsWarmsItsChatsCopy() throws {
+        let writer = makeStore()
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        for id in ["a", "b"] {
+            writer.record(dashboardID: dashboard, profile: "default", sessionID: id, title: id, messages: row, sessions: [])
+        }
+        let directory = writer.fileURL(dashboardID: dashboard, profile: "default").deletingLastPathComponent()
+        let store = OfflineChatCacheStore(directory: directory, writesAsynchronously: true)
+
+        // Warmed by an alias the row answers to, after an id with no copy.
+        store.warmTranscript(["runtime-a", "a"], dashboardID: dashboard, profile: "default")
+        store.warmTranscript(["never-saved"], dashboardID: dashboard, profile: "default")
+        store.waitForPendingWrites()
+
+        for id in ["a", "b"] {
+            try FileManager.default.removeItem(at: store.transcriptFileURL(id, dashboardID: dashboard, profile: "default"))
+        }
+        XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: "default")?.messages.map(\.id), ["m"], "The warmed copy is in memory")
+        XCTAssertNil(store.loadTranscript("b", dashboardID: dashboard, profile: "default"), "Only the row that showed is warmed")
+        XCTAssertNil(store.loadTranscript("never-saved", dashboardID: dashboard, profile: "default"))
+    }
+
     /// A profile read ahead for a switch (its last chat) is read further
     /// once it's the one open and asks for more copies.
     func testAScopeReadAheadForASwitchIsReadFurtherOnceOpen() throws {
@@ -3470,5 +3495,20 @@ extension OfflineChatCacheTests {
         XCTAssertNil((fields["model.default"] as? [String: Any])?["api_key"], "What a field holds is filtered")
         XCTAssertNil(kept["api_key"], "Only the names under fields are spared")
         XCTAssertEqual(kept["category_order"] as? [String], ["model", "providers"])
+    }
+
+    /// A copy keeps the last saved rows, mapping only those (issue 1725):
+    /// rows that aren't saved, at the end, don't shorten it.
+    func testACopyKeepsTheLastRowsItSaves() {
+        let limit = OfflineChatCacheStore.maxMessagesPerTranscript
+        var messages = (0..<(limit + 100)).map { index in
+            ChatMessage(id: "m\(index)", role: index.isMultiple(of: 2) ? .user : .assistant, content: "row \(index)", timestamp: "\(index)")
+        }
+        messages.append(ChatMessage(id: "approval", role: .approval, content: "Approve?", timestamp: "x"))
+        let rows = OfflineChatCacheStore.keptRows(of: messages)
+        XCTAssertEqual(rows.count, limit)
+        XCTAssertEqual(rows.first?.id, "m100")
+        XCTAssertEqual(rows.last?.id, "m\(limit + 99)")
+        XCTAssertEqual(OfflineChatCacheStore.keptRows(of: Array(messages.prefix(3))).map(\.id), ["m0", "m1", "m2"])
     }
 }

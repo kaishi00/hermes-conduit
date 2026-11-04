@@ -624,7 +624,13 @@ struct V2ChatsView: View, Equatable {
         .onChange(of: scenePhase) { _, phase in
             // Off screen, a scroll may never report coming to rest.
             if phase != .active { updates.endScrolling() }
-            if phase == .active, isShown, listInView { appState.chatListBecameActive() }
+            if phase == .active, isShown, listInView {
+                appState.chatListBecameActive()
+                // All's poll skips its reads while the app is away: back on
+                // the list, the other profiles' rows are read now, not on
+                // the next 20 s tick.
+                appState.refreshAllProfilesCatalog()
+            }
         }
         .sheet(item: $projectPendingRename) { project in
             RenameSheet(
@@ -1759,6 +1765,7 @@ struct V2ChatsView: View, Equatable {
         .buttonStyle(.plain)
         if let session = row.session {
             button
+                .onAppear { appState.warmSavedCopy(of: session) }
                 .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
                 .v2ListRow()
                 .sessionActions(
@@ -2311,6 +2318,9 @@ private struct V2ChatsRow: View {
             )
         }
         .buttonStyle(.plain)
+        // Its saved copy comes into memory as it shows, so a tap opens on it
+        // without a read on the main thread.
+        .onAppear { appState.warmSavedCopy(of: session) }
         .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
         .v2SelectedTrait(selection(session))
         .v2ListRow(divider: !hasChildren, dividerInset: V2SessionRow.iconTextInset)
@@ -2401,6 +2411,7 @@ private struct V2ChatsRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onAppear { appState.warmSavedCopy(of: session) }
         .dynamicTypeSize(...DynamicTypeSize.listRowCap)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(session.title))

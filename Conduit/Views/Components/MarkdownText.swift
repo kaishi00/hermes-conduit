@@ -28,9 +28,9 @@ struct MarkdownText: View {
     @StateObject private var selectionCoordinator = MarkdownSelectionCoordinator()
 
     /// True only for the actively streaming reply, whose `source` changes
-    /// every frame. Settled messages (the default) populate the render cache;
-    /// the streaming instance still parses each frame but skips inserting a
-    /// snapshot that would be dead the moment the next delta arrives.
+    /// most frames. Settled messages (the default) populate the render cache;
+    /// the streaming instance parses each new source and keeps it only in a
+    /// small cache of its own, for the frames that just move the fade.
     var isStreaming: Bool = false
 
     /// The source is a cut of a longer message (a large document's
@@ -369,6 +369,42 @@ final class MarkdownRendering {
     }
 }
 
+/// A cache key holding a message's text as it is, rather than joined into
+/// one new string per lookup (issue 1729). A row looks its rendering up every
+/// time it mounts, so the key must cost little for a long message: hashing
+/// reads the content's lengths and its ends, and only a key with the same
+/// hash compares the whole text.
+final class MarkdownCacheKey: NSObject {
+    private let tokens: String
+    private let content: [String]
+    private let contentHash: Int
+
+    init(tokens: [String], content: [String]) {
+        self.tokens = tokens.joined(separator: "\u{1F}")
+        self.content = content
+        var hasher = Hasher()
+        hasher.combine(self.tokens)
+        hasher.combine(content.count)
+        for part in content {
+            let bytes = part.utf8
+            hasher.combine(bytes.count)
+            for byte in bytes.prefix(32) { hasher.combine(byte) }
+            if bytes.count > 32 { for byte in bytes.suffix(32) { hasher.combine(byte) } }
+        }
+        contentHash = hasher.finalize()
+    }
+
+    /// About the bytes the key holds, for a cache's cost.
+    var byteCount: Int { content.reduce(tokens.utf8.count) { $0 + $1.utf8.count } }
+
+    override var hash: Int { contentHash }
+
+    override func isEqual(_ object: Any?) -> Bool {
+        guard let other = object as? MarkdownCacheKey else { return false }
+        return other === self || (other.contentHash == contentHash && other.tokens == tokens && other.content == content)
+    }
+}
+
 /// Every visible MarkdownText body re-evaluates ~30x/s while a reply streams
 /// (each delta publishes an AppState change), and each evaluation used to
 /// re-parse the source and rebuild the attributed string from scratch —
@@ -377,10 +413,20 @@ final class MarkdownRendering {
 /// pays for parsing. Streaming-tail fades stay per-frame but are applied to a
 /// copy of the cached base rather than triggering a rebuild.
 enum MarkdownRenderCache {
-    private static let cache: NSCache<NSString, MarkdownRendering> = {
-        let cache = NSCache<NSString, MarkdownRendering>()
+    private static let cache: NSCache<MarkdownCacheKey, MarkdownRendering> = {
+        let cache = NSCache<MarkdownCacheKey, MarkdownRendering>()
         cache.countLimit = 256
         cache.totalCostLimit = 32 * 1024 * 1024
+        return cache
+    }()
+
+    /// The last few streaming renderings, apart from the settled ones so they
+    /// can't push those out. A streaming reply draws again with the same text
+    /// while its newest characters fade in, and that draw takes the parse
+    /// from here instead of doing it again (issue 1720).
+    private static let streamingCache: NSCache<MarkdownCacheKey, MarkdownRendering> = {
+        let cache = NSCache<MarkdownCacheKey, MarkdownRendering>()
+        cache.countLimit = 4
         return cache
     }()
 
@@ -412,18 +458,21 @@ enum MarkdownRenderCache {
         // needs no cache migration. Reading preferredContentSizeCategory
         // touches UIApplication.shared, hence the @MainActor isolation on
         // this function.
-        let key = [
-            recognizesGatewayMedia ? "1" : "0",
-            usesAccentSurface ? "1" : "0",
-            UIApplication.shared.preferredContentSizeCategory.rawValue,
-            chatTextSize.cacheIdentity,
-            // Hermes' @session links are titled with the chat's name once
-            // Conduit lists it.
-            HermesSessionReference.titleKey(for: source),
-            source
-        ].joined(separator: "|") as NSString
+        let key = MarkdownCacheKey(
+            tokens: [
+                recognizesGatewayMedia ? "1" : "0",
+                usesAccentSurface ? "1" : "0",
+                UIApplication.shared.preferredContentSizeCategory.rawValue,
+                chatTextSize.cacheIdentity,
+                // Hermes' @session links are titled with the chat's name once
+                // Conduit lists it.
+                HermesSessionReference.titleKey(for: source)
+            ],
+            content: [source]
+        )
 
         if let cached = cache.object(forKey: key) { return cached }
+        if isStreaming, let cached = streamingCache.object(forKey: key) { return cached }
         let document = MarkdownParser.parseDocument(source, recognizesGatewayMedia: recognizesGatewayMedia)
         let rendering = MarkdownRendering(
             blocks: document.blocks,
@@ -437,12 +486,14 @@ enum MarkdownRenderCache {
                 chatTextSize: chatTextSize
             )
         )
-        // While streaming, `source` changes every frame, so a cached entry is
-        // dead on insertion and would only evict reusable settled entries.
-        // Parse anyway (unavoidable — the content is new), but skip the write.
+        // While streaming, `source` changes most frames, so a cached entry
+        // would mostly evict reusable settled entries: it goes to the small
+        // streaming cache instead, for the frames that only move the fade.
         // The message is cached on its first settled render via the
         // non-streaming call sites (isStreaming == false).
-        if !isStreaming {
+        if isStreaming {
+            streamingCache.setObject(rendering, forKey: key)
+        } else {
             // Approximate byte cost: source bytes + attributed-string storage
             // (each char carries attribute runs), so a few large messages can't
             // crowd out many small ones within totalCostLimit.
@@ -1511,8 +1562,8 @@ enum MarkdownTableLayout {
     static let dividerWidth: CGFloat = 1
     static let borderAllowance: CGFloat = 2
 
-    private static let cache: NSCache<NSString, NSArray> = {
-        let cache = NSCache<NSString, NSArray>()
+    private static let cache: NSCache<MarkdownCacheKey, NSArray> = {
+        let cache = NSCache<MarkdownCacheKey, NSArray>()
         cache.countLimit = 64
         cache.totalCostLimit = 4 * 1024 * 1024
         return cache
@@ -1536,16 +1587,22 @@ enum MarkdownTableLayout {
         // decision, and on the reference definitions (they change how cell
         // source measures). A chat-size change must never serve stale
         // measurements from the previous size.
-        let key = (
-            [
+        // The header and each row are led by their cell count, so the cells
+        // keep their rows.
+        var cells = ["\u{1F}\(headers.count)"] + headers
+        for row in rows {
+            cells.append("\u{1F}\(row.count)")
+            cells.append(contentsOf: row)
+        }
+        let key = MarkdownCacheKey(
+            tokens: [
                 UIApplication.shared.preferredContentSizeCategory.rawValue,
                 chatTextSize.cacheIdentity,
                 String(format: "%.1f", availableWidth),
                 references.definitionsMarkdown
-            ]
-                + headers
-                + rows.flatMap { $0.isEmpty ? ["<empty-row>"] : $0 }
-        ).joined(separator: "\u{1F}") as NSString
+            ],
+            content: cells
+        )
 
         if let cached = cache.object(forKey: key) as? [CGFloat] { return cached }
 
@@ -1563,7 +1620,7 @@ enum MarkdownTableLayout {
         }
 
         let widths = resolveColumnContentWidths(ideals: ideals, availableWidth: availableWidth)
-        cache.setObject(widths as NSArray, forKey: key, cost: key.length)
+        cache.setObject(widths as NSArray, forKey: key, cost: key.byteCount)
         return widths
     }
 
@@ -3394,14 +3451,34 @@ enum MarkdownParser {
         return blocks
     }
 
+    // The line patterns are compiled once: the parser tries them on every
+    // line of every parse, and a streaming reply parses up to 30 times a
+    // second (issue 1721).
+    private static func compiledLine(_ pattern: String, options: NSRegularExpression.Options = []) -> NSRegularExpression {
+        // swiftlint:disable:next force_try
+        try! NSRegularExpression(pattern: pattern, options: options)
+    }
+    private static let taskItemPattern = compiledLine(#"^\[([ xX])\]\s+"#)
+    private static let calloutPattern = compiledLine(#"^\[!([A-Za-z]+)\]\s*"#)
+    private static let referenceDefinitionPattern = compiledLine(#"^\[([^\[\]\^][^\[\]]*)\]:[ \t]+(<[^>]+>|[^\s<][^\s]*)(?:[ \t]+("[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$"#)
+    private static let imageMarkdownPattern = compiledLine(#"^!\[([^\]]*)\]\((https?://[^\s)]+)(?:\s+\"[^\"]*\")?\)$"#)
+    private static let directImagePattern = compiledLine(#"^https?://\S+\.(png|jpe?g|gif|webp)(\?\S*)?$"#, options: [.caseInsensitive])
+    private static let orderedItemPattern = compiledLine(#"^[0-9]{1,9}[.)]\s+"#)
+
+    /// The range of `expression`'s first match in `value`.
+    private static func firstRange(of expression: NSRegularExpression, in value: String) -> Range<String.Index>? {
+        guard let match = expression.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)) else { return nil }
+        return Range(match.range, in: value)
+    }
+
     static func taskItem(_ value: String) -> (complete: Bool, text: String)? {
-        guard let range = value.range(of: #"^\[([ xX])\]\s+"#, options: .regularExpression) else { return nil }
+        guard let range = firstRange(of: taskItemPattern, in: value) else { return nil }
         let marker = String(value[value.index(after: value.startIndex)])
         return (marker.lowercased() == "x", String(value[range.upperBound...]))
     }
 
     static func calloutMarker(_ value: String) -> (kind: String, remainder: String)? {
-        guard let range = value.range(of: #"^\[!([A-Za-z]+)\]\s*"#, options: .regularExpression) else { return nil }
+        guard let range = firstRange(of: calloutPattern, in: value) else { return nil }
         let marker = String(value[range]).dropFirst(2).prefix { $0.isLetter }
         return (String(marker), String(value[range.upperBound...]))
     }
@@ -3428,10 +3505,7 @@ enum MarkdownParser {
     /// title continuation lines are deliberately unsupported; this renderer
     /// documents and tests the single-line forms only.
     private static func referenceDefinition(_ value: String) -> String? {
-        guard let range = value.range(
-            of: #"^\[([^\[\]\^][^\[\]]*)\]:[ \t]+(<[^>]+>|[^\s<][^\s]*)(?:[ \t]+("[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$"#,
-            options: .regularExpression
-        ) else { return nil }
+        guard let range = firstRange(of: referenceDefinitionPattern, in: value) else { return nil }
         return String(value[range])
     }
 
@@ -3484,11 +3558,11 @@ enum MarkdownParser {
         return ["note", "info", "tip", "hint", "warning", "caution", "danger", "error", "important", "columns"].contains(name) ? name : nil
     }
     private static func imageMarkdown(_ value: String) -> (url: String, alt: String)? {
-        guard let match = try? NSRegularExpression(pattern: #"^!\[([^\]]*)\]\((https?://[^\s)]+)(?:\s+\"[^\"]*\")?\)$"#).firstMatch(in: value, range: NSRange(value.startIndex..., in: value)), let altRange = Range(match.range(at: 1), in: value), let urlRange = Range(match.range(at: 2), in: value) else { return nil }
+        guard let match = imageMarkdownPattern.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)), let altRange = Range(match.range(at: 1), in: value), let urlRange = Range(match.range(at: 2), in: value) else { return nil }
         return (String(value[urlRange]), String(value[altRange]))
     }
     private static func directImageURL(_ value: String) -> String? {
-        value.range(of: #"^https?://\S+\.(png|jpe?g|gif|webp)(\?\S*)?$"#, options: [.regularExpression, .caseInsensitive]) != nil ? value : nil
+        firstRange(of: directImagePattern, in: value) != nil ? value : nil
     }
     /// The path when `value` is a line holding exactly one `MEDIA:` tag.
     static func gatewayMediaPath(_ value: String) -> String? {
@@ -3518,7 +3592,7 @@ enum MarkdownParser {
     }
     private static func orderedItem(_ value: String) -> String? {
         // CommonMark: one to nine ASCII digits, so anything else is text.
-        guard let range = value.range(of: #"^[0-9]{1,9}[.)]\s+"#, options: .regularExpression) else { return nil }
+        guard let range = firstRange(of: orderedItemPattern, in: value) else { return nil }
         return String(value[range.upperBound...])
     }
     /// The number an ordered item is written with.
@@ -3608,8 +3682,8 @@ enum SyntaxHighlighter {
     /// transcript — have a constant key and hit on every subsequent frame, so
     /// writes here are worth keeping. The one transient entry per frame is
     /// bounded and self-evicting under NSCache's LRU/memory policy.
-    private static let cache: NSCache<NSString, HighlightedCode> = {
-        let cache = NSCache<NSString, HighlightedCode>()
+    private static let cache: NSCache<MarkdownCacheKey, HighlightedCode> = {
+        let cache = NSCache<MarkdownCacheKey, HighlightedCode>()
         cache.countLimit = 128
         cache.totalCostLimit = 16 * 1024 * 1024
         return cache
@@ -3620,21 +3694,25 @@ enum SyntaxHighlighter {
     /// bridged into an NSAttributedString with a caller-supplied default
     /// font — so one highlighted value serves every typography.
     static func highlight(_ source: String, language: String) -> AttributedString {
-        let key = "\(language)|\(source)" as NSString
+        let key = MarkdownCacheKey(tokens: [language], content: [source])
         if let cached = cache.object(forKey: key) { return cached.value }
         let highlighted = tokenize(source, language: language)
         cache.setObject(HighlightedCode(highlighted), forKey: key, cost: source.utf8.count)
         return highlighted
     }
 
+    private static let keywords: Set<String> = ["as", "async", "await", "break", "case", "catch", "class", "const", "continue", "def", "else", "enum", "false", "final", "for", "func", "guard", "if", "import", "in", "init", "let", "nil", "null", "private", "public", "return", "self", "static", "struct", "switch", "throw", "true", "try", "var", "while"]
+    // Compiled once rather than per block (issue 1721).
+    // String-literal alternatives must be disjoint (`\\.` vs `[^"\\]`):
+    // if both branches can match a backslash, an unterminated literal with
+    // many escapes — the normal transient state while a code block streams —
+    // backtracks exponentially and wedges the main thread (~2^k paths).
+    private static let tokenPattern = try? NSRegularExpression(
+        pattern: #"(//[^\n]*|#[^\n]*|/\*[\s\S]*?\*/|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|\b\d+(?:\.\d+)?\b|\b[A-Za-z_][A-Za-z0-9_]*\b)"#
+    )
+
     private static func tokenize(_ source: String, language: String) -> AttributedString {
-        let keywords: Set<String> = ["as", "async", "await", "break", "case", "catch", "class", "const", "continue", "def", "else", "enum", "false", "final", "for", "func", "guard", "if", "import", "in", "init", "let", "nil", "null", "private", "public", "return", "self", "static", "struct", "switch", "throw", "true", "try", "var", "while"]
-        // String-literal alternatives must be disjoint (`\\.` vs `[^"\\]`):
-        // if both branches can match a backslash, an unterminated literal with
-        // many escapes — the normal transient state while a code block streams —
-        // backtracks exponentially and wedges the main thread (~2^k paths).
-        let pattern = #"(//[^\n]*|#[^\n]*|/\*[\s\S]*?\*/|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|\b\d+(?:\.\d+)?\b|\b[A-Za-z_][A-Za-z0-9_]*\b)"#
-        guard let expression = try? NSRegularExpression(pattern: pattern) else { return AttributedString(source) }
+        guard let expression = tokenPattern else { return AttributedString(source) }
         let range = NSRange(source.startIndex..., in: source)
         var cursor = source.startIndex
         var output = AttributedString()

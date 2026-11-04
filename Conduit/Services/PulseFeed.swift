@@ -285,9 +285,28 @@ struct PulseCard: Equatable, Identifiable {
 
     private static func formatted(_ news: String, markdown: Bool) -> AttributedString {
         guard markdown else { return AttributedString(news) }
+        // The feed is read every minute while Pulse shows, mostly the same
+        // cards: each card's news is parsed once, not on every read
+        // (issue 1728).
+        let key = news as NSString
+        if let cached = formattedNewsCache.object(forKey: key) { return cached.value }
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return (try? AttributedString(markdown: news, options: options)) ?? AttributedString(news)
+        let value = (try? AttributedString(markdown: news, options: options)) ?? AttributedString(news)
+        formattedNewsCache.setObject(FormattedNews(value), forKey: key, cost: news.utf8.count)
+        return value
     }
+
+    private final class FormattedNews {
+        let value: AttributedString
+        init(_ value: AttributedString) { self.value = value }
+    }
+
+    private static let formattedNewsCache: NSCache<NSString, FormattedNews> = {
+        let cache = NSCache<NSString, FormattedNews>()
+        cache.countLimit = 256
+        cache.totalCostLimit = 1024 * 1024
+        return cache
+    }()
 }
 
 /// A suggestion Pulse made instead of changing the phone (0.98.0,
@@ -1128,6 +1147,15 @@ extension AppState {
 
     /// Reads the feed for the button's badge and the chat's Pulse marks.
     /// A failure keeps what was there.
+    /// Whether a feed read landed in the last `interval` seconds: the Pulse
+    /// page's own read, while it is open, serves the Chats button too.
+    func pulseFeedIsFresh(within interval: TimeInterval) -> Bool {
+        guard let applied = pulseFeedAppliedAt, applied.dashboard == activeDashboardID else { return false }
+        // A clock set back makes the read look newer than now: not fresh.
+        let age = Date().timeIntervalSince(applied.at)
+        return age >= 0 && age < interval
+    }
+
     func refreshPulseFeed() async {
         guard showsPulseScreen else {
             pulseUnseen = 0
@@ -1144,6 +1172,7 @@ extension AppState {
     }
 
     func applyPulseFeed(_ page: PulseFeedPage) {
+        pulseFeedAppliedAt = (activeDashboardID, Date())
         if pulseUnseen != page.unseen { pulseUnseen = page.unseen }
         let sources = page.sources
         if sources != pulseSources { pulseSources = sources }

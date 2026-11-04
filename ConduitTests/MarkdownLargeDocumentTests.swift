@@ -873,6 +873,37 @@ final class MarkdownLargeDocumentTests: XCTestCase {
         }
     }
 
+    /// A mid-size streaming reply, well under the large-document size, is
+    /// promoted into chunks too, so a tick never parses the whole reply
+    /// (issue 1720).
+    @MainActor
+    func testMidSizeStreamRenderingParsesOnlyBoundedSources() throws {
+        let source = mixedSoup(targetBytes: 60_000)
+        XCTAssertFalse(MarkdownLargeDocumentPolicy.isLargeDocument(source))
+        XCTAssertTrue(MarkdownLargeDocumentPolicy.isChunkedStream(source))
+
+        MarkdownParser.parseSourceSizes = []
+        let host = UIHostingController(rootView: StreamingText(text: source, active: true))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        host.view.layoutIfNeeded()
+        let streamDeadline = Date().addingTimeInterval(1.0)
+        while Date() < streamDeadline {
+            pumpForSwiftUICommit(host: host)
+        }
+
+        XCTAssertGreaterThan(MarkdownParser.parseSourceSizes.count, 0, "stream content must have rendered")
+        for size in MarkdownParser.parseSourceSizes {
+            XCTAssertLessThan(size, 30_000, "a mid-size stream must parse only chunks and its tail (saw \(size))")
+        }
+    }
+
+    func testAShortStreamStaysWhole() {
+        XCTAssertFalse(MarkdownLargeDocumentPolicy.isChunkedStream(String(repeating: "a", count: MarkdownLargeDocumentPolicy.streamChunkingThresholdBytes - 1)))
+        XCTAssertTrue(MarkdownLargeDocumentPolicy.isChunkedStream(String(repeating: "a", count: MarkdownLargeDocumentPolicy.streamChunkingThresholdBytes)))
+    }
+
     /// Requirement: switching sources mid-flight cannot let a stale async
     /// preparation populate the wrong message. The identity guard drops
     /// mismatched results; assert the visible end state matches the new
@@ -1357,6 +1388,69 @@ extension MarkdownLargeDocumentTests {
         if let boundary = inFence {
             XCTAssertLessThanOrEqual(boundary, fenceStart, "promotion boundary must not land inside the fence")
         }
+    }
+
+    /// A long table has no blank line in it: the scanner records it as one
+    /// span, so the stream never hard-cuts mid-table and leaves the tail's
+    /// rows without their header (review of #1734).
+    func testALongStreamingTableIsNeverCutInside() {
+        let rows = (0..<2_000).map { "| row \($0) | value \($0) | note \($0) |" }.joined(separator: "\n")
+        let text = "intro\n\n| a | b | c |\n| --- | --- | --- |\n\(rows)\n\nafter table\n"
+        var scanner = MarkdownStableBoundaryScanner()
+        let boundaries = scanner.append(text)
+        XCTAssertEqual(scanner.constructIntervals.count, 1, "the table must be one span")
+        let span = scanner.constructIntervals[0]
+        let tableStart = text.utf8.count - text.drop(while: { $0 != "|" }).utf8.count
+        XCTAssertEqual(span.start, tableStart)
+        XCTAssertNotNil(span.end, "the line after the table closes its span")
+        XCTAssertGreaterThan(span.end! - span.start, 2 * MarkdownLargeDocumentPolicy.maxStreamChunkBytes)
+
+        // Every stable target inside the table: promotion waits or uses the
+        // boundary before it, never a hard cut through the rows.
+        for target in stride(from: span.start + 1, to: span.end!, by: 997) {
+            let next = LargeStreamPromotion.nextPromotionBoundary(
+                promotedBytes: span.start,
+                revealedBytes: target + MarkdownLargeDocumentPolicy.chunkTargetBytes,
+                boundaries: boundaries,
+                constructIntervals: scanner.constructIntervals
+            )
+            if let next {
+                XCTAssertFalse(next > span.start && next < span.end!, "cut \(next) lands inside the table")
+            }
+        }
+    }
+
+    /// A table written without its outer pipes is one span too.
+    func testATableWithoutOuterPipesIsOneSpan() {
+        let rows = (0..<50).map { "row \($0) | value \($0)" }.joined(separator: "\n")
+        let text = "intro\n\na | b\n--- | ---\n\(rows)\n\nafter\n"
+        var scanner = MarkdownStableBoundaryScanner()
+        _ = scanner.append(text)
+        XCTAssertEqual(scanner.constructIntervals.count, 1)
+        XCTAssertEqual(scanner.constructIntervals[0].start, "intro\n\n".utf8.count)
+        XCTAssertEqual(scanner.constructIntervals[0].end, text.utf8.count - "\nafter\n".utf8.count)
+    }
+
+    /// Prose with a `|` and no separator row under it is no table, and a
+    /// fence opener with a `|` in its info string opens no table: the
+    /// fence's own span keeps its end.
+    func testPipesOutsideATableOpenNoSpan() {
+        var scanner = MarkdownStableBoundaryScanner()
+        _ = scanner.append("this | that\nand more | prose\n```a|b\ncode\n```\nafter\n")
+        XCTAssertEqual(scanner.constructIntervals.count, 1, "only the fence")
+        XCTAssertNotNil(scanner.constructIntervals[0].end)
+        XCTAssertTrue(MarkdownStableBoundaryScanner.isTableSeparator("| --- | :---: |"))
+        XCTAssertTrue(MarkdownStableBoundaryScanner.isTableSeparator("--- | ---"))
+        XCTAssertFalse(MarkdownStableBoundaryScanner.isTableSeparator("a | b"))
+    }
+
+    /// A table still streaming when the reply ends is closed by `finish()`.
+    func testATableOpenAtTheEndClosesOnFinish() {
+        var scanner = MarkdownStableBoundaryScanner()
+        _ = scanner.append("| a | b |\n| --- | --- |\n| 1 | 2 |")
+        XCTAssertNil(scanner.constructIntervals.last?.end)
+        scanner.finish()
+        XCTAssertNotNil(scanner.constructIntervals.last?.end)
     }
 
     // Case 7: giant unbroken CJK paragraph -> bounded grapheme-safe hard

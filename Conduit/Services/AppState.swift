@@ -2224,9 +2224,17 @@ final class AppState: ObservableObject {
 
     // MARK: - Runtime
 
+    /// When a Pulse feed read last landed, and for which dashboard
+    /// (PulseFeed.swift).
+    var pulseFeedAppliedAt: (dashboard: UUID?, at: Date)?
+
     @Published var runtime = RuntimeState()
     @Published var activeAgents = 0
     @Published private(set) var delegateAgents: [DelegateAgentActivity] = []
+    /// When each delegate agent last sent an event. An event that changes
+    /// nothing its card shows renews this without publishing the cards, and
+    /// the roster check counts it as the card's latest news.
+    private var delegateAgentSeenAt: [String: Date] = [:]
     /// A card with an event this recent may belong to an agent the gateway
     /// roster hasn't registered yet, so the roster check leaves it alone.
     static let delegateAgentRosterGrace: TimeInterval = 30
@@ -6465,6 +6473,19 @@ final class AppState: ObservableObject {
             },
             picked: OfflineChatPresentation.PickedChat(title: session.title, sessionIDs: ids, durableSessionID: durableID)
         )
+    }
+
+    /// Reads a listed chat's saved copy into memory off the main thread as
+    /// its row shows, so tapping it shows the copy from memory rather than
+    /// reading its file first (issue 1725).
+    func warmSavedCopy(of session: SessionSummary) {
+        guard let dashboardID = activeDashboardID else { return }
+        // Another profile's row in All opens in its own profile: its copy is
+        // kept under that one.
+        // Its stored id first, where a copy is most often saved, then every
+        // other id the row answers to, as the open looks it up.
+        let ids = [session.storedSessionId].compactMap { $0 } + session.nestingIDs
+        offlineChatCache.warmTranscript(ids, dashboardID: dashboardID, profile: rowProfile(session))
     }
 
     /// A chat opened while connected shows its saved copy until its own
@@ -14650,19 +14671,14 @@ final class AppState: ObservableObject {
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent
                 || continuation.handedOffAutomaticIntent
-            await loadChatResumeBusyInputMode(using: client)
-            guard let continuation = transportContinuation(
-                    purpose: continuationPurpose,
-                    automaticWorkToken: continuationAutomaticWorkToken,
-                    automaticReconnectOperationID: transportOperationID
-                  ),
-                  let activeClient = self.client, activeClient === client else { return }
-            continuationPurpose = continuation.purpose
-            continuationAutomaticWorkToken = continuation.automaticWorkToken
-            handedOffAutomaticIntent = handedOffAutomaticIntent
-                || continuation.handedOffAutomaticIntent
-            await loadChatResumeProfileDisplayPreferences()
-            guard let continuation = transportContinuation(
+            // Two independent reads, each guarding its own answer against a
+            // switch while it was out: sent together, so the connect waits
+            // one round trip for them, not two (issue 1727).
+            async let busyInputModeRead: Void = loadChatResumeBusyInputMode(using: client)
+            async let displayPreferencesRead: Void = loadChatResumeProfileDisplayPreferences()
+            _ = await (busyInputModeRead, displayPreferencesRead)
+            guard let activeClient = self.client, activeClient === client,
+                  let continuation = transportContinuation(
                 purpose: continuationPurpose,
                 automaticWorkToken: continuationAutomaticWorkToken,
                 automaticReconnectOperationID: transportOperationID
@@ -21883,7 +21899,8 @@ final class AppState: ObservableObject {
         forceRefresh: Bool,
         requiredViewportTransitionGeneration: UInt64?,
         reportsFailure: Bool = true,
-        yieldsToNewerReads: Bool = false
+        yieldsToNewerReads: Bool = false,
+        deferringOlderPages: Bool = false
     ) async -> Bool {
         if let requiredViewportTransitionGeneration,
            !chatViewportTransitionIsCurrent(generation: requiredViewportTransitionGeneration) {
@@ -21897,14 +21914,18 @@ final class AppState: ObservableObject {
         let readTicket = takeSessionListReadTicket()
         do {
             let loadedSessions: [SessionSummary]
+            var olderPagesDeferred = false
             if let sessionCatalogLoaderOverride {
                 loadedSessions = try await sessionCatalogLoaderOverride(forceRefresh)
             } else if let activeClient {
-                loadedSessions = try await profileCatalog(
+                let catalogLoad = try await profileCatalog(
                     using: activeClient,
                     forceRefresh: forceRefresh,
+                    deferringOlderPages: deferringOlderPages,
                     yieldsToNewerReads: yieldsToNewerReads
-                ).sessions
+                )
+                loadedSessions = catalogLoad.sessions
+                olderPagesDeferred = catalogLoad.olderPagesDeferred
             } else {
                 return false
             }
@@ -21918,8 +21939,13 @@ final class AppState: ObservableObject {
             // older than the one shown.
             guard claimSessionListListing(readTicket) else { return true }
             let awaitingListing = newChatRowAwaitingListing(loaded: loadedSessions)
+            // The newest page alone (a pull to refresh, whose older pages
+            // are read right after) keeps the older rows already listed
+            // until they land, so the list never shrinks to one page
+            // meanwhile, and a failed read after it leaves them.
+            let olderListed = olderPagesDeferred ? sessions + cronSessions : []
             let allSessions = uniqueSessions(
-                [retainedActiveTurn, awaitingListing].compactMap { $0 } + loadedSessions
+                [retainedActiveTurn, awaitingListing].compactMap { $0 } + loadedSessions + olderListed
             )
             let listedSessions = allSessions.filter { $0.source != .cron }
             let listedCron = allSessions.filter { $0.source == .cron }
@@ -21930,7 +21956,7 @@ final class AppState: ObservableObject {
             settleNewChatAwaitingListing(loaded: loadedSessions)
             chatListCatalogFreshness.noteLoaded(at: chatSyncNow())
             observeOpenChatCatalog()
-            savedChatListReplacedByLiveList(newestPageOnly: false, dashboardID: dashboardID)
+            savedChatListReplacedByLiveList(newestPageOnly: olderPagesDeferred, dashboardID: dashboardID)
             sessionCatalogLoadState.markLoaded(SessionCatalogOwner(dashboardID: dashboardID, profile: profile))
             refreshVoiceSessionTags()
             // Labeled rows are positive identity evidence; commit them so
@@ -22100,7 +22126,18 @@ final class AppState: ObservableObject {
         let cronKey = "\(activeProfile):cron"
         sessionCatalogCache.removeValue(forKey: sessionKey)
         sessionCatalogCache.removeValue(forKey: cronKey)
-        await loadSessions(forceRefresh: true)
+        // The newest page is what the pull is for: the spinner clears once
+        // it lands, and the older pages are read after it, rather than all
+        // 25 one after another first (issue 1724).
+        let client = self.client
+        let profile = activeProfile
+        let dashboardID = activeDashboardID
+        await loadSessions(
+            forceRefresh: true,
+            requiredViewportTransitionGeneration: nil,
+            deferringOlderPages: true
+        )
+        if let client { loadDeferredCatalogPages(after: client, profile: profile, dashboardID: dashboardID) }
     }
 
     // MARK: - One chat on two devices
@@ -25273,26 +25310,39 @@ final class AppState: ObservableObject {
         return outcome == .opened
     }
 
-    /// Every notification tap rereads the chat list, a call notification's
-    /// included. The open of a call answered in CallKit has its caller
-    /// waiting on the voice, so it rereads only when the list on hand lacks
-    /// the call's chat. Runtime and alias ids are never handed to another
-    /// chat, so a row they match is the call's chat.
+    /// A notification tap reads the chat list again before it opens only
+    /// when the list on hand lacks the chat: reading the whole list took
+    /// 2-3 s on a long one (897 rows), seconds more over a remote dashboard,
+    /// and the tap waited for it. A chat the list holds opens at once, and
+    /// the list is read again after (Eric, 2026-11-04, issue 1724; answered
+    /// calls first did this, 2026-11-02). A notification with no durable id
+    /// opens at once only when its id is a row's stored id: a runtime id can
+    /// be handed to another conversation, so a row that matches it alone
+    /// may not be the notification's chat.
     /// A bot's workstream never needs it: Hermes hides it from the list, so
     /// the read can't find its row and only held the open up for seconds
     /// (Eric's build 248 test, a secondary bot's work link or card).
     nonisolated static func notificationOpenNeedsAuthoritativeRead(
         target: ConduitNotificationTarget,
-        callAnswered: Bool,
         catalog: [SessionSummary],
         isWorkstream: Bool = false
     ) -> Bool {
         if isWorkstream { return false }
         // The route resolves to the payload's durable id first, so that id
         // must be on hand too, or the bot-chat check would miss its row.
-        guard callAnswered, target.call != nil, catalogListsSession(target.sessionId, in: catalog) else { return true }
-        if let durable = target.durableSessionID, !catalogListsSession(durable, in: catalog) { return true }
-        return false
+        guard catalogListsSession(target.sessionId, in: catalog) else { return true }
+        guard let durable = target.durableSessionID else {
+            return !catalogListsStoredSession(target.sessionId, in: catalog)
+        }
+        return !catalogListsSession(durable, in: catalog)
+    }
+
+    /// Whether `sessionID` is a row's stored (durable) id.
+    nonisolated static func catalogListsStoredSession(_ sessionID: String, in catalog: [SessionSummary]) -> Bool {
+        guard let wanted = ChatScrollIdentityNormalization.sessionID(sessionID) else { return false }
+        return catalog.contains { row in
+            row.storedSessionId.map { ChatScrollIdentityNormalization.sessionID($0) == wanted } ?? false
+        }
     }
 
     /// Whether `sessionID` names a row of `catalog`: its id, stored id or
@@ -25587,25 +25637,37 @@ final class AppState: ObservableObject {
         // ID for the notification's runtime/alternate ID. Otherwise the next
         // cold-start recovery only sees the old normal-session list and jumps
         // back to its newest entry.
-        // Do not share the sidebar refresh guard here. A notification takes
-        // one authoritative read even if a visual refresh is already in
-        // progress, otherwise it can resolve against the stale catalog;
-        // only the open of a call answered in CallKit may skip it. That call
-        // has its caller waiting: when the
-        // list on hand already holds the call's chat, the route resolves
-        // against that list. Reading the whole list again took 2-3 s of every
-        // answered call on a long list (897 rows, Ul'dah 2026-11-02). A row
-        // that matches the call's id by any of its ids is the call's chat
-        // even if the host has since rotated its runtime id, and the chat
-        // sync the call's connection starts refreshes it. A chat the list
-        // lacks still waits for the authoritative read.
+        // Do not share the sidebar refresh guard here. A chat the list on
+        // hand lacks takes one authoritative read even if a visual refresh
+        // is already in progress, otherwise it can resolve against the stale
+        // catalog. When the list already holds the chat, the route resolves
+        // against that list: reading the whole list again took 2-3 s on a
+        // long list (897 rows, Ul'dah 2026-11-02). A row that matches the
+        // notification's id by any of its ids is its chat even if the host
+        // has since rotated its runtime id, and the read after the open
+        // brings the row up to date (issue 1724).
+        var readsListAfterOpen = false
+        var openedFromListOnHand = false
+        defer {
+            if readsListAfterOpen {
+                // Quiet: the chat opened, and a failed list read after it
+                // is no error on it; the list's poll reads again.
+                Task { @MainActor [weak self] in
+                    _ = await self?.loadSessions(
+                        forceRefresh: true,
+                        requiredViewportTransitionGeneration: nil,
+                        reportsFailure: false
+                    )
+                }
+            }
+        }
         if !Self.notificationOpenNeedsAuthoritativeRead(
             target: target,
-            callAnswered: isNativeHermesCallAnswered,
             catalog: sessions + cronSessions,
             isWorkstream: isWorkstreamSession(target.sessionId)
         ) {
             traceStage = "session list (on hand)"
+            openedFromListOnHand = true
         } else {
             traceStage = "session list"
             guard await loadSessions(
@@ -25695,6 +25757,10 @@ final class AppState: ObservableObject {
             presentationMigrationSessionIDs: [requestedID]
         )
         let opened = outcome == .opened
+        // An open that landed, or one Hermes refused (the chat is gone, so
+        // the list drops its row), reads the list after it; a superseded or
+        // passing failure leaves it to the list's poll.
+        readsListAfterOpen = openedFromListOnHand && (opened || refused)
         traceStage = "session open, \(outcome)"
         // Commit the payload's dual identity as positive evidence only once
         // the open actually succeeded — a failed resume (e.g. the durable
@@ -36269,29 +36335,47 @@ final class AppState: ObservableObject {
         case .approvalWithdrawn(_, let requestId, let reason):
             withdrawApproval(requestId: requestId, reason: reason)
 
+        // These arrive with most gateway frames of a turn, mostly unchanged:
+        // each is written once, and only when it changes, since every write
+        // publishes AppState and redraws what observes it (issue 1722).
         case .contextUpdate(_, let percent, let used, let max):
-            runtime.contextPercent = normalizedContextPercent(percent, used: used, max: max)
-            runtime.contextUsed = used
-            runtime.contextMax = max
+            var updated = runtime
+            updated.contextPercent = normalizedContextPercent(percent, used: used, max: max)
+            updated.contextUsed = used
+            updated.contextMax = max
+            setRuntime(updated)
 
         case .cwdUpdate(_, let cwd):
-            runtime.cwd = cwd
+            var updated = runtime
+            updated.cwd = cwd
+            setRuntime(updated)
 
         case .modelUpdate(_, let model, let provider):
-            runtime.model = model
-            runtime.provider = provider
+            var updated = runtime
+            updated.model = model
+            updated.provider = provider
+            setRuntime(updated)
 
         case .agentCount(_, let count):
-            activeAgents = count
+            setActiveAgents(count)
 
         case .delegateAgent(let sessionId, var activity):
             activity.sessionId = sessionId
-            if let index = delegateAgents.firstIndex(where: { $0.id == activity.id }) {
-                delegateAgents[index] = delegateAgents[index].merged(with: activity)
+            delegateAgentSeenAt[activity.id] = activity.updatedAt
+            var updated = delegateAgents
+            if let index = updated.firstIndex(where: { $0.id == activity.id }) {
+                let card = updated[index].merged(with: activity)
+                // Every event stamps a fresh time: an event that changes
+                // nothing the card shows leaves the cards unpublished.
+                var unstamped = card
+                unstamped.updatedAt = updated[index].updatedAt
+                guard unstamped != updated[index] else { break }
+                updated[index] = card
             } else {
-                delegateAgents.append(activity)
+                updated.append(activity)
             }
-            activeAgents = delegateAgents.filter { $0.status.isActive }.count
+            delegateAgents = updated
+            setActiveAgents(updated.filter { $0.status.isActive }.count)
 
         case .statusUpdate:
             // Lifecycle bookkeeping — handled in handleStreamEvent before
@@ -36322,16 +36406,23 @@ final class AppState: ObservableObject {
         let sessionIDs = Set(delegateAgents.lazy
             .filter { $0.status == .running && $0.hasGatewayID && !$0.sessionId.isEmpty }
             .map(\.sessionId))
+        delegateAgentSeenAt = delegateAgentSeenAt.filter { id, _ in delegateAgents.contains { $0.id == id } }
         for sessionID in sessionIDs {
             guard let liveIDs = try? await client.liveSubagentIDs(sessionId: sessionID) else { continue }
+            // A card's latest news is its last event, published or not.
+            let seen = delegateAgents.map { agent -> DelegateAgentActivity in
+                var stamped = agent
+                if let at = delegateAgentSeenAt[agent.id], at > stamped.updatedAt { stamped.updatedAt = at }
+                return stamped
+            }
             let reconciled = DelegateAgentActivity.reconciled(
-                delegateAgents,
+                seen,
                 sessionId: sessionID,
                 liveIDs: liveIDs,
                 changedBefore: cutoff
             )
             // Unchanged cards leave the gateway's own agent count alone.
-            guard reconciled != delegateAgents else { continue }
+            guard reconciled != seen else { continue }
             delegateAgents = reconciled
             activeAgents = delegateAgents.filter { $0.status.isActive }.count
         }
@@ -37428,6 +37519,16 @@ final class AppState: ObservableObject {
             logs: (logs?["lines"] as? [Any] ?? []).map { String(describing: $0) },
             error: status == nil ? AppLocalization.string("Could not refresh dashboard status.") : nil
         )
+    }
+
+    /// Takes `updated` as the runtime only when it differs: a same-value
+    /// write still publishes AppState once per gateway frame.
+    private func setRuntime(_ updated: RuntimeState) {
+        if runtime != updated { runtime = updated }
+    }
+
+    private func setActiveAgents(_ count: Int) {
+        if activeAgents != count { activeAgents = count }
     }
 
     private func setRunning(_ running: Bool) {
@@ -40693,10 +40794,12 @@ extension AppState {
     }
 
     /// All's poll while the list shows. Slower than the profile in use's
-    /// own: Hermes opens every profile's database for it.
+    /// own: Hermes opens every profile's database for it. Off screen (voice,
+    /// Read Aloud or CarPlay keeping the app running) nothing reads, as with
+    /// the chat list's own poll (issue 1728).
     func runAllProfilesCatalogPolling() async {
         while !Task.isCancelled {
-            refreshAllProfilesCatalog()
+            if isSceneActive { refreshAllProfilesCatalog() }
             try? await Task.sleep(for: .seconds(20))
         }
     }
