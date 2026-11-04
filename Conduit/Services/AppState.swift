@@ -18200,7 +18200,10 @@ final class AppState: ObservableObject {
             }
             // An empty chat made here that Hermes lost: a fresh one in its
             // place, rather than a restore error no refresh can clear.
-            if resumeRPCFailedSessionNotFound || HermesClient.isSessionNotFoundError(error),
+            // Only the resume's own refusal (4007 on the dashboard, 4001
+            // not_found on the authority), never a history read's 404.
+            if resumeRPCFailedSessionNotFound
+                || (error as? RpcError).map(HermesClient.isSessionNotFoundError) == true,
                conversationScopeProfile == nil,
                openChatIsEmptyNewChat(acceptedSessionIDs.union([sessionId])) {
                 return await replaceLostEmptyNewChat(
@@ -28034,11 +28037,12 @@ final class AppState: ObservableObject {
     private func resendInPlaceOfLostEmptyChat(
         _ text: String,
         attachments: [Attachment],
-        optimisticRowID: String,
+        context: ComposerSubmissionContext,
         lostSessionIDs: Set<String>,
         using client: HermesClient
     ) async -> Bool {
-        messages.removeAll { $0.id == optimisticRowID }
+        // The fresh chat's create clears the transcript, this row with it;
+        // a failed create leaves it, as any failed send does.
         let token = beginReconciliation()
         turnState = .synchronizing
         guard await replaceLostEmptyNewChat(
@@ -28047,8 +28051,10 @@ final class AppState: ObservableObject {
             profile: activeProfile,
             token: token
         ) else {
-            // The create's own failure is what the composer shows.
+            // The create's own failure is what the composer shows; the
+            // words come back as for any failed send.
             if token == reconciliationToken, turnState == .synchronizing { turnState = .idle }
+            await recoverComposerSubmission(using: context)
             return false
         }
         return await sendMessage(text, attachments: attachments, afterReplacingLostChat: true)
@@ -28210,7 +28216,7 @@ final class AppState: ObservableObject {
                 guard isCurrentComposerSubmission(submissionContext) else { return false }
                 if sendsIntoEmptyNewChat, HermesClient.isSessionNotFoundError(error) {
                     return await resendInPlaceOfLostEmptyChat(
-                        text, attachments: attachments, optimisticRowID: userMessage.id,
+                        text, attachments: attachments, context: submissionContext,
                         lostSessionIDs: submissionSessionIDs, using: client
                     )
                 }
@@ -28381,7 +28387,7 @@ final class AppState: ObservableObject {
             }
             if sendsIntoEmptyNewChat, HermesClient.isSessionNotFoundError(error) {
                 return await resendInPlaceOfLostEmptyChat(
-                    text, attachments: attachments, optimisticRowID: userMessage.id,
+                    text, attachments: attachments, context: submissionContext,
                     lostSessionIDs: submissionSessionIDs, using: client
                 )
             }

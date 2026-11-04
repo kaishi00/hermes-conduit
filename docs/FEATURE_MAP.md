@@ -549,11 +549,11 @@ keep) · text: no Settings caption or doc describes it
 
 **Code**
 - `Conduit/Services/AppState.swift` (openChatIsEmptyNewChat, replaceLostEmptyNewChat, the session-not-found branch in reconcile's catch, resendInPlaceOfLostEmptyChat from sendMessage's attach and prompt.submit catches; newChatOpenedSessionID and newChatOpenedDurableSessionID, set in createAndReconcileSession)
-- Tests: `ConduitTests/SessionRenameTests.swift` (testAnEmptyNewChatHermesLostIsReplacedOnRefresh, testTheFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne, testANewChatWithMessagesIsNeverReplaced)
+- Tests: `ConduitTests/SessionRenameTests.swift` (testAnEmptyNewChatHermesLostIsReplacedOnRefresh, testTheFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne, testAFailedFreshChatKeepsTheFirstMessagesWords, testANewChatWithMessagesIsNeverReplaced)
 
 **Rulings**
 - Only the chat New Chat made here, still open, with nothing in it but notices: nothing was said in it, so a fresh chat in its place loses nothing and says nothing. Any other chat that Hermes says is gone shows its error as before (Eric, 2026-11-04, #1752).
-- Its first message goes, as typed, into the fresh chat, once; a refusal there shows as any failed send does. The lost chat's row leaves the list at once (2026-11-04, #1752).
+- Its first message goes, as typed, into the fresh chat, once; a refusal there, or a fresh chat that fails to open, shows as any failed send does and keeps the words. Only the resume's own refusal counts, never a history read's 404 (GLM's review). The lost chat's row leaves the list at once (2026-11-04, #1752).
 
 **Open gaps**
 - Not reproduced on a device: Hermes v0.22.7 kept an idle new chat on both servers in a probe, so the reviewer's trigger (likely an older Hermes with a dropped socket) is inferred (2026-11-04, #1752).

@@ -645,6 +645,21 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertNil(appState.errorMessage)
     }
 
+    func testAFailedFreshChatKeepsTheFirstMessagesWords() async {
+        var lost: Set<String> = []
+        var createFails = false
+        let appState = makeLostChatAppState(lost: { lost }, createFails: { createFails }) { _, _ in }
+
+        await appState.createNewSession()
+        lost = ["created-runtime-1", "created-stored-1"]
+        createFails = true
+        let sent = await appState.sendMessage("hello")
+
+        XCTAssertFalse(sent)
+        XCTAssertTrue(appState.messages.contains { $0.role == .user && $0.content == "hello" }, "the words stay, as for any failed send")
+        XCTAssertNotNil(appState.errorMessage)
+    }
+
     func testANewChatWithMessagesIsNeverReplaced() async {
         var lost: Set<String> = []
         var created = 0
@@ -749,6 +764,7 @@ final class SessionRenameTests: XCTestCase {
     private func makeLostChatAppState(
         lost: @escaping @MainActor () -> Set<String>,
         onCreate: @escaping @MainActor () -> Void = {},
+        createFails: @escaping @MainActor () -> Bool = { false },
         onPrompt: @escaping @MainActor (String, String) -> Void
     ) -> AppState {
         let defaults = makeScratchDefaults("LostEmptyNewChatTests")
@@ -780,6 +796,7 @@ final class SessionRenameTests: XCTestCase {
         appState.isConnected = true
         var count = 0
         appState.widgetSessionCreatorOverride = { _, _ in
+            if createFails() { throw URLError(.notConnectedToInternet) }
             count += 1
             onCreate()
             return ("created-runtime-\(count)", "created-stored-\(count)", "default")
