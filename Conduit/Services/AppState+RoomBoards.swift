@@ -17,8 +17,13 @@ extension AppState {
 
     func roomReplayChanged(from old: GroupRoomReplay) {
         let latest = activeRoomReplay.events.last(where: \.isMemberMessage)?.seq
-        guard activeRoomReplay.roomID != old.roomID || latest != old.events.last(where: \.isMemberMessage)?.seq
-        else { return }
+        if activeRoomReplay.roomID != old.roomID {
+            // Another room's boards never go under this one's messages,
+            // whether or not its own read comes back.
+            if !activeRoomBoards.isEmpty { activeRoomBoards = [] }
+        } else if latest == old.events.last(where: \.isMemberMessage)?.seq {
+            return
+        }
         refreshActiveRoomBoards()
     }
 
