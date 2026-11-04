@@ -4355,7 +4355,7 @@ notifier README and CHANGELOG
 - A checklist that stays on screen reads other devices' ticks only when it's drawn again or ticked here.
 - Boards are parsed again each time a row is drawn; no cache yet, as liveNames has.
 
-**Checked:** 2026-11-04, #1734 with notifier #536 (boards drawn in group rooms); 2026-11-03, #1713 with notifier #528.
+**Checked:** 2026-11-04, #1736 with notifier #536 (boards drawn in group rooms); 2026-11-03, #1713 with notifier #528.
 
 ## Cards drawn in web pages
 
