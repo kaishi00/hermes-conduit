@@ -322,7 +322,7 @@ final class TranscriptLayoutTests: XCTestCase {
         func guess(_ row: GroupRoomRow) -> CGFloat {
             TranscriptLayout.estimatedHeight(of: TranscriptRow(id: "r", kind: .room(row)), width: width)
         }
-        func event(_ kind: String, _ text: String?) -> GroupRoomRow {
+        func event(_ kind: String, _ text: String?, boards: [RichBoard] = []) -> GroupRoomRow {
             var payload: [String: AnyCodable] = [:]
             if let text { payload["text"] = .string(text) }
             let event = GroupEvent(
@@ -330,11 +330,16 @@ final class TranscriptLayoutTests: XCTestCase {
                 actor: GroupActor(kind: "member", id: "furina", profile: "furina", displayName: nil, connectionID: nil),
                 authorityEpoch: nil, payload: payload, createdAt: 1
             )
-            return .event(event, members: [], continuesRun: false, boards: [])
+            return .event(event, members: [], continuesRun: false, boards: boards)
         }
         XCTAssertEqual(guess(event("turn.failed", nil)), TranscriptLayout.rowGap + 24, "a caption is a line")
         let long = String(repeating: "A member's reply runs on for a while. ", count: 30)
         XCTAssertGreaterThan(guess(event("message.member", long)), guess(event("message.member", "Hi")))
+        let board = RichBoard(cards: [], tabs: false, followUps: [], markdown: "Book early")
+        XCTAssertGreaterThan(guess(event("message.member", "Hi", boards: [board])), guess(event("message.member", "Hi")),
+                             "a message's boards are guessed under it")
+        XCTAssertGreaterThan(guess(event("message.member", nil, boards: [board])), guess(event("message.member", nil)),
+                             "a message with no text still guesses its boards")
         XCTAssertEqual(
             guess(.pending(text: long, members: [], isSending: true)),
             guess(event("message.user", long)),
