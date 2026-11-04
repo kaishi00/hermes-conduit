@@ -322,6 +322,43 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(memory.ticked(scope: context("home", ["r1"]).scope, key: "packing"), ["rain jacket"])
     }
 
+    @MainActor
+    func testUnsentTicksFromTwoEarlierScopesGoInTheOrderMade() async throws {
+        let suite = "RichChecklistMemoryTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let list = try card(["type": "checklist", "title": "Packing",
+                             "checklist": [["text": "Rain jacket"], ["text": "Swimsuit"]]])
+        var online = false
+        var saved: [[String: AnyHashable]] = []
+        func context(_ ids: [String]) -> RichChecklistContext {
+            RichChecklistContext(
+                scope: RichChecklistContext.scope(profile: "work", sessionIDs: ids), sessionIDs: ids,
+                read: { [:] },
+                save: { body in
+                    guard online else { throw URLError(.notConnectedToInternet) }
+                    saved.append(body["change"] as? [String: AnyHashable] ?? [:])
+                    return [:]
+                })
+        }
+        let memory = RichChecklistMemory(defaults: defaults)
+        // The chat known by two ids not yet tied together, offline: a tick
+        // under one, then the untick under the other.
+        memory.toggle("Swimsuit", card: list, key: "packing", context: context(["r1"]))
+        for _ in 0..<20 { await Task.yield() }
+        memory.toggle("Swimsuit", card: list, key: "packing", context: context(["s1"]))
+        memory.toggle("Swimsuit", card: list, key: "packing", context: context(["s1"]))
+        for _ in 0..<20 { await Task.yield() }
+
+        online = true
+        let both = context(["r1", "s1"])
+        await memory.refresh(context: both, key: "packing")
+        XCTAssertEqual(saved, [["item": "Swimsuit", "ticked": true], ["item": "Swimsuit", "ticked": true],
+                               ["item": "Swimsuit", "ticked": false]], "older ticks first, the last one made last")
+        XCTAssertTrue(memory.ticked(scope: both.scope, key: "packing").isEmpty, "the last tick made shows")
+        XCTAssertEqual(memory.entries.count, 1)
+    }
+
     func testProgressNeedsAGoalAndAStopOpensInMaps() throws {
         XCTAssertNil(RichCard(normalized: ["type": "progress", "progress": [["label": "Saved", "value": 10, "goal": 0]]], id: 0))
         let saved = try XCTUnwrap(try card(["type": "progress", "progress": [

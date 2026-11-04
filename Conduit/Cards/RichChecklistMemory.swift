@@ -200,34 +200,31 @@ final class RichChecklistMemory: ObservableObject {
             return parts.profile == profile && !parts.sessionIDs.isDisjoint(with: ids)
         }
         guard !earlier.isEmpty else { return }
-        let existing = entries[id]
-        var entry = existing
-        for (other, old) in earlier.sorted(by: { $0.value.at < $1.value.at }) {
-            if old.unsent {
-                if var current = entry {
-                    // Ticks made under the new scope are the newer ones.
-                    let touched = Set((current.changes ?? []).map { $0.item.lowercased() })
-                    for change in old.changes ?? [] where !touched.contains(change.item.lowercased()) {
-                        if change.ticked {
-                            current.ticked.insert(change.item.lowercased())
-                        } else {
-                            current.ticked.remove(change.item.lowercased())
-                        }
-                    }
-                    current.changes = (old.changes ?? []) + (current.changes ?? [])
-                    current.unsent = true
-                    current.at = max(current.at, old.at)
-                    entry = current
+        for other in earlier.keys { entries.removeValue(forKey: other) }
+        // Oldest first, the new scope's own copy last: it's the newest.
+        var sources = earlier.values.sorted { $0.at < $1.at }
+        if let existing = entries[id] { sources.append(existing) }
+        var entry = sources.removeLast()
+        if sources.contains(where: \.unsent) {
+            // Every tick not yet sent goes, in the order made; the last one
+            // made to an item is the one it shows.
+            let changes = sources.filter(\.unsent).flatMap { $0.changes ?? [] } + (entry.changes ?? [])
+            for change in changes {
+                if change.ticked {
+                    entry.ticked.insert(change.item.lowercased())
                 } else {
-                    entry = old
+                    entry.ticked.remove(change.item.lowercased())
                 }
-            } else if existing == nil, entry?.unsent != true {
-                // Until the host's read lands, the newest copy shows.
-                entry = old
             }
-            entries.removeValue(forKey: other)
+            entry.changes = changes.isEmpty ? nil : changes
+            entry.unsent = true
+            entry.at = max(entry.at, sources.map(\.at).max() ?? entry.at)
+            // A copy the host's read made has no items or title to send.
+            if entry.items.isEmpty, let items = sources.last(where: { !$0.items.isEmpty })?.items { entry.items = items }
+            if entry.title.isEmpty, let title = sources.last(where: { !$0.title.isEmpty })?.title { entry.title = title }
         }
-        if let entry { store(entry, id: id) }
+        // Otherwise the newest copy shows until the host's read lands.
+        store(entry, id: id)
     }
 
     /// Checklists whose ticks are on their way to the host.
