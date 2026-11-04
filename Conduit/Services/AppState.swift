@@ -26068,8 +26068,9 @@ final class AppState: ObservableObject {
         requestComposerFocus(on: created)
     }
 
-    /// The open chat is the one New Chat made here (by any of `sessionIDs`)
-    /// and nothing has been said in it yet. Hermes keeps no row for such a
+    /// The open chat is one Conduit made here (by any of `sessionIDs`):
+    /// New Chat's, or the one a sync opened because there was nothing to
+    /// resume, and nothing has been said in it yet. Hermes keeps no row for such a
     /// chat until its first message, so when Hermes drops its runtime (a
     /// socket drop it reaped, a gateway restart) a Hermes before v0.22.0
     /// can never reopen it: every resume and send answers "session not
@@ -26099,6 +26100,9 @@ final class AppState: ObservableObject {
         widgetLease: WidgetLaunchLease? = nil
     ) async -> Bool {
         let cwd = openNewChatAwaitingListing?.cwd
+        // New Chat's chat is listed at once; one a sync opened because there
+        // was nothing to resume waits for Hermes, and so does its stand-in.
+        let listsBeforeHermes = openNewChatAwaitingListing != nil
         let lost = lostSessionIDs.union([newChatOpenedSessionID, newChatOpenedDurableSessionID].compactMap { $0 })
         lifecycleLog.notice("Empty new chat gone on Hermes (session not found) → a fresh one in its place")
         let created = await createAndReconcileSession(
@@ -26110,7 +26114,7 @@ final class AppState: ObservableObject {
             requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
             cwd: cwd,
             widgetLease: widgetLease,
-            listsBeforeHermes: true
+            listsBeforeHermes: listsBeforeHermes
         )
         guard let created else { return false }
         sessions.removeAll { row in

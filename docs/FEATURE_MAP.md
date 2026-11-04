@@ -540,7 +540,9 @@ resume through reconcile) · the composer's first send into it, a picture or
 file staged with it included · every way New Chat makes the chat (New Chat,
 a project's new chat in its folder, kept as the fresh chat's folder, the empty
 canvas's send, a widget's or Shortcut's New Chat, /new), which all go
-through createNewSession · not needed: a Bot Chat (made and reopened through
+through createNewSession · the chat a sync opens when there is nothing to
+resume (also made here and empty; its stand-in waits for Hermes' list as it
+did) · not needed: a Bot Chat (made and reopened through
 its own lookup, never New Chat's), a voice job's or a Local Live call's chat,
 Pulse's chat, CarPlay and the Watch (made in the background and sent to at
 once, so never empty and idle), a chat with anything in it (the user's, so
@@ -548,11 +550,11 @@ its error shows), the notifier (Hermes' behavior, nothing for the plugin to
 keep) · text: no Settings caption or doc describes it
 
 **Code**
-- `Conduit/Services/AppState.swift` (openChatIsEmptyNewChat, replaceLostEmptyNewChat, the session-not-found branch in reconcile's catch, resendInPlaceOfLostEmptyChat from sendMessage's attach and prompt.submit catches; newChatOpenedSessionID and newChatOpenedDurableSessionID, set in createAndReconcileSession; the fresh chat's folder from openNewChatAwaitingListing, NewChatAwaitingListing.cwd, see A new chat in the list)
-- Tests: `ConduitTests/SessionRenameTests.swift` (testAnEmptyNewChatHermesLostIsReplacedOnRefresh, testTheFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne, testAFirstMessageWithAFileIntoALostEmptyNewChatIsStagedInTheFreshOne, testAnEmptyNewChatLeftAndReopenedIsNotReplaced, testAFailedFreshChatKeepsTheFirstMessagesWords, testANewChatWithMessagesIsNeverReplaced)
+- `Conduit/Services/AppState.swift` (syncSession's create when there is nothing to resume; openChatIsEmptyNewChat, replaceLostEmptyNewChat, the session-not-found branch in reconcile's catch, resendInPlaceOfLostEmptyChat from sendMessage's attach and prompt.submit catches; newChatOpenedSessionID and newChatOpenedDurableSessionID, set in createAndReconcileSession; the fresh chat's folder from openNewChatAwaitingListing, NewChatAwaitingListing.cwd, see A new chat in the list)
+- Tests: `ConduitTests/SessionRenameTests.swift` (testAnEmptyNewChatHermesLostIsReplacedOnRefresh, testTheEmptyChatASyncOpenedIsReplacedToo, testTheFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne, testAFirstMessageWithAFileIntoALostEmptyNewChatIsStagedInTheFreshOne, testAnEmptyNewChatLeftAndReopenedIsNotReplaced, testAFailedFreshChatKeepsTheFirstMessagesWords, testANewChatWithMessagesIsNeverReplaced)
 
 **Rulings**
-- Only the chat New Chat made here, still open, with nothing in it but notices: nothing was said in it, so a fresh chat in its place loses nothing and says nothing. Any other chat that Hermes says is gone shows its error as before (Eric, 2026-11-04, #1752).
+- Only a chat Conduit made here (New Chat's, or the one a sync opened because there was nothing to resume), still open, with nothing in it but notices: nothing was said in it, so a fresh chat in its place loses nothing and says nothing. Any other chat that Hermes says is gone shows its error as before (Eric, 2026-11-04, #1752: "an empty chat made here that Hermes lost"; the sync's chat named after GLM's review).
 - Its first message goes, as typed, into the fresh chat, once; a refusal there, or a fresh chat that fails to open, shows as any failed send does and keeps the words. Only the resume's own refusal counts, never a history read's 404 (GLM's review). The lost chat's row leaves the list at once (2026-11-04, #1752).
 
 **Open gaps**

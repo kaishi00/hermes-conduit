@@ -628,6 +628,26 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertEqual(appState.sessions.map(\.id), ["created-stored-2"], "the lost chat's row goes")
     }
 
+    /// The chat a sync opens when there is nothing to resume is made here
+    /// and empty too: the same dead end, the same fresh chat, still not
+    /// listed before Hermes lists it.
+    func testTheEmptyChatASyncOpenedIsReplacedToo() async {
+        var lost: Set<String> = []
+        var created = 0
+        let appState = makeLostChatAppState(lost: { lost }, onCreate: { created += 1 }) { _, _ in }
+
+        await appState.syncSession()
+        XCTAssertEqual(appState.activeSessionId, "created-runtime-1")
+        XCTAssertNil(appState.newChatAwaitingListing)
+        lost = ["created-runtime-1", "created-stored-1"]
+        await appState.refreshActiveSession()
+
+        XCTAssertEqual(created, 2)
+        XCTAssertEqual(appState.activeSessionId, "created-runtime-2")
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertNil(appState.newChatAwaitingListing, "waits for Hermes, as the chat it replaces did")
+    }
+
     func testTheFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne() async {
         var lost: Set<String> = []
         var prompts: [(String, String)] = []
