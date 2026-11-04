@@ -18,7 +18,7 @@ final class BotWorkStore: ObservableObject {
         }
     }
     /// Called when the set of workstream chats changes, so lists already
-    /// shown (All profiles, search) leave out one that just became known.
+    /// shown (All profiles, search, the Chats list) leave out one that just became known.
     var onWorkstreamsChanged: (@MainActor () -> Void)?
     /// What the last action on each bot's work said when it did nothing
     /// ("W3 can't continue while it's running"), for its panel to show.
@@ -603,7 +603,7 @@ extension AppState {
     }
 
     /// A workstream that just became known leaves the lists already shown:
-    /// All profiles drops its row, and search redraws without it.
+    /// All profiles drops its row, and search and the Chats list redraw without it.
     func workstreamsChanged() {
         if allProfilesCatalog.sessions.contains(where: isWorkstreamRow) {
             allProfilesCatalog.sessions.removeAll(where: isWorkstreamRow)
