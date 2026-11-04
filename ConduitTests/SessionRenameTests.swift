@@ -645,6 +645,39 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertNil(appState.errorMessage)
     }
 
+    func testAFirstMessageWithAFileIntoALostEmptyNewChatIsStagedInTheFreshOne() async {
+        var lost: Set<String> = []
+        var uploads: [String] = []
+        var prompts: [(String, String)] = []
+        let appState = makeLostChatAppState(lost: { lost }, onUpload: { uploads.append($0) }) { prompts.append(($0, $1)) }
+        let notes = Attachment(id: UUID().uuidString, name: "notes.txt", uri: "file:///tmp/notes.txt", mimeType: "text/plain", kind: .document)
+
+        await appState.createNewSession()
+        lost = ["created-runtime-1", "created-stored-1"]
+        let sent = await appState.sendMessage("read this", attachments: [notes])
+
+        XCTAssertTrue(sent)
+        XCTAssertEqual(uploads, ["created-runtime-2"], "staged once, in the fresh chat")
+        XCTAssertEqual(prompts.map(\.0), ["created-runtime-2"])
+        XCTAssertTrue(prompts.first?.1.contains("/uploads/notes.txt") == true)
+        XCTAssertEqual(appState.messages.filter { $0.role == .user }.first?.attachments?.map(\.name), ["notes.txt"])
+    }
+
+    func testAnEmptyNewChatLeftAndReopenedIsNotReplaced() async {
+        var lost: Set<String> = []
+        var created = 0
+        let appState = makeLostChatAppState(lost: { lost }, onCreate: { created += 1 }) { _, _ in }
+
+        await appState.createNewSession()
+        appState.activeSessionId = "other-chat"
+        appState.activeSessionId = "created-runtime-1"
+        lost = ["created-runtime-1", "created-stored-1"]
+        await appState.refreshActiveSession()
+
+        XCTAssertEqual(created, 1, "only the chat New Chat made, still open since")
+        XCTAssertNotNil(appState.errorMessage)
+    }
+
     func testAFailedFreshChatKeepsTheFirstMessagesWords() async {
         var lost: Set<String> = []
         var createFails = false
@@ -765,13 +798,11 @@ final class SessionRenameTests: XCTestCase {
         lost: @escaping @MainActor () -> Set<String>,
         onCreate: @escaping @MainActor () -> Void = {},
         createFails: @escaping @MainActor () -> Bool = { false },
+        onUpload: @escaping @MainActor (String) -> Void = { _ in },
         onPrompt: @escaping @MainActor (String, String) -> Void
     ) -> AppState {
         let defaults = makeScratchDefaults("LostEmptyNewChatTests")
-        let appState = AppState(
-            defaults: defaults,
-            loadSavedConnection: false,
-            chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
+        var operations = ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [] },
                 openSession: { _, sessionID, _ in
                     if lost().contains(sessionID) { throw RpcError(code: 4007, message: "session not found") }
@@ -787,7 +818,16 @@ final class SessionRenameTests: XCTestCase {
                     onPrompt(sessionID, text)
                     return .accepted
                 }
-            ),
+            )
+        operations.uploadAttachment = { _, sessionID, attachment in
+            if lost().contains(sessionID) { throw RpcError(code: 4001, message: "session not found") }
+            onUpload(sessionID)
+            return "/uploads/\(attachment.name)"
+        }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            chatResumeLifecycleOperations: operations,
             sessionPresentationCache: SessionPresentationCache(defaults: defaults)
         )
         let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")

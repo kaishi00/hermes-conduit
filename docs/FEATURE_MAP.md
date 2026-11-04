@@ -548,8 +548,8 @@ its error shows), the notifier (Hermes' behavior, nothing for the plugin to
 keep) · text: no Settings caption or doc describes it
 
 **Code**
-- `Conduit/Services/AppState.swift` (openChatIsEmptyNewChat, replaceLostEmptyNewChat, the session-not-found branch in reconcile's catch, resendInPlaceOfLostEmptyChat from sendMessage's attach and prompt.submit catches; newChatOpenedSessionID and newChatOpenedDurableSessionID, set in createAndReconcileSession)
-- Tests: `ConduitTests/SessionRenameTests.swift` (testAnEmptyNewChatHermesLostIsReplacedOnRefresh, testTheFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne, testAFailedFreshChatKeepsTheFirstMessagesWords, testANewChatWithMessagesIsNeverReplaced)
+- `Conduit/Services/AppState.swift` (openChatIsEmptyNewChat, replaceLostEmptyNewChat, the session-not-found branch in reconcile's catch, resendInPlaceOfLostEmptyChat from sendMessage's attach and prompt.submit catches; newChatOpenedSessionID and newChatOpenedDurableSessionID, set in createAndReconcileSession; the fresh chat's folder from openNewChatAwaitingListing, NewChatAwaitingListing.cwd, see A new chat in the list)
+- Tests: `ConduitTests/SessionRenameTests.swift` (testAnEmptyNewChatHermesLostIsReplacedOnRefresh, testTheFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne, testAFirstMessageWithAFileIntoALostEmptyNewChatIsStagedInTheFreshOne, testAnEmptyNewChatLeftAndReopenedIsNotReplaced, testAFailedFreshChatKeepsTheFirstMessagesWords, testANewChatWithMessagesIsNeverReplaced)
 
 **Rulings**
 - Only the chat New Chat made here, still open, with nothing in it but notices: nothing was said in it, so a fresh chat in its place loses nothing and says nothing. Any other chat that Hermes says is gone shows its error as before (Eric, 2026-11-04, #1752).
