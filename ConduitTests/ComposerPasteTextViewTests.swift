@@ -457,19 +457,15 @@ final class ComposerPasteTextViewTests: XCTestCase {
             return nil
         }
         let words = NSItemProvider(object: NSString(string: "dragged words"))
-        var targeted = true
         var dropped: [NSItemProvider] = []
-        let binding = Binding(get: { targeted }, set: { targeted = $0 })
 
-        let open = AttachmentDropDelegate(isEnabled: true, isTargeted: binding) { dropped = $0 }
-        XCTAssertFalse(open.take([words]))
-        XCTAssertTrue(open.take([file, words]))
+        XCTAssertFalse(AttachmentDrop.take([words], isEnabled: true) { dropped = $0 })
+        XCTAssertTrue(AttachmentDrop.take([file, words], isEnabled: true) { dropped = $0 })
         XCTAssertEqual(dropped.count, 1)
         XCTAssertTrue(dropped.first === file)
 
         dropped = []
-        let locked = AttachmentDropDelegate(isEnabled: false, isTargeted: binding) { dropped = $0 }
-        XCTAssertFalse(locked.take([file]))
+        XCTAssertFalse(AttachmentDrop.take([file], isEnabled: false) { dropped = $0 })
         XCTAssertTrue(dropped.isEmpty)
     }
 

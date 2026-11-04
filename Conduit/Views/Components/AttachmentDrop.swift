@@ -115,6 +115,17 @@ enum AttachmentDrop {
         )
     }
 
+    /// A drop on a chat or room: hands its files to `onDrop` and says
+    /// whether it was taken. Words and links, or a locked composer, turn
+    /// it down.
+    static func take(_ providers: [NSItemProvider], isEnabled: Bool, onDrop: ([NSItemProvider]) -> Void) -> Bool {
+        guard isEnabled else { return false }
+        let found = files(in: providers)
+        guard !found.isEmpty else { return false }
+        onDrop(found)
+        return true
+    }
+
     /// Copies one dropped item into the staging folder under its own name.
     /// The system's copy is only readable inside the load callback, so the
     /// copy happens there.
@@ -184,16 +195,16 @@ struct AttachmentDropTarget: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            // The outline is this target's own state, not SwiftUI's
-            // `isTargeted`: a drag that moves onto the composer field and
-            // is dropped there never reaches this target again, so the
-            // outline stayed up until a restart (issue 1689). The drop, the
-            // drag leaving, and the field's drag ending each clear it.
-            .onDrop(of: [.item], delegate: AttachmentDropDelegate(
-                isEnabled: isEnabled,
-                isTargeted: $isTargeted,
-                onDrop: onDrop
-            ))
+            // SwiftUI raises and lowers the outline as the drag comes and
+            // goes, and lowers it when a drag over the chat is called off.
+            // But a drag that moves onto the composer field and is dropped
+            // there never reaches this target again, so the outline stayed
+            // up until a restart (issue 1689). So the drop here and the
+            // field's drag ending lower it too.
+            .onDrop(of: [.item], isTargeted: $isTargeted) { providers in
+                isTargeted = false
+                return AttachmentDrop.take(providers, isEnabled: isEnabled, onDrop: onDrop)
+            }
             .onReceive(NotificationCenter.default.publisher(for: .attachmentDragEnded)) { _ in
                 isTargeted = false
             }
@@ -219,39 +230,6 @@ struct AttachmentDropTarget: ViewModifier {
                 }
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isTargeted && isEnabled)
-    }
-}
-
-/// The chat's or room's drop: files go to `onDrop`; words and links are
-/// turned down.
-struct AttachmentDropDelegate: DropDelegate {
-    let isEnabled: Bool
-    @Binding var isTargeted: Bool
-    let onDrop: ([NSItemProvider]) -> Void
-
-    /// A drag came over the chat or room: the outline goes up.
-    func dropEntered(info: DropInfo) {
-        isTargeted = true
-    }
-
-    /// The drag left (or moved onto a field that took it): outline down.
-    func dropExited(info: DropInfo) {
-        isTargeted = false
-    }
-
-    /// Dropped here: the outline goes down whether or not files are taken.
-    func performDrop(info: DropInfo) -> Bool {
-        isTargeted = false
-        return take(info.itemProviders(for: [.item]))
-    }
-
-    /// Hands the drop's files to `onDrop`; whether the drop was taken.
-    func take(_ providers: [NSItemProvider]) -> Bool {
-        guard isEnabled else { return false }
-        let files = AttachmentDrop.files(in: providers)
-        guard !files.isEmpty else { return false }
-        onDrop(files)
-        return true
     }
 }
 
