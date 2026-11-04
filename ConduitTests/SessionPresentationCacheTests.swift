@@ -3793,10 +3793,9 @@ extension SessionPresentationCacheTests {
         XCTAssertEqual(restored.map(\.timestamp), ["2024-01-01T10:00:00Z"])
     }
 
-    /// The chats are written in key order, so the same chats always write
-    /// the same bytes, whatever order they were saved in: the move out of
-    /// UserDefaults compares stores byte for byte. (The pending-tools store
-    /// is encoded with `.sortedKeys` for the same reason.)
+    /// The chats are written in key order, in both stores the move out of
+    /// UserDefaults compares byte for byte, so the same chats always write
+    /// the same bytes, whatever order they were saved in.
     func testChatsAreWrittenInKeyOrder() throws {
         let suiteName = "conduit.tests.presentation-key-order-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -3815,6 +3814,25 @@ extension SessionPresentationCacheTests {
             try XCTUnwrap(stored.range(of: "\"default|\(sessionID)\":")?.lowerBound, sessionID)
         }
         XCTAssertEqual(positions, positions.sorted(), "Chats in key order")
+
+        for sessionID in chats.reversed() {
+            cache.recordPendingToolStart(
+                ChatMessage(
+                    id: "tool-\(sessionID)", role: .tool, content: "", timestamp: "now",
+                    tool: ToolActivity(id: "call-\(sessionID)", name: "terminal", input: "pwd", output: nil, status: .running)
+                ),
+                profile: "default",
+                sessionIDs: [sessionID]
+            )
+        }
+        let pendingTools = String(
+            decoding: try XCTUnwrap(defaults.data(forKey: "conduit.sessionPresentation.pendingTools.v1")),
+            as: UTF8.self
+        )
+        let pendingPositions = try chats.map { sessionID in
+            try XCTUnwrap(pendingTools.range(of: "\"default|\(sessionID)\":")?.lowerBound, sessionID)
+        }
+        XCTAssertEqual(pendingPositions, pendingPositions.sorted(), "Pending tools in key order")
     }
 
     /// The suspend path must not block the main thread on the write queue

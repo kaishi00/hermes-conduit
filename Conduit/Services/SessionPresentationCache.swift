@@ -175,7 +175,8 @@ final class SessionPresentationCache {
     }
 
     /// Encodes the sessions store as `JSONEncoder` would, but with the chats
-    /// in key order (as `.sortedKeys` orders them), reusing each row's
+    /// sorted by key (`String.<`, so the bytes are deterministic; not
+    /// necessarily `.sortedKeys`' order for non-ASCII keys), reusing each row's
     /// bytes from the last encode when the row is unchanged. A streaming
     /// flush changes a row or two of one chat, but encoding the whole store
     /// (up to `maxSessions` chats of `maxMessagesPerSession` rows) again made
