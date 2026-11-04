@@ -578,7 +578,7 @@ keep) · text: no Settings caption or doc describes it
 - A draft typed in it and not sent (words, files, a quote) is the fresh chat's: the composer keeps it across the switch, as from New Chat to the chat it made (Composer drafts; Step 5's review, 2026-11-04, #1752).
 - What an action left waiting on it (a screenshot, a prompt for the composer, its focus, a Classic voice conversation's filing) waits on the fresh chat instead, as the draft does (Step 5's review, 2026-11-04, #1752).
 - Its first message goes, as typed (Queue too), into the fresh chat, once; a refusal there, or a fresh chat that fails to open, shows as any failed send does and keeps the words. Only the resume's own refusal counts, never a history read's 404 (GLM's review). The lost chat's row leaves the list at once (2026-11-04, #1752).
-- A resume that leaves out `running` with `info.lazy` set is idle; one that leaves it out otherwise is still an old gateway (2026-11-04, #1758).
+- A resume with `info.lazy` set and nothing else saying (no `running` at the top or in `info`, no status but idle) is idle; any other resume without `running` is still an old gateway (2026-11-04, #1758).
 
 **Open gaps**
 - Upstream: Hermes' `_resume_live_unpersisted` should send `running: false` and `status` like every other resume; Conduit no longer depends on it (2026-11-04, #1758).

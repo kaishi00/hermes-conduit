@@ -31,6 +31,12 @@ final class TurnStateTests: XCTestCase {
         XCTAssertEqual(HermesClient.resumeLiveness(running)["status"], .string("streaming"))
         let old: [String: AnyCodable] = ["session_id": .string("rt-1"), "info": .object(["model": .string("glm")])]
         XCTAssertNil(HermesClient.resumeLiveness(old)["running"], "a gateway that never says stays unsupported")
+        // A lazy resume that says otherwise in `info` or by a busy status
+        // isn't overruled.
+        let saysInInfo: [String: AnyCodable] = ["info": .object(["lazy": .bool(true), "running": .bool(true)])]
+        XCTAssertNil(HermesClient.resumeLiveness(saysInInfo)["running"])
+        let busy: [String: AnyCodable] = ["status": .string("streaming"), "info": .object(["lazy": .bool(true)])]
+        XCTAssertNil(HermesClient.resumeLiveness(busy)["running"])
     }
 
     func testOnlyResolvedStatesEnableComposerActions() {

@@ -2948,7 +2948,12 @@ final class HermesClient: ObservableObject {
         for key in ["running", "status"] {
             if let value = object[key] { liveness[key] = value }
         }
-        if liveness["running"] == nil, object["info"]?.objectValue?["lazy"]?.boolValue == true {
+        let info = object["info"]?.objectValue
+        // Only when nothing else says: `info.running`, or a status other
+        // than idle, still speaks for itself.
+        let status = (liveness["status"] ?? info?["status"])?.stringValue
+        if liveness["running"] == nil, info?["running"] == nil, info?["lazy"]?.boolValue == true,
+           status == nil || status == "idle" {
             liveness["running"] = .bool(false)
             if liveness["status"] == nil { liveness["status"] = .string("idle") }
         }
