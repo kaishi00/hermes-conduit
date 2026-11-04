@@ -105,8 +105,10 @@ struct PinnedReply: Codable, Equatable, Identifiable, Hashable {
     /// The reply's text on one line, cut to `excerptLength`. Reads only as
     /// much of a long reply as the excerpt needs.
     static func excerpt(of content: String) -> String {
-        // The plugin's board line for Hermes Desktop is hidden here too.
-        folded(TranscriptDirectives.removingBoards(from: content), limit: excerptLength)
+        // The plugin's board line for Hermes Desktop is hidden here too,
+        // unless it's all there is: the excerpt is also how a pin is found.
+        let shown = folded(TranscriptDirectives.removingBoards(from: content), limit: excerptLength)
+        return shown.isEmpty ? folded(content, limit: excerptLength) : shown
     }
 
     /// `content` on one line, whitespace runs folded to a space, cut to
