@@ -82,7 +82,14 @@ enum TranscriptDirectives {
         }
         guard cursor > 0 else { return nil }
         appendText(nsLine.substring(from: cursor), to: &segments)
-        return segments
+        // Text either side of a hidden board line reads as one run.
+        return segments.reduce(into: []) { joined, segment in
+            if case .text(let next) = segment, case .text(let previous)? = joined.last {
+                joined[joined.count - 1] = .text(previous + " " + next)
+            } else {
+                joined.append(segment)
+            }
+        }
     }
 
     /// Whether the file draws in place; anything else gets a file card.
