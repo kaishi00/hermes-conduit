@@ -1313,6 +1313,10 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.mode, "GPT-Live")
         XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(detailed), true, "GPT-Live")
         XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(GrokLiveProtocol.delegationInstructions), false, "only Grok gets them")
+        XCTAssertNil(appState.liveVoiceInstructionsPreview()?.openingTurn, "no greeting: the call waits for the user")
+        // GPT-Live's greeting is Conduit's first turn too (notifier #541).
+        appState.setLiveVoiceStyle(LiveVoiceStyle(greeting: "Hi Neal", answerLength: .detailed))
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.openingTurn, LiveVoiceGreeting.turn("Hi Neal"))
 
         appState.setLiveVoiceStyle(LiveVoiceStyle())
         XCTAssertNil(appState.activeProfileVoicePreferences.liveVoiceAnswerLength, "Default is stored as nothing")

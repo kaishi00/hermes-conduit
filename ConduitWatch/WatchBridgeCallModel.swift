@@ -822,10 +822,14 @@ final class WatchBridgeCallModel: ObservableObject {
                 return
             }
             // A call from Hermes: the model says what it called about, as
-            // the phone's GPT-Live call asks it to. Once, never on a rejoin,
-            // and only when the host didn't already have it speak first.
-            if WatchAudioBridgeWire.sendsOpeningTurn(rejoining: rejoining, started: info), let openingTurn {
-                pendingSends.insert(Pending(text: openingTurn, channel: .speakable, delegationID: nil), at: 0)
+            // the phone's GPT-Live call asks it to; any other call greets when
+            // the user asked for a greeting. Once, never on a rejoin, and only
+            // when the host didn't already have it speak first (an older
+            // plugin did; the model no longer does from its instructions,
+            // notifier #541).
+            if WatchAudioBridgeWire.sendsOpeningTurn(rejoining: rejoining, started: info),
+               let opening = openingTurn ?? greeting.map(LiveVoiceGreeting.turn) {
+                pendingSends.insert(Pending(text: opening, channel: .speakable, delegationID: nil), at: 0)
             }
             flushPending()
         case .ended(let reason):

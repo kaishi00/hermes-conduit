@@ -128,8 +128,6 @@ struct LiveVoiceStyle: Equatable {
     /// The turn that makes the model greet the user when the call connects.
     /// Not UI copy.
     var openingPrompt: String? {
-        guard let greeting else { return nil }
-        let say = greeting.isEmpty ? "" : " Say: \"\(greeting)\""
-        return "[The call just connected. Greet the user in one short sentence so they know you're there and listening.\(say) Then wait for them.]"
+        greeting.map(LiveVoiceGreeting.turn)
     }
 }
