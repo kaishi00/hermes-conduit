@@ -1043,7 +1043,7 @@ tell models · Settings > Contacts' caption
 - Line breaks in the text become spaces, as in every card's text.
 - Hermes doesn't hear whether the user sent or cancelled it.
 
-**Checked:** 2026-11-04, #1736 (room boards leave contact cards out); 2026-10-23, at #1174.
+**Checked:** 2026-11-04, #1739 (room boards leave contact cards out); 2026-10-23, at #1174.
 
 ## Message row actions
 
