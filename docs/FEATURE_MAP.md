@@ -3034,6 +3034,34 @@ README, docs or Settings caption describes the pickers)
 
 **Checked:** 2026-10-31, #1567 (the sheet and a bot's picker search the models kept from Hermes' last answer until it answers, their matches waiting for it like their rows, and the sheet says a failed read under its matches); 2026-10-27, at #1395.
 
+## Sharing into Conduit
+
+What the share extension takes from another app's Share sheet (text, links,
+pictures, videos and files) into a draft, and what it says about anything it
+leaves out.
+
+**Siblings:** the share extension · pasting into the composer · dropping on a
+chat, a room or the composer field · Ask Hermes About Screen · Files over the
+size limit (its own entry) · README.md (the share sheet line)
+
+**Code**
+- Reading the share: `Shared/ShareDraft/ShareDraftCollector.swift` (kind, fileType, offersImageObjectOnly, stageFile)
+- The sheet: `ConduitShareExtension/ShareDraftModel.swift` (collect, ShareDraftProblem.message), `ConduitShareExtension/ShareDraftSheet.swift`
+- Paste: `Conduit/Views/Components/ComposerPasteTextView.swift` (canLoadImageProvider, loadImageObject)
+- Drop: `Conduit/Views/Components/AttachmentDrop.swift`, `Conduit/Views/Components/ReturnKeyTextView.swift` (fieldDrop)
+- Tests: `ConduitTests/ShareDraftTests.swift`
+
+**Rulings**
+- A picture offered only as an image object (the screenshot editor's Share hands over UIKit's own `com.apple.uikit.image`) is attached as a PNG, as a pasted one is. UIKit's archived image type is never read as a picture file; a provider that also offers a picture file is read as that file (2026-11-04, #1750, issue 1747).
+- A picture offered only as an image object takes its suggested name without that name's extension: it is always written as PNG (2026-11-04, #1750 review).
+- When nothing could be added, the sheet shows the Left out list a draft has, each thing with why (too large, unreadable), scrolling however many there are; the general "nothing here" line is only for a share that offered nothing Conduit reads (2026-11-04, #1750, issue 1747).
+
+**Open gaps**
+- A drop decides from the dragged item's listed types alone, so a drag that offers only UIKit's image object isn't taken by a chat, a room or the composer field (no source is known to send one; pasting one works).
+- Something the share offered under a type Conduit doesn't read at all is skipped without a line, alongside things that were added.
+
+**Checked:** 2026-11-04, #1750 (issue 1747: the screenshot editor's picture is attached; the failed sheet names what was left out).
+
 ## Files over the size limit
 
 What Conduit says when a file is too large to attach, and which limit it

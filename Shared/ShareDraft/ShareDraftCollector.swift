@@ -5,8 +5,9 @@
 //  Reads what another app shared (#812) through the documented
 //  NSExtensionItem / NSItemProvider path: text, links, pictures, videos and
 //  files. Files are copied straight into the draft's staging folder (never
-//  read into memory whole), checked against the share's caps, and named by
-//  the collector; the sending app's file name is only a label.
+//  read into memory whole, except a picture offered only as an image
+//  object, which is drawn as PNG), checked against the share's caps, and
+//  named by the collector; the sending app's file name is only a label.
 //
 
 import Foundation
@@ -146,6 +147,9 @@ struct ShareDraftCollector {
         let types = provider.registeredTypeIdentifiers.compactMap(UTType.init)
         if types.contains(where: { $0.conforms(to: .fileURL) }) { return .link }
         if fileType(of: provider) != nil { return .file }
+        // A picture offered only as an image object (the screenshot
+        // editor's Share hands over UIKit's own image type, #1747).
+        if offersImageObjectOnly(provider) { return .file }
         if types.contains(where: { $0.conforms(to: .url) }) { return .link }
         if types.contains(where: { $0.conforms(to: .text) }) { return .text }
         return .unsupported
@@ -154,7 +158,7 @@ struct ShareDraftCollector {
     /// The type a provider's file is read as: a picture, video, audio,
     /// PDF or other document, or plain text that comes with a file name.
     static func fileType(of provider: NSItemProvider) -> UTType? {
-        let types = provider.registeredTypeIdentifiers.compactMap(UTType.init)
+        let types = fileTypeCandidates(provider)
         let media: [UTType] = [.image, .movie, .audio, .pdf]
         if let type = types.first(where: { type in media.contains { type.conforms(to: $0) } }) { return type }
         let hasName = !((provider.suggestedName ?? "") as NSString).pathExtension.isEmpty
@@ -163,6 +167,23 @@ struct ShareDraftCollector {
         }
         if hasName, let type = types.first(where: { $0.conforms(to: .text) && !$0.conforms(to: .url) }) { return type }
         return nil
+    }
+
+    /// UIKit's own type for an image object. Its bytes are an archived
+    /// `UIImage`, not a picture file, so it is never read as a file type.
+    static let imageObjectType = "com.apple.uikit.image"
+
+    private static func fileTypeCandidates(_ provider: NSItemProvider) -> [UTType] {
+        provider.registeredTypeIdentifiers.filter { $0 != imageObjectType }.compactMap(UTType.init)
+    }
+
+    /// Whether a provider's only picture is an image object: it lists no
+    /// file, link or text type but can still be read as a `UIImage`.
+    static func offersImageObjectOnly(_ provider: NSItemProvider) -> Bool {
+        let types = fileTypeCandidates(provider)
+        let readable: [UTType] = [.data, .url, .text]
+        guard !types.contains(where: { type in readable.contains { type.conforms(to: $0) } }) else { return false }
+        return provider.canLoadObject(ofClass: UIImage.self)
     }
 
     // MARK: Reading
@@ -227,8 +248,21 @@ struct ShareDraftCollector {
             }
             if let copied { return copied }
         }
-        // A file offered as a file URL, or an image offered as an object.
         let suggestedName = provider.suggestedName
+        if type == nil, Self.offersImageObjectOnly(provider) {
+            let image: UIImage? = await withCheckedContinuation { continuation in
+                // The explicit closure type picks the NSItemProviderReading
+                // overload (see ComposerPasteTextView's image paste).
+                _ = provider.loadObject(ofClass: UIImage.self) { (object: NSItemProviderReading?, _: Error?) in
+                    continuation.resume(returning: object as? UIImage)
+                }
+            }
+            // Written as PNG, so a suggested name's own extension goes.
+            let stem = ((suggestedName ?? "") as NSString).deletingPathExtension
+            let name = Self.displayName(suggested: stem.isEmpty ? nil : "\(stem).png", type: .png, ordinal: ordinal)
+            return write(image?.pngData(), type: .png, displayName: name, ordinal: ordinal)
+        }
+        // A file offered as a file URL, or an image offered as an object.
         return await withCheckedContinuation { continuation in
             // The type itself when the provider has it, else the file URL it
             // offers (a file shared by name only).
