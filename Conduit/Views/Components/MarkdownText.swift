@@ -3649,7 +3649,8 @@ enum MarkdownParser {
         // board line that's hidden (no segment of its own), is still taken.
         let holdsPreview = segments.contains { if case .preview = $0 { return true } else { return false } }
         let holdsCard = segments.contains { if case .desktopCard = $0 { return true } else { return false } }
-        return !holdsPreview || holdsCard ? segments : nil
+        let holdsBoard = trimmed.contains("::\(TranscriptDirectives.conduitBoardName){")
+        return !holdsPreview || holdsCard || holdsBoard ? segments : nil
     }
     /// Whether the gateway-media branches of `parseBlocks` take `line`.
     private static func claimsGatewayMedia(_ line: String) -> Bool {
