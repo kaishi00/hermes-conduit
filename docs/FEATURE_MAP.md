@@ -1839,7 +1839,7 @@ iPad · selection across the reply · Copy response · links in cells (a cell wi
 - The chat draws table cells without a link as plain text, the cheapest to build as rows scroll in (#693). A long press offers Copy Table and Select Text; Select Text draws the cells as selectable text until the row is taken down.
 - Selection on a table turns on as it does for the reply's drawn text: a selection that starts elsewhere in the message mounts the cells, so a drag from the text above or below carries into the table, and a pointer over the table (a Mac, an iPad's trackpad or mouse) turns it on, so a click and drag selects in a cell and Cmd+C and the context menu's Copy work (2026-10-30, issue 1531, #1535; Eric: most selections start in the text around the table).
 - A pointer over a table (a Mac, an iPad's trackpad or mouse) shows a Copy Table button at the table's top right, on every Markdown surface, since the cells' own right-click menu replaces the table's (2026-10-30, Eric, #1540).
-- Column widths come from each cell's own measured width, kept by its text, size and references, so a table streaming in measures only its new cells, and a width change measures none again (2026-11-04, #PR: every publish measured every cell, the top Conduit cost of a streaming table under Time Profiler).
+- Column widths come from each cell's own measured width, kept by its text, size and references, so a table streaming in measures only its new cells, and a width change measures none again (2026-11-04, #1743: every publish measured every cell, the top Conduit cost of a streaming table under Time Profiler).
 - A streaming reply past 16 KB is drawn in slices with a live tail (see Markdown lists in messages), and a table is one span to the slicer, as a code block is: a slice ends before or after it, never between its rows, so the rows streaming in keep their header. The span starts at the header once the separator row under it confirms the table, as the parser reads one, and runs over every line with a `|`, so a table without outer pipes counts too; prose with a `|` and a fence opener with one in its info string open none (2026-11-04, #1734, from the reviews). A table that grows past the large-document size before it ends draws through the long-reply presentation, as an unclosed code block does.
 - VoiceOver's Copy Table is on every table, whether or not selection is on, group rooms' included: a VoiceOver user selecting cell by cell has no other way to take the whole table (#1535).
 - A cell with a link is never plain text: it draws as a selectable cell (drawn until touched in the chat), so a click or tap opens the link as the reply's other links do. A plain cell's SwiftUI link lost the click to the row's tap that puts the keyboard away (2026-10-31, Eric asked for issue 1585 to be fixed, #1596; #693's plain cells kept for every cell without a link). The table's own deferred mount waits under a key of its own (`tableMountKey`), so a first cell with a link, which waits under its segment, doesn't replace it (#1596).
@@ -1852,7 +1852,7 @@ iPad · selection across the reply · Copy response · links in cells (a cell wi
 - The pointer's Copy Table button covers the corner of the last header cell while the pointer is over the table.
 - A big table mounts its rows in batches (`LargeMarkdownTable`), and a selection copies only mounted cells, so a selection across a table past its first batch leaves the rest out until Show more; Copy Table copies every row.
 
-**Checked:** 2026-11-04, #PR (each cell's width is measured once); 2026-11-04, #1734 (a streaming table is never sliced between its rows, now that slicing starts at 16 KB; the other surfaces don't stream in slices); 2026-11-01, #1621 (the UI test finds a link cell as a Link or a TextView: a cell that's all link reads as a Link to accessibility); 2026-10-31, #1596 (a cell with a link draws as a selectable cell, so its link opens; Links in messages' Siblings); 2026-10-30, #1540 (the pointer's Copy Table button); #1535 (a selection in the message mounts the cells; VoiceOver's Copy Table kept).
+**Checked:** 2026-11-04, #1743 (each cell's width is measured once); 2026-11-04, #1734 (a streaming table is never sliced between its rows, now that slicing starts at 16 KB; the other surfaces don't stream in slices); 2026-11-01, #1621 (the UI test finds a link cell as a Link or a TextView: a cell that's all link reads as a Link to accessibility); 2026-10-31, #1596 (a cell with a link draws as a selectable cell, so its link opens; Links in messages' Siblings); 2026-10-30, #1540 (the pointer's Copy Table button); #1535 (a selection in the message mounts the cells; VoiceOver's Copy Table kept).
 
 ## Attaching files
 
@@ -2606,14 +2606,14 @@ chat's saved copy and the reply's notification (the settled message)
 - Tests: `ConduitTests/AppStateReasoningStreamTests.swift` (testBackgroundHoldsLiveTextUntilActive, testBackgroundHoldsLiveReasoningUntilActive; the drawer's pause flushes the other tests)
 
 **Rulings**
-- The background pauses on `.background` only, not `.inactive`: Control Center or a system alert over the chat keeps it streaming, and an iPad app on a Mac goes inactive whenever another app is in front, where a reply should keep streaming in view (2026-11-04, #PR).
-- In the background a streaming reply kept the main thread redrawing the whole growing reply on each publish, near a full core with tables, so iOS's watchdog killed Conduit going to the background or quitting (0x8BADF00D, 85% of the relay's crash reports; Time Profiler on a phone, 2026-11-04, #PR).
-- A turn that completes while hidden still publishes its final text at once (scheduleStreamingCompletion), one publish (#PR).
+- The background pauses on `.background` only, not `.inactive`: Control Center or a system alert over the chat keeps it streaming, and an iPad app on a Mac goes inactive whenever another app is in front, where a reply should keep streaming in view (2026-11-04, #1743).
+- In the background a streaming reply kept the main thread redrawing the whole growing reply on each publish, near a full core with tables, so iOS's watchdog killed Conduit going to the background or quitting (0x8BADF00D, 85% of the relay's crash reports; Time Profiler on a phone, 2026-11-04, #1743).
+- A turn that completes while hidden still publishes its final text at once (scheduleStreamingCompletion), one publish (#1743).
 
 **Open gaps**
 - The rest of the chat (the transcript's rows, the composer) still updates in the background on a turn's boundaries: a tool card or a settled message lands as it comes, which is one update each, not stream cadence.
 
-**Checked:** 2026-11-04, #PR (the background pauses the live publishes as the drawer did).
+**Checked:** 2026-11-04, #1743 (the background pauses the live publishes as the drawer did).
 
 ## Reconnecting to Hermes
 
