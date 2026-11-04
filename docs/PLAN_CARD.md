@@ -59,6 +59,17 @@ snapshot stands.
 plan when a chat opens, without working anything out on the phone. The
 conduit_push plugin doesn't change.
 
+**A workstream's chat shows its checklist.** A Bot Chat's workstream keeps
+its own checklist with the plugin's `work_progress` tool, and the Work panel
+shows it. In that workstream's chat the same checklist is the plan: it
+takes over from both sources above, so the chat's Tasks line and the Work
+panel always show the same steps, and both draw them with the plan card's
+row. Its steps map done, doing and todo to completed, in progress and
+pending. The checklist the chat opens with is read quietly, like a plan on
+open; a change while the chat is open is announced like a new `todo` row.
+When the worker clears its checklist, or the work is resolved or leaves the
+bot's list, the chat's own `todo` plan shows again.
+
 ## Plan card
 
 - **Hidden** when the chat has no plan, or the plan is empty.

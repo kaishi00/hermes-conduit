@@ -375,6 +375,8 @@ extension AppState {
     /// watches only AppState, so it's told when that changes.
     private func setBotWork(_ snapshot: BotWorkSnapshot) {
         whileKeepingTitle { botWork.set(snapshot) }
+        // An open workstream's chat shows its checklist as its Tasks line.
+        refreshWorkPlan()
     }
 
     /// Runs a change to the bots' work and tells the chat screen when the
@@ -450,6 +452,7 @@ extension AppState {
                     botWork.replace(updated, profile: profile, reopened: action == .reopen)
                     botWork.fileResolved(updated, profile: profile)
                 }
+                refreshWorkPlan()
             }
             Haptics.success()
             // The buttons free up now; the list is read again behind them.
