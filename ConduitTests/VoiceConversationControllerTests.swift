@@ -30,6 +30,27 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(encoded.peak, 1)
     }
 
+    /// A live call's route change copied the leftover byte and cleared it;
+    /// an emptied slice of the stream with a nonzero start made Foundation
+    /// trap there (29 crash reports, build 244).
+    func testStreamedPCM16LeavesItsOddByteOnStorageOfItsOwn() {
+        var stream = Data(repeating: 7, count: 4_801)
+        stream.removeFirst(4_795) // a stream that has moved on: 6 bytes from index 4,795
+        let even = VoicePCMEncoding.splitPCM16(stream)
+        XCTAssertEqual(even.samples.count, 6)
+        XCTAssertTrue(even.leftover.isEmpty)
+        XCTAssertEqual(even.leftover.startIndex, 0)
+        var leftover = even.leftover
+        let copy = leftover
+        leftover.removeAll(keepingCapacity: true)
+        XCTAssertTrue(copy.isEmpty)
+
+        let odd = VoicePCMEncoding.splitPCM16(Data([1, 2, 3]))
+        XCTAssertEqual(Array(odd.samples), [1, 2])
+        XCTAssertEqual(Array(odd.leftover), [3])
+        XCTAssertEqual(odd.leftover.startIndex, 0)
+    }
+
     func testOlderVoicePreferencesDefaultToHermesTranscription() throws {
         let data = try XCTUnwrap(#"{"outputMuted":false,"continuousConversation":true,"continueWakeConversation":false,"spokenStopPhrases":["stop"]}"#.data(using: .utf8))
         let preferences = try JSONDecoder().decode(VoiceProfilePreferences.self, from: data)

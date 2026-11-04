@@ -595,6 +595,30 @@ Hermes · Resume Call · memory at call end (notifier)
 
 **Checked:** 2026-11-02, #1675 (a call save that meets a profile with the plugin turned off waits and retries, and Save Now says how to turn it on, rather than marking the host as one that can't save (issue 1671)); 2026-10-29, #1507 (the call card's start time under its title, #1440); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1445 (a call's jobs leave Desktop's list once answered); 2026-10-26, #1247 (the closing transcript save and the Watch broker's revokes keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252, for a call kept with its first request's chat; Qwen joins the shared save path (`qwen-live` history), at #1182, carried in #1235; 2026-10-24, at #1222 (capture cursor); at #1221, for the Watch's transcript tail; at 78f21da; at #1191: a saved screen turn cut at the plugin's limit keeps its last line unless it can be half a fence (#926 review); at #1220: quiet checkpoints, and a saved turn's cut closes a long fence with one as long, within the plugin's limit.
 
+## CarPlay taps
+
+What runs when a button or row on the car's screen is tapped.
+
+**Siblings:** the voice template's buttons (Listen, New Chat, Mute and
+Unmute, Stop, End) · the browse screens' rows (chats, New voice chat, jobs,
+voice modes and agents) · the Chats and More bar buttons · the More and
+Shortcuts grids · not needed: the phone's call screen, the minimised call bar
+and the Watch (their taps come from UIKit and SwiftUI on the main thread)
+
+**Code**
+- `Conduit/CarPlay/CarPlayVoiceTemplateFactory.swift` (CarPlayMainThread, makeButton), `Conduit/CarPlay/CarPlayBrowseTemplates.swift` (barButton, moreTemplate, chatSections, chatItems, jobSections, shortcutsTemplate, optionItem)
+- Handlers: `Conduit/CarPlay/CarPlayVoiceCoordinator.swift` (makeHandlers, makeBrowseHandlers: fenced to the connection their template is on)
+- Tests: `ConduitTests/CarPlayVoiceTests.swift` (CarPlayVoiceTemplateFactoryTests' handler tests)
+
+**Rulings**
+- Every template handler reaches the app on the main thread, through CarPlayMainThread: run at once when CarPlay calls on the main thread and nothing is queued, otherwise queued to it, so taps keep the order they came in. CarPlay called the voice template's End from a dispatch worker on iOS 26, and ending the call then ran SwiftUI's update on that worker's 512 KB stack until it overflowed (eight crash reports, builds 223 to 246, 2026-11-04, #1733).
+- A tap queued across a reconnect never acts on the new connection: the voice buttons, the browse rows and the Chats and More bar buttons are fenced to the connection their template is on (makeHandlers, makeBrowseHandlers, updateBrowseButtons). The Chats and More bar buttons also do nothing once they are hidden, so a tap queued before a turn started never pushes a list over the call.
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-04, #1733 (every CarPlay template handler runs on the main thread).
+
 ## Voice in the chats list
 
 What voice leaves in the chats lists: saved calls, the chats calls were kept
@@ -818,7 +842,7 @@ kept on the iPhone's headset (the Watch's Mute and End)
 
 **Code**
 - Session owner: `Conduit/Voice/VoiceAudioSessionCoordinator.swift` (ensureConversationSpeaker, isNativeCallAudioActive), `Conduit/Voice/VoiceAudioSessionConfiguration.swift`
-- Playback: `Conduit/Voice/AVSpeechPlaybackService.swift` (resumeOnFreshEngine), `Conduit/Voice/VoiceAudioEngineRecovery.swift`
+- Playback: `Conduit/Voice/AVSpeechPlaybackService.swift` (resumeOnFreshEngine), `Conduit/Voice/VoiceAudioEngineRecovery.swift`, `Conduit/Voice/AVAudioCaptureService.swift` (VoicePCMEncoding.splitPCM16: a stream's odd byte, for both playbacks)
 - Live audio: `Conduit/Voice/GPTLive/GPTLiveAudioLink.swift`, `Conduit/Voice/GeminiLive/LiveVoiceEchoCancellingAudio.swift`, `Conduit/Voice/EchoCancellingVoiceConversationAudio.swift`
 - Mute and Silence: `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Views/MinimisedLiveVoiceBar.swift`, `Conduit/Voice/HeadsetMicrophoneMute.swift`
 - A Watch answer kept on the iPhone's headset: `Conduit/Voice/HermesNativeCalls.swift` (keepsWatchAnswer, muteOnWatch, inAppMuteChanged), `Conduit/Services/AppState+HermesCalls.swift` (nativeCallVoiceMuted), `ConduitWatch/HermesWatchCalls.swift` (phoneCallMuted)
@@ -833,13 +857,14 @@ kept on the iPhone's headset (the Watch's Mute and End)
 - An alarm or phone call pauses a live call, which comes back when the audio does (2026-10-04, #380).
 - A call from Hermes answered on the Watch plays on the iPhone's headset when one is on there (AirPods, wired, never the car's); the Watch's Mute and End control it like a phone call's, and a mute from any of Conduit's own controls reaches the Watch (Eric 2026-10-24, #1225).
 - A route change mid-reply (AirPods, Speaker, a dock) never drops speech: a conversation's reply, Read Aloud and the speech test play on from where they were on a fresh engine; an encoded clip follows the route itself, and a fresh engine that won't start ends Read Aloud rather than restarting past the dropped audio (Eric 2026-11-02, from issue 1641, #1650).
+- A streamed reply's odd trailing byte waits for the next chunk on storage of its own (VoicePCMEncoding.splitPCM16), in the live modes' echo-cancelling audio and the default playback alike. A route change's restart copies it and tears down: left as an emptied slice of the stream, clearing it made Foundation trap (29 crash reports from build 244, 2026-11-04, #1733).
 - Headphones taken out (AirPods back in the case, a cable pulled) pause Read Aloud, as iOS media does, instead of reading on from the speaker; Resume carries on. Live calls and Classic keep talking, like a phone call (Eric 2026-11-02, #1650).
 
 **Open gaps**
 - Silence isn't on CarPlay or the minimised bar (#488).
 - Classic still ends with "Audio was interrupted." when an alarm or phone call takes the audio, where live calls pause; only CarPlay and calls from Hermes restart it (#380, #1155).
 
-**Checked:** 2026-11-02, #1650 (Read Aloud and the speech test play on after a route change instead of restarting with the queued middle dropped, issue 1641; headphones taken out pause Read Aloud); 2026-10-30, #1524 (Read Aloud reads a Desktop card as a short note; route, Speaker and mute unchanged); 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
+**Checked:** 2026-11-04, #1733 (a stream's odd byte kept on its own storage, so a route change's restart no longer traps); 2026-11-02, #1650 (Read Aloud and the speech test play on after a route change instead of restarting with the queued middle dropped, issue 1641; headphones taken out pause Read Aloud); 2026-10-30, #1524 (Read Aloud reads a Desktop card as a short note; route, Speaker and mute unchanged); 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
 
 ## Talking over Hermes
 
