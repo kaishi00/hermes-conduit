@@ -537,7 +537,11 @@ enable again").
 
 **Siblings:** the chat's refresh, the return-to-app and reconnect syncs (all
 resume through reconcile) · the composer's first send into it, a picture or
-file staged with it included · every way New Chat makes the chat (New Chat,
+file staged with it and a first message sent as Queue included · what an
+action left waiting on it (A new chat that something waits on: Ask Hermes
+About Screen's screenshot, Settings' Hermes test call and watch prompts in the
+composer, New Chat's focus, a Classic voice conversation's filing under
+Voice), handed to the fresh chat · every way New Chat makes the chat (New Chat,
 a project's new chat in its folder, kept as the fresh chat's folder, the empty
 canvas's send, a widget's or Shortcut's New Chat, /new), which all go
 through createNewSession · the chat a sync opens when there is nothing to
@@ -550,13 +554,14 @@ its error shows), the notifier (Hermes' behavior, nothing for the plugin to
 keep) · text: no Settings caption or doc describes it
 
 **Code**
-- `Conduit/Services/AppState.swift` (syncSession's create when there is nothing to resume; lostChatReplacement, read by composerDraftKeysAreSameChat for the draft; openChatIsEmptyNewChat, replaceLostEmptyNewChat, the session-not-found branch in reconcile's catch, resendInPlaceOfLostEmptyChat from sendMessage's attach and prompt.submit catches; newChatOpenedSessionID and newChatOpenedDurableSessionID, set in createAndReconcileSession; the fresh chat's folder from openNewChatAwaitingListing, NewChatAwaitingListing.cwd, see A new chat in the list)
-- Tests: `ConduitTests/SessionRenameTests.swift` (testAnEmptyNewChatHermesLostIsReplacedOnRefresh, testTheEmptyChatASyncOpenedIsReplacedToo, testALostEmptyNewChatInAFolderIsReplacedInThatFolder, testTheFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne, testAFirstMessageWithAFileIntoALostEmptyNewChatIsStagedInTheFreshOne, testAnEmptyNewChatLeftAndReopenedIsNotReplaced, testAFailedFreshChatKeepsTheFirstMessagesWords, testANewChatWithMessagesIsNeverReplaced)
+- `Conduit/Services/AppState.swift` (syncSession's create when there is nothing to resume; lostChatReplacement, read by composerDraftKeysAreSameChat for the draft; openChatIsEmptyNewChat, replaceLostEmptyNewChat, the session-not-found branch in reconcile's catch, resendInPlaceOfLostEmptyChat from sendMessage's attach and prompt.submit catches, Queue kept; handOverWhatWaitsOnLostChat for pendingScreenshots, composerPrefillDraftKey, composerFocusRequest and classicVoiceChatToArchive; newChatOpenedSessionID and newChatOpenedDurableSessionID, set in createAndReconcileSession; the fresh chat's folder from openNewChatAwaitingListing, NewChatAwaitingListing.cwd, see A new chat in the list)
+- Tests: `ConduitTests/SessionRenameTests.swift` (testAnEmptyNewChatHermesLostIsReplacedOnRefresh, testTheEmptyChatASyncOpenedIsReplacedToo, testALostEmptyNewChatInAFolderIsReplacedInThatFolder, testTheFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne, testAQueuedFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne, testWhatWaitsOnALostEmptyNewChatWaitsOnTheFreshOne, testAFirstMessageWithAFileIntoALostEmptyNewChatIsStagedInTheFreshOne, testAnEmptyNewChatLeftAndReopenedIsNotReplaced, testAFailedFreshChatKeepsTheFirstMessagesWords, testANewChatWithMessagesIsNeverReplaced)
 
 **Rulings**
 - Only a chat Conduit made here (New Chat's, or the one a sync opened because there was nothing to resume), still open, with nothing in it but notices: nothing was said in it, so a fresh chat in its place loses nothing and says nothing. Any other chat that Hermes says is gone shows its error as before (Eric, 2026-11-04, #1752: "an empty chat made here that Hermes lost"; the sync's chat named after GLM's review).
 - A draft typed in it and not sent (words, files, a quote) is the fresh chat's: the composer keeps it across the switch, as from New Chat to the chat it made (Composer drafts; Step 5's review, 2026-11-04, #1752).
-- Its first message goes, as typed, into the fresh chat, once; a refusal there, or a fresh chat that fails to open, shows as any failed send does and keeps the words. Only the resume's own refusal counts, never a history read's 404 (GLM's review). The lost chat's row leaves the list at once (2026-11-04, #1752).
+- What an action left waiting on it (a screenshot, a prompt for the composer, its focus, a Classic voice conversation's filing) waits on the fresh chat instead, as the draft does (Step 5's review, 2026-11-04, #1752).
+- Its first message goes, as typed (Queue too), into the fresh chat, once; a refusal there, or a fresh chat that fails to open, shows as any failed send does and keeps the words. Only the resume's own refusal counts, never a history read's 404 (GLM's review). The lost chat's row leaves the list at once (2026-11-04, #1752).
 
 **Open gaps**
 - Not reproduced on a device: Hermes v0.22.7 kept an idle new chat on both servers in a probe, so the reviewer's trigger (likely an older Hermes with a dropped socket) is inferred (2026-11-04, #1752).
@@ -2182,6 +2187,8 @@ Screen (the voice sheet's screenshot and a screen question) · Settings' Hermes
 test call and watch prompts · a Classic voice conversation's fresh chat ·
 New Chat and its focus · a widget's or Shortcut's New Chat · the /new command
 · Pulse's Do it on an item from no chat or from a Kanban task's worker
+· the fresh chat that stands in for an empty one Hermes lost, which takes
+what waited (An empty new chat Hermes lost)
 
 **Code**
 - Creating the chat: `Conduit/Services/AppState.swift` (createNewSession and createAndReconcileSession return the chat they opened; startChatForComposerSubmission; startNewChat and focusNewChatComposer; prepareVoiceConversation)
@@ -2199,7 +2206,7 @@ New Chat and its focus · a widget's or Shortcut's New Chat · the /new command
 **Open gaps**
 - A widget's or Shortcut's New Chat and /new put nothing in the chat, so they only report whether the open chat changed.
 
-**Checked:** 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-29, #1479, carrying #1473 from the `pulse` branch (Do it on a card from a Kanban task's worker takes the same new chat); 2026-10-25, #1241 (Pulse's Do it, from #1240 on the `pulse` branch); main's code as at #1191.
+**Checked:** 2026-11-04, #1752 (an empty chat Hermes lost hands its screenshot, composer prompt, focus and Classic voice filing to the fresh chat in its place, see An empty new chat Hermes lost); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-29, #1479, carrying #1473 from the `pulse` branch (Do it on a card from a Kanban task's worker takes the same new chat); 2026-10-25, #1241 (Pulse's Do it, from #1240 on the `pulse` branch); main's code as at #1191.
 
 ## /new in a Bot Chat
 

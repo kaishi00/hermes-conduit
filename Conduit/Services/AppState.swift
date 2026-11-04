@@ -26131,12 +26131,36 @@ final class AppState: ObservableObject {
             lost: lost,
             fresh: Set([created, newChatOpenedDurableSessionID].compactMap { $0 })
         )
+        handOverWhatWaitsOnLostChat(lost, to: created)
         sessions.removeAll { row in
             row.id != created && !row.alternateIds.contains(created)
                 && (lost.contains(row.id) || !lost.isDisjoint(with: row.alternateIds)
                     || row.storedSessionId.map(lost.contains) == true)
         }
         return true
+    }
+
+    /// What an action left waiting on the lost chat (a screenshot, a
+    /// prompt for the composer, its focus, a Classic voice conversation's
+    /// filing) waits on the fresh chat instead: each is keyed by the chat's
+    /// own id, and the lost chat's row is about to go.
+    private func handOverWhatWaitsOnLostChat(_ lost: Set<String>, to fresh: String) {
+        if pendingScreenshots.contains(where: { lost.contains($0.sessionID) }) {
+            pendingScreenshots = pendingScreenshots.map { entry in
+                guard lost.contains(entry.sessionID) else { return entry }
+                return PendingScreenshot(sessionID: fresh, attachment: entry.attachment, dashboardID: entry.dashboardID)
+            }
+        }
+        if let key = composerPrefillDraftKey,
+           lost.contains(where: { ComposerBar.composerDraftKey(for: $0, profile: activeProfile) == key }) {
+            composerPrefillDraftKey = ComposerBar.composerDraftKey(for: fresh, profile: activeProfile)
+        }
+        if let request = composerFocusRequest, lost.contains(request.sessionID) {
+            composerFocusRequest = ComposerFocusRequest(sessionID: fresh)
+        }
+        if let chat = classicVoiceChatToArchive, lost.contains(chat.chatID) {
+            classicVoiceChatToArchive = (fresh, chat.profile, chat.dashboardID)
+        }
     }
 
     /// Returns the chat this call created and opened, nil when it opened
@@ -28056,6 +28080,7 @@ final class AppState: ObservableObject {
         _ text: String,
         attachments: [Attachment],
         context: ComposerSubmissionContext,
+        queued: Bool,
         lostSessionIDs: Set<String>,
         using client: HermesClient
     ) async -> Bool {
@@ -28075,7 +28100,7 @@ final class AppState: ObservableObject {
             await recoverComposerSubmission(using: context)
             return false
         }
-        return await sendMessage(text, attachments: attachments, afterReplacingLostChat: true)
+        return await sendMessage(text, attachments: attachments, queued: queued, afterReplacingLostChat: true)
     }
 
     /// `queued` is Queue (#842): Hermes keeps the message as the next turn
@@ -28128,7 +28153,7 @@ final class AppState: ObservableObject {
         let submissionSessionIDs = acceptedIdentitySessionIDs(forRequested: sessionId)
         // A first message into an empty chat made here: if Hermes has lost
         // the chat, it goes into a fresh one instead (once).
-        let sendsIntoEmptyNewChat = !afterReplacingLostChat && !queued
+        let sendsIntoEmptyNewChat = !afterReplacingLostChat
             && openChatIsEmptyNewChat(submissionSessionIDs)
         // A fix for Hermes, when the user shares location while talking to
         // it: taken alongside the upload and waited for briefly before the
@@ -28234,7 +28259,7 @@ final class AppState: ObservableObject {
                 guard isCurrentComposerSubmission(submissionContext) else { return false }
                 if sendsIntoEmptyNewChat, HermesClient.isSessionNotFoundError(error) {
                     return await resendInPlaceOfLostEmptyChat(
-                        text, attachments: attachments, context: submissionContext,
+                        text, attachments: attachments, context: submissionContext, queued: queued,
                         lostSessionIDs: submissionSessionIDs, using: client
                     )
                 }
@@ -28405,7 +28430,7 @@ final class AppState: ObservableObject {
             }
             if sendsIntoEmptyNewChat, HermesClient.isSessionNotFoundError(error) {
                 return await resendInPlaceOfLostEmptyChat(
-                    text, attachments: attachments, context: submissionContext,
+                    text, attachments: attachments, context: submissionContext, queued: queued,
                     lostSessionIDs: submissionSessionIDs, using: client
                 )
             }

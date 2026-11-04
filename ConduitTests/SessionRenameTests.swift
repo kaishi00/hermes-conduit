@@ -692,6 +692,51 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertNil(appState.errorMessage)
     }
 
+    /// Queue is a first message too: it goes into the fresh chat, still as
+    /// Queue.
+    func testAQueuedFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne() async {
+        var lost: Set<String> = []
+        var queuedPrompts: [(String, String)] = []
+        var prompts: [String] = []
+        let appState = makeLostChatAppState(
+            lost: { lost },
+            onQueuedPrompt: { queuedPrompts.append(($0, $1)) }
+        ) { session, _ in prompts.append(session) }
+
+        await appState.createNewSession()
+        lost = ["created-runtime-1", "created-stored-1"]
+        let sent = await appState.sendMessage("later", queued: true)
+
+        XCTAssertTrue(sent)
+        XCTAssertEqual(queuedPrompts.map(\.0), ["created-runtime-2"])
+        XCTAssertEqual(queuedPrompts.map(\.1), ["later"])
+        XCTAssertEqual(prompts, [])
+        XCTAssertEqual(appState.activeSessionId, "created-runtime-2")
+        XCTAssertNil(appState.errorMessage)
+    }
+
+    /// What an action left waiting on the empty chat (a screenshot, a
+    /// prompt for the composer, its focus) waits on the fresh chat instead.
+    func testWhatWaitsOnALostEmptyNewChatWaitsOnTheFreshOne() async {
+        var lost: Set<String> = []
+        let appState = makeLostChatAppState(lost: { lost }) { _, _ in }
+        let shot = Attachment(id: UUID().uuidString, name: "screen.png", uri: "file:///tmp/screen.png", mimeType: "image/png", kind: .image)
+
+        await appState.createNewSession()
+        appState.pendingScreenshots = [PendingScreenshot(sessionID: "created-runtime-1", attachment: shot, dashboardID: appState.activeDashboardID)]
+        appState.prefillComposer("What is on my screen?")
+        appState.requestComposerFocus(on: "created-runtime-1")
+        lost = ["created-runtime-1", "created-stored-1"]
+        await appState.refreshActiveSession()
+
+        XCTAssertEqual(appState.activeSessionId, "created-runtime-2")
+        XCTAssertEqual(appState.pendingScreenshots.map(\.sessionID), ["created-runtime-2"])
+        XCTAssertEqual(appState.pendingScreenshots.map(\.attachment), [shot])
+        XCTAssertEqual(appState.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "created-runtime-2", profile: "default"))
+        XCTAssertEqual(appState.composerPrefillText, "What is on my screen?")
+        XCTAssertEqual(appState.composerFocusRequest?.sessionID, "created-runtime-2")
+    }
+
     func testAFirstMessageWithAFileIntoALostEmptyNewChatIsStagedInTheFreshOne() async {
         var lost: Set<String> = []
         var uploads: [String] = []
@@ -849,6 +894,7 @@ final class SessionRenameTests: XCTestCase {
         onCreateIn: @escaping @MainActor (String?) -> Void = { _ in },
         createFails: @escaping @MainActor () -> Bool = { false },
         onUpload: @escaping @MainActor (String) -> Void = { _ in },
+        onQueuedPrompt: @escaping @MainActor (String, String) -> Void = { _, _ in },
         onPrompt: @escaping @MainActor (String, String) -> Void
     ) -> AppState {
         let defaults = makeScratchDefaults("LostEmptyNewChatTests")
@@ -869,6 +915,11 @@ final class SessionRenameTests: XCTestCase {
                     return .accepted
                 }
             )
+        operations.sendQueuedPrompt = { _, sessionID, text in
+            if lost().contains(sessionID) { throw RpcError(code: 4001, message: "session not found") }
+            onQueuedPrompt(sessionID, text)
+            return .accepted
+        }
         operations.uploadAttachment = { _, sessionID, attachment in
             if lost().contains(sessionID) { throw RpcError(code: 4001, message: "session not found") }
             onUpload(sessionID)
