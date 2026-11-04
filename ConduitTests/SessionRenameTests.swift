@@ -654,6 +654,27 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertNil(appState.newChatAwaitingListing, "waits for Hermes, as the chat it replaces did")
     }
 
+    /// A New Chat started in a folder is replaced in that folder, and its
+    /// row stays listed beside the chat until Hermes lists it, as the lost
+    /// one's did.
+    func testALostEmptyNewChatInAFolderIsReplacedInThatFolder() async {
+        var lost: Set<String> = []
+        var folders: [String?] = []
+        let appState = makeLostChatAppState(lost: { lost }, onCreateIn: { folders.append($0) }) { _, _ in }
+
+        await appState.createNewSession(cwd: "/repo/app")
+        XCTAssertEqual(appState.newChatAwaitingListing?.cwd, "/repo/app")
+        lost = ["created-runtime-1", "created-stored-1"]
+        await appState.refreshActiveSession()
+
+        XCTAssertEqual(folders, ["/repo/app", "/repo/app"])
+        XCTAssertEqual(appState.activeSessionId, "created-runtime-2")
+        XCTAssertEqual(appState.newChatAwaitingListing?.cwd, "/repo/app")
+        XCTAssertEqual(appState.newChatAwaitingListing?.ids, ["created-runtime-2", "created-stored-2"])
+        XCTAssertEqual(appState.sessions.map(\.id), ["created-stored-2"])
+        XCTAssertNil(appState.errorMessage)
+    }
+
     func testTheFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne() async {
         var lost: Set<String> = []
         var prompts: [(String, String)] = []
@@ -825,6 +846,7 @@ final class SessionRenameTests: XCTestCase {
     private func makeLostChatAppState(
         lost: @escaping @MainActor () -> Set<String>,
         onCreate: @escaping @MainActor () -> Void = {},
+        onCreateIn: @escaping @MainActor (String?) -> Void = { _ in },
         createFails: @escaping @MainActor () -> Bool = { false },
         onUpload: @escaping @MainActor (String) -> Void = { _ in },
         onPrompt: @escaping @MainActor (String, String) -> Void
@@ -863,10 +885,11 @@ final class SessionRenameTests: XCTestCase {
         appState.client = HermesClient(connection: connection, profile: "default")
         appState.isConnected = true
         var count = 0
-        appState.widgetSessionCreatorOverride = { _, _ in
+        appState.widgetSessionCreatorOverride = { _, cwd in
             if createFails() { throw URLError(.notConnectedToInternet) }
             count += 1
             onCreate()
+            onCreateIn(cwd)
             return ("created-runtime-\(count)", "created-stored-\(count)", "default")
         }
         return appState
