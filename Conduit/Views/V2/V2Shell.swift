@@ -1068,8 +1068,17 @@ struct V2Shell: View {
                 }
             }
             .animation(nil, value: selectedTab)
+            // The chat column takes the room the list leaves and no more:
+            // content wider than that stays inside it, under its clip,
+            // rather than widening the row past the window (#1765).
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             .v2ClippedToColumn(outerEdge: .trailing)
         }
+        // A row wider than the window would center in it and push the
+        // list's leading edge off the screen, cutting its bar, headers and
+        // row icons in half (#1765, an iPhone Duo's inner screen): the list
+        // keeps to the window's leading edge whatever the row's width.
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// `alone`: a wide window with the list hidden, where the list's pages

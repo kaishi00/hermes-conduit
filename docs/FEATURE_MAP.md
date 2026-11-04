@@ -5223,11 +5223,12 @@ phone)
 
 **Rulings**
 - Each column's backdrop stays clipped at the divider, so the glows don't cross it, and runs under the window's safe areas at the top, the bottom and its own outer side: the home indicator, and a landscape status bar or sensor. Clipped at the safe area, every split tab showed black bars along the bottom and the right of an iPhone Duo's inner screen while Tasks filled it (2026-10-29, #1472, a tester's report).
+- The row of columns never grows wider than the window, and the list keeps to its leading edge: the chat column takes the room the list leaves and clips what doesn't fit. A row wider than the window centered in it and pushed the list's leading side off the screen on an iPhone Duo's inner screen, cutting the profile pill, filter button, section headers and row icons in half (2026-11-04, #PRNUM, #1765). Unconfirmed on a device: the report has the screenshot, not the cause.
 
 **Open gaps**
 - Not seen on a device yet: the simulator suites have no Duo before Xcode 27.1, so a Duo or a split iPad from TestFlight confirms it.
 
-**Checked:** 2026-10-29, #1498 (ColumnDivider's store rules and drag direction are ColumnWidth functions; the layout is unchanged); 2026-10-29, #1492 (the 1 pt line between the columns is a draggable ColumnDivider above them; the drawer shell's sidebar threshold counts it); 2026-10-29, #1472.
+**Checked:** 2026-11-04, #PRNUM (the row of columns pinned to the window's leading edge, the chat column flexible down to zero; #1765). Earlier 2026-10-29, #1498 (ColumnDivider's store rules and drag direction are ColumnWidth functions; the layout is unchanged); 2026-10-29, #1492 (the 1 pt line between the columns is a draggable ColumnDivider above them; the drawer shell's sidebar threshold counts it); 2026-10-29, #1472.
 
 ## Resizable columns on a split window
 
