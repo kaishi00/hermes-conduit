@@ -1546,6 +1546,7 @@ live room's "Talking now") · the transcript's environment copy
 - The Bot Overview's header has no finish: its ripple and check play on Bots Home's portrait only.
 - A speaking bot's glint isn't drawn: Hermes' room status says the room works, not which member speaks, so the pill names the room instead. A room past the 8 talked in last, or a Desktop group chat, never shows as live.
 - A Bot Chat's swipe home from anywhere (and a workstream's to its Bot Chat) also fires over a code block or table scrolled sideways, where the system's own swipe would scroll it back first. It starts only in the chat's column, not a panel beside it, and waits while someone types in the composer.
+- A bot dragged across the pinned ones' edge, on the grid or in Reorder Bots, goes back to its group with no word why; Reorder Bots has no section for the pinned bots.
 - A workstream opened from the overview whose open fails leaves the zoom armed until it goes stale (3 s), since its link says nothing when it fails: a chat a notification or link pushes in Bots in that time would grow out of that bot's portrait.
 - A workstream opened before its bot's work list was read isn't known as that bot's, so while it shows the zoom lets go, and Back from the Bot Chat after it is a plain pop until the next open from the portrait. Opened from the Bot Chat (its panel, cards and links come from that list), it's known.
 - Bots Home's voice menu calls a working bot like any other: with Classic voice, whose call waits for a running reply, its chat opens and voice says to stop the reply first.

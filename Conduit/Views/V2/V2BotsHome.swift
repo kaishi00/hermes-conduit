@@ -497,9 +497,11 @@ struct BotPortraitCell<MenuContent: View>: View {
             guard let onDrop, let dragged = items.first.flatMap(BotDragPayload.botName(from:)),
                   dragged.caseInsensitiveCompare(bot.name) != .orderedSame else { return false }
             let merge = BotDragPayload.dropMerges(mergeReady: mergeReady, endedAt: mergeReadyEndedAt)
-            mergeReadyEndedAt = nil
             BotDragPayload.lifted = nil
             endTargeting()
+            // After endTargeting, which stamps it when the hover hadn't
+            // ended yet: this drop has used it.
+            mergeReadyEndedAt = nil
             onDrop(dragged, merge)
             return true
         } isTargeted: { targeted in
