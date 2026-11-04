@@ -230,6 +230,59 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertTrue(memory.ticked(scope: RichChecklistMemory.localScope, key: "packing").isEmpty, "a chat's ticks aren't the call screen's")
     }
 
+    @MainActor
+    func testAnUnsentTickFollowsTheChatWhenItsIdsGrow() async throws {
+        let suite = "RichChecklistMemoryTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let list = try card(["type": "checklist", "title": "Packing",
+                             "checklist": [["text": "Rain jacket"], ["text": "Swimsuit"]]])
+        var online = false
+        var saved: [[String: Any]] = []
+        var host: [String: [String]] = ["packing": ["Rain jacket"]]
+        func context(_ profile: String, _ ids: [String]) -> RichChecklistContext {
+            RichChecklistContext(
+                scope: RichChecklistContext.scope(profile: profile, sessionIDs: ids), sessionIDs: ids,
+                read: { host },
+                save: { body in
+                    guard online else { throw URLError(.notConnectedToInternet) }
+                    saved.append(body)
+                    let change = body["change"] as? [String: Any]
+                    var done = Set((host["packing"] ?? []).map { $0.lowercased() })
+                    if let item = (change?["item"] as? String)?.lowercased() {
+                        if change?["ticked"] as? Bool == true { done.insert(item) } else { done.remove(item) }
+                    }
+                    host["packing"] = (body["items"] as? [String] ?? []).filter { done.contains($0.lowercased()) }
+                    return host
+                })
+        }
+        let before = context("work", ["r1"])
+        let memory = RichChecklistMemory(defaults: defaults)
+        await memory.refresh(context: before, key: "packing")
+        memory.toggle("Swimsuit", card: list, key: "packing", context: before)
+        for _ in 0..<50 { await Task.yield() }
+        XCTAssertTrue(saved.isEmpty, "offline: the tick waits on the phone")
+        // Another chat, and the same ids in another profile, keep their own.
+        memory.toggle("Rain jacket", card: list, key: "packing", context: context("work", ["other"]))
+        memory.toggle("Rain jacket", card: list, key: "packing", context: context("home", ["r1"]))
+        for _ in 0..<50 { await Task.yield() }
+
+        // The chat's durable id is confirmed: its scope grows.
+        online = true
+        let after = context("work", ["r1", "s1"])
+        XCTAssertEqual(memory.ticked(scope: after.scope, key: "packing"), [], "not read yet")
+        await memory.refresh(context: after, key: "packing")
+        for _ in 0..<100 where memory.ticked(scope: after.scope, key: "packing").isEmpty
+            || memory.entries.contains(where: { $0.key.hasPrefix(after.scope) && $0.value.unsent }) { await Task.yield() }
+        XCTAssertEqual(saved.first?["change"] as? [String: AnyHashable], ["item": "Swimsuit", "ticked": true])
+        XCTAssertEqual(saved.first?["sessions"] as? [String], ["r1", "s1"])
+        XCTAssertEqual(host["packing"], ["Rain jacket", "Swimsuit"], "the tick reached the host")
+        XCTAssertEqual(memory.ticked(scope: after.scope, key: "packing"), ["rain jacket", "swimsuit"], "and still shows")
+        XCTAssertEqual(memory.ticked(scope: before.scope, key: "packing"), [], "nothing left under the old ids")
+        XCTAssertEqual(memory.ticked(scope: context("work", ["other"]).scope, key: "packing"), ["rain jacket"])
+        XCTAssertEqual(memory.ticked(scope: context("home", ["r1"]).scope, key: "packing"), ["rain jacket"])
+    }
+
     func testProgressNeedsAGoalAndAStopOpensInMaps() throws {
         XCTAssertNil(RichCard(normalized: ["type": "progress", "progress": [["label": "Saved", "value": 10, "goal": 0]]], id: 0))
         let saved = try XCTUnwrap(try card(["type": "progress", "progress": [

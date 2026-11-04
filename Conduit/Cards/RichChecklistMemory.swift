@@ -24,6 +24,20 @@ struct RichChecklistContext {
     let save: @MainActor (_ body: [String: Any]) async throws -> [String: [String]]
 
     static let capability = "board-checklists"
+
+    /// The phone's key for a chat's checklists: its profile and every id
+    /// it's known by, which grows as the chat's ids are confirmed.
+    static func scope(profile: String, sessionIDs: [String]) -> String {
+        "\(profile)\u{1E}\(sessionIDs.joined(separator: "\u{1D}"))"
+    }
+
+    /// A chat scope's profile and ids; nil for any other scope.
+    static func parts(of scope: String) -> (profile: String, sessionIDs: Set<String>)? {
+        let halves = scope.split(separator: "\u{1E}", maxSplits: 1, omittingEmptySubsequences: false)
+        guard halves.count == 2 else { return nil }
+        let ids = Set(halves[1].split(separator: "\u{1D}").map(String.init))
+        return ids.isEmpty ? nil : (String(halves[0]), ids)
+    }
     static let path = "/api/plugins/conduit_push/boards/checklists"
 
     static func readPath(profile: String, sessionIDs: [String]) -> String {
@@ -132,6 +146,7 @@ final class RichChecklistMemory: ObservableObject {
     /// a change made here hasn't reached the host yet: that one goes now.
     func refresh(context: RichChecklistContext?, key: String) async {
         guard let context else { return }
+        carryOver(to: context, key: key)
         let id = Self.id(context.scope, key)
         if let entry = entries[id], entry.unsent {
             await send(entry, key: key, context: context)
@@ -145,6 +160,7 @@ final class RichChecklistMemory: ObservableObject {
 
     func toggle(_ text: String, card: RichCard, key: String, context: RichChecklistContext?) {
         let scope = context?.scope ?? Self.localScope
+        if let context { carryOver(to: context, key: key) }
         let id = Self.id(scope, key)
         var entry = entries[id] ?? Entry(ticked: [], at: .now, unsent: false, items: [], title: "")
         let folded = text.lowercased()
@@ -164,6 +180,54 @@ final class RichChecklistMemory: ObservableObject {
         store(entry, id: id)
         guard let context else { return }
         Task { await send(entry, key: key, context: context) }
+    }
+
+    /// The chat's ids grow while it's open (its durable id confirmed, an
+    /// alias read from the catalog, a Bot Chat's ids from the roster), and
+    /// with them its scope. This checklist kept under the chat's earlier
+    /// ids, the same profile's with any id in common, moves to the new
+    /// scope: ticks not yet sent go on to the host from there, after any
+    /// made under it, and the others show until the host's read lands.
+    private func carryOver(to context: RichChecklistContext, key: String) {
+        let id = Self.id(context.scope, key)
+        guard let profile = RichChecklistContext.parts(of: context.scope)?.profile else { return }
+        let ids = Set(context.sessionIDs)
+        let suffix = "\u{1F}\(key)"
+        let earlier = entries.filter { other, _ in
+            guard other != id, other.hasSuffix(suffix),
+                  let parts = RichChecklistContext.parts(of: String(other.dropLast(suffix.count)))
+            else { return false }
+            return parts.profile == profile && !parts.sessionIDs.isDisjoint(with: ids)
+        }
+        guard !earlier.isEmpty else { return }
+        let existing = entries[id]
+        var entry = existing
+        for (other, old) in earlier.sorted(by: { $0.value.at < $1.value.at }) {
+            if old.unsent {
+                if var current = entry {
+                    // Ticks made under the new scope are the newer ones.
+                    let touched = Set((current.changes ?? []).map { $0.item.lowercased() })
+                    for change in old.changes ?? [] where !touched.contains(change.item.lowercased()) {
+                        if change.ticked {
+                            current.ticked.insert(change.item.lowercased())
+                        } else {
+                            current.ticked.remove(change.item.lowercased())
+                        }
+                    }
+                    current.changes = (old.changes ?? []) + (current.changes ?? [])
+                    current.unsent = true
+                    current.at = max(current.at, old.at)
+                    entry = current
+                } else {
+                    entry = old
+                }
+            } else if existing == nil, entry?.unsent != true {
+                // Until the host's read lands, the newest copy shows.
+                entry = old
+            }
+            entries.removeValue(forKey: other)
+        }
+        if let entry { store(entry, id: id) }
     }
 
     /// Checklists whose ticks are on their way to the host.
