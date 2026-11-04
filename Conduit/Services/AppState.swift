@@ -37054,7 +37054,9 @@ final class AppState: ObservableObject {
         // A still-pending push-delivered card for the same logical clarify is
         // superseded by the live event (different ids: gateway vs
         // plugin-minted), so one logical clarify never renders two
-        // answerable cards. Resolved history stays visible, and a
+        // answerable cards. A copy whose relay answer failed (.error) goes
+        // too: it is still answerable, and Hermes' card is the answer path
+        // now. Resolved history stays visible, and a
         // .submitting card is left alone: its relay answer may already
         // be in flight and will settle it by request id.
         //
@@ -37067,7 +37069,7 @@ final class AppState: ObservableObject {
         messages.removeAll { message in
             guard let clarify = message.clarify,
                   clarify.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
-                  clarify.presentationStatus == .pending,
+                  clarify.presentationStatus == .pending || clarify.presentationStatus == .error,
                   Self.pushCardSupersededBy(clarify, live: activity) else {
                 return false
             }

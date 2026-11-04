@@ -3189,6 +3189,110 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(clarifyCards.map { $0.clarify?.requestId }, ["gateway-rid-1"])
     }
 
+    func testAResumeDropsACachedPushCopyOfHermesCard() async {
+        // The reported case: the notification's copy is cached, and a resume
+        // brings it back beside Hermes' own card for the same question.
+        let cacheSuite = "conduit.tests.clarify-resume-supersede-\(UUID().uuidString)"
+        guard let cacheDefaults = UserDefaults(suiteName: cacheSuite) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: cacheDefaults)
+        defer {
+            cache.clear()
+            cacheDefaults.removePersistentDomain(forName: cacheSuite)
+        }
+        let harness = makeHarness(sessionPresentationCache: cache)
+        cache.recordPendingDecision(
+            ChatMessage(
+                id: "clarify-conduit-push-abc123",
+                role: .clarify,
+                content: "Which color?",
+                timestamp: "1",
+                clarify: ClarifyActivity(
+                    requestId: "conduit-push-abc123",
+                    question: "Which color?",
+                    choices: [ClarifyChoice(label: "Red", value: "Red")],
+                    status: .pending,
+                    answer: nil,
+                    error: nil
+                )
+            ),
+            profile: "default",
+            sessionIDs: ["stored-a"]
+        )
+        let active = session("stored-a")
+        _ = publishRestoration(in: harness, session: active)
+
+        let resumeResult = SessionResumeResult(
+            sessionId: "stored-a",
+            messages: [
+                ChatMessage(
+                    id: "clarify-gateway-rid-1",
+                    role: .clarify,
+                    content: "Which color?",
+                    timestamp: "2",
+                    clarify: ClarifyActivity(
+                        requestId: "gateway-rid-1",
+                        questions: [ClarifyQuestion(id: "q0", question: "Which color?",
+                                                    choices: [ClarifyChoice(label: "Red", value: "Red")])]
+                    )
+                )
+            ],
+            snapshot: SessionRuntimeSnapshot(object: [:])
+        )
+
+        XCTAssertTrue(harness.appState.applyChatResume(resumeResult))
+
+        let clarifyCards = harness.appState.messages.filter { $0.role == .clarify }
+        XCTAssertEqual(clarifyCards.map { $0.clarify?.requestId }, ["gateway-rid-1"])
+        let restored = cache.merge(
+            [],
+            profile: "default",
+            sessionIDs: ["stored-a"],
+            includePendingClarifications: true
+        )
+        XCTAssertFalse(
+            restored.contains { $0.clarify?.requestId == "conduit-push-abc123" },
+            "The dropped copy must not come back on the next resume"
+        )
+    }
+
+    func testAnErroredPushCopyGivesWayToHermesCard() async {
+        // A copy whose relay answer failed is still answerable, so it would
+        // be a second card for the same question.
+        let harness = makeHarness()
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.messages = [
+            ChatMessage(
+                id: "clarify-conduit-push-abc123",
+                role: .clarify,
+                content: "Which color?",
+                timestamp: "1",
+                clarify: ClarifyActivity(
+                    requestId: "conduit-push-abc123",
+                    question: "Which color?",
+                    choices: [ClarifyChoice(label: "Red", value: "Red")],
+                    status: .error,
+                    answer: nil,
+                    error: "Couldn't send"
+                )
+            )
+        ]
+
+        harness.appState.handleStreamEvent(.clarify(
+            sessionId: "stored-a",
+            activity: ClarifyActivity(
+                requestId: "gateway-rid-1",
+                questions: [ClarifyQuestion(id: "q0", question: "Which color?",
+                                            choices: [ClarifyChoice(label: "Red", value: "Red")])]
+            )
+        ))
+
+        let clarifyCards = harness.appState.messages.filter { $0.role == .clarify }
+        XCTAssertEqual(clarifyCards.map { $0.clarify?.requestId }, ["gateway-rid-1"])
+    }
+
     func testLiveClarifyEventSupersedesMixedExpiredPendingPushCard() async {
         let harness = makeHarness()
         harness.appState.activeSessionId = "stored-a"
