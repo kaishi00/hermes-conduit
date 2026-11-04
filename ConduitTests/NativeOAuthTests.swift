@@ -355,6 +355,39 @@ final class NativeOAuthTests: XCTestCase {
         cookieBridge.invalidate()
     }
 
+    /// A refresh Task can start after `NativeOAuthSession.invalidate()`
+    /// cancelled it. Its request must fail as cancelled: a task made on an
+    /// invalidated URLSession raised an Objective-C exception and aborted
+    /// the app (tokenRequest, builds 223 and 244).
+    func testAClientInvalidatedBeforeARefreshStartsCancelsItWithoutRaising() async {
+        var calls = 0
+        NativeOAuthURLProtocolStub.handler = { _ in
+            calls += 1
+            return (200, ["access_token": "new", "refresh_token": "r", "expires_at": 4_000_000_000, "provider": "google", "user_id": "user"])
+        }
+        let client = makeClient()
+        client.invalidate()
+        XCTAssertTrue(client.isInvalidated)
+
+        do {
+            _ = try await client.refresh(tokens())
+            XCTFail("An invalidated client must not send the refresh")
+        } catch let error as URLError {
+            XCTAssertEqual(error.code, .cancelled)
+        } catch {
+            XCTFail("Expected URLError.cancelled, got \(error)")
+        }
+        do {
+            _ = try await client.requestJSON(path: "/api/status", accessToken: "token")
+            XCTFail("An invalidated client must not send a request")
+        } catch let error as URLError {
+            XCTAssertEqual(error.code, .cancelled)
+        } catch {
+            XCTFail("Expected URLError.cancelled, got \(error)")
+        }
+        XCTAssertEqual(calls, 0)
+    }
+
     @MainActor
     func testInvalidatedSessionCannotTouchReplacementTokens() async {
         let dashboardID = UUID()

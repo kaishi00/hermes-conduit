@@ -2654,6 +2654,32 @@ browser (separate)
 
 **Checked:** 2026-10-27, at #1343, carrying #1329.
 
+## Native OAuth token transport
+
+The requests a native (PKCE) sign-in's tokens make: the code exchange, the
+refresh, and the bearer requests and tickets after it, and what happens to
+them when the dashboard's session is torn down.
+
+**Siblings:** the dashboard's request authorizer (DashboardRequestAuthorizer,
+the one owner that invalidates it) · not needed: the password sign-in client
+(NativeAuthClient invalidates its URLSession only in deinit), HermesClient's
+socket (invalidate() drops its session, so nothing reuses it), sign-out and
+the certificate check (each invalidates a session of its own, in a defer)
+
+**Code**
+- `Conduit/Services/NativeOAuth.swift` (NativeOAuthAPIClient: invalidate, bytes(for:), tokenRequest, requestJSON; NativeOAuthSession: invalidate, refresh, requestJSON)
+- Owner: `Conduit/Services/DashboardRequestAuthorizer.swift` (invalidate)
+- Tests: `ConduitTests/NativeOAuthTests.swift` (testAClientInvalidatedBeforeARefreshStartsCancelsItWithoutRaising, testInvalidatedSessionCannotTouchReplacementTokens)
+
+**Rulings**
+- An invalidated session ends its requests as cancelled, never as a sign-in failure, and never touches the Keychain grant that replaced it.
+- The client's URLSession is invalidated only in deinit. invalidate() marks the client invalidated and cancels its tasks, and a request after that fails with URLError(.cancelled) before it reaches the URLSession. A refresh Task that started after its session was invalidated (cancellation is cooperative) used to make a task on the invalidated URLSession, which raises an Objective-C exception: seven aborts in tokenRequest on builds 223 and 244 (2026-11-04, #1737).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-04, #1737 (an invalidated client cancels instead of raising).
+
 ## Dashboard sign-in redirects
 
 When an auth proxy in front of the dashboard (an oauth2-proxy-style edge,
