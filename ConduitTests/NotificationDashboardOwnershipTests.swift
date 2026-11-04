@@ -699,25 +699,25 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertFalse(AppState.catalogListsSession("runtime-1", in: []))
     }
 
-    func testOnlyAnAnsweredCallWhoseChatIsListedSkipsTheFullListRead() {
+    func testANotificationWhoseChatIsListedSkipsTheFullListRead() {
         let catalog = [listedRow("runtime-1", stored: "durable-1")]
         let call = HermesCallRequest(id: "call-1", kind: .done, title: nil, sessionIDs: ["durable-1"])
         func target(_ id: String, durable: String? = nil, call: HermesCallRequest?) -> ConduitNotificationTarget {
             ConduitNotificationTarget(profile: nil, sessionId: id, durableSessionID: durable, type: call == nil ? nil : HermesCallRequest.type, call: call)
         }
-        func needsRead(_ target: ConduitNotificationTarget, answered: Bool = true) -> Bool {
-            AppState.notificationOpenNeedsAuthoritativeRead(target: target, callAnswered: answered, catalog: catalog)
+        func needsRead(_ target: ConduitNotificationTarget) -> Bool {
+            AppState.notificationOpenNeedsAuthoritativeRead(target: target, catalog: catalog)
         }
         XCTAssertFalse(needsRead(target("durable-1", call: call)))
         XCTAssertTrue(needsRead(target("unseen", call: call)), "a call whose chat the list lacks reads it again")
-        XCTAssertTrue(needsRead(target("durable-1", call: call), answered: false),
-                      "a tapped call notification (body, Talk or missed) reads it again, like every notification")
-        XCTAssertTrue(needsRead(target("durable-1", call: nil)), "a plain notification always reads it again")
+        XCTAssertFalse(needsRead(target("durable-1", call: nil)), "a plain notification whose chat is listed opens at once (issue 1724)")
+        XCTAssertFalse(needsRead(target("runtime-1", call: nil)), "by any id its row answers to")
+        XCTAssertTrue(needsRead(target("unseen", call: nil)), "a chat the list lacks waits for the full read")
         XCTAssertTrue(needsRead(target("runtime-1", durable: "durable-new", call: call)),
                       "the route resolves to the payload's durable id, so a list without it is read again")
         XCTAssertFalse(needsRead(target("runtime-1", durable: "durable-1", call: call)))
         XCTAssertFalse(AppState.notificationOpenNeedsAuthoritativeRead(
-            target: target("hidden-work", call: nil), callAnswered: false, catalog: catalog, isWorkstream: true),
+            target: target("hidden-work", call: nil), catalog: catalog, isWorkstream: true),
             "a workstream is hidden from the list, so reading it can't find its row")
     }
 }

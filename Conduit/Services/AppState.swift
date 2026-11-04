@@ -21849,7 +21849,8 @@ final class AppState: ObservableObject {
         forceRefresh: Bool,
         requiredViewportTransitionGeneration: UInt64?,
         reportsFailure: Bool = true,
-        yieldsToNewerReads: Bool = false
+        yieldsToNewerReads: Bool = false,
+        deferringOlderPages: Bool = false
     ) async -> Bool {
         if let requiredViewportTransitionGeneration,
            !chatViewportTransitionIsCurrent(generation: requiredViewportTransitionGeneration) {
@@ -21869,6 +21870,7 @@ final class AppState: ObservableObject {
                 loadedSessions = try await profileCatalog(
                     using: activeClient,
                     forceRefresh: forceRefresh,
+                    deferringOlderPages: deferringOlderPages,
                     yieldsToNewerReads: yieldsToNewerReads
                 ).sessions
             } else {
@@ -22066,7 +22068,18 @@ final class AppState: ObservableObject {
         let cronKey = "\(activeProfile):cron"
         sessionCatalogCache.removeValue(forKey: sessionKey)
         sessionCatalogCache.removeValue(forKey: cronKey)
-        await loadSessions(forceRefresh: true)
+        // The newest page is what the pull is for: the spinner clears once
+        // it lands, and the older pages are read after it, rather than all
+        // 25 one after another first (issue 1724).
+        let client = self.client
+        let profile = activeProfile
+        let dashboardID = activeDashboardID
+        await loadSessions(
+            forceRefresh: true,
+            requiredViewportTransitionGeneration: nil,
+            deferringOlderPages: true
+        )
+        if let client { loadDeferredCatalogPages(after: client, profile: profile, dashboardID: dashboardID) }
     }
 
     // MARK: - One chat on two devices
@@ -25230,24 +25243,26 @@ final class AppState: ObservableObject {
         return outcome == .opened
     }
 
-    /// Every notification tap rereads the chat list, a call notification's
-    /// included. The open of a call answered in CallKit has its caller
-    /// waiting on the voice, so it rereads only when the list on hand lacks
-    /// the call's chat. Runtime and alias ids are never handed to another
-    /// chat, so a row they match is the call's chat.
+    /// A notification tap reads the chat list again before it opens only
+    /// when the list on hand lacks the chat: reading the whole list took
+    /// 2-3 s on a long one (897 rows), seconds more over a remote dashboard,
+    /// and the tap waited for it. A chat the list holds opens at once, and
+    /// the list is read again after (Eric, 2026-11-04, issue 1724; answered
+    /// calls first did this, 2026-11-02). Runtime and alias ids are never
+    /// handed to another chat, so a row they match is the notification's
+    /// chat.
     /// A bot's workstream never needs it: Hermes hides it from the list, so
     /// the read can't find its row and only held the open up for seconds
     /// (Eric's build 248 test, a secondary bot's work link or card).
     nonisolated static func notificationOpenNeedsAuthoritativeRead(
         target: ConduitNotificationTarget,
-        callAnswered: Bool,
         catalog: [SessionSummary],
         isWorkstream: Bool = false
     ) -> Bool {
         if isWorkstream { return false }
         // The route resolves to the payload's durable id first, so that id
         // must be on hand too, or the bot-chat check would miss its row.
-        guard callAnswered, target.call != nil, catalogListsSession(target.sessionId, in: catalog) else { return true }
+        guard catalogListsSession(target.sessionId, in: catalog) else { return true }
         if let durable = target.durableSessionID, !catalogListsSession(durable, in: catalog) { return true }
         return false
     }
@@ -25544,25 +25559,28 @@ final class AppState: ObservableObject {
         // ID for the notification's runtime/alternate ID. Otherwise the next
         // cold-start recovery only sees the old normal-session list and jumps
         // back to its newest entry.
-        // Do not share the sidebar refresh guard here. A notification takes
-        // one authoritative read even if a visual refresh is already in
-        // progress, otherwise it can resolve against the stale catalog;
-        // only the open of a call answered in CallKit may skip it. That call
-        // has its caller waiting: when the
-        // list on hand already holds the call's chat, the route resolves
-        // against that list. Reading the whole list again took 2-3 s of every
-        // answered call on a long list (897 rows, Ul'dah 2026-11-02). A row
-        // that matches the call's id by any of its ids is the call's chat
-        // even if the host has since rotated its runtime id, and the chat
-        // sync the call's connection starts refreshes it. A chat the list
-        // lacks still waits for the authoritative read.
+        // Do not share the sidebar refresh guard here. A chat the list on
+        // hand lacks takes one authoritative read even if a visual refresh
+        // is already in progress, otherwise it can resolve against the stale
+        // catalog. When the list already holds the chat, the route resolves
+        // against that list: reading the whole list again took 2-3 s on a
+        // long list (897 rows, Ul'dah 2026-11-02). A row that matches the
+        // notification's id by any of its ids is its chat even if the host
+        // has since rotated its runtime id, and the read after the open
+        // brings the row up to date (issue 1724).
+        var readsListAfterOpen = false
+        defer {
+            if readsListAfterOpen {
+                Task { @MainActor [weak self] in await self?.loadSessions(forceRefresh: true) }
+            }
+        }
         if !Self.notificationOpenNeedsAuthoritativeRead(
             target: target,
-            callAnswered: isNativeHermesCallAnswered,
             catalog: sessions + cronSessions,
             isWorkstream: isWorkstreamSession(target.sessionId)
         ) {
             traceStage = "session list (on hand)"
+            readsListAfterOpen = true
         } else {
             traceStage = "session list"
             guard await loadSessions(
