@@ -251,6 +251,18 @@ enum BotDragPayload {
     /// Screen).
     static var mergeDwell: Duration { .milliseconds(500) }
 
+    /// How long after a merge-ready hover ends its drop still merges: the
+    /// hover ends as the drop begins, before the drop is handed over.
+    static let mergeDropGrace: TimeInterval = 1
+
+    /// Whether a drop merges: the face is still swollen, or it was until
+    /// the drop ended the hover a moment ago.
+    static func dropMerges(mergeReady: Bool, endedAt: Date?, now: Date = Date()) -> Bool {
+        if mergeReady { return true }
+        guard let endedAt else { return false }
+        return now.timeIntervalSince(endedAt) < mergeDropGrace
+    }
+
     static let prefix = "conduit-bot:"
 
     /// The bot whose portrait is being dragged, set as its drag starts.
@@ -396,6 +408,11 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// over the face for half a second (BotDragPayload.mergeDwell).
     @State private var isTargeted = false
     @State private var mergeReady = false
+    /// When a merge-ready hover ended. A drop ends the hover before it
+    /// lands, so the drop reads this rather than `mergeReady`, which has
+    /// already gone (Eric 2026-11-04: dropping a bot on another never
+    /// started a room).
+    @State private var mergeReadyEndedAt: Date?
     @State private var dwell: Task<Void, Never>?
     @Environment(\.scenePhase) private var scenePhase
     /// Low Power Mode as it changes, so the motion stops when it turns on.
@@ -479,9 +496,12 @@ struct BotPortraitCell<MenuContent: View>: View {
         .dropDestination(for: String.self) { items, _ in
             guard let onDrop, let dragged = items.first.flatMap(BotDragPayload.botName(from:)),
                   dragged.caseInsensitiveCompare(bot.name) != .orderedSame else { return false }
-            let merge = mergeReady
+            let merge = BotDragPayload.dropMerges(mergeReady: mergeReady, endedAt: mergeReadyEndedAt)
             BotDragPayload.lifted = nil
             endTargeting()
+            // After endTargeting, which stamps it when the hover hadn't
+            // ended yet: this drop has used it.
+            mergeReadyEndedAt = nil
             onDrop(dragged, merge)
             return true
         } isTargeted: { targeted in
@@ -518,6 +538,7 @@ struct BotPortraitCell<MenuContent: View>: View {
         guard let lifted = BotDragPayload.lifted,
               lifted.caseInsensitiveCompare(bot.name) != .orderedSame else { return }
         isTargeted = true
+        mergeReadyEndedAt = nil
         dwell?.cancel()
         guard canMerge?(lifted) == true else { return }
         dwell = Task { @MainActor in
@@ -529,6 +550,7 @@ struct BotPortraitCell<MenuContent: View>: View {
     }
 
     private func endTargeting() {
+        if mergeReady { mergeReadyEndedAt = Date() }
         dwell?.cancel()
         dwell = nil
         isTargeted = false
@@ -561,6 +583,19 @@ struct BotPortraitCell<MenuContent: View>: View {
                         .frame(width: 4)
                         .padding(.vertical, 8)
                         .offset(x: -9)
+                        .accessibilityHidden(true)
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                // Pinned: first among the bots, as in Hermes Desktop.
+                if bot.isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .background(Circle().fill(Color(.secondarySystemBackground)))
+                        .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2))
+                        .offset(x: -2, y: -2)
                         .accessibilityHidden(true)
                 }
             }
@@ -709,6 +744,10 @@ struct BotOverviewSheet: View {
     /// Its Bot Chat: opens it from Bots Home, closes the sheet over it.
     let onChat: () -> Void
     let onClose: () -> Void
+    /// Runs just before its Work list opens a workstream's chat. On Bots
+    /// Home it arms the zoom, so that chat, and the Bot Chat after it,
+    /// shrink back into the portrait.
+    var onWillOpenWork: (() -> Void)? = nil
 
     enum Section: Hashable {
         case work
@@ -768,7 +807,7 @@ struct BotOverviewSheet: View {
                 }
                 switch shown {
                 case .work:
-                    BotWorkPanel(work: work, profile: profile, onClose: onClose, showsHeader: false)
+                    BotWorkPanel(work: work, profile: profile, onClose: onClose, showsHeader: false, onWillOpen: onWillOpenWork)
                 case .artifacts:
                     BotArtifactsList(profile: profile, willShowInChat: onClose)
                 }

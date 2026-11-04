@@ -211,6 +211,9 @@ struct BotWorkPanel: View {
     @State private var replies: [String: String] = [:]
     @State private var showsAllRecent = false
     @State private var showsResolved = false
+    /// Runs just before a row opens a workstream's chat (the Bots Home
+    /// overview arms the zoom with it).
+    var onWillOpen: (() -> Void)? = nil
 
     static let recentShown = 3
 
@@ -228,7 +231,8 @@ struct BotWorkPanel: View {
             reply: Binding(
                 get: { replies[item.ref] ?? "" },
                 set: { replies[item.ref] = $0.isEmpty ? nil : $0 }
-            )
+            ),
+            willOpen: onWillOpen
         )
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
@@ -255,6 +259,7 @@ struct BotWorkPanel: View {
             }
             if item.kind == .workstream, !item.sessionID.isEmpty {
                 Button {
+                    onWillOpen?()
                     appState.openWorkstream(item, profile: profile)
                 } label: {
                     Label(AppLocalization.string("Open \(item.ref)’s chat"), systemImage: "bubble.left.and.bubble.right")
@@ -552,6 +557,7 @@ private struct BotWorkRow: View {
     @Binding var expanded: Bool
     @Binding var reply: String
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    var willOpen: (() -> Void)? = nil
 
     private var tint: Color { BotWorkLook.tint(item) }
 
@@ -589,6 +595,11 @@ private struct BotWorkRow: View {
                 WorkstreamApprovalBox(item: item, profile: profile, isActing: isActing)
             }
             if expanded {
+                // At the top, where it shows without scrolling past a long
+                // checklist (Eric 2026-11-04).
+                if item.kind == .workstream, !item.sessionID.isEmpty {
+                    openChatButton
+                }
                 if !item.branch.isEmpty {
                     branchLine
                 }
@@ -767,26 +778,23 @@ private struct BotWorkRow: View {
             if item.actions.contains(.send) {
                 replyField
             }
-            if !item.sessionID.isEmpty {
-                Button {
-                    Haptics.light()
-                    appState.openWorkstream(item, profile: profile)
-                } label: {
-                    HStack {
-                        Text(AppLocalization.string("Open \(item.ref)’s chat"))
-                            .scaledFont(.subheadline.weight(.semibold))
-                        Spacer(minLength: 4)
-                        Image(systemName: "chevron.right")
-                            .scaledFont(.caption.weight(.bold))
-                            .accessibilityHidden(true)
-                    }
-                    .foregroundStyle(Color.conduitAccent)
-                    .padding(.horizontal, 2)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
         }
+    }
+
+    /// Its chat, as a button at the top of the opened row.
+    private var openChatButton: some View {
+        Button {
+            Haptics.light()
+            willOpen?()
+            appState.openWorkstream(item, profile: profile)
+        } label: {
+            Label(AppLocalization.string("Open \(item.ref)’s chat"), systemImage: "bubble.left.and.bubble.right")
+                .scaledFont(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 30)
+        }
+        .buttonStyle(.bordered)
+        .tint(Color.conduitAccent)
+        .accessibilityIdentifier("botWork.open.\(item.ref)")
     }
 
     private func controlButton(_ action: BotWorkItem.Action, prominent: Bool) -> some View {

@@ -771,6 +771,36 @@ extension BotModeTests {
         XCTAssertNil(BotDragPayload.botName(from: BotDragPayload.prefix))
     }
 
+    /// A drop ends the hover before it lands, so a face that was swollen a
+    /// moment before still starts a room (Eric 2026-11-04: it never did).
+    func testADropJustAfterTheFaceSwelledStillStartsARoom() {
+        let now = Date()
+        XCTAssertTrue(BotDragPayload.dropMerges(mergeReady: true, endedAt: nil, now: now))
+        XCTAssertTrue(BotDragPayload.dropMerges(mergeReady: false, endedAt: now.addingTimeInterval(-0.2), now: now))
+        XCTAssertFalse(BotDragPayload.dropMerges(mergeReady: false, endedAt: now.addingTimeInterval(-2), now: now),
+                       "a hover that ended a while ago moves")
+        XCTAssertFalse(BotDragPayload.dropMerges(mergeReady: false, endedAt: nil, now: now), "never swollen: moves")
+    }
+
+    /// Pinned bots come first, each group in the person's order, so Pin
+    /// does something once the bots have been dragged into an order
+    /// (Eric 2026-11-04).
+    @MainActor
+    func testPinnedBotsComeFirstInThePersonsOrder() throws {
+        func bot(_ name: String, pinned: Bool = false) -> BotProfile {
+            BotProfile(name: name, botTitle: nil, displayName: name, profileDescription: "", model: nil,
+                       provider: nil, hasAvatar: false, isPinned: pinned, isHiddenByMeta: false,
+                       appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil)
+        }
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.setBotOrder(BotOrder(names: ["atlas", "furina", "nahida", "raiden"]))
+        let roster = [bot("raiden", pinned: true), bot("nahida"), bot("furina", pinned: true), bot("atlas")]
+        XCTAssertEqual(appState.orderedBots(roster).map(\.name), ["furina", "raiden", "atlas", "nahida"])
+    }
+
     /// Bots is the launch tab: a plain session opened over it still lands
     /// in Sessions, and only a bot's own chats stay in Bots.
     func testAPlainSessionOpenedOverBotsLandsInSessions() {

@@ -38,6 +38,7 @@ struct BotRosterView: View {
     /// V2's Bots tab: its title bar's "+" asks for a new bot here, and the
     /// in-list create card steps aside.
     private let createRequest: Binding<Bool>?
+    @Environment(\.v2OpenBeside) private var openBeside
 
     init(createRequest: Binding<Bool>? = nil) {
         self.createRequest = createRequest
@@ -120,12 +121,20 @@ struct BotRosterView: View {
                 onChat: {
                     overviewBot = nil
                     appState.beginOpeningBotChat(bot.name)
+                    // Grows out of its portrait, as from a tap on it
+                    // (Eric 2026-11-04), unless it opens beside the list.
+                    if openBeside == nil { appState.botZoom.tap(bot.name) }
                     Task {
-                        await appState.openBotChat(for: bot)
+                        if await !appState.openBotChat(for: bot) { appState.botZoom.openFailed(bot.name) }
                         appState.endOpeningBotChat(bot.name)
                     }
                 },
-                onClose: { overviewBot = nil }
+                onClose: { overviewBot = nil },
+                // A workstream opened from its list counts as its bot's, so
+                // it and its Bot Chat shrink back into the portrait too. Its
+                // open (a link) says nothing when it fails, so a failed one
+                // leaves the arm to go stale (BotZoomArm.window).
+                onWillOpenWork: openBeside == nil ? { appState.botZoom.tap(bot.name) } : nil
             )
             .environmentObject(appState)
         }
