@@ -2682,6 +2682,10 @@ final class AppState: ObservableObject {
         }
     }
     var newChatOpenedDurableSessionID: String?
+    /// The ids of an empty chat Hermes lost and of the fresh chat Conduit
+    /// opened in its place (replaceLostEmptyNewChat): a draft typed in the
+    /// lost one is the fresh one's, as the New Chat draft is its chat's.
+    var lostChatReplacement: (lost: Set<String>, fresh: Set<String>)?
     var pendingComposerSendCheckScheduled = false
     /// A waiting message whose chat is ready but still settling is looked
     /// at again shortly: not all of that settling is published.
@@ -6272,6 +6276,12 @@ final class AppState: ObservableObject {
     func composerDraftKeysAreSameChat(_ lhs: ComposerDraftKey, _ rhs: ComposerDraftKey) -> Bool {
         guard lhs.profile == rhs.profile else { return false }
         if lhs == rhs { return true }
+        if let replacement = lostChatReplacement, lhs.profile == activeProfile,
+           activeSessionId.map(replacement.fresh.contains) == true,
+           replacement.lost.contains(lhs.sessionID) && replacement.fresh.contains(rhs.sessionID)
+            || replacement.lost.contains(rhs.sessionID) && replacement.fresh.contains(lhs.sessionID) {
+            return true
+        }
         if lhs.isNewConversation || rhs.isNewConversation {
             let chat = lhs.isNewConversation ? rhs : lhs
             return !chat.isNewConversation && chat.profile == activeProfile
@@ -26117,6 +26127,10 @@ final class AppState: ObservableObject {
             listsBeforeHermes: listsBeforeHermes
         )
         guard let created else { return false }
+        lostChatReplacement = (
+            lost: lost,
+            fresh: Set([created, newChatOpenedDurableSessionID].compactMap { $0 })
+        )
         sessions.removeAll { row in
             row.id != created && !row.alternateIds.contains(created)
                 && (lost.contains(row.id) || !lost.isDisjoint(with: row.alternateIds)

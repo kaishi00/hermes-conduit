@@ -626,6 +626,12 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertNil(appState.errorMessage, "nothing was said in it, so nothing to report")
         XCTAssertEqual(appState.turnState, .idle)
         XCTAssertEqual(appState.sessions.map(\.id), ["created-stored-2"], "the lost chat's row goes")
+        // A draft typed in the lost chat is the fresh chat's (the composer
+        // moves it on the switch, as from New Chat to the chat it made).
+        let lostDraft = ComposerBar.composerDraftKey(for: "created-runtime-1", profile: "default")
+        let freshDraft = ComposerBar.composerDraftKey(for: "created-runtime-2", profile: "default")
+        XCTAssertTrue(appState.composerDraftKeysAreSameChat(lostDraft, freshDraft))
+        XCTAssertTrue(appState.composerDraftKeysAreSameChat(freshDraft, lostDraft))
     }
 
     /// The chat a sync opens when there is nothing to resume is made here
@@ -701,7 +707,8 @@ final class SessionRenameTests: XCTestCase {
     func testAFailedFreshChatKeepsTheFirstMessagesWords() async {
         var lost: Set<String> = []
         var createFails = false
-        let appState = makeLostChatAppState(lost: { lost }, createFails: { createFails }) { _, _ in }
+        var created = 0
+        let appState = makeLostChatAppState(lost: { lost }, onCreate: { created += 1 }, createFails: { createFails }) { _, _ in }
 
         await appState.createNewSession()
         lost = ["created-runtime-1", "created-stored-1"]
@@ -709,6 +716,7 @@ final class SessionRenameTests: XCTestCase {
         let sent = await appState.sendMessage("hello")
 
         XCTAssertFalse(sent)
+        XCTAssertEqual(created, 1, "one try at a fresh chat, not one per retry")
         XCTAssertTrue(appState.messages.contains { $0.role == .user && $0.content == "hello" }, "the words stay, as for any failed send")
         XCTAssertNotNil(appState.errorMessage)
     }

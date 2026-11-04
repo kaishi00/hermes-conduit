@@ -542,7 +542,7 @@ a project's new chat in its folder, kept as the fresh chat's folder, the empty
 canvas's send, a widget's or Shortcut's New Chat, /new), which all go
 through createNewSession · the chat a sync opens when there is nothing to
 resume (also made here and empty; its stand-in waits for Hermes' list as it
-did) · not needed: a Bot Chat (made and reopened through
+did) · an unsent draft in it (Composer drafts) · not needed: a Bot Chat (made and reopened through
 its own lookup, never New Chat's), a voice job's or a Local Live call's chat,
 Pulse's chat, CarPlay and the Watch (made in the background and sent to at
 once, so never empty and idle), a chat with anything in it (the user's, so
@@ -550,11 +550,12 @@ its error shows), the notifier (Hermes' behavior, nothing for the plugin to
 keep) · text: no Settings caption or doc describes it
 
 **Code**
-- `Conduit/Services/AppState.swift` (syncSession's create when there is nothing to resume; openChatIsEmptyNewChat, replaceLostEmptyNewChat, the session-not-found branch in reconcile's catch, resendInPlaceOfLostEmptyChat from sendMessage's attach and prompt.submit catches; newChatOpenedSessionID and newChatOpenedDurableSessionID, set in createAndReconcileSession; the fresh chat's folder from openNewChatAwaitingListing, NewChatAwaitingListing.cwd, see A new chat in the list)
+- `Conduit/Services/AppState.swift` (syncSession's create when there is nothing to resume; lostChatReplacement, read by composerDraftKeysAreSameChat for the draft; openChatIsEmptyNewChat, replaceLostEmptyNewChat, the session-not-found branch in reconcile's catch, resendInPlaceOfLostEmptyChat from sendMessage's attach and prompt.submit catches; newChatOpenedSessionID and newChatOpenedDurableSessionID, set in createAndReconcileSession; the fresh chat's folder from openNewChatAwaitingListing, NewChatAwaitingListing.cwd, see A new chat in the list)
 - Tests: `ConduitTests/SessionRenameTests.swift` (testAnEmptyNewChatHermesLostIsReplacedOnRefresh, testTheEmptyChatASyncOpenedIsReplacedToo, testTheFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne, testAFirstMessageWithAFileIntoALostEmptyNewChatIsStagedInTheFreshOne, testAnEmptyNewChatLeftAndReopenedIsNotReplaced, testAFailedFreshChatKeepsTheFirstMessagesWords, testANewChatWithMessagesIsNeverReplaced)
 
 **Rulings**
 - Only a chat Conduit made here (New Chat's, or the one a sync opened because there was nothing to resume), still open, with nothing in it but notices: nothing was said in it, so a fresh chat in its place loses nothing and says nothing. Any other chat that Hermes says is gone shows its error as before (Eric, 2026-11-04, #1752: "an empty chat made here that Hermes lost"; the sync's chat named after GLM's review).
+- A draft typed in it and not sent (words, files, a quote) is the fresh chat's: the composer keeps it across the switch, as from New Chat to the chat it made (Composer drafts; Step 5's review, 2026-11-04, #1752).
 - Its first message goes, as typed, into the fresh chat, once; a refusal there, or a fresh chat that fails to open, shows as any failed send does and keeps the words. Only the resume's own refusal counts, never a history read's 404 (GLM's review). The lost chat's row leaves the list at once (2026-11-04, #1752).
 
 **Open gaps**
@@ -2144,8 +2145,10 @@ the composer's Sending… while a send checks Hermes
 | Leaving while a send is on its way | back in its draft if it doesn't go | held by the room's pending message |
 | Sign-out or another server | dropped | dropped, files deleted |
 | The room disbanded or left the list | not applicable | dropped, files deleted |
+| An empty chat Hermes lost, replaced by a fresh one | kept, in the fresh chat | not applicable |
 
 **Code**
+- The replaced chat's draft: `Conduit/Services/AppState.swift` (lostChatReplacement in composerDraftKeysAreSameChat; see An empty new chat Hermes lost)
 - Chat composer: `Conduit/Views/Components/ComposerBar.swift` (loadDraft, saveDraft, handoffComposer, onDisappear, draftKeyToKeep, restoreSubmittedDraftIfNeeded, applyComposerRestoreRequests, sendingNotice, composerInUse), `Conduit/Views/Components/ComposerUpdates.swift` (isCheckingSend), `Conduit/Views/Components/ComposerDraftStore.swift` (clearCount)
 - A send that didn't go: `Conduit/Services/AppState+PendingSend.swift` (returnFailedComposerSubmission, restoreFailedPendingComposerSend's mayHaveGone), `Conduit/Services/AppState.swift` (composerSubmissionStoppedQuietly, takeComposerSubmissionOfUnknownDelivery); its checks before the message shows: `Conduit/Services/AppState.swift` (checkingBeforeSend, composerSendIsChecking: the stale-idle probe, the transcript freshness read, starting a chat from the empty canvas)
 - Waiting message: `Conduit/Services/AppState+PendingSend.swift` (returnPendingComposerSendToDraft, restoreFailedPendingComposerSend, pendingComposerSendNotice), `Conduit/Services/AppState.swift` (conversationIsGone), `Conduit/Models/PendingComposerSend.swift`
@@ -2165,7 +2168,7 @@ the composer's Sending… while a send checks Hermes
 - A room's quoted message and its "To" picks aren't kept when the room is left.
 - A room that's disbanded while another dashboard is in use keeps its staged files until that dashboard is opened again or the user signs out.
 
-**Checked:** 2026-10-30, #1527 (a handoff clears the full editor's kept-focus latch, so a send's focus doesn't follow into the next chat); 2026-10-29, #1515 (a long paste stays words while the chat is on its way); 2026-10-27, #1403 (failed sends' words outlast the composer; Sending… before the message shows); 2026-10-24, at #1185; a failed '/command' put back without its suggestion list over it at #1191 (#891 review).
+**Checked:** 2026-11-04, #1752 (an empty chat Hermes lost hands its draft to the fresh chat in its place); 2026-10-30, #1527 (a handoff clears the full editor's kept-focus latch, so a send's focus doesn't follow into the next chat); 2026-10-29, #1515 (a long paste stays words while the chat is on its way); 2026-10-27, #1403 (failed sends' words outlast the composer; Sending… before the message shows); 2026-10-24, at #1185; a failed '/command' put back without its suggestion list over it at #1191 (#891 review).
 
 ## A new chat that something waits on
 
