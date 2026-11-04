@@ -37,7 +37,11 @@ extension AppState {
     /// the bot's work has been read: until then the chat isn't known to
     /// be a workstream's, and its first read isn't news.
     func refreshWorkPlan(for chat: ChatCardsChat? = nil) {
-        guard let workstream = activeWorkstream else { return }
+        guard let workstream = activeWorkstream else {
+            // Its work left the bot's list: no checklist stays behind.
+            chatCards.clearWorkPlan()
+            return
+        }
         chatCards.applyWorkPlan(workstream.item.checklistPlan, for: chat ?? chatCardsChat())
     }
 }

@@ -118,6 +118,15 @@ final class ChatCardsModel: ObservableObject {
         present(transcriptPlan ?? serverPlan, live: false)
     }
 
+    /// The open chat is no longer a workstream the bot's work lists (it
+    /// was resolved and left the list): its checklist goes, and the chat's
+    /// own plan shows again.
+    func clearWorkPlan() {
+        guard workPlan != nil else { return }
+        workPlan = nil
+        present(transcriptPlan ?? serverPlan, live: false)
+    }
+
     /// The open chat is a workstream's, and this is its checklist as the
     /// Work panel reads it (nil once it keeps none). The first read is
     /// the chat opening; a later change is news, as a `todo` row is.

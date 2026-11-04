@@ -193,6 +193,17 @@ extension GatewayRestartTests {
         XCTAssertEqual(cards.plan?.items.map(\.content), ["Newer todo"], "without a checklist, Hermes' plan shows again")
     }
 
+    func testAResumeKeepsTheChecklistAndItsPlanStandsAfter() throws {
+        let cards = ChatCardsModel(defaults: freshDefaults())
+        cards.applyWorkPlan(try XCTUnwrap(workItem([("Read the logs", "doing")])?.checklistPlan), for: cardsChat)
+        cards.applyServerPlan(AgentPlan(snapshotJSON: result([("1", "From the server", "pending")])), for: cardsChat)
+        XCTAssertEqual(cards.plan?.items.map(\.content), ["Read the logs"], "a resume doesn't replace the checklist")
+
+        cards.clearWorkPlan()
+        XCTAssertEqual(cards.plan?.items.map(\.content), ["From the server"],
+                       "once the work leaves the list, the resume's plan shows")
+    }
+
     func testANewChecklistWhileTheWorkstreamsChatIsOpenIsAnnounced() throws {
         let cards = ChatCardsModel(defaults: freshDefaults())
         cards.applyWorkPlan(nil, for: cardsChat)
