@@ -595,6 +595,30 @@ Hermes · Resume Call · memory at call end (notifier)
 
 **Checked:** 2026-11-02, #1675 (a call save that meets a profile with the plugin turned off waits and retries, and Save Now says how to turn it on, rather than marking the host as one that can't save (issue 1671)); 2026-10-29, #1507 (the call card's start time under its title, #1440); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1445 (a call's jobs leave Desktop's list once answered); 2026-10-26, #1247 (the closing transcript save and the Watch broker's revokes keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252, for a call kept with its first request's chat; Qwen joins the shared save path (`qwen-live` history), at #1182, carried in #1235; 2026-10-24, at #1222 (capture cursor); at #1221, for the Watch's transcript tail; at 78f21da; at #1191: a saved screen turn cut at the plugin's limit keeps its last line unless it can be half a fence (#926 review); at #1220: quiet checkpoints, and a saved turn's cut closes a long fence with one as long, within the plugin's limit.
 
+## CarPlay taps
+
+What runs when a button or row on the car's screen is tapped.
+
+**Siblings:** the voice template's buttons (Listen, New Chat, Mute and
+Unmute, Stop, End) · the browse screens' rows (chats, New voice chat, jobs,
+voice modes and agents) · the Chats and More bar buttons · the More and
+Shortcuts grids · not needed: the phone's call screen, the minimised call bar
+and the Watch (their taps come from UIKit and SwiftUI on the main thread)
+
+**Code**
+- `Conduit/CarPlay/CarPlayVoiceTemplateFactory.swift` (CarPlayMainThread, makeButton), `Conduit/CarPlay/CarPlayBrowseTemplates.swift` (barButton, moreTemplate, chatSections, chatItems, jobSections, shortcutsTemplate, optionItem)
+- Handlers: `Conduit/CarPlay/CarPlayVoiceCoordinator.swift` (makeHandlers, makeBrowseHandlers: fenced to the connection their template is on)
+- Tests: `ConduitTests/CarPlayVoiceTests.swift` (CarPlayVoiceTemplateFactoryTests' handler tests)
+
+**Rulings**
+- Every template handler reaches the app on the main thread, through CarPlayMainThread: run at once when CarPlay calls on the main thread, otherwise queued to it in order. CarPlay called the voice template's End from a dispatch worker on iOS 26, and ending the call then ran SwiftUI's update on that worker's 512 KB stack until it overflowed (eight crash reports, builds 223 to 246, 2026-11-04, PR_NUMBER).
+- A tap queued across a reconnect never acts on the new connection's conversation (makeHandlers' fence).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-04, PR_NUMBER (every CarPlay template handler runs on the main thread).
+
 ## Voice in the chats list
 
 What voice leaves in the chats lists: saved calls, the chats calls were kept

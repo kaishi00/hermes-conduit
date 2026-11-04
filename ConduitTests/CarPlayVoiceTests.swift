@@ -3509,3 +3509,30 @@ extension CarPlayVoiceCoordinatorTests {
         XCTAssertEqual(harness.activations.last, .ready, "\(harness.activations)")
     }
 }
+
+// MARK: - Handlers on the main thread
+
+extension CarPlayVoiceTemplateFactoryTests {
+    /// CarPlay called the voice template's End from a dispatch worker on
+    /// iOS 26, and ending the call ran SwiftUI's update on that worker's
+    /// 512 KB stack until it overflowed: every template handler reaches the
+    /// app on the main thread.
+    func testATemplateHandlerCalledOffTheMainThreadRunsOnTheMainThread() async {
+        let ran = expectation(description: "handler ran")
+        var ranOnMain: Bool?
+        DispatchQueue.global().async {
+            CarPlayMainThread.run {
+                ranOnMain = Thread.isMainThread
+                ran.fulfill()
+            }
+        }
+        await fulfillment(of: [ran], timeout: 5)
+        XCTAssertEqual(ranOnMain, true)
+    }
+
+    func testATemplateHandlerOnTheMainThreadRunsAtOnce() {
+        var ran = false
+        CarPlayMainThread.run { ran = true }
+        XCTAssertTrue(ran, "a tap on the main thread acts in the same turn")
+    }
+}
