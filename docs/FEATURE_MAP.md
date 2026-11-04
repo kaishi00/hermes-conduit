@@ -525,6 +525,41 @@ describes it
 
 **Checked:** 2026-11-02, #1631 (every create goes through createSession, which on the gateway's own listener sends `source: gui`, `reasoning` and `service_tier` and no `cols`; a folder's `cwd` is within its create fields, checked against the canary's session_policy; see Two Hermes servers); 2026-10-28, added at #1456.
 
+## An empty new chat Hermes lost
+
+Hermes keeps no row for a chat until its first message. When it drops the
+runtime of an empty new chat (a phone's socket drop it reaped, a gateway
+restart), a Hermes before v0.22.0 answers "session not found" for that chat
+from then on, and v0.22.0+ makes the row again on resume. Conduit opens a
+fresh chat in its place rather than showing a restore error no refresh can
+clear (an App Store review, 2026-11-02: "you can't make that same chat re
+enable again").
+
+**Siblings:** the chat's refresh, the return-to-app and reconnect syncs (all
+resume through reconcile) · the composer's first send into it, a picture or
+file staged with it included · every way New Chat makes the chat (New Chat,
+a project's new chat in its folder, kept as the fresh chat's folder, the empty
+canvas's send, a widget's or Shortcut's New Chat, /new), which all go
+through createNewSession · not needed: a Bot Chat (made and reopened through
+its own lookup, never New Chat's), a voice job's or a Local Live call's chat,
+Pulse's chat, CarPlay and the Watch (made in the background and sent to at
+once, so never empty and idle), a chat with anything in it (the user's, so
+its error shows), the notifier (Hermes' behavior, nothing for the plugin to
+keep) · text: no Settings caption or doc describes it
+
+**Code**
+- `Conduit/Services/AppState.swift` (openChatIsEmptyNewChat, replaceLostEmptyNewChat, the session-not-found branch in reconcile's catch, resendInPlaceOfLostEmptyChat from sendMessage's attach and prompt.submit catches; newChatOpenedSessionID and newChatOpenedDurableSessionID, set in createAndReconcileSession)
+- Tests: `ConduitTests/SessionRenameTests.swift` (testAnEmptyNewChatHermesLostIsReplacedOnRefresh, testTheFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne, testANewChatWithMessagesIsNeverReplaced)
+
+**Rulings**
+- Only the chat New Chat made here, still open, with nothing in it but notices: nothing was said in it, so a fresh chat in its place loses nothing and says nothing. Any other chat that Hermes says is gone shows its error as before (Eric, 2026-11-04, PR_NUMBER).
+- Its first message goes, as typed, into the fresh chat, once; a refusal there shows as any failed send does. The lost chat's row leaves the list at once (2026-11-04, PR_NUMBER).
+
+**Open gaps**
+- Not reproduced on a device: Hermes v0.22.7 kept an idle new chat on both servers in a probe, so the reviewer's trigger (likely an older Hermes with a dropped socket) is inferred (2026-11-04, PR_NUMBER).
+
+**Checked:** 2026-11-04, PR_NUMBER (added).
+
 ## Chat open elsewhere
 
 What Conduit does when Hermes refuses a send because something else holds the

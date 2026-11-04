@@ -607,6 +607,60 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertNil(appState.newChatAwaitingListing)
     }
 
+    /// Hermes keeps no row for a chat until its first message, so a Hermes
+    /// before v0.22.0 that dropped the runtime of an empty new chat answers
+    /// "session not found" for it forever (an App Store review, 2026-11-02):
+    /// a refresh puts a fresh chat in its place instead of an error.
+    func testAnEmptyNewChatHermesLostIsReplacedOnRefresh() async {
+        var lost: Set<String> = []
+        var created = 0
+        let appState = makeLostChatAppState(lost: { lost }, onCreate: { created += 1 }) { _, _ in }
+
+        let first = await appState.createNewSession()
+        XCTAssertEqual(first, "created-runtime-1")
+        lost = ["created-runtime-1", "created-stored-1"]
+        await appState.refreshActiveSession()
+
+        XCTAssertEqual(created, 2)
+        XCTAssertEqual(appState.activeSessionId, "created-runtime-2")
+        XCTAssertNil(appState.errorMessage, "nothing was said in it, so nothing to report")
+        XCTAssertEqual(appState.turnState, .idle)
+        XCTAssertEqual(appState.sessions.map(\.id), ["created-stored-2"], "the lost chat's row goes")
+    }
+
+    func testTheFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne() async {
+        var lost: Set<String> = []
+        var prompts: [(String, String)] = []
+        let appState = makeLostChatAppState(lost: { lost }) { prompts.append(($0, $1)) }
+
+        await appState.createNewSession()
+        lost = ["created-runtime-1", "created-stored-1"]
+        let sent = await appState.sendMessage("hello")
+
+        XCTAssertTrue(sent)
+        XCTAssertEqual(prompts.map(\.0), ["created-runtime-2"])
+        XCTAssertEqual(prompts.map(\.1), ["hello"])
+        XCTAssertEqual(appState.activeSessionId, "created-runtime-2")
+        XCTAssertEqual(appState.messages.filter { $0.role == .user }.map(\.content), ["hello"], "one bubble, in the new chat")
+        XCTAssertNil(appState.errorMessage)
+    }
+
+    func testANewChatWithMessagesIsNeverReplaced() async {
+        var lost: Set<String> = []
+        var created = 0
+        let appState = makeLostChatAppState(lost: { lost }, onCreate: { created += 1 }) { _, _ in }
+
+        await appState.createNewSession()
+        let sent = await appState.sendMessage("hello")
+        XCTAssertTrue(sent)
+        lost = ["created-runtime-1", "created-stored-1"]
+        await appState.refreshActiveSession()
+
+        XCTAssertEqual(created, 1, "a chat with something in it is the user's: its error shows")
+        XCTAssertEqual(appState.activeSessionId, "created-runtime-1")
+        XCTAssertNotNil(appState.errorMessage)
+    }
+
     func testANewChatBelongsToTheProjectItStartedIn() {
         let awaiting = NewChatAwaitingListing(ids: ["rt", "st"], profile: "default", cwd: "/repo/app/")
         let project = ProjectSummary(id: "p", title: "App", primaryPath: "/repo/app", isHome: false, sessionCount: 0, previewSessions: [])
@@ -686,6 +740,50 @@ final class SessionRenameTests: XCTestCase {
             method == "GET" ? ["runtime_revision": 3, "runtime_generation": 1] : ["ok": true]
         }
         appState.widgetSessionCreatorOverride = { _, _ in ("created-runtime", "created-stored", "default") }
+        return appState
+    }
+
+    /// Each create makes `created-runtime-N`/`created-stored-N`; a resume or
+    /// a send to an id in `lost` answers as Hermes does for a dropped,
+    /// never-saved chat.
+    private func makeLostChatAppState(
+        lost: @escaping @MainActor () -> Set<String>,
+        onCreate: @escaping @MainActor () -> Void = {},
+        onPrompt: @escaping @MainActor (String, String) -> Void
+    ) -> AppState {
+        let defaults = makeScratchDefaults("LostEmptyNewChatTests")
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [] },
+                openSession: { _, sessionID, _ in
+                    if lost().contains(sessionID) { throw RpcError(code: 4007, message: "session not found") }
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, sessionID, text in
+                    if lost().contains(sessionID) { throw RpcError(code: 4001, message: "session not found") }
+                    onPrompt(sessionID, text)
+                    return .accepted
+                }
+            ),
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.isConnected = true
+        var count = 0
+        appState.widgetSessionCreatorOverride = { _, _ in
+            count += 1
+            onCreate()
+            return ("created-runtime-\(count)", "created-stored-\(count)", "default")
+        }
         return appState
     }
 

@@ -18198,6 +18198,22 @@ final class AppState: ObservableObject {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 return false
             }
+            // An empty chat made here that Hermes lost: a fresh one in its
+            // place, rather than a restore error no refresh can clear.
+            if resumeRPCFailedSessionNotFound || HermesClient.isSessionNotFoundError(error),
+               conversationScopeProfile == nil,
+               openChatIsEmptyNewChat(acceptedSessionIDs.union([sessionId])) {
+                return await replaceLostEmptyNewChat(
+                    lostSessionIDs: acceptedSessionIDs.union([sessionId]),
+                    using: client,
+                    profile: profile,
+                    token: token,
+                    automaticWorkToken: automaticWorkToken,
+                    automaticSyncOperationID: automaticSyncOperationID,
+                    requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
+                    widgetLease: widgetLease
+                )
+            }
             // Before the failure state, which the replayed prompts' running
             // edge must not overwrite.
             replayBufferedDecisionPrompts(for: token)
@@ -26049,6 +26065,59 @@ final class AppState: ObservableObject {
         requestComposerFocus(on: created)
     }
 
+    /// The open chat is the one New Chat made here (by any of `sessionIDs`)
+    /// and nothing has been said in it yet. Hermes keeps no row for such a
+    /// chat until its first message, so when Hermes drops its runtime (a
+    /// socket drop it reaped, a gateway restart) a Hermes before v0.22.0
+    /// can never reopen it: every resume and send answers "session not
+    /// found". Conduit puts a fresh chat in its place instead of that dead
+    /// end (replaceLostEmptyNewChat).
+    func openChatIsEmptyNewChat(_ sessionIDs: Set<String>) -> Bool {
+        guard let created = newChatOpenedSessionID, activeSessionId == created,
+              sessionIDs.contains(created)
+                || newChatOpenedDurableSessionID.map(sessionIDs.contains) == true
+        else { return false }
+        return messages.allSatisfy { $0.role == .system }
+    }
+
+    /// Opens a fresh chat in place of the empty one New Chat made here that
+    /// Hermes no longer has, in the same folder, and drops the lost one's
+    /// row. Nothing was said in it, so nothing is lost and nothing is
+    /// shown: the user just has a chat that works. Returns whether the new
+    /// chat opened. `token` is the reconciliation the failure came from.
+    func replaceLostEmptyNewChat(
+        lostSessionIDs: Set<String>,
+        using client: HermesClient,
+        profile: String,
+        token: UUID,
+        automaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
+        automaticSyncOperationID: UUID? = nil,
+        requiredViewportTransitionGeneration: UInt64? = nil,
+        widgetLease: WidgetLaunchLease? = nil
+    ) async -> Bool {
+        let cwd = openNewChatAwaitingListing?.cwd
+        let lost = lostSessionIDs.union([newChatOpenedSessionID, newChatOpenedDurableSessionID].compactMap { $0 })
+        lifecycleLog.notice("Empty new chat gone on Hermes (session not found) → a fresh one in its place")
+        let created = await createAndReconcileSession(
+            using: client,
+            profile: profile,
+            token: token,
+            automaticWorkToken: automaticWorkToken,
+            automaticSyncOperationID: automaticSyncOperationID,
+            requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
+            cwd: cwd,
+            widgetLease: widgetLease,
+            listsBeforeHermes: true
+        )
+        guard let created else { return false }
+        sessions.removeAll { row in
+            row.id != created && !row.alternateIds.contains(created)
+                && (lost.contains(row.id) || !lost.isDisjoint(with: row.alternateIds)
+                    || row.storedSessionId.map(lost.contains) == true)
+        }
+        return true
+    }
+
     /// Returns the chat this call created and opened, nil when it opened
     /// none (refused, failed, or replaced by a newer navigation).
     @discardableResult
@@ -27958,13 +28027,41 @@ final class AppState: ObservableObject {
         error.code == 4016 || error.code == 4018
     }
 
+    /// The first message of an empty chat made here was refused because
+    /// Hermes no longer has the chat: it goes, as typed, into a fresh chat
+    /// opened in its place (replaceLostEmptyNewChat). A second refusal
+    /// there is shown as any failed send is.
+    private func resendInPlaceOfLostEmptyChat(
+        _ text: String,
+        attachments: [Attachment],
+        optimisticRowID: String,
+        lostSessionIDs: Set<String>,
+        using client: HermesClient
+    ) async -> Bool {
+        messages.removeAll { $0.id == optimisticRowID }
+        let token = beginReconciliation()
+        turnState = .synchronizing
+        guard await replaceLostEmptyNewChat(
+            lostSessionIDs: lostSessionIDs,
+            using: client,
+            profile: activeProfile,
+            token: token
+        ) else {
+            // The create's own failure is what the composer shows.
+            if token == reconciliationToken, turnState == .synchronizing { turnState = .idle }
+            return false
+        }
+        return await sendMessage(text, attachments: attachments, afterReplacingLostChat: true)
+    }
+
     /// `queued` is Queue (#842): Hermes keeps the message as the next turn
     /// while one runs. That turn's reply goes on streaming meanwhile.
     func sendMessage(
         _ text: String,
         attachments: [Attachment] = [],
         context: ComposerSubmissionContext? = nil,
-        queued: Bool = false
+        queued: Bool = false,
+        afterReplacingLostChat: Bool = false
     ) async -> Bool {
         let submissionContext = context ?? composerSubmissionContext()
         guard isCurrentComposerSubmission(submissionContext) else { return false }
@@ -28005,6 +28102,10 @@ final class AppState: ObservableObject {
         // The identity under probe must be captured BEFORE any await — never
         // re-derived from the mutable active session afterwards.
         let submissionSessionIDs = acceptedIdentitySessionIDs(forRequested: sessionId)
+        // A first message into an empty chat made here: if Hermes has lost
+        // the chat, it goes into a fresh one instead (once).
+        let sendsIntoEmptyNewChat = !afterReplacingLostChat && !queued
+            && openChatIsEmptyNewChat(submissionSessionIDs)
         // A fix for Hermes, when the user shares location while talking to
         // it: taken alongside the upload and waited for briefly before the
         // prompt goes, never failing or holding up the send.
@@ -28107,6 +28208,12 @@ final class AppState: ObservableObject {
                     try? await client.detachImage(sessionId, path: path)
                 }
                 guard isCurrentComposerSubmission(submissionContext) else { return false }
+                if sendsIntoEmptyNewChat, HermesClient.isSessionNotFoundError(error) {
+                    return await resendInPlaceOfLostEmptyChat(
+                        text, attachments: attachments, optimisticRowID: userMessage.id,
+                        lostSessionIDs: submissionSessionIDs, using: client
+                    )
+                }
                 errorMessage = AppLocalization.string("Attachment failed: \(UserFacingError.message(for: error))")
                 await recoverComposerSubmission(using: submissionContext)
                 return false
@@ -28271,6 +28378,12 @@ final class AppState: ObservableObject {
                 // Its chat was left; the reply may only have been lost.
                 if Self.isAmbiguousPromptDelivery(error) { composerSubmissionsOfUnknownDelivery.append(submissionContext) }
                 return false
+            }
+            if sendsIntoEmptyNewChat, HermesClient.isSessionNotFoundError(error) {
+                return await resendInPlaceOfLostEmptyChat(
+                    text, attachments: attachments, optimisticRowID: userMessage.id,
+                    lostSessionIDs: submissionSessionIDs, using: client
+                )
             }
             if Self.isAmbiguousPromptDelivery(error) {
                 lifecycleLog.notice(
