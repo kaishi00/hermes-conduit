@@ -375,7 +375,7 @@ final class ShareDraftTests: XCTestCase {
 
         // A suggested name keeps its stem and takes .png, multi-dot names too.
         for (suggested, expected) in [("shot.jpg", "shot.png"), ("photo.edited.heic", "photo.edited.png")] {
-            let (named, _) = try collector()
+            let (named, _) = try self.collector()
             provider.suggestedName = suggested
             let renamed = await named.collect(providers: [provider])
             XCTAssertEqual(renamed.attachments.map(\.displayName), [expected])
