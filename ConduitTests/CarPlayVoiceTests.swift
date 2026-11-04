@@ -3536,6 +3536,28 @@ extension CarPlayVoiceTemplateFactoryTests {
         XCTAssertTrue(ran, "a tap on the main thread acts in the same turn")
     }
 
+    /// The handler CarPlay holds, not just the helper: a chat row tapped
+    /// from CarPlay's worker opens the chat on the main thread.
+    func testAChatRowTappedOffTheMainThreadOpensOnTheMainThread() async throws {
+        let opened = expectation(description: "chat opened")
+        var openedOnMain: Bool?
+        let list = CarPlayChatList(
+            pinned: [],
+            recent: [CarPlayChatRow(sessionID: "r", storedSessionID: nil, title: "Recent chat", detail: "now")]
+        )
+        let template = CarPlayBrowseTemplateFactory.chatsTemplate(
+            chats: list,
+            handlers: CarPlayBrowseHandlers(openChat: { _ in
+                openedOnMain = Thread.isMainThread
+                opened.fulfill()
+            })
+        )
+        let row = try XCTUnwrap(template.sections.last?.items.first as? CPListItem)
+        DispatchQueue.global().async { row.handler?(row, {}) }
+        await fulfillment(of: [opened], timeout: 5)
+        XCTAssertEqual(openedOnMain, true)
+    }
+
     /// A tap on the main thread waits behind one CarPlay already queued
     /// from its worker, so End then Listen never runs as Listen then End.
     func testAMainThreadTapNeverOvertakesAQueuedOne() async {

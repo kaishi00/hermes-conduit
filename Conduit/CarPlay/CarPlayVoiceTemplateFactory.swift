@@ -148,15 +148,18 @@ enum CarPlayMainThread {
     private static let queued = OSAllocatedUnfairLock(initialState: 0)
 
     nonisolated static func run(_ action: @escaping @MainActor () -> Void) {
-        if Thread.isMainThread, queued.withLock({ $0 == 0 }) {
-            MainActor.assumeIsolated { action() }
-            return
+        // Counting and queueing are one step under the lock, so a tap that
+        // has entered here is ordered before any that check after it.
+        let runsNow = queued.withLockUnchecked { count -> Bool in
+            if Thread.isMainThread, count == 0 { return true }
+            count += 1
+            DispatchQueue.main.async {
+                queued.withLock { $0 -= 1 }
+                action()
+            }
+            return false
         }
-        queued.withLock { $0 += 1 }
-        DispatchQueue.main.async {
-            queued.withLock { $0 -= 1 }
-            action()
-        }
+        if runsNow { MainActor.assumeIsolated { action() } }
     }
 }
 
