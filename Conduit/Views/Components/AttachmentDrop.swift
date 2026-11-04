@@ -167,6 +167,13 @@ struct AttachmentDropRequest: Equatable {
     }
 }
 
+extension Notification.Name {
+    /// A drag that reached a composer field has ended, dropped or not.
+    /// The drop target around the field clears its outline on it: a drag
+    /// that ends on the field never tells the target it left (issue 1689).
+    static let attachmentDragEnded = Notification.Name("ConduitAttachmentDragEnded")
+}
+
 /// A chat or room that takes dropped files: the whole screen is the
 /// target, outlined while something is dragged over it.
 struct AttachmentDropTarget: ViewModifier {
@@ -177,12 +184,18 @@ struct AttachmentDropTarget: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onDrop(of: [.item], isTargeted: $isTargeted) { providers in
-                guard isEnabled else { return false }
-                let files = AttachmentDrop.files(in: providers)
-                guard !files.isEmpty else { return false }
-                onDrop(files)
-                return true
+            // The outline is this target's own state, not SwiftUI's
+            // `isTargeted`: a drag that moves onto the composer field and
+            // is dropped there never reaches this target again, so the
+            // outline stayed up until a restart (issue 1689). The drop, the
+            // drag leaving, and the field's drag ending each clear it.
+            .onDrop(of: [.item], delegate: AttachmentDropDelegate(
+                isEnabled: isEnabled,
+                isTargeted: $isTargeted,
+                onDrop: onDrop
+            ))
+            .onReceive(NotificationCenter.default.publisher(for: .attachmentDragEnded)) { _ in
+                isTargeted = false
             }
             .overlay {
                 if isTargeted && isEnabled {
@@ -206,6 +219,36 @@ struct AttachmentDropTarget: ViewModifier {
                 }
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isTargeted && isEnabled)
+    }
+}
+
+/// The chat's or room's drop: files go to `onDrop`; words and links are
+/// turned down.
+struct AttachmentDropDelegate: DropDelegate {
+    let isEnabled: Bool
+    @Binding var isTargeted: Bool
+    let onDrop: ([NSItemProvider]) -> Void
+
+    func dropEntered(info: DropInfo) {
+        isTargeted = true
+    }
+
+    func dropExited(info: DropInfo) {
+        isTargeted = false
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        isTargeted = false
+        return take(info.itemProviders(for: [.item]))
+    }
+
+    /// Hands the drop's files to `onDrop`; whether the drop was taken.
+    func take(_ providers: [NSItemProvider]) -> Bool {
+        guard isEnabled else { return false }
+        let files = AttachmentDrop.files(in: providers)
+        guard !files.isEmpty else { return false }
+        onDrop(files)
+        return true
     }
 }
 

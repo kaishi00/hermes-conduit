@@ -658,6 +658,17 @@ final class FieldDropHandler: NSObject, UIDropInteractionDelegate, UITextDragDel
         perform(session.items.map(\.itemProvider), local: session.localDragSession, at: session.location(in: field))
     }
 
+    func dropInteraction(_ interaction: UIDropInteraction, sessionDidEnd session: UIDropSession) {
+        dragEnded()
+    }
+
+    /// A drag that reached the field ended, here or anywhere else. The
+    /// chat's or room's drop target outlined it on the way in and isn't
+    /// told it ended, so it hears it from here (issue 1689).
+    func dragEnded() {
+        NotificationCenter.default.post(name: .attachmentDragEnded, object: nil)
+    }
+
     /// A drop of the field's own words moves them; anything else is the
     /// field's `takeDrop`.
     func perform(_ providers: [NSItemProvider], local: AnyObject?, at point: CGPoint) {
