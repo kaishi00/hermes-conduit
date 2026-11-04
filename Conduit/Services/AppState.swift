@@ -2283,29 +2283,46 @@ final class AppState: ObservableObject {
             if !oldValue, showSidebar { noteChatLeft(activeSessionId) }
             if oldValue != showSidebar { updateChatOnScreen() }
             // The drawer covers the chat, so its live rows need not redraw at
-            // streaming cadence while it is up or animating: the live text and
-            // reasoning publishes (to `liveTurn`, which only those rows
-            // observe) pause. The live buffers remain authoritative and are
-            // republished there as soon as the drawer closes.
+            // streaming cadence while it is up or animating (liveRowsHidden).
             if showSidebar {
-                streamingPublishTask?.cancel()
-                streamingPublishTask = nil
-                hasScheduledStreamingPublish = false
-                reasoningPublishTask?.cancel()
-                reasoningPublishTask = nil
-                hasScheduledReasoningPublish = false
+                pauseLivePublishes()
             } else {
-                if !streamingBuffer.isEmpty {
-                    lastStreamingPublishBurst = max(
-                        streamingBuffer.count - streamingText.count,
-                        0
-                    )
-                    lastStreamingPublishDate = Date()
-                    streamingText = streamingBuffer
-                }
-                flushReasoningPublish()
+                resumeLivePublishesIfShown()
             }
         }
+    }
+
+    /// The open chat's live rows can't be seen: the sessions drawer covers
+    /// them, or Conduit is in the background. Their text and reasoning
+    /// publishes (to `liveTurn`, which only those rows observe) pause then.
+    /// In the background a reply streaming in otherwise kept the main
+    /// thread drawing it, the whole growing reply on each publish, so iOS's
+    /// watchdog killed Conduit when it couldn't finish going to the
+    /// background or quitting (8BADF00D). The live buffers stay
+    /// authoritative and are republished once the rows show again.
+    private var liveRowsHidden: Bool { showSidebar || hasEnteredBackgroundScenePhase }
+
+    private func pauseLivePublishes() {
+        streamingPublishTask?.cancel()
+        streamingPublishTask = nil
+        hasScheduledStreamingPublish = false
+        reasoningPublishTask?.cancel()
+        reasoningPublishTask = nil
+        hasScheduledReasoningPublish = false
+    }
+
+    /// What streamed while the live rows were hidden, in one publish.
+    private func resumeLivePublishesIfShown() {
+        guard !liveRowsHidden else { return }
+        if !streamingBuffer.isEmpty, streamingBuffer != streamingText {
+            lastStreamingPublishBurst = max(
+                streamingBuffer.count - streamingText.count,
+                0
+            )
+            lastStreamingPublishDate = Date()
+            streamingText = streamingBuffer
+        }
+        flushReasoningPublish()
     }
     /// Closes the modal sessions drawer if it is open. Session-opening flows
     /// inside the sidebar call this unconditionally: in drawer mode it
@@ -20246,6 +20263,8 @@ final class AppState: ObservableObject {
             // a stale request after the user signs back in.
             let didReturnFromBackground = hasEnteredBackgroundScenePhase
             hasEnteredBackgroundScenePhase = false
+            // What streamed in the background shows, in one publish.
+            if didReturnFromBackground { resumeLivePublishesIfShown() }
             if showLogin, signInWaitsForForeground {
                 // The freshness arming belongs to the session that was torn
                 // down; the retry's connect syncs from scratch.
@@ -20403,6 +20422,7 @@ final class AppState: ObservableObject {
             isSceneActive = false
             disarmWakeListeningForBackground()
             hasEnteredBackgroundScenePhase = true
+            pauseLivePublishes()
             // Audio may keep the socket open off screen; it pings less.
             client?.setKeepaliveBackgrounded(true)
             endQuietReturn()
@@ -37183,7 +37203,7 @@ final class AppState: ObservableObject {
     }
 
     private func scheduleReasoningPublish() {
-        guard !showSidebar, !hasScheduledReasoningPublish else { return }
+        guard !liveRowsHidden, !hasScheduledReasoningPublish else { return }
         hasScheduledReasoningPublish = true
         let cardID = activeReasoningMessageId
 
@@ -39776,7 +39796,7 @@ final class AppState: ObservableObject {
     }
 
     private func scheduleStreamingPublish() {
-        guard !showSidebar, !hasScheduledStreamingPublish else { return }
+        guard !liveRowsHidden, !hasScheduledStreamingPublish else { return }
         hasScheduledStreamingPublish = true
 
         streamingPublishTask = Task { [weak self] in

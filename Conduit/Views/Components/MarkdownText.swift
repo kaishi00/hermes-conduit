@@ -1569,6 +1569,14 @@ enum MarkdownTableLayout {
         return cache
     }()
 
+    /// Each cell's measured ideal width, by its text, font and references.
+    private static let cellWidthCache: NSCache<MarkdownCacheKey, NSNumber> = {
+        let cache = NSCache<MarkdownCacheKey, NSNumber>()
+        cache.countLimit = 4096
+        cache.totalCostLimit = 4 * 1024 * 1024
+        return cache
+    }()
+
     @MainActor
     static func columnWidths(
         headers: [String],
@@ -1608,14 +1616,29 @@ enum MarkdownTableLayout {
 
         let headerFont = ChatTypography.font(for: .tableHeader, appearance: chatTextSize)
         let bodyFont = ChatTypography.font(for: .tableBody, appearance: chatTextSize)
+        // A cell measures the same at any width, so it's measured once:
+        // a table streaming in measures only the cells that are new or
+        // still being written, not every cell again on each delta.
+        let cellTokens = [
+            UIApplication.shared.preferredContentSizeCategory.rawValue,
+            chatTextSize.cacheIdentity,
+            references.definitionsMarkdown
+        ]
+        func measured(_ source: String, header: Bool) -> CGFloat {
+            let cellKey = MarkdownCacheKey(tokens: cellTokens + [header ? "h" : "b"], content: [source])
+            if let width = cellWidthCache.object(forKey: cellKey) { return CGFloat(width.doubleValue) }
+            let width = idealWidth(of: source, font: header ? headerFont : bodyFont, references: references)
+            cellWidthCache.setObject(NSNumber(value: Double(width)), forKey: cellKey, cost: cellKey.byteCount)
+            return width
+        }
 
         var ideals = [CGFloat](repeating: 0, count: columnCount)
         for (index, header) in headers.enumerated() {
-            ideals[index] = max(ideals[index], idealWidth(of: header, font: headerFont, references: references))
+            ideals[index] = max(ideals[index], measured(header, header: true))
         }
         for row in rows {
             for (index, cell) in row.enumerated() where index < columnCount {
-                ideals[index] = max(ideals[index], idealWidth(of: cell, font: bodyFont, references: references))
+                ideals[index] = max(ideals[index], measured(cell, header: false))
             }
         }
 

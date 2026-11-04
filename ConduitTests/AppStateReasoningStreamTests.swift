@@ -133,6 +133,48 @@ final class AppStateReasoningStreamTests: XCTestCase {
         )
     }
 
+    // MARK: - In the background
+
+    /// In the background the live rows aren't drawn at stream cadence: a
+    /// reply streaming in kept the main thread re-rendering it there until
+    /// iOS's watchdog killed Conduit (8BADF00D). What streamed shows in one
+    /// publish when Conduit is back.
+    func testBackgroundHoldsLiveTextUntilActive() async throws {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        state.handleScenePhase(.background)
+
+        var publications = 0
+        let cancellable = state.liveTurn.$streamingText.dropFirst().sink { _ in publications += 1 }
+        ["Two tables ", "and a ", "code block"].forEach {
+            state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: $0))
+        }
+        // Well past the 33 ms publish cadence.
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(publications, 0)
+        XCTAssertEqual(state.streamingText, "")
+
+        state.handleScenePhase(.active)
+        cancellable.cancel()
+        XCTAssertEqual(state.streamingText, "Two tables and a code block")
+        XCTAssertEqual(publications, 1)
+    }
+
+    func testBackgroundHoldsLiveReasoningUntilActive() async throws {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        feedReasoning(["Step one."], sessionId: "stored-a", state: state)
+        XCTAssertEqual(liveReasoningContent(on: state), "Step one.")
+
+        state.handleScenePhase(.background)
+        feedReasoning([" Step two.", " Step three."], sessionId: "stored-a", state: state)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(liveReasoningContent(on: state), "Step one.")
+
+        state.handleScenePhase(.active)
+        XCTAssertEqual(liveReasoningContent(on: state), "Step one. Step two. Step three.")
+    }
+
     // MARK: - App-wide publishes
 
     /// Every view that observes AppState, the root of each open sheet
