@@ -3153,6 +3153,42 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(clarifyCards.first?.clarify?.requestId, "gateway-rid-1")
     }
 
+    /// The push copy landing after the live card (a resume's cached
+    /// decisions) goes when the live card is seen again, so one question
+    /// never shows as two answerable cards (Eric 2026-11-04).
+    func testAPushCardAfterTheLiveCardIsSupersededToo() async {
+        let harness = makeHarness()
+        harness.appState.activeSessionId = "stored-a"
+        let live = ClarifyActivity(
+            requestId: "gateway-rid-1",
+            questions: [ClarifyQuestion(id: "q0", question: "Which color?",
+                                        choices: [ClarifyChoice(label: "Red", value: "Red")])]
+        )
+        harness.appState.messages = [
+            ChatMessage(id: "clarify-gateway-rid-1", role: .clarify, content: "Which color?", timestamp: "1",
+                        clarify: live),
+            ChatMessage(
+                id: "clarify-conduit-push-abc123",
+                role: .clarify,
+                content: "Which color?",
+                timestamp: "2",
+                clarify: ClarifyActivity(
+                    requestId: "conduit-push-abc123",
+                    question: "Which color?",
+                    choices: [ClarifyChoice(label: "Red", value: "Red")],
+                    status: .pending,
+                    answer: nil,
+                    error: nil
+                )
+            )
+        ]
+
+        harness.appState.handleStreamEvent(.clarify(sessionId: "stored-a", activity: live))
+
+        let clarifyCards = harness.appState.messages.filter { $0.role == .clarify }
+        XCTAssertEqual(clarifyCards.map { $0.clarify?.requestId }, ["gateway-rid-1"])
+    }
+
     func testLiveClarifyEventSupersedesMixedExpiredPendingPushCard() async {
         let harness = makeHarness()
         harness.appState.activeSessionId = "stored-a"

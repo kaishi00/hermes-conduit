@@ -18722,6 +18722,12 @@ final class AppState: ObservableObject {
             : restored
         let rebuilt = isSameChat ? Self.keepingLocalNotes(from: previousMessages, in: rekeyed) : rekeyed
         messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: rebuilt, sessionId: result.sessionId), sessionId: result.sessionId)
+        // A cached push copy of a clarify the transcript already holds from
+        // Hermes goes, so one question never shows as two cards.
+        for live in messages.compactMap(\.clarify)
+        where !live.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) {
+            removePushCardsSuperseded(by: live)
+        }
         if result.snapshot.running == false {
             sessionPresentationCache.removePendingTools(
                 profile: presentationProfile(for: result.sessionId),
@@ -37015,9 +37021,36 @@ final class AppState: ObservableObject {
             }
             messages[index].content = merged.displayQuestion
             messages[index].clarify = merged
+            // A push copy that came in after this card (a resume's cached
+            // decisions, a notification while it showed) goes too, or the
+            // one question shows as two answerable cards (Eric 2026-11-04).
+            removePushCardsSuperseded(by: merged)
             return
         }
 
+        removePushCardsSuperseded(by: activity)
+        // The clarify row must sit below everything the turn produced before
+        // it: settle the live reasoning segment, then commit streamed
+        // assistant text (the explanation leading up to the question).
+        // Hermes' clarify tool.start is skipped above, so nothing else
+        // flushes that text and it would render below the card (#572).
+        // Only the live event does this: a resume snapshot lands before the
+        // stream buffer is rebuilt from the recovered in-flight text.
+        settleReasoningSegmentIntoTranscript()
+        if source == .streamEvent { flushStreamingPartial() }
+        messages.append(ChatMessage(
+            id: "clarify-\(activity.requestId)",
+            role: .clarify,
+            content: activity.displayQuestion,
+            timestamp: Self.localTimestamp(),
+            clarify: activity
+        ))
+    }
+
+    /// Takes still-pending push-delivered cards for the same logical clarify
+    /// as `activity` out of the transcript and the presentation cache.
+    private func removePushCardsSuperseded(by activity: ClarifyActivity) {
+        guard !activity.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) else { return }
         // A still-pending push-delivered card for the same logical clarify is
         // superseded by the live event (different ids: gateway vs
         // plugin-minted), so one logical clarify never renders two
@@ -37057,22 +37090,6 @@ final class AppState: ObservableObject {
                 sessionIDs: cacheSessionIDs
             )
         }
-        // The clarify row must sit below everything the turn produced before
-        // it: settle the live reasoning segment, then commit streamed
-        // assistant text (the explanation leading up to the question).
-        // Hermes' clarify tool.start is skipped above, so nothing else
-        // flushes that text and it would render below the card (#572).
-        // Only the live event does this: a resume snapshot lands before the
-        // stream buffer is rebuilt from the recovered in-flight text.
-        settleReasoningSegmentIntoTranscript()
-        if source == .streamEvent { flushStreamingPartial() }
-        messages.append(ChatMessage(
-            id: "clarify-\(activity.requestId)",
-            role: .clarify,
-            content: activity.displayQuestion,
-            timestamp: Self.localTimestamp(),
-            clarify: activity
-        ))
     }
 
     /// Applies `clarify.expire { request_id }`: unanswered questions stop
