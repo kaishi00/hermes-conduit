@@ -528,6 +528,7 @@ struct RichProgressCard: View {
     /// "1,250 of 5,000 USD", in the user's number format.
     static func amount(_ item: RichProgress) -> String {
         let format = FloatingPointFormatStyle<Double>.number.precision(.fractionLength(0...2))
+            .locale(AppLocalization.formattingLocale)
         let unit = item.unit.map { " \($0)" } ?? ""
         return AppLocalization.string("\(item.value.formatted(format)) of \(item.goal.formatted(format))") + unit
     }
