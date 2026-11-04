@@ -975,13 +975,22 @@ final class CarPlayVoiceCoordinator {
         showsBrowseButtons = shows
         guard let template, #available(iOS 26.4, *) else { return }
         if shows {
+            // Fenced like the voice buttons: a tap queued across a
+            // reconnect never pushes onto the new connection.
+            let generation = connectionGeneration
             // Two buttons rather than four words crowding the bar: Chats,
             // the one a driver needs most, and More for the rest.
             template.leadingNavigationBarButtons = [
-                CarPlayBrowseTemplateFactory.barButton(.chats) { [weak self] in self?.showChats() },
+                CarPlayBrowseTemplateFactory.barButton(.chats) { [weak self] in
+                    guard let self, self.isCurrent(generation) else { return }
+                    self.showChats()
+                },
             ]
             template.trailingNavigationBarButtons = [
-                CarPlayBrowseTemplateFactory.barButton(.more) { [weak self] in self?.showMore() },
+                CarPlayBrowseTemplateFactory.barButton(.more) { [weak self] in
+                    guard let self, self.isCurrent(generation) else { return }
+                    self.showMore()
+                },
             ]
         } else {
             template.leadingNavigationBarButtons = []

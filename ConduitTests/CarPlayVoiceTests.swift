@@ -3535,4 +3535,24 @@ extension CarPlayVoiceTemplateFactoryTests {
         CarPlayMainThread.run { ran = true }
         XCTAssertTrue(ran, "a tap on the main thread acts in the same turn")
     }
+
+    /// A tap on the main thread waits behind one CarPlay already queued
+    /// from its worker, so End then Listen never runs as Listen then End.
+    func testAMainThreadTapNeverOvertakesAQueuedOne() async {
+        var order: [String] = []
+        let queuedEnd = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            CarPlayMainThread.run { order.append("end") }
+            queuedEnd.signal()
+        }
+        queuedEnd.wait()
+        let ran = expectation(description: "both ran")
+        CarPlayMainThread.run {
+            order.append("listen")
+            ran.fulfill()
+        }
+        XCTAssertEqual(order, [], "the main-thread tap waits its turn")
+        await fulfillment(of: [ran], timeout: 5)
+        XCTAssertEqual(order, ["end", "listen"])
+    }
 }

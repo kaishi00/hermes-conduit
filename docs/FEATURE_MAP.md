@@ -611,8 +611,8 @@ and the Watch (their taps come from UIKit and SwiftUI on the main thread)
 - Tests: `ConduitTests/CarPlayVoiceTests.swift` (CarPlayVoiceTemplateFactoryTests' handler tests)
 
 **Rulings**
-- Every template handler reaches the app on the main thread, through CarPlayMainThread: run at once when CarPlay calls on the main thread, otherwise queued to it in order. CarPlay called the voice template's End from a dispatch worker on iOS 26, and ending the call then ran SwiftUI's update on that worker's 512 KB stack until it overflowed (eight crash reports, builds 223 to 246, 2026-11-04, #1733).
-- A tap queued across a reconnect never acts on the new connection's conversation (makeHandlers' fence).
+- Every template handler reaches the app on the main thread, through CarPlayMainThread: run at once when CarPlay calls on the main thread and nothing is queued, otherwise queued to it, so taps keep the order they came in. CarPlay called the voice template's End from a dispatch worker on iOS 26, and ending the call then ran SwiftUI's update on that worker's 512 KB stack until it overflowed (eight crash reports, builds 223 to 246, 2026-11-04, #1733).
+- A tap queued across a reconnect never acts on the new connection: the voice buttons, the browse rows and the Chats and More bar buttons are fenced to the connection their template is on (makeHandlers, makeBrowseHandlers, updateBrowseButtons).
 
 **Open gaps**
 - None known.

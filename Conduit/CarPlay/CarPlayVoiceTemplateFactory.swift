@@ -20,6 +20,7 @@
 //
 
 import CarPlay
+import os
 import UIKit
 
 /// Handlers the template's buttons invoke. MainActor-facing; the coordinator
@@ -139,14 +140,22 @@ enum CarPlayVoiceButton: Equatable {
 /// voice template's End came on a 512 KB dispatch worker on iOS 26, where
 /// ending the call ran SwiftUI's update off the main thread and overflowed
 /// that stack (eight crash reports, builds 223 to 246). Every template
-/// handler, voice and browse, goes through here; on the main thread it
-/// runs at once, so a tap acts in the same turn it always did.
+/// handler, voice and browse, goes through here. On the main thread with
+/// nothing queued it runs at once, so a tap acts in the same turn it always
+/// did; otherwise it waits its turn on the main queue, so taps keep the
+/// order they came in (a main-thread Listen never overtakes a queued End).
 enum CarPlayMainThread {
+    private static let queued = OSAllocatedUnfairLock(initialState: 0)
+
     nonisolated static func run(_ action: @escaping @MainActor () -> Void) {
-        if Thread.isMainThread {
+        if Thread.isMainThread, queued.withLock({ $0 == 0 }) {
             MainActor.assumeIsolated { action() }
-        } else {
-            DispatchQueue.main.async { action() }
+            return
+        }
+        queued.withLock { $0 += 1 }
+        DispatchQueue.main.async {
+            queued.withLock { $0 -= 1 }
+            action()
         }
     }
 }
