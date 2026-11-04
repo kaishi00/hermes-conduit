@@ -15,8 +15,6 @@ struct LiveVoiceInstructionsPreviewContent: Equatable {
     var mode: String
     var instructions: String
     var openingTurn: String?
-    /// GPT-Live's host plugin asks for the greeting itself.
-    var openingIsHostSide = false
 }
 
 /// What Voice settings needs to show the live call style.
@@ -252,13 +250,7 @@ struct LiveVoiceInstructionsPreview: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         if let opening = preview.openingTurn {
-                            Group {
-                                if preview.openingIsHostSide {
-                                    Text("Asked for when the call connects (an older notifier plugin sends it as the first turn):")
-                                } else {
-                                    Text("Sent as the call's first turn when it connects:")
-                                }
-                            }
+                            Text("Sent as the call's first turn when it connects:")
                                 .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
                             Text(verbatim: opening)

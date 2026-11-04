@@ -738,9 +738,11 @@ final class GPTLiveConversationController: ObservableObject {
         }
     }
 
-    /// An older plugin keeps the model silent until the user speaks: ask
-    /// for the greeting instead. Paused, a greeting nobody can hear waits
-    /// for the audio to return.
+    /// The call's opening (a greeting, or why Hermes called) as a speakable
+    /// turn: the model doesn't speak first from its instructions, so the
+    /// plugin reports the greeting unapplied (notifier #541). A host that
+    /// still reports it applied gets the timed ask below instead. Paused, a
+    /// greeting nobody can hear waits for the audio to return.
     private func sendOpeningIfNeeded() {
         guard endRequestedAt == nil, !audioPaused, !hasSentOpening, session?.isReady == true,
               let opening = openingPrompt() else { return }

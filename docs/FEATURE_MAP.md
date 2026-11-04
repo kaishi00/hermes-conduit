@@ -393,6 +393,37 @@ caption, README.md's Apple Watch line)
 
 **Checked:** 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-02, #1657 (on `bot-workstreams`: a workstream's call sends every request to the workstream, a Bot Chat call's jobs run on its bot as the coordinator's own, on the voice-job model chosen for it; a Watch call's jobs are kept in the bot's work registry as the Watch's, whichever profile they name; a job is filed under the bot it was made on, read before its session is made; how a call starts is unchanged); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-31, #1573 (Watch and Siri calls start on the hands-free profile, a Watch call without switching the iPhone, issue 1564); 2026-10-30, #1541 (at accessibility Text Sizes the resting bar's placeholder keeps to one line, so the voice button centres on a one-line bar; see Composer at rest and expanded); 2026-10-29, #1512 (the voice button stays beside a composer that stays expanded on a Mac or a wide iPad, issue 1483); 2026-10-29, #1476 (the chat's voice button centres on a resting composer taller than it, as when a long placeholder wraps); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1413 (the Siri and Shortcuts profile picker shows each profile's Conduit name, see Profile names); 2026-10-28, #1424 (a call starts its trace; Qwen Live calls are traced too); 2026-10-27, #1378 (CarPlay starts Local Live, agent mode and Classic's hands-free option, #1376); 2026-10-27, at #1370 (a chat picked in CarPlay shows Thinking, and a live call waits at most 3 s for the phone to open it); 2026-10-26, at #1319 (Home's main button points to its own entry); 2026-10-26, #1247 (the Watch broker's start answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252: an unattached phone or CarPlay call takes its first ordinary request's chat, and a Watch call runs its later ordinary jobs there (notifier #369); 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
 
+## A live call's opening
+
+What a live call says first: nothing until the user speaks, the user's
+greeting (Settings > Voice > Live call style, "Greet me when a call
+connects"), or, on a call Hermes placed, why it rang.
+
+**Siblings:** each live mode (Gemini, Qwen, Grok, GPT-Live, Local Live) ·
+the Apple Watch (Gemini and Grok direct, GPT-Live through the host's audio
+bridge, Local Live) · CarPlay (the phone's call) · a call from Hermes (its own
+entry: Calls from Hermes) · the notifier's GPT-Live session route
+(`greeting`, `call_opening`, `greeting_applied`) and the Watch audio bridge's
+start · the call trace · text that describes it: Live call style's "What
+Conduit sends" preview, docs/VOICE_SETTINGS.md, the notifier README
+
+**Code**
+- The greeting turn: `Shared/WatchVoice/LiveVoiceGreeting.swift`, `Conduit/Voice/LiveVoiceStyle.swift` (openingPrompt)
+- Phone: `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (sendOpeningIfNeeded, checkOpening), `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (sendOpeningIfNeeded; Gemini, Qwen, Grok), `Shared/LocalLive/LocalLiveSession.swift` (greeting), `Conduit/Services/AppState.swift` (openingPrompt: a call from Hermes' openingTurn, else the greeting)
+- Watch: `ConduitWatch/WatchBridgeCallModel.swift` (the opening at "started"), `Shared/WatchVoice/WatchAudioBridgeWire.swift` (sendsOpeningTurn), `ConduitWatch/WatchDirectCallModel.swift` (sendOpeningIfNeeded)
+- A call from Hermes' opening turn: `Conduit/Voice/HermesCalls.swift` (openingTurn, watchOpeningTurn)
+- Notifier: `notifier/dashboard/api/gpt_live.py` (create_gpt_live_session, GPT_LIVE_WAIT_FOR_USER), `notifier/dashboard/api/watch_audio.py`
+- Preview: `Conduit/Views/LiveVoiceStyleViews.swift`
+
+**Rulings**
+- Every live mode opens with a turn Conduit sends: the greeting, or a call from Hermes' reason, as a speakable first turn, once, never on a rejoin or reconnect. GPT-Live too: gpt-live-1-codex doesn't speak first from its instructions (it stays silent until the session idles out, checked 2026-11-04 on a real session), so the plugin no longer asks it to and always answers `greeting_applied: false`. Its only opening policy is "don't speak first", for a call with no greeting (Eric 2026-11-04, carried from notifier #541 by fasavard).
+- A GPT-Live call whose opening hasn't started 4 seconds after it was asked for asks once more, and holds Conduit's quiet notes until either side talks (#768).
+
+**Open gaps**
+- An older plugin still reports `greeting_applied: true` for a greeting or a call from Hermes, so a GPT-Live call there waits about 4 seconds for the phone's second ask; the Watch has no second ask and stays silent until the user speaks. Updating the plugin fixes both.
+
+**Checked:** 2026-11-04, #PRNUM (added: GPT-Live's opening is Conduit's turn everywhere, notifier #NPRNUM).
+
 ## Switching voice mode in a call
 
 The voice mode menu on a call screen: it ends the call and starts again in the
