@@ -4433,6 +4433,7 @@ notifier README and CHANGELOG
 - Follow-ups are plain messages the user would send, at most four, offered only under the last turn's board while Hermes is free and connected and the composer is empty: tap sends, long-press edits, and taps in their first 0.4 s are ignored, as Predictions' chips (Eric, 2026-11-03, #1713).
 - Checklist ticks in a chat are kept on the host for every device, and Hermes hears what changed once, at the chat's next turn; on the call screen they stay on the phone (Eric, 2026-11-03, #1713 with notifier #528), kept by the list's name as a chat's are, so a list of that name on another call's screen shows the same ticks (#1713).
 - A tick goes to the host on its own, in the order made, and the host applies it to the newest ticks any device saved, so a tick from another device is never undone (2026-11-03, #1713 with notifier #528).
+- A chat's ticks are read and saved only through its own dashboard: after a switch to another Hermes they stay unsent on the phone, in order, and go when the chat is drawn on its own dashboard again, since the other Hermes would take the chat's ids and answer as saved (2026-11-04, #PRNUM, issue 1745).
 - In a group room this host runs, the board is kept on the host and drawn under the agent's next message there (within 15 minutes), for every Conduit saying "room-boards"; the room's other agents read only the message, and are told so. A room run elsewhere, or an older Conduit, gets it in the agent's reply as Markdown (`group_room`) (Eric, 2026-11-03: text first, cards in a follow-up PR; 2026-11-04, notifier 0.129). Other people's agents may read a room, so contact cards (a person's numbers, a text drafted for the user) stay out of it, with a problems line, whatever the turn's surface. A room's board has no follow-ups (a tap would speak for the user to the whole room) and its checklists keep no ticks.
 - A Conduit without "board-cards" gets at most four cards, no layout and no follow-ups (2026-11-03, notifier #528).
 - Real data only: models are told to fill tables, stats and charts from tools, sites or the user's files, with their source (2026-11-03, notifier #528).
@@ -4447,7 +4448,7 @@ notifier README and CHANGELOG
 - A checklist that stays on screen reads other devices' ticks only when it's drawn again or ticked here.
 - Boards are parsed again each time a row is drawn; no cache yet, as liveNames has.
 
-**Checked:** 2026-11-04, #1736 with notifier #536 (boards drawn in group rooms); 2026-11-03, #1713 with notifier #528.
+**Checked:** 2026-11-04, #PRNUM (ticks fenced to their own dashboard); 2026-11-04, #1736 with notifier #536 (boards drawn in group rooms); 2026-11-03, #1713 with notifier #528.
 
 ## Cards drawn in web pages
 

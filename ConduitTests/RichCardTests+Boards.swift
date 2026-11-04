@@ -230,6 +230,45 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertTrue(memory.ticked(scope: RichChecklistMemory.localScope, key: "packing").isEmpty, "a chat's ticks aren't the call screen's")
     }
 
+    @MainActor
+    func testARefusedChecklistSaveKeepsTheTickToSendLater() async throws {
+        // #1745: after a dashboard switch the chat's saves are refused; the
+        // tick stays unsent, in order, and goes when the chat is drawn on
+        // its own dashboard again.
+        let suite = "RichChecklistMemoryTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let list = try card(["type": "checklist", "title": "Packing",
+                             "checklist": [["text": "Rain jacket"], ["text": "Swimsuit"]]])
+        var refused = 0
+        let elsewhere = RichChecklistContext(
+            scope: "work/s1", sessionIDs: ["s1"],
+            read: { refused += 1; throw DashboardTicketBridgeError.notReady },
+            save: { _ in refused += 1; throw DashboardTicketBridgeError.notReady })
+        let memory = RichChecklistMemory(defaults: defaults)
+        memory.toggle("Swimsuit", card: list, key: "packing", context: elsewhere)
+        memory.toggle("Rain jacket", card: list, key: "packing", context: elsewhere)
+        for _ in 0..<50 where refused < 1 { await Task.yield() }
+        for _ in 0..<20 { await Task.yield() }
+        let entry = try XCTUnwrap(memory.entries.values.first)
+        XCTAssertTrue(entry.unsent, "not saved anywhere")
+        XCTAssertEqual(entry.changes, [RichChecklistMemory.Change(item: "Swimsuit", ticked: true),
+                                       RichChecklistMemory.Change(item: "Rain jacket", ticked: true)])
+
+        var saved: [[String: AnyHashable]] = []
+        let home = RichChecklistContext(
+            scope: "work/s1", sessionIDs: ["s1"],
+            read: { [:] },
+            save: { body in
+                saved.append(body["change"] as? [String: AnyHashable] ?? [:])
+                return ["packing": ["Rain jacket", "Swimsuit"]]
+            })
+        await memory.refresh(context: home, key: "packing")
+        XCTAssertEqual(saved, [["item": "Swimsuit", "ticked": true], ["item": "Rain jacket", "ticked": true]])
+        XCTAssertFalse(memory.entries.values.contains(where: \.unsent))
+        XCTAssertEqual(memory.ticked(scope: "work/s1", key: "packing"), ["rain jacket", "swimsuit"])
+    }
+
     func testProgressNeedsAGoalAndAStopOpensInMaps() throws {
         XCTAssertNil(RichCard(normalized: ["type": "progress", "progress": [["label": "Saved", "value": 10, "goal": 0]]], id: 0))
         let saved = try XCTUnwrap(try card(["type": "progress", "progress": [
