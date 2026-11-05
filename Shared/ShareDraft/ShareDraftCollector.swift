@@ -284,9 +284,7 @@ struct ShareDraftCollector {
         // too: the screenshot editor's Share hands over UIKit's own image.
         if provider.canLoadObject(ofClass: UIImage.self) {
             let (image, error) = await ProviderPicture.loadImage(provider)
-            // Written as PNG, so a suggested name's own extension goes.
-            let stem = ((suggestedName ?? "") as NSString).deletingPathExtension
-            let name = Self.displayName(suggested: stem.isEmpty ? nil : "\(stem).png", type: .png, ordinal: ordinal)
+            let name = Self.pngName(suggested: suggestedName, ordinal: ordinal)
             let written = image.map { write(ProviderPicture.pngData($0), type: .png, displayName: name, ordinal: ordinal) }
             if let written, Self.settles(written) { return written }
             failed("image", written, error: error)
@@ -309,8 +307,7 @@ struct ShareDraftCollector {
                         let name = Self.displayName(suggested: suggestedName ?? url.lastPathComponent, type: type, ordinal: ordinal)
                         continuation.resume(returning: (copy(url, type: UTType(filenameExtension: url.pathExtension) ?? type, displayName: name, ordinal: ordinal), error))
                     case let image as UIImage:
-                        let name = Self.displayName(suggested: suggestedName, type: .png, ordinal: ordinal)
-                        continuation.resume(returning: (write(ProviderPicture.pngData(image), type: .png, displayName: name, ordinal: ordinal), error))
+                        continuation.resume(returning: (write(ProviderPicture.pngData(image), type: .png, displayName: Self.pngName(suggested: suggestedName, ordinal: ordinal), ordinal: ordinal), error))
                     case let data as Data:
                         continuation.resume(returning: (write(data, type: type, displayName: displayName, ordinal: ordinal), error))
                     default:
@@ -322,6 +319,13 @@ struct ShareDraftCollector {
             failed("item \(identifier)", item, error: error)
         }
         return .failed(displayName, reason: reasons.first)
+    }
+
+    /// A picture written as PNG: the suggested name's stem, its own
+    /// extension dropped.
+    private static func pngName(suggested: String?, ordinal: Int) -> String {
+        let stem = ((suggested ?? "") as NSString).deletingPathExtension
+        return displayName(suggested: stem.isEmpty ? nil : "\(stem).png", type: .png, ordinal: ordinal)
     }
 
     private static let log = Logger(subsystem: "com.milim.relay", category: "ShareDraft")
