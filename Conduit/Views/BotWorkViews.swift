@@ -287,13 +287,11 @@ struct BotWorkPanel: View {
         .disabled(work.isActing(item.ref, profile: profile) || !appState.isConnected)
     }
 
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .scaledFont(.caption.weight(.bold))
-            .foregroundStyle(.secondary)
-            .textCase(.uppercase)
-            .accessibilityAddTraits(.isHeader)
-            .listRowInsets(EdgeInsets(top: 12, leading: 20, bottom: 2, trailing: 16))
+    /// Settings' group name over its cards (see Sheets in Settings' look).
+    private func sectionHeader(_ title: String, symbol: String, tint: Color) -> some View {
+        SettingsSectionHeader(title: title, symbol: symbol, tint: tint)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .listRowInsets(EdgeInsets(top: 12, leading: 4, bottom: 2, trailing: 16))
     }
 
     var body: some View {
@@ -315,7 +313,9 @@ struct BotWorkPanel: View {
                 openList
             }
         }
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        // Settings' backdrop, in the Bot Overview and beside a Bot Chat
+        // alike (see Sheets in Settings' look).
+        .background { SettingsBackdrop().ignoresSafeArea() }
         .refreshesBotWork(profile: profile)
         // A refusal belongs to the panel it was tapped in. The Resolved
         // list stays, so a resolved workstream opened from it knows its
@@ -424,14 +424,14 @@ struct BotWorkPanel: View {
                     Section {
                         ForEach(snapshot.pinned) { row($0) }
                     } header: {
-                        sectionHeader(AppLocalization.string("Pinned"))
+                        sectionHeader(AppLocalization.string("Pinned"), symbol: "pin.fill", tint: .orange)
                     }
                 }
                 if !snapshot.active.isEmpty {
                     Section {
                         ForEach(snapshot.active) { row($0) }
                     } header: {
-                        sectionHeader(AppLocalization.string("Active"))
+                        sectionHeader(AppLocalization.string("Active"), symbol: "bolt.fill", tint: .conduitAccent)
                     }
                 }
                 let recent = snapshot.recent
@@ -456,7 +456,7 @@ struct BotWorkPanel: View {
                             .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 16))
                         }
                     } header: {
-                        sectionHeader(AppLocalization.string("Recent"))
+                        sectionHeader(AppLocalization.string("Recent"), symbol: "clock.fill", tint: .green)
                     }
                 }
                 if snapshot.resolvedCount > 0 {
@@ -476,15 +476,12 @@ struct BotWorkPanel: View {
                                 .scaledFont(.subheadline)
                                 .monospacedDigit()
                                 .foregroundStyle(.secondary)
-                            Image(systemName: "chevron.right")
-                                .scaledFont(.caption.weight(.bold))
-                                .foregroundStyle(.tertiary)
-                                .accessibilityHidden(true)
+                            SettingsChevron()
                         }
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 13)
-                        .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(Color(.secondarySystemGroupedBackground)))
+                        .padding(.vertical, 6)
+                        .frame(minHeight: 50)
+                        .settingsCard()
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -610,13 +607,15 @@ private struct BotWorkRow: View {
             }
         }
         .padding(14)
+        // Settings' card, or orange while it needs the user.
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(item.needsYou ? Color.orange.opacity(0.09) : Color(.secondarySystemGroupedBackground))
+                .fill(item.needsYou ? Color.orange.opacity(0.09) : Color.primary.opacity(0.05))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(item.needsYou ? Color.orange.opacity(0.32) : Color.primary.opacity(0.06), lineWidth: 1)
+                .strokeBorder(item.needsYou ? Color.orange.opacity(0.32) : Color.primary.opacity(0.07),
+                              lineWidth: item.needsYou ? 1 : 0.5)
         )
         .accessibilityIdentifier("botWork.row.\(item.ref)")
     }
@@ -778,11 +777,9 @@ private struct BotWorkRow: View {
             appState.openWorkstream(item, profile: profile)
         } label: {
             Label(AppLocalization.string("Open \(item.ref)’s chat"), systemImage: "bubble.left.and.bubble.right")
-                .scaledFont(.subheadline.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 30)
+                .frame(maxWidth: .infinity, minHeight: 36)
         }
-        .buttonStyle(.bordered)
-        .tint(Color.conduitAccent)
+        .buttonStyle(.settings)
         .accessibilityIdentifier("botWork.open.\(item.ref)")
     }
 
@@ -794,23 +791,33 @@ private struct BotWorkRow: View {
             default: return AppLocalization.string("Stop")
             }
         }()
-        let isStop = action == .stop
-        return Button {
+        let act: () -> Void = {
             Haptics.light()
             Task { await appState.actOnWorkstream(item, profile: profile, action: action) }
-        } label: {
-            Text(title)
-                .scaledFont(.subheadline.weight(.semibold))
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .foregroundStyle(prominent ? Color.black.opacity(0.85) : isStop ? Color.red : Color.primary)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(prominent ? Color.conduitAccent : isStop ? Color.red.opacity(0.12) : Color.primary.opacity(0.08))
-                )
-                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .buttonStyle(.plain)
+        let text = Text(title)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+            .frame(maxWidth: .infinity)
+        // Settings' buttons; Stop the same capsule in red.
+        return Group {
+            if action == .stop {
+                Button(action: act) {
+                    text
+                        .scaledFont(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.red)
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 36)
+                        .background(Color.red.opacity(0.12), in: Capsule())
+                        .overlay { Capsule().strokeBorder(Color.red.opacity(0.4), lineWidth: 0.5) }
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            } else {
+                Button(action: act) { text }
+                    .buttonStyle(prominent ? .settingsPrimary : .settings)
+            }
+        }
     }
 
     private var replyField: some View {

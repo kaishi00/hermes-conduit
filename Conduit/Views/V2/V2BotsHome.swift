@@ -783,12 +783,10 @@ struct BotOverviewSheet: View {
                     onChat()
                 } label: {
                     Label(AppLocalization.string("Chat with \(botName)"), systemImage: "bubble.left.fill")
-                        .scaledFont(.body.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 36)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Color.conduitAccent)
-                .controlSize(.large)
+                // Settings' primary button, as every sheet's.
+                .buttonStyle(.settingsPrimary)
                 .padding(.horizontal, 16)
                 .padding(.top, 6)
                 // Without Work's picker under it, the artifacts' search
