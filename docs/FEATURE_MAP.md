@@ -4680,8 +4680,10 @@ does.
 
 **Siblings:** chats, project chats and Bot Chat · the saved-chat copy · reply
 pictures in tool results, large documents and HTML previews · call job
-result sheets · group rooms (their attached files show as names, never as
-pictures, so no grid) · iPhone, iPad and Mac (the same views; a grid takes
+result sheets · group rooms (their replies grid pictures in a row through
+the same Markdown; their attached files show as names, never as pictures) ·
+HTML previews (a page shown in place, not a picture, so two in a row stay
+two pages, their fallback pictures included) · iPhone, iPad and Mac (the same views; a grid takes
 as many tiles to a row as the width gives) · Apple Watch and CarPlay (they
 show no message pictures) · the cards drawn in web pages, which share the
 memo and the transcript's rule for rows growing above the reader (see Cards
