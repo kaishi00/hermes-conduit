@@ -2503,6 +2503,12 @@ private struct ProfileModelSettingsDetail: View {
     /// Counts the catalog reads, so a read again a later read overtook
     /// never lands.
     @State private var catalogRead = 0
+    /// Counts the whole-page reads, so an older one never lands over a
+    /// newer one.
+    @State private var pageRead = 0
+    /// Counts the saves Hermes took, so a read asked before one never puts
+    /// back what the save replaced.
+    @State private var savesLanded = 0
     /// A pick was changed here: Hermes' answer then updates the catalog
     /// under the picks, not the picks.
     @State private var edited = false
@@ -2594,12 +2600,21 @@ private struct ProfileModelSettingsDetail: View {
 
     private func reload() async {
         catalogRead += 1
+        pageRead += 1
+        let read = (catalog: catalogRead, page: pageRead, saves: savesLanded)
         loadFailed = false
-        guard let loaded = await load() else {
+        let loaded = await load()
+        // A whole-page read asked since has the newer answer.
+        guard read.page == pageRead else { return }
+        guard let loaded else {
             loadFailed = true
             return
         }
-        show(loaded)
+        // A read again asked since keeps its newer models; a save that
+        // landed meanwhile keeps its picks.
+        let newerModels = read.catalog != catalogRead ? defaults?.providers : nil
+        show(loaded, picks: read.saves == savesLanded)
+        if let newerModels { defaults?.providers = newerModels }
         answered = true
     }
 
@@ -2616,9 +2631,9 @@ private struct ProfileModelSettingsDetail: View {
     }
 
     /// The catalog, and the picks unless they were changed here.
-    private func show(_ loaded: ProfileModelDefaults) {
+    private func show(_ loaded: ProfileModelDefaults, picks: Bool = true) {
         defaults = loaded
-        guard !edited else { return }
+        guard picks, !edited else { return }
         (provider, model) = loaded.selection
         reasoning = loaded.reasoning
     }
@@ -2645,6 +2660,7 @@ private struct ProfileModelSettingsDetail: View {
             if await save(provider, model, reasoning) {
                 // Hermes holds the picks now; its next answer shows them.
                 edited = false
+                savesLanded += 1
             } else {
                 error = AppLocalization.string("Could not save model defaults.")
             }
@@ -2675,6 +2691,12 @@ private struct DelegationModelSettings: View {
     /// Counts the catalog reads, so a read again a later read overtook
     /// never lands.
     @State private var catalogRead = 0
+    /// Counts the whole-page reads, so an older one never lands over a
+    /// newer one.
+    @State private var pageRead = 0
+    /// Counts the saves Hermes took, so a read asked before one never puts
+    /// back what the save replaced.
+    @State private var savesLanded = 0
     /// A pick was changed here: Hermes' answer leaves the picks alone.
     @State private var edited = false
 
@@ -2765,14 +2787,22 @@ private struct DelegationModelSettings: View {
 
     private func reload() async {
         catalogRead += 1
+        pageRead += 1
+        let read = (catalog: catalogRead, page: pageRead, saves: savesLanded)
         loadFailed = false
         async let modelRequest = loadModels()
         async let settingRequest = loadSettings(Self.settingKeys)
         let (loaded, settings) = await (modelRequest, settingRequest)
+        // A whole-page read asked since has the newer answer.
+        guard read.page == pageRead else { return }
         // A catalog that didn't load says so, with Try Again, instead of
         // loading forever; a re-load that fails keeps the one it had.
         if loaded == nil { loadFailed = true }
-        show(loaded, settings: settings)
+        // A read again asked since keeps its newer models; a save that
+        // landed meanwhile keeps its picks.
+        let newerModels = read.catalog != catalogRead ? defaults?.providers : nil
+        show(loaded, settings: settings, picks: read.saves == savesLanded)
+        if let newerModels { defaults?.providers = newerModels }
         if loaded != nil { answered = true }
     }
 
@@ -2790,9 +2820,9 @@ private struct DelegationModelSettings: View {
 
     /// The catalog when there is one, and the picks unless they were
     /// changed here.
-    private func show(_ loaded: ProfileModelDefaults?, settings: [String: ProfileSettingValue]) {
+    private func show(_ loaded: ProfileModelDefaults?, settings: [String: ProfileSettingValue], picks: Bool = true) {
         if let loaded { defaults = loaded }
-        guard !edited else { return }
+        guard picks, !edited else { return }
         let configuredProvider = settings["delegation.provider"]?.textValue ?? ""
         let configuredModel = settings["delegation.model"]?.textValue ?? ""
         (provider, model) = defaults?.delegateSelection(provider: configuredProvider, model: configuredModel)
@@ -2822,6 +2852,7 @@ private struct DelegationModelSettings: View {
             let reasoningSaved = modelSaved ? await save("delegation.reasoning_effort", .text(reasoning)) : false
             if reasoningSaved {
                 edited = false
+                savesLanded += 1
             } else {
                 error = AppLocalization.string("Could not save delegate defaults.")
             }
@@ -2932,6 +2963,12 @@ private struct FallbackModelsSettings: View {
     /// Counts the catalog reads, so a read again a later read overtook
     /// never lands.
     @State private var catalogRead = 0
+    /// Counts the whole-page reads, so an older one never lands over a
+    /// newer one.
+    @State private var pageRead = 0
+    /// Counts the saves Hermes took, so a read asked before one never puts
+    /// back what the save replaced.
+    @State private var savesLanded = 0
     @State private var saving = false
     @State private var error: String?
 
@@ -2996,7 +3033,12 @@ private struct FallbackModelsSettings: View {
             await ModelCatalogSettle.readAgain { await settleCatalog() }
         }
         .onChange(of: refresh) { _, _ in
-            Task { if let models = await loadModels() { defaults = models } }
+            Task {
+                catalogRead += 1
+                let asked = catalogRead
+                // A read asked since has the newer models.
+                if let models = await loadModels(), asked == catalogRead { defaults = models }
+            }
         }
     }
 
@@ -3080,10 +3122,14 @@ private struct FallbackModelsSettings: View {
 
     private func reload() async {
         catalogRead += 1
+        pageRead += 1
+        let read = (catalog: catalogRead, page: pageRead, saves: savesLanded)
         error = nil
         async let modelRequest = loadModels()
         async let entryRequest = load()
         let (models, loadedEntries) = await (modelRequest, entryRequest)
+        // A whole-page read asked since has the newer answer.
+        guard read.page == pageRead else { return }
         // Without the model catalog no fallback can be added or changed, so
         // a half-loaded list fails with Try Again instead of a silently
         // disabled Add. A re-load (the editor re-appearing) that fails keeps
@@ -3092,7 +3138,14 @@ private struct FallbackModelsSettings: View {
             error = AppLocalization.string("Could not load fallback models.")
             return
         }
-        defaults = models
+        // A read again asked since has the newer models.
+        if read.catalog == catalogRead || defaults == nil { defaults = models }
+        // A save that landed meanwhile holds the newer list.
+        guard read.saves == savesLanded else {
+            loaded = true
+            answered = true
+            return
+        }
         // A re-load keeps fallbacks the user is still editing, but what
         // they compare against is what the host holds now: an edit changed
         // back to the old list still differs from another client's save.
@@ -3124,6 +3177,7 @@ private struct FallbackModelsSettings: View {
             let next = entries
             if await save(next) {
                 saved = next
+                savesLanded += 1
             } else {
                 error = AppLocalization.string("Could not save fallback models.")
             }
