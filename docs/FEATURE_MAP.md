@@ -4847,7 +4847,7 @@ notifier README and CHANGELOG
 - In Hermes Desktop the plugin's Desktop half ("Conduit boards", off until the user turns it on in Desktop) draws the board: conduit_show keeps it on the host (root home, the newest 500, a month) and asks the agent for `::conduit-board{id="cb-…"}` on a line of its own, only while the half has said it's loaded in the last two hours; otherwise Desktop gets the Markdown as before. The half draws the native kinds (stats, charts, comparisons, steps, status, tables, timelines, checklists with the chat's ticks, lists, progress, callouts) and each other card's own Markdown, with tabs and follow-ups. Conduit draws the same board from the tool row, so it hides the line on every surface (Eric, 2026-11-04, chose to build the half after the probe, notifier #539 with #1751).
 - A Conduit without "board-cards" gets at most four cards, no layout and no follow-ups (2026-11-03, notifier #528). Only the Conduits used in the last three days count, for board-cards, room-boards and the other card features, and the drawing rule names the weather and how to reach conduit_show behind Tool Search: on .52 four installs last used days before kept the rule off and trimmed the phone's boards (Eric, 2026-11-04, notifier #539).
 - Real data only: models are told to fill tables, stats and charts from tools, sites or the user's files, with their source (2026-11-03, notifier #528).
-- A turn whose message Conduit reported as typed keeps nothing for a call's screen: its chat is open, not a call. Its cards are drawn in the chat from the answer, and Markdown alone is refused (`typed_chat`) so Hermes writes it in its reply, never saying it's on a screen. Spoken and unreported turns (calls, a call's jobs) reach the call screen as before (2026-11-05, issue 1808, notifier #556 with #PRNUM).
+- A turn whose message Conduit reported as typed keeps nothing for a call's screen: its chat is open, not a call. Its cards are drawn in the chat from the answer, and Markdown alone is refused (`typed_chat`) so Hermes writes it in its reply, never saying it's on a screen. Spoken and unreported turns (calls, a call's jobs) reach the call screen as before (2026-11-05, issue 1808, notifier #556 with #1815).
 
 **Open gaps**
 - A room's checklists can't be ticked, and a board in a room another host runs (Linked Rooms) goes as text.
@@ -4860,7 +4860,7 @@ notifier README and CHANGELOG
 - Boards are parsed again each time a row is drawn; no cache yet, as liveNames has.
 - A typed message on a Hermes where Conduit's report doesn't reach the turn (plugin isolation, a compute host) is unknown, so Markdown alone there still waits for a call screen that may not be open.
 
-**Checked:** 2026-11-05, #PRNUM with notifier #556 (a typed chat's conduit_show keeps nothing for a call screen, issue 1808; Code, Rulings, gaps); 2026-11-04, #1751 with notifier #539 (boards drawn in Hermes Desktop by the plugin's Desktop half; Conduit hides its line; Siblings, Code, Rulings, gaps); 2026-11-04, #1748 (ticks fenced to their own dashboard; unsent ticks follow the chat's ids); 2026-11-04, #1736 with notifier #536 (boards drawn in group rooms); 2026-11-03, #1713 with notifier #528.
+**Checked:** 2026-11-05, #1815 with notifier #556 (a typed chat's conduit_show keeps nothing for a call screen, issue 1808; Code, Rulings, gaps); 2026-11-04, #1751 with notifier #539 (boards drawn in Hermes Desktop by the plugin's Desktop half; Conduit hides its line; Siblings, Code, Rulings, gaps); 2026-11-04, #1748 (ticks fenced to their own dashboard; unsent ticks follow the chat's ids); 2026-11-04, #1736 with notifier #536 (boards drawn in group rooms); 2026-11-03, #1713 with notifier #528.
 
 ## Cards drawn in web pages
 
@@ -5862,7 +5862,7 @@ notifier README's "Where in Conduit a message was sent"
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-05, #PRNUM with notifier #556 (the turn's tools read how its message was entered, turn_entry; Siblings, Code); 2026-11-02, #1631 (entry seeded with the discard; notifier #504).
+**Checked:** 2026-11-05, #1815 with notifier #556 (the turn's tools read how its message was entered, turn_entry; Siblings, Code); 2026-11-02, #1631 (entry seeded with the discard; notifier #504).
 
 ## Feature map rules
 
