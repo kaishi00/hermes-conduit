@@ -101,6 +101,9 @@ struct BotModelPicker: View {
         catalog.readStarted()
         if let loaded = await appState.loadModelProviders() {
             catalog.hermesAnswered(Self.pickable(loaded))
+            // Hermes' answer can list the pick where the kept one didn't,
+            // under the same provider names.
+            openPickedProvider()
         } else {
             catalog.readFailed()
         }
@@ -156,6 +159,8 @@ struct BotModelPicker: View {
         // every row read as a link rather than a choice.
         .buttonStyle(.plain)
         .accessibilityValue(Text(isExpanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed")))
+        // VoiceOver finds the pick without opening every provider.
+        .accessibilityAddTraits(holdsPick ? .isSelected : [])
     }
 
     /// A provider with no models has nothing to pick.

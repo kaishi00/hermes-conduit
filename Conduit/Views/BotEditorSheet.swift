@@ -762,8 +762,6 @@ struct BotEditorSheet: View {
     }
 }
 
-/// A bot's face: its picture when it has one, else its initial on its color
-/// (the explicit pick, else Desktop's name-derived hue).
 /// Edit Bot > Personality: the SOUL.md on a page of its own, the whole
 /// height to write in.
 private struct BotSoulEditorPage: View {
@@ -775,10 +773,24 @@ private struct BotSoulEditorPage: View {
         VStack(alignment: .leading, spacing: 8) {
             // A field the page's height, drawn as the editor's rows are,
             // so it reads as something to type in.
-            TextEditor(text: $soul)
-                .scaledFont(.callout.monospaced())
-                .disabled(isReadOnly)
-                .scrollContentBackground(.hidden)
+            Group {
+                if isReadOnly {
+                    // The kept SOUL, shown until Hermes answers: still
+                    // scrolls and selects, but can't be changed.
+                    ScrollView {
+                        Text(verbatim: soul)
+                            .scaledFont(.callout.monospaced())
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(5)
+                    }
+                    .foregroundStyle(.secondary)
+                } else {
+                    TextEditor(text: $soul)
+                        .scaledFont(.callout.monospaced())
+                        .scrollContentBackground(.hidden)
+                }
+            }
                 .padding(8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -795,6 +807,8 @@ private struct BotSoulEditorPage: View {
     }
 }
 
+/// A bot's face: its picture when it has one, else its initial on its color
+/// (the explicit pick, else Desktop's name-derived hue).
 struct BotAvatarView: View {
     let name: String
     let label: String

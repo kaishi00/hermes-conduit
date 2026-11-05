@@ -547,7 +547,7 @@ struct VoiceJobModelSettingsSection: View {
             // A provider pinned without a model runs on its default one.
             top.append((id: selection, title: held.model.isEmpty
                 ? providerDefaultTitle(held.provider ?? "")
-                : held.model))
+                : (held.provider ?? "").isEmpty ? held.model : "\(held.model) · \(held.provider ?? "")"))
         }
         var groups = [ConduitMenuGroup(title: nil, choices: top)]
         for provider in providers where !provider.models.isEmpty {
