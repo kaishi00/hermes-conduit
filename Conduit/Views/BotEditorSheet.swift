@@ -33,6 +33,8 @@ struct BotEditorSheet: View {
     @State private var error: String?
     @State private var showingImagePicker = false
     @State private var pickedImage: UIImage?
+    /// A picked GIF or video is being made into a moving picture.
+    @State private var isPreparingAnimation = false
     /// Whether Hermes can generate pictures; nil until asked.
     @State private var canGeneratePictures: Bool?
     @State private var showingGenerator = false
@@ -142,7 +144,7 @@ struct BotEditorSheet: View {
             Text(verbatim: message)
         }
         .sheet(isPresented: $showingImagePicker) {
-            ImagePicker(image: $pickedImage)
+            ImagePicker(image: $pickedImage, onAnimated: useAnimation)
         }
         .sheet(isPresented: $showingGenerator) {
             GeneratePictureSheet(
@@ -182,8 +184,14 @@ struct BotEditorSheet: View {
                     label: avatarLabel,
                     colorString: draft.color,
                     image: previewImage,
-                    size: 88
+                    size: 88,
+                    playback: previewPlayback
                 )
+                if isPreparingAnimation {
+                    ProgressView()
+                        .frame(width: 88, height: 88)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
             }
             // The avatar itself is decorative everywhere else; here it is the
             // only sign of whether the bot will have a picture.
@@ -232,6 +240,13 @@ struct BotEditorSheet: View {
                 }
             }
             .scaledFont(.subheadline)
+            // A picked GIF or video lands in the draft once it's made, so
+            // nothing else may change the picture meanwhile.
+            .disabled(isPreparingAnimation)
+            Text(AppLocalization.string("A GIF or a short video moves on Bots Home and in Hermes Desktop."))
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
             if canGeneratePictures == false {
                 Text(AppLocalization.string("Set up image generation in Hermes to generate pictures."))
                     .scaledFont(.footnote)
@@ -251,6 +266,24 @@ struct BotEditorSheet: View {
             error = nil
         } else {
             error = AppLocalization.string("That picture could not be used.")
+        }
+    }
+
+    /// A picked GIF or video, made into a looping APNG (AnimatedAvatar) and
+    /// saved like any picture.
+    private func useAnimation(_ source: AnimatedAvatar.Source?) {
+        isPreparingAnimation = true
+        error = nil
+        Task { @MainActor in
+            let result = await AnimatedAvatar.picture(fromPicked: source)
+            isPreparingAnimation = false
+            switch result {
+            case .success(let apng):
+                draft.newAvatarPNG = apng
+                draft.removesAvatar = false
+            case .failure(let failure):
+                error = AnimatedAvatar.message(for: failure)
+            }
         }
     }
 
@@ -627,6 +660,16 @@ struct BotEditorSheet: View {
         editedBot.flatMap { appState.botAvatarImage(for: $0) }
     }
 
+    /// The picture plays here as it will on Bots Home: a fresh pick, else
+    /// the stored one.
+    private var previewPlayback: AnimatedAvatarPlayback? {
+        if let png = draft.newAvatarPNG {
+            return AnimatedAvatar.isAnimated(png) ? .data(png) : nil
+        }
+        if draft.removesAvatar { return nil }
+        return editedBot.flatMap { appState.botAvatarPlayback(for: $0) }
+    }
+
     private var previewImage: UIImage? {
         if let png = draft.newAvatarPNG { return UIImage(data: png) }
         if draft.removesAvatar { return nil }
@@ -634,7 +677,8 @@ struct BotEditorSheet: View {
     }
 
     private var canSave: Bool {
-        guard !isSaving else { return false }
+        // A picked GIF or video lands in the draft once it's made.
+        guard !isSaving, !isPreparingAnimation else { return false }
         // An edit saves only once the editor snapshot settled: before it,
         // the form still holds placeholders that would overwrite the bot.
         guard isCreating else { return detailsState == .loaded || detailsState == .failed }
@@ -736,13 +780,21 @@ struct BotAvatarView: View {
     let colorString: String?
     let image: UIImage?
     let size: CGFloat
+    /// The moving picture to play over `image`, where the face is the focus
+    /// (AnimatedAvatarFrames); nil keeps the still.
+    var playback: AnimatedAvatarPlayback? = nil
 
     var body: some View {
         Group {
             if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
+                ZStack {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                    if let playback {
+                        AnimatedAvatarFrames(playback: playback)
+                    }
+                }
             } else {
                 ZStack {
                     Self.color(for: colorString, name: name)

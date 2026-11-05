@@ -112,14 +112,21 @@ final class ProfileAppearanceStore {
     }
 
     func saveAvatar(_ source: Data, for profile: String, dashboardID: UUID?) throws -> URL {
-        guard let image = UIImage(data: source), let jpeg = image.jpegData(compressionQuality: 0.88) else {
+        // A moving picture is already a small square APNG (AnimatedAvatar);
+        // a JPEG would keep only its first frame.
+        let stored: Data
+        if AnimatedAvatar.isAnimated(source) {
+            stored = source
+        } else if let image = UIImage(data: source), let jpeg = image.jpegData(compressionQuality: 0.88) {
+            stored = jpeg
+        } else {
             throw ProfileAppearanceError.invalidImage
         }
         guard let directory = avatarsDirectory(dashboardID: dashboardID, create: true) else {
             throw CocoaError(.fileWriteUnknown)
         }
         let url = directory.appendingPathComponent(Self.fileName(for: profile), isDirectory: false)
-        try jpeg.write(to: url, options: .atomic)
+        try stored.write(to: url, options: .atomic)
         ProfileAvatarImageCache.forget(url)
         setMirrored(false, profile: profile, dashboardID: dashboardID)
         return url
@@ -478,13 +485,36 @@ enum ProfileAvatarImageCache {
         return image
     }
 
+    /// Whether each photo moves (an APNG made from a GIF or a video), so
+    /// the faces that play it don't read the file on every redraw.
+    private static var animated: [String: Bool] = [:]
+    /// Bumped each time a photo's file changes: its path stays the same, so
+    /// a playing face restarts on this.
+    private static var revisions: [String: Int] = [:]
+    private static var revisionSerial = 0
+
+    static func isAnimated(at url: URL) -> Bool {
+        if let known = animated[url.path] { return known }
+        let value = AnimatedAvatar.isAnimated(at: url)
+        animated[url.path] = value
+        return value
+    }
+
+    static func revision(of url: URL) -> Int { revisions[url.path] ?? 0 }
+
     static func forget(_ url: URL) {
         images.removeObject(forKey: url.path as NSString)
         failedReads[url.path] = nil
+        animated[url.path] = nil
+        revisionSerial &+= 1
+        revisions[url.path] = revisionSerial
     }
 
     static func forgetAll() {
         images.removeAllObjects()
         failedReads.removeAll()
+        animated.removeAll()
+        revisionSerial &+= 1
+        for path in revisions.keys { revisions[path] = revisionSerial }
     }
 }

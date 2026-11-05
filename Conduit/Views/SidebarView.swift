@@ -1618,6 +1618,9 @@ private struct ProjectSessionsSheet: View {
     @Environment(\.dismiss) private var dismiss
     let project: ProjectSummary
     @State private var detail: ProjectSessionDetail?
+    /// The profile the chats shown were read through: a switch while the
+    /// sheet is open (CarPlay, a widget) doesn't rename them.
+    @State private var detailProfile: String?
     @State private var isLoading = true
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingRename: SessionSummary?
@@ -1627,6 +1630,16 @@ private struct ProjectSessionsSheet: View {
             ZStack {
                 ConduitBackdrop()
                 List {
+                    // Whose chats these are: the sheet lists one profile's
+                    // (issue 1761), once a read has listed them.
+                    if detail != nil, ProjectProfileLabel.shows(in: appState) {
+                        ProjectProfileLabel(profile: detailProfile)
+                            .scaledFont(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .accessibilityElement(children: .combine)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                    }
                     if isLoading {
                         ProgressView(AppLocalization.string("Loading conversations…"))
                             .frame(maxWidth: .infinity, minHeight: 140)
@@ -1771,12 +1784,22 @@ private struct ProjectSessionsSheet: View {
     private func load() async {
         guard appState.isConnected else { return }
         isLoading = true
-        detail = await appState.loadProjectSessions(project)
+        await loadDetail()
         isLoading = false
     }
 
     private func reloadDetail() {
-        Task { detail = await appState.loadProjectSessions(project) }
+        Task { await loadDetail() }
+    }
+
+    /// Read through the profile in use, and named by it.
+    private func loadDetail() async {
+        let profile = appState.activeProfile
+        // A failed re-read (the profile changed under the sheet) keeps
+        // what it listed rather than blanking it.
+        guard let read = await appState.loadProjectSessions(project) else { return }
+        detail = read
+        detailProfile = profile
     }
 
     private var newConversationPath: String? {

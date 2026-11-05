@@ -542,7 +542,7 @@ describes it
 **Code**
 - Keeping the row: `Conduit/Services/AppState.swift` (newChatAwaitingListing, set in createAndReconcileSession for createNewSession; newChatRowAwaitingListing and settleNewChatAwaitingListing, in loadSessions and syncSession's catalog; chatListListedIDs; knownProjectID; loadProjectSessions, quiet when a newer read cancels it), `Conduit/Services/ChatSync.swift` (NewChatAwaitingListing)
 - The create, for either server: `Conduit/Services/HermesClient.swift` (createSession, createParams)
-- Project page: `Conduit/Views/V2/V2ProjectPage.swift` (lanes, the task keyed on chatListCatalogGeneration)
+- Project page: `Conduit/Views/V2/V2ProjectPage.swift` (ownLanes, the task keyed on chatListCatalogGeneration)
 - Tests: `ConduitTests/SessionRenameTests.swift` (testANewChatStaysListedWhileOpenUntilHermesListsIt, testANewChatLeftEmptyLeavesTheList, testANewChatBelongsToTheProjectItStartedIn, testANewChatGoesOnTopOfItsFoldersLaneOnAProjectPage)
 
 **Rulings**
@@ -550,12 +550,12 @@ describes it
 - Only a chat someone started (createNewSession): one a sync starts because there was nothing to resume waits for Hermes, as before.
 - It still counts as unlisted for the registry poll, so the poll reads the catalog in for it as for a chat started on another device. A first turn that compressed lists it under a new tip, matched by its lineage root.
 - It is marked as the open chat beside the list, though it is open by its runtime id: the row by any of its ids, Hermes' row by the stored id the create confirmed (The open chat in the list beside it).
-- A project's page shows it on top of the lane of the folder it started in (Hermes names that folder in the lane's path, or in its label when the two are one), else in a new Recent lane on top; Home's page shows a plain chat in a Recent lane. The page reads Hermes' list again whenever the chats list changes, from a list read or a chat sync. It follows while it stays beside the chat (2026-10-28, #1456).
+- A project's page shows it, while the page's profile is the one in use (a chat started after a switch shows in that profile's part: Whose project page), on top of the lane of the folder it started in (Hermes names that folder in the lane's path, or in its label when the two are one), else in a new Recent lane on top; Home's page shows a plain chat in a Recent lane. The page reads Hermes' list again whenever the chats list changes, from a list read or a chat sync. It follows while it stays beside the chat (2026-10-28, #1456).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-02, #1631 (every create goes through createSession, which on the gateway's own listener sends `source: gui`, `reasoning` and `service_tier` and no `cols`; a folder's `cwd` is within its create fields, checked against the canary's session_policy; see Two Hermes servers); 2026-10-28, added at #1456.
+**Checked:** 2026-11-05, #1773 (the project page shows it in its own profile's part; a folder's trailing backslash, a Windows host's, matches too); 2026-11-02, #1631 (every create goes through createSession, which on the gateway's own listener sends `source: gui`, `reasoning` and `service_tier` and no `cols`; a folder's `cwd` is within its create fields, checked against the canary's session_policy; see Two Hermes servers); 2026-10-28, added at #1456.
 
 ## An empty new chat Hermes lost
 
@@ -1603,7 +1603,7 @@ Bots: create and edit) · the live rooms over the grid and a portrait's
 (the menu's two items, a portrait's value while a room is being built, a
 live room's "Talking now") · the transcript's environment copy
 (TranscriptCellEnvironment copies `botsHomeCovered`, `botChatZoomed` and
-`rosterRowsInScroll`, as CI's check asks; the rows don't read them) · README.md's Bots Home line
+`rosterRowsInScroll`, as CI's check asks; the rows don't read them) · a moving picture on the portrait and the Bot Overview's header (see Moving pictures) · README.md's Bots Home line
 
 **Code**
 - Tabs and routes: `Conduit/Services/AppState.swift` (beginOpeningBotChat, botChatOpening and placesConversationAsBotChat, a Bot Chat coming from Bots; see Opening a Bot Chat), `Conduit/Views/V2/V2Shell.swift` (V2Tab.destinations, title and conversationTab, openConversation, the first tab, pulseVisible and openConversation on Bots too, the Bots stack's botZoom namespace)
@@ -1652,7 +1652,7 @@ live room's "Talking now") · the transcript's environment copy
 - Bots Home's voice menu calls a working bot like any other: with Classic voice, whose call waits for a running reply, its chat opens and voice says to stop the reply first.
 - Not yet tried on a device: the portraits' motion and what many working bots cost (one 30 fps timeline each while they move); the scroll view's long press, drag and drop on each portrait (#1714); whether a drag's lift and the portrait's long-press menu share the hold (a long press crashed on build 248: the drag's preview is drawn without the app's state, which is now handed to it), the merge dwell's feel, and whether a cancelled drag lets go of its item at once (a portrait reads the dragged bot only while it lives).
 
-**Checked:** 2026-11-04, #1742 (from Eric's TestFlight test: the overview's Chat and its workstreams zoom like a portrait's tap, pinned bots come first with a pin, a drop on a swollen face starts a room; the Bots list rows and Reorder Bots follow the pinned order); 2026-11-04, #1735 (the Group Chats and roster reads ask again after a failure, so their notice clears); 2026-11-03, #1714 (Eric's next round: Bots Home a scroll view, so each portrait has its own menu and drag; New Group Chat a + on its heading; no line under the bots; the zoom kept through a workstream visit and a swipe home from anywhere; the voice button calls a picked bot); 2026-11-03, #1706 (Eric's build 248 test: a long press no longer crashes, portraits show again, the zoom holds until the tapped chat lands, rings take the bot's glow color; the overview's Chat button keeps room above the artifacts' search when Work isn't shown); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1700 (the overview's Chat opened its Bot Chat in Sessions on an iPad simulator when the chat open before wasn't a Bot Chat: Bots Home marks a Bot Chat as coming before it steps aside; Bots Home and the overview share each round's room read; the ruling names every sheet that stills the portraits); 2026-11-03, #1698 (live rooms over the grid and "In <room>" pills, read from Bots Home and the Bot Overview; the portraits keep still under Bots Home's own sheets); 2026-11-03, #1686 (the portraits' motion, the overview header's, and hand-offs between bots); 2026-11-03, #1682 (the portrait-to-chat zoom; a drop on a portrait's pill lands on it); 2026-11-03, #1679 (the bots' order, synced, and starting a room by dropping bots together, with a confirm step); 2026-11-03, #1678 (added).
+**Checked:** 2026-11-05, #1778 (a portrait and the Bot Overview's header play a moving picture, see Moving pictures); 2026-11-04, #1742 (from Eric's TestFlight test: the overview's Chat and its workstreams zoom like a portrait's tap, pinned bots come first with a pin, a drop on a swollen face starts a room; the Bots list rows and Reorder Bots follow the pinned order); 2026-11-04, #1735 (the Group Chats and roster reads ask again after a failure, so their notice clears); 2026-11-03, #1714 (Eric's next round: Bots Home a scroll view, so each portrait has its own menu and drag; New Group Chat a + on its heading; no line under the bots; the zoom kept through a workstream visit and a swipe home from anywhere; the voice button calls a picked bot); 2026-11-03, #1706 (Eric's build 248 test: a long press no longer crashes, portraits show again, the zoom holds until the tapped chat lands, rings take the bot's glow color; the overview's Chat button keeps room above the artifacts' search when Work isn't shown); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1700 (the overview's Chat opened its Bot Chat in Sessions on an iPad simulator when the chat open before wasn't a Bot Chat: Bots Home marks a Bot Chat as coming before it steps aside; Bots Home and the overview share each round's room read; the ruling names every sheet that stills the portraits); 2026-11-03, #1698 (live rooms over the grid and "In <room>" pills, read from Bots Home and the Bot Overview; the portraits keep still under Bots Home's own sheets); 2026-11-03, #1686 (the portraits' motion, the overview header's, and hand-offs between bots); 2026-11-03, #1682 (the portrait-to-chat zoom; a drop on a portrait's pill lands on it); 2026-11-03, #1679 (the bots' order, synced, and starting a room by dropping bots together, with a confirm step); 2026-11-03, #1678 (added).
 
 ## Bots: create and edit
 
@@ -1662,7 +1662,7 @@ same bot.
 
 **Siblings:** New Bot · Edit Bot, from the Bots list, a Bot Chat's ⋯ menu (#1677) and the Bot Overview (#1678) · Hermes Desktop's bot editor (same
 profile records) · the bot's face in the Bots list (a portrait on Bots Home, with the row's menu on a long press; see Bots Home), its Bot Chat and group
-rooms · generated pictures, shared with group pictures · profile pictures in the profile picker · the profile's name everywhere else in Conduit (Profile names) · the SOUL a new bot is
+rooms · generated pictures, shared with group pictures · profile pictures in the profile picker · the profile's name everywhere else in Conduit (Profile names) · a GIF or short video as the picture (see Moving pictures) · the SOUL a new bot is
 born with (the messaging section older gateways need) · the Bots list's row
 menu (New Chat, Groups, Pin, Hide, Duplicate, Delete) and its Hidden section,
 as on Desktop's bot row · Edit Bot's MCP catalog (adding a server with
@@ -1705,7 +1705,47 @@ and README.md's bots line)
 - Desktop's drawn faces, shapes and pets show only as stills; Conduit draws an initial on the color.
 - The group picture switch guard has no test: it needs a ready DashboardTicketBridge double and a room switch mid-request (#1191).
 
-**Checked:** 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1679 (on `bot-workstreams`: the row menu on Bots Home gains Start a Room with… and Reorder Bots; New Group Chat can open with a title suggested and say when it made the room; its members and New Bot's Start From follow the bots' order, see Bots Home); 2026-11-03, #1678 (on `bot-workstreams`, Bots Home: the roster as portraits, each with the row's menu on a long press, BotMonogramView at a size its caller picks, and Edit Bot in the Bot Overview, opened once the overview has closed); 2026-11-03, #1677 (on `bot-workstreams`: Edit Bot in a Bot Chat's ⋯ menu, disabled where the Bots list's is; the model picker's inherit row named by its caller, "Same as Bot Chat" for Edit Bot > Work's Workstream Model); 2026-11-02, #1649 (Edit Bot gains Work, the bot's workstream settings, only for a bot that exists on a plugin that serves them; see Bot workstreams); 2026-11-02, #1640 (the MCP sign-in moved to NativeMCPSignIn, shared with Connectors; a switch still says the setup stopped; a Connectors sign-in is kept for the MCP page too, keepMcpSignedIn); 2026-10-31, #1588 (Edit Bot, New Bot's Start From lists and the MCP page open on what Hermes gave last time, read-only until it answers, and a save, MCP add or sign-in Hermes took is what they open on next; see Screens that open on their last answer); 2026-10-31, #1568 (a kept bot is never written, Delete included, a bot's face shows from the phone's copy until its fetch lands, its Bot Chat's face and color included, and a deleted bot leaves the kept roster); 2026-10-31, #1567 (the editor's Model page opens on the models kept from Hermes' last answer, picked once Hermes answers, with Try Again after a read that fails; see Model lists that fail to load); 2026-10-28, #1457 (the main bot goes by its Conduit name, see Profile names); 2026-10-28, #1448 (an unnamed bot shows its id capitalized); 2026-10-28, #1413 (a rename here names the profile everywhere, see Profile names); 2026-10-27, at #1395 (the editor's Model page gained search with each match's provider; saving unchanged); 2026-10-25, at #1222 (configure and MCP add wait in the profile config queue); before that #1192; group pictures at #1191.
+**Checked:** 2026-11-05, #1778 (Choose Photo takes a GIF or a short video, see Moving pictures); 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1679 (on `bot-workstreams`: the row menu on Bots Home gains Start a Room with… and Reorder Bots; New Group Chat can open with a title suggested and say when it made the room; its members and New Bot's Start From follow the bots' order, see Bots Home); 2026-11-03, #1678 (on `bot-workstreams`, Bots Home: the roster as portraits, each with the row's menu on a long press, BotMonogramView at a size its caller picks, and Edit Bot in the Bot Overview, opened once the overview has closed); 2026-11-03, #1677 (on `bot-workstreams`: Edit Bot in a Bot Chat's ⋯ menu, disabled where the Bots list's is; the model picker's inherit row named by its caller, "Same as Bot Chat" for Edit Bot > Work's Workstream Model); 2026-11-02, #1649 (Edit Bot gains Work, the bot's workstream settings, only for a bot that exists on a plugin that serves them; see Bot workstreams); 2026-11-02, #1640 (the MCP sign-in moved to NativeMCPSignIn, shared with Connectors; a switch still says the setup stopped; a Connectors sign-in is kept for the MCP page too, keepMcpSignedIn); 2026-10-31, #1588 (Edit Bot, New Bot's Start From lists and the MCP page open on what Hermes gave last time, read-only until it answers, and a save, MCP add or sign-in Hermes took is what they open on next; see Screens that open on their last answer); 2026-10-31, #1568 (a kept bot is never written, Delete included, a bot's face shows from the phone's copy until its fetch lands, its Bot Chat's face and color included, and a deleted bot leaves the kept roster); 2026-10-31, #1567 (the editor's Model page opens on the models kept from Hermes' last answer, picked once Hermes answers, with Try Again after a read that fails; see Model lists that fail to load); 2026-10-28, #1457 (the main bot goes by its Conduit name, see Profile names); 2026-10-28, #1448 (an unnamed bot shows its id capitalized); 2026-10-28, #1413 (a rename here names the profile everywhere, see Profile names); 2026-10-27, at #1395 (the editor's Model page gained search with each match's provider; saving unchanged); 2026-10-25, at #1222 (configure and MCP add wait in the profile config queue); before that #1192; group pictures at #1191.
+
+## Moving pictures
+
+A bot's or profile's picture can move: a GIF, another animated picture or a
+short video picked as its photo becomes a looping animated PNG, stored and
+synced like any picture.
+
+**Siblings:** Choose Photo in New Bot and Edit Bot (see Bots: create and
+edit) · the photo on a Settings > Profiles card (the profile picker) · a
+profile kept on the phone alone (a gateway without the asset store) · the
+faces that play it: Bots Home's portraits, the Bot Overview's header, the bot
+editor and the Profiles cards (see Bots Home) · the faces that keep the first
+frame: chat rows, the transcript, the profile strip, group room members, the
+@ list and every menu (not needed: lists and rows, where many moving faces
+would cost battery for little) · Hermes' asset store (not needed: it takes a
+PNG up to 2 MB by its bytes, and an animated PNG is one) · Hermes Desktop
+(not needed: its picture is an img tag, which plays it; its own uploads stay
+stills, upstream) · Duplicate (not needed: it copies the bytes) · generated
+pictures and group room pictures (not needed: Hermes' image generation makes
+stills, and rooms show as rows and chips) · Watch, CarPlay, widgets and
+notifications (not needed: they draw no faces) · the notifier (not needed: it
+serves no pictures) · the text that describes it (the editor's caption under
+the picture buttons, README.md's bots and profiles lines)
+
+**Code**
+- Making one: `Conduit/Services/AnimatedAvatar.swift` (frames from a picture file or a video, thinned, squared and written as a looping APNG under maxBytes, picture(fromPicked:), message(for:)), `Conduit/Views/Components/ImagePicker.swift` (onAnimated: videos trimmed to maxDuration, an animated picture's own file)
+- Saving: `Conduit/Views/BotEditorSheet.swift` (useAnimation, previewPlayback, canSave waiting for it, the caption), `Conduit/Views/ProfilePickerSheet.swift` (saveAnimation), `Conduit/Services/AppState.swift` (setProfilePhoto's animation, moveDevicePhotoToHermes carrying a phone-only moving picture over as it is, through BotAvatarImage.hermesPicture in `Conduit/Services/BotManagement.swift`, botAvatarPlayback, profileAvatarPlayback), `Conduit/Services/ProfileAppearanceStore.swift` (saveAvatar keeps a moving picture's bytes; ProfileAvatarImageCache.isAnimated and revision)
+- Playing: `Conduit/Views/Components/AnimatedAvatarFrames.swift` (AnimatedAvatarFrames, AnimatedAvatarPlayer), `Conduit/Views/BotEditorSheet.swift` (BotAvatarView's playback), `Conduit/Views/BotRosterView.swift` (BotMonogramView's animates), `Conduit/Views/ProfilePickerSheet.swift` (ProfileAvatarView's animates), `Conduit/Views/V2/V2BotsHome.swift` (the portrait and the Bot Overview's header)
+- Tests: `ConduitTests/AnimatedAvatarTests.swift`
+
+**Rulings**
+- Pictures people pick, not generated video: most Hermes hosts have no video backend, so a moving picture is a GIF or a short video the person brings (Eric, 2026-11-05). The on-device "living portrait" (a still cut out and swayed) wasn't built: it reads as alive, not animated.
+- A moving picture is an animated PNG in the same `avatar` asset, so nothing else changes: Hermes keeps it, Desktop plays it, and every still face shows its first frame. It's made on the phone from the first 3 seconds (a video is trimmed to them in the picker), at most 36 frames, 256 px, then smaller and fewer frames until it fits 1.5 MB, under Hermes' 2 MB cap since every fetch sends it whole; one that won't fit says to try a shorter or simpler clip.
+- It plays only where the face is what you're looking at (a Bots Home portrait, the Bot Overview, the editors), only while the app is active, and never with Reduce Motion or in Low Power Mode; Bots Home's portraits also stop while the tab doesn't show, as their motion does. ImageIO's player decodes a frame at a time, so a moving face holds one frame.
+
+**Open gaps**
+- Not yet tried on a device: that the picker hands over a GIF's own file (`imageURL`) after its crop screen, and what many moving portraits cost on Bots Home.
+- A Live Photo is picked as a still.
+
+**Checked:** 2026-11-05, #1782 (the Bot Overview's header plays its fallback profile face too; the phone-only carry-over is tested); 2026-11-05, #1778 (added: moving pictures from a GIF or a short video)
 
 ## Opening a Bot Chat
 
@@ -3777,7 +3817,8 @@ reordering its pins) · search and "In messages" across profiles · the
 status, Starred and source filters · opening, renaming, archiving and
 deleting another profile's chat · New chat (asks which profile) · the open
 chat's row on the iPad and Mac (same view) · unread dots (another profile's
-replies) · VoiceOver · README.md
+replies) · a project's page, which gathers the same profiles' chats in its
+folder (Whose project page) · VoiceOver · README.md
 
 **Code**
 - Settings, merge and groups: `Conduit/Models/AllProfilesChats.swift` (AllProfilesChatsSettings, rows, groups, preview, groupPreviewCount, holdsOpen), `Conduit/Models/ChatListSections.swift` (latestActivity)
@@ -3799,7 +3840,7 @@ replies) · VoiceOver · README.md
 **Open gaps**
 - Live status (the live registry's Running and waits) and scheduled runs follow the profile in use only, as built in #1128.
 
-**Checked:** 2026-11-04, #1734 (All's poll reads nothing off screen, issue 1728); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-01, #1619 (All profiles leaves bot workstreams out, see Bot workstreams); 2026-10-31, #1571.
+**Checked:** 2026-11-05, #1773 (which other profiles' rows show is otherProfileRowsShown, shared with a project page gathering profiles; All is unchanged); 2026-11-04, #1734 (All's poll reads nothing off screen, issue 1728); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-01, #1619 (All profiles leaves bot workstreams out, see Bot workstreams); 2026-10-31, #1571.
 
 ## Unread dot on projects
 
@@ -3830,6 +3871,48 @@ README.md
 - Projects belong to the profile in use; All profiles has no Projects list of its own.
 
 **Checked:** 2026-11-03, #1685 (the Projects list gained New Project controls; a new project's row takes the dot like any other); 2026-10-29, #1499.
+
+## Whose project page
+
+A project's page (Chats › Projects › a project) shows the chats every
+profile has in the project's folder, each row with its profile's picture,
+and a row of chips above the lanes (All, then each profile with chats here)
+that shows one profile's; with one profile's chats on the page, the header
+names it beside the count (issue 1761: on a Mac with several bots, nothing
+on the page said which agent a chat was with until it was opened).
+
+**Siblings:** the V2 project page (iPhone, iPad and Mac, one view) · its New
+conversation (the toolbar's and the empty page's) · the classic drawer's
+project sheet · All profiles in Chats (the same profiles, picture and
+row actions; no Projects there) · the Projects list and the Chats list,
+which keep the profile row above them · each chat's composer ("Message
+Atlas…") · unread dots and the Running signal on the rows · the open chat's
+row beside the list · VoiceOver · README.md
+
+**Code**
+- Matching and merging: `Conduit/Models/ProjectAcrossProfiles.swift` (ProjectAcrossProfiles.match, folderKey, lanes, profilesWithChats; ProjectProfileLanes)
+- Reads: `Conduit/Services/AppState+ProjectProfiles.swift` (projectPageProfiles, loadProjectSessions(_:inProfile:), loadProject(_:inProfiles:known:)), `Conduit/Services/HermesClient.swift` (projects(inProfile:), projectSessions(_:inProfile:)), `Conduit/Services/AppState.swift` (otherProfileRowsShown, shared with All; createNewSession(cwd:inProfile:); startNewChat(inProfile:); openListedSession)
+- Page: `Conduit/Views/V2/V2ProjectPage.swift` (owner, otherProfiles, profileFilterRow, filterChip, profileBadge, newConversationButton, reload, ProjectProfileLabel)
+- Row picture: `Conduit/Views/V2/V2SessionRow.swift` (profileBadge ahead of the title on a row without an icon)
+- Classic sheet: `Conduit/Views/SidebarView.swift` (ProjectSessionsSheet)
+- Docs: `README.md` (Features)
+- Tests: `ConduitTests/SidebarLayoutTests+AllProfiles.swift` (testAProjectPageFindsTheSameFolderInAnotherProfile, testAProjectPageMergesEachProfilesLanesNewestFirst)
+
+**Rulings**
+- Hermes keeps a projects.db per profile, so one folder is a separate project in each. The page finds each one through its profile (`projects.tree` and `projects.project_sessions` with that profile): Home is Home, any other project is the one with the same main folder, and a folderless project gathers none. Lanes on the same folder are one lane, its chats newest first (Eric, 2026-11-05, issue 1761, picked gathering the profiles over naming the one profile).
+- The profiles gathered are All's (Show in All), with two or more profiles on the dashboard; a bot's own chats and workstreams stay out, as in All. The page opened in one profile and stays on it: a tap on another profile's chat switches to that profile to open it, as All does, and the page keeps what it showed.
+- Rows carry their profile's picture while the page shows more than one profile's chats; a chip shows only its profile's, and then the header names it, as it names the only profile with chats here. The chips are offered only with chats from two or more profiles. The pick lasts while the page is open.
+- New conversation starts in the picked profile; with All picked and the project in more than one profile it asks which (the empty page's button too), and another profile's starts after the switch to it, in the same folder (Home: a plain chat in that profile).
+- The other profiles are read when the page opens, again at most every 20 s as the chats list changes, and every 20 s while the page is open, as All's poll does; a pull, Try Again, a reconnect or a change made from a row's actions reads them at once. A profile's project, once found, is kept for the page; a profile without one, or whose kept project stops answering, is looked at again on each read, as it may have been made since. A profile whose read fails keeps what the page showed of it, as All does. A switch for another profile's New conversation that a call or a newer navigation stops (one begun while its ticket is minted too) starts nothing. While the other profiles are first read, New conversation starts in the page's profile.
+- A chat just started here shows in the page's own profile's lanes until Hermes lists it (issue 1454) only while that profile is in use; one started after a switch shows in the other profile's part, with its picture, until that profile's read lists it. The classic drawer's sheet names its profile once a read has listed the chats.
+
+**Open gaps**
+- The Running and approval signals on other profiles' rows follow the profile in use only, as in All.
+- With Settings › Appearance › Main button swapped, the page's gold button starts in the profile in use without asking which, as it does everywhere (it starts calls and chats, not a profile choice).
+- The classic drawer's sheet lists the profile in use's chats and names it; it doesn't gather profiles, as the classic drawer has no All.
+- A project with several folders matches by its main folder only: the project tree gives Conduit no others.
+
+**Checked:** 2026-11-05, added at #1773.
 
 ## New project
 

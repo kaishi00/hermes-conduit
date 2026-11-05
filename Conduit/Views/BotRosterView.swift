@@ -1123,10 +1123,15 @@ struct BotMonogramView: View {
     /// sizes (a fixed 36x36 frame clipped the letter once `.body` grew).
     @ScaledMetric private var avatarSize: CGFloat
 
+    /// Plays a moving picture; only where the face is the focus and on
+    /// screen (Bots Home's portraits, the Bot Overview).
+    let animates: Bool
+
     /// `size` at the default Text Size: 36 on a row, larger on Bots Home's
     /// portraits.
-    init(bot: BotProfile, size: CGFloat = 36) {
+    init(bot: BotProfile, size: CGFloat = 36, animates: Bool = false) {
         self.bot = bot
+        self.animates = animates
         _avatarSize = ScaledMetric(wrappedValue: size, relativeTo: .body)
     }
 
@@ -1136,7 +1141,8 @@ struct BotMonogramView: View {
             label: bot.displayLabel,
             colorString: bot.appearanceColor,
             image: appState.botAvatarImage(for: bot),
-            size: avatarSize
+            size: avatarSize,
+            playback: animates ? appState.botAvatarPlayback(for: bot) : nil
         )
         // Connecting fetches again: a kept row's fetch fails offline.
         .task(id: "\(bot.name)|\(bot.hasAvatar)|\(appState.botAvatarGeneration)|\(appState.isConnected)") {
