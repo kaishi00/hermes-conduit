@@ -88,10 +88,8 @@ struct KanbanOrchestrationSettingsSheet: View {
                                 .accessibilityHint("Fans eligible triage tasks into child task graphs")
                             Toggle("Auto Promote Children", isOn: $autoPromoteChildren)
                                 .accessibilityHint("Promotes parent-free decomposed children to Ready")
-                            Group {
                             Text("Auto Decompose lets the dispatcher decompose eligible triage tasks. Auto Promote Children moves parent-free children to Ready instead of leaving them in To Do.")
-                            }
-                            .settingsCaption()
+                                .settingsCaption()
                         }
 
                         ConduitSettingsSection(title: AppLocalization.string("Orchestrator Profile"), symbol: "slider.horizontal.3", tint: .conduitAccent) {

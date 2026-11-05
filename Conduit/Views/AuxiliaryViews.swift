@@ -4928,11 +4928,15 @@ struct SettingsPickerField<SelectionValue: Hashable, Content: View>: View {
                 name
                 Spacer(minLength: 8)
                 picker
+                    .fixedSize()
             }
             VStack(alignment: .leading, spacing: 0) {
                 name
                     .padding(.top, 8)
+                // Under the name it takes the field's width, and a value
+                // longer than that truncates inside the glass.
                 picker
+                    .lineLimit(1)
                     .padding(.leading, -12)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -4960,7 +4964,6 @@ struct SettingsPickerField<SelectionValue: Hashable, Content: View>: View {
         .labelsHidden()
         .pickerStyle(.menu)
         .tint(.conduitAccent)
-        .fixedSize()
         // labelsHidden drops the name for VoiceOver too: it reads
         // "Name, Value", as ConduitMenuPicker does.
         .accessibilityLabel(title)
