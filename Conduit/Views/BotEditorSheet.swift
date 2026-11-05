@@ -206,7 +206,6 @@ struct BotEditorSheet: View {
                     Label(AppLocalization.string("Choose Photo"), systemImage: "photo")
                 }
                 .buttonStyle(.bordered)
-                .disabled(isPreparingAnimation)
                 if canGeneratePictures == true {
                     Button {
                         Haptics.light()
@@ -241,6 +240,9 @@ struct BotEditorSheet: View {
                 }
             }
             .scaledFont(.subheadline)
+            // A picked GIF or video lands in the draft once it's made, so
+            // nothing else may change the picture meanwhile.
+            .disabled(isPreparingAnimation)
             Text(AppLocalization.string("A GIF or a short video moves on Bots Home and in Hermes Desktop."))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
