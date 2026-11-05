@@ -287,11 +287,16 @@ struct BotWorkPanel: View {
         .disabled(work.isActing(item.ref, profile: profile) || !appState.isConnected)
     }
 
-    /// Settings' group name over its cards (see Sheets in Settings' look).
+    /// Settings' group name over its cards (see Sheets in Settings' look),
+    /// as a row rather than a section header: a plain list pins headers,
+    /// and this one, with no fill, would float over the cards scrolling
+    /// under it.
     private func sectionHeader(_ title: String, symbol: String, tint: Color) -> some View {
         SettingsSectionHeader(title: title, symbol: symbol, tint: tint)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 2, trailing: 16))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 10, leading: 4, bottom: 2, trailing: 16))
     }
 
     var body: some View {
@@ -424,42 +429,33 @@ struct BotWorkPanel: View {
                         .listRowSeparator(.hidden)
                 }
                 if !snapshot.pinned.isEmpty {
-                    Section {
-                        ForEach(snapshot.pinned) { row($0) }
-                    } header: {
-                        sectionHeader(AppLocalization.string("Pinned"), symbol: "pin.fill", tint: .orange)
-                    }
+                    sectionHeader(AppLocalization.string("Pinned"), symbol: "pin.fill", tint: .orange)
+                    ForEach(snapshot.pinned) { row($0) }
                 }
                 if !snapshot.active.isEmpty {
-                    Section {
-                        ForEach(snapshot.active) { row($0) }
-                    } header: {
-                        sectionHeader(AppLocalization.string("Active"), symbol: "bolt.fill", tint: .conduitAccent)
-                    }
+                    sectionHeader(AppLocalization.string("Active"), symbol: "bolt.fill", tint: .conduitAccent)
+                    ForEach(snapshot.active) { row($0) }
                 }
                 let recent = snapshot.recent
                 if !recent.isEmpty {
-                    Section {
-                        ForEach(showsAllRecent ? recent : Array(recent.prefix(Self.recentShown))) { row($0) }
-                        if recent.count > Self.recentShown {
-                            Button {
-                                Haptics.light()
-                                withAnimation(ConduitMotion.response) { showsAllRecent.toggle() }
-                            } label: {
-                                Text(showsAllRecent ? AppLocalization.string("Show less")
-                                     : AppLocalization.string("Show all \(String(recent.count))"))
-                                    .scaledFont(.subheadline.weight(.semibold))
-                                    .foregroundStyle(Color.conduitAccent)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 16))
+                    sectionHeader(AppLocalization.string("Recent"), symbol: "clock.fill", tint: .green)
+                    ForEach(showsAllRecent ? recent : Array(recent.prefix(Self.recentShown))) { row($0) }
+                    if recent.count > Self.recentShown {
+                        Button {
+                            Haptics.light()
+                            withAnimation(ConduitMotion.response) { showsAllRecent.toggle() }
+                        } label: {
+                            Text(showsAllRecent ? AppLocalization.string("Show less")
+                                 : AppLocalization.string("Show all \(String(recent.count))"))
+                                .scaledFont(.subheadline.weight(.semibold))
+                                .foregroundStyle(Color.conduitAccent)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                         }
-                    } header: {
-                        sectionHeader(AppLocalization.string("Recent"), symbol: "clock.fill", tint: .green)
+                        .buttonStyle(.plain)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 16))
                     }
                 }
                 if snapshot.resolvedCount > 0 {
