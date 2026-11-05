@@ -54,3 +54,21 @@ struct BotRoomBuild: Equatable {
         return build
     }
 }
+
+/// How the room Hermes makes from a room being started takes its place on
+/// Bots Home: a room listed after Create was tapped stays out of the grid
+/// while the room being started still stands in for it, and only a made
+/// room Hermes lists slides into place (else it shows as it lands).
+enum NewRoomLanding {
+    /// Whether the room `roomID` shows among the rooms. `before`: the rooms
+    /// there were as Create was tapped, nil before that or once it's done.
+    static func shows(_ roomID: String, before: Set<String>?, starting: Bool) -> Bool {
+        guard let before, starting else { return true }
+        return before.contains(roomID)
+    }
+
+    /// The room that takes the new room's place: the made one, once listed.
+    static func landing(made roomID: String, listed: [String]) -> String? {
+        listed.contains(roomID) ? roomID : nil
+    }
+}

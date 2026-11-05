@@ -757,6 +757,19 @@ extension BotModeTests {
         XCTAssertLessThan(fourth.diameter, top.diameter)
     }
 
+    /// The room Hermes makes from a room being started stays out of the grid
+    /// while the room being started stands in for it, and takes its place
+    /// only once Hermes lists it; other rooms always show.
+    func testAMadeRoomWaitsForItsPlaceThenTakesIt() {
+        let before: Set<String> = ["trip", "dinner"]
+        XCTAssertTrue(NewRoomLanding.shows("trip", before: before, starting: true))
+        XCTAssertFalse(NewRoomLanding.shows("made", before: before, starting: true), "the tile stands in for it")
+        XCTAssertTrue(NewRoomLanding.shows("made", before: before, starting: false), "the tile has gone")
+        XCTAssertTrue(NewRoomLanding.shows("made", before: nil, starting: true), "Create wasn't tapped")
+        XCTAssertEqual(NewRoomLanding.landing(made: "made", listed: ["trip", "made"]), "made")
+        XCTAssertNil(NewRoomLanding.landing(made: "made", listed: ["trip", "other"]), "not listed yet: no slide")
+    }
+
     /// A Bot Chat zooms out of its portrait only when that portrait was
     /// just tapped: the push takes the arm and keeps it while the chat is
     /// in the stack; a stale or failed tap, another bot's chat, or an open

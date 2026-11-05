@@ -254,6 +254,7 @@ struct NewRoomPortrait: View {
     let canJoin: (String) -> Bool
     let onDrop: (String) -> Bool
     @EnvironmentObject private var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isTargeted = false
 
     var body: some View {
@@ -265,7 +266,7 @@ struct NewRoomPortrait: View {
             BotRoomPortraitLabel(title: AppLocalization.string("New room"), highlighted: true, dashed: true) { size in
                 faces(size)
                     .anchorPreference(key: BotsHomeAnchorKey.self, value: .bounds) { [BotsHomeAnchorKey.newRoom: $0] }
-                    .scaleEffect(isTargeted ? 1.12 : 1)
+                    .scaleEffect(isTargeted && !reduceMotion ? 1.12 : 1)
             }
         }
         .buttonStyle(PressableButtonStyle())
@@ -275,7 +276,7 @@ struct NewRoomPortrait: View {
             return onDrop(dragged)
         } isTargeted: { targeted in
             let joins = targeted && BotDragPayload.lifted.map(canJoin) == true
-            withAnimation(.spring(duration: 0.25)) { isTargeted = joins }
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { isTargeted = joins }
         }
         .accessibilityLabel(Text(AppLocalization.string("New room")))
         .accessibilityValue(Text(verbatim: title))

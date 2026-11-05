@@ -507,7 +507,7 @@ struct BotRosterView: View {
     private func newRoomCreated(_ roomID: String) {
         // Only a room Hermes lists takes the place; one it hasn't listed
         // yet shows as it lands, with no slide.
-        let made = appState.shownGroupRooms.contains { $0.roomID == roomID } ? roomID : nil
+        let made = NewRoomLanding.landing(made: roomID, listed: appState.shownGroupRooms.map(\.roomID))
         Haptics.success()
         withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : BotRoomFlight.motion) {
             landingRoomID = made
@@ -900,8 +900,9 @@ struct BotRosterView: View {
     /// The rooms, less one Hermes made after Create was tapped while the
     /// room being started still stands in for it.
     private var homeRooms: [GroupRoom] {
-        guard let before = roomsBeforeCreate, !newRoom.isEmpty else { return appState.shownGroupRooms }
-        return appState.shownGroupRooms.filter { before.contains($0.roomID) }
+        appState.shownGroupRooms.filter {
+            NewRoomLanding.shows($0.roomID, before: roomsBeforeCreate, starting: !newRoom.isEmpty)
+        }
     }
 
     private var newBotButton: some View {
