@@ -155,6 +155,9 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(AppState.voiceModeSwitchThread(classicChat: nil, classicWasOpen: false, liveThread: attached, localLiveOwnChat: own), attached)
         XCTAssertNil(AppState.voiceModeSwitchThread(classicChat: nil, classicWasOpen: true, liveThread: attached, localLiveOwnChat: own),
                      "Classic works in the open chat only")
+        XCTAssertNil(AppState.voiceModeSwitchThread(classicChat: nil, classicWasOpen: false, liveThread: nil, localLiveOwnChat: own,
+                                                    isDeleted: { $0 == own }),
+                     "an own chat deleted since is never handed to the new mode")
     }
 
     func testSwitchingACallsModeStartsTheNewModeInTheSameChat() async {

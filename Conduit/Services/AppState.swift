@@ -4610,9 +4610,11 @@ final class AppState: ObservableObject {
                 own: own,
                 runtime: { try await self.localLiveChatRuntime($0) },
                 create: { profile in
+                    // No profile asked is the active one, as of the ask.
+                    let expected = profile ?? self.activeProfile
                     let created = try await client.createSession(inProfile: profile)
                     // Made on another profile: never the call's chat on its bot.
-                    if let profile, let made = created.profile, !Self.profilesMatch(made, profile) {
+                    if let made = created.profile, !Self.profilesMatch(made, expected) {
                         throw HermesError.invalidResponse
                     }
                     return VoiceThreadTarget(runtimeSessionID: created.sessionId, storedSessionID: created.storedSessionId,
@@ -38757,9 +38759,11 @@ final class AppState: ObservableObject {
     /// made for itself (from Home, or after its chat was deleted, issue 1797).
     static func voiceModeSwitchThread(
         classicChat: VoiceThreadTarget?, classicWasOpen: Bool,
-        liveThread: VoiceThreadTarget?, localLiveOwnChat: VoiceThreadTarget?
+        liveThread: VoiceThreadTarget?, localLiveOwnChat: VoiceThreadTarget?,
+        isDeleted: (VoiceThreadTarget) -> Bool = { _ in false }
     ) -> VoiceThreadTarget? {
-        classicWasOpen ? classicChat : (liveThread ?? localLiveOwnChat)
+        // An own chat deleted since is gone: the new mode starts with none.
+        classicWasOpen ? classicChat : (liveThread ?? localLiveOwnChat.flatMap { isDeleted($0) ? nil : $0 })
     }
 
     private enum VoiceModeHandoff {
@@ -38785,7 +38789,8 @@ final class AppState: ObservableObject {
         let classicWasOpen = showVoiceSheet
         let thread = Self.voiceModeSwitchThread(
             classicChat: classicWasOpen ? liveVoiceThreadForOpenChat() : nil, classicWasOpen: classicWasOpen,
-            liveThread: voiceBackgroundJobSupervisor.liveThread, localLiveOwnChat: localLiveOwnChat
+            liveThread: voiceBackgroundJobSupervisor.liveThread, localLiveOwnChat: localLiveOwnChat,
+            isDeleted: { [voiceBackgroundJobSupervisor] in voiceBackgroundJobSupervisor.isDeletedChat($0) }
         )
         let shownLiveScreen: VoiceCallEngine? = showQwenLiveSheet ? .qwenLive
             : showGeminiLiveSheet ? .geminiLive
@@ -38817,7 +38822,8 @@ final class AppState: ObservableObject {
         }
         // Something else started voice meanwhile (Siri, a call from Hermes).
         guard isConnected, !isVoiceInUse, minimisedLiveVoice == nil else { return .stop }
-        return .proceed(thread)
+        // Deleted during the wait: the new mode starts without it.
+        return .proceed(thread.flatMap { voiceBackgroundJobSupervisor.isDeletedChat($0) ? nil : $0 })
     }
 
     /// Picks another voice mode from a call screen. It is saved as the
