@@ -442,6 +442,9 @@ struct RichDiffSheet: View {
     @State private var failed = false
     @State private var folded: Set<Int> = []
     @State private var foldedSet = false
+    /// Files the user folded or opened, kept as they left them when the
+    /// whole diff arrives.
+    @State private var touched: Set<Int> = []
     @State private var attempt = 0
     @AppStorage("richCards.diffWrapsLines") private var wraps = true
     @Environment(\.dismiss) private var dismiss
@@ -500,6 +503,7 @@ struct RichDiffSheet: View {
                                     ForEach(shown.files) { file in
                                         Button(file.path) {
                                             folded.remove(file.id)
+                                            touched.insert(file.id)
                                             withAnimation { proxy.scrollTo(file.id, anchor: .top) }
                                         }
                                     }
@@ -548,6 +552,7 @@ struct RichDiffSheet: View {
             Button {
                 withAnimation(.snappy) {
                     if folded.contains(file.id) { folded.remove(file.id) } else { folded.insert(file.id) }
+                    touched.insert(file.id)
                 }
             } label: {
                 HStack(spacing: 6) {
@@ -619,9 +624,11 @@ struct RichDiffSheet: View {
         guard !foldedSet else { return }
         foldedSet = true
         guard diff.files.count > 1 else { return }
-        folded = Set(diff.files.filter { file in
-            file.id != focus && (file.binary || file.status == .deleted || file.lineCount > Self.foldedLines)
-        }.map(\.id))
+        let defaults = diff.files.filter { file in
+            file.id != focus && !touched.contains(file.id)
+                && (file.binary || file.status == .deleted || file.lineCount > Self.foldedLines)
+        }.map(\.id)
+        folded = folded.intersection(touched).union(defaults)
     }
 
     private func jump(_ proxy: ScrollViewProxy) {
