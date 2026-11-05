@@ -2257,9 +2257,15 @@ private struct UserImageAttachmentPreview: View {
                 .accessibilityLabel("Attached image: \(attachment.imageDescription ?? attachment.name)")
                 .accessibilityAddTraits(.isImage)
         } else {
-            let failed = gatewayLoadFailed || localPreviewFailed
+            // `localPreviewFailed` compares paths, so without a local file
+            // it would say a picture from Hermes still loading had failed.
+            let failed = gatewayLoadFailed || (localFileURL != nil && localPreviewFailed)
             let loading = !failed && (loadsFromHermes || localFileURL != nil)
+            // A tile still loading, or one that won't, opens the viewer too:
+            // the viewer fetches the picture itself, and the "+N" tile is
+            // the only way to the pictures without a tile.
             PictureTilePlaceholder(state: loading ? .loading : failed ? .unavailable : .attached, onAccent: true)
+                .opensMediaPreview { openPreview(showing: nil) }
                 .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
                 .accessibilityElement()
                 .accessibilityLabel(
@@ -2291,7 +2297,7 @@ private struct UserImageAttachmentPreview: View {
     /// bytes re-fetched from Hermes, with the row's copy shown meanwhile.
     /// The row keeps only the downsampled/decoded image, never the original
     /// bytes, so an image-heavy transcript doesn't pin them all in memory.
-    private func openPreview(showing image: UIImage) {
+    private func openPreview(showing image: UIImage?) {
         guard let item = ImageGalleryItem.attachment(attachment, resolver: gatewayResolver) else { return }
         ImageGallery.open(item, in: imageGallery, placeholder: image)
     }

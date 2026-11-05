@@ -2654,7 +2654,10 @@ private struct RemoteMarkdownImage: View {
                     .accessibilityLabel(Text(verbatim: label))
                     .accessibilityAddTraits(.isLink)
             } else {
+                // The viewer fetches the picture itself, so a tile still
+                // loading opens it too, the "+N" tile included.
                 PictureTilePlaceholder(state: failed ? .unavailable : .loading)
+                    .opensMediaPreview { openImage(showing: nil) }
                     .accessibilityElement()
                     .accessibilityLabel(Text(verbatim: label))
             }
@@ -2749,7 +2752,7 @@ private struct RemoteMarkdownImage: View {
     /// opening re-fetches them: from the copy kept on the phone, which stays
     /// after Hermes sweeps its own, else from Hermes; a web picture again
     /// (usually from URLCache) to share it at full quality.
-    private func openImage(showing image: UIImage) {
+    private func openImage(showing image: UIImage?) {
         guard let item = ImageGalleryItem.markdownImage(url: url, alt: alt, resolver: gatewayMediaFiles,
                                                         dataURL: gatewayMediaDataURL) else { return }
         ImageGallery.open(item, in: imageGallery, placeholder: image)
