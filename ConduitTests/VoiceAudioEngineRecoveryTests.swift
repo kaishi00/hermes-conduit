@@ -669,7 +669,12 @@ extension VoiceAudioSessionCoordinatorTests {
         // Starts the stream; the reply ends one byte past a sample.
         XCTAssertEqual(try service.enqueuePCM16(Data(count: 480), sampleRate: 24_000), 480)
         XCTAssertEqual(try service.enqueuePCM16(Data([7]), sampleRate: 24_000), 0, "an odd byte waits for the next chunk")
+        let generation = service.playbackGeneration
+        let queued = service.pendingBuffers
         service.discardRemainder()
+        XCTAssertEqual(service.pendingBuffers, queued, "the reply's queued speech plays on")
+        XCTAssertEqual(service.playbackGeneration, generation, "the same stream, not a restart")
+        XCTAssertTrue(service.isPlaying)
         XCTAssertEqual(
             try service.enqueuePCM16(Data([1]), sampleRate: 24_000), 0,
             "the next reply's first byte isn't paired with the last reply's odd one"
