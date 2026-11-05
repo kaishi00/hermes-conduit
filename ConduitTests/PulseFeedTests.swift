@@ -324,9 +324,9 @@ final class PulseFeedTests: XCTestCase {
 
     /// Pulse's chat, left out of Chats, is never the chat Conduit opens on
     /// by itself, though Pulse's turns make it the newest: Jump to latest
-    /// activity, and Continue with nothing saved, pick the newest listed
-    /// chat. One the user had open is still resumed by Continue. A call's
-    /// chat search never finds it either.
+    /// activity, and Continue, pick the newest listed chat, even over a saved
+    /// Pulse chat; the chat on screen stays. A call's chat search never finds
+    /// it either.
     func testTheChatConduitResumesIsNeverPulsesHiddenChat() throws {
         let suite = "PulseFeedTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -351,12 +351,12 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(pick(), "runtime-p")
         coordinator.rememberSession(.dashboard(profile: "default", sessionID: "20261105_pulse"), for: "default")
 
-        // The first feed read names it: the saved choice goes with it.
+        // Once the feed names it, the next pick drops that saved choice.
         state.applyPulseFeed(try XCTUnwrap(PulseFeedPage(json: json(
             #"{"home_chat_id": "20261105_pulse", "cards": []}"#))))
         XCTAssertTrue(state.showsPulseScreen)
-        XCTAssertNil(coordinator.lastSessionID(for: "default"))
         XCTAssertEqual(pick(), "plain")
+        XCTAssertNil(coordinator.lastSessionID(for: "default"))
         XCTAssertEqual(
             state.selectChatResumeTarget(in: catalog, profile: "default", purpose: .preserveCurrent,
                                          currentSessionID: nil)?.id,
@@ -365,12 +365,17 @@ final class PulseFeedTests: XCTestCase {
 
         coordinator.setBehavior(.continueWhereLeftOff)
         XCTAssertEqual(pick(), "plain")
+        // Saved by its runtime id (opened from a push, or by an older build):
+        // still never resumed by itself, and the saved choice goes.
         coordinator.rememberSession(.dashboard(profile: "default", sessionID: "runtime-p"), for: "default")
-        XCTAssertEqual(pick(), "runtime-p")
-        // Opened by the user with Pulse's chat already known: a later feed keeps it.
-        state.applyPulseFeed(try XCTUnwrap(PulseFeedPage(json: json(
-            #"{"home_chat_id": "20261105_pulse", "cards": []}"#))))
-        XCTAssertEqual(pick(), "runtime-p")
+        XCTAssertEqual(pick(), "plain")
+        XCTAssertNil(coordinator.lastSessionID(for: "default"))
+        // The chat on screen stays across a reconnect.
+        XCTAssertEqual(
+            state.selectChatResumeTarget(in: catalog, profile: "default", purpose: .preserveCurrent,
+                                         currentSessionID: "runtime-p")?.id,
+            "runtime-p"
+        )
 
         // With only Pulse's chat listed there's no chat to pick: a new one starts.
         coordinator.setBehavior(.latestActivity)

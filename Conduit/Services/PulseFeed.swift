@@ -1181,10 +1181,6 @@ extension AppState {
     }
 
     func applyPulseFeed(_ page: PulseFeedPage) {
-        // A home named for the first time here, or a new one (Pulse's chat
-        // made again): until now nothing hid it.
-        let newHome = page.homeChatID == pulseHomeChat ? nil : page.homeChatID
-        defer { if let newHome { forgetResumedPulseChat(newHome, profile: pulseHomeProfile) } }
         pulseFeedAppliedAt = (activeDashboardID, Date())
         if pulseUnseen != page.unseen { pulseUnseen = page.unseen }
         let sources = page.sources

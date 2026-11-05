@@ -17582,6 +17582,12 @@ final class AppState: ObservableObject {
         if purpose == .automaticReturn {
             chatResumeRestorationRequest = nil
         }
+        // Pulse's chat is never the chat Conduit opens by itself, even a saved
+        // one (picked before this phone knew it, or opened from a push): the
+        // Pulse screen stands in for it. The chat on screen stays.
+        if purpose != .preserveCurrent, let home = pulseHomeChat, showsPulseScreen {
+            forgetResumedPulseChat(home, profile: profile, among: catalog)
+        }
         // The stored selection is authoritative only when its kind is known or
         // bot evidence could be read: a v1-migrated id cannot be told from a
         // bot chat, and adopting a catalog row by it is the fail-open the
@@ -17614,17 +17620,14 @@ final class AppState: ObservableObject {
         isWorkstreamRow(session) || isPulseHomeChat(session)
     }
 
-    /// Pulse's chat, named on this phone only now (a first feed read on
-    /// this dashboard, or a new chat for Pulse), may already be the chat
-    /// Conduit resumed by itself, since nothing hid it yet, and be saved
-    /// for the next launch: that saved choice goes, so the next launch picks
-    /// a listed chat. The two are matched by any of the chat's ids.
-    func forgetResumedPulseChat(_ home: String, profile: String) {
+    /// Drops Pulse's chat as the saved chat to resume, so the pick goes to a
+    /// listed chat. The two are matched by any of the chat's ids.
+    func forgetResumedPulseChat(_ home: String, profile: String, among catalog: [SessionSummary]) {
         guard let saved = chatResumeCoordinator.lastSessionID(for: profile) else { return }
         func names(_ id: String) -> Set<String> {
             var ids: Set<String> = [id]
             if let canonical = canonicalSessionID(for: id) { ids.insert(canonical) }
-            for row in sessions where SessionContentSearch.identities(of: row).contains(id) {
+            for row in catalog + sessions where SessionContentSearch.identities(of: row).contains(id) {
                 ids.formUnion(SessionContentSearch.identities(of: row))
             }
             return ids
