@@ -4603,6 +4603,7 @@ final class AppState: ObservableObject {
             // and the rest of the call goes on there. So does a call whose
             // chat was deleted (issue 1797).
             let own = self.localLiveOwnChat
+            let call = self.voiceBackgroundJobSupervisor.liveCallID
             let resolved = try await LocalLiveTurnRunner.callChat(
                 // A deleted one still names the bot its new chat is made on.
                 attached: self.voiceBackgroundJobSupervisor.liveThread ?? self.voiceBackgroundJobSupervisor.deletedLiveThread,
@@ -4610,11 +4611,16 @@ final class AppState: ObservableObject {
                 runtime: { try await self.localLiveChatRuntime($0) },
                 create: { profile in
                     let created = try await client.createSession(inProfile: profile)
+                    // Made on another profile: never the call's chat on its bot.
+                    if let profile, let made = created.profile, !Self.profilesMatch(made, profile) {
+                        throw HermesError.invalidResponse
+                    }
                     return VoiceThreadTarget(runtimeSessionID: created.sessionId, storedSessionID: created.storedSessionId,
                                              title: "", profile: profile)
                 }
             )
-            if resolved.own != own { self.localLiveOwnChat = resolved.own }
+            // Not after the call ended meanwhile: a new call has its own.
+            if resolved.own != own, self.voiceBackgroundJobSupervisor.liveCallID == call { self.localLiveOwnChat = resolved.own }
             return resolved.chat
         },
         isBusy: { [weak self] chat in

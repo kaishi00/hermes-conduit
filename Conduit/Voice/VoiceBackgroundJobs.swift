@@ -1968,8 +1968,18 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         guard let thread = liveThread, ids.contains(where: { backend.threadOwnsSession(thread, $0) }) else { return }
         deletedLiveThread = thread
         liveThread = nil
-        // Nothing to archive or tell its bot: the chat is gone.
-        keptCallChat = nil
+        // Its bot still hears the call left it, as at a hang-up, so nothing
+        // it holds for the call waits on.
+        if let kept = keptCallChat {
+            keptCallChat = nil
+            backend.callLeftChat(kept.profile, kept.chat, kept.call)
+        }
+        // The request whose chat it was is let go of, as at a hang-up: a
+        // later adoption replaces callChatJobID, and its outcome is no
+        // later call's to hear.
+        if let id = callChatJobID, let index = jobs.firstIndex(where: { $0.id == id }) {
+            jobs[index].outcomeDelivered = true
+        }
         callChatJobID = nil
         callChatClaim = nil
         chatNotes.removeAll()
@@ -1982,10 +1992,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// for any more (deleted in Desktop, say) is noted as deleted, so the
     /// call's next request makes a new one; this turn still fails.
     private func resolveRuntime(of chat: VoiceThreadTarget) async throws -> String {
+        let generation = generation
         do {
             return try await backend.resolveThreadRuntime(chat)
         } catch {
-            if HermesClient.isSessionNotFoundError(error) {
+            // Not after a reset: that answer is an earlier scope's.
+            if generation == self.generation, HermesClient.isSessionNotFoundError(error) {
                 noteChatDeleted(Set([chat.runtimeSessionID, chat.storedSessionID].compactMap { $0 }))
             }
             throw error
