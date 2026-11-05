@@ -514,6 +514,34 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(supervisor.deletedLiveThread, "hanging up forgets it")
     }
 
+    func testAGeminiCallsAskThreadAfterItsChatIsDeletedMakesANewChat() async {
+        let (supervisor, fake) = makeAttachedCall()
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        supervisor.noteChatDeleted(["st-chat"])
+
+        // The call's tools still offer ask_thread: it starts the job whose chat the call takes.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "ask_thread", arguments: ["request": "check the server"]))
+        XCTAssertEqual(fake.created, 1)
+        XCTAssertTrue(fake.threadSubmissions.isEmpty)
+        XCTAssertEqual(supervisor.liveThread?.runtimeSessionID, "rt-1")
+    }
+
+    func testAChatDeletedWhileItsJobStartsIsNeverTheCallsChat() async {
+        let fake = FakeVoiceJobBackend()
+        let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))
+        supervisor.liveCallTranscript = { [] }
+        supervisor.beginLiveCall()
+        fake.onSubmit = { _ in supervisor.noteChatDeleted(["st-1"]) }
+        _ = await supervisor.startJob(instructions: "plan the trip", joinsCall: true)
+        XCTAssertNil(supervisor.liveThread)
+
+        let base = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))
+        let watch = WatchCallJobSupervisor(base)
+        fake.onSubmit = { _ in base.noteChatDeleted(["st-2"]) }
+        _ = await watch.startJob(instructions: "plan the trip", profile: nil, joinsCall: true, onJobCreated: nil)
+        XCTAssertNil(watch.callChat)
+    }
+
     func testACallWhoseChatWasDeletedInDesktopGoesOnInANewChat() async {
         let (supervisor, fake) = makeAttachedCall()
         fake.threadRuntimeError = RpcError(code: 4001, message: "session not found")

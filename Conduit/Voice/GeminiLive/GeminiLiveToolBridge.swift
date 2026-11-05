@@ -624,6 +624,9 @@ final class GeminiLiveToolBridge {
             }
         }
         if !confirmed, let held = heldForOK(call, request: request, profile: "", toChat: true) { return held }
+        // The call's chat was deleted (issue 1797): the request makes the
+        // call a new chat, as an unattached call's first request does.
+        if supervisor.liveThread == nil { return await startBackgroundJob(call, instructions: request, profile: "") }
         let sent = supervisor.startThreadTurn(request: request)
         guard let jobID = sent.jobID else {
             return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_sent", "message": sent.refusal ?? "Hermes couldn't take the request."], scheduling: .whenIdle)]

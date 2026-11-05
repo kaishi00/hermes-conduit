@@ -1679,6 +1679,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         case .starting, .running, .needsInput, .finished: break
         }
         let thread = VoiceThreadTarget(runtimeSessionID: runtimeID, storedSessionID: job.storedSessionID, title: job.title)
+        // Deleted while its job was starting (issue 1797).
+        guard !isDeletedChat(thread) else { return }
         callChatJobID = jobID
         update(jobID) { $0.isCallChat = true }
         liveThread = thread

@@ -1897,7 +1897,9 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
             switch job.status {
             case .failed, .cancelled: break
             case .starting, .running, .needsInput, .finished:
-                callChat = VoiceThreadTarget(runtimeSessionID: runtimeID, storedSessionID: job.storedSessionID, title: job.title, profile: callProfile)
+                let chat = VoiceThreadTarget(runtimeSessionID: runtimeID, storedSessionID: job.storedSessionID, title: job.title, profile: callProfile)
+                // Not one deleted while its job was starting (issue 1797).
+                if !base.isDeletedChat(chat) { callChat = chat }
             }
         }
         return reply
