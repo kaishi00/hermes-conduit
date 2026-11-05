@@ -17,7 +17,9 @@ struct GroupChatView: View {
     /// This screen, to AppState's room poll: it stops while no room screen
     /// shows (`noteRoomView`).
     @State private var roomViewID = UUID()
-    private var roomShows: Bool { shell.isTabActive && !appState.showSidebar && scenePhase != .background }
+    /// Active, not just out of the background: the poll waits for the scene
+    /// to be active, so a return's catch-up lands when it can read.
+    private var roomShows: Bool { shell.isTabActive && !appState.showSidebar && scenePhase == .active }
     @State private var showingDisbandConfirmation = false
     @State private var choosingPicture: GroupRoomPictureRequest?
     /// Moves the transcript by the chat's rules (#1533, the transcript
