@@ -85,7 +85,8 @@ extension AppState {
         // so nothing waits to scroll.
         let refused = !isOpen && !profilesMatch(item.profile, activeProfile) && isVoiceCallInProgress
         if !refused {
-            pendingNeedsYouReveal = NeedsYouReveal(opening: isOpen ? nil : sessionID)
+            // The open chat names itself, so a switch away never takes its reveal.
+            pendingNeedsYouReveal = NeedsYouReveal(opening: isOpen ? activeSessionId : sessionID)
         }
         guard !isOpen else { return }
         dismissSidebarDrawer()

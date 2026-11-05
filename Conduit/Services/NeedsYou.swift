@@ -102,7 +102,7 @@ struct NeedsYouItem: Identifiable, Equatable {
 /// The chat to scroll to its waiting card once it's open: the newest
 /// question, approval or input card, as the jump button finds it.
 struct NeedsYouReveal: Equatable {
-    /// The chat being opened for it; nil when it's the open chat.
+    /// The chat it is for (being opened, or the open one); nil: any.
     let opening: String?
     let expires: Date
 
