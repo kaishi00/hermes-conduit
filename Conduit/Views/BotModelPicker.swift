@@ -27,9 +27,10 @@ struct BotModelPicker: View {
     @State private var openedPicked = false
 
     var body: some View {
-        ConduitList {
+        // Settings' own page, as Work and Edit Bot that push it.
+        SettingsDetailContainer {
             if allowsInherit {
-                Section {
+                SettingsCard {
                     row(
                         title: inheritTitle ?? AppLocalization.string("Same as Main Profile"),
                         isSelected: provider.isEmpty && model.isEmpty
@@ -46,11 +47,13 @@ struct BotModelPicker: View {
                         .foregroundStyle(.secondary)
                 }
                 if !ModelSearchQuery(query).isEmpty {
-                    searchResults(providers)
+                    SettingsCard {
+                        searchResults(providers)
+                    }
                 }
                 if ModelSearchQuery(query).isEmpty, !providers.isEmpty {
-                    // One list of providers, each opening its models under it.
-                    Section {
+                    // One card of providers, each opening its models under it.
+                    ConduitSettingsSection(title: AppLocalization.string("Providers"), symbol: "server.rack", tint: .purple) {
                         ForEach(providers, id: \.name) { option in
                             providerRow(option)
                             if expandedProviders.contains(option.name) {
@@ -67,8 +70,6 @@ struct BotModelPicker: View {
                                 }
                             }
                         }
-                    } header: {
-                        Text(AppLocalization.string("Providers"))
                     }
                 }
                 if catalog.failed {
@@ -153,6 +154,7 @@ struct BotModelPicker: View {
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
             }
+            .frame(minHeight: 36)
             .contentShape(Rectangle())
         }
         // Plain: a List tints a button's whole label with the accent, so
@@ -174,6 +176,7 @@ struct BotModelPicker: View {
         Text(AppLocalization.string("Could not load models."))
             .foregroundStyle(.secondary)
         Button(AppLocalization.string("Try Again")) { Task { await load() } }
+            .buttonStyle(.settings)
     }
 
     /// Matches across providers, each naming its provider: several often
@@ -212,7 +215,7 @@ struct BotModelPicker: View {
                     Text(verbatim: title)
                         .foregroundStyle(.primary)
                 }
-                Spacer()
+                Spacer(minLength: 8)
                 if isSelected {
                     Image(systemName: "checkmark")
                         .foregroundStyle(Color.conduitAccent)
