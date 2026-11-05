@@ -3850,7 +3850,7 @@ VoiceOver · README.md
 **Open gaps**
 - A folder several profiles work in is a separate project in each, so no page lists their chats together; that would need Conduit to merge projects across profiles, which Hermes doesn't group.
 
-**Checked:** 2026-11-05, #PRNUM.
+**Checked:** 2026-11-05, added at #1773.
 
 ## New project
 
