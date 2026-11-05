@@ -1195,7 +1195,9 @@ struct ModelPickerView: View {
         // A read asked since has the newer answer.
         guard read == catalogRead else { return }
         guard let loaded else {
-            refreshFailed = refresh
+            // A plain read that fails after a failed refresh keeps the
+            // refresh owed, so Try Again still asks for the live lists.
+            refreshFailed = refresh || refreshFailed
             catalog.readFailed()
             return
         }

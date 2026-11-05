@@ -147,7 +147,9 @@ struct BotModelPicker: View {
         let loaded = await appState.loadModelProviders(refresh: refresh)
         // A read asked since has the newer answer.
         guard read == catalogRead else { return }
-        refreshFailed = loaded == nil && refresh
+        // A plain read that fails after a failed refresh keeps the refresh
+        // owed, so Try Again still asks for the live lists.
+        refreshFailed = loaded == nil && (refresh || refreshFailed)
         if let loaded {
             catalog.hermesAnswered(Self.pickable(loaded))
             // Hermes' answer can list the pick where the kept one didn't,
