@@ -312,6 +312,23 @@ struct LocationSharedConfig: Codable, Equatable {
         binding != nil && settings.isOn && !settings.isPaused(at: now) && !(voiceReaders ?? []).isEmpty
     }
 
+    /// Whether sharing is bound to a dashboard that's no longer saved.
+    func isBound(outside saved: Set<UUID>) -> Bool {
+        binding.map { !saved.contains($0.dashboardID) } ?? false
+    }
+
+    /// Sharing ends as turning both layers off would, and is unbound, so
+    /// turning a layer on binds to the dashboard in use. Places, precision,
+    /// retention and this phone's id stay (issue 1800).
+    mutating func unbind() {
+        settings.talking = false
+        settings.background = false
+        settings.otherProfilesChosen = false
+        voiceReaders = nil
+        settingsPending = false
+        binding = nil
+    }
+
     mutating func setVoiceRead(_ storageID: String, allowed: Bool) {
         var readers = Set(voiceReaders ?? [])
         if allowed { readers.insert(storageID) } else { readers.remove(storageID) }

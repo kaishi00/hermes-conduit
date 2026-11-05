@@ -30,6 +30,16 @@ extension AppState {
     /// Wires location sharing to this app's connections. Once, at launch.
     func activateLocationSharing() {
         let controller = LocationSharingController.shared
+        // At launch and on each foreground, before any send or monitor: a
+        // dashboard removed before the sweep existed, or while the location
+        // config couldn't be read, is found here rather than at the next
+        // connect, the last one removed included (no connect follows it).
+        // Only from the stored list itself: before the first unlock the
+        // Keychain gives nothing, which isn't a removal, while removing the
+        // last dashboard stores an empty list.
+        if let stored = SavedDashboardRegistryStore.load() {
+            endSharingWithRemovedDashboards(saved: Set(stored.dashboards.map(\.id)))
+        }
         guard controller.requestProvider == nil else { return }
         controller.requestProvider = { [weak self] binding in
             await self?.locationRequest(for: binding)
@@ -59,6 +69,10 @@ extension AppState {
         }
         guard let pass = LocationKeychain.loadHostPass(), pass.dashboardID == binding.dashboardID else { return nil }
         return { path, method, body in
+            // Forgotten since (the dashboard was removed): nothing goes there.
+            guard LocationKeychain.loadHostPass()?.dashboardID == binding.dashboardID else {
+                throw DashboardTicketBridgeError.notReady
+            }
             do {
                 return try await LocationHostClient.requestJSON(
                     pass: pass, path: LocationHostClient.withProfile(path, profile: binding.profile),
@@ -84,7 +98,9 @@ extension AppState {
         // reach the host, and that may need the pass.
         guard let binding = controller.binding,
               activeDashboardID == binding.dashboardID, let bridge = dashboardTicketBridge else { return }
+        // Removed or unbound while the pass was read: it isn't kept.
         if let pass = await locationHostPass(bridge: bridge, dashboardID: binding.dashboardID),
+           controller.binding?.dashboardID == pass.dashboardID,
            !LocationKeychain.saveHostPass(pass) {
             // Logged by LocationKeychain. The previous pass (if any) stays;
             // the app still sends through the dashboard connection, but the

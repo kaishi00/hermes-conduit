@@ -15850,8 +15850,37 @@ final class AppState: ObservableObject {
         forgetRelayGatewayIDs(of: id)
         // Log to Hermes events waiting for it, and its inbox keys.
         ShortcutInboxQueue.forgetDashboard(id)
+        // Location, health and phone sharing bound to it.
+        endSharingWithRemovedDashboards()
         if wasActive {
             showLogin = true
+        }
+    }
+
+    /// Location, health and phone sharing each go only to the dashboard they
+    /// were turned on for. Once it's no longer saved, nothing can switch back
+    /// to it, so sharing with it ends here, as turning it off without
+    /// deleting would, and the next turn-on binds to the dashboard in use
+    /// (issue 1800). Run when a dashboard is removed, and on each connect for
+    /// one removed before this ran: connected, the saved dashboards were
+    /// read for sure (before the first unlock they may not be, and an empty
+    /// list then isn't a removal).
+    func endSharingWithRemovedDashboards(saved: Set<UUID>? = nil) {
+        let saved = saved ?? Set(savedDashboardRegistry.dashboards.map(\.id))
+        LocationSharingController.shared.endSharing(unlessBoundTo: saved)
+        // Each turn-off checks that sharing still goes there when it runs:
+        // a turn-on for the dashboard in use may have come first.
+        if let destination = healthSyncPreferences.destination, !saved.contains(destination.dashboardID) {
+            Task {
+                guard healthSyncPreferences.destination == destination else { return }
+                await turnOffHealthSync(deleteFromHost: false)
+            }
+        }
+        if let destination = phoneSync.preferences.destination, !saved.contains(destination.dashboardID) {
+            Task {
+                guard phoneSync.preferences.destination == destination else { return }
+                await turnOffPhoneSync(deleteFromHost: false)
+            }
         }
     }
 
@@ -27718,6 +27747,9 @@ final class AppState: ObservableObject {
     /// Asks the plugin what it serves. Cheap, so it runs on every connect.
     func refreshNotifierPluginStatus() async {
         guard let bridge = dashboardTicketBridge else { return }
+        // Connected, so the saved dashboards were read: sharing bound to one
+        // removed earlier ends first, whatever the status read says.
+        endSharingWithRemovedDashboards()
         notifierPluginStatusGeneration += 1
         let generation = notifierPluginStatusGeneration
         let state: NotifierPluginStatus.State

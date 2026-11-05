@@ -689,6 +689,31 @@ extension NotificationE2ETests {
         XCTAssertEqual(keyRequests, 1)
     }
 
+    func testSharingBoundToARemovedDashboardIsUnboundKeepingPlacesAndChoices() {
+        var config = LocationFixtures.config(background: true, talking: true)
+        config.settings.otherProfilesChosen = true
+        config.settings.backgroundPrecision = .precise
+        config.settingsPending = true
+        config.setVoiceRead("grok-live", allowed: true)
+        config.places = [LocationFixtures.home]
+        let deviceID = config.deviceID
+
+        XCTAssertFalse(config.isBound(outside: [LocationFixtures.dashboardID, UUID()]), "Still saved")
+        XCTAssertTrue(config.isBound(outside: [UUID()]), "Removed from Conduit (issue 1800)")
+        XCTAssertTrue(config.isBound(outside: []), "The last dashboard removed")
+
+        config.unbind()
+        XCTAssertNil(config.binding)
+        XCTAssertFalse(config.settings.isOn, "Shows off, so turning a layer on binds to the dashboard in use")
+        XCTAssertFalse(config.settings.otherProfilesChosen, "A choice about the old host's profiles isn't the next one's")
+        XCTAssertNil(config.voiceReaders, "Turning on again asks each voice mode again")
+        XCTAssertFalse(config.settingsPending, "Nothing left to tell a host that's gone")
+        XCTAssertEqual(config.places, [LocationFixtures.home])
+        XCTAssertEqual(config.settings.backgroundPrecision, .precise)
+        XCTAssertEqual(config.deviceID, deviceID)
+        XCTAssertFalse(config.isBound(outside: []), "Unbound is bound nowhere")
+    }
+
     @MainActor
     func testForgettingSpotsDropsTheShopEntriesWaitingToBeSent() {
         var unsent = LocationUnsent()
