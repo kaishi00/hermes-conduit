@@ -4879,9 +4879,16 @@ pictures' VoiceOver hint "Opens full screen with save and share")
 Boards: one `conduit_show` call shows up to 12 native cards in the chat
 (maps and places, stats, charts, weather, comparisons, steps, media, people,
 status, and since plugin 0.128 tables to sort, day-by-day timelines,
-checklists, lists, progress and callouts), stacked or as tabs, with up to
-four follow-ups under it. Live models put the same cards on the call screen
-with show_on_screen.
+checklists, lists, progress and callouts, and since plugin 0.133 diffs),
+stacked or as tabs, with up to four follow-ups under it. Live models put the
+same cards on the call screen with show_on_screen.
+
+A diff card (issue 1818) shows changes Hermes presents: a review, a commit, a
+config, two versions of a text. Hermes gives a unified patch, the path of a
+patch file on the host, or a before and after; the plugin reads it into
+files, hunks and lines. The chat shows the files and totals; a tap opens a
+sheet with every file, line numbers, colored lines and the changed words.
+Presenting only: no Git operations.
 
 **Siblings:** chats, project chats and Bot Chat (the tool row) · the saved-chat
 copy · the call screen (Gemini, Grok, Qwen and Local Live show_on_screen;
@@ -4890,18 +4897,20 @@ Hermes Desktop (the plugin's Desktop half draws the board) and messaging apps
 (the Markdown) · the Watch and CarPlay ·
 Predictions' reply chips (the follow-ups are the same chip) · what models read:
 conduit_show's description and answers, the drawing rule, the
-`conduit_push:drawing-boards` skill, show_on_screen's description · the
-notifier README and CHANGELOG
+`conduit_push:drawing-boards` skill (its Showing changes recipe), show_on_screen's description · the
+notifier README and CHANGELOG · for diffs, the full-diff sheet and the kept
+diffs route (`/boards/diffs`)
 
 **Code**
 - Schema, shared byte for byte: `notifier/cards/card-schema.json`, `notifier/cards/card-vectors.json`, copied to `Conduit/Cards/card-schema.json` and `ConduitTests/Fixtures/card-vectors.json` (`scripts/check-card-schema.py`); normalized the same way in `notifier/card_schema.py` (normalize_cards with notes, normalize_next, normalize_layout, the Markdown) and `Conduit/Cards/RichCardSchema.swift` (prepared, cell, followUps)
 - The tool: `notifier/show_tool.py` (problems, markdown, the old-Conduit cap, BOARD_RULE, the typed chat's TYPED_CHAT_NOTE), how the turn's message was entered in `notifier/turn_surface.py` (turn_entry), the rule and the checklist note in `notifier/__init__.py`, recipes in `notifier/skills/drawing-boards/SKILL.md`; the phone's features in `Conduit/Services/PresentedScreens.swift` ("board-cards") and `notifier/present_store.py`
 - Checklist ticks on the host: `notifier/checklist_store.py`, `notifier/dashboard/api/boards.py` (`/boards/checklists`, capability "board-checklists"); in Conduit `Conduit/Cards/RichChecklistMemory.swift`, `Conduit/Services/AppState+Boards.swift`
 - Cards and views: `Conduit/Cards/RichCard.swift`, `Conduit/Cards/RichBoardCard.swift` (RichBoard, RichTable…), `Conduit/Cards/RichBoardCardViews.swift` (RichBoardLayout, RichBoardFollowUps, RichBoardMarkdown), `Conduit/Cards/RichCardViews.swift`; the chat row in `Conduit/Views/ChatView.swift`, its follow-ups in `Conduit/Views/ChatRowState.swift` (followUpBoardRowID) and `Conduit/Services/AppState.swift` (requestBoardFollowUp)
-- Live models: `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (showOnScreenDeclaration, invalidCardsNote)
+- Diff cards: reading a patch in `notifier/card_schema.py` (read_diff, parse_patch, read_patch_file, answer_diff, `_diff_markdown`, DIFF_FEATURE), the answer in `notifier/show_tool.py` (`_diffs_answered`, keep_diff), kept on the host by `KeptDiffs` in `notifier/room_boards.py` (`_keep_diff` in `notifier/__init__.py`), read from `notifier/dashboard/api/boards.py` (`/boards/diffs`, capability "diff-cards"); the Desktop half's Diff in `notifier/desktop/plugin.js`; in Conduit `Conduit/Cards/RichDiffCard.swift` (RichDiff, RichDiffLine.numbered and changedParts, RichDiffLoader), `Conduit/Cards/RichDiffCardViews.swift` (RichDiffCard, RichDiffSheet), normalizeDiff and the "line" format in `Conduit/Cards/RichCardSchema.swift`, installRichDiffReader in `Conduit/Services/AppState+Boards.swift`, the "diff-cards" feature in `Conduit/Services/PresentedScreens.swift`
+- Live models: `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (showOnScreenDeclaration, invalidCardsNote; RichCardSchema.liveToolParameter leaves diffs out)
 - Group rooms: `notifier/room_boards.py`, `_save_room_board` in `notifier/__init__.py`, `notifier/dashboard/api/boards.py` (`/boards/rooms`, capability "room-boards"); in Conduit `Conduit/Cards/RoomBoards.swift` (RoomBoard.placed, RoomBoardsView), `Conduit/Services/AppState+RoomBoards.swift`, the row in `Conduit/Views/GroupChatView.swift` (GroupMemberBubble) and `Conduit/Views/TranscriptModel.swift` (GroupRoomRow.event)
 - Hermes Desktop: the half `notifier/desktop/plugin.js` (the `::conduit-board{id="cb-…"}` directive, its cards, the "seen" handshake), `DesktopBoards` in `notifier/room_boards.py`, `_save_desktop_board` and `_desktop_half_live` in `notifier/__init__.py`, the Desktop branch and DESKTOP_BOARD_RULE in `notifier/show_tool.py`, `notifier/dashboard/api/boards.py` (`/boards/desktop`, `/boards/desktop/seen`, capability "desktop-boards"); Conduit hides the line in `Conduit/Views/Components/TranscriptDirectives.swift` (conduitBoardName, removingBoards), and `Conduit/Views/Components/MarkdownText.swift` keeps it hidden (directiveSegments, and parseDocument's empty-blocks fallback, so a reply that is only the line stays empty), as does a pin's excerpt in `Conduit/Models/PinnedReplies.swift`
-- Tests: `ConduitTests/RichCardTests.swift`, `ConduitTests/RichCardTests+Boards.swift`, `ConduitTests/MarkdownLargeDocumentTests+DesktopCard.swift` (testConduitBoard_…), `notifier/tests/test_cards.py`, `notifier/tests/test_show.py`, `notifier/tests/test_checklists.py`, `notifier/tests/test_room_boards.py`, `notifier/tests/test_desktop_boards.py`, `notifier/upstream/test_desktop_half.py` (Hermes' own Desktop lint over the half)
+- Tests: `ConduitTests/RichCardTests.swift`, `ConduitTests/RichCardTests+Boards.swift`, `ConduitTests/RichCardTests+Diff.swift`, `notifier/tests/test_diff_cards.py`, `ConduitTests/MarkdownLargeDocumentTests+DesktopCard.swift` (testConduitBoard_…), `notifier/tests/test_cards.py`, `notifier/tests/test_show.py`, `notifier/tests/test_checklists.py`, `notifier/tests/test_room_boards.py`, `notifier/tests/test_desktop_boards.py`, `notifier/upstream/test_desktop_half.py` (Hermes' own Desktop lint over the half)
 
 **Rulings**
 - One tool: conduit_show grows; there is no second board tool (Eric, 2026-11-03, #1713 with notifier #528).
@@ -4918,8 +4927,14 @@ notifier README and CHANGELOG
 - A Conduit without "board-cards" gets at most four cards, no layout and no follow-ups (2026-11-03, notifier #528). Only the Conduits used in the last three days count, for board-cards, room-boards and the other card features, and the drawing rule names the weather and how to reach conduit_show behind Tool Search: on .52 four installs last used days before kept the rule off and trimmed the phone's boards (Eric, 2026-11-04, notifier #539).
 - Real data only: models are told to fill tables, stats and charts from tools, sites or the user's files, with their source (2026-11-03, notifier #528).
 - A turn whose message Conduit reported as typed keeps nothing for a call's screen: its chat is open, not a call. Its cards are drawn in the chat from the answer, and Markdown alone is refused (`typed_chat`) so Hermes writes it in its reply, never saying it's on a screen. A message typed during a call goes the same way: the user is typing in the chat, so that's where it shows. Spoken and unreported turns (calls, a call's jobs) reach the call screen as before. A group room has no call screen either, so Markdown alone there is refused too (`group_room`) (2026-11-05, issue 1808, notifier #556 with #1815).
+- Diffs: Hermes hands over a patch it already has (`patch`), a patch file's path on the host for anything past a few dozen lines (`patch_file`, so a long review costs a path, not the diff in output tokens), or `before` and `after`; the plugin never runs Git, and nothing is GitHub-specific (the PR or commit link is the card's `source`) (Eric, 2026-11-05, issue 1818, notifier #566).
+- A `patch_file` that isn't a unified diff is refused with none of its content in the answer, so the tool can't put an arbitrary host file on screen; up to 2 MB, 300 files and 20,000 lines, tabs as four spaces, a line past 1,000 characters cut (notifier #566).
+- A diff of up to 150 lines over up to 20 files travels whole in the answer (drawn offline, in the saved copy and by Desktop); a longer one keeps only its file list and totals in the answer, and the whole diff on the host (root home, `conduit-diffs/`, the newest 200, a month) under a `cd-` id read from `/boards/diffs` when the user opens it, so a big diff never reaches the chat's history or the model's context (notifier #566).
+- The chat's card draws only from what the answer carries (bounded height, stable from the first frame): totals, a five-block bar, up to six file rows or a single file's first 20 lines. The sheet folds deleted, binary and files past 400 lines; lines wrap or scroll (remembered); a file's patch and a line can be copied.
+- A Conduit without "diff-cards" gets no diff card and Hermes is told to give what it held in its reply; the Markdown fallback is the file list then the first 40 lines in a ```diff block. Live models aren't offered diffs; a diff Hermes shows during a call still reaches the call screen.
 
 **Open gaps**
+- Diffs: no side-by-side view, and the unchanged lines between hunks can't be expanded (only the patch is known); a kept diff can't be opened offline, nor once the host has pruned it.
 - A room's checklists can't be ticked, and a board in a room another host runs (Linked Rooms) goes as text.
 - Desktop's half draws maps, places, weather, media and contacts as their Markdown, not natively.
 - The call screen draws a board stacked, with no tabs and no follow-ups (the user speaks the next question).
@@ -4930,7 +4945,7 @@ notifier README and CHANGELOG
 - Boards are parsed again each time a row is drawn; no cache yet, as liveNames has.
 - A typed message on a Hermes where Conduit's report doesn't reach the turn (plugin isolation, a compute host) is unknown, so Markdown alone there still waits for a call screen that may not be open.
 
-**Checked:** 2026-11-05, #1815 with notifier #556 (a typed chat's conduit_show keeps nothing for a call screen, issue 1808; Code, Rulings, gaps); 2026-11-04, #1751 with notifier #539 (boards drawn in Hermes Desktop by the plugin's Desktop half; Conduit hides its line; Siblings, Code, Rulings, gaps); 2026-11-04, #1748 (ticks fenced to their own dashboard; unsent ticks follow the chat's ids); 2026-11-04, #1736 with notifier #536 (boards drawn in group rooms); 2026-11-03, #1713 with notifier #528.
+**Checked:** 2026-11-05, #PRNUM with notifier #566 (diff cards, issue 1818; intro, Siblings, Code, Rulings, gaps); 2026-11-05, #1815 with notifier #556 (a typed chat's conduit_show keeps nothing for a call screen, issue 1808; Code, Rulings, gaps); 2026-11-04, #1751 with notifier #539 (boards drawn in Hermes Desktop by the plugin's Desktop half; Conduit hides its line; Siblings, Code, Rulings, gaps); 2026-11-04, #1748 (ticks fenced to their own dashboard; unsent ticks follow the chat's ids); 2026-11-04, #1736 with notifier #536 (boards drawn in group rooms); 2026-11-03, #1713 with notifier #528.
 
 ## Cards drawn in web pages
 

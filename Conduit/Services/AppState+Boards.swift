@@ -3,7 +3,8 @@
 //  Conduit
 //
 //  Where the open chat's checklist cards keep their ticks: on the host,
-//  through the plugin's /boards/checklists route (RichChecklistMemory).
+//  through the plugin's /boards/checklists route (RichChecklistMemory);
+//  and where a diff card reads the whole of a long diff (/boards/diffs).
 //
 
 import Foundation
@@ -45,5 +46,16 @@ extension AppState {
             throw DashboardTicketBridgeError.notReady
         }
         return bridge
+    }
+
+    /// A diff card reads the whole of a long diff from the connected
+    /// Hermes, the one whose plugin kept it; an id from another Hermes is
+    /// answered as gone there.
+    func installRichDiffReader() {
+        RichDiffLoader.shared.read = { [weak self] path in
+            guard let self, self.notifierPlugin.reports(RichDiffLoader.capability),
+                  let bridge = self.dashboardTicketBridge else { throw RichDiffLoader.LoadError.notConnected }
+            return try await bridge.requestJSON(path: path)
+        }
     }
 }
