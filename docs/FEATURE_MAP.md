@@ -2093,10 +2093,11 @@ README.md's feature list
 
 **Code**
 - Staging and its limits: `Conduit/Views/Components/ComposerAttachments.swift` (AttachmentSizeLimit, AttachmentTypePolicy, AttachmentStaging's stageCopy and finishStaging)
-- Dropped files: `Conduit/Views/Components/AttachmentDrop.swift` (AttachmentDrop and its take, attachmentDropTarget and its outline, attachmentDragEnded), `Conduit/Views/Components/ReturnKeyTextView.swift` (fieldDrop, takeDrop, FieldDropHandler: every composer field's only drop interaction, and dragEnded), `Conduit/Views/Components/ComposerPasteTextView.swift` (takesDroppedFiles, takeDroppedFiles), `Conduit/Views/ChatView.swift` and `Conduit/Views/GroupChatView.swift` (the drop targets), `Conduit/Services/AppState.swift` (dropIntoComposer, dropIntoRoomComposer), `Conduit/Views/Components/ComposerFullEditor.swift` (onDropFiles)
+- Dropped files: `Conduit/Views/Components/AttachmentDrop.swift` (AttachmentDrop and its take, stage and stageImageObject, attachmentDropTarget and its outline, attachmentDragEnded), `Conduit/Views/Components/ReturnKeyTextView.swift` (fieldDrop, takeDrop, FieldDropHandler: every composer field's only drop interaction, and dragEnded), `Conduit/Views/Components/ComposerPasteTextView.swift` (takesDroppedFiles, takeDroppedFiles), `Conduit/Views/ChatView.swift` and `Conduit/Views/GroupChatView.swift` (the drop targets), `Conduit/Services/AppState.swift` (dropIntoComposer, dropIntoRoomComposer), `Conduit/Views/Components/ComposerFullEditor.swift` (onDropFiles)
 - Chat composer: `Conduit/Views/Components/ComposerBar.swift` (attachmentButton, handleDocumentSelection, handleDroppedFiles, handlePastedImage, attachLongPaste, pastedTextActions), `Conduit/Views/Components/ComposerPasteTextView.swift` (paste(itemProviders:), onDroppedFiles)
 - Long pastes: `Conduit/Views/Components/PastedTextAttachment.swift` (PastedText: threshold, name, staging; PastedTextSheet), `Conduit/Views/Components/ReturnKeyTextView.swift` (onLongTextPaste, paste and pasteAndMatchStyle, for every composer field), `Conduit/Views/Components/ComposerAttachments.swift` (ComposerAttachmentChip, AttachmentTypePolicy.displayName), `Conduit/Views/ChatView.swift` (UserDocumentAttachmentChip), `Conduit/Views/GroupChatView.swift` (GroupMessageFiles)
 - Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (attachButton, importDocuments, importDroppedFiles, finishImport, attachLongPaste, pastedTextActions)
+- A picture as an image object, and its PNG (paste and drop): `Shared/ShareDraft/ProviderPicture.swift` (loadImage, pngData)
 - Sending a staged picture, for either server: `Conduit/Services/HermesClient.swift` (attachImage, detachImage, authorityStagedImages, sendPrompt's `attachments`)
 - Tests: `ConduitTests/ComposerAttachmentPolicyTests.swift`, `ConduitTests/PastedTextAttachmentTests.swift`, `ConduitTests/ComposerPasteTextViewTests.swift`
 
@@ -2106,6 +2107,7 @@ README.md's feature list
 - A locked chat composer takes no drop, as its Attach menu is off then; a room on a plugin that can't store its files says what fixes it, as its Attach menu does (2026-10-28, #1411).
 - A composer field's only drop interaction is its own; UIKit's text drop is kept off every field, since it took a picture dropped from Finder and never finished it, so nothing attached and the drag hung (issue 1689). The chat composer's field stages files itself (a lone picture keeps the picture paste), and takes none while the composer is locked; a room's field and the full editor turn files down, so the room or the editor around them attaches them. Words and links go into the draft where they're dropped, and words dragged within a field move there, as before; a link a browser offers with its page as text is still a link, while a picture dragged from a page (which carries its address too) is a file. A drop of files and words together on a room's field or the full editor goes to the room or editor, which attaches the files and leaves the words out, as a drop elsewhere on it does (2026-11-03, #1695).
 - The chat's or room's "Drop to attach" outline goes away when the drag does, wherever it ends: dropped on the chat, on the composer's field, or elsewhere, or called off. SwiftUI raises and lowers it as the drag comes, goes or is called off over the chat; the target's own drop and the field, when a drag that reached it ends, lower it too, since a drag that ends on the field never tells the chat it left (issue 1689, build 250, 2026-11-04, #1766) The field's end clears every target's outline, not only its own drag's: with two drags at once on an iPad, one ending on a field takes down the other's outline early, though a drop there still attaches. Accepted as cosmetic rather than tracking each drag's session, which SwiftUI's drop doesn't expose (2026-11-04, #1766 review).
+- A dropped picture whose file can't be read is taken as the image object it also offers and staged as PNG (its name's own extension dropped), then finished like any staged file, the size limit included; it is the one drop decoded before its size is checked, a picture-sized read. A dropped picture's PNG is checked against the limit before it is written. A pasted or dropped picture with no bitmap of its own (`pngData()` nil) is drawn once and that is written, up to 64 million pixels. As the share sheet does (see Sharing into Conduit; 2026-11-05, #1821, issue 1747).
 - A dropped folder is taken but not attached: the composer's notice names it and says to drop the files inside. Files dropped with it still attach (2026-10-28, #1422).
 - Text pasted in a composer field (inline or full editor, chat or room) over 3,000 characters, Hermes Desktop's threshold, goes in as a removable text attachment instead of into the field: a `.txt` named as Desktop names a paste (`pasted_content_<time>_<hex>.txt`), staged and sent like any file, so Hermes puts its text in the prompt through the `@file:` reference and a reopened chat, here or in Desktop, shows it as pasted text. Pasted over a selection, it still replaces the selection. Its chip shows the first words; a tap shows the whole paste to read or edit, and Paste as text puts it back in the field after what was typed, and clearing its text removes it, as × does. The file is written off the main actor; if it can't be written, the words go into the field after all. Only the Paste command (`paste(_:)`: Cmd-V, the edit menu, the keyboard's Paste) attaches it; words that come through the item-provider route, dropped or from a keyboard action, stay words, so the clipboard is read only when the user pastes. A shorter paste, a picture, or a paste where the composer can't take files (locked, a chat still on its way, whose waiting message is words only, or a room on a plugin that can't store files) goes into the field as before, and so does one too big for the attachment limit, which can't go as a file. Dropped words stay words, as above. The message also sends the paste's first 1,000 characters as `title_preview`, as Desktop does, so a chat that opens with a paste gets a title from its words, not its file name; a Hermes that refuses the key gets the message without it (Eric asked for it, 2026-10-29, #1515).
 - A picture is staged with `image.attach_bytes` on either server. The dashboard holds it for the chat's next message; the gateway's own listener only stages it, so Conduit names it in that message's `attachments` (path and type) and taking it back before the send just drops it from that list (2026-11-02, #1631, checked against a real listener: a staged picture the message doesn't name never reaches the model). A send that fails takes back every picture it staged, on either server, so none rides on the chat's next message (2026-11-02, #1631).
@@ -2114,7 +2116,7 @@ README.md's feature list
 **Open gaps**
 - A dropped folder's files aren't attached for the user; they drop the files themselves.
 
-**Checked:** 2026-11-04, #1766 (the "Drop to attach" outline clears when a drag ends on the field); 2026-11-03, #1695 (a file dropped on a composer field attaches instead of hanging the drop, issue 1689); 2026-11-02, #1631 (pictures reach the reply on the gateway's own listener; see Two Hermes servers); 2026-10-29, #1515 (long pastes become text attachments); 2026-10-28, #1422 (folder drops say why they aren't attached).
+**Checked:** 2026-11-05, #1821 (a dropped picture whose file fails is taken as its image object; pictures without a bitmap are drawn before they're written); 2026-11-04, #1766 (the "Drop to attach" outline clears when a drag ends on the field); 2026-11-03, #1695 (a file dropped on a composer field attaches instead of hanging the drop, issue 1689); 2026-11-02, #1631 (pictures reach the reply on the gateway's own listener; see Two Hermes servers); 2026-10-29, #1515 (long pastes become text attachments); 2026-10-28, #1422 (folder drops say why they aren't attached).
 
 ## A chat while it opens
 
@@ -3409,21 +3411,25 @@ size limit (its own entry) · README.md (the share sheet line)
 
 **Code**
 - Reading the share: `Shared/ShareDraft/ShareDraftCollector.swift` (kind, fileType, offersImageObjectOnly, stageFile)
+- A picture as an image object, and its PNG: `Shared/ShareDraft/ProviderPicture.swift` (loadImage, pngData), used by the share sheet, paste and drop
 - The sheet: `ConduitShareExtension/ShareDraftModel.swift` (collect, ShareDraftProblem.message), `ConduitShareExtension/ShareDraftSheet.swift`
 - Paste: `Conduit/Views/Components/ComposerPasteTextView.swift` (canLoadImageProvider, loadImageObject)
-- Drop: `Conduit/Views/Components/AttachmentDrop.swift`, `Conduit/Views/Components/ReturnKeyTextView.swift` (fieldDrop)
+- Drop: `Conduit/Views/Components/AttachmentDrop.swift` (stage, stageImageObject), `Conduit/Views/Components/ReturnKeyTextView.swift` (fieldDrop)
 - Tests: `ConduitTests/ShareDraftTests.swift`
 
 **Rulings**
 - A picture offered only as an image object (the screenshot editor's Share hands over UIKit's own `com.apple.uikit.image`) is attached as a PNG, as a pasted one is. UIKit's archived image type is never read as a picture file; a provider that also offers a picture file is read as that file (2026-11-04, #1750, issue 1747).
 - A picture offered only as an image object takes its suggested name without that name's extension: it is always written as PNG (2026-11-04, #1750 review).
+- A shared file is read every way its provider offers, in turn: its file, then a picture's bytes (only when they decode as a picture: the header's pixel count first, at most 64 million, then a small thumbnail of the first frame, so a small file claiming a huge picture is never decoded at full size), then the picture as an image object (as PNG; never for a video or document, whose preview would stand in for the file), then the item it hands over under its type and then as its file URL; it is left out only when all of them failed. A provider offering a file URL that doesn't load as a link is read this way too, rather than skipped. Bytes are read only for a picture, so a video or document is never read into the extension's memory whole (2026-11-05, #1821, issue 1747 on build 251).
+- An unreadable item's Left out line adds the system's reason under it, and each failed step is logged (category ShareDraft, the reason kept private), so one try on a device shows which step failed (2026-11-05, #1821).
+- A picture with no bitmap of its own (`pngData()` nil) is drawn once and that is written, in the share sheet, paste and drop alike; a dropped picture whose file can't be read is taken as its image object too (2026-11-05, #1821).
 - When nothing could be added, the sheet shows the Left out list a draft has, each thing with why (too large, unreadable), scrolling however many there are; the general "nothing here" line is only for a share that offered nothing Conduit reads (2026-11-04, #1750, issue 1747).
 
 **Open gaps**
 - A drop decides from the dragged item's listed types alone, so a drag that offers only UIKit's image object isn't taken by a chat, a room or the composer field (no source is known to send one; pasting one works).
 - Something the share offered under a type Conduit doesn't read at all is skipped without a line, alongside things that were added.
 
-**Checked:** 2026-11-04, #1750 (issue 1747: the screenshot editor's picture is attached; the failed sheet names what was left out).
+**Checked:** 2026-11-05, #1821 (issue 1747 on build 251: the picture was still left out as unreadable; every read is now tried in turn, with the reason shown and logged).
 
 ## Files over the size limit
 
@@ -3438,8 +3444,8 @@ message · the group room composer · the Settings caption for the limit
 - The limit and its message: `Conduit/Views/Components/ComposerAttachments.swift` (AttachmentSizeLimit, tooLargeMessage)
 - Chat composer: `Conduit/Views/Components/ComposerBar.swift`
 - Paste: `Conduit/Views/Components/ComposerPasteTextView.swift`
-- Dropped files: `Conduit/Views/Components/AttachmentDrop.swift` (through AttachmentStaging.stageCopy, the Document picker's path)
-- Share extension: `Conduit/Services/AppState+ShareDraft.swift`
+- Dropped files: `Conduit/Views/Components/AttachmentDrop.swift` (through AttachmentStaging.stageCopy, the Document picker's path; a picture whose file fails, through stageImageObject, which holds its PNG to the limit before writing it, #1821)
+- Share extension: `Conduit/Services/AppState+ShareDraft.swift`; `Shared/ShareDraft/ShareDraftCollector.swift` (stageFile: a file's size before and after its copy, a picture's bytes before they are decoded or written, #1821)
 - Ask Hermes About Screen: `Conduit/Intents/AskHermesAboutScreenIntent.swift`
 - Voice message: `Conduit/Services/AppState+VoiceMessage.swift`
 - Group rooms: `Conduit/Services/GroupRoomFiles.swift` (stagingLimit, tooLargeMessage), `Conduit/Views/Components/GroupRoomComposer.swift`
@@ -3453,7 +3459,7 @@ message · the group room composer · the Settings caption for the limit
 - A pasted picture link whose header claims more pixels than a reply's picture may have is refused as "The image provider returned invalid image data.", not as too large.
 - The Settings caption doesn't say that a group room takes at most 50 MB whatever the limit.
 
-**Checked:** 2026-10-29, #1515 (a long paste over the limit isn't attached: it goes into the field, as pastes did before); 2026-10-28, #1411 (dropped files refused with the same limit and message as picked ones); 2026-10-24, at #1190; the paste's pixel bound at #1191 (#892 review).
+**Checked:** 2026-11-05, #1821 (a picture whose file fails is held to the same limit when it is taken as its bytes or its image object, on the share sheet and a drop); 2026-10-29, #1515 (a long paste over the limit isn't attached: it goes into the field, as pastes did before); 2026-10-28, #1411 (dropped files refused with the same limit and message as picked ones); 2026-10-24, at #1190; the paste's pixel bound at #1191 (#892 review).
 
 ## Sending files in a chat
 

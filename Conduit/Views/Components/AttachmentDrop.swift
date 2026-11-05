@@ -128,12 +128,14 @@ enum AttachmentDrop {
 
     /// Copies one dropped item into the staging folder under its own name.
     /// The system's copy is only readable inside the load callback, so the
-    /// copy happens there.
+    /// copy happens there. A picture whose file can't be read is taken as
+    /// an image object and written as PNG, as the share sheet does (issue
+    /// 1747).
     static func stage(_ provider: NSItemProvider, ordinal: Int, limitMegabytes: Int) async -> AttachmentStaging.StagedImport {
         let type = fileType(registeredTypeIdentifiers: provider.registeredTypeIdentifiers)
         let fallbackName = AttachmentTypePolicy.filename(suggested: provider.suggestedName, type: type, ordinal: ordinal)
         guard let type else { return .failed(fallbackName) }
-        return await withCheckedContinuation { continuation in
+        let copied: AttachmentStaging.StagedImport = await withCheckedContinuation { continuation in
             _ = provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, _ in
                 guard let url else {
                     continuation.resume(returning: .failed(fallbackName))
@@ -152,6 +154,21 @@ enum AttachmentDrop {
                 ))
             }
         }
+        guard case .failed = copied, type.conforms(to: .image) else { return copied }
+        return await stageImageObject(provider, ordinal: ordinal, limitMegabytes: limitMegabytes) ?? copied
+    }
+
+    /// A dropped picture read as an image object and staged as PNG; nil
+    /// when the provider can't hand one over either.
+    static func stageImageObject(_ provider: NSItemProvider, ordinal: Int, limitMegabytes: Int) async -> AttachmentStaging.StagedImport? {
+        guard let image = await ProviderPicture.loadImage(provider).image,
+              let data = ProviderPicture.pngData(image) else { return nil }
+        let stem = ((provider.suggestedName ?? "") as NSString).deletingPathExtension
+        let name = AttachmentTypePolicy.filename(suggested: stem.isEmpty ? nil : "\(stem).png", type: .png, ordinal: ordinal)
+        guard AttachmentSizeLimit.allows(byteCount: Int64(data.count), megabytes: limitMegabytes) else { return .tooLarge(name) }
+        guard let staged = try? AttachmentStaging.destination(for: name),
+              (try? data.write(to: staged, options: .atomic)) != nil else { return .failed(name) }
+        return AttachmentStaging.finishStaging(fileAt: staged, name: name, type: .png, limitMegabytes: limitMegabytes)
     }
 
     /// Stages every dropped file in order, one at a time like a picked
