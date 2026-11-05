@@ -4646,7 +4646,7 @@ final class AppState: ObservableObject {
                     }
                 }
                 if foundBusy { throw VoiceThreadBusyError() }
-                if let thread = self.voiceBackgroundJobSupervisor.liveThread { self.noteCallChatIfGone(thread) }
+                if let thread = self.voiceBackgroundJobSupervisor.liveThread ?? self.localLiveOwnChat { self.noteCallChatIfGone(thread) }
                 throw VoiceAudioError.unavailable(self.callRefusalMessageForOpenChat()
                     ?? AppLocalization.string("Hermes could not send this to the chat."))
             }
