@@ -159,4 +159,45 @@ extension BotModeTests {
             return XCTFail("Bytes that aren't a picture can't be used")
         }
     }
+
+    func testBringToLifeLoopsWithoutAJump() {
+        let start = LivingPortrait.pose(at: 0)
+        let end = LivingPortrait.pose(at: LivingPortrait.loopDuration)
+        XCTAssertEqual(start.scale, end.scale, accuracy: 1e-9)
+        XCTAssertEqual(start.rotation, end.rotation, accuracy: 1e-9)
+        XCTAssertEqual(start.dx, end.dx, accuracy: 1e-9)
+        XCTAssertEqual(start.dy, end.dy, accuracy: 1e-9)
+        // The subject never shrinks past its own place in the background.
+        for step in 0..<LivingPortrait.frameCount {
+            XCTAssertGreaterThan(LivingPortrait.pose(at: Double(step) * 0.0833).scale, 1)
+        }
+    }
+
+    func testBringToLifeMakesALoopingPictureUnderTheCap() throws {
+        // Vision needs a device, so the subject here is drawn by hand: a
+        // disc with the rest transparent, as Vision's cut-out is.
+        let side = LivingPortrait.edge
+        let background = try XCTUnwrap(LivingPortrait.softened(solidFrame(.blue, width: side, height: side)))
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        let subject = try XCTUnwrap(UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { context in
+            UIColor.orange.setFill()
+            context.cgContext.fillEllipse(in: CGRect(x: 64, y: 64, width: 128, height: 128))
+        }.cgImage)
+        let frames = LivingPortrait.frames(background: background, subject: subject)
+        XCTAssertEqual(frames.count, LivingPortrait.frameCount)
+        XCTAssertEqual(frames.reduce(0) { $0 + $1.delay }, LivingPortrait.loopDuration, accuracy: 0.001)
+        XCTAssertNotEqual(frames[0].image.dataProvider?.data as Data?, frames[9].image.dataProvider?.data as Data?, "The subject moves")
+        let data = try AnimatedAvatar.encode(frames).get()
+        XCTAssertTrue(AnimatedAvatar.isAnimated(data))
+        XCTAssertLessThanOrEqual(data.count, AnimatedAvatar.maxBytes)
+    }
+
+    func testBringToLifeSaysWhenThereIsNoSubject() {
+        XCTAssertEqual(
+            LivingPortrait.message(for: .noSubject),
+            AppLocalization.string("No subject was found in that picture to bring to life.")
+        )
+    }
 }

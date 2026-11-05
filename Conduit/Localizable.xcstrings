@@ -428494,94 +428494,6 @@
         }
       }
     },
-    "A GIF or a short video moves on Bots Home and in Hermes Desktop.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ein GIF oder ein kurzes Video bewegt sich auf der Bots-Startseite und in Hermes Desktop."
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "A GIF or a short video moves on Bots Home and in Hermes Desktop."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Un GIF o un vídeo corto se mueve en el inicio de Bots y en Hermes Desktop."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Un GIF ou une courte vidéo s'anime sur l'accueil des Bots et dans Hermes Desktop."
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "GIF atau video pendek akan bergerak di Beranda Bot dan di Hermes Desktop."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Una GIF o un breve video si muove nella Home dei Bot e in Hermes Desktop."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "GIF や短い動画は、Bots ホームと Hermes Desktop で動きます。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "GIF나 짧은 동영상은 봇 홈과 Hermes Desktop에서 움직여요."
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "GIF lub krótkie wideo porusza się na ekranie głównym botów i w Hermes Desktop."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Um GIF ou um vídeo curto se move no Início dos Bots e no Hermes Desktop."
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "GIF или короткое видео двигается на главном экране ботов и в Hermes Desktop."
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "GIF veya kısa bir video, Botlar Ana Ekranı'nda ve Hermes Desktop'ta hareket eder."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "GIF 或短视频会在机器人主页和 Hermes Desktop 中动起来。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "GIF 或短影片會在機器人主頁和 Hermes Desktop 中動起來。"
-          }
-        }
-      }
-    },
     "Built from the name and description": {
       "localizations": {
         "de": {
@@ -429268,6 +429180,252 @@
           "stringUnit": {
             "state": "translated",
             "value": "在「設定」>「Apple Intelligence 與 Siri」中開啟 Apple Intelligence，即可使用「影像樂園」製作圖片。"
+          }
+        }
+      }
+    },
+    "Bring to Life": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zum Leben erwecken"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dar vida"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Donner vie"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hidupkan"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dai vita"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "命を吹き込む"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "생동감 넣기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ożyw"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dar vida"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Оживить"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Canlandır"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "让它动起来"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "讓它動起來"
+          }
+        }
+      }
+    },
+    "No subject was found in that picture to bring to life.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In diesem Bild wurde kein Motiv gefunden, das zum Leben erweckt werden kann."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se encontró ningún sujeto en esa imagen al que dar vida."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun sujet à animer n’a été trouvé dans cette image."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tidak ada subjek dalam gambar itu yang bisa dihidupkan."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In quell’immagine non è stato trovato un soggetto a cui dare vita."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "その画像には、命を吹き込める被写体が見つかりませんでした。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "그 사진에서 생동감을 넣을 피사체를 찾지 못했습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Na tym zdjęciu nie znaleziono obiektu, który można ożywić."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhum objeto foi encontrado nessa imagem para dar vida."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "На этом изображении не найден объект, который можно оживить."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu resimde canlandırılacak bir özne bulunamadı."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在这张图片中没有找到可以动起来的主体。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在這張圖片中找不到可以動起來的主體。"
+          }
+        }
+      }
+    },
+    "A GIF, a short video or a picture brought to life moves on Bots Home and in Hermes Desktop.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein GIF, ein kurzes Video oder ein zum Leben erwecktes Bild bewegt sich auf Bots Home und in Hermes Desktop."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un GIF, un vídeo corto o una imagen a la que se da vida se mueve en Bots Home y en Hermes Desktop."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un GIF, une courte vidéo ou une image à laquelle on donne vie s’anime sur Bots Home et dans Hermes Desktop."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GIF, video pendek, atau gambar yang dihidupkan akan bergerak di Bots Home dan di Hermes Desktop."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una GIF, un breve video o un’immagine a cui hai dato vita si muove su Bots Home e in Hermes Desktop."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GIF、短いビデオ、または命を吹き込んだ画像は、Bots HomeとHermes Desktopで動きます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GIF, 짧은 비디오 또는 생동감을 넣은 사진은 Bots Home과 Hermes Desktop에서 움직입니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GIF, krótkie wideo lub ożywione zdjęcie poruszają się na Bots Home i w Hermes Desktop."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um GIF, um vídeo curto ou uma imagem que ganhou vida se move no Bots Home e no Hermes Desktop."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GIF, короткое видео или оживлённое изображение двигаются на Bots Home и в Hermes Desktop."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir GIF, kısa bir video veya canlandırılmış bir resim Bots Home'da ve Hermes Desktop'ta hareket eder."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GIF、短视频或动起来的图片会在 Bots Home 和 Hermes Desktop 中动起来。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GIF、短片或動起來的圖片會在 Bots Home 和 Hermes Desktop 中動起來。"
           }
         }
       }
