@@ -5721,13 +5721,13 @@ CarPlay (no tabs), the notifier (it answers what it's asked)
 - Tests: `ConduitTests/GroupChatSessionSafetyTests.swift` (testRoomPollStopsWhileHiddenAndCatchesUpWhenShown)
 
 **Rulings**
-- A timed read runs only while its screen shows: its tab selected, nothing pushed over it (beside it on a wide window still shows) and the app not in the background. Showing it again reads at once, so what changed meanwhile is there on return (2026-11-05, #PRNUM, issue #1827).
+- A timed read runs only while its screen shows: its tab selected, nothing pushed over it (beside it on a wide window still shows) and the app not in the background. Showing it again reads at once, so what changed meanwhile is there on return (2026-11-05, #1837, issue #1827).
 - A group room whose screen hasn't appeared yet (just opened) counts as showing, as does one with no screen mounted. A poll tick that brings the same driver status publishes nothing.
 
 **Open gaps**
 - A screen covered by a sheet still reads: the sheet doesn't tell the tab it covers.
 
-**Checked:** 2026-11-05, #PRNUM (added: hidden tabs stop the project page, open chat, room and bot work reads)
+**Checked:** 2026-11-05, #1837 (added: hidden tabs stop the project page, open chat, room and bot work reads)
 
 ## Swiping list rows on a Mac
 
