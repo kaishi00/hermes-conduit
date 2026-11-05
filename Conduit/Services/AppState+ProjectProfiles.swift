@@ -38,8 +38,8 @@ extension AppState {
     /// The same project in each of `others`, and its chats there. `known`
     /// holds the matches an earlier read found, so a profile's projects are
     /// read once a page; a profile without one is looked at again on each
-    /// read, as the project may have been made since. A profile that can't
-    /// answer is left out; nil when the connection changed under the read.
+    /// read, as the project may have been made since, and so is one whose
+    /// kept project stops answering. A profile that can't answer is left out; nil when the connection changed under the read.
     func loadProject(
         _ project: ProjectSummary,
         inProfiles others: [String],
@@ -58,8 +58,13 @@ extension AppState {
                 projectID = ProjectAcrossProfiles.match(project, in: listed)?.id
                 matches[profile] = .some(projectID)
             }
-            guard let projectID,
-                  let detail = try? await client.projectSessions(projectID, inProfile: profile) else { continue }
+            guard let projectID else { continue }
+            guard let detail = try? await client.projectSessions(projectID, inProfile: profile) else {
+                // A kept project that no longer answers is looked for again
+                // on the next read: it may have been deleted or remade.
+                matches[profile] = .some(nil)
+                continue
+            }
             guard self.client === client else { return nil }
             let lanes = detail.lanes.compactMap { lane -> ProjectSessionLane? in
                 var lane = lane

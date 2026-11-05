@@ -143,7 +143,7 @@ struct V2ProjectPage: View {
                         Text("This project does not have any conversations yet.")
                     } actions: {
                         if canStartConversation {
-                            Button("New conversation") { startNewConversation() }
+                            emptyNewConversationButton
                                 .buttonStyle(.borderedProminent)
                                 .disabled(newConversationDisabled)
                         }
@@ -202,7 +202,7 @@ struct V2ProjectPage: View {
         // chat on a wide window the page stays on screen (issue 1454).
         .task(id: "\(project.id)|\(appState.chatListCatalogGeneration)") { await reload() }
         .onChange(of: appState.isConnected) { _, isConnected in
-            guard isConnected, detail == nil else { return }
+            guard isConnected else { return }
             Task { await reload(force: true) }
         }
         .alert("Delete conversation?", isPresented: Binding(
@@ -455,6 +455,26 @@ struct V2ProjectPage: View {
         .buttonStyle(.plain)
         .accessibilityLabel(name.map { AppLocalization.string("\($0) profile") } ?? AppLocalization.string("All"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// The empty page's New conversation: asks which profile as the
+    /// toolbar's does.
+    @ViewBuilder
+    private var emptyNewConversationButton: some View {
+        let choices = newConversationProfiles
+        if shownFilter == nil, choices.count > 1 {
+            Menu("New conversation") {
+                ForEach(choices, id: \.self) { profile in
+                    Button {
+                        startNewConversation(in: profile)
+                    } label: {
+                        Text(verbatim: appState.profileDisplayName(profile))
+                    }
+                }
+            }
+        } else {
+            Button("New conversation") { startNewConversation() }
+        }
     }
 
     /// New conversation: in the picked profile, else a menu of the
