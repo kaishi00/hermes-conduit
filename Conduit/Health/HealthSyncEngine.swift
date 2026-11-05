@@ -589,7 +589,10 @@ private struct Session {
                 let page = try await engine.source.changes(stream, since: since, anchor: engine.state.anchors[stream.key],
                                                            limit: HealthSyncLimits.samplesPerQuery)
                 var batch = newBatch()
-                batch.events = page.added
+                // Years of Apple Health hold a few readings that end before
+                // they start or run for weeks: those stay here, never the
+                // batch with them (notifier issue 555).
+                batch.events = page.added.filter(\.fitsHost)
                 batch.deleted = page.deleted
                 if !batch.isEmpty { try await send(batch) }
                 engine.acknowledged { $0.anchors[stream.key] = page.anchor }
