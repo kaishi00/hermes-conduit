@@ -93,6 +93,13 @@ struct GatewayDiagnosticsSheet: View {
             guard placement != .signIn else { return }
             await appState.refreshGatewayDiagnostics()
         }
+        // A reconnect (Retry, or a gateway restart coming back) or a drop
+        // while the page is open reads the gateway again, so the summary
+        // and the sections under it agree.
+        .onChange(of: appState.isConnected) { _, _ in
+            guard placement != .signIn else { return }
+            Task { await appState.refreshGatewayDiagnostics() }
+        }
     }
 
     /// Connectors and gateway logs come from the gateway: shown while
