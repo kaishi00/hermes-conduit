@@ -71,6 +71,12 @@ struct HealthEvent: Equatable {
     var unit: String?
     var data: [String: HealthValue] = [:]
     var source: String?
+
+    /// Whether the host keeps this one. A newer plugin leaves the others
+    /// out on its own; an older one refused the whole batch over one.
+    var fitsHost: Bool {
+        end >= start && end.timeIntervalSince(start) <= HealthSyncLimits.longestEvent
+    }
 }
 
 struct HealthBatch {

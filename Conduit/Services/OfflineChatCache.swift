@@ -609,6 +609,34 @@ final class OfflineChatCacheStore {
         }
     }
 
+    /// `loadTranscript` off the main thread (issue 1826): a copy kept in
+    /// memory, or a store that works on its caller (tests), answers at once;
+    /// any other is read and decoded on the store's queue and handed to
+    /// `completion` on the main queue, or nil when a removal (a deleted
+    /// chat, a wipe) ran meanwhile.
+    @MainActor
+    func readTranscript(
+        _ sessionID: String,
+        dashboardID: UUID,
+        profile: String,
+        completion: @escaping @MainActor (OfflineCachedTranscript?) -> Void
+    ) {
+        let url = transcriptFileURL(sessionID, dashboardID: dashboardID, profile: profile)
+        guard let ioQueue, memoryLock.withLock({ keptTranscripts[url] == nil }) else {
+            completion(loadTranscript(sessionID, dashboardID: dashboardID, profile: profile))
+            return
+        }
+        let removalsBefore = removals
+        ioQueue.async { [self] in
+            let transcript = loadTranscript(sessionID, dashboardID: dashboardID, profile: profile)
+            // Weighed on the main queue, after any removal the main thread
+            // made while the file was read.
+            DispatchQueue.main.async { [self] in
+                completion(removals == removalsBefore ? transcript : nil)
+            }
+        }
+    }
+
     /// Keeps a copy as the most recently used, then lets the least recently
     /// used go past `maxKeptTranscripts` or `maxKeptTranscriptBytes` (the
     /// newest always stays). Under `memoryLock`.
