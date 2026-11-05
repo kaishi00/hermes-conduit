@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 /// New Bot / Edit Bot: Desktop's bot editor, minus its generated block faces.
@@ -33,6 +34,10 @@ struct BotEditorSheet: View {
     @State private var error: String?
     @State private var showingImagePicker = false
     @State private var pickedImage: UIImage?
+    /// Choose GIF or Video: the Photos picker, which hands over a GIF's own
+    /// file (Choose Photo's crop keeps one frame).
+    @State private var showingMotionPicker = false
+    @State private var pickedMotion: PhotosPickerItem?
     /// A picked GIF or video is being made into a moving picture.
     @State private var isPreparingAnimation = false
     /// Whether Hermes can generate pictures; nil until asked.
@@ -140,7 +145,18 @@ struct BotEditorSheet: View {
             Text(verbatim: message)
         }
         .sheet(isPresented: $showingImagePicker) {
-            ImagePicker(image: $pickedImage, onAnimated: useAnimation)
+            ImagePicker(image: $pickedImage)
+        }
+        .photosPicker(
+            isPresented: $showingMotionPicker,
+            selection: $pickedMotion,
+            matching: .any(of: [.images, .videos]),
+            preferredItemEncoding: .current
+        )
+        .onChange(of: pickedMotion) { _, item in
+            guard let item else { return }
+            pickedMotion = nil
+            useAnimation(item)
         }
         .sheet(isPresented: $showingGenerator) {
             GeneratePictureSheet(
@@ -200,6 +216,13 @@ struct BotEditorSheet: View {
                     showingImagePicker = true
                 } label: {
                     Label(AppLocalization.string("Choose Photo"), systemImage: "photo")
+                }
+                .buttonStyle(.settings)
+                Button {
+                    Haptics.light()
+                    showingMotionPicker = true
+                } label: {
+                    Label(AppLocalization.string("Choose GIF or Video"), systemImage: "film")
                 }
                 .buttonStyle(.settings)
                 if canGeneratePictures == true {
@@ -266,11 +289,20 @@ struct BotEditorSheet: View {
     }
 
     /// A picked GIF or video, made into a looping APNG (AnimatedAvatar) and
-    /// saved like any picture.
-    private func useAnimation(_ source: AnimatedAvatar.Source?) {
+    /// saved like any picture; a still picked there is used as one.
+    private func useAnimation(_ item: PhotosPickerItem) {
         isPreparingAnimation = true
         error = nil
         Task { @MainActor in
+            let source: AnimatedAvatar.Source?
+            switch await AnimatedAvatar.pick(from: item) {
+            case .animation(let picked): source = picked
+            case .still(let image):
+                isPreparingAnimation = false
+                usePicture(image)
+                return
+            case .unreadable: source = nil
+            }
             let result = await AnimatedAvatar.picture(fromPicked: source)
             isPreparingAnimation = false
             switch result {

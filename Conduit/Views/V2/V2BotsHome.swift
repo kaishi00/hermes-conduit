@@ -783,12 +783,10 @@ struct BotOverviewSheet: View {
                     onChat()
                 } label: {
                     Label(AppLocalization.string("Chat with \(botName)"), systemImage: "bubble.left.fill")
-                        .scaledFont(.body.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 36)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Color.conduitAccent)
-                .controlSize(.large)
+                // Settings' primary button, as every sheet's.
+                .buttonStyle(.settingsPrimary)
                 .padding(.horizontal, 16)
                 .padding(.top, 6)
                 // Without Work's picker under it, the artifacts' search
@@ -867,10 +865,13 @@ struct BotOverviewSheet: View {
                     .lineLimit(1)
                     .accessibilityAddTraits(.isHeader)
                 if showsWork, let text = work.snapshot(profile)?.stripText {
+                    // Wraps rather than cutting a count off, as a Settings
+                    // row's second line does.
                     Text(verbatim: text)
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 // Where it talks now, as its portrait's pill says.
                 let rooms = appState.talkingRooms(of: profile).map(\.name)
