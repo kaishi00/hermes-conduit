@@ -198,6 +198,9 @@ class ReviewChainTests(unittest.TestCase):
                 self.assertIn(model, providers[provider]["models"], step)
                 self.assertRegex(providers[provider]["options"]["apiKey"], r"^\{env:[A-Za-z0-9_]+\}$")
                 self.assertIn(f"secrets.{step['key']} }}}}", workflow)
+                # The script copies only the keys it lists, then hides them
+                # all from opencode; a key missing there would always skip.
+                self.assertRegex(_inline("REVIEW_CHAIN_SH"), rf"for k in [^\n]*\b{step['key']}\b")
 
 
 if __name__ == "__main__":
