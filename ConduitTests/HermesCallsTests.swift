@@ -1263,6 +1263,8 @@ extension VoiceConversationControllerTests {
         HermesRingRecords.markHandled(ringID: "ring-5", in: defaults, now: now)
         XCTAssertEqual(HermesRingRecords.entry(ringID: "ring-5", in: defaults, now: now)?.handled, true,
                        "Taken or noticed here: a later stop for it leaves no second missed call, after a relaunch too")
+        HermesRingRecords.record(try ringRecord("ring-5", at: now), in: defaults, now: now)
+        XCTAssertEqual(HermesRingRecords.entry(ringID: "ring-5", in: defaults, now: now)?.handled, true, "A push sent again keeps it handled")
         HermesRingRecords.markHandled(ringID: "ring-none", in: defaults, now: now)
         XCTAssertNil(HermesRingRecords.entry(ringID: "ring-none", in: defaults, now: now))
         let unreadable = try XCTUnwrap(HermesRingRecords.Entry(ring: try ringRecord(at: now).ring, target: malformed, at: now)).target

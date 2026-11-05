@@ -372,7 +372,7 @@ final class HermesNativeCalls: NSObject {
             // Nothing to ring, and iOS doesn't need a call reported: none
             // is shown and ended, which only gives CallKit more to do.
             if traced { HermesCallTrace.shared.note("Not shown: iOS needs no call for it") }
-            endedAtOnce(plan, target: call.target, sentAt: call.sentAt, ringID: call.ring?.id)
+            endedAtOnce(plan, target: call.target, sentAt: call.sentAt, ringID: ring?.id)
             completion()
             return
         }
@@ -432,7 +432,7 @@ final class HermesNativeCalls: NSObject {
             } else {
                 post(.talk, for: target)
             }
-            noticed(ring?.id)
+            if plan != .endAtOnce(.none) { noticed(ring?.id) }
             return
         }
         switch plan {
@@ -463,7 +463,9 @@ final class HermesNativeCalls: NSObject {
     private func endedAtOnce(_ plan: HermesNativeCallPlan, target: ConduitNotificationTarget?, sentAt: Date?, ringID: String?) {
         guard case .endAtOnce(let notice) = plan else { return }
         post(notice, for: target)
-        noticed(ringID)
+        // Nothing posted (a push again for a call still ringing): it can
+        // still leave its missed call later.
+        if notice != .none { noticed(ringID) }
         // A call that arrived too late never rang, so no one could have
         // answered it: Hermes hears it was missed.
         if notice == .missed { report(.missed, for: target, sentAt: sentAt) }
@@ -1456,6 +1458,9 @@ struct HermesRingRecords: Codable, Equatable {
     var entries: [Entry] = []
 
     mutating func add(_ entry: Entry) {
+        var entry = entry
+        // A push sent again keeps what was already done for its ring.
+        if entries.contains(where: { $0.ringID == entry.ringID && $0.handled == true }) { entry.handled = true }
         entries.removeAll { $0.ringID == entry.ringID }
         entries.append(entry)
         if entries.count > Self.maximumEntries { entries.removeFirst(entries.count - Self.maximumEntries) }
