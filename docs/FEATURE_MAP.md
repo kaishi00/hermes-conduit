@@ -3272,38 +3272,42 @@ menu rows)
 
 ## Sheets in Settings' look
 
-A sheet's or page's grouped Form or List drawn in the Settings tab's
-language: the Settings backdrop behind it, faint card rows over it and the
-gold tint, rather than the system's plain grey (Eric 2026-11-05: Edit Bot and
-Work looked like a different app from Settings).
+Sheets and the pages they push, built from the Settings tab's own pieces so
+they read as the same app: the Settings backdrop, cards with a symbol header
+over them, captions inside the card, Settings' glass dropdown fields and its
+buttons (Eric 2026-11-05: Edit Bot and Work looked like a different app from
+Settings).
 
 **Siblings:** the Settings tab's pages (the look itself, unchanged) · Edit
-Bot and New Bot, with its Model, Work and capabilities pages (done) · New
-Project and Rename (done) · New Group Chat (done) · reorder bots (done) ·
-the scheduled job editor, its blueprints gallery and blueprint form (done) ·
-What Pulse learned, What Pulse left out and What Pulse remembers (done) ·
-reorder session filters (done) · a workspace file's Move
-(done) · Generate picture (done) · Connectors' add and edit sheets (done) ·
-Location's sheet (done) · custom headers (done) · Kanban's task, board,
-filter, orchestration, routing and bulk sheets (done) · reorder pinned chats
-(done) · the plan card's sheet (done) · lists that already draw their own
-backdrop, such as Chats, Tasks, Needs you and Bots Home (not needed: already
-in V2's look)
+Bot and New Bot, with its Model, Work, personality and capabilities pages
+(done) · New Project and Rename (done) · New Group Chat (done) · the
+scheduled job editor, its blueprints gallery and blueprint form (done) · What
+Pulse learned and What Pulse left out (done) · a workspace file's Move (done)
+· Generate picture (done) · Connectors' add and edit sheets (done) ·
+Location's place editor (done) · custom headers (done) · Kanban's task,
+model, skills, parent, reassign, board, filter, orchestration, routing and
+bulk sheets (done) · the plan card's sheet (done) · reorder bots, reorder
+pinned chats, reorder session filters and What Pulse remembers (Settings'
+backdrop and card fill only: they keep a List for move and swipe) · the share
+extension's sheet (not needed: its own target, without Settings' pieces) ·
+lists that already draw their own backdrop, such as Chats, Tasks, Needs you
+and Bots Home (not needed: already in V2's look)
 
 **Code**
-- The look: `Conduit/Views/AuxiliaryViews.swift` (ConduitForm, ConduitList, ConduitFormRowFill, conduitFormBackdrop, beside SettingsBackdrop)
-- Used by: `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotWorkSettingsView.swift`, `Conduit/Views/BotCapabilitiesView.swift`, `Conduit/Views/SidebarView.swift` (ProjectCreateSheet, RenameSheet, SessionFilterOrderSheet), `Conduit/Views/PulseSettingsViews.swift` (PulseMemoryList), `Conduit/Views/V2/CronJobEditorSheet.swift`, `Conduit/Views/GeneratePictureSheet.swift`, `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/CustomHeadersEditor.swift`, `Conduit/Views/KanbanViews.swift`, `Conduit/Views/Kanban/KanbanTaskComposerView.swift`, `Conduit/Views/Kanban/KanbanTaskDetailView.swift`, `Conduit/Views/Kanban/KanbanBoardEditorView.swift`, `Conduit/Views/Kanban/KanbanBoardFilterSheet.swift`, `Conduit/Views/Kanban/KanbanOrchestrationSettingsSheet.swift`, `Conduit/Views/Kanban/KanbanProfileRoutingScreen.swift`, `Conduit/Views/PinnedChatsOrderSheet.swift`, `Conduit/Views/Components/ChatCards.swift`, `Conduit/Views/GroupChatView.swift` (GroupCreateSheet), `Conduit/Views/V2/V2BotsHome.swift` (BotReorderSheet), `Conduit/Views/V2/V2PulsePage.swift` (PulseLearnedSheet, PulseLeftOutSheet), `Conduit/Views/V2/V2WorkspaceViews.swift` (WorkspaceMoveSheet)
+- The pieces: `Conduit/Views/AuxiliaryViews.swift` (SettingsDetailContainer, ConduitSettingsSection, SettingsCard, SettingsLinkRow, SettingsChevron, SettingsPickerField, settingsCaption, settingsEditorBox, SettingsNames, ConduitMenuPicker, SettingsButtonStyle's `.settings` and `.settingsPrimary`, ConduitList, ConduitFormRowFill, conduitFormBackdrop)
+- Used by: `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotWorkSettingsView.swift`, `Conduit/Views/BotCapabilitiesView.swift`, `Conduit/Views/SidebarView.swift` (ProjectCreateSheet, RenameSheet), `Conduit/Views/V2/CronJobEditorSheet.swift`, `Conduit/Views/GeneratePictureSheet.swift`, `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/CustomHeadersEditor.swift`, `Conduit/Views/KanbanViews.swift` (bulk sheets), `Conduit/Views/Kanban/KanbanTaskComposerView.swift`, `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (KanbanReassignSheet), `Conduit/Views/Kanban/KanbanBoardEditorView.swift`, `Conduit/Views/Kanban/KanbanBoardFilterSheet.swift`, `Conduit/Views/Kanban/KanbanOrchestrationSettingsSheet.swift`, `Conduit/Views/Kanban/KanbanProfileRoutingScreen.swift`, `Conduit/Views/Components/ChatCards.swift` (PlanSheet), `Conduit/Views/GroupChatView.swift` (GroupCreateSheet), `Conduit/Views/V2/V2PulsePage.swift` (PulseLearnedSheet, PulseLeftOutSheet), `Conduit/Views/V2/V2WorkspaceViews.swift` (WorkspaceMoveSheet)
+- Lists kept for move and swipe (ConduitList): `Conduit/Views/PinnedChatsOrderSheet.swift`, `Conduit/Views/SidebarView.swift` (SessionFilterOrderSheet), `Conduit/Views/V2/V2BotsHome.swift` (BotReorderSheet), `Conduit/Views/PulseSettingsViews.swift` (PulseMemoryList)
 
 **Rulings**
-- A new sheet or page with a grouped Form or List uses ConduitForm or ConduitList, never a bare Form (Eric 2026-11-05 chose skinning the Forms over rebuilding them as Settings cards, #1793).
-- Rows keep their Form behavior (pickers, toggles, swipe and edit); only the fill changes: Settings' card fill, 0.05 in light mode and 0.08 in dark. A row that sets its own background, such as Edit Bot's avatar, keeps it.
-- Section headers keep the system's text; they don't take Settings' symbol headers.
-- A row that opens something (Kanban New task's Model and Skills, Edit Bot's Advanced) is a plain-style button, so its title reads like the rows beside it rather than in the accent; an empty multi-line field shows a placeholder, as New task's description does (#1793).
+- A sheet is built from Settings' pieces, never a Form: SettingsDetailContainer, a ConduitSettingsSection (or a SettingsCard for a group whose first row names it) per group, its caption inside the card, ConduitMenuPicker or SettingsPickerField for a choice, a segmented picker for two or three short ones, `.settings` and `.settingsPrimary` buttons and rounded-border text fields. Eric first chose skinning the Forms (ConduitForm), then saw it still looked like a second app; the rebuild from Settings' pieces is the look he approved ("this is it", 2026-11-05, #1793).
+- Only a list you reorder or swipe stays a List, as ConduitList with Settings' backdrop and card fill, since move and swipe need one. New Project's folders take a remove button instead of a swipe.
+- A row that opens something (a model, Work, Skills, a blueprint) is a plain button with SettingsChevron, its title in the primary color rather than the accent; a choice row shows a checkmark in the accent.
+- A section title is a catalog key through AppLocalization, or a SettingsNames constant for a name that isn't translated (MCP, JSON).
 
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-05, #1793 (entry added)
+**Checked:** 2026-11-05, #1793 (sheets rebuilt from Settings' pieces)
 
 ## Sharing into Conduit
 

@@ -4969,23 +4969,11 @@ struct SettingsBackdrop: View {
     }
 }
 
-/// A sheet's or page's grouped Form in Settings' look: the Settings
+/// A sheet's list you reorder or swipe, in Settings' look: the Settings
 /// backdrop behind it and quiet card rows over it, rather than the system's
-/// plain grey, so a sheet opened from anywhere reads like the Settings tab
-/// (Eric 2026-11-05). A row that sets its own background keeps it.
-struct ConduitForm<Content: View>: View {
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        Form {
-            content.listRowBackground(ConduitFormRowFill())
-        }
-        .conduitFormBackdrop()
-    }
-}
-
-/// `ConduitForm` for a grouped List: a sheet's or page's list of choices
-/// (a bot's Model page, Kanban's bulk sheets) in the same Settings look.
+/// plain grey. Every other sheet is built from Settings' own pieces
+/// (SettingsDetailContainer, ConduitSettingsSection, SettingsCard), as
+/// the Settings tab is (Eric 2026-11-05); only a List keeps move and swipe.
 struct ConduitList<Content: View>: View {
     @ViewBuilder let content: Content
 
@@ -4997,7 +4985,7 @@ struct ConduitList<Content: View>: View {
     }
 }
 
-/// The fill of a `ConduitForm` row: `settingsCard`'s faint fill, a little
+/// The fill of a `ConduitList` row: `settingsCard`'s faint fill, a little
 /// stronger in dark mode, where 0.05 left rows hard to tell from the glow.
 struct ConduitFormRowFill: View {
     @Environment(\.colorScheme) private var colorScheme
