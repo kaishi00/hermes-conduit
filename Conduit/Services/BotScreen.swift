@@ -320,8 +320,9 @@ final class BotScreenModel: ObservableObject {
         do {
             try await client.respondToDisplaySudo(requestId: id, password: password)
         } catch {
-            // Asked again: the field comes back for another try.
-            sudoRequestID = id
+            // Asked again: the field comes back for another try, unless a
+            // newer ask or the install's end came in meanwhile.
+            if sudoRequestID == nil, isInstalling { sudoRequestID = id }
             errorText = error.localizedDescription
         }
     }
@@ -628,12 +629,19 @@ final class BotScreenSupport: ObservableObject {
     @Published private(set) var supported: [String: Bool] = [:]
     private var reading: Set<String> = []
     private var generation = 0
+    private weak var readFrom: HermesClient?
 
     func isSupported(_ profile: String) -> Bool { supported[profile] == true }
 
     /// Reads it once per profile and connection.
     func check(_ profile: String, client: HermesClient?) {
-        guard let client, supported[profile] == nil, !reading.contains(profile) else { return }
+        guard let client else { return }
+        // Another server (a new client): what was read stood for the old one.
+        if readFrom !== client {
+            reset()
+            readFrom = client
+        }
+        guard supported[profile] == nil, !reading.contains(profile) else { return }
         reading.insert(profile)
         let generation = self.generation
         Task { @MainActor in
@@ -641,7 +649,8 @@ final class BotScreenSupport: ObservableObject {
             do {
                 let answer = try await client.display("display.status", profile: profile)
                 guard generation == self.generation else { return }
-                supported[profile] = BotScreenStatus(answer)?.isSupported ?? false
+                // An answer it can't read is not a no: read again next time.
+                if let status = BotScreenStatus(answer) { supported[profile] = status.isSupported }
             } catch let error as RpcError where error.code == HermesClient.methodNotFoundCode {
                 guard generation == self.generation else { return }
                 supported[profile] = false
