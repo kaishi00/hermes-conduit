@@ -1768,7 +1768,7 @@ the picture buttons, README.md's bots and profiles lines)
 **Rulings**
 - Pictures people pick, not generated video: most Hermes hosts have no video backend, so a moving picture is a GIF or a short video the person brings (Eric, 2026-11-05). The on-device "living portrait" (a still cut out and swayed) wasn't built: it reads as alive, not animated.
 - A moving picture is an animated PNG in the same `avatar` asset, so nothing else changes: Hermes keeps it, Desktop plays it, and every still face shows its first frame. It's made on the phone from the first 3 seconds, at most 36 frames, 256 px, then smaller and fewer frames until it fits 1.5 MB, under Hermes' 2 MB cap since every fetch sends it whole; one that won't fit says to try a shorter or simpler clip.
-- It's picked with Choose GIF or Video, the Photos picker, which hands over the original file; Choose Photo stays the cropping picker for stills, since its crop keeps a GIF's first frame only and Conduit has no crop of its own (Eric 2026-11-05, #PRNUM: a GIF moved in the picker, not on the crop screen or after). The Photos picker can't trim, so a longer video gives its first 3 seconds. A still picked there is used as a photo, centered, without the crop.
+- It's picked with Choose GIF or Video, the Photos picker, which hands over the original file; Choose Photo stays the cropping picker for stills, since its crop keeps a GIF's first frame only and Conduit has no crop of its own (Eric 2026-11-05, #1812: a GIF moved in the picker, not on the crop screen or after). The Photos picker can't trim, so a longer video gives its first 3 seconds. A still picked there is used as a photo, centered, without the crop.
 - It plays only where the face is what you're looking at (a Bots Home portrait, the Bot Overview, the editors), only while the app is active, and never with Reduce Motion or in Low Power Mode; Bots Home's portraits also stop while the tab doesn't show, as their motion does. ImageIO's player decodes a frame at a time, so a moving face holds one frame.
 
 **Open gaps**
@@ -1776,7 +1776,7 @@ the picture buttons, README.md's bots and profiles lines)
 - A video can't be trimmed to the part to keep: the first 3 seconds are used.
 - A Live Photo is picked as a still.
 
-**Checked:** 2026-11-05, #PRNUM (Choose GIF or Video, the Photos picker, since Choose Photo's crop flattened a GIF on Eric's device); 2026-11-05, #1782 (the Bot Overview's header plays its fallback profile face too; the phone-only carry-over is tested); 2026-11-05, #1778 (added: moving pictures from a GIF or a short video)
+**Checked:** 2026-11-05, #1812 (Choose GIF or Video, the Photos picker, since Choose Photo's crop flattened a GIF on Eric's device); 2026-11-05, #1782 (the Bot Overview's header plays its fallback profile face too; the phone-only carry-over is tested); 2026-11-05, #1778 (added: moving pictures from a GIF or a short video)
 
 ## Opening a Bot Chat
 
