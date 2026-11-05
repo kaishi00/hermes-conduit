@@ -9,7 +9,45 @@
         "apiKey": "{env:OPENCODE_GO_API_KEY}"
       },
       "models": {
+        "deepseek-v4.1-flash": {
+          "name": "DeepSeek V4.1 Flash",
+          "interleaved": {
+            "field": "reasoning_content"
+          },
+          "options": {
+            "reasoningEffort": "high"
+          }
+        },
         "beam-free": {
+          "name": "Beam",
+          "interleaved": {
+            "field": "reasoning_content"
+          }
+        }
+      }
+    },
+    "commandcode": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Command Code",
+      "options": {
+        "baseURL": "https://api.commandcode.ai/provider/v1",
+        "apiKey": "{env:COMMANDCODE_API_KEY}"
+      },
+      "whitelist": [
+        "deepseek/deepseek-v4.1-flash",
+        "reflection/beam:free"
+      ],
+      "models": {
+        "deepseek/deepseek-v4.1-flash": {
+          "name": "DeepSeek V4.1 Flash",
+          "interleaved": {
+            "field": "reasoning_content"
+          },
+          "options": {
+            "reasoningEffort": "high"
+          }
+        },
+        "reflection/beam:free": {
           "name": "Beam",
           "interleaved": {
             "field": "reasoning_content"
