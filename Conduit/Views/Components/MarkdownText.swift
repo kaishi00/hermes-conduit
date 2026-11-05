@@ -2383,6 +2383,12 @@ struct GuardedSourceCard: View {
 struct MarkdownPictureGrid: View {
     let blocks: [MarkdownBlock]
     let gatewayMediaDataURL: ((String) async -> String?)?
+    @Environment(\.imageGallery) private var inheritedGallery
+    @Environment(\.gatewayMediaFiles) private var gatewayMediaFiles
+    /// The pictures a tile pages through: the surface's own list when it
+    /// holds this run, else the run itself, so the pictures without a tile
+    /// stay reachable where a surface lists none of them.
+    @State private var runGallery = ImageGallerySource()
 
     var body: some View {
         let pictures: [(url: String, alt: String)] = blocks.compactMap {
@@ -2391,17 +2397,27 @@ struct MarkdownPictureGrid: View {
         }
         let shown = PictureGrid.shownCount(pictures.count)
         let more = PictureGrid.moreCount(total: pictures.count)
+        let _ = runGallery.update { [inheritedGallery, gatewayMediaFiles, gatewayMediaDataURL] in
+            let run = pictures.compactMap {
+                ImageGalleryItem.markdownImage(url: $0.url, alt: $0.alt, resolver: gatewayMediaFiles, dataURL: gatewayMediaDataURL)
+            }
+            let inherited = inheritedGallery?.items() ?? []
+            let listed = Set(inherited.map(\.id))
+            return run.allSatisfy { listed.contains($0.id) } ? inherited : run
+        }
         PictureGridLayout {
             ForEach(0..<shown, id: \.self) { index in
                 RemoteMarkdownImage(
                     url: pictures[index].url,
                     alt: pictures[index].alt,
                     gatewayMediaDataURL: gatewayMediaDataURL,
-                    isTile: true
+                    isTile: true,
+                    opensViewerWhenUnavailable: more != nil && index == shown - 1
                 )
                 .modifier(PictureGridMoreBadge(more: index == shown - 1 ? more : nil))
             }
         }
+        .environment(\.imageGallery, runGallery)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -2414,6 +2430,9 @@ private struct RemoteMarkdownImage: View {
     /// A square tile of a picture grid, filling the size it is proposed,
     /// instead of the picture at its own shape (issue 1801).
     var isTile = false
+    /// The "+N" tile opens the viewer even when its own web picture won't
+    /// load here, since it is the way to the pictures without a tile.
+    var opensViewerWhenUnavailable = false
     @Environment(\.openURL) private var openURL
     /// Scopes where a `MEDIA:` picture is kept on the phone; without one
     /// (a surface that sets no resolver) it is fetched each time.
@@ -2646,7 +2665,7 @@ private struct RemoteMarkdownImage: View {
             let label = failed
                 ? (alt.isEmpty ? AppLocalization.string("Image unavailable") : AppLocalization.string("\(alt) unavailable"))
                 : (alt.isEmpty ? AppLocalization.string("Loading image…") : alt)
-            if failed, !isGatewayMedia, let webURL = URL(string: url) {
+            if failed, !isGatewayMedia, !opensViewerWhenUnavailable, let webURL = URL(string: url) {
                 PictureTilePlaceholder(state: .unavailable)
                     .contentShape(Rectangle())
                     .onTapGesture { openURL(webURL) }
