@@ -104,6 +104,9 @@ extension AppState {
     func revealWorkspaceFile(_ path: String, line: Int? = nil) {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        // A later tap wins over a lookup still running for an earlier one.
+        workspaceRevealGeneration &+= 1
+        let generation = workspaceRevealGeneration
         // Each id the open chat goes by; none in a group room, whose tap
         // opens the projects' folders as before.
         let ids = activeChatArtifactSessionIDs
@@ -121,11 +124,13 @@ extension AppState {
                 found = try await client.resolve(path: trimmed, sessionIDs: ids)
             } catch {
                 // The lookup failed, not the file: the chat's folder, as before.
-                guard let self, self.ownsDashboardRuntime(owner), self.activeSessionId == session else { return }
+                guard let self, self.workspaceRevealGeneration == generation, self.ownsDashboardRuntime(owner),
+                      self.activeSessionId == session else { return }
                 self.workspaceReveal = WorkspaceReveal(path: self.absoluteWorkspacePath(trimmed), line: line)
                 return
             }
-            guard let self, self.ownsDashboardRuntime(owner), self.activeSessionId == session else { return }
+            guard let self, self.workspaceRevealGeneration == generation, self.ownsDashboardRuntime(owner),
+                  self.activeSessionId == session else { return }
             if let found {
                 self.workspaceReveal = WorkspaceReveal(path: found, line: line)
             } else {

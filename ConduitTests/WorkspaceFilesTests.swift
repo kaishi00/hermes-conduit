@@ -152,6 +152,12 @@ extension HermesVoiceGatewayTimeoutTests {
         answer = ["ok": true, "path": NSNull()]
         let missing = try await client.resolve(path: "gone.md", sessionIDs: ["live-1"])
         XCTAssertNil(missing, "no such file on the host")
+
+        answer = ["ok": true]
+        do {
+            _ = try await client.resolve(path: "gone.md", sessionIDs: ["live-1"])
+            XCTFail("an answer without a path is a failed lookup, not a missing file")
+        } catch {}
     }
 
     func testWorkspaceSaveSendsTheDateItWasReadAt() async throws {

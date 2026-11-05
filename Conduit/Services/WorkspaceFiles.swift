@@ -140,7 +140,11 @@ final class WorkspaceFilesClient {
                                              profile: profile)
         let response = try await request(route, "GET", nil)
         guard response["ok"] as? Bool == true else { throw Failure.malformed }
-        let found = (response["path"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // `path: null` is the host's "no such file"; an answer without one
+        // is a failed lookup, which falls back to the chat's folder.
+        if response["path"] is NSNull { return nil }
+        guard let path = response["path"] as? String else { throw Failure.malformed }
+        let found = path.trimmingCharacters(in: .whitespacesAndNewlines)
         return found.isEmpty ? nil : found
     }
 

@@ -2268,6 +2268,8 @@ final class AppState: ObservableObject {
     /// A file path tapped in a reply, for the open chat's Folder tab to
     /// show (AppState+Workspace.swift).
     @Published var workspaceReveal: WorkspaceReveal?
+    /// Counts file taps, so a slow lookup for an earlier one is dropped.
+    var workspaceRevealGeneration = 0
     /// Counts the tools Hermes finished that may have changed files, so an
     /// open Folder tab reads its folders again.
     @Published var workspaceChanges = 0
