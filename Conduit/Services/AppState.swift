@@ -17614,6 +17614,16 @@ final class AppState: ObservableObject {
         isWorkstreamRow(session) || isPulseHomeChat(session)
     }
 
+    /// Pulse's chat, named on this phone only now (a first feed read on
+    /// this dashboard), may already be the chat Conduit resumed by itself,
+    /// since nothing hid it yet, and be saved for the next launch: that
+    /// saved choice goes, so the next launch picks a listed chat.
+    func forgetResumedPulseChat(_ home: String, profile: String) {
+        guard let saved = chatResumeCoordinator.lastSessionID(for: profile),
+              saved == home || canonicalSessionID(for: saved) == home else { return }
+        chatResumeCoordinator.rememberSession(nil, for: profile)
+    }
+
     /// The same by a chat's id alone (a call's chat search hit), in `profile`.
     func isUnlistedChat(id: String, profile: String) -> Bool {
         isWorkstreamSession(id) || canonicalSessionID(for: id).map(isWorkstreamSession) == true
@@ -27677,6 +27687,7 @@ final class AppState: ObservableObject {
             if oldValue.state != notifierPlugin.state {
                 updateChatOnScreen()
                 forgetPulseHomeIfGone()
+                readPulseHomeIfUnknown()
                 sharePulseQuiet()
             }
             // An open room's boards, once the plugin says it keeps them.

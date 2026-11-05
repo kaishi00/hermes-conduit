@@ -346,12 +346,16 @@ final class PulseFeedTests: XCTestCase {
             state.selectChatResumeTarget(in: catalog, profile: "default", purpose: .automaticReturn,
                                          currentSessionID: nil)?.id
         }
-        // Before the feed names Pulse's chat nothing hides it.
+        // Before the feed names Pulse's chat nothing hides it, so it can be
+        // resumed and saved for the next launch.
         XCTAssertEqual(pick(), "runtime-p")
+        coordinator.rememberSession(.dashboard(profile: "default", sessionID: "20261105_pulse"), for: "default")
 
+        // The first feed read names it: the saved choice goes with it.
         state.applyPulseFeed(try XCTUnwrap(PulseFeedPage(json: json(
             #"{"home_chat_id": "20261105_pulse", "cards": []}"#))))
         XCTAssertTrue(state.showsPulseScreen)
+        XCTAssertNil(coordinator.lastSessionID(for: "default"))
         XCTAssertEqual(pick(), "plain")
         XCTAssertEqual(
             state.selectChatResumeTarget(in: catalog, profile: "default", purpose: .preserveCurrent,
@@ -362,6 +366,10 @@ final class PulseFeedTests: XCTestCase {
         coordinator.setBehavior(.continueWhereLeftOff)
         XCTAssertEqual(pick(), "plain")
         coordinator.rememberSession(.dashboard(profile: "default", sessionID: "runtime-p"), for: "default")
+        XCTAssertEqual(pick(), "runtime-p")
+        // Opened by the user with Pulse's chat already known: a later feed keeps it.
+        state.applyPulseFeed(try XCTUnwrap(PulseFeedPage(json: json(
+            #"{"home_chat_id": "20261105_pulse", "cards": []}"#))))
         XCTAssertEqual(pick(), "runtime-p")
 
         // With only Pulse's chat listed there's no chat to pick: a new one starts.

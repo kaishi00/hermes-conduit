@@ -1145,6 +1145,15 @@ extension AppState {
         rememberPulseHome(nil, profile: nil)
     }
 
+    /// A plugin that serves Pulse on a dashboard whose Pulse chat this phone
+    /// doesn't know yet (a first connection): the feed is read at once, not
+    /// only once Chats shows, so the chat Conduit resumes, CarPlay and a
+    /// call's chat search can leave Pulse's chat out (#1810).
+    func readPulseHomeIfUnknown() {
+        guard pulseHomeChat == nil, showsPulseScreen else { return }
+        Task { @MainActor [weak self] in await self?.refreshPulseFeed() }
+    }
+
     /// Reads the feed for the button's badge and the chat's Pulse marks.
     /// A failure keeps what was there.
     /// Whether a feed read landed in the last `interval` seconds: the Pulse
@@ -1172,6 +1181,8 @@ extension AppState {
     }
 
     func applyPulseFeed(_ page: PulseFeedPage) {
+        let learnedHome = pulseHomeChat == nil ? page.homeChatID : nil
+        defer { if let learnedHome { forgetResumedPulseChat(learnedHome, profile: pulseHomeProfile) } }
         pulseFeedAppliedAt = (activeDashboardID, Date())
         if pulseUnseen != page.unseen { pulseUnseen = page.unseen }
         let sources = page.sources
