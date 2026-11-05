@@ -372,7 +372,7 @@ final class HermesNativeCalls: NSObject {
             // Nothing to ring, and iOS doesn't need a call reported: none
             // is shown and ended, which only gives CallKit more to do.
             if traced { HermesCallTrace.shared.note("Not shown: iOS needs no call for it") }
-            endedAtOnce(plan, target: call.target, sentAt: call.sentAt)
+            endedAtOnce(plan, target: call.target, sentAt: call.sentAt, ringID: call.ring?.id)
             completion()
             return
         }
@@ -432,13 +432,14 @@ final class HermesNativeCalls: NSObject {
             } else {
                 post(.talk, for: target)
             }
+            noticed(ring?.id)
             return
         }
         switch plan {
         case .endAtOnce(let notice):
             if traced { HermesCallTrace.shared.note("Ended at once") }
             provider?.reportCall(with: id, endedAt: Date(), reason: notice == .missed ? .unanswered : .failed)
-            endedAtOnce(plan, target: target, sentAt: sentAt)
+            endedAtOnce(plan, target: target, sentAt: sentAt, ringID: ring?.id)
         case .ring:
             guard calls[id] != nil else { return }
             HermesCallTrace.shared.note(calls[id]?.watchStopped == true ? "Ringing (in the car: not on the Watch)" : "Ringing")
@@ -459,12 +460,20 @@ final class HermesNativeCalls: NSObject {
     }
 
     /// A push that doesn't ring: its notice instead.
-    private func endedAtOnce(_ plan: HermesNativeCallPlan, target: ConduitNotificationTarget?, sentAt: Date?) {
+    private func endedAtOnce(_ plan: HermesNativeCallPlan, target: ConduitNotificationTarget?, sentAt: Date?, ringID: String?) {
         guard case .endAtOnce(let notice) = plan else { return }
         post(notice, for: target)
+        noticed(ringID)
         // A call that arrived too late never rang, so no one could have
         // answered it: Hermes hears it was missed.
         if notice == .missed { report(.missed, for: target, sentAt: sentAt) }
+    }
+
+    /// A ring taken here or whose notice is posted: a later stop for it,
+    /// after a relaunch too, posts no second missed call.
+    private func noticed(_ ringID: String?) {
+        guard let ringID else { return }
+        HermesRingRecords.markHandled(ringID: ringID, in: ringRecords)
     }
 
     // MARK: Answering
@@ -478,7 +487,7 @@ final class HermesNativeCalls: NSObject {
         HermesCallTrace.shared.note("Answered")
         calls[action.callUUID]?.answered = true
         // Taken here: a stop for its ring that comes later leaves no missed call.
-        if let ringID = calls[action.callUUID]?.ring?.id { HermesRingRecords.markHandled(ringID: ringID, in: ringRecords) }
+        noticed(calls[action.callUUID]?.ring?.id)
         calls[action.callUUID]?.unanswered?.cancel()
         // CallKit activates the session once the action is fulfilled.
         VoiceAudioSessionCoordinator.shared.configureForIncomingCall()
@@ -682,9 +691,7 @@ final class HermesNativeCalls: NSObject {
         provider?.reportCall(with: id, endedAt: Date(), reason: reason)
         post(notice, for: call.target)
         // Its notice is posted (or it was taken): not again for a later stop.
-        if call.answered || notice != .none, let ringID = call.ring?.id {
-            HermesRingRecords.markHandled(ringID: ringID, in: ringRecords)
-        }
+        if call.answered || notice != .none { noticed(call.ring?.id) }
         // It rang out, or stopped ringing, before the user picked up.
         report(HermesCallOutcome.of(end ?? .finished(notice), answered: call.answered), for: call.target, sentAt: call.sentAt)
         settle()
@@ -1121,6 +1128,7 @@ final class HermesNativeCalls: NSObject {
         } else {
             post(.missed, for: call.target)
         }
+        noticed(call.ring?.id)
         report(HermesCallOutcome.of(.declined, answered: call.answered), for: call.target, sentAt: call.sentAt)
         settle()
     }
@@ -1254,6 +1262,7 @@ extension HermesNativeCalls: CXProviderDelegate {
                 self.endOnWatch(call)
                 // A call still ringing leaves its trace, as on every other end.
                 if !call.answered { self.post(.missed, for: call.target) }
+                self.noticed(call.ring?.id)
                 self.report(HermesCallOutcome.of(.reset, answered: call.answered), for: call.target, sentAt: call.sentAt)
             }
             self.calls = [:]
