@@ -287,13 +287,16 @@ struct BotWorkPanel: View {
         .disabled(work.isActing(item.ref, profile: profile) || !appState.isConnected)
     }
 
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .scaledFont(.caption.weight(.bold))
-            .foregroundStyle(.secondary)
-            .textCase(.uppercase)
-            .accessibilityAddTraits(.isHeader)
-            .listRowInsets(EdgeInsets(top: 12, leading: 20, bottom: 2, trailing: 16))
+    /// Settings' group name over its cards (see Sheets in Settings' look),
+    /// as a row rather than a section header: a plain list pins headers,
+    /// and this one, with no fill, would float over the cards scrolling
+    /// under it.
+    private func sectionHeader(_ title: String, symbol: String, tint: Color) -> some View {
+        SettingsSectionHeader(title: title, symbol: symbol, tint: tint)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 10, leading: 4, bottom: 2, trailing: 16))
     }
 
     var body: some View {
@@ -315,7 +318,12 @@ struct BotWorkPanel: View {
                 openList
             }
         }
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        // Settings' backdrop beside a Bot Chat (see Sheets in Settings'
+        // look). In the Bot Overview the sheet's own shows through, so the
+        // header and the list are one surface, with no seam between them.
+        .background {
+            if showsHeader { SettingsBackdrop().ignoresSafeArea() }
+        }
         .refreshesBotWork(profile: profile)
         // A refusal belongs to the panel it was tapped in. The Resolved
         // list stays, so a resolved workstream opened from it knows its
@@ -412,7 +420,7 @@ struct BotWorkPanel: View {
                     }
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 4, trailing: 16))
+                    .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 0, trailing: 16))
                 } else if snapshot.resolvedCount == 0 {
                     Text("No work yet")
                         .scaledFont(.subheadline)
@@ -421,42 +429,33 @@ struct BotWorkPanel: View {
                         .listRowSeparator(.hidden)
                 }
                 if !snapshot.pinned.isEmpty {
-                    Section {
-                        ForEach(snapshot.pinned) { row($0) }
-                    } header: {
-                        sectionHeader(AppLocalization.string("Pinned"))
-                    }
+                    sectionHeader(AppLocalization.string("Pinned"), symbol: "pin.fill", tint: .orange)
+                    ForEach(snapshot.pinned) { row($0) }
                 }
                 if !snapshot.active.isEmpty {
-                    Section {
-                        ForEach(snapshot.active) { row($0) }
-                    } header: {
-                        sectionHeader(AppLocalization.string("Active"))
-                    }
+                    sectionHeader(AppLocalization.string("Active"), symbol: "bolt.fill", tint: .conduitAccent)
+                    ForEach(snapshot.active) { row($0) }
                 }
                 let recent = snapshot.recent
                 if !recent.isEmpty {
-                    Section {
-                        ForEach(showsAllRecent ? recent : Array(recent.prefix(Self.recentShown))) { row($0) }
-                        if recent.count > Self.recentShown {
-                            Button {
-                                Haptics.light()
-                                withAnimation(ConduitMotion.response) { showsAllRecent.toggle() }
-                            } label: {
-                                Text(showsAllRecent ? AppLocalization.string("Show less")
-                                     : AppLocalization.string("Show all \(String(recent.count))"))
-                                    .scaledFont(.subheadline.weight(.semibold))
-                                    .foregroundStyle(Color.conduitAccent)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 16))
+                    sectionHeader(AppLocalization.string("Recent"), symbol: "clock.fill", tint: .green)
+                    ForEach(showsAllRecent ? recent : Array(recent.prefix(Self.recentShown))) { row($0) }
+                    if recent.count > Self.recentShown {
+                        Button {
+                            Haptics.light()
+                            withAnimation(ConduitMotion.response) { showsAllRecent.toggle() }
+                        } label: {
+                            Text(showsAllRecent ? AppLocalization.string("Show less")
+                                 : AppLocalization.string("Show all \(String(recent.count))"))
+                                .scaledFont(.subheadline.weight(.semibold))
+                                .foregroundStyle(Color.conduitAccent)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                         }
-                    } header: {
-                        sectionHeader(AppLocalization.string("Recent"))
+                        .buttonStyle(.plain)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 16))
                     }
                 }
                 if snapshot.resolvedCount > 0 {
@@ -476,15 +475,12 @@ struct BotWorkPanel: View {
                                 .scaledFont(.subheadline)
                                 .monospacedDigit()
                                 .foregroundStyle(.secondary)
-                            Image(systemName: "chevron.right")
-                                .scaledFont(.caption.weight(.bold))
-                                .foregroundStyle(.tertiary)
-                                .accessibilityHidden(true)
+                            SettingsChevron()
                         }
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 13)
-                        .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(Color(.secondarySystemGroupedBackground)))
+                        .padding(.vertical, 6)
+                        .frame(minHeight: 50)
+                        .settingsCard()
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -610,13 +606,15 @@ private struct BotWorkRow: View {
             }
         }
         .padding(14)
+        // Settings' card, or orange while it needs the user.
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(item.needsYou ? Color.orange.opacity(0.09) : Color(.secondarySystemGroupedBackground))
+                .fill(item.needsYou ? Color.orange.opacity(0.09) : Color.primary.opacity(0.05))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(item.needsYou ? Color.orange.opacity(0.32) : Color.primary.opacity(0.06), lineWidth: 1)
+                .strokeBorder(item.needsYou ? Color.orange.opacity(0.32) : Color.primary.opacity(0.07),
+                              lineWidth: item.needsYou ? 1 : 0.5)
         )
         .accessibilityIdentifier("botWork.row.\(item.ref)")
     }
@@ -754,12 +752,18 @@ private struct BotWorkRow: View {
         if item.kind == .workstream {
             let controls: [BotWorkItem.Action] = [.check, .continue, .stop].filter { item.actions.contains($0) }
             if !controls.isEmpty {
-                // Stacked at accessibility Text Sizes, so no label is cut.
-                let layout = dynamicTypeSize.isAccessibilitySize
-                    ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
-                layout {
-                    ForEach(controls, id: \.self) { action in
-                        controlButton(action, prominent: action == controls.first && action != .stop)
+                // Side by side while every label fits on one line, each
+                // button as wide as its label needs ("Check first" was cut
+                // when they split the row equally); stacked otherwise, and
+                // always at accessibility Text Sizes.
+                let buttons = ForEach(controls, id: \.self) { action in
+                    controlButton(action, prominent: action == controls.first && action != .stop)
+                }
+                Group {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        VStack(spacing: 8) { buttons }
+                    } else {
+                        FittedRowOrStack(spacing: 8) { buttons }
                     }
                 }
                 .disabled(isActing || !appState.isConnected)
@@ -778,11 +782,9 @@ private struct BotWorkRow: View {
             appState.openWorkstream(item, profile: profile)
         } label: {
             Label(AppLocalization.string("Open \(item.ref)’s chat"), systemImage: "bubble.left.and.bubble.right")
-                .scaledFont(.subheadline.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 30)
+                .frame(maxWidth: .infinity, minHeight: 36)
         }
-        .buttonStyle(.bordered)
-        .tint(Color.conduitAccent)
+        .buttonStyle(.settings)
         .accessibilityIdentifier("botWork.open.\(item.ref)")
     }
 
@@ -794,23 +796,17 @@ private struct BotWorkRow: View {
             default: return AppLocalization.string("Stop")
             }
         }()
-        let isStop = action == .stop
-        return Button {
+        let act: () -> Void = {
             Haptics.light()
             Task { await appState.actOnWorkstream(item, profile: profile, action: action) }
-        } label: {
-            Text(title)
-                .scaledFont(.subheadline.weight(.semibold))
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .foregroundStyle(prominent ? Color.black.opacity(0.85) : isStop ? Color.red : Color.primary)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(prominent ? Color.conduitAccent : isStop ? Color.red.opacity(0.12) : Color.primary.opacity(0.08))
-                )
-                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .buttonStyle(.plain)
+        let text = Text(title)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+            .frame(maxWidth: .infinity)
+        // Settings' buttons; Stop the same capsule in red.
+        return Button(action: act) { text }
+            .buttonStyle(action == .stop ? SettingsButtonStyle.settingsDestructive
+                         : prominent ? SettingsButtonStyle.settingsPrimary : SettingsButtonStyle.settings)
     }
 
     private var replyField: some View {
@@ -1244,5 +1240,61 @@ private struct WorkstreamApprovalBox: View {
                 .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Buttons in a row while all their labels fit on one line, each as wide
+/// as its label plus an even share of the room left; one under another
+/// otherwise. (An HStack of full-width buttons splits the row equally, so
+/// the widest label, "Check first", was cut while the others had room.)
+struct FittedRowOrStack: Layout {
+    var spacing: CGFloat = 8
+
+    private func ideals(_ subviews: Subviews) -> [CGFloat] {
+        subviews.map { $0.sizeThatFits(.unspecified).width }
+    }
+
+    private func gaps(_ subviews: Subviews) -> CGFloat {
+        spacing * CGFloat(max(subviews.count - 1, 0))
+    }
+
+    /// Each button's width in the row, or nil when they don't fit in one.
+    private func rowWidths(_ width: CGFloat?, _ subviews: Subviews) -> [CGFloat]? {
+        let ideal = ideals(subviews)
+        guard let width else { return ideal }
+        let room = width - gaps(subviews) - ideal.reduce(0, +)
+        guard room >= 0, !subviews.isEmpty else { return nil }
+        let extra = room / CGFloat(subviews.count)
+        return ideal.map { $0 + extra }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        if let widths = rowWidths(proposal.width, subviews) {
+            let height = zip(subviews, widths)
+                .map { $0.sizeThatFits(ProposedViewSize(width: $1, height: nil)).height }.max() ?? 0
+            return CGSize(width: proposal.width ?? widths.reduce(0, +) + gaps(subviews), height: height)
+        }
+        let width = proposal.width ?? 0
+        let heights = subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height }
+        return CGSize(width: width, height: heights.reduce(0, +) + gaps(subviews))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        if let widths = rowWidths(bounds.width, subviews) {
+            var x = bounds.minX
+            for (subview, width) in zip(subviews, widths) {
+                subview.place(at: CGPoint(x: x, y: bounds.minY),
+                              proposal: ProposedViewSize(width: width, height: bounds.height))
+                x += width + spacing
+            }
+        } else {
+            var y = bounds.minY
+            for subview in subviews {
+                let height = subview.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil)).height
+                subview.place(at: CGPoint(x: bounds.minX, y: y),
+                              proposal: ProposedViewSize(width: bounds.width, height: height))
+                y += height + spacing
+            }
+        }
     }
 }
