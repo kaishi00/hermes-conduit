@@ -8,6 +8,7 @@
 //
 
 import UIKit
+import UIKit.UIGestureRecognizerSubclass
 
 /// Where each finger on a transcript landed and which gestures took it,
 /// and the system's swipe back on the transcript's navigation stack, in the
@@ -22,7 +23,8 @@ enum TranscriptTouchTrace {
     private static let surfaces = NSHashTable<UICollectionView>.weakObjects()
     /// Touches whose start was logged: their end is too.
     private static var logged: Set<ObjectIdentifier> = []
-    private static var watchedBackSwipes: Set<ObjectIdentifier> = []
+    /// Weak, so a later stack's recognizer at a recycled address is still watched.
+    private static let watchedBackSwipes = NSHashTable<UIGestureRecognizer>.weakObjects()
     private static let backSwipeTarget = BackSwipeTarget()
 
     /// A transcript on screen: touches on it are logged.
@@ -44,7 +46,8 @@ enum TranscriptTouchTrace {
     }
 
     private static func watchBackSwipe(_ recognizer: UIGestureRecognizer?, kind: BackSwipeTarget.Kind) {
-        guard let recognizer, watchedBackSwipes.insert(ObjectIdentifier(recognizer)).inserted else { return }
+        guard let recognizer, !watchedBackSwipes.contains(recognizer) else { return }
+        watchedBackSwipes.add(recognizer)
         recognizer.addTarget(backSwipeTarget, action: kind == .edge ? #selector(BackSwipeTarget.edge(_:)) : #selector(BackSwipeTarget.content(_:)))
     }
 
@@ -126,6 +129,11 @@ enum TranscriptTouchTrace {
     static func endedLine(cancelled: Bool, took: [(String, UIGestureRecognizer.State)]) -> String {
         let end = cancelled ? "touch cancelled" : "touch ended"
         return took.isEmpty ? "\(end), nothing took it" : "\(end), took " + recognizers(took)
+    }
+
+    /// The transcript's own drag, as it starts and as it ends.
+    static func dragLine(_ state: UIGestureRecognizer.State, offset: CGFloat) -> String {
+        String(format: "drag %@ offset %.1f", stateName(state), offset)
     }
 
     static func backSwipeLine(content: Bool, state: UIGestureRecognizer.State, x: CGFloat) -> String {

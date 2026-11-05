@@ -81,7 +81,10 @@ extension ConnectionFailureTests {
         XCTAssertEqual(TranscriptTouchTrace.endedLine(cancelled: true, took: []), "touch cancelled, nothing took it")
         let swipe = TranscriptTouchTrace.backSwipeLine(content: false, state: .cancelled, x: 3)
         XCTAssertEqual(swipe, "back swipe edge cancelled at x 3")
-        for line in [over, ended, swipe] {
+        let drag = TranscriptTouchTrace.dragLine(.cancelled, offset: 9051.66)
+        XCTAssertEqual(drag, "drag cancelled offset 9051.7")
+        XCTAssertEqual(TranscriptTouchTrace.dragLine(.began, offset: 0), "drag began offset 0.0")
+        for line in [over, ended, swipe, drag] {
             XCTAssertTrue(takenByTheRelay(ChatViewportTrace.sanitized(line)), line)
         }
         // A generic class keeps its name, not its arguments.
