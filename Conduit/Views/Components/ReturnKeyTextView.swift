@@ -112,6 +112,45 @@ class ReturnKeyTextView: UITextView {
     override func didMoveToWindow() {
         super.didMoveToWindow()
         installFieldDrop()
+        if window != nil { scheduleFocusIntent() }
+    }
+
+    // MARK: Focus
+
+    /// The composer wants the field focused: taken once it's in a window.
+    private(set) var focusesInWindow = false
+    private var focusChangeScheduled = false
+
+    /// Takes or gives up focus as the composer asks, just after the
+    /// SwiftUI update that asked, never inside it. Inside it, resigning
+    /// asks the hosting view whether it can take focus, which re-enters
+    /// the view graph mid-update: on iOS 27 the whole app froze there
+    /// while typing (issue 1781). Several asks before it runs come to the
+    /// last one; a change UIKit refuses is asked again on the next update,
+    /// since the binding still says so. Out of a window, the wish waits
+    /// for `didMoveToWindow`.
+    func setFocusIntent(_ wantsFocus: Bool) {
+        focusesInWindow = wantsFocus
+        scheduleFocusIntent()
+    }
+
+    private var focusMatchesIntent: Bool {
+        focusesInWindow ? (isFirstResponder || window == nil) : !isFirstResponder
+    }
+
+    private func scheduleFocusIntent() {
+        guard !focusMatchesIntent, !focusChangeScheduled else { return }
+        focusChangeScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.focusChangeScheduled = false
+            self.applyFocusIntent()
+        }
+    }
+
+    private func applyFocusIntent() {
+        if focusesInWindow, !isFirstResponder, window != nil { _ = becomeFirstResponder() }
+        if !focusesInWindow, isFirstResponder { _ = resignFirstResponder() }
     }
 
     /// Takes a drop the field accepted: files to the composer, words and
@@ -492,15 +531,12 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         context.coordinator.parent = self
         context.coordinator.apply(text: text, to: uiView, hasMarkedText: uiView.markedTextRange != nil)
         configure(uiView, context: context)
-        if isFocused, !uiView.isFirstResponder, uiView.window != nil {
-            DispatchQueue.main.async { uiView.becomeFirstResponder() }
-        }
-        if !isFocused, uiView.isFirstResponder {
-            DispatchQueue.main.async { _ = uiView.resignFirstResponder() }
-        }
+        // Applied after this update, the latest ask winning (issue 1781).
+        uiView.setFocusIntent(isFocused)
     }
 
     static func dismantleUIView(_ uiView: ReturnKeyTextView, coordinator: Coordinator) {
+        uiView.setFocusIntent(false)
         uiView.delegate = nil
         uiView.onSubmitFromReturn = nil
         uiView.canSubmitFromReturn = false

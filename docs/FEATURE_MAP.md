@@ -2633,10 +2633,10 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
 
 **Code**
 - Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.keepsFocusAfterSend)
-- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; handoffComposer, which clears focusesAfterFullEditor; composerInUse and hidesMinimisedCallBar, which follow focus), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView, ImagePasteTextView.setFocusIntent and didMoveToWindow: a field rebuilt with focus takes it once it's in the window), `Conduit/Views/ChatView.swift` (composerTyping, read through V2ComposerTypingKey, hides MinimisedLiveVoiceBar)
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; handoffComposer, which clears focusesAfterFullEditor; composerInUse and hidesMinimisedCallBar, which follow focus), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView and Coordinator.deactivate, which pass the binding's focus to the field), `Conduit/Views/Components/ReturnKeyTextView.swift` (ReturnKeyTextView.setFocusIntent and didMoveToWindow: focus changes after the update that asked, and a field rebuilt with focus takes it once it's in the window; ReturnKeyTextEditor, rooms' field and the full editor, the same), `Conduit/Views/ChatView.swift` (composerTyping, read through V2ComposerTypingKey, hides MinimisedLiveVoiceBar)
 - Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`, opened by ComposerBar's expand button (which takes focus from the field) and its sheet
 - Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (send; focusesAfterFullEditor, read in the full editor sheet's onDismiss)
-- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndOnAnIPadWithAHardwareKeyboard), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow)
+- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndOnAnIPadWithAHardwareKeyboard), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow, testFocusChangesWaitUntilAfterTheUpdateThatAskedAndTheLastAskWins)
 
 **Rulings**
 - On a Mac, or on an iPad with a hardware keyboard, a send or Stop
@@ -2658,6 +2658,13 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   chat first, that focus doesn't follow it there (2026-10-30, #1527).
 - Opening a call from the composer still takes focus away on every device:
   the call has the screen (2026-10-30, #1527).
+- Every composer field takes or gives up focus just after the SwiftUI
+  update that asked, never inside it, and several asks before then come to
+  the last. Resigning inside the update asked the hosting view whether it
+  could take focus, which re-entered the view graph: on iOS 27 the whole
+  app froze mid-typing until force-quit (2026-11-05, #1785, issue 1781).
+  A chat's field, a room's and the full editor share the code
+  (ReturnKeyTextView.setFocusIntent), the field being dismantled included.
 
 **Open gaps**
 - Not yet seen on a device: a Mac and an iPad with a keyboard sending from
@@ -2666,7 +2673,7 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   `updateUIView` passing the binding's focus to the field (it needs a SwiftUI
   Context), so that link is checked on a device only.
 
-**Checked:** 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
+**Checked:** 2026-11-05, #1785 (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
 
 ## A chat's last reply
 
