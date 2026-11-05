@@ -1199,6 +1199,12 @@ final class AppState: ObservableObject {
     /// The open chat's plan card (AppState+ChatCards). Its own observable:
     /// the card changing redraws the card alone.
     let chatCards = ChatCardsModel()
+    /// Every chat Hermes waits on the user in, every profile's (issue 1705;
+    /// AppState+NeedsYou). Its own observable, as `chatCards`.
+    let needsYou = NeedsYouStore()
+    /// A chat opened from the Needs you list or banner, to scroll to its
+    /// waiting card once its transcript has it.
+    @Published var pendingNeedsYouReveal: NeedsYouReveal?
     /// Cached once per transcript mutation so view updates do not rescan the full history.
     @Published private(set) var pendingClarifyMessageID: String?
     /// What that card is, for the jump button's words.
@@ -15108,6 +15114,8 @@ final class AppState: ObservableObject {
     }
 
     func disconnect() {
+        // Its waits belong to the signed-out user (issue 1705).
+        needsYou.reset(dashboardID: nil)
         // The next sign-in to it asks for Face ID again.
         if let activeDashboardID { faceIDUnlockedDashboards[activeDashboardID] = nil }
         // Its turns' Lock Screen progress has nothing left to follow.
@@ -15540,6 +15548,8 @@ final class AppState: ObservableObject {
             return
         }
         guard let dashboard = dashboardForSignIn(id) else { return }
+        // Another dashboard's waits never show on this one's chips.
+        needsYou.reset(dashboardID: id)
         dashboardSwitchGeneration &+= 1
         let generation = dashboardSwitchGeneration
         let previousDashboardID = activeDashboardID
@@ -15725,6 +15735,8 @@ final class AppState: ObservableObject {
         // Drafts shared for this dashboard belong to the signed-out user.
         discardSharedDrafts(forDashboard: id)
         if id == activeDashboardID {
+            // The signed-out user's waits leave the chips with them.
+            needsYou.reset(dashboardID: nil)
             disconnect()
             return
         }
@@ -25475,6 +25487,19 @@ final class AppState: ObservableObject {
     /// Routes a notification to its originating profile/session without
     /// allowing the ordinary cold-start session restoration to win first.
     func openNotificationTargetOutcome(_ target: ConduitNotificationTarget) async -> NotificationOpenOutcome {
+        let outcome = await openNotificationTargetOutcomeRouted(target)
+        // A wait's notification whose id the open resolved to another (a
+        // runtime id from an older notifier): its card is in the chat that
+        // opened, so the reveal names that one (issue 1705).
+        if outcome == .opened, let type = target.type, NeedsYouStore.notificationTypes.contains(type),
+           let reveal = pendingNeedsYouReveal, !isShowingChat(for: reveal),
+           let opened = activeSessionId, !opened.isEmpty {
+            pendingNeedsYouReveal = NeedsYouReveal(opening: opened)
+        }
+        return outcome
+    }
+
+    private func openNotificationTargetOutcomeRouted(_ target: ConduitNotificationTarget) async -> NotificationOpenOutcome {
         widgetLaunchCoordinator.supersede()
         // Where an open for a call from Hermes stopped (#449).
         var traceStage = "dashboard check"
@@ -25553,6 +25578,11 @@ final class AppState: ObservableObject {
             return .opened
         }
         traceStage = "open start"
+        // An approval's or a question's notification lands on its card, as
+        // the Needs you list's Open does (issue 1705).
+        if let type = target.type, NeedsYouStore.notificationTypes.contains(type) {
+            pendingNeedsYouReveal = NeedsYouReveal(opening: target.durableSessionID ?? target.sessionId)
+        }
         let notificationAttemptID = UUID()
         activeNotificationOpenAttemptID = notificationAttemptID
         isOpeningNotificationSession = true

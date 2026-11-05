@@ -2814,10 +2814,55 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertFalse(harness.appState.isOpeningNotificationSession)
     }
 
+    /// Issue 1705: an approval's or a question's notification opens on its
+    /// waiting card; a reply's doesn't scroll anywhere.
+    func testAWaitsNotificationOpensOnItsCard() async {
+        for (type, reveals) in [("approval.needed", true), ("input.needed", true), ("response_ready", false)] {
+            let harness = makeHarness(
+                lifecycleOperations: ChatResumeLifecycleOperations(
+                    loadCatalog: { _, _ in throw ControlledLifecycleError.failed }
+                )
+            )
+            let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+            harness.appState.connection = connection
+            harness.appState.client = HermesClient(connection: connection, profile: "default")
+            _ = await harness.appState.openNotificationTarget(
+                ConduitNotificationTarget(profile: nil, sessionId: "stored-a", type: type)
+            )
+            XCTAssertEqual(harness.appState.pendingNeedsYouReveal?.opening, reveals ? "stored-a" : nil, type)
+        }
+    }
+
+    /// Issue 1705: Open on the list or the banner scrolls the open chat to
+    /// its card, waits for another chat to open, and sets nothing when a
+    /// call refuses another profile's chat.
+    func testOpeningAWaitFromTheListRevealsItsCard() {
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in throw ControlledLifecycleError.failed }
+            )
+        )
+        let appState = harness.appState
+        appState.activeSessionId = "runtime-a"
+        appState.showSidebar = true
+        appState.openNeedsYou(NeedsYouItem(waitID: "w1", profile: "default", kind: .approval, sessionIDs: ["runtime-a"]))
+        XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "runtime-a", "the open chat only scrolls, itself")
+        XCTAssertFalse(appState.showSidebar, "the Chats list over it gives way")
+        appState.pendingNeedsYouReveal = nil
+        appState.isNativeHermesCallActive = true
+        appState.openNeedsYou(NeedsYouItem(waitID: "w2", profile: "other", kind: .question, sessionIDs: ["stored-b"]))
+        XCTAssertNil(appState.pendingNeedsYouReveal, "a call refuses another profile's chat")
+        appState.isNativeHermesCallActive = false
+        appState.openNeedsYou(NeedsYouItem(waitID: "w3", profile: "default", kind: .approval, sessionIDs: ["stored-c"]))
+        XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "stored-c")
+    }
+
     /// #789: an open Hermes refuses for good is final, so the route doesn't
     /// retry it; one that failed on the way can pass on the next try.
     private func notificationOpenOutcome(
         catalog: [SessionSummary],
+        target: String = "stored-a",
+        type: String = "response_ready",
         open: @escaping (String) throws -> SessionResumeResult
     ) async -> (outcome: AppState.NotificationOpenOutcome, appState: AppState) {
         let harness = makeHarness(
@@ -2831,9 +2876,30 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.connection = connection
         harness.appState.client = HermesClient(connection: connection, profile: "default")
         let outcome = await harness.appState.openNotificationTargetOutcome(
-            ConduitNotificationTarget(profile: nil, sessionId: "stored-a", type: "response_ready")
+            ConduitNotificationTarget(profile: nil, sessionId: target, type: type)
         )
         return (outcome, harness.appState)
+    }
+
+    /// Issue 1705: a wait's notification that names the chat's runtime id
+    /// (an older notifier) still lands on its card in the chat it opened.
+    func testAWaitsNotificationByRuntimeIDRevealsTheChatItOpened() async {
+        let result = await notificationOpenOutcome(
+            catalog: [session("stored-a", alternateIDs: ["runtime-a"])],
+            target: "runtime-a",
+            type: "approval.needed"
+        ) { _ in
+            SessionResumeResult(
+                sessionId: "stored-a",
+                messages: [],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        XCTAssertEqual(result.outcome, .opened)
+        guard let reveal = result.appState.pendingNeedsYouReveal else {
+            return XCTFail("the wait's notification sets a reveal")
+        }
+        XCTAssertTrue(result.appState.isShowingChat(for: reveal), "it names the chat that opened")
     }
 
     func testNotificationOpenOfAMissingConversationIsFinal() async {
