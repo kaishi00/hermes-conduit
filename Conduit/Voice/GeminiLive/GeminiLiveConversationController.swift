@@ -322,7 +322,8 @@ final class GeminiLiveConversationController: ObservableObject {
     private var session: GeminiLiveSessionControlling?
     private var initialWidgetCaptureAuthorization: WidgetInitialCaptureAuthorization?
     /// Set by the Interrupt button: the rest of the current model turn is
-    /// dropped locally until the server ends or interrupts it.
+    /// dropped locally until the server ends or interrupts it. A press
+    /// after the turn ended (its tail still playing) sets nothing.
     private var suppressingModelTurn = false
     private var lastPlaybackAt: Date?
     private var lastModelAudioAt: Date?
@@ -444,7 +445,10 @@ final class GeminiLiveConversationController: ObservableObject {
         guard modelTurnActive || output.isPlaying else { return }
         output.interrupt()
         session?.cancelResponse()
-        suppressingModelTurn = true
+        // Only a turn still arriving is dropped: after its turnComplete,
+        // pressed while the tail plays, the next turn is the model's next
+        // reply and must be heard (issue 1790).
+        suppressingModelTurn = modelTurnActive
         modelTurnActive = false
         lastModelTurnEndedAt = now()
         lastPlaybackAt = nil

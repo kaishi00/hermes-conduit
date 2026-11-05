@@ -629,7 +629,9 @@ final class WatchDirectCallModel: ObservableObject {
         audio.stopPlayback()
         // Local Live's server is told, so its microphone opens again (#1325).
         session?.cancelResponse()
-        suppressingModelTurn = true
+        // Only a turn still arriving is dropped: pressed while a finished
+        // turn's tail plays, the next turn must be heard (issue 1790).
+        suppressingModelTurn = modelTurnActive
         modelTurnActive = false
         lastModelTurnEndedAt = now
         lastPlaybackEndedAt = now

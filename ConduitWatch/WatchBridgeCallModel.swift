@@ -397,7 +397,9 @@ final class WatchBridgeCallModel: ObservableObject {
         // dropped; the microphone opens, and GPT-Live stops when it hears
         // the user.
         audio.stopPlayback()
-        suppressingTurn = true
+        // Only a stretch still arriving is dropped: pressed while an ended
+        // one's tail plays, the next must be heard (issue 1790).
+        suppressingTurn = modelSpeaking
         modelSpeaking = false
         lastPlaybackEndedAt = now
         awaitingFirstAudio = false
