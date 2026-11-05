@@ -1187,7 +1187,13 @@ final class HermesNativeCalls: NSObject {
         case .unreadable: request = HermesCallNotifications.unreadableMissedCallRequest()
         }
         guard let request else { return }
-        Task { await HermesCallNotifications.post(request) }
+        // A stop that launched Conduit may be all that keeps it running: the
+        // notice is posted before iOS can suspend it.
+        let end = BackgroundTaskHold.begin("conduit.hermesCall.notice")
+        Task { @MainActor in
+            await HermesCallNotifications.post(request)
+            end()
+        }
     }
 }
 
