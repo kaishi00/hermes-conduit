@@ -112,7 +112,7 @@ enum MarkdownProseRun {
 
     static func pictureSlot(at index: Int, in ranges: [Range<Int>], shown: Range<Int>) -> PictureSlot {
         guard let range = ranges.first(where: { $0.contains(index) }) else { return .single }
-        let visible = range.clamped(to: shown)
+        let visible = max(range.lowerBound, shown.lowerBound)..<max(min(range.upperBound, shown.upperBound), max(range.lowerBound, shown.lowerBound))
         guard index == visible.lowerBound else { return .covered }
         return visible.count > 1 ? .grid(visible) : .single
     }
