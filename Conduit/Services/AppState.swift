@@ -24456,13 +24456,7 @@ final class AppState: ObservableObject {
                   !self.profileAppearanceStore.isMirrored(bot.name, dashboardID: dashboardID),
                   let data = self.profileAppearanceStore.avatarData(for: bot.name, dashboardID: dashboardID)
             else { return nil }
-            // A moving picture is already a small square APNG
-            // (AnimatedAvatar); redrawing it would keep one frame.
-            if AnimatedAvatar.isAnimated(data) {
-                return await self.setHermesPicture(data, for: bot, client: client)
-            }
-            guard let image = UIImage(data: data),
-                  let png = BotAvatarImage.normalizedPNG(from: image) else { return nil }
+            guard let png = BotAvatarImage.hermesPicture(fromPhoneCopy: data) else { return nil }
             return await self.setHermesPicture(png, for: bot, client: client)
         }
     }

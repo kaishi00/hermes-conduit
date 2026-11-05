@@ -854,7 +854,8 @@ struct BotOverviewSheet: View {
                         ))
                 } else {
                     ProfileAvatarView(profile: profile, displayName: botName,
-                                      url: appState.profileAvatarURL(for: profile), size: 52)
+                                      url: appState.profileAvatarURL(for: profile), size: 52,
+                                      animates: true)
                         .clipShape(Circle())
                 }
             }

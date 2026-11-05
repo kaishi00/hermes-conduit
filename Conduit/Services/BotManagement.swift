@@ -439,6 +439,15 @@ enum BotAvatarImage {
         return rendered.pngData()
     }
 
+    /// What a photo kept on the phone alone becomes on Hermes: a moving
+    /// picture as it is, since it's already a small square APNG
+    /// (AnimatedAvatar) and redrawing it would keep one frame; a still
+    /// normalized like any pick.
+    static func hermesPicture(fromPhoneCopy data: Data) -> Data? {
+        if AnimatedAvatar.isAnimated(data) { return data }
+        return UIImage(data: data).flatMap { normalizedPNG(from: $0) }
+    }
+
     static func dataURL(png: Data) -> String {
         "data:image/png;base64," + png.base64EncodedString()
     }
