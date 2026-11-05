@@ -386,6 +386,34 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(onDevice.appended.isEmpty)
     }
 
+    func testAudioRefusedAsACancellationIsNotSpokenOnThisIPhone() async throws {
+        // Read Aloud ends a reading that opened under a held microphone with
+        // a cancellation (issue 1770): never a Hermes failure to fall back
+        // from, which would keep the iPhone's voice for later reads.
+        let hermes = ScriptedSpeechStream()
+        let onDevice = ScriptedSpeechStream()
+        let stream = try await FallbackSpeechStream.open(
+            hermes: { onStart, _, _ in
+                hermes.onFinish = { try onStart(24_000) }
+                return hermes
+            },
+            onDevice: { _, _ in onDevice },
+            onFallback: { _ in XCTFail("a cancellation isn't a Hermes failure") },
+            onStart: { _ in throw CancellationError() },
+            onPCM16: { _, _ in },
+            onEncodedAudio: { _ in }
+        )
+
+        try await stream.append("Hello.")
+        do {
+            _ = try await stream.finish()
+            XCTFail("the cancellation reaches the caller")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertTrue(onDevice.appended.isEmpty)
+    }
+
     func testGatewaySpeaksOnThisIPhoneWhenChosen() async throws {
         let onDevice = ScriptedSpeechStream()
         let gateway = HermesVoiceGateway(

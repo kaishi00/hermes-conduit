@@ -467,6 +467,10 @@ final class VoiceConversationController: ObservableObject {
         isVoiceSessionActive || isProviderTestRunning
     }
 
+    /// A conversation runs (a call), not a provider test, which raises
+    /// isVoiceSessionActive too.
+    var hasConversationSession: Bool { isVoiceSessionActive && !isProviderTestRunning }
+
     /// Observability seam: whether a gateway reference is currently installed.
     /// The server-replacement boundary clears this reference; tests pin the
     /// clearing through here because a stale gateway's failure mode (reaching
