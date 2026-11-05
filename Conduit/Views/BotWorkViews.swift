@@ -803,27 +803,9 @@ private struct BotWorkRow: View {
             .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
             .frame(maxWidth: .infinity)
         // Settings' buttons; Stop the same capsule in red.
-        return Group {
-            if action == .stop {
-                Button(action: act) {
-                    text
-                        .scaledFont(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.red)
-                        .padding(.horizontal, 14)
-                        .frame(minHeight: 36)
-                        .background(Color.red.opacity(0.12), in: Capsule())
-                        .overlay { Capsule().strokeBorder(Color.red.opacity(0.4), lineWidth: 0.5) }
-                        .frame(minHeight: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                // Dims with its neighbours while the row can't act.
-                .opacity(isActing || !appState.isConnected ? 0.45 : 1)
-            } else {
-                Button(action: act) { text }
-                    .buttonStyle(prominent ? .settingsPrimary : .settings)
-            }
-        }
+        return Button(action: act) { text }
+            .buttonStyle(action == .stop ? SettingsButtonStyle.settingsDestructive
+                         : prominent ? SettingsButtonStyle.settingsPrimary : SettingsButtonStyle.settings)
     }
 
     private var replyField: some View {
