@@ -25,7 +25,7 @@ struct PinnedChatsOrderSheet: View {
     var body: some View {
         let chats = appState.pinnedChatsForOrdering(profile: profile)
         NavigationStack {
-            List {
+            ConduitList {
                 Section {
                     ForEach(Array(chats.enumerated()), id: \.element.id) { index, session in
                         Label(session.title, systemImage: appState.sessionCategory(for: session).iconName)

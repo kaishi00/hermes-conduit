@@ -1627,11 +1627,11 @@ struct PulseLearnedSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            SettingsDetailContainer {
                 if let learned {
-                    Section {
+                    ConduitSettingsSection(title: AppLocalization.string("How Pulse tells you"), symbol: "bell.badge", tint: .conduitAccent) {
                         ForEach(learned.levels.keys.sorted(), id: \.self) { kind in
-                            Picker(PulseCardKind.name(kind), selection: Binding(
+                            SettingsPickerField(title: Text(verbatim: PulseCardKind.name(kind)), selection: Binding(
                                 get: { learned.levels[kind] ?? .push },
                                 set: { level in setLevel(level, for: kind) }
                             )) {
@@ -1641,15 +1641,13 @@ struct PulseLearnedSheet: View {
                             }
                             .disabled(working)
                         }
-                    } header: {
-                        Text("How Pulse tells you")
-                    } footer: {
                         Text(verbatim: PulseLearned.levelsFooter(learns: learns))
+                            .settingsCaption()
                     }
                     if appState.pulseExplainsLearning {
                         preferencesSection(learned)
                     }
-                    Section {
+                    ConduitSettingsSection(title: AppLocalization.string("Learned from your ratings"), symbol: "hand.thumbsup", tint: .blue) {
                         if learned.lessons.isEmpty {
                             Text(verbatim: PulseLearned.noLessons(learns: learns))
                                 .foregroundStyle(.secondary)
@@ -1666,18 +1664,17 @@ struct PulseLearnedSheet: View {
                                 }
                                 Spacer(minLength: 8)
                                 Button(AppLocalization.string("Undo")) { undo(lesson) }
-                                    .buttonStyle(.borderless)
+                                    .buttonStyle(.settings)
                                     .disabled(working)
                                     .accessibilityLabel(Text(AppLocalization.string("Undo: \(lesson.text)")))
                             }
                         }
-                    } header: {
-                        Text("Learned from your ratings")
                     }
                 } else if let errorMessage {
                     Text(verbatim: errorMessage).foregroundStyle(.red)
                 } else {
                     ProgressView()
+                        .frame(maxWidth: .infinity)
                 }
                 if learned != nil, let errorMessage {
                     Text(verbatim: errorMessage)
@@ -1716,7 +1713,7 @@ struct PulseLearnedSheet: View {
     /// What learning holds, strongest first, each with Reset (but the lean
     /// over Pulse's cards in general, which only Start over forgets).
     private func preferencesSection(_ learned: PulseLearned) -> some View {
-        Section {
+        ConduitSettingsSection(title: AppLocalization.string("From your thumbs, Do it and Done"), symbol: "sparkles", tint: .purple) {
             if learned.preferences.isEmpty {
                 Text(verbatim: PulseLearned.noPreferences)
                     .foregroundStyle(.secondary)
@@ -1727,7 +1724,7 @@ struct PulseLearnedSheet: View {
                     Spacer(minLength: 8)
                     if preference.canReset {
                         Button(AppLocalization.string("Reset")) { reset(preference) }
-                            .buttonStyle(.borderless)
+                            .buttonStyle(.settings)
                             .disabled(working)
                             .accessibilityLabel(Text(AppLocalization.string("Reset what Pulse learned: \(preference.subject)")))
                             .accessibilityHint(Text(AppLocalization.string("Pulse forgets what it learned about this")))
@@ -1736,13 +1733,13 @@ struct PulseLearnedSheet: View {
             }
             if !learned.preferences.isEmpty {
                 Button(AppLocalization.string("Start over"), role: .destructive) { confirmsStartOver = true }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.red)
                     .disabled(working)
                     .accessibilityIdentifier("pulse.learned.start-over")
             }
-        } header: {
-            Text("From your thumbs, Do it and Done")
-        } footer: {
             Text("Reset makes Pulse forget what it learned about one of these, and Start over forgets all of it. Undo takes either back, under Learned from your ratings.")
+                .settingsCaption()
         }
     }
 
@@ -1813,50 +1810,40 @@ struct PulseLeftOutSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            SettingsDetailContainer {
                 if let entries {
                     let kept = entries.filter(\.isKeptOut)
                     let reported = entries.filter { !$0.isKeptOut && !$0.isLookAhead }
                     let lookedAhead = entries.filter { !$0.isKeptOut && $0.isLookAhead }
                     if entries.isEmpty {
-                        Section {
+                        SettingsCard {
                             Text("Nothing left out lately.")
                                 .foregroundStyle(.secondary)
-                        } footer: {
-                            footer
                         }
                     }
                     if !kept.isEmpty {
-                        Section {
+                        ConduitSettingsSection(title: AppLocalization.string("Kept out by what you taught Pulse"), symbol: "hand.raised", tint: .purple) {
                             ForEach(kept) { entry in row(entry) }
-                        } header: {
-                            Text("Kept out by what you taught Pulse")
-                        } footer: {
-                            if reported.isEmpty && lookedAhead.isEmpty { footer }
                         }
                     }
                     if !reported.isEmpty {
-                        Section {
+                        ConduitSettingsSection(title: AppLocalization.string("Left out of the report"), symbol: "doc.text", tint: .conduitAccent) {
                             ForEach(reported) { entry in row(entry) }
-                        } header: {
-                            Text("Left out of the report")
-                        } footer: {
-                            if lookedAhead.isEmpty { footer }
                         }
                     }
                     if !lookedAhead.isEmpty {
-                        Section {
+                        ConduitSettingsSection(title: AppLocalization.string("Left out of the look ahead"), symbol: "binoculars", tint: .blue) {
                             ForEach(lookedAhead) { entry in row(entry) }
-                        } header: {
-                            Text("Left out of the look ahead")
-                        } footer: {
-                            footer
                         }
                     }
+                    footer
+                        .settingsCaption()
+                        .padding(.horizontal, 4)
                 } else if let errorMessage {
                     Text(verbatim: errorMessage).foregroundStyle(.red)
                 } else {
                     ProgressView()
+                        .frame(maxWidth: .infinity)
                 }
                 if entries != nil, let errorMessage {
                     Text(verbatim: errorMessage)

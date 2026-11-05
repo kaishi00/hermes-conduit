@@ -1217,8 +1217,8 @@ struct WorkspaceMoveSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
+            SettingsDetailContainer {
+                SettingsCard {
                     Text(verbatim: current)
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
@@ -1230,11 +1230,13 @@ struct WorkspaceMoveSheet: View {
                         } label: {
                             Label(AppLocalization.string("Up One Folder"), systemImage: "arrow.turn.left.up")
                         }
+                        .buttonStyle(.settings)
                     }
                 }
-                Section {
+                ConduitSettingsSection(title: AppLocalization.string("Folders"), symbol: "folder", tint: .blue) {
                     if loading {
                         ProgressView()
+                            .frame(maxWidth: .infinity)
                     } else if let failure {
                         Text(verbatim: failure)
                             .foregroundStyle(.secondary)
@@ -1246,8 +1248,19 @@ struct WorkspaceMoveSheet: View {
                         Button {
                             folder = child.path
                         } label: {
-                            Label(child.name, systemImage: "folder.fill")
+                            HStack(spacing: 10) {
+                                Image(systemName: "folder.fill")
+                                    .foregroundStyle(.blue)
+                                Text(child.name)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Spacer(minLength: 8)
+                                SettingsChevron()
+                            }
+                            .frame(minHeight: 36)
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }

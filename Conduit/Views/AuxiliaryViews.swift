@@ -4854,6 +4854,138 @@ struct ConduitSettingsSection<Content: View>: View {
     }
 }
 
+/// A Settings card with no name over it, for a group whose first row
+/// names it (Edit Bot's Advanced).
+struct SettingsCard<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .settingsCard()
+    }
+}
+
+/// A row in a Settings card that opens a page: its name, what it's set
+/// to in grey, and a chevron, as Settings > Pulse's What Pulse remembers.
+/// The caller's NavigationLink takes `.buttonStyle(.plain)`, so the row
+/// reads like the rows beside it rather than in the accent.
+struct SettingsLinkRow: View {
+    let title: String
+    var value: String?
+
+    var body: some View {
+        HStack {
+            Text(verbatim: title)
+                .foregroundStyle(.primary)
+            Spacer(minLength: 8)
+            if let value {
+                Text(verbatim: value)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            SettingsChevron()
+        }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+    }
+}
+
+extension View {
+    /// A caption inside a Settings card, under the control it explains.
+    func settingsCaption() -> some View {
+        scaledFont(.footnote)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// A multi-line editor's field inside a Settings card, beside the
+    /// rounded-border text fields.
+    func settingsEditorBox() -> some View {
+        scrollContentBackground(.hidden)
+            .padding(6)
+            .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+/// A system Picker drawn as Settings' dropdown field (ConduitMenuPicker's
+/// look): the name in grey, the menu with its pick on the right, on a
+/// glass field. For pickers whose choices are views with tags.
+struct SettingsPickerField<SelectionValue: Hashable, Content: View>: View {
+    let title: Text
+    @Binding var selection: SelectionValue
+    @ViewBuilder let content: Content
+
+    /// The value never wraps inside the field: beside the name when both
+    /// fit on one line, under it when they don't ("Right away, with a
+    /// notification" on a phone).
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack {
+                name
+                Spacer(minLength: 8)
+                picker
+                    .fixedSize()
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                name
+                    .padding(.top, 8)
+                // Under the name it takes the field's width, and a value
+                // longer than that truncates inside the glass.
+                picker
+                    .lineLimit(1)
+                    .padding(.leading, -12)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .scaledFont(.subheadline.weight(.medium))
+        .padding(.leading, 12)
+        .padding(.vertical, 2)
+        .frame(minHeight: 42)
+        .conduitGlassControl(cornerRadius: 14)
+    }
+
+    private var name: some View {
+        title
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .accessibilityHidden(true)
+    }
+
+    private var picker: some View {
+        Picker(selection: $selection) {
+            content
+        } label: {
+            title
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .tint(.conduitAccent)
+        // labelsHidden drops the name for VoiceOver too: it reads
+        // "Name, Value", as ConduitMenuPicker does.
+        .accessibilityLabel(title)
+    }
+}
+
+/// Names a Settings card shows the same in every language.
+enum SettingsNames {
+    static let mcp = "MCP"
+    static let json = "JSON"
+}
+
+/// The chevron at the end of a Settings row that opens a page.
+struct SettingsChevron: View {
+    var body: some View {
+        Image(systemName: "chevron.right")
+            .scaledFont(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .accessibilityHidden(true)
+    }
+}
+
 /// A settings page's still backdrop, its glow in `settingsGlowTint`: the
 /// active profile's color in V2's Settings tab, as on its home page, so
 /// pushing a page keeps it. An environment value rather than AppState, so a
@@ -4863,6 +4995,42 @@ struct SettingsBackdrop: View {
 
     var body: some View {
         ConduitBackdrop(glowTint: glowTint)
+    }
+}
+
+/// A sheet's list you reorder or swipe, in Settings' look: the Settings
+/// backdrop behind it and quiet card rows over it, rather than the system's
+/// plain grey. Every other sheet is built from Settings' own pieces
+/// (SettingsDetailContainer, ConduitSettingsSection, SettingsCard), as
+/// the Settings tab is (Eric 2026-11-05); only a List keeps move and swipe.
+struct ConduitList<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        List {
+            content.listRowBackground(ConduitFormRowFill())
+        }
+        .conduitFormBackdrop()
+    }
+}
+
+/// The fill of a `ConduitList` row: `settingsCard`'s faint fill, a little
+/// stronger in dark mode, where 0.05 left rows hard to tell from the glow.
+struct ConduitFormRowFill: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.05)
+    }
+}
+
+extension View {
+    /// The Settings backdrop behind a grouped Form or List, for a list whose
+    /// rows take `ConduitFormRowFill` themselves.
+    func conduitFormBackdrop() -> some View {
+        scrollContentBackground(.hidden)
+            .background { SettingsBackdrop().ignoresSafeArea() }
+            .tint(.conduitAccent)
     }
 }
 

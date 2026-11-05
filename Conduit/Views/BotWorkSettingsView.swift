@@ -19,30 +19,30 @@ struct BotWorkSettingsView: View {
     @State private var pickedProvider = ""
 
     var body: some View {
-        Form {
+        // Settings' own page: cards with their names over them, menus for
+        // choices and captions inside the card, so Work reads like the
+        // Settings tab (Eric 2026-11-05).
+        SettingsDetailContainer {
             if let settings {
                 content(settings)
                     // One change at a time: a tap while one saves isn't lost unseen.
                     .disabled(isSaving)
             } else if loadFailed {
-                Section {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(AppLocalization.string("Couldn’t load the work settings."))
-                            .foregroundStyle(.secondary)
-                        Button(AppLocalization.string("Try Again")) {
-                            Task { await load() }
-                        }
+                ConduitSettingsSection(title: AppLocalization.string("Work"), symbol: "exclamationmark.triangle", tint: .orange) {
+                    Text(AppLocalization.string("Couldn’t load the work settings."))
+                        .foregroundStyle(.secondary)
+                    Button(AppLocalization.string("Try Again")) {
+                        Task { await load() }
                     }
+                    .buttonStyle(.settings)
                 }
             } else {
-                Section {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                }
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 40)
             }
         }
         .navigationTitle(AppLocalization.string("Work"))
-        .navigationBarTitleDisplayMode(.inline)
         // Again when the connection comes back: a page opened while the
         // app reconnects (just back in the foreground) read nothing.
         .task(id: appState.isConnected) {
@@ -51,103 +51,104 @@ struct BotWorkSettingsView: View {
         }
     }
 
+    private func caption(_ text: String) -> some View {
+        Text(verbatim: text)
+            .scaledFont(.footnote)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
     @ViewBuilder
     private func content(_ settings: BotWorkSettings) -> some View {
         if saveFailed {
-            Section {
-                Text(AppLocalization.string("Couldn’t save that change. Try again."))
-                    .scaledFont(.footnote)
-                    .foregroundStyle(.red)
-            }
+            Text(AppLocalization.string("Couldn’t save that change. Try again."))
+                .scaledFont(.footnote)
+                .foregroundStyle(.red)
+                .padding(.horizontal, 16)
         }
-        if settings.unavailable != nil {
-            Section {
+        ConduitSettingsSection(title: AppLocalization.string("Work"), symbol: "arrow.triangle.branch", tint: .conduitAccent) {
+            if settings.unavailable != nil {
                 Text(AppLocalization.string("Workstreams can’t run on this Hermes."))
                 if let reason = settings.unavailable {
-                    Text(verbatim: reason)
-                        .scaledFont(.footnote)
-                        .foregroundStyle(.secondary)
+                    caption(reason)
                 }
             }
-        }
-        Section {
             Toggle(AppLocalization.string("Coordinate Work"), isOn: binding(\.isOnSetting))
-        } footer: {
-            Text(settings.isOn
+                .tint(.conduitAccent)
+            caption(settings.isOn
                 ? AppLocalization.string("\(botName) starts a chat of its own for longer tasks, works on them in the background, and tells you in its Bot Chat when they’re done.")
                 : AppLocalization.string("\(botName) does everything in its Bot Chat itself. Work that’s already running carries on."))
-        }
-        if settings.isOn {
-            Section {
-                Picker(AppLocalization.string("What It Does Itself"), selection: binding(\.policy)) {
-                    Text(AppLocalization.string("Only Coordinates")).tag(BotWorkSettings.Policy.strict)
-                    Text(AppLocalization.string("Also Looks Things Up")).tag(BotWorkSettings.Policy.lookups)
+            if settings.isOn {
+                ConduitMenuPicker(
+                    value: settings.policy,
+                    choices: [
+                        (id: BotWorkSettings.Policy.strict, title: AppLocalization.string("Only Coordinates")),
+                        (id: BotWorkSettings.Policy.lookups, title: AppLocalization.string("Also Looks Things Up")),
+                    ],
+                    onSelect: { binding(\.policy).wrappedValue = $0 }
+                ) {
+                    Text(AppLocalization.string("What It Does Itself")).foregroundStyle(.secondary)
                 }
-                .pickerStyle(.inline)
-                .labelsHidden()
-            } header: {
-                Text(AppLocalization.string("What It Does Itself"))
-            } footer: {
-                Text(settings.policy == .lookups
+                caption(settings.policy == .lookups
                     ? AppLocalization.string("It can also search the web, past chats and skills itself before starting work. Quicker for simple questions, but small models pick the wrong way more often.")
                     : AppLocalization.string("Anything that needs a tool goes to a workstream, so its Bot Chat stays free to talk."))
-            }
-            Section {
                 Stepper(value: binding(\.maxRunning), in: 1...settings.maxRunningLimit) {
                     LabeledContent(AppLocalization.string("Running at Once")) {
                         Text(verbatim: "\(settings.maxRunning)")
                     }
                 }
-            } footer: {
-                Text(AppLocalization.string("When this many are running, \(botName) waits for one to finish or sends new work to one that’s already on it."))
+                caption(AppLocalization.string("When this many are running, \(botName) waits for one to finish or sends new work to one that’s already on it."))
             }
-            Section {
+        }
+        if settings.isOn {
+            ConduitSettingsSection(title: AppLocalization.string("Workstream Model"), symbol: "cpu", tint: .purple) {
                 NavigationLink {
                     BotModelPicker(provider: providerBinding, model: modelBinding, allowsInherit: true,
                                    inheritTitle: AppLocalization.string("Same as Bot Chat"))
                 } label: {
-                    LabeledContent(AppLocalization.string("Workstream Model")) {
-                        (settings.workstreamModel.map { Text(verbatim: $0.model) }
-                            ?? Text(AppLocalization.string("Same as Bot Chat")))
-                            .lineLimit(1)
-                    }
+                    SettingsLinkRow(
+                        title: AppLocalization.string("Model"),
+                        value: settings.workstreamModel?.model ?? AppLocalization.string("Same as Bot Chat")
+                    )
                 }
+                .buttonStyle(.plain)
                 if settings.workstreamModel != nil {
                     // Hermes' per-session reasoning, as the Model sheet offers it.
-                    Picker(AppLocalization.string("Reasoning"), selection: effortBinding) {
-                        Text(AppLocalization.string("Default")).tag(String?.none)
-                        ForEach(ReasoningEffortLevel.allCases) { level in
-                            Text(level.title).tag(Optional(level.rawValue))
-                        }
+                    ConduitMenuPicker(
+                        value: effortBinding.wrappedValue ?? "",
+                        choices: [(id: "", title: AppLocalization.string("Default"))]
+                            + ReasoningEffortLevel.allCases.map { (id: $0.rawValue, title: $0.title) },
+                        onSelect: { effortBinding.wrappedValue = $0.isEmpty ? nil : $0 }
+                    ) {
+                        Text(AppLocalization.string("Reasoning")).foregroundStyle(.secondary)
                     }
                 }
-            } footer: {
-                Text(AppLocalization.string("New workstreams start on this model. Work that’s already running keeps its own."))
+                caption(AppLocalization.string("New workstreams start on this model. Work that’s already running keeps its own."))
             }
-            Section {
-                Picker(AppLocalization.string("After a Restart"), selection: binding(\.afterRestart)) {
-                    Text(AppLocalization.string("Continue Safe Work")).tag(BotWorkSettings.AfterRestart.continue)
-                    Text(AppLocalization.string("Ask Me First")).tag(BotWorkSettings.AfterRestart.ask)
+            ConduitSettingsSection(title: AppLocalization.string("Safety"), symbol: "checkmark.shield", tint: .green) {
+                ConduitMenuPicker(
+                    value: settings.afterRestart,
+                    choices: [
+                        (id: BotWorkSettings.AfterRestart.continue, title: AppLocalization.string("Continue Safe Work")),
+                        (id: BotWorkSettings.AfterRestart.ask, title: AppLocalization.string("Ask Me First")),
+                    ],
+                    onSelect: { binding(\.afterRestart).wrappedValue = $0 }
+                ) {
+                    Text(AppLocalization.string("After a Restart")).foregroundStyle(.secondary)
                 }
-                .pickerStyle(.inline)
-                .labelsHidden()
-            } header: {
-                Text(AppLocalization.string("After a Restart"))
-            } footer: {
-                Text(AppLocalization.string("Work cut off during a step that can change things always waits for you. This is for the rest."))
-            }
-            Section {
-                Picker(AppLocalization.string("Approvals in Workstreams"), selection: binding(\.approvals)) {
-                    Text(AppLocalization.string("Same as Chats")).tag(BotWorkSettings.Approvals.chats)
-                    Text(AppLocalization.string("Ask Me First")).tag(BotWorkSettings.Approvals.ask)
-                    Text(AppLocalization.string("Don’t Ask")).tag(BotWorkSettings.Approvals.off)
+                caption(AppLocalization.string("Work cut off during a step that can change things always waits for you. This is for the rest."))
+                ConduitMenuPicker(
+                    value: settings.approvals,
+                    choices: [
+                        (id: BotWorkSettings.Approvals.chats, title: AppLocalization.string("Same as Chats")),
+                        (id: BotWorkSettings.Approvals.ask, title: AppLocalization.string("Ask Me First")),
+                        (id: BotWorkSettings.Approvals.off, title: AppLocalization.string("Don’t Ask")),
+                    ],
+                    onSelect: { binding(\.approvals).wrappedValue = $0 }
+                ) {
+                    Text(AppLocalization.string("Approvals in Workstreams")).foregroundStyle(.secondary)
                 }
-                .pickerStyle(.inline)
-                .labelsHidden()
-            } header: {
-                Text(AppLocalization.string("Approvals in Workstreams"))
-            } footer: {
-                Text(Self.approvalsCaption(settings, botName: botName))
+                caption(Self.approvalsCaption(settings, botName: botName))
             }
         }
     }

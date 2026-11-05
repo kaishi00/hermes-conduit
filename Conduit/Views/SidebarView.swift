@@ -1101,7 +1101,7 @@ private struct SessionFilterOrderSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            ConduitList {
                 Section {
                     ForEach(appState.sessionFilterOrder, id: \.self) { source in
                         Label(source.label, systemImage: source.iconName)
@@ -1866,77 +1866,86 @@ struct ProjectCreateSheet: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                ConduitBackdrop()
-                Form {
-                    Section {
-                        TextField("e.g. Skunkworks", text: $name)
-                            .textInputAutocapitalization(.words)
-                            .disabled(madeProjectID != nil || isCreating)
-                    } header: {
-                        Text("Name")
-                    } footer: {
-                        Text("Name a workspace and add one or more folders.")
-                    }
-
+            // Settings' own page, as Edit Bot (Eric 2026-11-05).
+            SettingsDetailContainer {
+                ConduitSettingsSection(title: AppLocalization.string("Name"), symbol: "folder.badge.plus", tint: .conduitAccent) {
+                    TextField("e.g. Skunkworks", text: $name)
+                        .textFieldStyle(.roundedBorder)
+                        .textInputAutocapitalization(.words)
+                        .disabled(madeProjectID != nil || isCreating)
+                    Text("Name a workspace and add one or more folders.")
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.secondary)
                     // Projects belong to a profile: the new one goes to the
                     // profile whose projects the list shows, so it shows
                     // there at once (issue 1661).
-                    Section {
-                        LabeledContent(AppLocalization.string("Profile"), value: appState.profileDisplayName(madeProjectProfile ?? appState.activeProfile))
-                    } footer: {
-                        Text(AppLocalization.string("New projects go to the profile in use. To make one in another profile, switch to it first."))
-                    }
+                    LabeledContent(AppLocalization.string("Profile"), value: appState.profileDisplayName(madeProjectProfile ?? appState.activeProfile))
+                    Text(AppLocalization.string("New projects go to the profile in use. To make one in another profile, switch to it first."))
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.secondary)
+                }
 
-                    Section("Folders") {
-                        if folders.isEmpty {
-                            Text("No folders added yet.")
-                                .foregroundStyle(.secondary)
-                        }
-                        ForEach(folders, id: \.self) { folder in
+                ConduitSettingsSection(title: AppLocalization.string("Folders"), symbol: "folder", tint: .blue) {
+                    if folders.isEmpty {
+                        Text("No folders added yet.")
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(folders, id: \.self) { folder in
+                        HStack {
                             Label(folder, systemImage: "folder.fill")
                                 .lineLimit(1)
-                        }
-                        .onDelete { folders.remove(atOffsets: $0) }
-                        // Once the project is made, Save Idea writes to the
-                        // folder it was made with.
-                        .deleteDisabled(madeProjectID != nil || isCreating)
-
-                        Button {
-                            validationMessage = nil
-                            guard !appState.projectFolderPickerRoot.isEmpty else {
-                                validationMessage = AppLocalization.string("Open a chat with a workspace before choosing a project folder.")
-                                return
+                            Spacer(minLength: 8)
+                            // Once the project is made, Save Idea writes to
+                            // the folder it was made with.
+                            if madeProjectID == nil {
+                                Button {
+                                    folders.removeAll { $0 == folder }
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                        .foregroundStyle(.secondary)
+                                        .frame(minWidth: 44, minHeight: 44)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isCreating)
+                                .accessibilityLabel(Text(AppLocalization.string("Remove \(folder)")))
                             }
-                            showFolderPicker = true
-                        } label: {
-                            Label(AppLocalization.string("Add folder"), systemImage: "plus")
-                        }
-                        .disabled(madeProjectID != nil || isCreating)
-                    }
-
-                    Section {
-                        TextEditor(text: $idea)
-                            .frame(minHeight: 120)
-                    } header: {
-                        Text("Idea (optional)")
-                    } footer: {
-                        Text(AppLocalization.string("Saved as IDEA.md in the first folder, as in Hermes Desktop, unless the folder already has one."))
-                    }
-
-                    if let message = clash ?? validationMessage {
-                        Section {
-                            Label(message, systemImage: "exclamationmark.triangle")
-                                .foregroundStyle(.orange)
                         }
                     }
+                    Button {
+                        validationMessage = nil
+                        guard !appState.projectFolderPickerRoot.isEmpty else {
+                            validationMessage = AppLocalization.string("Open a chat with a workspace before choosing a project folder.")
+                            return
+                        }
+                        showFolderPicker = true
+                    } label: {
+                        Label(AppLocalization.string("Add folder"), systemImage: "plus")
+                    }
+                    .buttonStyle(.settings)
+                    .disabled(madeProjectID != nil || isCreating)
                 }
-                .scrollContentBackground(.hidden)
-                // A failed create's message goes once the name or folders
-                // change, so it never stands in for the current problem.
-                .onChange(of: name) { _, _ in clearStaleMessage() }
-                .onChange(of: folders) { _, _ in clearStaleMessage() }
+
+                ConduitSettingsSection(title: AppLocalization.string("Idea (optional)"), symbol: "lightbulb", tint: .yellow) {
+                    TextField("", text: $idea, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                        .lineLimit(5...12)
+                        .accessibilityLabel(Text(AppLocalization.string("Idea (optional)")))
+                    Text(AppLocalization.string("Saved as IDEA.md in the first folder, as in Hermes Desktop, unless the folder already has one."))
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let message = clash ?? validationMessage {
+                    Label(message, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 16)
+                }
             }
+            // A failed create's message goes once the name or folders
+            // change, so it never stands in for the current problem.
+            .onChange(of: name) { _, _ in clearStaleMessage() }
+            .onChange(of: folders) { _, _ in clearStaleMessage() }
             .navigationTitle("New Project")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -2708,7 +2717,7 @@ struct RenameSheet: View {
 
     static func conversation(_ session: SessionSummary, onRename: @escaping @MainActor (String) -> Void) -> RenameSheet {
         RenameSheet(
-            title: AppLocalization.string("Rename conversation"),
+            title: AppLocalization.string("Rename"),
             placeholder: AppLocalization.string("Conversation title"),
             initialText: session.title,
             normalize: { SessionRenameOperation.normalizedTitle($0, currentTitle: session.title) },
@@ -2718,11 +2727,14 @@ struct RenameSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                TextField(placeholder, text: $draft)
-                    .focused($fieldFocused)
-                    .submitLabel(.done)
-                    .onSubmit(commit)
+            SettingsDetailContainer {
+                SettingsCard {
+                    TextField(placeholder, text: $draft)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($fieldFocused)
+                        .submitLabel(.done)
+                        .onSubmit(commit)
+                }
             }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)

@@ -1244,7 +1244,7 @@ struct PulseMemoryList: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        List {
+        ConduitList {
             if let errorMessage {
                 Text(verbatim: errorMessage)
                     .scaledFont(.footnote)
@@ -1282,8 +1282,6 @@ struct PulseMemoryList: View {
         .overlay {
             if !loaded { ProgressView() }
         }
-        .scrollContentBackground(.hidden)
-        .background(SettingsBackdrop())
         .navigationTitle(Text(AppLocalization.string("What Pulse remembers")))
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await load() }

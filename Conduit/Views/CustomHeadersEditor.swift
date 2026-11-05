@@ -56,8 +56,9 @@ struct CustomHeadersEditorSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
+            // Settings' own page, as the server settings that open it (Eric 2026-11-05).
+            SettingsDetailContainer {
+                SettingsCard {
                     Text(AppLocalization.string("Sent with every request to this server, for reverse proxies such as Pangolin, Traefik, or nginx that check a header. Values stay in Keychain."))
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
@@ -72,8 +73,9 @@ struct CustomHeadersEditorSheet: View {
                     }
                 }
                 ForEach($rows) { $row in
-                    Section {
+                    SettingsCard {
                         TextField(AppLocalization.string("Header name"), text: $row.name)
+                            .textFieldStyle(.roundedBorder)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .accessibilityIdentifier("extra-headers.name")
@@ -87,6 +89,7 @@ struct CustomHeadersEditorSheet: View {
                                     SecureField(AppLocalization.string("Value"), text: $row.value)
                                 }
                             }
+                            .textFieldStyle(.roundedBorder)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .accessibilityIdentifier("extra-headers.value")
@@ -115,18 +118,21 @@ struct CustomHeadersEditorSheet: View {
                             rows.removeAll { $0.id == row.id }
                         } label: {
                             Label(AppLocalization.string("Remove header"), systemImage: "trash")
+                                .scaledFont(.subheadline.weight(.medium))
+                                .foregroundStyle(.red)
                         }
+                        .buttonStyle(.plain)
                         .accessibilityLabel(AppLocalization.string("Remove header \(String(position(of: row)))"))
                     }
                 }
-                Section {
-                    Button {
-                        rows.append(CustomHeader(name: "", value: ""))
-                    } label: {
-                        Label(AppLocalization.string("Add header"), systemImage: "plus")
-                    }
-                    .accessibilityIdentifier("extra-headers.add")
+                Button {
+                    rows.append(CustomHeader(name: "", value: ""))
+                } label: {
+                    Label(AppLocalization.string("Add header"), systemImage: "plus")
                 }
+                .buttonStyle(.settings)
+                .padding(.horizontal, 16)
+                .accessibilityIdentifier("extra-headers.add")
             }
             .navigationTitle(AppLocalization.string("Extra headers"))
             .navigationBarTitleDisplayMode(.inline)

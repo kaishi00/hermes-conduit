@@ -1402,7 +1402,7 @@ struct GroupCreateSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            SettingsDetailContainer {
                 if let error = appState.errorMessage, !error.isEmpty {
                     // Create failures (handle collision, RPC refusal) must
                     // surface INSIDE the sheet — the room surface's notice
@@ -1410,22 +1410,20 @@ struct GroupCreateSheet: View {
                     Text(error)
                         .scaledFont(.footnote)
                         .foregroundStyle(.red)
-                        .listRowBackground(Color.clear)
                 }
-                Section(AppLocalization.string("Name")) {
+                ConduitSettingsSection(title: AppLocalization.string("Name"), symbol: "textformat", tint: .conduitAccent) {
                     TextField(AppLocalization.string("Group name"), text: $name)
+                        .textFieldStyle(.roundedBorder)
                         .submitLabel(.done)
                 }
-                Section {
+                ConduitSettingsSection(title: AppLocalization.string("Members (2–6)"), symbol: "person.3", tint: .blue) {
                     ForEach(visibleBots) { bot in
                         memberToggleRow(bot)
                     }
-                } header: {
-                    Text(AppLocalization.string("Members (2–6)"))
-                } footer: {
                     Text(AppLocalization.string(
                         "Group chats run on this gateway. The gateway drives each member's turn — closing Conduit never stops a room."
                     ))
+                    .settingsCaption()
                 }
             }
             .navigationTitle(AppLocalization.string("New Group Chat"))
@@ -1486,6 +1484,7 @@ struct GroupCreateSheet: View {
                 Spacer(minLength: 0)
                 selectionGlyph(isSelected: isSelected)
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])

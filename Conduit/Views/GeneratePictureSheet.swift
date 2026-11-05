@@ -30,22 +30,20 @@ struct GeneratePictureSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
+            // Settings' own page, as Edit Bot that opens it (Eric 2026-11-05).
+            SettingsDetailContainer {
+                ConduitSettingsSection(title: AppLocalization.string("Describe It (Optional)"), symbol: "text.quote", tint: .conduitAccent) {
                     TextField(
                         AppLocalization.string("A friendly fox with a tiny backpack"),
                         text: $description,
                         axis: .vertical
                     )
+                    .textFieldStyle(.roundedBorder)
                     .lineLimit(1...4)
-                } header: {
-                    Text(AppLocalization.string("Describe It (Optional)"))
-                } footer: {
                     Text(forGroup
                         ? AppLocalization.string("Leave empty to use the group's name and members.")
                         : AppLocalization.string("Leave empty to use the bot's name and description."))
-                }
-                Section {
+                        .settingsCaption()
                     Button(action: generate) {
                         HStack(spacing: 8) {
                             if isGenerating {
@@ -58,27 +56,25 @@ struct GeneratePictureSheet: View {
                                 ? AppLocalization.string("Generating…")
                                 : AppLocalization.string("Generate"))
                         }
-                        .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.settingsPrimary)
                     .disabled(isGenerating)
-                } footer: {
                     Text(AppLocalization.string("A picture can take a minute or more. Each tap of Generate adds one; pick one, then tap Use."))
+                        .settingsCaption()
                 }
                 if let error {
-                    Section {
-                        Text(error)
-                            .scaledFont(.footnote)
-                            .foregroundStyle(.red)
-                    }
+                    Text(error)
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 16)
                 }
                 if !pictures.isEmpty {
-                    Section {
+                    SettingsCard {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 12)], spacing: 12) {
                             ForEach(Array(pictures.enumerated()), id: \.element.id) { index, picture in
                                 pictureButton(picture, number: index + 1)
                             }
                         }
-                        .padding(.vertical, 4)
                     }
                 }
             }
