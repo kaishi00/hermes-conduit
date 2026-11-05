@@ -561,7 +561,7 @@ struct BotPortraitCell<MenuContent: View>: View {
         let ringed = selection == .open || room == .member || mergeReady
         // 72 at the default Text Size; the monogram scales it once, up to
         // accessibility1 (about 115), so a two-column cell still holds it.
-        return BotMonogramView(bot: bot, size: 72)
+        return BotMonogramView(bot: bot, size: 72, animates: animates)
             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             .padding(4)
             .modifier(BotZoomSource(name: bot.name))
@@ -836,8 +836,9 @@ struct BotOverviewSheet: View {
         HStack(spacing: 12) {
             Group {
                 if let bot {
-                    // The same life as its portrait on Bots Home.
-                    BotMonogramView(bot: bot, size: 52)
+                    // The same life as its portrait on Bots Home, its
+                    // moving picture included.
+                    BotMonogramView(bot: bot, size: 52, animates: true)
                         .modifier(BotPortraitMotion(
                             status: headerStatus,
                             color: appState.botColor(bot),

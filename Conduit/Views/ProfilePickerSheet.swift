@@ -215,7 +215,7 @@ private struct ProfilePickerRow: View {
         }
         .conduitGlassSurface(cornerRadius: 20, tint: isCurrent ? .conduitAccent.opacity(0.12) : .clear)
         .sheet(isPresented: $showingImagePicker) {
-            ImagePicker(image: $pickedImage)
+            ImagePicker(image: $pickedImage, onAnimated: saveAnimation)
         }
         .onChange(of: pickedImage) { _, newImage in
             guard let newImage else { return }
@@ -238,14 +238,14 @@ private struct ProfilePickerRow: View {
         HStack(spacing: 12) {
             Group {
                 if isReordering {
-                    ProfileAvatarView(profile: profile, displayName: appState.profileDisplayName(profile), url: appState.profileAvatarURL(for: profile), size: 48)
+                    ProfileAvatarView(profile: profile, displayName: appState.profileDisplayName(profile), url: appState.profileAvatarURL(for: profile), size: 48, animates: true)
                 } else {
                     Button {
                         Haptics.selection()
                         showingImagePicker = true
                     } label: {
                 ZStack(alignment: .bottomTrailing) {
-                    ProfileAvatarView(profile: profile, displayName: appState.profileDisplayName(profile), url: appState.profileAvatarURL(for: profile), size: 48)
+                    ProfileAvatarView(profile: profile, displayName: appState.profileDisplayName(profile), url: appState.profileAvatarURL(for: profile), size: 48, animates: true)
                         .overlay {
                             if isSavingPhoto {
                                 ProgressView().frame(width: 48, height: 48).background(.ultraThinMaterial, in: Circle())
@@ -390,6 +390,25 @@ private struct ProfilePickerRow: View {
     }
 
     /// Nil removes the photo.
+    /// A picked GIF or video, made into a looping APNG (AnimatedAvatar)
+    /// first, then saved like a photo.
+    private func saveAnimation(_ source: AnimatedAvatar.Source) {
+        isSavingPhoto = true
+        saveError = nil
+        Task { @MainActor in
+            switch await AnimatedAvatar.picture(fromPicked: source) {
+            case .success(let apng):
+                saveError = await appState.setProfilePhoto(nil, animation: apng, for: profile)
+            case .failure(let failure):
+                saveError = AnimatedAvatar.message(for: failure)
+            }
+            isSavingPhoto = false
+            if let saveError {
+                UIAccessibility.post(notification: .announcement, argument: saveError)
+            }
+        }
+    }
+
     private func savePhoto(_ image: UIImage?) {
         isSavingPhoto = true
         saveError = nil
@@ -431,6 +450,9 @@ struct ProfileAvatarView: View {
     /// transcript's bot face sizes itself to it.
     static let defaultSize: CGFloat = 30
     var size: CGFloat = ProfileAvatarView.defaultSize
+    /// Plays a moving picture (AnimatedAvatarFrames); only where the face is
+    /// the focus, never in rows or the transcript.
+    var animates = false
     private var initials: String {
         let letters = displayName.split(separator: " ").prefix(2).compactMap(\.first)
         return letters.isEmpty ? "H" : String(letters).uppercased()
@@ -438,13 +460,18 @@ struct ProfileAvatarView: View {
     var body: some View {
         Group {
             if let url, let image = ProfileAvatarImageCache.image(at: url) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: size, height: size)
-                    .clipped()
-                    // Always beside the profile's name, or inside a labelled button.
-                    .accessibilityHidden(true)
+                ZStack {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                    if animates, ProfileAvatarImageCache.isAnimated(at: url) {
+                        AnimatedAvatarFrames(playback: .file(url, revision: ProfileAvatarImageCache.revision(of: url)))
+                    }
+                }
+                .frame(width: size, height: size)
+                .clipped()
+                // Always beside the profile's name, or inside a labelled button.
+                .accessibilityHidden(true)
             } else {
                 Text(initials).font(.system(size: max(10, size * 0.36), weight: .bold, design: .rounded))
                     .foregroundStyle(Color.conduitAccent).frame(width: size, height: size)

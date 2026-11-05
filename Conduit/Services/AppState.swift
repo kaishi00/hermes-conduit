@@ -13981,16 +13981,17 @@ final class AppState: ObservableObject {
 
     /// The profile picker's photo. It is the profile's Hermes picture, the
     /// one bots and Hermes Desktop show, so it is written there; the copy on
-    /// disk follows. Nil `image` removes it. Returns a message when it was
-    /// not saved.
-    func setProfilePhoto(_ image: UIImage?, for profile: String) async -> String? {
+    /// disk follows. `animation` is a moving picture made by AnimatedAvatar,
+    /// stored as it is. Nil `image` and `animation` remove it. Returns a
+    /// message when it was not saved.
+    func setProfilePhoto(_ image: UIImage?, animation: Data? = nil, for profile: String) async -> String? {
         switch await profilePhotoHome(for: profile) {
         case .device:
-            guard let image else {
+            if animation == nil, image == nil {
                 removeProfileAvatarFile(for: profile)
                 return nil
             }
-            guard let data = image.pngData() else { return ProfileAppearanceError.invalidImage.errorDescription }
+            guard let data = animation ?? image?.pngData() else { return ProfileAppearanceError.invalidImage.errorDescription }
             do {
                 try saveProfileAvatarOnDevice(data, for: profile)
                 return nil
@@ -14000,6 +14001,11 @@ final class AppState: ObservableObject {
         case .offline:
             return AppLocalization.string("Connect to Hermes to change this photo.")
         case .hermes(let bot, let client):
+            if let animation {
+                return await queueProfilePhotoWrite(bot.name) {
+                    await self.setHermesPicture(animation, for: bot, client: client)
+                }
+            }
             if let image {
                 guard let png = BotAvatarImage.normalizedPNG(from: image) else {
                     return AppLocalization.string("That picture could not be used.")
@@ -23357,6 +23363,19 @@ final class AppState: ObservableObject {
     func botAvatarImage(for bot: BotProfile) -> UIImage? {
         guard bot.hasAvatar else { return nil }
         return botAvatarImages[bot.name] ?? profileAvatarURLs[bot.name].flatMap { ProfileAvatarImageCache.image(at: $0) }
+    }
+
+    /// The bot's picture to play where its face is the focus, when it moves
+    /// (an APNG made from a GIF or a video, AnimatedAvatar): the phone's copy
+    /// of its Hermes picture. Nil for a still.
+    func botAvatarPlayback(for bot: BotProfile) -> AnimatedAvatarPlayback? {
+        guard bot.hasAvatar else { return nil }
+        return profileAvatarPlayback(for: bot.name)
+    }
+
+    func profileAvatarPlayback(for profile: String) -> AnimatedAvatarPlayback? {
+        guard let url = profileAvatarURLs[profile], ProfileAvatarImageCache.isAnimated(at: url) else { return nil }
+        return .file(url, revision: ProfileAvatarImageCache.revision(of: url))
     }
 
     /// The roster has answered on this dashboard: Hermes' bots, or that it
