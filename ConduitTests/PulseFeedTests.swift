@@ -386,6 +386,22 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertTrue(state.isUnlistedChat(id: "20261105_pulse", profile: "default"))
         XCTAssertFalse(state.isUnlistedChat(id: "20261105_pulse", profile: "work"))
         XCTAssertFalse(state.isUnlistedChat(id: "plain", profile: "default"))
+
+        // A branch of Pulse's chat is a chat of its own: its saved choice stays.
+        var branch = row("branch", at: now - 60)
+        branch.lineageRootId = "20261105_pulse"
+        coordinator.setBehavior(.continueWhereLeftOff)
+        coordinator.rememberSession(.dashboard(profile: "default", sessionID: "branch"), for: "default")
+        state.forgetResumedPulseChat("20261105_pulse", profile: "default", among: catalog + [branch])
+        XCTAssertEqual(coordinator.lastSessionID(for: "default"), "branch")
+        // Another profile's saved choice is never Pulse's chat.
+        coordinator.rememberSession(.dashboard(profile: "work", sessionID: "runtime-p"), for: "work")
+        state.forgetResumedPulseChat("20261105_pulse", profile: "work", among: catalog)
+        XCTAssertEqual(coordinator.lastSessionID(for: "work"), "runtime-p")
+        // Switching to Pulse's profile doesn't reopen its chat either.
+        coordinator.rememberSession(.dashboard(profile: "default", sessionID: "20261105_pulse"), for: "default")
+        state.restoreActiveSessionState(for: "default")
+        XCTAssertNil(coordinator.lastSessionID(for: "default"))
     }
 
     func testPulsesChatIsInTheProfileTheFeedNames() throws {

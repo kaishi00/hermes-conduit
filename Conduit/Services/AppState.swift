@@ -7598,6 +7598,10 @@ final class AppState: ObservableObject {
 
     func restoreActiveSessionState(for profile: String) {
         clearPendingDecisionRestorationGuard()
+        // A switch to Pulse's profile doesn't open Pulse's hidden chat either.
+        if let home = pulseHomeChat, showsPulseScreen {
+            forgetResumedPulseChat(home, profile: profile, among: sessions)
+        }
         // The stored reference's KIND decides how its conversation restores.
         // Positive bot evidence reclassifies a legacy id-only reference (every
         // install upgrading from a build that could not record the kind), so a
@@ -17627,13 +17631,17 @@ final class AppState: ObservableObject {
 
     /// Drops Pulse's chat as the saved chat to resume, so the pick goes to a
     /// listed chat. The two are matched by any of the chat's ids.
+    /// Only in Pulse's own profile, and never through a shared lineage root,
+    /// so a branch of Pulse's chat stays a chat of its own.
     func forgetResumedPulseChat(_ home: String, profile: String, among catalog: [SessionSummary]) {
-        guard let saved = chatResumeCoordinator.lastSessionID(for: profile) else { return }
+        guard profilesMatch(profile, pulseHomeProfile),
+              let saved = chatResumeCoordinator.lastSessionID(for: profile) else { return }
         func names(_ id: String) -> Set<String> {
             var ids: Set<String> = [id]
             if let canonical = canonicalSessionID(for: id) { ids.insert(canonical) }
-            for row in catalog + sessions where SessionContentSearch.identities(of: row).contains(id) {
-                ids.formUnion(SessionContentSearch.identities(of: row))
+            for row in catalog + sessions
+            where sessionBelongsToProfile(row, profile: profile) && row.nestingIDs.contains(id) {
+                ids.formUnion(row.nestingIDs)
             }
             return ids
         }
