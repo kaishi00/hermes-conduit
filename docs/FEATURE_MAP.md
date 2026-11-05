@@ -3289,7 +3289,8 @@ model, skills, parent, reassign, board, filter, orchestration, routing and
 bulk sheets (done) · the plan card's sheet (done) · reorder bots, reorder
 pinned chats, reorder session filters and What Pulse remembers (Settings'
 backdrop and card fill only: they keep a List for move and swipe) · Bot
-Overview (done: Settings' backdrop behind its Work and artifacts) · the share
+Overview (done: Settings' backdrop behind it; its Work tab keeps the Work
+panel's own surface, shared with the Bot Chat's side panel) · the share
 extension's sheet (not needed: its own target, without Settings' pieces) ·
 lists that already draw their own backdrop, such as Chats, Tasks, Needs you
 and Bots Home (not needed: already in V2's look)

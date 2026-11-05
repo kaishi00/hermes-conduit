@@ -777,7 +777,9 @@ struct KanbanSkillsPickerSheet: View {
                                         .foregroundStyle(.conduitAccent)
                                 }
                             }
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                         .accessibilityLabel("Skill \(skill.name)")
                         .accessibilityHint(isSelected(skill.name) ? AppLocalization.string("Selected") : AppLocalization.string("Not selected"))
                     }
