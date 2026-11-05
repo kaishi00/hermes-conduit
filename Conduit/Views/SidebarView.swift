@@ -2714,7 +2714,7 @@ struct RenameSheet: View {
 
     static func conversation(_ session: SessionSummary, onRename: @escaping @MainActor (String) -> Void) -> RenameSheet {
         RenameSheet(
-            title: AppLocalization.string("Rename conversation"),
+            title: AppLocalization.string("Rename"),
             placeholder: AppLocalization.string("Conversation title"),
             initialText: session.title,
             normalize: { SessionRenameOperation.normalizedTitle($0, currentTitle: session.title) },

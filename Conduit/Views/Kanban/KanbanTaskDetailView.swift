@@ -519,12 +519,14 @@ struct KanbanTaskDetailView: View {
     private var assignmentExecutionSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Assignment & Execution"), symbol: "person.crop.rectangle.stack", tint: .conduitAura) {
             HStack(spacing: 8) {
+                // Label and value as SettingsMetricRow draws them, so the
+                // card's rows read alike.
                 Text("Assignee")
-                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
                 if let assignee = displayedTask?.assignee, !assignee.isEmpty {
                     Text(assignee)
+                        .scaledFont(.subheadline.weight(.medium))
                         .lineLimit(1)
                 } else {
                     Text(AppLocalization.string("Unassigned") + (displayedTask?.status == "ready" && hasDispatcherFallback ? " " + AppLocalization.string("→ default") : ""))
@@ -534,7 +536,11 @@ struct KanbanTaskDetailView: View {
                     showReassignSheet = true
                 } label: {
                     Image(systemName: "arrow.triangle.2.circlepath.person")
+                        .foregroundStyle(.conduitAccent)
+                        .frame(minWidth: 32, minHeight: 32)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel("Reassign task")
             }
             if let priority = displayedTask?.priority {
@@ -563,20 +569,20 @@ struct KanbanTaskDetailView: View {
             } label: {
                 HStack(spacing: 8) {
                     Text("Model")
-                        .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 8)
                     // Display-only: derived from the loaded server task,
                     // never from the editor draft.
                     Text(KanbanModelOverrideDisplayPolicy.label(for: displayedTask, inheritCopy: AppLocalization.string("Inherit from profile")))
+                        .scaledFont(.subheadline.weight(.medium))
                         .foregroundStyle(hasAnyServerOverride ? Color.primary : Color.secondary)
                         .lineLimit(2)
                         .multilineTextAlignment(.trailing)
-                    Image(systemName: "chevron.right")
-                        .scaledFont(.caption2.weight(.semibold))
-                        .foregroundStyle(.conduitTertiary)
+                    SettingsChevron()
                 }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .accessibilityHint("Edits the per-task model, provider, and reasoning override")
             if isRunning, let pid = displayedTask?.workerPid {
                 SettingsMetricRow(label: AppLocalization.string("Worker PID"), value: String(pid))

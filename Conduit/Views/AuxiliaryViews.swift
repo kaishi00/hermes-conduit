@@ -4919,29 +4919,51 @@ struct SettingsPickerField<SelectionValue: Hashable, Content: View>: View {
     @Binding var selection: SelectionValue
     @ViewBuilder let content: Content
 
+    /// The value never wraps inside the field: beside the name when both
+    /// fit on one line, under it when they don't ("Right away, with a
+    /// notification" on a phone).
     var body: some View {
-        HStack {
-            title
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Spacer(minLength: 8)
-            Picker(selection: $selection) {
-                content
-            } label: {
-                title
+        ViewThatFits(in: .horizontal) {
+            HStack {
+                name
+                Spacer(minLength: 8)
+                picker
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .tint(.conduitAccent)
-            // labelsHidden drops the name for VoiceOver too: it reads
-            // "Name, Value", as ConduitMenuPicker does.
-            .accessibilityLabel(title)
+            VStack(alignment: .leading, spacing: 0) {
+                name
+                    .padding(.top, 8)
+                picker
+                    .padding(.leading, -12)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scaledFont(.subheadline.weight(.medium))
         .padding(.leading, 12)
         .padding(.vertical, 2)
         .frame(minHeight: 42)
         .conduitGlassControl(cornerRadius: 14)
+    }
+
+    private var name: some View {
+        title
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .accessibilityHidden(true)
+    }
+
+    private var picker: some View {
+        Picker(selection: $selection) {
+            content
+        } label: {
+            title
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .tint(.conduitAccent)
+        .fixedSize()
+        // labelsHidden drops the name for VoiceOver too: it reads
+        // "Name, Value", as ConduitMenuPicker does.
+        .accessibilityLabel(title)
     }
 }
 
