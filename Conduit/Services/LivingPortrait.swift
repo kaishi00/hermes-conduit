@@ -67,8 +67,9 @@ enum LivingPortrait {
     static func message(for failure: Failure) -> String {
         switch failure {
         case .noSubject: return AppLocalization.string("No subject was found in that picture to bring to life.")
-        case .unreadable: return AppLocalization.string("That picture could not be used.")
-        case .tooLarge: return AppLocalization.string("That animation is too large. Try a shorter or simpler clip.")
+        // Too large has no clip to shorten here, and a still's loop fits
+        // even the first size tried, so it says only that it failed.
+        case .unreadable, .tooLarge: return AppLocalization.string("That picture could not be used.")
         }
     }
 

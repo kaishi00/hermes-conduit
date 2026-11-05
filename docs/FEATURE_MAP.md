@@ -1759,7 +1759,7 @@ pictures and group room pictures (not needed: Hermes' image generation and
 Image Playground make stills, and rooms show as rows and chips) · Watch, CarPlay, widgets and
 notifications (not needed: they draw no faces) · the notifier (not needed: it
 serves no pictures) · the text that describes it (the editor's caption under
-the picture buttons, README.md's bots and profiles lines)
+the picture buttons, which names a brought-to-life still too, README.md's bots and profiles lines)
 
 **Code**
 - Making one: `Conduit/Services/AnimatedAvatar.swift` (frames from a picture file or a video, thinned, squared and written as a looping APNG under maxBytes, picture(fromPicked:), message(for:), pick(from:): a Photos pick's own file, a still among them used as a photo)
@@ -5057,7 +5057,7 @@ What Conduit calls a profile, and where it is renamed. A bot is a Hermes
 profile, so its name in Bots and its name everywhere else are one name.
 
 **Siblings:** the Profiles sheet's Edit menu (Rename, Choose Photo, Choose
-GIF or Video, Remove Photo, and Image Playground, see Pictures from Image Playground) · Settings > Edit profile (the profile in use) · Edit Bot's name
+GIF or Video, Bring to Life (see Moving pictures), Remove Photo, and Image Playground, see Pictures from Image Playground) · Settings > Edit profile (the profile in use) · Edit Bot's name
 · Hermes Desktop's bot editor (the same title) · every place Conduit names a
 profile through `profileDisplayName` (sidebar, profile switcher and chips,
 All profiles, chat placeholders, call screens, voice settings, widgets, the
@@ -5097,7 +5097,7 @@ profiles line)
 - A push carries no Bot Chat marker, so a regular main-profile chat titled exactly the bot's name, "Hermes" or "Default" is renamed in its push as the Bot Chat is (#1457). A marker from the notifier would let the extension rename only Bot Chats.
 - A plugin older than #1257 sends no `profile_name`, so with a phone name its titled main bot's Bot Chat push keeps the bot's title over the phone name as subtitle (#1457).
 
-**Checked:** 2026-11-05, #1813 (the Edit menu offers Image Playground; see Pictures from Image Playground); 2026-11-05, #1817 (the Edit menu lists Choose GIF or Video, #1812); 2026-11-01, #1616 (the Add a provider sheet names the profile through `profileDisplayName`); 2026-10-31, #1568 (a spoken job and a Watch call's names reach a bot from the kept roster until Hermes answers); 2026-10-28, #1457 (the main bot goes by its Conduit name in Bot Mode and its pushes); 2026-10-28, #1448 (an unnamed profile goes by its id capitalized in Bots, rooms, the widget, Artifacts and pushes); 2026-10-28, #1413.
+**Checked:** 2026-11-05, #1822 (the Edit menu offers Bring to Life for a still photo); 2026-11-05, #1813 (the Edit menu offers Image Playground; see Pictures from Image Playground); 2026-11-05, #1817 (the Edit menu lists Choose GIF or Video, #1812); 2026-11-01, #1616 (the Add a provider sheet names the profile through `profileDisplayName`); 2026-10-31, #1568 (a spoken job and a Watch call's names reach a bot from the kept roster until Hermes answers); 2026-10-28, #1457 (the main bot goes by its Conduit name in Bot Mode and its pushes); 2026-10-28, #1448 (an unnamed profile goes by its id capitalized in Bots, rooms, the widget, Artifacts and pushes); 2026-10-28, #1413.
 
 ## Settings rows a toggle reveals
 

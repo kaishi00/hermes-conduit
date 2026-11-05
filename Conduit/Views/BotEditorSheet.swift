@@ -275,7 +275,7 @@ struct BotEditorSheet: View {
             // A picked GIF or video lands in the draft once it's made, so
             // nothing else may change the picture meanwhile.
             .disabled(isPreparingAnimation)
-            Text(AppLocalization.string("A GIF or a short video moves on Bots Home and in Hermes Desktop."))
+            Text(AppLocalization.string("A GIF, a short video or a picture brought to life moves on Bots Home and in Hermes Desktop."))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
