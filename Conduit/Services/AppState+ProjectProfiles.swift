@@ -14,6 +14,9 @@ import Foundation
 struct ProjectOtherProfilesRead: Equatable {
     var matches: [String: String?]
     var parts: [ProjectProfileLanes]
+    /// The profiles whose read failed: the page keeps what it showed of
+    /// them, as All does.
+    var failed: Set<String> = []
 }
 
 extension AppState {
@@ -48,13 +51,17 @@ extension AppState {
         guard let client, supportsProjects else { return nil }
         var matches = known
         var parts: [ProjectProfileLanes] = []
+        var failed: Set<String> = []
         for profile in others {
             guard !Task.isCancelled else { return nil }
             let projectID: String?
             if let kept = known[profile] ?? nil {
                 projectID = kept
             } else {
-                guard let listed = try? await client.projects(inProfile: profile) else { continue }
+                guard let listed = try? await client.projects(inProfile: profile) else {
+                    failed.insert(profile)
+                    continue
+                }
                 projectID = ProjectAcrossProfiles.match(project, in: listed)?.id
                 matches[profile] = .some(projectID)
             }
@@ -63,6 +70,7 @@ extension AppState {
                 // A kept project that no longer answers is looked for again
                 // on the next read: it may have been deleted or remade.
                 matches[profile] = .some(nil)
+                failed.insert(profile)
                 continue
             }
             guard self.client === client else { return nil }
@@ -74,6 +82,6 @@ extension AppState {
             parts.append(ProjectProfileLanes(profile: profile, lanes: lanes))
         }
         guard self.client === client, !Task.isCancelled else { return nil }
-        return ProjectOtherProfilesRead(matches: matches, parts: parts)
+        return ProjectOtherProfilesRead(matches: matches, parts: parts, failed: failed)
     }
 }

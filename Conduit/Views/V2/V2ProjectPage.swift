@@ -545,7 +545,12 @@ struct V2ProjectPage: View {
         }
         if !force, let readAt = otherProfilesReadAt, Date().timeIntervalSince(readAt) < 20 { return }
         let read = await appState.loadProject(project, inProfiles: others, known: otherProfiles?.matches ?? [:])
-        guard !Task.isCancelled, generation == reloadGeneration, let read else { return }
+        guard !Task.isCancelled, generation == reloadGeneration, var read else { return }
+        // A profile whose read failed keeps what the page showed of it.
+        for part in otherProfiles?.parts ?? [] where read.failed.contains(part.profile)
+            && !read.parts.contains(where: { $0.profile == part.profile }) {
+            read.parts.append(part)
+        }
         otherProfiles = read
         otherProfilesReadAt = Date()
     }
