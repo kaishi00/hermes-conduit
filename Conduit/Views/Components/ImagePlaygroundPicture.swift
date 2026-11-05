@@ -28,6 +28,9 @@ enum ImagePlaygroundPicture {
     /// under 8 GiB.
     static let capableMemory: UInt64 = 7_000_000_000
 
+    /// The longest name the sheet is handed as one idea.
+    static let maxNameLength = 100
+
     /// The longest description the sheet is handed to pick ideas from.
     static let maxExtractedLength = 2_000
 
@@ -63,7 +66,7 @@ enum ImagePlaygroundPicture {
         var details: String
 
         init(name: String, details: [String] = []) {
-            self.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            self.name = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(ImagePlaygroundPicture.maxNameLength))
             let joined = details
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }

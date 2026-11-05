@@ -1042,7 +1042,8 @@ struct GroupRoomPicturePicker: ViewModifier {
                 onImage: { image in
                     guard let roomID = room?.roomID else { return }
                     Task { await appState.setGroupRoomPicture(image, roomID: roomID) }
-                }
+                },
+                onFailure: { appState.errorMessage = AppLocalization.string("That picture could not be used.") }
             )
             .onChange(of: showingPlayground) { _, showing in
                 if !showing, request == .playground { request = nil }
