@@ -774,14 +774,14 @@ struct ConnectorInstallSheet: View {
 
     var body: some View {
         NavigationStack {
-            ConduitForm {
+            // Settings' own page (Eric 2026-11-05).
+            SettingsDetailContainer {
                 if !entry.description.isEmpty {
-                    Section {
-                        Text(verbatim: entry.description)
-                            .scaledFont(.subheadline)
-                    }
+                    Text(verbatim: entry.description)
+                        .scaledFont(.subheadline)
+                        .padding(.horizontal, 16)
                 }
-                Section {
+                ConduitSettingsSection(title: AppLocalization.string("Runs"), symbol: "terminal", tint: .orange) {
                     if let url = entry.url {
                         Text(verbatim: url)
                             .scaledFont(.caption.monospaced())
@@ -792,12 +792,10 @@ struct ConnectorInstallSheet: View {
                             .scaledFont(.caption.monospaced())
                             .textSelection(.enabled)
                     }
-                } header: {
-                    Text("Runs")
-                } footer: {
                     Text("Check what it runs before you install it.")
+                        .settingsCaption()
                 }
-                Section {
+                ConduitSettingsSection(title: AppLocalization.string("Keys"), symbol: "key", tint: .conduitAccent) {
                     ForEach(entry.requiredEnv) { field in
                         SecureField(
                             field.required ? field.prompt : AppLocalization.string("\(field.prompt) (optional)"),
@@ -806,13 +804,12 @@ struct ConnectorInstallSheet: View {
                                 set: { values[field.name] = $0 }
                             )
                         )
+                        .textFieldStyle(.roundedBorder)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     }
-                } header: {
-                    Text("Keys")
-                } footer: {
                     Text("Saved to this profile on your host. Conduit never reads them back.")
+                        .settingsCaption()
                 }
             }
             .navigationTitle(Text(verbatim: entry.name))
@@ -860,9 +857,9 @@ struct ConnectorEditSheet: View {
 
     var body: some View {
         NavigationStack {
-            ConduitForm {
+            SettingsDetailContainer {
                 if let loadError {
-                    Section {
+                    SettingsCard {
                         Text(verbatim: loadError)
                             .scaledFont(.footnote)
                             .foregroundStyle(.red)
@@ -870,18 +867,18 @@ struct ConnectorEditSheet: View {
                             self.loadError = nil
                             Task { await load() }
                         }
+                        .buttonStyle(.settings)
                     }
                 } else if let edit = Binding($edit) {
                     content(edit)
                 } else {
-                    Section {
-                        HStack(spacing: 8) {
-                            ProgressView().controlSize(.small)
-                            Text("Reading the server's settings…")
-                                .scaledFont(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Reading the server's settings…")
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.secondary)
                     }
+                    .padding(.horizontal, 16)
                 }
             }
             .navigationTitle(Text("Edit Server"))
@@ -909,7 +906,7 @@ struct ConnectorEditSheet: View {
 
     @ViewBuilder
     private func content(_ edit: Binding<ConnectorServerEdit>) -> some View {
-        Section {
+        ConduitSettingsSection(title: AppLocalization.string("Name"), symbol: "server.rack", tint: .conduitAccent) {
             Picker(selection: Binding(
                 get: { showingJSON },
                 set: { toJSON in switchView(toJSON: toJSON) }
@@ -923,25 +920,24 @@ struct ConnectorEditSheet: View {
             .labelsHidden()
             .accessibilityLabel(Text("Edit as"))
             TextField(AppLocalization.string("Name"), text: edit.name)
+                .textFieldStyle(.roundedBorder)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-        } header: {
-            Text("Name")
-        } footer: {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(verbatim: AppLocalization.string("Saved to \(profileName)'s config on your host. Changes apply to new sessions."))
-                if edit.wrappedValue.renameSignsOut(auth: auth) {
-                    Text("A new name signs it out. Sign in again after saving.")
-                }
+            Text(verbatim: AppLocalization.string("Saved to \(profileName)'s config on your host. Changes apply to new sessions."))
+                .settingsCaption()
+            if edit.wrappedValue.renameSignsOut(auth: auth) {
+                Text("A new name signs it out. Sign in again after saving.")
+                    .settingsCaption()
             }
         }
         if showingJSON {
-            Section {
+            ConduitSettingsSection(title: "JSON", symbol: "curlybraces", tint: .purple) {
                 TextEditor(text: edit.json)
                     .scaledFont(.footnote.monospaced())
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .frame(minHeight: 240)
+                    .settingsEditorBox()
                     .accessibilityLabel(Text(verbatim: "JSON"))
                 Button(AppLocalization.string("Format")) {
                     do {
@@ -951,50 +947,45 @@ struct ConnectorEditSheet: View {
                         problem = UserFacingError.message(for: error)
                     }
                 }
-            } header: {
-                Text(verbatim: "JSON")
-            } footer: {
+                .buttonStyle(.settings)
                 Text("Keys Hermes saved for this server stay in .env on your host. The JSON shows only their names.")
+                    .settingsCaption()
             }
         } else if edit.wrappedValue.isRemote {
-            Section {
+            ConduitSettingsSection(title: AppLocalization.string("Address"), symbol: "link", tint: .blue) {
                 TextField(AppLocalization.string("Address"), text: edit.url)
+                    .textFieldStyle(.roundedBorder)
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-            } header: {
-                Text("Address")
-            } footer: {
                 Text("Headers, keys and the rest stay as they are. Change them in JSON.")
+                    .settingsCaption()
             }
         } else {
-            Section {
+            ConduitSettingsSection(title: AppLocalization.string("Command"), symbol: "terminal", tint: .orange) {
                 TextField(AppLocalization.string("Command"), text: edit.command)
+                    .textFieldStyle(.roundedBorder)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-            } header: {
-                Text("Command")
             }
-            Section {
+            ConduitSettingsSection(title: AppLocalization.string("Arguments"), symbol: "list.bullet", tint: .orange) {
                 TextEditor(text: edit.arguments)
                     .scaledFont(.footnote.monospaced())
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .frame(minHeight: 88)
+                    .settingsEditorBox()
                     .accessibilityLabel(Text("Arguments"))
-            } header: {
-                Text("Arguments")
-            } footer: {
                 Text("One per line. Keys, env and the rest stay as they are. Change them in JSON.")
+                    .settingsCaption()
             }
         }
         if let problem {
-            Section {
-                Text(verbatim: problem)
-                    .scaledFont(.footnote)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
-            }
+            Text(verbatim: problem)
+                .scaledFont(.footnote)
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
+                .padding(.horizontal, 16)
         }
     }
 

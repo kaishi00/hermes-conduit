@@ -4901,6 +4901,14 @@ extension View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
     }
+
+    /// A multi-line editor's field inside a Settings card, beside the
+    /// rounded-border text fields.
+    func settingsEditorBox() -> some View {
+        scrollContentBackground(.hidden)
+            .padding(6)
+            .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
 }
 
 /// The chevron at the end of a Settings row that opens a page.
