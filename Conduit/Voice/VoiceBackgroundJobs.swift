@@ -704,7 +704,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// The call's jobs waiting on the user's OK for a command.
     var jobsWaitingOnApproval: [UUID] {
-        jobs.filter { $0.status == .needsInput && $0.waitingApproval != nil }.map(\.id)
+        // A request the call let go of (its chat deleted, or a hang-up's) is no longer the call's.
+        jobs.filter { $0.status == .needsInput && $0.waitingApproval != nil && !$0.isDetachedThreadTurn }.map(\.id)
     }
 
     /// Answers the approval `jobID` waits on, `once` or `deny`, as its card
@@ -740,7 +741,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// The call's jobs waiting on the user's answer to a question.
     var jobsWaitingOnQuestion: [UUID] {
         jobs.filter { job in
-            job.status == .needsInput && job.waitingQuestion.flatMap { HermesCallWaiting(clarify: $0) } != nil
+            job.status == .needsInput && !job.isDetachedThreadTurn
+                && job.waitingQuestion.flatMap { HermesCallWaiting(clarify: $0) } != nil
         }.map(\.id)
     }
 

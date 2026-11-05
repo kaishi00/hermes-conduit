@@ -1139,9 +1139,11 @@ final class GeminiLiveToolBridge {
                 break
             }
             // A cancel the user just heard confirmed (cancel_job) needs no
-            // second report; everything else — including a start that failed
-            // — is told once the conversation is quiet.
-            let scheduling: GeminiLiveProtocol.Scheduling = job.status == .cancelled && alreadyAnnounced ? .silent : .whenIdle
+            // second report, nor a request the call let go of when its chat
+            // was deleted (issue 1797); everything else — including a start
+            // that failed — is told once the conversation is quiet.
+            let quiet = (job.status == .cancelled && alreadyAnnounced) || job.isDetachedThreadTurn
+            let scheduling: GeminiLiveProtocol.Scheduling = quiet ? .silent : .whenIdle
             let name = callNames.removeValue(forKey: callID) ?? (job.isThreadTurn ? Tool.askThread.rawValue : Tool.startJob.rawValue)
             outgoing.append(.toolResponse(id: callID, name: name, result: result, scheduling: scheduling))
         }

@@ -534,6 +534,7 @@ extension VoiceConversationControllerTests {
         supervisor.noteChatDeleted(["rt-1", "st-1"])
         XCTAssertNil(supervisor.liveThread)
         XCTAssertNil(supervisor.takePendingNotice(), "its chat is gone: the call is not asked about it")
+        XCTAssertTrue(supervisor.jobsWaitingOnApproval.isEmpty, "a bare yes is not taken for it")
     }
 
     func testAGeminiCallsAskThreadAfterItsChatIsDeletedMakesANewChat() async {

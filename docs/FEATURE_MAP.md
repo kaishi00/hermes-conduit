@@ -405,6 +405,7 @@ caption, README.md's Apple Watch line)
 - Group rooms have no voice button setting, and the Watch and CarPlay don't follow it (#1134).
 - When a Classic call can't take over its chat, it shows a generic error (#1066).
 - A Watch call's chat on the relay (its jobs' `_continue_session` in `notifier/dashboard/api/watch_jobs.py`, and a Watch Local Live call's chat in `notifier/dashboard/api/watch_local_live.py`) is held by its live runtime, not resumed per turn: whether a Desktop delete breaks that runtime, and so whether those calls need the same letting go, isn't checked against Hermes (#1799).
+- A mode switch after a call's chat was deleted, before its next request made a new one, starts the new mode with no chat, so its first request makes one on the active profile rather than the deleted chat's bot (#1799).
 - A call's chat deleted in Desktop while it is open on the phone is let go of only once the composer's own resume has found it gone; whether that resume runs for a call's failed turn isn't checked on a device (#1799).
 - A Watch call on another profile asks Hermes' chat search for that profile's chats; on a plugin without that route (before 0.18) it falls back to the titles Conduit has listed, which hold that profile's chats only while All profiles is on (#1573).
 - A Siri or Action button start that switches the iPhone's profile (one the shortcut names, or the hands-free profile) shows no waiting call screen while the switch runs; the call opens once it's done (#1573).
