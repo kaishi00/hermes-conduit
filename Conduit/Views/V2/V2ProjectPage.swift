@@ -166,7 +166,8 @@ struct V2ProjectPage: View {
                     }
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                } else if detail != nil {
+                } else if detail != nil || !lanes.isEmpty {
+                    // Another profile's chats show though this one's read failed.
                     ForEach(lanes) { lane in
                         laneRows(lane)
                     }
