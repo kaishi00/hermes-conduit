@@ -1217,7 +1217,7 @@ struct WorkspaceMoveSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            ConduitList {
                 Section {
                     Text(verbatim: current)
                         .scaledFont(.caption)

@@ -1627,7 +1627,7 @@ struct PulseLearnedSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            ConduitList {
                 if let learned {
                     Section {
                         ForEach(learned.levels.keys.sorted(), id: \.self) { kind in
@@ -1813,7 +1813,7 @@ struct PulseLeftOutSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            ConduitList {
                 if let entries {
                     let kept = entries.filter(\.isKeptOut)
                     let reported = entries.filter { !$0.isKeptOut && !$0.isLookAhead }

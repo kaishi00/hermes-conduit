@@ -934,7 +934,7 @@ struct BotReorderSheet: View {
     var body: some View {
         let bots = appState.shownBotRoster
         NavigationStack {
-            List {
+            ConduitList {
                 ForEach(bots) { bot in
                     HStack(spacing: 12) {
                         BotMonogramView(bot: bot)

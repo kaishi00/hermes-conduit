@@ -1402,7 +1402,7 @@ struct GroupCreateSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            ConduitList {
                 if let error = appState.errorMessage, !error.isEmpty {
                     // Create failures (handle collision, RPC refusal) must
                     // surface INSIDE the sheet — the room surface's notice

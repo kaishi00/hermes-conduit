@@ -394,7 +394,7 @@ struct CronBlueprintGallerySheet: View {
                         description: Text(AppLocalization.string("This Hermes doesn't offer any ready-made jobs."))
                     )
                 } else {
-                    List {
+                    ConduitList {
                         ForEach(categories, id: \.self) { category in
                             Section {
                                 ForEach(blueprints.filter { $0.category == category }) { blueprint in
