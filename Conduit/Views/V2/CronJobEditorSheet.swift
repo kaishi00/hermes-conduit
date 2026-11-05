@@ -64,25 +64,23 @@ struct CronJobEditorSheet: View {
 
     var body: some View {
         NavigationStack {
-            ConduitForm {
+            // Settings' own page, as Edit Bot (Eric 2026-11-05).
+            SettingsDetailContainer {
                 if let error, !error.isEmpty {
-                    Section {
-                        Text(error)
-                            .scaledFont(.footnote)
-                            .foregroundStyle(.red)
-                    }
+                    Text(error)
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 16)
                 }
-                Section {
+                ConduitSettingsSection(title: AppLocalization.string("Name"), symbol: "textformat", tint: .conduitAccent) {
                     TextField(AppLocalization.string("Name, like Morning brief"), text: $draft.name)
+                        .textFieldStyle(.roundedBorder)
                         .textInputAutocapitalization(.sentences)
-                } header: {
-                    Text(AppLocalization.string("Name"))
                 }
-                Section {
+                ConduitSettingsSection(title: AppLocalization.string("Prompt"), symbol: "text.bubble", tint: .blue) {
                     TextField(AppLocalization.string("What Hermes should do each time"), text: $draft.prompt, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
                         .lineLimit(3...10)
-                } header: {
-                    Text(AppLocalization.string("Prompt"))
                 }
                 CronScheduleEditor(schedule: $draft.schedule, zoneLabel: zoneLabel)
                 deliverySection
@@ -90,7 +88,6 @@ struct CronJobEditorSheet: View {
                     botChoiceSection
                 }
             }
-            .scrollDismissesKeyboard(.interactively)
             .tint(.conduitAccent)
             .navigationTitle(editedJob == nil ? AppLocalization.string("New scheduled job") : AppLocalization.string("Edit scheduled job"))
             .navigationBarTitleDisplayMode(.inline)
@@ -118,19 +115,20 @@ struct CronJobEditorSheet: View {
     private var deliverySection: some View {
         let choices = CronDeliveryTarget.choices(targets, keeping: draft.deliver)
         let selected = choices.first { $0.id == draft.deliver }
-        return Section {
-            Picker(AppLocalization.string("Deliver to"), selection: $draft.deliver) {
-                ForEach(choices) { target in
-                    Text(verbatim: CronDeliveryTarget.title(target)).tag(target.id)
-                }
+        return ConduitSettingsSection(title: AppLocalization.string("Delivery"), symbol: "paperplane", tint: .green) {
+            ConduitMenuPicker(
+                value: draft.deliver,
+                choices: choices.map { (id: $0.id, title: CronDeliveryTarget.title($0)) },
+                onSelect: { draft.deliver = $0 }
+            ) {
+                Text(AppLocalization.string("Deliver to")).foregroundStyle(.secondary)
             }
-        } header: {
-            Text(AppLocalization.string("Delivery"))
-        } footer: {
             if selected?.homeTargetSet == false {
                 Text(AppLocalization.string("This platform has no home channel yet. Set one in Hermes, or the run is only saved."))
+                    .settingsCaption()
             } else {
                 Text(AppLocalization.string("Each run is also saved as its own conversation."))
+                    .settingsCaption()
             }
         }
     }
@@ -256,7 +254,7 @@ private struct CronScheduleEditor: View {
     }
 
     var body: some View {
-        Section {
+        ConduitSettingsSection(title: AppLocalization.string("Schedule"), symbol: "calendar.badge.clock", tint: .orange) {
             Picker(AppLocalization.string("Repeats"), selection: $schedule.mode) {
                 Text(AppLocalization.string("At a time")).tag(CronScheduleDraft.Mode.time)
                 Text(AppLocalization.string("Every…")).tag(CronScheduleDraft.Mode.interval)
@@ -289,11 +287,9 @@ private struct CronScheduleEditor: View {
                 TextField(AppLocalization.string("0 9 * * 1 or every monday 9am"), text: $schedule.custom)
                     .scaledFont(.callout.monospaced())
                     .textInputAutocapitalization(.never)
+                    .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
             }
-        } header: {
-            Text(AppLocalization.string("Schedule"))
-        } footer: {
             VStack(alignment: .leading, spacing: 4) {
                 Text(preview)
                     .scaledFont(.footnote.weight(.semibold))
@@ -386,6 +382,7 @@ struct CronBlueprintGallerySheet: View {
                         Text(error)
                     } actions: {
                         Button(AppLocalization.string("Try Again")) { Task { await load() } }
+                            .buttonStyle(.settings)
                     }
                 } else if blueprints.isEmpty {
                     ContentUnavailableView(
@@ -394,9 +391,13 @@ struct CronBlueprintGallerySheet: View {
                         description: Text(AppLocalization.string("This Hermes doesn't offer any ready-made jobs."))
                     )
                 } else {
-                    ConduitList {
+                    SettingsDetailContainer {
                         ForEach(categories, id: \.self) { category in
-                            Section {
+                            ConduitSettingsSection(
+                                title: category.isEmpty ? AppLocalization.string("Blueprints") : category.prefix(1).uppercased() + category.dropFirst(),
+                                symbol: "square.grid.2x2",
+                                tint: .conduitAccent
+                            ) {
                                 ForEach(blueprints.filter { $0.category == category }) { blueprint in
                                     NavigationLink {
                                         CronBlueprintForm(blueprint: blueprint, targets: targets) { job in
@@ -404,12 +405,14 @@ struct CronBlueprintGallerySheet: View {
                                             dismiss()
                                         }
                                     } label: {
-                                        blueprintRow(blueprint)
+                                        HStack {
+                                            blueprintRow(blueprint)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                            SettingsChevron()
+                                        }
+                                        .contentShape(Rectangle())
                                     }
-                                }
-                            } header: {
-                                if !category.isEmpty {
-                                    Text(verbatim: category.prefix(1).uppercased() + category.dropFirst())
+                                    .buttonStyle(.plain)
                                 }
                             }
                         }
@@ -483,15 +486,17 @@ struct CronBotChoiceSection: View {
     @Binding var botActs: Bool
 
     var body: some View {
-        Section {
+        ConduitSettingsSection(title: AppLocalization.string("When it runs"), symbol: "person.crop.circle.badge.checkmark", tint: .purple) {
             Picker(AppLocalization.string("When it runs"), selection: $botActs) {
                 Text(AppLocalization.string("Just show it")).tag(false)
                 Text(AppLocalization.string("Let the bot act on it")).tag(true)
             }
-        } footer: {
+            .pickerStyle(.segmented)
+            .labelsHidden()
             Text(botActs
                  ? AppLocalization.string("The bot reads each report, acts on what needs it and answers in its Bot Chat. Each run costs a reply from its model.")
                  : AppLocalization.string("Each report shows in the bot's Bot Chat as it is, with no reply. The bot sees it the next time you write."))
+                .settingsCaption()
         }
     }
 }
@@ -523,29 +528,25 @@ private struct CronBlueprintForm: View {
     }
 
     var body: some View {
-        ConduitForm {
+        SettingsDetailContainer {
             if !blueprint.summary.isEmpty {
-                Section {
-                    Text(verbatim: blueprint.summary)
-                        .scaledFont(.callout)
-                        .foregroundStyle(.secondary)
-                }
+                Text(verbatim: blueprint.summary)
+                    .scaledFont(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 16)
             }
             if let error, !error.isEmpty {
-                Section {
-                    Text(error)
-                        .scaledFont(.footnote)
-                        .foregroundStyle(.red)
-                }
+                Text(error)
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 16)
             }
-            ForEach(blueprint.fields) { field in
-                Section {
+            SettingsCard {
+                ForEach(blueprint.fields) { field in
                     control(field)
-                } header: {
-                    Text(verbatim: field.label)
-                } footer: {
                     if !field.help.isEmpty {
                         Text(verbatim: field.help)
+                            .settingsCaption()
                     }
                 }
             }
@@ -553,7 +554,6 @@ private struct CronBlueprintForm: View {
                 CronBotChoiceSection(botActs: $botActs)
             }
         }
-        .scrollDismissesKeyboard(.interactively)
         .navigationTitle(Text(verbatim: blueprint.title))
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(isSaving)
@@ -580,7 +580,7 @@ private struct CronBlueprintForm: View {
         switch field.kind {
         case .time:
             DatePicker(
-                AppLocalization.string("Time"),
+                field.label,
                 selection: Binding(
                     get: {
                         let clock = CronBlueprint.clock(values[field.name] ?? "") ?? (hour: 8, minute: 0)
@@ -594,19 +594,23 @@ private struct CronBlueprintForm: View {
                 displayedComponents: .hourAndMinute
             )
         case .weekdays, .choice:
-            Picker(selection: binding(field)) {
-                if field.optional {
-                    Text(AppLocalization.string("None")).tag("")
-                }
-                ForEach(options(field), id: \.self) { option in
-                    Text(verbatim: optionTitle(option, field: field)).tag(option)
-                }
-            } label: {
-                Text(verbatim: field.label)
+            ConduitMenuPicker(
+                value: values[field.name] ?? "",
+                choices: (field.optional ? [(id: "", title: AppLocalization.string("None"))] : [])
+                    + options(field).map { (id: $0, title: optionTitle($0, field: field)) },
+                onSelect: { values[field.name] = $0 }
+            ) {
+                Text(verbatim: field.label).foregroundStyle(.secondary)
             }
         case .text:
-            TextField(field.label, text: binding(field), axis: .vertical)
-                .lineLimit(1...6)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(verbatim: field.label)
+                    .scaledFont(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                TextField(field.label, text: binding(field), axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(1...6)
+            }
         }
     }
 

@@ -4894,6 +4894,15 @@ struct SettingsLinkRow: View {
     }
 }
 
+extension View {
+    /// A caption inside a Settings card, under the control it explains.
+    func settingsCaption() -> some View {
+        scaledFont(.footnote)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
 /// The chevron at the end of a Settings row that opens a page.
 struct SettingsChevron: View {
     var body: some View {
