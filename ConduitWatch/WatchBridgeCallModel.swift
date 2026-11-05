@@ -924,12 +924,20 @@ final class WatchBridgeCallModel: ObservableObject {
         audioChunksDown += 1
         guard !samples.isEmpty, endRequestedAt == nil, phase != .needsTap else { return }
         let loud = samples.contains { abs(Int($0)) > Self.speechPeak }
+        // Quiet before this chunk: with no chunks between stretches, a new
+        // stretch's first loud chunk still shows the old one ended.
+        let quietBefore = lastLoudAt.map { now - $0 } ?? .infinity
         if loud { lastLoudAt = now }
         let quietFor = lastLoudAt.map { now - $0 } ?? .infinity
         if suppressingTurn {
-            // Dropped until this stretch of speech ends.
-            if quietFor > Self.speechGap { suppressingTurn = false }
-            return
+            // Dropped until this stretch of speech ends; the next is heard
+            // (issue 1790).
+            if quietBefore > Self.speechGap {
+                suppressingTurn = false
+            } else {
+                if quietFor > Self.speechGap { suppressingTurn = false }
+                return
+            }
         }
         if modelSpeaking {
             audio.enqueue(samples, sampleRate: Self.playbackRate)
