@@ -883,11 +883,12 @@ struct KanbanTaskDetailView: View {
                             }
                         }
                         Spacer()
-                        Image(systemName: "chevron.right")
-                            .scaledFont(.caption2.weight(.semibold))
-                            .foregroundStyle(.conduitTertiary)
+                        SettingsChevron()
                     }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel("Open linked task \(linkedTaskTitle(for: linkedID))")
             }
         }

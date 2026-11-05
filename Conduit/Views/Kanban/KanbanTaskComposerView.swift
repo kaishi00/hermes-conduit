@@ -608,6 +608,8 @@ struct KanbanModelOverrideSheet: View {
             }
         } label: {
             Text(provider.displayName)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
         }
     }
 
@@ -629,7 +631,10 @@ struct KanbanModelOverrideSheet: View {
                         .accessibilityHidden(true)
                 }
             }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .foregroundStyle(.primary)
         .disabled(showsKept)
         .accessibilityAddTraits(selected ? .isSelected : [])

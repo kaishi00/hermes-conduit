@@ -154,7 +154,7 @@ struct BotModelPicker: View {
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
             }
-            .frame(minHeight: 36)
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         // Plain: a List tints a button's whole label with the accent, so
