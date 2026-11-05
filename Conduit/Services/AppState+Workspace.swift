@@ -119,24 +119,32 @@ extension AppState {
         let client = workspaceFilesClient(profile: workspaceProfile)
         let session = activeSessionId
         Task { @MainActor [weak self] in
-            let found: String?
+            let answer: Result<String?, Error>
             do {
-                found = try await client.resolve(path: trimmed, sessionIDs: ids)
+                answer = .success(try await client.resolve(path: trimmed, sessionIDs: ids))
             } catch {
-                // The lookup failed, not the file: the chat's folder, as before.
-                guard let self, self.workspaceRevealGeneration == generation, self.ownsDashboardRuntime(owner),
-                      self.activeSessionId == session else { return }
-                self.workspaceReveal = WorkspaceReveal(path: self.absoluteWorkspacePath(trimmed), line: line)
-                return
+                answer = .failure(error)
             }
             guard let self, self.workspaceRevealGeneration == generation, self.ownsDashboardRuntime(owner),
                   self.activeSessionId == session else { return }
-            if let found {
-                self.workspaceReveal = WorkspaceReveal(path: found, line: line)
-            } else {
-                let name = (trimmed as NSString).lastPathComponent
-                self.errorMessage = AppLocalization.string("\(name) isn’t on the server. It may have been deleted, or it’s on another computer.")
-            }
+            self.showWorkspaceLookup(answer, for: trimmed, line: line)
+        }
+    }
+
+    /// What the plugin's lookup of a tapped name says: the file it found,
+    /// that the host has none (said above the composer, which shows while
+    /// the chat is open and connected), or, when the lookup itself failed,
+    /// the chat's folder as before.
+    func showWorkspaceLookup(_ answer: Result<String?, Error>, for path: String, line: Int?) {
+        switch answer {
+        case .success(let found?):
+            workspaceReveal = WorkspaceReveal(path: found, line: line)
+        case .success(nil):
+            let name = (path as NSString).lastPathComponent
+            composerNotice = AppLocalization.string("\(name) isn’t on the server. It may have been deleted, or it’s on another computer.")
+            composerNoticeSystemImage = "questionmark.folder"
+        case .failure:
+            workspaceReveal = WorkspaceReveal(path: absoluteWorkspacePath(path), line: line)
         }
     }
 

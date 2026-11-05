@@ -257,6 +257,27 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(appState.workspaceReveal?.line, 3)
     }
 
+    func testAFileLookupOpensTheFileOrSaysItIsntOnTheServer() throws {
+        let suite = "WorkspaceFilesTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.runtime.cwd = "/home/me/app"
+
+        appState.showWorkspaceLookup(.success("/root/audits/AppState.swift"), for: "AppState.swift", line: 4)
+        XCTAssertEqual(appState.workspaceReveal?.path, "/root/audits/AppState.swift")
+        XCTAssertEqual(appState.workspaceReveal?.line, 4)
+
+        appState.workspaceReveal = nil
+        appState.showWorkspaceLookup(.success(nil), for: "out/gone.xlsx", line: nil)
+        XCTAssertNil(appState.workspaceReveal, "nothing to open")
+        // Said above the composer, which shows while the chat is connected.
+        XCTAssertEqual(appState.composerNotice?.hasPrefix("gone.xlsx isn"), true, appState.composerNotice ?? "")
+
+        appState.showWorkspaceLookup(.failure(URLError(.timedOut)), for: "docs/a.md", line: nil)
+        XCTAssertEqual(appState.workspaceReveal?.path, "/home/me/app/docs/a.md", "a failed lookup keeps the chat's folder")
+    }
+
     func testToolsThatChangeFilesRefreshTheFolder() throws {
         let suite = "WorkspaceFilesTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
