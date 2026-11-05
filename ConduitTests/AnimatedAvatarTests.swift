@@ -91,4 +91,14 @@ extension BotModeTests {
         XCTAssertFalse(ProfileAvatarImageCache.isAnimated(at: url))
         XCTAssertNotEqual(ProfileAvatarImageCache.revision(of: url), revision)
     }
+
+    func testAPhoneOnlyMovingPictureGoesToHermesAsItIs() throws {
+        let apng = try AnimatedAvatar.encode(frames(3)).get()
+        XCTAssertEqual(BotAvatarImage.hermesPicture(fromPhoneCopy: apng), apng)
+        // A still is normalized to the stored square, as before.
+        let still = try XCTUnwrap(UIImage(cgImage: solidFrame(.red)).pngData())
+        let stored = try XCTUnwrap(BotAvatarImage.hermesPicture(fromPhoneCopy: still))
+        XCTAssertEqual(UIImage(data: stored)?.size, CGSize(width: BotManagement.avatarEdge, height: BotManagement.avatarEdge))
+        XCTAssertNil(BotAvatarImage.hermesPicture(fromPhoneCopy: Data("not a picture".utf8)))
+    }
 }

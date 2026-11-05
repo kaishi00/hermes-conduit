@@ -1731,7 +1731,7 @@ the picture buttons, README.md's bots and profiles lines)
 
 **Code**
 - Making one: `Conduit/Services/AnimatedAvatar.swift` (frames from a picture file or a video, thinned, squared and written as a looping APNG under maxBytes, picture(fromPicked:), message(for:)), `Conduit/Views/Components/ImagePicker.swift` (onAnimated: videos trimmed to maxDuration, an animated picture's own file)
-- Saving: `Conduit/Views/BotEditorSheet.swift` (useAnimation, previewPlayback, canSave waiting for it, the caption), `Conduit/Views/ProfilePickerSheet.swift` (saveAnimation), `Conduit/Services/AppState.swift` (setProfilePhoto's animation, moveDevicePhotoToHermes carrying a phone-only moving picture over as it is, botAvatarPlayback, profileAvatarPlayback), `Conduit/Services/ProfileAppearanceStore.swift` (saveAvatar keeps a moving picture's bytes; ProfileAvatarImageCache.isAnimated and revision)
+- Saving: `Conduit/Views/BotEditorSheet.swift` (useAnimation, previewPlayback, canSave waiting for it, the caption), `Conduit/Views/ProfilePickerSheet.swift` (saveAnimation), `Conduit/Services/AppState.swift` (setProfilePhoto's animation, moveDevicePhotoToHermes carrying a phone-only moving picture over as it is, through BotAvatarImage.hermesPicture in `Conduit/Services/BotManagement.swift`, botAvatarPlayback, profileAvatarPlayback), `Conduit/Services/ProfileAppearanceStore.swift` (saveAvatar keeps a moving picture's bytes; ProfileAvatarImageCache.isAnimated and revision)
 - Playing: `Conduit/Views/Components/AnimatedAvatarFrames.swift` (AnimatedAvatarFrames, AnimatedAvatarPlayer), `Conduit/Views/BotEditorSheet.swift` (BotAvatarView's playback), `Conduit/Views/BotRosterView.swift` (BotMonogramView's animates), `Conduit/Views/ProfilePickerSheet.swift` (ProfileAvatarView's animates), `Conduit/Views/V2/V2BotsHome.swift` (the portrait and the Bot Overview's header)
 - Tests: `ConduitTests/AnimatedAvatarTests.swift`
 
@@ -1744,7 +1744,7 @@ the picture buttons, README.md's bots and profiles lines)
 - Not yet tried on a device: that the picker hands over a GIF's own file (`imageURL`) after its crop screen, and what many moving portraits cost on Bots Home.
 - A Live Photo is picked as a still.
 
-**Checked:** 2026-11-05, #1778 (added: moving pictures from a GIF or a short video)
+**Checked:** 2026-11-05, #PRNUM (the Bot Overview's header plays its fallback profile face too; the phone-only carry-over is tested); 2026-11-05, #1778 (added: moving pictures from a GIF or a short video)
 
 ## Opening a Bot Chat
 
