@@ -1640,6 +1640,59 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(asking.rows().map { $0.entry.name }, ["src"], "The kept listing stays while it asks")
     }
 
+    func testATappedFileNameAsksThePluginAndALaterTapWins() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        appState.setNotifierPluginStateForTesting(.reported(
+            version: "0.132.0",
+            capabilities: [WorkspaceFilesClient.capability, WorkspaceFilesClient.resolveCapability]
+        ))
+        appState.sessions = [macSession("chat-1")]
+        appState.activeSessionId = "chat-1"
+        appState.runtime.cwd = "/w/app"
+        XCTAssertTrue(appState.activeChatArtifactSessionIDs.contains("chat-1"))
+        let resolve = "/workspace/resolve"
+        func lookups() -> Int { held.sent.filter { $0.path.hasSuffix(resolve) }.count }
+
+        appState.revealWorkspaceFile("AppState.swift", line: 3)
+        for _ in 0..<1_000 where lookups() < 1 { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(lookups(), 1, "a bare name is looked up for the chat")
+        let query = held.sent.last(where: { $0.path.hasSuffix(resolve) })?.query ?? ""
+        XCTAssertTrue(query.contains("session_id=chat-1"), "the lookup names the chat: \(query)")
+        XCTAssertNil(appState.workspaceReveal, "nothing opens until the plugin answers")
+
+        // A second tap while the first lookup runs wins over its answer.
+        appState.revealWorkspaceFile("out/gone.xlsx")
+        for _ in 0..<1_000 where lookups() < 2 { try await Task.sleep(for: .milliseconds(10)) }
+        try await held.answer(["ok": true, "path": "/w/app/Conduit/AppState.swift", "via": "chat"], toPathEnding: resolve)
+        try await held.answer(["ok": true, "path": NSNull()], toPathEnding: resolve)
+        for _ in 0..<1_000 where appState.composerNotice == nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(appState.workspaceReveal, "the earlier tap's answer is dropped")
+        XCTAssertEqual(appState.composerNotice?.hasPrefix("gone.xlsx isn"), true, appState.composerNotice ?? "")
+
+        // A found file opens at its line, and takes the notice away.
+        appState.revealWorkspaceFile("AppState.swift", line: 3)
+        try await held.answer(["ok": true, "path": "/w/app/Conduit/AppState.swift", "via": "chat"], toPathEnding: resolve)
+        for _ in 0..<1_000 where appState.workspaceReveal == nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(appState.workspaceReveal?.path, "/w/app/Conduit/AppState.swift")
+        XCTAssertEqual(appState.workspaceReveal?.line, 3)
+        XCTAssertNil(appState.composerNotice)
+
+        // A lookup still running when the chat changes says nothing there.
+        appState.workspaceReveal = nil
+        appState.revealWorkspaceFile("gone.md")
+        for _ in 0..<1_000 where lookups() < 4 { try await Task.sleep(for: .milliseconds(10)) }
+        appState.activeSessionId = "chat-2"
+        try await held.answer(["ok": true, "path": NSNull()], toPathEnding: resolve)
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertNil(appState.composerNotice, "the answer was for the chat left")
+        XCTAssertNil(appState.workspaceReveal)
+
+        // A full path opens at once, without asking.
+        appState.revealWorkspaceFile("/w/app/README.md")
+        XCTAssertEqual(appState.workspaceReveal?.path, "/w/app/README.md")
+        XCTAssertEqual(lookups(), 4)
+    }
+
     func testADisplayPreferenceSaveFailingAfterASwitchSaysNothingOnTheNewDashboard() async throws {
         let (appState, held, vps) = heldSwitchFixture()
         let save = Task { await appState.setDisplayPreference(.expandTools, enabled: true) }

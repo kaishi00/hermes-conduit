@@ -338,6 +338,9 @@ struct ModelPickerView: View {
     /// A plain read was asked while Refresh models ran (a provider added
     /// meanwhile): it runs once the refresh lands.
     @State private var readAfterRefresh = false
+    /// The read that failed was Refresh models, so Try Again asks for the
+    /// live lists again rather than the cached ones.
+    @State private var refreshFailed = false
 
     var body: some View {
         NavigationStack {
@@ -665,21 +668,24 @@ struct ModelPickerView: View {
     /// A read that fails keeps the models shown, saying so with Try Again.
     private var refreshModelsButton: some View {
         RefreshModelsButton(refreshing: refreshingModels) {
-            Task {
-                guard !refreshingModels else { return }
-                refreshingModels = true
-                await loadModels(refresh: true)
-                refreshingModels = false
-                // A provider added meanwhile isn't in the refresh's answer.
-                // A refresh that failed stays said: Try Again reads again.
-                let readSkipped = readAfterRefresh
-                readAfterRefresh = false
-                if readSkipped, !catalog.failed {
-                    await loadModels()
-                }
-            }
+            Task { await refreshModels() }
         }
         .accessibilityIdentifier("modelPicker.refreshModels")
+    }
+
+    /// Refresh models, from the toolbar or Try Again after one failed.
+    private func refreshModels() async {
+        guard !refreshingModels else { return }
+        refreshingModels = true
+        await loadModels(refresh: true)
+        refreshingModels = false
+        // A provider added meanwhile isn't in the refresh's answer. A
+        // refresh that failed stays said: Try Again asks again.
+        let readSkipped = readAfterRefresh
+        readAfterRefresh = false
+        if readSkipped, !catalog.failed {
+            await loadModels()
+        }
     }
 
     private var catalogFailedRow: some View {
@@ -687,7 +693,9 @@ struct ModelPickerView: View {
             Text(AppLocalization.string("Could not load models."))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
-            Button(AppLocalization.string("Try Again")) { Task { await loadModels() } }
+            Button(AppLocalization.string("Try Again")) {
+                Task { if refreshFailed { await refreshModels() } else { await loadModels() } }
+            }
                 .scaledFont(.subheadline.weight(.semibold))
                 .tint(.conduitAccent)
         }
@@ -1187,9 +1195,13 @@ struct ModelPickerView: View {
         // A read asked since has the newer answer.
         guard read == catalogRead else { return }
         guard let loaded else {
+            // A plain read that fails after a failed refresh keeps the
+            // refresh owed, so Try Again still asks for the live lists.
+            refreshFailed = refresh || refreshFailed
             catalog.readFailed()
             return
         }
+        refreshFailed = false
         // The highlighted match stays the same model when rows come or go
         // above it, so Return picks what the highlight showed.
         let before = searchMatches
