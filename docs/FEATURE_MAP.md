@@ -3188,7 +3188,7 @@ Settings caption describes the lists)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-05, #9999 (added: the read again in every model picker, Refresh models in the model sheet and a bot's Model page).
+**Checked:** 2026-11-05, #1816 (added: the read again in every model picker, Refresh models in the model sheet and a bot's Model page).
 
 ## The Model sheet's settings
 
