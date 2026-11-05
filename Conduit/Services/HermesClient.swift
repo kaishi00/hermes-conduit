@@ -2692,14 +2692,21 @@ final class HermesClient: ObservableObject {
     /// Projects are a newer, optional gateway capability. Unlike the ordinary
     /// session catalog, membership comes from Hermes' server-side project tree
     /// so every Hermes client sees the same organization.
-    func projects() async throws -> [ProjectSummary] {
-        let result = try await rpc("projects.tree", params: ["preview_limit": 3])
-        return MessageNormalizer.normalizeProjects(result, profile: profile)
+    /// `inProfile` reads another profile's projects, which Hermes keeps in
+    /// that profile's own projects.db (a project page that gathers every
+    /// profile's chats in one folder, issue 1761).
+    func projects(inProfile explicit: String? = nil) async throws -> [ProjectSummary] {
+        var params: [String: Any] = ["preview_limit": 3]
+        if let explicit { params["profile"] = explicit }
+        let result = try await rpc("projects.tree", params: params)
+        return MessageNormalizer.normalizeProjects(result, profile: explicit ?? profile)
     }
 
-    func projectSessions(_ projectId: String) async throws -> ProjectSessionDetail? {
-        let result = try await rpc("projects.project_sessions", params: ["project_id": projectId])
-        return MessageNormalizer.normalizeProjectSessions(result, profile: profile)
+    func projectSessions(_ projectId: String, inProfile explicit: String? = nil) async throws -> ProjectSessionDetail? {
+        var params: [String: Any] = ["project_id": projectId]
+        if let explicit { params["profile"] = explicit }
+        let result = try await rpc("projects.project_sessions", params: params)
+        return MessageNormalizer.normalizeProjectSessions(result, profile: explicit ?? profile)
     }
 
     func createProject(name: String, folders: [String]) async throws -> ProjectSummary? {

@@ -176,10 +176,13 @@ struct V2SessionRow: View {
     /// A Chats row with its "3 jobs" summary under it: the summary sits
     /// close, as part of this row, rather than a row's gap away.
     var hasNestBelow = false
-    /// All, mixing profiles: whose chat this is.
+    /// All, mixing profiles: whose chat this is. On the icon's corner, or
+    /// without an icon (a project page gathering profiles, issue 1761)
+    /// ahead of the title.
     var profileBadge: V2ProfileBadge? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .callout) private var titleFaceSize: CGFloat = 16
 
     var body: some View {
         HStack(alignment: icon == nil ? .top : .center, spacing: 0) {
@@ -206,6 +209,18 @@ struct V2SessionRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    if icon == nil, let profileBadge {
+                        ProfileAvatarView(
+                            profile: profileBadge.profile,
+                            displayName: profileBadge.name,
+                            url: profileBadge.url,
+                            size: titleFaceSize
+                        )
+                        // On the title's line rather than above its baseline.
+                        .alignmentGuide(.firstTextBaseline) { $0[.bottom] - titleFaceSize * 0.2 }
+                        .accessibilityHidden(true)
+                        .padding(.trailing, -3)
+                    }
                     Text(title)
                         .scaledFont(.callout.weight(.semibold))
                         .foregroundStyle(.primary)

@@ -41113,14 +41113,20 @@ extension AppState {
         ).filter { $0.profile != nil && $0.messageCount != 0 && !$0.isArchived }
     }
 
-    private func listAllProfilesCatalog(_ rows: [SessionSummary], dashboardID: UUID?) {
-        // A bot's chats belong to its Bot Chat, as in each profile's own list.
+    /// Other profiles' rows as a mixed list shows them (All, a project page
+    /// gathering profiles): a bot's chats belong to its Bot Chat, as in each
+    /// profile's own list, and a workstream's to its bot.
+    func otherProfileRowsShown(_ rows: [SessionSummary]) -> [SessionSummary] {
         let botOwned = botOwnedSessionIDs
-        let kept = rows.filter { session in
+        return rows.filter { session in
             !BotChatHygiene.isCanonicalBotChatRow(session, roster: botRoster)
                 && !BotChatHygiene.isBotOwnedRow(session, botOwnedSessionIDs: botOwned)
                 && !isWorkstreamRow(session)
         }
+    }
+
+    private func listAllProfilesCatalog(_ rows: [SessionSummary], dashboardID: UUID?) {
+        let kept = otherProfileRowsShown(rows)
         // Each other profile's rows are noted the way its own list notes
         // them, so a reply that lands there later lights its dot here.
         // A row whose profile isn't listed goes in no group.
@@ -41157,6 +41163,26 @@ extension AppState {
             return
         }
         Task { await routeLinkedSession(id, toProfile: profile) }
+    }
+
+    /// A project page's New conversation in a folder, here or in `profile`
+    /// after a switch to it: a page gathering profiles asks which (issue
+    /// 1761). A switch ends a call, so none while one is up.
+    func createNewSession(cwd: String, inProfile profile: String) {
+        guard !Self.profilesMatch(profile, activeProfile) else {
+            Task { await self.createNewSession(cwd: cwd) }
+            return
+        }
+        guard !isVoiceCallInProgress else {
+            showSessionMutationNotice(AppLocalization.string("End the call to open a chat in another profile."))
+            return
+        }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.switchProfile(to: profile)
+            guard Self.profilesMatch(self.activeProfile, profile) else { return }
+            await self.createNewSession(cwd: cwd)
+        }
     }
 
     /// New Chat from All's menu: here, or in `profile` after a switch to
