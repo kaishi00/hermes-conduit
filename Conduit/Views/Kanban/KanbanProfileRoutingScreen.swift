@@ -25,6 +25,7 @@ struct KanbanProfileRoutingScreen: View {
                                     profileRow(profile)
                                     SettingsChevron()
                                 }
+                                .frame(minHeight: 44)
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)

@@ -3316,7 +3316,7 @@ and Bots Home (not needed: already in V2's look)
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-05, #1805 (rows tap across 44 pt; Kanban orchestration's Default row reads Default; SettingsPickerField's 11 choices moved to ConduitMenuPicker, so the whole field opens the menu, and its value no longer wraps, in Settings too); 2026-11-05, #1793 (sheets rebuilt from Settings' pieces)
+**Checked:** 2026-11-05, #1805 (rows that open something, the routing rows included, tap across 44 pt, and New task's skill and dependency remove buttons take a 44 pt target; Kanban orchestration's Default row reads Default; SettingsPickerField's 11 choices moved to ConduitMenuPicker, so the whole field opens the menu, and its value no longer wraps, in Settings too); 2026-11-05, #1793 (sheets rebuilt from Settings' pieces)
 
 ## Sharing into Conduit
 

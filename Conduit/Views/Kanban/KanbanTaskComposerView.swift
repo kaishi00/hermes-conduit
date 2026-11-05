@@ -318,7 +318,11 @@ struct KanbanTaskComposerView: View {
                             draft.parents.removeAll { $0 == parentID }
                         } label: {
                             Image(systemName: "minus.circle.fill")
+                                .foregroundStyle(.red)
+                                .frame(minWidth: 44, minHeight: 44)
+                                .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                         .accessibilityLabel("Remove dependency \(parentTitle(for: parentID))")
                     }
                 }
