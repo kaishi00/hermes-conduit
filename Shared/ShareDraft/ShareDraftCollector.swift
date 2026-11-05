@@ -310,9 +310,15 @@ struct ShareDraftCollector {
         }
         if identifiers.isEmpty, let first = registered.first { identifiers = [first] }
         for identifier in identifiers {
+            let asFileURL = UTType(identifier)?.conforms(to: .fileURL) == true
             let (item, error): (StagedFile?, Error?) = await withCheckedContinuation { continuation in
                 provider.loadItem(forTypeIdentifier: identifier, options: nil) { item, error in
-                    switch item {
+                    // A file URL handed over as bytes is the URL, not the file.
+                    var loaded: NSSecureCoding? = item
+                    if asFileURL, let data = item as? Data {
+                        loaded = URL(dataRepresentation: data, relativeTo: nil).map { $0 as NSURL }
+                    }
+                    switch loaded {
                     case let url as URL where url.isFileURL:
                         let accessing = url.startAccessingSecurityScopedResource()
                         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
@@ -320,7 +326,7 @@ struct ShareDraftCollector {
                         continuation.resume(returning: (copy(url, type: UTType(filenameExtension: url.pathExtension) ?? type, displayName: name, ordinal: ordinal), error))
                     case let image as UIImage:
                         continuation.resume(returning: (write(ProviderPicture.pngData(image), type: .png, displayName: Self.pngName(suggested: suggestedName, ordinal: ordinal), ordinal: ordinal), error))
-                    case let data as Data:
+                    case let data as Data where !asFileURL:
                         continuation.resume(returning: (write(data, type: type, displayName: displayName, ordinal: ordinal), error))
                     default:
                         continuation.resume(returning: (nil, error))

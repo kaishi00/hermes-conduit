@@ -50,7 +50,10 @@ enum ProviderPicture {
 
     /// Whether bytes handed over as a picture decode as one.
     static func decodes(_ data: Data) -> Bool {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return false }
-        return CGImageSourceGetCount(source) > 0
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetCount(source) > 0 else { return false }
+        // A source and a frame count can still hold a frame that won't
+        // decode (a corrupt HEIC); only a first image proves it.
+        return CGImageSourceCreateImageAtIndex(source, 0, nil) != nil
     }
 }
