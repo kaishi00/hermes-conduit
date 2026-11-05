@@ -12406,6 +12406,9 @@ final class AppState: ObservableObject {
     /// Delete) covers it, so reading it doesn't clear its notifications yet
     /// (#1579). Set by V2ConversationScreen and RootView; nothing redraws on it.
     var chatCoveredBySheet = false
+    /// Bot Screen sheets open now, from any surface: one covers the open
+    /// chat like `chatCoveredBySheet` (#1832). Nothing redraws on it.
+    var botScreenSheetsOpen = 0
 
     @Published private(set) var activeRoomSurface: GroupRoomSurface? {
         // A room takes the chat's place without changing the open chat.

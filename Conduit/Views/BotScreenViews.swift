@@ -19,6 +19,14 @@ struct BotScreenSheet: View {
         BotScreenContent(target: target, client: appState.client, work: appState.botWork)
             // A reconnect makes a new client: the screen is read again on it.
             .id(appState.client.map { ObjectIdentifier($0) })
+            // The screen covers the open chat from wherever it opened (the
+            // chat's menu, a Work panel card, Bots Home): what arrives
+            // meanwhile hasn't been read, and closing it reads it (#1579).
+            .onAppear { appState.botScreenSheetsOpen += 1 }
+            .onDisappear {
+                appState.botScreenSheetsOpen = max(0, appState.botScreenSheetsOpen - 1)
+                if appState.botScreenSheetsOpen == 0 { appState.clearShownChatNotifications() }
+            }
     }
 }
 
