@@ -238,6 +238,15 @@ struct BotEditorSheet: View {
                 }
                 .buttonStyle(.settings)
                 generateButton
+                if let still = previewImage, previewPlayback == nil {
+                    Button {
+                        Haptics.light()
+                        bringToLife(still)
+                    } label: {
+                        Label(AppLocalization.string("Bring to Life"), systemImage: "wand.and.stars")
+                    }
+                    .buttonStyle(.settings)
+                }
                 if previewImage != nil || (hasStoredAvatar && !draft.removesAvatar) {
                     Button(role: .destructive) {
                         Haptics.light()
@@ -366,6 +375,24 @@ struct BotEditorSheet: View {
                 draft.removesAvatar = false
             case .failure(let failure):
                 error = AnimatedAvatar.message(for: failure)
+            }
+        }
+    }
+
+    /// Bring to Life: the still shown, its subject swaying (LivingPortrait),
+    /// as a fresh pick the person saves or discards like any other.
+    private func bringToLife(_ image: UIImage) {
+        isPreparingAnimation = true
+        error = nil
+        Task { @MainActor in
+            let result = await LivingPortrait.picture(from: image)
+            isPreparingAnimation = false
+            switch result {
+            case .success(let apng):
+                draft.newAvatarPNG = apng
+                draft.removesAvatar = false
+            case .failure(let failure):
+                error = LivingPortrait.message(for: failure)
             }
         }
     }
