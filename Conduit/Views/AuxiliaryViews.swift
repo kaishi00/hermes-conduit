@@ -5080,15 +5080,19 @@ extension View {
 /// that commits what was typed (Save, Add key, Apply).
 struct SettingsButtonStyle: ButtonStyle {
     var isPrimary = false
+    /// `.settings` in red, for an action that stops something (a
+    /// workstream's Stop).
+    var isDestructive = false
 
     func makeBody(configuration: Configuration) -> some View {
-        SettingsButtonLabel(configuration: configuration, isPrimary: isPrimary)
+        SettingsButtonLabel(configuration: configuration, isPrimary: isPrimary, isDestructive: isDestructive)
     }
 }
 
 extension ButtonStyle where Self == SettingsButtonStyle {
     static var settings: SettingsButtonStyle { SettingsButtonStyle() }
     static var settingsPrimary: SettingsButtonStyle { SettingsButtonStyle(isPrimary: true) }
+    static var settingsDestructive: SettingsButtonStyle { SettingsButtonStyle(isDestructive: true) }
 }
 
 private struct SettingsButtonLabel: View {
@@ -5097,6 +5101,9 @@ private struct SettingsButtonLabel: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let configuration: ButtonStyleConfiguration
     let isPrimary: Bool
+    var isDestructive = false
+
+    private var tint: Color { isDestructive ? .red : .conduitAccent }
 
     /// Dark text on the bright dark-mode gold; white on the light-mode
     /// brown, where dark text read poorly.
@@ -5107,13 +5114,13 @@ private struct SettingsButtonLabel: View {
     var body: some View {
         configuration.label
             .scaledFont(.subheadline.weight(.semibold))
-            .foregroundStyle(isPrimary ? primaryText : Color.conduitAccent)
+            .foregroundStyle(isPrimary ? primaryText : tint)
             .padding(.horizontal, isPrimary ? 16 : 14)
             .frame(minHeight: isPrimary ? 38 : 36)
-            .background(isPrimary ? Color.conduitAccent : Color.conduitAccent.opacity(0.15), in: Capsule())
+            .background(isPrimary ? tint : tint.opacity(isDestructive ? 0.12 : 0.15), in: Capsule())
             .overlay {
                 if !isPrimary {
-                    Capsule().strokeBorder(Color.conduitAccent.opacity(0.4), lineWidth: 0.5)
+                    Capsule().strokeBorder(tint.opacity(0.4), lineWidth: 0.5)
                 }
             }
             // A 44 pt touch target around the smaller capsule.
