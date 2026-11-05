@@ -634,6 +634,15 @@ struct ProviderDetailPage: View {
             }
         }
         .navigationTitle(service.entry(entryID)?.name ?? "")
+        // Opened before the providers list's read again landed, which
+        // leaving that list cancels: the provider's models are read again
+        // here, through the same read (issue 1807).
+        .task {
+            await ModelCatalogSettle.readAgain {
+                guard settingDefault == nil else { return }
+                await context.reloadCatalog()
+            }
+        }
     }
 
     @ViewBuilder
