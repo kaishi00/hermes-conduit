@@ -9,6 +9,7 @@
 //  no new class.
 //
 
+import SwiftUI
 import XCTest
 @testable import Conduit
 
@@ -59,6 +60,35 @@ extension ConnectionFailureTests {
         trace.reset()
         XCTAssertTrue(trace.isEmpty)
         XCTAssertEqual(trace.dump(), "")
+    }
+
+    /// A finger on the transcript (issue 1687): where it landed, what it
+    /// hit and what took it, in lines the relay takes.
+    @MainActor
+    func testTranscriptTouchLinesNameWhereAFingerLandedAndWhatTookIt() {
+        let over = TranscriptTouchTrace.beganLine(
+            x: 4.4, y: 512.6, hit: "_UIHostingView", inTranscript: false,
+            scrolls: false, blockedBy: "UIView",
+            active: [("_UIParallaxTransitionPanGestureRecognizer", .began)]
+        )
+        XCTAssertEqual(over, "touch at 4,513 hit _UIHostingView over transcript scroll off blocked by UIView busy _UIParallaxTransitionPanGestureRecognizer:began")
+        XCTAssertEqual(
+            TranscriptTouchTrace.beganLine(x: 200, y: 300, hit: "TranscriptCell", inTranscript: true, scrolls: true, blockedBy: nil, active: []),
+            "touch at 200,300 hit TranscriptCell"
+        )
+        let ended = TranscriptTouchTrace.endedLine(cancelled: false, took: [("UIScrollViewPanGestureRecognizer", .ended)])
+        XCTAssertEqual(ended, "touch ended, took UIScrollViewPanGestureRecognizer:ended")
+        XCTAssertEqual(TranscriptTouchTrace.endedLine(cancelled: true, took: []), "touch cancelled, nothing took it")
+        let swipe = TranscriptTouchTrace.backSwipeLine(content: false, state: .cancelled, x: 3)
+        XCTAssertEqual(swipe, "back swipe edge cancelled at x 3")
+        let drag = TranscriptTouchTrace.dragLine(.cancelled, offset: 9051.66)
+        XCTAssertEqual(drag, "drag cancelled offset 9051.7")
+        XCTAssertEqual(TranscriptTouchTrace.dragLine(.began, offset: 0), "drag began offset 0.0")
+        for line in [over, ended, swipe, drag] {
+            XCTAssertTrue(takenByTheRelay(ChatViewportTrace.sanitized(line)), line)
+        }
+        // A generic class keeps its name, not its arguments.
+        XCTAssertEqual(TranscriptTouchTrace.name(UIHostingController(rootView: EmptyView())), "UIHostingController")
     }
 
     func testChatTraceStoreKeepsTheNewestFiveAndFindsAStallInASpan() throws {
