@@ -39,12 +39,15 @@ extension AppState {
         let dashboard = activeDashboardID
         let profiles = needsYouProfiles
         for profile in profiles {
+            // Off screen: keep what shows and stop before the next profile.
+            guard isSceneActive else { return }
             let path = DashboardPath.withProfile(NeedsYouStore.path, profile: profile)
             guard let response = try? await bridge.requestJSON(path: path, timeoutMilliseconds: 6_000) else { continue }
             // A dashboard switch while the read was out: not this one's.
             guard dashboard == activeDashboardID else { return }
-            let read = (response["waiting"] as? [[String: Any]] ?? [])
-                .compactMap { NeedsYouItem(host: $0, profile: profile) }
+            // An answer with no list (an error body) is a failed read.
+            guard let listed = response["waiting"] as? [[String: Any]] else { continue }
+            let read = listed.compactMap { NeedsYouItem(host: $0, profile: profile) }
             needsYou.apply(read, profile: profile, dashboardID: dashboard) { [weak self] item in
                 self?.isOpenChat(item) ?? false
             }
@@ -69,7 +72,8 @@ extension AppState {
 
     /// Whether a wait is in the chat on screen, whose card is there.
     func isOpenChat(_ item: NeedsYouItem) -> Bool {
-        guard profilesMatch(item.profile, activeProfile),
+        // A Bot Chat's own profile, not the strip's selected one.
+        guard profilesMatch(item.profile, conversationIdentityProfile),
               let active = activeSessionId, !active.isEmpty else { return false }
         let own = chatOwnSessionIDs(for: active).union([active])
         return item.sessionIDs.contains(where: own.contains)

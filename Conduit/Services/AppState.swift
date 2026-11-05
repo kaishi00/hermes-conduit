@@ -15727,6 +15727,8 @@ final class AppState: ObservableObject {
         // Drafts shared for this dashboard belong to the signed-out user.
         discardSharedDrafts(forDashboard: id)
         if id == activeDashboardID {
+            // The signed-out user's waits leave the chips with them.
+            needsYou.reset(dashboardID: nil)
             disconnect()
             return
         }

@@ -30,7 +30,9 @@ struct NeedsYouBanner: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .task(id: item.id) {
                         UIAccessibility.post(notification: .announcement, argument: announcement(item))
-                        try? await Task.sleep(for: .seconds(NeedsYouStore.bannerSeconds))
+                        // Cancelled (the banner moved over a call's screen, or
+                        // went): the other banner keeps it.
+                        do { try await Task.sleep(for: .seconds(NeedsYouStore.bannerSeconds)) } catch { return }
                         store.dismissBanner(item)
                     }
             }
