@@ -287,7 +287,9 @@ struct KanbanTaskComposerView: View {
                             .foregroundStyle(.secondary)
                         SettingsChevron()
                     }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             } else {
                 ForEach(draft.parents, id: \.self) { parentID in
                     HStack {
@@ -313,6 +315,7 @@ struct KanbanTaskComposerView: View {
                 } label: {
                     Label("Change…", systemImage: "arrow.triangle.2.circlepath")
                 }
+                .buttonStyle(.settings)
             }
             Text("The new task stays blocked until its parent completes.")
                 .settingsCaption()
