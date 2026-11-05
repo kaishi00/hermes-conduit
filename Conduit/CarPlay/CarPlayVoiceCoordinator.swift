@@ -1185,7 +1185,9 @@ final class CarPlayVoiceCoordinator {
             appState.$activeSessionId.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             // Which chats are this agent's, and which are bots'.
             appState.$activeProfile.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
-            appState.$botRoster.map { _ in () }.dropFirst().eraseToAnyPublisher()
+            appState.$botRoster.map { _ in () }.dropFirst().eraseToAnyPublisher(),
+            // Which chat is Pulse's, left out (the feed names it).
+            appState.$pulseHomeChatID.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher()
         )
         .sink { [weak self] _ in self?.scheduleChatsRefresh() }
         loadChatsIfMissing(appState)
@@ -1202,8 +1204,9 @@ final class CarPlayVoiceCoordinator {
     }
 
     private static func chatList(in appState: AppState) -> CarPlayChatList {
+        // Pulse's chat stays behind the Pulse screen, as in Chats.
         CarPlayBrowse.chatList(
-            from: appState.activeProfileSessions,
+            from: appState.activeProfileSessions.filter { !appState.isPulseHomeChat($0) },
             isPinned: { appState.isSessionPinned($0) },
             arrangePinned: { appState.arrangePinned($0, session: { $0 }) }
         )

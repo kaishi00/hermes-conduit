@@ -154,9 +154,7 @@ final class BotWorkStore: ObservableObject {
         Self.isWorkstream(session, among: workstreamSessionIDs)
     }
 
-    /// The same rule over a list of workstream ids, for the chat Conduit
-    /// resumes on its own (ChatResumeSessionResolver), so the lists and that
-    /// pick never disagree about which rows are workstreams.
+    /// The same rule over a list of workstream ids.
     nonisolated static func isWorkstream(
         _ session: SessionSummary,
         among workstreamSessionIDs: Set<String>
