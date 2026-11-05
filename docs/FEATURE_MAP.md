@@ -3314,9 +3314,9 @@ and Bots Home (not needed: already in V2's look)
 - A section title is a catalog key through AppLocalization, or a SettingsNames constant for a name that isn't translated (MCP, JSON).
 
 **Open gaps**
-- None.
+- SettingsPickerField opens only from its value, not from its name or the field's middle: a Picker can't be opened from a tap elsewhere, so the whole field taking the tap means moving its call sites to ConduitMenuPicker (#1805 review).
 
-**Checked:** 2026-11-05, #1793 (sheets rebuilt from Settings' pieces)
+**Checked:** 2026-11-05, #1805 (rows tap across 44 pt; Kanban orchestration's Default row reads Default; the picker field's tap gap recorded); 2026-11-05, #1793 (sheets rebuilt from Settings' pieces)
 
 ## Sharing into Conduit
 
