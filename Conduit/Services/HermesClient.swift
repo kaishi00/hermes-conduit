@@ -1234,6 +1234,8 @@ final class HermesClient: ObservableObject {
     var onDisconnected: (() -> Void)?
 
     static let requestTimeout: TimeInterval = 30
+    /// A model list refresh fetches every provider's live list first.
+    static let modelRefreshTimeout: TimeInterval = 60
     /// An upload's budget: two minutes, or about 1 s for every 64 KB of
     /// request (about 0.5 Mbit/s) if that is longer, the rate a group room's
     /// upload allows, so a large file on a slow link isn't cut off (#1265).
@@ -4035,10 +4037,27 @@ final class HermesClient: ObservableObject {
     /// and rate limit from Hermes' cache, Settings > Usage's quota (#813),
     /// and asking starts Hermes' background refresh of that cache. The model
     /// sheet names its chat's session.
-    func modelOptionsAnswer(sessionId: String? = nil) async throws -> [String: Any] {
+    /// With `refresh`, Hermes drops its cached provider model lists and
+    /// fetches every provider's live list before it answers (Refresh models,
+    /// issue 1807), which can take a while; a Hermes that doesn't know the
+    /// flag answers from its cache.
+    func modelOptionsAnswer(sessionId: String? = nil, refresh: Bool = false) async throws -> [String: Any] {
         var params: [String: Any] = ["explicit_only": true]
         if let sessionId { params["session_id"] = sessionId }
-        let result = try await rpc("model.options", params: params)
+        let result: AnyCodable
+        if refresh {
+            do {
+                result = try await rpc(
+                    "model.options",
+                    params: params.merging(["refresh": true]) { $1 },
+                    timeout: Self.modelRefreshTimeout
+                )
+            } catch let error as RpcError where error.refusesUnknownParam("refresh") {
+                result = try await rpc("model.options", params: params)
+            }
+        } else {
+            result = try await rpc("model.options", params: params)
+        }
         // Anything but an answer is a failed read, never one with no models.
         guard let answer = result.anyValue as? [String: Any] else { throw HermesError.invalidResponse }
         return answer

@@ -25,6 +25,9 @@ struct ProviderModelContext {
     var usageAnswered = true
     /// Reads the catalog again.
     var reloadCatalog: () async -> Void = {}
+    /// The read again after a page opens (issue 1807): while a default
+    /// pick saves, it waits for the pick to finish.
+    var readAgain: () async -> Void = {}
     /// Makes `model` on the catalog row `provider` the profile's default.
     var makeDefault: (_ provider: String, _ model: String) async -> Bool
     /// What else on the profile uses the provider (its delegate, fallback
@@ -59,6 +62,9 @@ struct ModelPageProviders: View {
     /// itself, so the page's refresh for that save doesn't start another
     /// read that would end the pick's spinner early.
     @State private var picking = false
+    /// A read again came while a pick saved: it runs once the pick ends,
+    /// even when the save failed.
+    @State private var readAfterPick = false
 
     init(
         bridge: DashboardJSONRequester, profile: String, profileName: String,
@@ -84,13 +90,17 @@ struct ModelPageProviders: View {
             catalogFailed: catalogFailed,
             usageAnswered: helpersRead,
             reloadCatalog: { await reloadCatalog() },
+            readAgain: { await readAgain() },
             makeDefault: { provider, model in
                 // Read here, so the page's spinner stays until the new default
                 // shows; the refresh the save raises is skipped meanwhile.
                 picking = true
                 defer { picking = false }
                 let saved = await makeDefault(provider, model, catalog?.reasoning ?? "medium")
-                if saved { await reloadCatalog() }
+                if saved || readAfterPick {
+                    readAfterPick = false
+                    await reloadCatalog()
+                }
                 return saved
             },
             usage: { entry in Self.usage(of: entry, catalog: catalog, settings: appState.keptProfileSettings(keys: Self.usageKeys),
@@ -103,7 +113,12 @@ struct ModelPageProviders: View {
             )
         ))
         .onAppear { if catalog == nil { catalog = kept() } }
-        .task { await reloadCatalog() }
+        .task {
+            await reloadCatalog()
+            // Hermes fetches a stale provider list in the background
+            // meanwhile (issue 1807).
+            await ModelCatalogSettle.readAgain { await readAgain() }
+        }
         // Read apart from the catalog, so a slow answer holds only Remove:
         // it names the helper models pinned to a provider as Hermes holds
         // them, not only as this phone last kept them (a read that fails
@@ -120,6 +135,15 @@ struct ModelPageProviders: View {
             guard !picking else { return }
             Task { await reloadCatalog() }
         }
+    }
+
+    /// The read again, held for a pick that is saving.
+    private func readAgain() async {
+        guard !picking else {
+            readAfterPick = true
+            return
+        }
+        await reloadCatalog()
     }
 
     /// Reads Hermes' catalog. A read that a later one overtook is dropped,
@@ -626,6 +650,12 @@ struct ProviderDetailPage: View {
             }
         }
         .navigationTitle(service.entry(entryID)?.name ?? "")
+        // Opened before the providers list's read again landed, which
+        // leaving that list cancels: the provider's models are read again
+        // here, through the same read (issue 1807).
+        .task {
+            await ModelCatalogSettle.readAgain { await context.readAgain() }
+        }
     }
 
     @ViewBuilder

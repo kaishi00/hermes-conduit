@@ -2918,10 +2918,12 @@ final class AppState: ObservableObject {
     /// `model.options`, kept on the phone as the same answer Usage keeps
     /// (#1533). The model sheet asks for its chat's session. Nil when
     /// Hermes didn't answer, so a picker keeps the models it shows.
-    func loadModelProviders(sessionId: String? = nil) async -> [ProviderInfo]? {
+    /// `refresh` is Refresh models: Hermes fetches every provider's live
+    /// list first (issue 1807).
+    func loadModelProviders(sessionId: String? = nil, refresh: Bool = false) async -> [ProviderInfo]? {
         let profile = activeProfile
         guard let client else { return nil }
-        let read = { try await client.modelOptionsAnswer(sessionId: sessionId) }
+        let read = { try await client.modelOptionsAnswer(sessionId: sessionId, refresh: refresh) }
         let answer: [String: Any]?
         if let owner = currentDashboardRuntimeOwner() {
             answer = try? await keepingAnswer(profile: profile, owner: owner, keptAs: { _ in KeptRoute.providerQuotas }, read)

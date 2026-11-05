@@ -465,6 +465,8 @@ struct VoiceJobModelSettingsSection: View {
     /// Hermes answered the models read: only then is a model picked, as a
     /// list that didn't load is never picked from.
     @State private var modelsAnswered = false
+    /// Counts the models reads, so only the last one asked lands.
+    @State private var providersRead = 0
 
     private static let profileDefault = ""
 
@@ -505,13 +507,22 @@ struct VoiceJobModelSettingsSection: View {
                 .foregroundStyle(.secondary)
         }
         .onAppear { if providers.isEmpty { providers = settings.keptProviders() } }
-        .task { await loadProviders() }
+        .task {
+            await loadProviders()
+            // Hermes fetches a stale provider list in the background
+            // meanwhile (issue 1807).
+            await ModelCatalogSettle.readAgain { await loadProviders() }
+        }
         .onChange(of: selection) { _, _ in save() }
         .onChange(of: reasoning) { _, _ in save() }
     }
 
     private func loadProviders() async {
+        providersRead += 1
+        let asked = providersRead
         let loaded = await settings.loadProviders()
+        // A read asked since (the read again, Try Again) has the newer answer.
+        guard asked == providersRead else { return }
         if let loaded {
             providers = loaded
             modelsAnswered = true
@@ -884,6 +895,8 @@ struct VoiceReplyModelSettingsSection: View {
     @State private var providersFailed = false
     /// Hermes answered the models read: only then is a model picked.
     @State private var modelsAnswered = false
+    /// Counts the models reads, so only the last one asked lands.
+    @State private var providersRead = 0
 
     var body: some View {
         Group {
@@ -952,7 +965,16 @@ struct VoiceReplyModelSettingsSection: View {
             }
         }
         .onAppear(perform: showKept)
-        .task { await read() }
+        .task {
+            await read()
+            // Hermes fetches a stale provider list in the background
+            // meanwhile (issue 1807); a setting read that failed waits for
+            // the page's next check, as before.
+            await ModelCatalogSettle.readAgain {
+                guard !picks.readFailed else { return }
+                await reloadProviders()
+            }
+        }
         // After a read that failed, the page's next check (its Check again
         // too) asks Hermes again.
         .onChange(of: pageIsChecking) { _, checking in
@@ -978,8 +1000,12 @@ struct VoiceReplyModelSettingsSection: View {
             return
         }
         var loaded: [ProviderInfo]?
+        providersRead += 1
+        let modelsAsked = providersRead
         if setting != nil { loaded = await settings.loadProviders() }
         guard picks.hermesAnswered(setting, to: asked) else { return }
+        // A models read asked since has the newer list.
+        guard modelsAsked == providersRead else { return }
         if let loaded {
             providers = loaded
             modelsAnswered = true
@@ -997,8 +1023,17 @@ struct VoiceReplyModelSettingsSection: View {
         }
     }
 
+    /// A read that fails keeps the models listed, saying so.
     private func reloadProviders() async {
-        guard let loaded = await settings.loadProviders() else { return }
+        providersRead += 1
+        let asked = providersRead
+        let loaded = await settings.loadProviders()
+        // A read asked since (the read again, Try Again) has the newer answer.
+        guard asked == providersRead else { return }
+        guard let loaded else {
+            providersFailed = true
+            return
+        }
         providers = loaded
         modelsAnswered = true
         providersFailed = false
