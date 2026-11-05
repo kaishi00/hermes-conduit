@@ -77,7 +77,7 @@ struct V2ProjectPage: View {
     /// until Hermes lists it: Hermes stores a chat with its first message,
     /// and the page beside the open chat would miss it (issue 1454). Only
     /// while the page's profile is in use: a chat started after a switch
-    /// is another profile's, which that profile's read lists.
+    /// is another profile's, and shows in its part (profileParts).
     private var ownLanes: [ProjectSessionLane] {
         let lanes = detail?.lanes ?? []
         guard AppState.profilesMatch(pageProfile, appState.activeProfile),
@@ -86,8 +86,22 @@ struct V2ProjectPage: View {
     }
 
     /// The page's profile, then every other profile's chats in this folder.
+    /// A chat just started in another profile (after a switch to it) shows
+    /// in that profile's part until its read lists it.
     private var profileParts: [ProjectProfileLanes] {
-        [ProjectProfileLanes(profile: pageProfile, lanes: ownLanes)] + (otherProfiles?.parts ?? [])
+        var parts = [ProjectProfileLanes(profile: pageProfile, lanes: ownLanes)] + (otherProfiles?.parts ?? [])
+        let active = appState.activeProfile
+        guard !AppState.profilesMatch(pageProfile, active),
+              let created = appState.newChatAwaitingListing(in: project) else { return parts }
+        var row = created.row
+        if row.profile == nil { row.profile = active }
+        let newLaneID = "\(project.id)-\(active)-new"
+        if let index = parts.firstIndex(where: { AppState.profilesMatch($0.profile, active) }) {
+            parts[index].lanes = created.awaiting.lanes(parts[index].lanes, with: row, newLaneID: newLaneID)
+        } else if appState.projectPageProfiles(besides: pageProfile).contains(where: { AppState.profilesMatch($0, active) }) {
+            parts.append(ProjectProfileLanes(profile: active, lanes: created.awaiting.lanes([], with: row, newLaneID: newLaneID)))
+        }
+        return parts
     }
 
     /// The profiles with chats here, when there are two or more.
@@ -513,6 +527,9 @@ struct V2ProjectPage: View {
         guard appState.isConnected else { return }
         reloadGeneration &+= 1
         let generation = reloadGeneration
+        // A forced read a newer one supersedes is still owed: the next
+        // read takes the other profiles too.
+        if force { otherProfilesReadAt = nil }
         isLoading = true
         let pageProfile = owner ?? appState.activeProfile
         owner = pageProfile

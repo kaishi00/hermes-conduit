@@ -32722,7 +32722,8 @@ final class AppState: ObservableObject {
         to profile: String,
         reusing viewportTransitionGeneration: UInt64?,
         refusingCallsWith callRefusal: String? = nil,
-        widgetLease: WidgetLaunchLease? = nil
+        widgetLease: WidgetLaunchLease? = nil,
+        navigationSeenAt seenGeneration: UInt64? = nil
     ) async -> Bool {
         let signposter = ResponsivenessSignposts.signposter
         let switching = signposter.beginInterval("Profile switch", id: signposter.makeSignpostID())
@@ -32754,6 +32755,11 @@ final class AppState: ObservableObject {
             // screen now.
             if let viewportTransitionGeneration,
                !chatViewportTransitionIsCurrent(generation: viewportTransitionGeneration) {
+                return false
+            }
+            // A tap that began no transition of its own (New conversation
+            // in another profile) gives way to one that began meanwhile.
+            if let seenGeneration, !chatViewportTransitionIsCurrent(generation: seenGeneration) {
                 return false
             }
             guard widgetLease?.isCurrent != false else {
@@ -41178,11 +41184,12 @@ extension AppState {
             return
         }
         let refusal = AppLocalization.string("End the call to open a chat in another profile.")
+        let seen = chatViewportTransitionGeneration
         Task { @MainActor [weak self] in
             guard let self else { return }
             // Only a switch that went through: one a newer navigation or a
             // call superseded starts nothing.
-            guard await self.switchProfile(to: profile, reusing: nil, refusingCallsWith: refusal) else { return }
+            guard await self.switchProfile(to: profile, reusing: nil, refusingCallsWith: refusal, navigationSeenAt: seen) else { return }
             await self.createNewSession(cwd: cwd)
         }
     }
@@ -41199,11 +41206,12 @@ extension AppState {
             return
         }
         let refusal = AppLocalization.string("End the call to open a chat in another profile.")
+        let seen = chatViewportTransitionGeneration
         Task { @MainActor [weak self] in
             guard let self else { return }
             // As createNewSession(cwd:inProfile:): a superseded switch
             // starts nothing.
-            guard await self.switchProfile(to: profile, reusing: nil, refusingCallsWith: refusal) else { return }
+            guard await self.switchProfile(to: profile, reusing: nil, refusingCallsWith: refusal, navigationSeenAt: seen) else { return }
             self.startNewChat()
         }
     }
