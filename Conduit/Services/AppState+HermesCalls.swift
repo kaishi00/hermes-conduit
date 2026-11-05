@@ -741,7 +741,12 @@ extension AppState {
         }
         guard isNativeHermesCallActive != active else { return }
         isNativeHermesCallActive = active
-        if active { recoverTransportForCarPlayIfNeeded(immediately: true) }
+        if active {
+            // A reading still opening holds no audio yet, so CallKit's
+            // activation doesn't interrupt it; it ends here (issue 1770).
+            messageReadAloudController.stop()
+            recoverTransportForCarPlayIfNeeded(immediately: true)
+        }
     }
 
     /// The user answered the call in CallKit: the classic Voice it opens

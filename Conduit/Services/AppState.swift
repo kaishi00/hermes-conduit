@@ -38283,17 +38283,22 @@ final class AppState: ObservableObject {
     /// and Classic stop Read Aloud as they open, and dictation or a voice
     /// message taking the microphone ends it (onTakenOverByCapture).
     var readAloudAudioBusyReason: String? {
-        let coordinator = VoiceAudioSessionCoordinator.shared
-        // The speech test isn't a call: tapping takes over from it.
-        let inCall = showVoiceSheet || isLiveVoiceCallActive || voiceConversationController.hasConversationSession
-            || minimisedLiveVoice != nil || isNativeHermesCallActive || coordinator.isInNativeCall
-        if inCall {
+        if isCallHoldingAudio {
             return AppLocalization.string("Read aloud can't play during a call.")
         }
-        if coordinator.hasCaptureOwner {
+        if VoiceAudioSessionCoordinator.shared.hasCaptureOwner {
             return AppLocalization.string("Read aloud can't play while the microphone is in use.")
         }
         return nil
+    }
+
+    /// A call holds the audio: Classic or a live mode (open or minimised),
+    /// or a call from Hermes. The speech test isn't a call: Read Aloud
+    /// takes over from it.
+    var isCallHoldingAudio: Bool {
+        showVoiceSheet || isLiveVoiceCallActive || voiceConversationController.hasConversationSession
+            || minimisedLiveVoice != nil || isNativeHermesCallActive
+            || VoiceAudioSessionCoordinator.shared.isInNativeCall
     }
 
     /// Whether this profile's Hermes can read aloud at all; the gateway is
@@ -39854,6 +39859,7 @@ final class AppState: ObservableObject {
     }
 
     func runVoiceASRTest() async -> VoiceProviderTestResult {
+        guard !isCallHoldingAudio else { return .failure(AppLocalization.string("End the call to run this test.")) }
         // Ownership first: a playing read aloud must release its standalone
         // lease before anything else in this flow — the capability refresh
         // and the capture test itself — can claim conversation-capture
@@ -39877,6 +39883,8 @@ final class AppState: ObservableObject {
     }
 
     func runVoiceTTSTest() async -> VoiceProviderTestResult {
+        // The call's microphone would hear the test as the user (issue 1770).
+        guard !isCallHoldingAudio else { return .failure(AppLocalization.string("End the call to run this test.")) }
         await refreshVoiceCapabilities()
         guard isVoiceEnabled else {
             return .failure(AppLocalization.string("Enable voice for this profile before running a speech playback test."))

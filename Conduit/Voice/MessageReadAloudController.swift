@@ -72,7 +72,8 @@ final class MessageReadAloudController: ObservableObject {
     /// Headphones came out while this operation was still opening: its
     /// first audio starts paused rather than on the speaker.
     private var pauseWhenAudioStarts: UInt64?
-    /// Dictation, a voice message or a call holds the microphone.
+    /// Dictation, a voice message or a call holds the microphone, or a
+    /// call from Hermes holds the session.
     private let microphoneIsHeld: @MainActor () -> Bool
 
     init(
@@ -84,7 +85,10 @@ final class MessageReadAloudController: ObservableObject {
         },
         beginBackgroundActivity: (@MainActor (@escaping @MainActor () -> Void) -> @MainActor () -> Void)? = nil,
         nowPlaying: ReadAloudNowPlayingPresenting? = nil,
-        microphoneIsHeld: @escaping @MainActor () -> Bool = { VoiceAudioSessionCoordinator.shared.hasCaptureOwner },
+        microphoneIsHeld: @escaping @MainActor () -> Bool = {
+            let coordinator = VoiceAudioSessionCoordinator.shared
+            return coordinator.hasCaptureOwner || coordinator.isInNativeCall
+        },
         reportError: @escaping @MainActor (String) -> Void = { _ in }
     ) {
         self.microphoneIsHeld = microphoneIsHeld
