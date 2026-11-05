@@ -17,6 +17,7 @@ final class HeldDashboardRequests {
     struct Sent {
         let method: String
         let path: String
+        var query: String? = nil
     }
 
     let bridge: DashboardTicketBridge
@@ -37,7 +38,8 @@ final class HeldDashboardRequests {
             guard let self else { throw URLError(.cancelled) }
             self.sent.append(Sent(
                 method: request.httpMethod ?? "GET",
-                path: request.url?.path ?? ""
+                path: request.url?.path ?? "",
+                query: request.url?.query
             ))
             return try await withCheckedThrowingContinuation { continuation in
                 self.waiting.append((request.url ?? URL(fileURLWithPath: "/"), continuation))
@@ -75,6 +77,25 @@ final class HeldDashboardRequests {
         let data = try JSONSerialization.data(withJSONObject: json, options: [.fragmentsAllowed])
         let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: nil)!
         continuation.resume(returning: (data, response))
+    }
+
+    /// Answers the oldest request still waiting whose path ends in
+    /// `suffix`, once one is, leaving any other request waiting.
+    func answer(
+        _ json: Any,
+        toPathEnding suffix: String,
+        status: Int = 200,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        for _ in 0..<1_000 where !waiting.contains(where: { $0.url.path.hasSuffix(suffix) }) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        guard let place = waiting.firstIndex(where: { $0.url.path.hasSuffix(suffix) }) else {
+            XCTFail("no request to \(suffix) is waiting for an answer", file: file, line: line)
+            return
+        }
+        try await answer(json, status: status, at: place, file: file, line: line)
     }
 
     /// Fails every request still waiting, so nothing is left suspended.
