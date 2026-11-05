@@ -795,7 +795,10 @@ final class HermesNativeCalls: NSObject {
             let refused: Bool
             if case .callRefused(_, _)? = try? JSONDecoder().decode(WatchVoiceWire.Message.self, from: data) { refused = true } else { refused = false }
             Task { @MainActor in
-                let status = await HermesRingHandoff.store(ring, sealed: sealed)
+                var status = await HermesRingHandoff.store(ring, sealed: sealed)
+                // No answer, or a relay that faltered: once more, since a lost
+                // response may still have stored it (a store replaces).
+                if status == 0 || status >= 500 { status = await HermesRingHandoff.store(ring, sealed: sealed) }
                 log.note("watchAnswerHandoff", [
                     "ok": status == 200,
                     "status": status,
@@ -817,7 +820,8 @@ final class HermesNativeCalls: NSObject {
     /// wasn't taken. A ring this phone has no record of says only that
     /// Hermes called, and Hermes can't be told: nothing names the call.
     private func missedOnWatch(_ target: ConduitNotificationTarget?, sentAt: Date?) {
-        post(target == nil ? .unreadable : .missed, for: target)
+        // A dashboard Conduit can't read routes nowhere: the plain notice.
+        post(target == nil || target?.hasMalformedDashboardID == true ? .unreadable : .missed, for: target)
         report(.missed, for: target, sentAt: sentAt)
     }
 
