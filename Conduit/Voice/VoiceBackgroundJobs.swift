@@ -1604,7 +1604,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     func continueJob(
         instructions: String,
         in chat: VoiceThreadTarget,
-        onJobCreated: (@MainActor (UUID) -> Void)? = nil
+        onJobCreated: (@MainActor (UUID) -> Void)? = nil,
+        onRuntime: (@MainActor (String) -> Void)? = nil
     ) async -> String {
         let activeCount = activeJobCount
         guard activeCount < Self.maximumActiveJobs else {
@@ -1630,11 +1631,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         jobs.append(job)
         onJobCreated?(job.id)
         let generation = generation
-        Task { [weak self] in await self?.sendContinuedJob(job.id, in: chat, generation: generation) }
+        Task { [weak self] in await self?.sendContinuedJob(job.id, in: chat, generation: generation, onRuntime: onRuntime) }
         return startedReply(job)
     }
 
-    private func sendContinuedJob(_ jobID: UUID, in chat: VoiceThreadTarget, generation: UInt64) async {
+    /// `onRuntime` hears the runtime Hermes resumed the chat on.
+    private func sendContinuedJob(
+        _ jobID: UUID, in chat: VoiceThreadTarget, generation: UInt64, onRuntime: (@MainActor (String) -> Void)? = nil
+    ) async {
         while generation == self.generation, job(jobID)?.status == .starting {
             // One request at a time in the chat: an earlier job of the call
             // still running there, or a turn typed in it, goes first.
@@ -1650,6 +1654,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             let runtimeID = try await resolveRuntime(of: chat)
             guard generation == self.generation, job(jobID)?.status == .starting else { return }
             let request = job(jobID)?.instructions ?? ""
+            if !runtimeID.isEmpty { onRuntime?(runtimeID) }
             update(jobID) {
                 if !runtimeID.isEmpty { $0.runtimeSessionID = runtimeID }
                 $0.requestSent = true

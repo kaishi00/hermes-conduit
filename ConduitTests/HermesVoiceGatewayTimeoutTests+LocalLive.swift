@@ -650,8 +650,8 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(live.own, lost.own)
         XCTAssertEqual(made.count, 1)
 
-        // Resumed on another runtime: the own chat follows it, so a delete
-        // naming only the new runtime (no stored id) is still its delete.
+        // Resumed on another runtime: the own chat follows it (no stored id),
+        // so isDeletedChat matches a delete that names only the new runtime.
         let legacy = VoiceThreadTarget(runtimeSessionID: "rt-old", storedSessionID: nil, title: "")
         let resumed = try await LocalLiveTurnRunner.callChat(attached: nil, own: legacy, runtime: { _ in "rt-reopened" }, create: create)
         XCTAssertEqual(resumed.chat.runtimeID, "rt-reopened")

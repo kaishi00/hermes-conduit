@@ -1848,21 +1848,6 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
     /// goes no further.
     var callIsLive: (@MainActor () -> Bool)?
     private var callChatWaiters: [CheckedContinuation<Void, Never>] = []
-    /// The call's jobs in `callChat`: the last one sent there names the
-    /// runtime Hermes resumed it on.
-    private var callChatJobIDs: Set<UUID> = []
-
-    /// `callChat` on the runtime its latest request was sent on, so a
-    /// delete naming that one is found where the chat has no stored id (a
-    /// legacy gateway, issue 1797).
-    private func refreshCallChatRuntime() {
-        guard var chat = callChat else { return }
-        let latest = base.jobs.filter { callChatJobIDs.contains($0.id) && $0.requestSent }
-            .max { ($0.sentAt ?? .distantPast) < ($1.sentAt ?? .distantPast) }
-        guard let runtimeID = latest?.runtimeSessionID, !runtimeID.isEmpty, runtimeID != chat.runtimeSessionID else { return }
-        chat.runtimeSessionID = runtimeID
-        callChat = chat
-    }
 
     func startJob(instructions: String, profile: String?, joinsCall: Bool, onJobCreated: (@MainActor (UUID) -> Void)?) async -> String {
         let noted = self.onJobCreated
@@ -1875,20 +1860,20 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
         while true {
             // Its chat was deleted, before or while this request waited: this
             // request makes the call a new one (issue 1797).
-            refreshCallChatRuntime()
-            if let chat = callChat, base.isDeletedChat(chat) {
-                callChat = nil
-                callChatJobIDs = []
-            }
+            if let chat = callChat, base.isDeletedChat(chat) { callChat = nil }
             guard joins, callChat == nil, startingCallChat else { break }
             waited = true
             await withCheckedContinuation { callChatWaiters.append($0) }
         }
         if waited, callIsLive?() == false { return "The call ended before Hermes took this request." }
         if joins, let callChat {
-            return await base.continueJob(instructions: instructions, in: callChat, onJobCreated: { [weak self] jobID in
-                self?.callChatJobIDs.insert(jobID)
-                created(jobID)
+            // Resumed on another runtime: the call's chat follows it, so a
+            // delete naming that one is found where the chat has no stored
+            // id (a legacy gateway, issue 1797).
+            return await base.continueJob(instructions: instructions, in: callChat, onJobCreated: created, onRuntime: { [weak self] runtimeID in
+                guard let self, var chat = self.callChat, chat == callChat else { return }
+                chat.runtimeSessionID = runtimeID
+                self.callChat = chat
             })
         }
         let claims = joins
@@ -1923,10 +1908,7 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
             case .starting, .running, .needsInput, .finished:
                 let chat = VoiceThreadTarget(runtimeSessionID: runtimeID, storedSessionID: job.storedSessionID, title: job.title, profile: callProfile)
                 // Not one deleted while its job was starting (issue 1797).
-                if !base.isDeletedChat(chat) {
-                    callChat = chat
-                    callChatJobIDs = [startedID]
-                }
+                if !base.isDeletedChat(chat) { callChat = chat }
             }
         }
         return reply
