@@ -101,4 +101,49 @@ extension BotModeTests {
         XCTAssertEqual(UIImage(data: stored)?.size, CGSize(width: BotManagement.avatarEdge, height: BotManagement.avatarEdge))
         XCTAssertNil(BotAvatarImage.hermesPicture(fromPhoneCopy: Data("not a picture".utf8)))
     }
+
+    func testChooseGIFOrVideoKeepsAMovingPicksFileAndReadsAStill() throws {
+        // Choose Photo's crop hands over one frame of a GIF (Eric,
+        // 2026-11-05), so moving pictures come through the Photos picker's
+        // own file: a moving one is kept to be made into an APNG.
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let moving = dir.appendingPathComponent("loop.png")
+        try AnimatedAvatar.encode(frames(3)).get().write(to: moving)
+        guard case .animation(.image(let kept)) = AnimatedAvatar.pick(fileAt: moving) else {
+            return XCTFail("A moving picture should be kept as an animation")
+        }
+        XCTAssertEqual(kept, moving)
+
+        let movie = dir.appendingPathComponent("clip.mov")
+        try Data("not read yet".utf8).write(to: movie)
+        guard case .animation(.movie(let keptMovie)) = AnimatedAvatar.pick(fileAt: movie) else {
+            return XCTFail("A video should be kept as an animation")
+        }
+        XCTAssertEqual(keptMovie, movie)
+
+        // A still picked there is used as any photo, and its copy deleted.
+        let still = dir.appendingPathComponent("still.png")
+        try XCTUnwrap(UIImage(cgImage: solidFrame(.red)).pngData()).write(to: still)
+        guard case .still = AnimatedAvatar.pick(fileAt: still) else {
+            return XCTFail("A still should be read as one")
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: still.path))
+    }
+
+    func testChooseGIFOrVideoWritesMovingBytesToAFileOfTheirOwn() throws {
+        let apng = try AnimatedAvatar.encode(frames(3)).get()
+        guard case .animation(.image(let url)) = AnimatedAvatar.pick(data: apng) else {
+            return XCTFail("Moving bytes should become an animation")
+        }
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertEqual(try Data(contentsOf: url), apng)
+        guard case .still = AnimatedAvatar.pick(data: try XCTUnwrap(UIImage(cgImage: solidFrame(.red)).pngData())) else {
+            return XCTFail("A still's bytes should be read as one")
+        }
+        guard case .unreadable = AnimatedAvatar.pick(data: Data("not a picture".utf8)) else {
+            return XCTFail("Bytes that aren't a picture can't be used")
+        }
+    }
 }
