@@ -166,6 +166,9 @@ final class GPTLiveDelegationBridge {
            decision.answers(supervisor.callWaitsOn) || (decision.isApproval && !supervisor.jobsWaitingOnApproval.isEmpty)
             || (!decision.isApproval && !supervisor.jobsWaitingOnQuestion.isEmpty) {
             guard seenDelegations.insert(id).inserted, !isEnding else { return [] }
+            // The call that asked (#1792): a call replaced while this waits
+            // on the user's yes has someone else's words in the transcript.
+            let call = callGeneration
             let outcome: VoiceCallDecisionOutcome
             if (spokenWords?.wordsMark() ?? 0) == 0 {
                 // Only ever the user's own answer, never the model's. No
@@ -176,6 +179,8 @@ final class GPTLiveDelegationBridge {
                 case .approve:
                     // Never on the model's word for it: on the user's own yes.
                     let saidYes = await VoiceCallDecisionOutcome.userSaysYes({ self.spokenWords?.lastUserLine() ?? "" }, wait: lateYesWait)
+                    // A yes from the next call never answers this one's.
+                    guard callGeneration == call else { return [] }
                     if saidYes {
                         outcome = await supervisor.answerApproval(choice: "once")
                     } else {
@@ -194,7 +199,7 @@ final class GPTLiveDelegationBridge {
                     }
                 }
             }
-            guard !isEnding else { return [] }
+            guard callGeneration == call, !isEnding else { return [] }
             spokenWords?.settleWords(.delegation(id))
             return [.delegationReply(delegationID: id, text: outcome.modelMessage, channel: .commentary)]
         }

@@ -4608,7 +4608,10 @@ final class FakeGPTLiveSpokenWords: GPTLiveSpokenWords {
 
     func unsentWords() -> String { words }
     func wordsMark() -> Int { mark }
-    func lastUserLine() -> String { lastLine }
+    /// Read in place of `lastLine` when set: a test can act as it's polled.
+    var readLastLine: (@MainActor () -> String)?
+
+    func lastUserLine() -> String { readLastLine?() ?? lastLine }
     func settleWords(_ words: GPTLiveDelegationBridge.SettledWords) { settled.append(words) }
 }
 

@@ -890,8 +890,11 @@ final class GeminiLiveToolBridge {
                 // A deny never needs their yes; letting it through is never
                 // the risk.
                 if choice == "once" {
+                    let call = self.callGeneration
                     let saidYes = await VoiceCallDecisionOutcome.userSaysYes(self.lastUserWords, wait: self.lateYesWait)
-                    guard saidYes else { return .notAYes }
+                    // A yes from the next call never answers this one's
+                    // (#1792): the answer below is dropped with it.
+                    guard saidYes, self.callGeneration == call else { return .notAYes }
                 }
                 return await self.supervisor.answerApproval(choice: choice)
             }
@@ -941,13 +944,14 @@ final class GeminiLiveToolBridge {
     /// spoken in the call (an approval, only on their yes): never from the
     /// model's own judgment or the reason Hermes gave.
     private func answerDecision(_ call: GeminiLiveProtocol.FunctionCall, _ answer: () async -> VoiceCallDecisionOutcome) async -> [Outgoing] {
+        let generation = callGeneration
         let outcome: VoiceCallDecisionOutcome
         if lastUserSpeechAt() == nil {
             outcome = .userHasNotSpoken
         } else {
             outcome = await answer()
         }
-        guard !isEnding else { return [] }
+        guard callGeneration == generation, !isEnding else { return [] }
         return [.toolResponse(id: call.id, name: call.name, result: ["status": outcome.status, "message": outcome.modelMessage], scheduling: .whenIdle)]
     }
 
@@ -965,11 +969,16 @@ final class GeminiLiveToolBridge {
     /// A new connection replaced the one these calls were opened on: they
     /// can no longer be answered, so results go out as text updates.
     func connectionReplaced() {
+        callGeneration &+= 1
         openCalls.removeAll()
         callNames.removeAll()
         withdrawnCallIDs.removeAll()
         isEnding = false
     }
+
+    /// Bumped by each replaced connection: an answer still waiting on the
+    /// user's words when it changes belongs to a call that's gone (#1792).
+    private(set) var callGeneration = 0
 
     /// A new server session starts (a call, or a retry after a failure): the
     /// model there never asked about an earlier draft.
