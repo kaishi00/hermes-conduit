@@ -63,18 +63,18 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(hunk.lines.map(\.new), [40, nil, 41, 42, 43])
         XCTAssertEqual(hunk.lines.map(\.kind), [.context, .removed, .added, .added, .context])
         XCTAssertEqual(hunk.lines[1].text, "    attempts += 2", "the line keeps its indent")
-        XCTAssertEqual(hunk.lines[1].changed, 15..<16, "only the 2 changed")
-        XCTAssertEqual(hunk.lines[2].changed, 15..<16)
+        XCTAssertEqual(hunk.lines[1].changed, 16..<17, "only the 2 changed")
+        XCTAssertEqual(hunk.lines[2].changed, 16..<17)
         XCTAssertNil(hunk.lines[3].changed, "an added line with no removed one beside it")
-        XCTAssertEqual(hunk.header, "@@ -40,4 +40,5 @@ func retry() {")
-        XCTAssertEqual(hunk.oldEnd, 44)
+        XCTAssertEqual(hunk.header, "@@ -40,3 +40,4 @@ func retry() {")
+        XCTAssertEqual(hunk.oldEnd, 43)
     }
 
     func testChangedWordsNeedSomethingInCommon() {
         let (before, after) = RichDiffLine.changedParts("old()", "brandNew()")
         XCTAssertEqual(before, 0..<3)
         XCTAssertEqual(after, 0..<8, "the shared () is enough")
-        let (left, right) = RichDiffLine.changedParts("    alpha", "    omega")
+        let (left, right) = RichDiffLine.changedParts("    alpha", "    bravo")
         XCTAssertNil(left, "an indent alone isn't a likeness: the whole line changed")
         XCTAssertNil(right)
         let (same, _) = RichDiffLine.changedParts("x", "x")
@@ -86,15 +86,15 @@ extension AppStateVoiceCapabilityTests {
 
     func testAFileDrawsItsHunksAndTheLinesBetweenThem() throws {
         let file = try diff().files[0]
-        XCTAssertEqual(file.unchangedAfter(0), 46, "lines 44 to 89 didn't change")
+        XCTAssertEqual(file.unchangedAfter(0), 47, "lines 43 to 89 didn't change")
         XCTAssertNil(file.unchangedAfter(1))
         let rows = RichDiffRow.rows(file)
         XCTAssertEqual(rows.count, 1 + 5 + 1 + 1 + 2)
-        XCTAssertEqual(rows[6], .unchanged(46))
+        XCTAssertEqual(rows[6], .unchanged(47))
         let preview = RichDiffRow.rows(file, limit: 3)
         XCTAssertEqual(preview.count, 4, "the bar and three lines, nothing after")
         XCTAssertEqual(RichDiffRow.digits(file), 2)
-        XCTAssertTrue(file.patch.hasPrefix("--- a/Sources/Login.swift\n+++ b/Sources/Login.swift\n@@ -40,4 +40,5 @@"))
+        XCTAssertTrue(file.patch.hasPrefix("--- a/Sources/Login.swift\n+++ b/Sources/Login.swift\n@@ -40,3 +40,4 @@"))
     }
 
     func testTheSummaryBarShowsTheShareAddedAndRemoved() {

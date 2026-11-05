@@ -254,10 +254,6 @@ final class RichDiffLoader {
         return path + "?" + (components.percentEncodedQuery ?? "")
     }
 
-    func cached(_ id: String) -> RichDiff? {
-        diffs[id]
-    }
-
     func diff(_ id: String) async throws -> RichDiff {
         if let kept = diffs[id] { return kept }
         guard RichCardSchema.isDiffID(id), let read else { throw LoadError.notConnected }
