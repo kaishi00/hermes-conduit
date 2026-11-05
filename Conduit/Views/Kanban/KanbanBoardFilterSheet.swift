@@ -18,7 +18,7 @@ struct KanbanBoardFilterSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            ConduitForm {
                 Section("Assignee") {
                     Picker("Assignee", selection: assigneeBinding) {
                         Text("All Profiles").tag(String?.none)

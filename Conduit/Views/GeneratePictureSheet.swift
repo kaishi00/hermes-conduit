@@ -30,7 +30,7 @@ struct GeneratePictureSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            ConduitForm {
                 Section {
                     TextField(
                         AppLocalization.string("A friendly fox with a tiny backpack"),

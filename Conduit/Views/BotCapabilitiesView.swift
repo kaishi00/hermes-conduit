@@ -43,7 +43,7 @@ struct BotCapabilitiesView: View {
     }
 
     var body: some View {
-        List {
+        ConduitList {
             Section {
                 if skillsSkipped {
                     Text(AppLocalization.string("Skip Bundled Skills is on, so this bot starts with no skills."))
@@ -384,7 +384,7 @@ struct BotMcpKeysSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            ConduitForm {
                 Section {
                     ForEach(entry.requires, id: \.self) { envVar in
                         SecureField(

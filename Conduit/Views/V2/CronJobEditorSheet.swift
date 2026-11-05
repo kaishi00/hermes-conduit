@@ -64,7 +64,7 @@ struct CronJobEditorSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            ConduitForm {
                 if let error, !error.isEmpty {
                     Section {
                         Text(error)
@@ -523,7 +523,7 @@ private struct CronBlueprintForm: View {
     }
 
     var body: some View {
-        Form {
+        ConduitForm {
             if !blueprint.summary.isEmpty {
                 Section {
                     Text(verbatim: blueprint.summary)

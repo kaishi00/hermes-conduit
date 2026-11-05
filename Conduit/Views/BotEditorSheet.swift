@@ -76,7 +76,7 @@ struct BotEditorSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            ConduitForm {
                 if let error, !error.isEmpty {
                     Section {
                         Text(error)

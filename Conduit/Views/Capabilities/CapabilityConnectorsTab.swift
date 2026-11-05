@@ -774,7 +774,7 @@ struct ConnectorInstallSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            ConduitForm {
                 if !entry.description.isEmpty {
                     Section {
                         Text(verbatim: entry.description)
@@ -860,7 +860,7 @@ struct ConnectorEditSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            ConduitForm {
                 if let loadError {
                     Section {
                         Text(verbatim: loadError)

@@ -927,7 +927,7 @@ struct LocationPlaceEditor: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            ConduitForm {
                 Section {
                     TextField("Name", text: $draft.name)
                         .onChange(of: draft.name) { _, name in

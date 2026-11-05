@@ -120,7 +120,7 @@ struct KanbanBoardEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            ConduitForm {
                 basicsSection
                 projectSection
                 workspaceSection

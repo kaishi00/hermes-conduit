@@ -82,7 +82,7 @@ struct KanbanOrchestrationSettingsSheet: View {
                         description: Text("Load a Kanban board to read the server's orchestration settings.")
                     )
                 } else {
-                    Form {
+                    ConduitForm {
                         Section {
                             Toggle("Auto Decompose", isOn: $autoDecompose)
                                 .accessibilityHint("Fans eligible triage tasks into child task graphs")

@@ -1864,8 +1864,7 @@ struct ProjectCreateSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                ConduitBackdrop()
-                Form {
+                ConduitForm {
                     Section {
                         TextField("e.g. Skunkworks", text: $name)
                             .textInputAutocapitalization(.words)
@@ -1928,7 +1927,6 @@ struct ProjectCreateSheet: View {
                         }
                     }
                 }
-                .scrollContentBackground(.hidden)
                 // A failed create's message goes once the name or folders
                 // change, so it never stands in for the current problem.
                 .onChange(of: name) { _, _ in clearStaleMessage() }
@@ -2715,7 +2713,7 @@ struct RenameSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            ConduitForm {
                 TextField(placeholder, text: $draft)
                     .focused($fieldFocused)
                     .submitLabel(.done)

@@ -27,7 +27,7 @@ struct BotModelPicker: View {
     @State private var openedPicked = false
 
     var body: some View {
-        List {
+        ConduitList {
             if allowsInherit {
                 Section {
                     row(

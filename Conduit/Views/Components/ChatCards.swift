@@ -343,7 +343,7 @@ private struct PlanSheet: View {
         NavigationStack {
             Group {
                 if let plan = cards.plan, cards.showsPlan {
-                    List {
+                    ConduitList {
                         Section {
                             ProgressView(value: plan.progress) {
                                 Text(PlanText.count(plan))

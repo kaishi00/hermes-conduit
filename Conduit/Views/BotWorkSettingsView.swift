@@ -19,7 +19,7 @@ struct BotWorkSettingsView: View {
     @State private var pickedProvider = ""
 
     var body: some View {
-        Form {
+        ConduitForm {
             if let settings {
                 content(settings)
                     // One change at a time: a tap while one saves isn't lost unseen.

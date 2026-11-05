@@ -1775,7 +1775,7 @@ struct KanbanReassignSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            ConduitForm {
                 Section("Profiles") {
                     ForEach(store.profiles) { profile in
                         Button {

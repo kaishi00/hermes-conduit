@@ -56,7 +56,7 @@ struct CustomHeadersEditorSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            ConduitForm {
                 Section {
                     Text(AppLocalization.string("Sent with every request to this server, for reverse proxies such as Pangolin, Traefik, or nginx that check a header. Values stay in Keychain."))
                         .scaledFont(.footnote)

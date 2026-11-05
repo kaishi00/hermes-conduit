@@ -63,7 +63,7 @@ struct KanbanTaskComposerView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            ConduitForm {
                 basicsSection
                 assignmentSection
                 executionSection
@@ -462,7 +462,7 @@ struct KanbanModelOverrideSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            ConduitForm {
                 Section {
                     Button {
                         value = TaskModelOverride()
@@ -728,7 +728,7 @@ struct KanbanSkillsPickerSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            ConduitForm {
                 if !selected.isEmpty {
                     Section("Selected") {
                         ForEach(selected, id: \.self) { name in
@@ -851,7 +851,7 @@ struct KanbanParentPickerSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            ConduitForm {
                 Button {
                     selectedParentID = nil
                 } label: {

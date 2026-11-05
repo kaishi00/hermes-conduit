@@ -9,7 +9,7 @@ struct KanbanProfileRoutingScreen: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            ConduitList {
                 Section {
                     if store.profiles.isEmpty {
                         Text("No profiles on this Hermes server yet.")
@@ -127,7 +127,7 @@ struct KanbanProfileDescriptionEditorView: View {
     }
 
     var body: some View {
-        Form {
+        ConduitForm {
             Section {
                 TextEditor(text: $draft)
                     .frame(minHeight: 140)

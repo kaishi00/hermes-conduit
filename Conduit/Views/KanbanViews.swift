@@ -1506,7 +1506,7 @@ struct KanbanView: View {
 
     private var bulkMoveSheet: some View {
         NavigationStack {
-            List {
+            ConduitList {
                 ForEach(KanbanBulkDestinationPolicy.moveDestinations(), id: \.id) { presentation in
                     Button {
                         commitBulkFromStage { staged in
@@ -1541,7 +1541,7 @@ struct KanbanView: View {
 
     private var bulkAssignSheet: some View {
         NavigationStack {
-            List {
+            ConduitList {
                 if store.profiles.isEmpty {
                     Text("No profiles on this server yet.")
                         .foregroundStyle(.secondary)
@@ -1590,7 +1590,7 @@ struct KanbanView: View {
 
     private var bulkPrioritySheet: some View {
         NavigationStack {
-            Form {
+            ConduitForm {
                 Section {
                     HStack(spacing: 12) {
                         Button {
@@ -1659,7 +1659,7 @@ struct KanbanView: View {
 
     private var bulkFailuresSheet: some View {
         NavigationStack {
-            List {
+            ConduitList {
                 if let outcome = lastBulkOutcome {
                     ForEach(KanbanBulkResultPolicy.failures(from: outcome), id: \.id) { failure in
                         VStack(alignment: .leading, spacing: 2) {
