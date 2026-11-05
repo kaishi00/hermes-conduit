@@ -1964,8 +1964,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// The chat `sessionIDs` name was deleted. A call attached to it lets go
     /// of it but stays open to a new one: unlike a hang-up, the call's next
     /// ordinary request makes a chat and the call goes on there, as a call
-    /// that started with none does (#1250). Turns still waiting for the
-    /// deleted chat fail when they find it gone, and are said so.
+    /// that started with none does (#1250). Turns still queued for the
+    /// deleted chat fail when they find it gone, and are said so; one
+    /// already in it is let go of, as at a hang-up.
     func noteChatDeleted(_ sessionIDs: Set<String>) {
         let ids = sessionIDs.filter { !$0.isEmpty }
         guard !ids.isEmpty else { return }
@@ -1988,12 +1989,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             jobs[index].isDetachedThreadTurn = true
             jobs[index].settledByPoll = false
         }
-        // A turn there already waiting on the user's OK or answer never
-        // finds the chat gone: let go of it too, so neither is asked of the
-        // call nor counted against a bare yes. Turns still queued or running
-        // fail when they find it gone, and are said so.
+        // A turn already in there never finds the chat gone: it is let go of
+        // too, as at a hang-up, so its end, its OK or its question is never
+        // said to the call nor counted against a bare yes. Turns still
+        // queued fail when they find it gone, and are said so.
         for index in jobs.indices where jobs[index].isThreadTurn && !jobs[index].isDetachedThreadTurn
-            && jobs[index].status == .needsInput
+            && jobs[index].threadTurnSubmitted
             && threadTargets[jobs[index].id].map({ Self.sameChat($0, thread) }) == true {
             jobs[index].outcomeDelivered = true
             jobs[index].isDetachedThreadTurn = true
