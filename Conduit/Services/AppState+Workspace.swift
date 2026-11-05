@@ -146,6 +146,12 @@ extension AppState {
         case .success(nil):
             let name = (path as NSString).lastPathComponent
             let notice = AppLocalization.string("\(name) isn’t on the server. It may have been deleted, or it’s on another computer.")
+            guard composerNotice == nil else {
+                // A message that came back keeps its notice; this one goes
+                // to the chat's error banner instead.
+                errorMessage = notice
+                return
+            }
             composerNotice = notice
             composerNoticeSystemImage = "questionmark.folder"
             workspaceLookupNotice = notice

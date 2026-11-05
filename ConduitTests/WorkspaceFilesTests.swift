@@ -281,6 +281,9 @@ extension HermesVoiceGatewayTimeoutTests {
         appState.composerNotice = "Your message wasn't sent. It's back in the composer."
         appState.showWorkspaceLookup(.success("/w/a.md"), for: "a.md", line: nil)
         XCTAssertEqual(appState.composerNotice, "Your message wasn't sent. It's back in the composer.", "other notices stay")
+        appState.showWorkspaceLookup(.success(nil), for: "gone.xlsx", line: nil)
+        XCTAssertEqual(appState.composerNotice, "Your message wasn't sent. It's back in the composer.",
+                       "a missing file never covers a message that came back")
 
         appState.composerNotice = nil
         appState.showWorkspaceLookup(.success(nil), for: "gone.xlsx", line: nil)

@@ -1173,8 +1173,10 @@ final class AppState: ObservableObject {
             if oldValue != activeSessionId {
                 noteChatLeft(oldValue)
                 noteActiveChatSeen()
-                // A file lookup's "isn't on the server" was about the chat left.
+                // A file lookup's "isn't on the server" was about the chat
+                // left, and an answer still coming is too.
                 clearWorkspaceLookupNotice()
+                workspaceRevealGeneration &+= 1
                 // The chat New Chat made takes the New Chat's draft only
                 // while it's the one open.
                 if let created = newChatOpenedSessionID, activeSessionId != created {
