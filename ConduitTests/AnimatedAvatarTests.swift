@@ -28,7 +28,8 @@ extension BotModeTests {
         let image = await AppState.botAvatarThumbnail(large)
         let pixels = try XCTUnwrap(image?.cgImage)
         XCTAssertEqual(max(pixels.width, pixels.height), Int(AppState.botAvatarMaxPixelSize))
-        XCTAssertEqual(pixels.width * 2, pixels.height * 3, "The shape is kept")
+        // 512 × 341: the shape is kept, to the pixel ImageIO rounds.
+        XCTAssertEqual(Double(pixels.width) / Double(pixels.height), 1.5, accuracy: 0.01, "The shape is kept")
 
         let small = try XCTUnwrap(UIImage(cgImage: solidFrame(.blue, width: 64, height: 64)).pngData())
         let kept = await AppState.botAvatarThumbnail(small)
