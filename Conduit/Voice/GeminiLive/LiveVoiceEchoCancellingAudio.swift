@@ -539,6 +539,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         var isPlaying: Bool { audio.isPlaying }
         func play(_ pcm: Data, sampleRate: Double) throws { try audio.play(pcm, sampleRate: sampleRate) }
         func interrupt() { audio.interrupt() }
+        func endReply() { audio.discardRemainder() }
         func stop() { audio.stopOutput() }
         func setMuted(_ muted: Bool) { audio.isOutputMuted = muted }
     }
@@ -663,6 +664,8 @@ final class LiveVoiceAudioSelector {
 
     fileprivate func interrupt() { current?.output.interrupt() }
 
+    fileprivate func endReply() { current?.output.endReply() }
+
     fileprivate func setOutputMuted(_ muted: Bool) {
         outputMuted = muted
         current?.output.setMuted(muted)
@@ -698,6 +701,7 @@ final class LiveVoiceAudioSelector {
         var isPlaying: Bool { selector.isPlaying }
         func play(_ pcm: Data, sampleRate: Double) throws { try selector.play(pcm, sampleRate: sampleRate) }
         func interrupt() { selector.interrupt() }
+        func endReply() { selector.endReply() }
         func stop() { selector.stopOutput() }
         func setMuted(_ muted: Bool) { selector.setOutputMuted(muted) }
     }

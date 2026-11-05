@@ -657,6 +657,26 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertTrue(service.isPlaying, "the next reply's audio is playing")
     }
 
+    /// Issue 1791: a live call's stream stays open across replies, so a
+    /// reply that ended on an odd byte must not pair it with the next
+    /// reply's first byte.
+    func testDiscardedOddByteIsNotShiftedIntoTheNextReply() throws {
+        let service = AVSpeechPlaybackService(
+            coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()),
+            makeEngine: { OfflineRenderingEngine.make() }
+        )
+        defer { service.stop() }
+        // Starts the stream; the reply ends one byte past a sample.
+        XCTAssertEqual(try service.enqueuePCM16(Data(count: 480), sampleRate: 24_000), 480)
+        XCTAssertEqual(try service.enqueuePCM16(Data([7]), sampleRate: 24_000), 0, "an odd byte waits for the next chunk")
+        service.discardRemainder()
+        XCTAssertEqual(
+            try service.enqueuePCM16(Data([1]), sampleRate: 24_000), 0,
+            "the next reply's first byte isn't paired with the last reply's odd one"
+        )
+        XCTAssertEqual(try service.enqueuePCM16(Data([2]), sampleRate: 24_000), 2, "the next reply's samples line up")
+    }
+
     // MARK: - Playback across route changes
 
     /// The call screen's Speaker button (or AirPods) stops the engine: a

@@ -200,9 +200,11 @@ final class FakeGeminiLiveOutput: GeminiLiveAudioOutput {
     var isPlaying = false
     private(set) var played = 0
     private(set) var interrupts = 0
+    private(set) var endedReplies = 0
     private(set) var isMuted = false
     func play(_ pcm: Data, sampleRate: Double) throws { played += 1; isPlaying = true }
     func interrupt() { interrupts += 1; isPlaying = false }
+    func endReply() { endedReplies += 1 }
     func stop() { isPlaying = false }
     func setMuted(_ muted: Bool) { isMuted = muted }
 }
@@ -1358,6 +1360,25 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    /// Issue 1791: a reply ending on an odd byte must not shift the next
+    /// reply. turnComplete tells the audio the reply ended, so the odd
+    /// byte is dropped, and leaves what is queued playing.
+    func testGeminiLiveEndsEachReplysAudioAtTurnComplete() async {
+        let (controller, session, _, output, _) = makeGeminiController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.audio(Data([0, 0, 0]), sampleRate: 24_000))
+        XCTAssertEqual(output.endedReplies, 0, "a reply still streaming keeps its odd byte for the next chunk")
+        session.onEvent?(.turnComplete)
+        XCTAssertEqual(output.endedReplies, 1)
+        XCTAssertEqual(output.interrupts, 0, "the reply's queued audio plays out")
+        XCTAssertTrue(output.isPlaying)
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        session.onEvent?(.turnComplete)
+        XCTAssertEqual(output.endedReplies, 2, "every reply's end")
+        controller.stop()
+    }
+
     func testGeminiLiveNeverTalksOverTheUser() async {
         var current = Date(timeIntervalSince1970: 1_000)
         let (controller, session, input, output, supervisor) = makeGeminiController(clock: { current })
@@ -1937,6 +1958,9 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(output.isPlaying)
         output.interrupt()
         XCTAssertEqual(echoOutput.interrupts, 1)
+        output.endReply()
+        XCTAssertEqual(echoOutput.endedReplies, 1, "a reply's end reaches the call's audio")
+        XCTAssertEqual(standardOutput.endedReplies, 0)
         input.stop()
         output.stop()
         XCTAssertFalse(input.cancelsEcho, "Between calls nothing is chosen")
