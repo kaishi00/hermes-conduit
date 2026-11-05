@@ -3279,7 +3279,9 @@ Work looked like a different app from Settings).
 
 **Siblings:** the Settings tab's pages (the look itself, unchanged) · Edit
 Bot and New Bot, with its Model, Work and capabilities pages (done) · New
-Project and Rename (done) · the scheduled job editor and its blueprint form
+Project and Rename (done) · New Group Chat (done) · reorder bots (done) ·
+the scheduled job editor, its blueprints gallery and blueprint form (done) ·
+What Pulse learned and What Pulse left out (done) · a workspace file's Move
 (done) · Generate picture (done) · Connectors' add and edit sheets (done) ·
 Location's sheet (done) · custom headers (done) · Kanban's task, board,
 filter, orchestration, routing and bulk sheets (done) · reorder pinned chats
@@ -3289,7 +3291,7 @@ in V2's look)
 
 **Code**
 - The look: `Conduit/Views/AuxiliaryViews.swift` (ConduitForm, ConduitList, ConduitFormRowFill, conduitFormBackdrop, beside SettingsBackdrop)
-- Used by: `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotWorkSettingsView.swift`, `Conduit/Views/BotCapabilitiesView.swift`, `Conduit/Views/SidebarView.swift` (ProjectCreateSheet, RenameSheet), `Conduit/Views/V2/CronJobEditorSheet.swift`, `Conduit/Views/GeneratePictureSheet.swift`, `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/CustomHeadersEditor.swift`, `Conduit/Views/KanbanViews.swift`, `Conduit/Views/Kanban/KanbanTaskComposerView.swift`, `Conduit/Views/Kanban/KanbanTaskDetailView.swift`, `Conduit/Views/Kanban/KanbanBoardEditorView.swift`, `Conduit/Views/Kanban/KanbanBoardFilterSheet.swift`, `Conduit/Views/Kanban/KanbanOrchestrationSettingsSheet.swift`, `Conduit/Views/Kanban/KanbanProfileRoutingScreen.swift`, `Conduit/Views/PinnedChatsOrderSheet.swift`, `Conduit/Views/Components/ChatCards.swift`
+- Used by: `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotWorkSettingsView.swift`, `Conduit/Views/BotCapabilitiesView.swift`, `Conduit/Views/SidebarView.swift` (ProjectCreateSheet, RenameSheet), `Conduit/Views/V2/CronJobEditorSheet.swift`, `Conduit/Views/GeneratePictureSheet.swift`, `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/CustomHeadersEditor.swift`, `Conduit/Views/KanbanViews.swift`, `Conduit/Views/Kanban/KanbanTaskComposerView.swift`, `Conduit/Views/Kanban/KanbanTaskDetailView.swift`, `Conduit/Views/Kanban/KanbanBoardEditorView.swift`, `Conduit/Views/Kanban/KanbanBoardFilterSheet.swift`, `Conduit/Views/Kanban/KanbanOrchestrationSettingsSheet.swift`, `Conduit/Views/Kanban/KanbanProfileRoutingScreen.swift`, `Conduit/Views/PinnedChatsOrderSheet.swift`, `Conduit/Views/Components/ChatCards.swift`, `Conduit/Views/GroupChatView.swift` (GroupCreateSheet), `Conduit/Views/V2/V2BotsHome.swift` (BotReorderSheet), `Conduit/Views/V2/V2PulsePage.swift` (PulseLearnedSheet, PulseLeftOutSheet), `Conduit/Views/V2/V2WorkspaceViews.swift` (WorkspaceMoveSheet)
 
 **Rulings**
 - A new sheet or page with a grouped Form or List uses ConduitForm or ConduitList, never a bare Form (Eric 2026-11-05 chose skinning the Forms over rebuilding them as Settings cards, #1793).
