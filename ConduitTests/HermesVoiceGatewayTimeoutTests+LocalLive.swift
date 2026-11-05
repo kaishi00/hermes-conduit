@@ -622,6 +622,49 @@ private final class LocalLiveTurnScript {
 
 @MainActor
 extension VoiceConversationControllerTests {
+    /// Issue 1797: a call whose chat was deleted goes on in a new one, on
+    /// the lost chat's bot, kept for the rest of the call.
+    func testLocalLiveCallGoesOnInANewChatWhenItsChatWasDeleted() async throws {
+        let attached = VoiceThreadTarget(runtimeSessionID: "rt-bot", storedSessionID: "st-bot", title: "Furina", profile: "furina")
+        var made: [String?] = []
+        let create: @MainActor (String?) async throws -> VoiceThreadTarget = { profile in
+            made.append(profile)
+            return VoiceThreadTarget(runtimeSessionID: "rt-new\(made.count)", storedSessionID: "st-new\(made.count)", title: "", profile: profile)
+        }
+
+        // Found: the attached chat, then the call's own.
+        var live = try await LocalLiveTurnRunner.callChat(attached: attached, own: nil, runtime: { _ in "rt-bot-2" }, create: create)
+        XCTAssertEqual(live.chat, LocalLiveTurnRunner.Chat(runtimeID: "rt-bot-2", profile: "furina"))
+        XCTAssertNil(live.own)
+        XCTAssertTrue(made.isEmpty)
+
+        // The attached chat is gone: a new chat on its bot, kept as the call's own.
+        let lost = try await LocalLiveTurnRunner.callChat(attached: attached, own: nil, runtime: { _ in nil }, create: create)
+        XCTAssertEqual(made, ["furina"])
+        XCTAssertEqual(lost.chat, LocalLiveTurnRunner.Chat(runtimeID: "rt-new1", profile: "furina"))
+        XCTAssertEqual(lost.own?.storedSessionID, "st-new1")
+
+        // The next turn runs there.
+        live = try await LocalLiveTurnRunner.callChat(attached: nil, own: lost.own, runtime: { $0.runtimeSessionID }, create: create)
+        XCTAssertEqual(live.chat.runtimeID, "rt-new1")
+        XCTAssertEqual(live.own, lost.own)
+        XCTAssertEqual(made.count, 1)
+
+        // A call from Home whose own chat was deleted makes another.
+        let home = VoiceThreadTarget(runtimeSessionID: "rt-home", storedSessionID: "st-home", title: "")
+        let again = try await LocalLiveTurnRunner.callChat(attached: nil, own: home, runtime: { _ in nil }, create: create)
+        XCTAssertEqual(made, ["furina", nil])
+        XCTAssertEqual(again.chat, LocalLiveTurnRunner.Chat(runtimeID: "rt-new2"))
+        XCTAssertEqual(again.own?.runtimeSessionID, "rt-new2")
+
+        // Any other failure is the turn's: the chat is kept.
+        do {
+            _ = try await LocalLiveTurnRunner.callChat(attached: nil, own: home, runtime: { _ in throw URLError(.timedOut) }, create: create)
+            XCTFail("a failed resume isn't a deleted chat")
+        } catch {}
+        XCTAssertEqual(made.count, 2)
+    }
+
     func testLocalLiveYesAnswersTheApprovalTheReplyWaitsOn() async {
         let script = LocalLiveTurnScript()
         let runner = script.makeRunner()

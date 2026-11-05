@@ -1856,6 +1856,8 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
             onJobCreated?(jobID)
         }
         let joins = joinsCall && (profile ?? "").isEmpty
+        // Its chat was deleted: this request makes the call a new one (issue 1797).
+        if let chat = callChat, base.isDeletedChat(chat) { callChat = nil }
         var waited = false
         while joins, callChat == nil, startingCallChat {
             waited = true

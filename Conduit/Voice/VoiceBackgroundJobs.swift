@@ -1643,7 +1643,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
         guard generation == self.generation, job(jobID)?.status == .starting else { return }
         do {
-            let runtimeID = try await backend.resolveThreadRuntime(chat)
+            let runtimeID = try await resolveRuntime(of: chat)
             guard generation == self.generation, job(jobID)?.status == .starting else { return }
             let request = job(jobID)?.instructions ?? ""
             update(jobID) {
@@ -1940,6 +1940,51 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         while dropped < 256, takePendingNotice() != nil { dropped += 1 }
     }
 
+    /// Chats deleted while the app ran, by any of their ids: here, from
+    /// another profile's row, or found gone when a call's turn went to
+    /// resume one (a Desktop delete). A call never pins one again (issue 1797).
+    private var deletedChatIDs: Set<String> = []
+
+    /// Whether `chat` was deleted (`noteChatDeleted`).
+    func isDeletedChat(_ chat: VoiceThreadTarget) -> Bool {
+        [chat.runtimeSessionID, chat.storedSessionID].compactMap { $0 }.contains { deletedChatIDs.contains($0) }
+    }
+
+    /// The chat `sessionIDs` name was deleted. A call attached to it lets go
+    /// of it but stays open to a new one: unlike a hang-up, the call's next
+    /// ordinary request makes a chat and the call goes on there, as a call
+    /// that started with none does (#1250). Turns still waiting for the
+    /// deleted chat fail when they find it gone, and are said so.
+    func noteChatDeleted(_ sessionIDs: Set<String>) {
+        let ids = sessionIDs.filter { !$0.isEmpty }
+        guard !ids.isEmpty else { return }
+        deletedChatIDs.formUnion(ids)
+        guard let thread = liveThread, ids.contains(where: { backend.threadOwnsSession(thread, $0) }) else { return }
+        liveThread = nil
+        // Nothing to archive or tell its bot: the chat is gone.
+        keptCallChat = nil
+        callChatJobID = nil
+        callChatClaim = nil
+        chatNotes.removeAll()
+        callChatPrompts.removeAll()
+        notedChatTurns.removeAll()
+        lastUnidentifiedChatReply = nil
+    }
+
+    /// The runtime `chat`'s next turn runs on. A chat Hermes has no session
+    /// for any more (deleted in Desktop, say) is noted as deleted, so the
+    /// call's next request makes a new one; this turn still fails.
+    private func resolveRuntime(of chat: VoiceThreadTarget) async throws -> String {
+        do {
+            return try await backend.resolveThreadRuntime(chat)
+        } catch {
+            if HermesClient.isSessionNotFoundError(error) {
+                noteChatDeleted(Set([chat.runtimeSessionID, chat.storedSessionID].compactMap { $0 }))
+            }
+            throw error
+        }
+    }
+
     func detachLiveThread() {
         liveThread = nil
         if let kept = keptCallChat {
@@ -2086,7 +2131,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             do {
                 // The runtime id is known before the send, so none of the
                 // turn's events arrive under an id it doesn't own yet.
-                let target = try await backend.resolveThreadRuntime(thread)
+                let target = try await resolveRuntime(of: thread)
                 guard generation == self.generation else { return }
                 if !target.isEmpty { update(next.id) { $0.runtimeSessionID = target } }
                 // Resolving can suspend (a resume): a turn that started in
@@ -2397,6 +2442,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         callChatJobID = nil
         callChatClaim = nil
         callChatClosedCallID = nil
+        deletedChatIDs.removeAll()
         liveCallID = nil
         liveCallStartedAt = nil
         callOpening = nil

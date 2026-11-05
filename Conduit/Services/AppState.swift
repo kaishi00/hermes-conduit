@@ -4599,19 +4599,22 @@ final class AppState: ObservableObject {
         resolveChat: { [weak self] in
             guard let self else { throw HermesError.notConnected }
             let client = try await self.clientForVoiceRequest()
-            if let thread = self.voiceBackgroundJobSupervisor.liveThread {
-                let runtimeID = try await self.liveVoiceThreadRuntime(thread)
-                return LocalLiveTurnRunner.Chat(runtimeID: runtimeID, profile: thread.profile)
-            }
-            if let own = self.localLiveOwnChat {
-                let runtimeID = try await self.liveVoiceThreadRuntime(own)
-                return LocalLiveTurnRunner.Chat(runtimeID: runtimeID)
-            }
             // A call from Home or Siri has no chat: its first turn makes one,
-            // and the rest of the call goes on there.
-            let created = try await client.createSession()
-            self.localLiveOwnChat = VoiceThreadTarget(runtimeSessionID: created.sessionId, storedSessionID: created.storedSessionId, title: "")
-            return LocalLiveTurnRunner.Chat(runtimeID: created.sessionId)
+            // and the rest of the call goes on there. So does a call whose
+            // chat was deleted (issue 1797).
+            let own = self.localLiveOwnChat
+            let resolved = try await LocalLiveTurnRunner.callChat(
+                attached: self.voiceBackgroundJobSupervisor.liveThread,
+                own: own,
+                runtime: { try await self.localLiveChatRuntime($0) },
+                create: { profile in
+                    let created = try await client.createSession(inProfile: profile)
+                    return VoiceThreadTarget(runtimeSessionID: created.sessionId, storedSessionID: created.storedSessionId,
+                                             title: "", profile: profile)
+                }
+            )
+            if resolved.own != own { self.localLiveOwnChat = resolved.own }
+            return resolved.chat
         },
         isBusy: { [weak self] chat in
             guard let self else { return false }
@@ -9716,6 +9719,21 @@ final class AppState: ObservableObject {
             return live.runtimeSessionId
         }
         return try await client.openSession(thread.storedSessionID ?? thread.runtimeSessionID, profile: thread.profile).sessionId
+    }
+
+    /// The runtime a Local Live call's next turn runs on in `chat`, or nil
+    /// when the chat was deleted, here or in Desktop (Hermes has no session
+    /// for it): the call then goes on in a new chat rather than failing every
+    /// turn after (issue 1797).
+    private func localLiveChatRuntime(_ chat: VoiceThreadTarget) async throws -> String? {
+        let supervisor = voiceBackgroundJobSupervisor
+        guard !supervisor.isDeletedChat(chat) else { return nil }
+        do {
+            return try await liveVoiceThreadRuntime(chat)
+        } catch let error where HermesClient.isSessionNotFoundError(error) {
+            supervisor.noteChatDeleted(Set([chat.runtimeSessionID, chat.storedSessionID].compactMap { $0 }))
+            return nil
+        }
     }
 
     /// The chat resumed again by its stored id, for a runtime Hermes no
@@ -22928,6 +22946,8 @@ final class AppState: ObservableObject {
             }
             // Its pinned replies go too, under the profile it was deleted in.
             dropPinnedReplies(forDeleted: session, profile: profile)
+            // A call in it goes on in a new chat (issue 1797).
+            voiceBackgroundJobSupervisor.noteChatDeleted(deletedSessionIDs)
             guard sessionMutationResultIsCurrent(profile: profile, owner: owner) else { return false }
             sessionYoloStore.clearOverride(
                 for: profile,
@@ -41340,6 +41360,8 @@ extension AppState {
                 removeSavedCopies(ofDeleted: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
             }
             dropPinnedReplies(forDeleted: session, profile: profile)
+            // A call in it (a Bot Chat call's, say) goes on in a new chat (issue 1797).
+            voiceBackgroundJobSupervisor.noteChatDeleted(deletedSessionIDs)
             guard ownsDashboardRuntime(owner) else { return false }
             sessionYoloStore.clearOverride(for: profile, sessionIDs: Array(deletedSessionIDs))
             revokeDeletedConversationIdentity(sessionIDs: deletedSessionIDs, profile: profile)

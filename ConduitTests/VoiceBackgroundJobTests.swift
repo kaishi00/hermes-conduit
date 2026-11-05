@@ -104,6 +104,8 @@ final class FakeVoiceJobBackend {
     var threadReply: String?
     /// The runtime the chat resumes onto; nil keeps the target's own.
     var threadRuntime: String?
+    /// Thrown when the chat's runtime is resolved (a deleted chat's resume).
+    var threadRuntimeError: Error?
     var onThreadSubmit: (@MainActor () -> Void)?
     var onLatestReply: (@MainActor () -> Void)?
     /// Each chat whose latest reply was read.
@@ -192,7 +194,10 @@ final class FakeVoiceJobBackend {
             },
             resolveProfile: { [self] name in self.profileTargets[name.lowercased()] ?? .unknown },
             threadIsBusy: { [self] _ in self.threadBusy },
-            resolveThreadRuntime: { [self] thread in self.threadRuntime ?? thread.runtimeSessionID },
+            resolveThreadRuntime: { [self] thread in
+                if let error = self.threadRuntimeError { throw error }
+                return self.threadRuntime ?? thread.runtimeSessionID
+            },
             submitThreadTurn: { [self] _, runtimeID, text in
                 self.threadSubmissions.append((runtimeID, text))
                 self.onThreadSubmit?()
