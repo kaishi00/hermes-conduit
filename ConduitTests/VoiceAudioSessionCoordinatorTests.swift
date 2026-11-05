@@ -959,19 +959,6 @@ extension VoiceAudioSessionCoordinatorTests {
         coordinator.release(playback)
     }
 
-    func testPlaybackThatGivesWayCannotStartUnderTheMicrophone() throws {
-        _ = try coordinator.acquire(.conversationCapture)
-        session.resetRecordings()
-
-        XCTAssertThrowsError(try coordinator.acquire(.standalonePlayback) {})
-        XCTAssertTrue(session.categoryCalls.isEmpty)
-        XCTAssertEqual(coordinator.appliedPolicy, .conversation)
-
-        // Playback that doesn't give way (a clip in the chat) still joins.
-        _ = try coordinator.acquire(.standalonePlayback)
-        XCTAssertEqual(coordinator.appliedPolicy, .conversation)
-    }
-
     func testStandalonePlaybackInANativeCallLeavesCallKitsSession() throws {
         coordinator.configureForIncomingCall()
         coordinator.nativeCallAudioActivated()

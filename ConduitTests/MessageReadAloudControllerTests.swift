@@ -78,6 +78,30 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertEqual(gateway.streams.last?.cancelCount, 1)
     }
 
+    func testAReadingThatOpensUnderAHeldMicrophoneEndsWithoutPlaying() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway(emitsPCM: true)
+        gateway.pauseAfterEmission = true
+        var reported: [String] = []
+        let controller = MessageReadAloudController(
+            playback: playback,
+            gateway: gateway,
+            beginBackgroundActivity: { _ in {} },
+            nowPlaying: MockReadAloudNowPlaying(),
+            microphoneIsHeld: { true },
+            reportError: { reported.append($0) }
+        )
+
+        // Dictation started while the stream was opening (issue 1770).
+        controller.toggle(messageID: "message-a", content: "Streaming")
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertTrue(playback.startedSampleRates.isEmpty, "nothing reaches the microphone")
+        XCTAssertTrue(playback.enqueuedPCM.isEmpty)
+        XCTAssertTrue(reported.isEmpty, "a cancellation, not a failure")
+    }
+
     func testAnEarlierReadingGivingWayLeavesTheNextOneAlone() async {
         let playback = MockReadAloudPlayback()
         let gateway = MockReadAloudGateway(emitsPCM: true)

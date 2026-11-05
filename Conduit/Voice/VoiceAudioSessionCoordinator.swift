@@ -276,16 +276,11 @@ final class VoiceAudioSessionCoordinator {
 
     /// `onTakenOver` makes the owner one that gives way: it is called, on a
     /// later main-actor turn, when another owner acquires capture. The owner
-    /// still releases its own lease. Playback that gives way can't start
-    /// while the microphone is already held (Read Aloud opening its stream
-    /// as dictation starts, issue 1770): the microphone would hear it.
+    /// still releases its own lease.
     func acquire(
         _ intent: VoiceAudioIntent,
         onTakenOver: (@MainActor () -> Void)? = nil
     ) throws -> VoiceAudioLease {
-        if onTakenOver != nil, intent != .conversationCapture, hasCaptureOwner {
-            throw VoiceAudioError.unavailable(AppLocalization.string("Read aloud can't play while the microphone is in use."))
-        }
         // Before this acquisition touches any state, so the listener's own
         // release is an ordinary one.
         if intent != .wakeListening, leases.values.contains(.wakeListening) {
