@@ -6697,7 +6697,8 @@ final class AppState: ObservableObject {
     /// chats are kept: any other one's rows are its saved copy and the page
     /// the open reads anyway.
     private struct LeftBackfilledTranscript {
-        let dashboardID: UUID
+        /// Nil for a connection with no saved dashboard.
+        let dashboardID: UUID?
         let sessionIDs: Set<String>
         let messages: [ChatMessage]
         let window: PersistedTranscriptWindowState
@@ -6706,13 +6707,13 @@ final class AppState: ObservableObject {
     static let maxLeftBackfilledTranscripts = 3
 
     /// Keeps the chat on screen as it's left, when Load earlier brought in
-    /// its older rows: connected, authoritative rows only, as its saved copy.
+    /// its older rows: Hermes' rows only, never saved rows standing in.
     private func keepLeftBackfilledTranscript() {
         guard offlineChatPresentation == nil,
               turnState != .synchronizing,
               !messages.isEmpty,
-              let window = persistedTranscriptWindow, window.hasBackfilledPrefix,
-              let dashboardID = activeDashboardID else { return }
+              let window = persistedTranscriptWindow, window.hasBackfilledPrefix else { return }
+        let dashboardID = activeDashboardID
         // The ids its window's own open vouched for together, never the
         // scroll identity's aliases, which can name the chat it replaced.
         let sessionIDs = window.trustedSessionIDs
@@ -6730,6 +6731,18 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// An open that never landed (cancelled, or overtaken by a newer one)
+    /// puts back the kept rows it took, for the next open.
+    private func putBackLeftBackfilledTranscript(_ kept: LeftBackfilledTranscript) {
+        guard !leftBackfilledTranscripts.contains(where: {
+            $0.dashboardID == kept.dashboardID && !$0.sessionIDs.isDisjoint(with: kept.sessionIDs)
+        }) else { return }
+        leftBackfilledTranscripts.append(kept)
+        if leftBackfilledTranscripts.count > Self.maxLeftBackfilledTranscripts {
+            leftBackfilledTranscripts.removeFirst(leftBackfilledTranscripts.count - Self.maxLeftBackfilledTranscripts)
+        }
+    }
+
     /// The kept chat a reconcile into an empty chat is (an open, the chat a
     /// profile switch opens on), taken from memory: the transcript it builds
     /// is the chat's from here, kept again when it's left. The reconcile
@@ -6737,8 +6750,8 @@ final class AppState: ObservableObject {
     /// resumed and Hermes' page overlaps its rows, as a reconnect's graft
     /// does; otherwise Hermes' page stands alone.
     private func takeLeftBackfilledTranscript(for sessionIDs: Set<String>, profile: String) -> LeftBackfilledTranscript? {
-        guard let dashboardID = activeDashboardID,
-              let index = leftBackfilledTranscripts.lastIndex(where: {
+        let dashboardID = activeDashboardID
+        guard let index = leftBackfilledTranscripts.lastIndex(where: {
                   $0.dashboardID == dashboardID
                       && profilesMatch($0.window.profile, profile)
                       && !$0.sessionIDs.isDisjoint(with: sessionIDs)
@@ -18359,6 +18372,7 @@ final class AppState: ObservableObject {
                 automaticWorkToken: automaticWorkToken,
                 automaticSyncOperationID: automaticSyncOperationID
             ) else {
+                if let reopenedTranscript { putBackLeftBackfilledTranscript(reopenedTranscript) }
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 return false
             }
