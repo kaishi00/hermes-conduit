@@ -17615,12 +17615,21 @@ final class AppState: ObservableObject {
     }
 
     /// Pulse's chat, named on this phone only now (a first feed read on
-    /// this dashboard), may already be the chat Conduit resumed by itself,
-    /// since nothing hid it yet, and be saved for the next launch: that
-    /// saved choice goes, so the next launch picks a listed chat.
+    /// this dashboard, or a new chat for Pulse), may already be the chat
+    /// Conduit resumed by itself, since nothing hid it yet, and be saved
+    /// for the next launch: that saved choice goes, so the next launch picks
+    /// a listed chat. The two are matched by any of the chat's ids.
     func forgetResumedPulseChat(_ home: String, profile: String) {
-        guard let saved = chatResumeCoordinator.lastSessionID(for: profile),
-              saved == home || canonicalSessionID(for: saved) == home else { return }
+        guard let saved = chatResumeCoordinator.lastSessionID(for: profile) else { return }
+        func names(_ id: String) -> Set<String> {
+            var ids: Set<String> = [id]
+            if let canonical = canonicalSessionID(for: id) { ids.insert(canonical) }
+            for row in sessions where SessionContentSearch.identities(of: row).contains(id) {
+                ids.formUnion(SessionContentSearch.identities(of: row))
+            }
+            return ids
+        }
+        guard !names(saved).isDisjoint(with: names(home)) else { return }
         chatResumeCoordinator.rememberSession(nil, for: profile)
     }
 
