@@ -76,36 +76,32 @@ struct BotEditorSheet: View {
 
     var body: some View {
         NavigationStack {
-            ConduitForm {
+            // Settings' own page: cards with their names over them, so the
+            // sheet reads like the Settings tab (Eric 2026-11-05).
+            SettingsDetailContainer {
                 if let error, !error.isEmpty {
-                    Section {
-                        Text(error)
-                            .scaledFont(.footnote)
-                            .foregroundStyle(.red)
-                    }
+                    Text(error)
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 16)
                 }
-                Section {
-                    avatarHeader
-                }
-                .listRowBackground(Color.clear)
+                avatarHeader
                 colorSection
                 nameSection
-                Section {
+                ConduitSettingsSection(title: AppLocalization.string("Description"), symbol: "text.alignleft", tint: .blue) {
                     TextField(
                         AppLocalization.string("What this bot is for"),
                         text: $draft.description,
                         axis: .vertical
                     )
+                    .textFieldStyle(.roundedBorder)
                     .lineLimit(2...5)
-                } header: {
-                    Text(AppLocalization.string("Description"))
                 }
                 personalitySection
                 workSection
                 advancedSection
             }
             .navigationTitle(isCreating ? AppLocalization.string("New Bot") : AppLocalization.string("Edit Bot"))
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(AppLocalization.string("Cancel")) { dismiss() }
@@ -205,7 +201,7 @@ struct BotEditorSheet: View {
                 } label: {
                     Label(AppLocalization.string("Choose Photo"), systemImage: "photo")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.settings)
                 if canGeneratePictures == true {
                     Button {
                         Haptics.light()
@@ -213,7 +209,7 @@ struct BotEditorSheet: View {
                     } label: {
                         Label(AppLocalization.string("Generate"), systemImage: "sparkles")
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.settings)
                 }
                 if previewImage != nil || (hasStoredAvatar && !draft.removesAvatar) {
                     Button(role: .destructive) {
@@ -228,7 +224,7 @@ struct BotEditorSheet: View {
                     } label: {
                         Label(AppLocalization.string("Remove Photo"), systemImage: "trash")
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.settings)
                 } else if draft.removesAvatar {
                     Button {
                         Haptics.light()
@@ -236,7 +232,7 @@ struct BotEditorSheet: View {
                     } label: {
                         Label(AppLocalization.string("Keep Photo"), systemImage: "arrow.uturn.backward")
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.settings)
                 }
             }
             .scaledFont(.subheadline)
@@ -299,7 +295,7 @@ struct BotEditorSheet: View {
 
     private var colorSection: some View {
         let names = swatchNames
-        return Section {
+        return ConduitSettingsSection(title: AppLocalization.string("Color"), symbol: "paintpalette", tint: .pink) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 8) {
                 swatch(nil, name: AppLocalization.string("Automatic color"))
                 ForEach(Array(BotAvatarColor.swatches.enumerated()), id: \.element) { item in
@@ -309,11 +305,9 @@ struct BotEditorSheet: View {
                     )
                 }
             }
-            .padding(.vertical, 4)
-        } header: {
-            Text(AppLocalization.string("Color"))
-        } footer: {
             Text(AppLocalization.string("Shown behind the bot's initial when it has no picture."))
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -370,23 +364,23 @@ struct BotEditorSheet: View {
     @ViewBuilder
     private var nameSection: some View {
         if let bot = editedBot {
-            Section {
+            ConduitSettingsSection(title: AppLocalization.string("Display Name"), symbol: "person.text.rectangle", tint: .conduitAccent) {
                 TextField(bot.displayName.isEmpty ? bot.name : bot.displayName, text: $draft.name)
+                    .textFieldStyle(.roundedBorder)
                     .textInputAutocapitalization(.words)
-            } header: {
-                Text(AppLocalization.string("Display Name"))
-            } footer: {
                 Text(AppLocalization.string("Profile ID: \(bot.name)"))
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
             }
         } else {
-            Section {
+            ConduitSettingsSection(title: AppLocalization.string("Name"), symbol: "person.text.rectangle", tint: .conduitAccent) {
                 TextField(AppLocalization.string("Name"), text: $draft.name)
+                    .textFieldStyle(.roundedBorder)
                     .textInputAutocapitalization(.words)
                     .autocorrectionDisabled()
-            } header: {
-                Text(AppLocalization.string("Name"))
-            } footer: {
                 createNameFooter
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -412,7 +406,7 @@ struct BotEditorSheet: View {
     /// sight (Eric 2026-11-05).
     @ViewBuilder
     private var personalitySection: some View {
-        Section {
+        ConduitSettingsSection(title: AppLocalization.string("Personality"), symbol: "theatermasks", tint: .purple) {
             if isCreating || detailsState == .loaded || keptDetails != nil {
                 NavigationLink {
                     BotSoulEditorPage(
@@ -422,8 +416,14 @@ struct BotEditorSheet: View {
                         footer: personalityFooter
                     )
                 } label: {
-                    personalityPreview(showsKeptDetails ? keptDetails?.soul ?? "" : draft.soul)
+                    HStack(alignment: .firstTextBaseline) {
+                        personalityPreview(showsKeptDetails ? keptDetails?.soul ?? "" : draft.soul)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        SettingsChevron()
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
                 if showsKeptDetails, detailsState == .failed {
                     Text(AppLocalization.string("Could not load this bot's personality."))
                         .foregroundStyle(.secondary)
@@ -435,10 +435,9 @@ struct BotEditorSheet: View {
                 ProgressView()
                     .frame(maxWidth: .infinity)
             }
-        } header: {
-            Text(AppLocalization.string("Personality"))
-        } footer: {
             Text(personalityFooter)
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -473,14 +472,16 @@ struct BotEditorSheet: View {
     @ViewBuilder
     private var workSection: some View {
         if let bot = editedBot, appState.servesBotWorkSettings {
-            Section {
+            ConduitSettingsSection(title: AppLocalization.string("Work"), symbol: "arrow.triangle.branch", tint: .conduitAccent) {
                 NavigationLink {
                     BotWorkSettingsView(profile: bot.name, botName: bot.displayLabel)
                 } label: {
-                    Text(AppLocalization.string("Work"))
+                    SettingsLinkRow(title: AppLocalization.string("Work"))
                 }
-            } footer: {
+                .buttonStyle(.plain)
                 Text(AppLocalization.string("How \(bot.displayLabel) hands tasks to workstreams and keeps track of them in its Bot Chat."))
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -492,7 +493,8 @@ struct BotEditorSheet: View {
     @ViewBuilder
     private var advancedSection: some View {
         if isCreating || detailsState == .loaded || showsKeptDetails {
-            Section {
+            // No name over it: its own row names it and opens it.
+            SettingsCard {
                 Button {
                     Haptics.light()
                     withAnimation { showsAdvanced.toggle() }
@@ -515,34 +517,39 @@ struct BotEditorSheet: View {
                 .accessibilityValue(Text(showsAdvanced ? AppLocalization.string("Shown") : AppLocalization.string("Hidden")))
                 if showsAdvanced {
                     if isCreating {
-                        Picker(AppLocalization.string("Start From"), selection: startFromSelection) {
-                            Text(AppLocalization.string("Main Profile")).tag(BotCreateRequest.mainProfile)
-                            ForEach(cloneSources, id: \.name) { bot in
-                                Text(verbatim: bot.displayLabel).tag(bot.name)
-                            }
-                            Text(AppLocalization.string("Fresh Profile")).tag("")
+                        ConduitMenuPicker(
+                            value: startFromSelection.wrappedValue,
+                            choices: [(id: BotCreateRequest.mainProfile, title: AppLocalization.string("Main Profile"))]
+                                + cloneSources.map { (id: $0.name, title: $0.displayLabel) }
+                                + [(id: "", title: AppLocalization.string("Fresh Profile"))],
+                            onSelect: { startFromSelection.wrappedValue = $0 }
+                        ) {
+                            Text(AppLocalization.string("Start From")).foregroundStyle(.secondary)
                         }
                     }
                     NavigationLink {
                         BotModelPicker(provider: $draft.provider, model: $draft.model, allowsInherit: isCreating)
                     } label: {
-                        LabeledContent(AppLocalization.string("Model")) {
-                            Text(verbatim: BotModelPicker.summary(
+                        SettingsLinkRow(
+                            title: AppLocalization.string("Model"),
+                            value: BotModelPicker.summary(
                                 model: showsKeptDetails ? keptDetails?.model ?? "" : draft.model,
                                 allowsInherit: isCreating
-                            ))
-                        }
+                            )
+                        )
                     }
+                    .buttonStyle(.plain)
                     .disabled(showsKeptDetails)
                     capabilitiesRow
                     if isCreating {
                         Toggle(AppLocalization.string("Share Keys and Accounts"), isOn: $draft.shareAuth)
+                            .tint(.conduitAccent)
+                        Text(AppLocalization.string("Shared keys and accounts stay one set with the main profile, so a sign-in refresh in one never signs the other out. Turn it off for a separate copy."))
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.secondary)
                         Toggle(AppLocalization.string("Skip Bundled Skills"), isOn: $draft.noSkills)
+                            .tint(.conduitAccent)
                     }
-                }
-            } footer: {
-                if showsAdvanced, isCreating {
-                    Text(AppLocalization.string("Shared keys and accounts stay one set with the main profile, so a sign-in refresh in one never signs the other out. Turn it off for a separate copy."))
                 }
             }
         }
@@ -573,8 +580,9 @@ struct BotEditorSheet: View {
                     editable: draft.capabilities != nil
                 )
             } label: {
-                Text(AppLocalization.string("Skills, Tools and MCP"))
+                SettingsLinkRow(title: AppLocalization.string("Skills, Tools and MCP"))
             }
+            .buttonStyle(.plain)
             if draft.capabilities == nil, capabilitiesLoadFailed {
                 capabilitiesFailure
             }
@@ -594,6 +602,7 @@ struct BotEditorSheet: View {
             Button(AppLocalization.string("Try Again")) {
                 Task { await loadStartFromCapabilities() }
             }
+            .buttonStyle(.settings)
         }
     }
 
@@ -837,7 +846,7 @@ private struct BotSoulEditorPage: View {
             }
                 .padding(8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .settingsCard()
             Text(footer)
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
@@ -845,7 +854,7 @@ private struct BotSoulEditorPage: View {
         .padding(.horizontal, 16)
         .padding(.top, 8)
         .padding(.bottom, 12)
-        .background(Color(.systemGroupedBackground))
+        .background { SettingsBackdrop().ignoresSafeArea() }
         .navigationTitle(AppLocalization.string("Personality"))
         .navigationBarTitleDisplayMode(.inline)
     }

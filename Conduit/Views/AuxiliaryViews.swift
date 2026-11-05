@@ -4854,6 +4854,56 @@ struct ConduitSettingsSection<Content: View>: View {
     }
 }
 
+/// A Settings card with no name over it, for a group whose first row
+/// names it (Edit Bot's Advanced).
+struct SettingsCard<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .settingsCard()
+    }
+}
+
+/// A row in a Settings card that opens a page: its name, what it's set
+/// to in grey, and a chevron, as Settings > Pulse's What Pulse remembers.
+/// The caller's NavigationLink takes `.buttonStyle(.plain)`, so the row
+/// reads like the rows beside it rather than in the accent.
+struct SettingsLinkRow: View {
+    let title: String
+    var value: String?
+
+    var body: some View {
+        HStack {
+            Text(verbatim: title)
+                .foregroundStyle(.primary)
+            Spacer(minLength: 8)
+            if let value {
+                Text(verbatim: value)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            SettingsChevron()
+        }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+    }
+}
+
+/// The chevron at the end of a Settings row that opens a page.
+struct SettingsChevron: View {
+    var body: some View {
+        Image(systemName: "chevron.right")
+            .scaledFont(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .accessibilityHidden(true)
+    }
+}
+
 /// A settings page's still backdrop, its glow in `settingsGlowTint`: the
 /// active profile's color in V2's Settings tab, as on its home page, so
 /// pushing a page keeps it. An environment value rather than AppState, so a
