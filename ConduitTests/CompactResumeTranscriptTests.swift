@@ -1460,6 +1460,66 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertEqual(harness.appState.messages.map(\.content), (5000..<5010).map { "Row \($0)" })
     }
 
+    /// A chat that comes back mid-turn takes its rows from the resume and
+    /// leaves the kept Load earlier rows for the next open (#1836 review).
+    func testAChatBackMidTurnLeavesItsKeptRowsForTheNextOpen() async throws {
+        let first = session("stored-a", alternateIDs: ["runtime-a"])
+        let other = session("stored-b", alternateIDs: ["runtime-b"])
+        let liveA = Flag()
+        let harness = try makeHarness(
+            openSession: { _, sessionId, _ in
+                if sessionId.hasSuffix("b") {
+                    return SessionResumeResult(
+                        sessionId: "runtime-b",
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                }
+                guard liveA.isOn else {
+                    return SessionResumeResult(
+                        sessionId: "runtime-a",
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                }
+                return SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [ChatMessage(id: "0", role: .user, content: "Row 1998", timestamp: "2026-09-13T08:00:00Z")],
+                    snapshot: SessionRuntimeSnapshot(object: [:], inflight: .bool(true))
+                )
+            },
+            persistedTranscript: { sessionId, _, _ in
+                if sessionId.hasSuffix("b") {
+                    return self.tailPagePayload(sessionId: "stored-b", rows: self.syntheticRows(5000..<5010), offset: 0)
+                }
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1760..<1880), offset: offset)
+            }
+        )
+        harness.appState.sessions = [first, other]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        await harness.appState.loadEarlierMessages()
+        XCTAssertEqual(harness.appState.messages.count, 240)
+        let openedOther = await harness.appState.openSession("stored-b")
+        XCTAssertTrue(openedOther)
+
+        liveA.isOn = true
+        let openedLive = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(openedLive)
+        XCTAssertNotEqual(harness.appState.messages.first?.content, "Row 1760", "A live turn's rows come from the resume")
+
+        liveA.isOn = false
+        let openedOtherAgain = await harness.appState.openSession("stored-b")
+        XCTAssertTrue(openedOtherAgain)
+        let openedSettled = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(openedSettled)
+        XCTAssertEqual(harness.appState.messages.count, 240, "The kept rows waited for the next open")
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 1760")
+    }
+
     /// A chat past 1,000 rows lets go of its oldest loaded pages once the
     /// reader is back at the newest row, or as it's left, and Load earlier
     /// reads on from the page it went back to (issue 1828).
