@@ -1457,6 +1457,7 @@ final class HermesClient: ObservableObject {
         // Server requests still open on the socket come here, so a later
         // request.cancel still withdraws their cards.
         openServerRequestIDs.formUnion(predecessor.openServerRequestIDs)
+        pendingDisplaySudo.merge(predecessor.pendingDisplaySudo) { mine, _ in mine }
         approvalQueueIDs.merge(predecessor.approvalQueueIDs) { mine, _ in mine }
         clarifySessions.merge(predecessor.clarifySessions) { mine, _ in mine }
         isConnected = true
