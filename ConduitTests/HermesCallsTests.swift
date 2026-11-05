@@ -1208,7 +1208,7 @@ extension VoiceConversationControllerTests {
     private func ringRecord(_ id: String = "ring-a1b2c3d4", target: ConduitNotificationTarget? = nil, at: Date) throws -> HermesRingRecords.Entry {
         let ring = HermesRing(id: id, token: "tok-\(id)", url: URL(string: "https://relay.example/v1/rings/\(id)/settled")!)
         let dashboard = UUID(uuidString: "6F9619FF-8B86-D011-B42D-00C04FC964FF")
-        return try XCTUnwrap(HermesRingRecords.Entry(ring: ring, target: target ?? outcomeTarget(dashboard: dashboard), at: at))
+        return try XCTUnwrap(HermesRingRecords.Entry(ring: ring, target: target ?? outcomeTarget(dashboard: dashboard), sentAt: at.addingTimeInterval(-2), at: at))
     }
 
     func testARingRecordOutlivesTheProcessThatRangSoAWatchAnswerCanBeHandedOff() throws {
@@ -1224,6 +1224,7 @@ extension VoiceConversationControllerTests {
         let found = try XCTUnwrap(HermesRingRecords.entry(ringID: "ring-a1b2c3d4", in: relaunched, now: now.addingTimeInterval(40)))
         XCTAssertEqual(found.ring, HermesRing(id: "ring-a1b2c3d4", token: "tok-ring-a1b2c3d4", url: URL(string: "https://relay.example/v1/rings/ring-a1b2c3d4/settled")!))
         let target = found.target
+        XCTAssertEqual(found.sentAt, now.addingTimeInterval(-2), "Hermes hears how long ago the relay sent it")
         XCTAssertEqual(target.profile, "work")
         XCTAssertEqual(target.sessionId, "rt-1")
         XCTAssertEqual(target.durableSessionID, "st-1")
@@ -1239,6 +1240,7 @@ extension VoiceConversationControllerTests {
         let now = Date()
         HermesRingRecords.record(try ringRecord("ring-old", at: now.addingTimeInterval(-HermesRingRecords.life)), in: defaults, now: now)
         XCTAssertNil(HermesRingRecords.entry(ringID: "ring-old", in: defaults, now: now), "Ten minutes on, the relay has forgotten the ring")
+        XCTAssertNil(defaults.data(forKey: HermesRingRecords.storageKey), "and its token is gone from disk")
         for index in 0..<(HermesRingRecords.maximumEntries + 2) {
             HermesRingRecords.record(try ringRecord("ring-\(index)", at: now), in: defaults, now: now)
         }

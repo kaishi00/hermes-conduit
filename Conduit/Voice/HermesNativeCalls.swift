@@ -324,7 +324,7 @@ final class HermesNativeCalls: NSObject {
         }
         let call = PushNotificationService.shared.receiveVoIPCall(userInfo)
         let ring = HermesRing.from(userInfo)
-        if let ring, let target = call.target, let record = HermesRingRecords.Entry(ring: ring, target: target, at: Date()) {
+        if let ring, let target = call.target, let record = HermesRingRecords.Entry(ring: ring, target: target, sentAt: call.sentAt, at: Date()) {
             HermesRingRecords.record(record, in: ringRecords)
         }
         // Never created here: reporting comes first.
@@ -711,7 +711,7 @@ final class HermesNativeCalls: NSObject {
                 finish(match.key, reason: reason, notice: settled.outcome == .answered ? .none : .missed, end: .elsewhere(settled.outcome))
             }
             if let start = settled.start {
-                startWatchCall(start, ringID: settled.id, ring: match?.value.ring ?? record?.ring, target: match?.value.target ?? record?.target)
+                startWatchCall(start, ringID: settled.id, ring: match?.value.ring ?? record?.ring, target: match?.value.target ?? record?.target, sentAt: match?.value.sentAt ?? record?.sentAt)
             }
             completion()
             return
@@ -743,7 +743,7 @@ final class HermesNativeCalls: NSObject {
                     self.provider?.reportCall(with: id, endedAt: Date(), reason: reason)
                 }
                 if let start = settled.start {
-                    self.startWatchCall(start, ringID: settled.id, ring: match?.value.ring ?? record?.ring, target: match?.value.target ?? record?.target)
+                    self.startWatchCall(start, ringID: settled.id, ring: match?.value.ring ?? record?.ring, target: match?.value.target ?? record?.target, sentAt: match?.value.sentAt ?? record?.sentAt)
                 }
                 completion()
             }
@@ -754,13 +754,14 @@ final class HermesNativeCalls: NSObject {
     /// its call screen: its call's start came with the stop. It's answered
     /// as if it had come over the link, and the answer (the session, or why
     /// not) goes to the relay, sealed, for the Watch to fetch. One that
-    /// can't reach the relay leaves the Watch's call to fail: the call is
-    /// missed then, here and for Hermes (#1780).
-    private func startWatchCall(_ sealedStart: String, ringID: String, ring: HermesRing?, target: ConduitNotificationTarget?) {
+    /// can't reach the relay leaves the Watch's call to fail, and one the
+    /// Watch's voice refused ends there: the call is missed then, here and
+    /// for Hermes (#1780).
+    private func startWatchCall(_ sealedStart: String, ringID: String, ring: HermesRing?, target: ConduitNotificationTarget?, sentAt: Date?) {
         let log = WatchVoiceLink.shared.log
         func failed(_ why: String) {
             HermesCallTrace.shared.note("The Watch's answer couldn't be handed its session (\(why))")
-            missedOnWatch(target)
+            missedOnWatch(target, sentAt: sentAt)
         }
         guard let ring else {
             log.note("watchAnswerHandoff", ["ok": false, "why": "unknownRing"])
@@ -789,6 +790,10 @@ final class HermesNativeCalls: NSObject {
                 }
                 return
             }
+            // Refused (its voice can't start): the Watch says why and ends,
+            // and the call is still missed.
+            let refused: Bool
+            if case .callRefused(_, _)? = try? JSONDecoder().decode(WatchVoiceWire.Message.self, from: data) { refused = true } else { refused = false }
             Task { @MainActor in
                 let status = await HermesRingHandoff.store(ring, sealed: sealed)
                 log.note("watchAnswerHandoff", [
@@ -797,7 +802,11 @@ final class HermesNativeCalls: NSObject {
                     "bytes": sealed.count,
                     "ms": Int(Date().timeIntervalSince(startedAt) * 1000),
                 ])
-                if status != 200 { failed("store \(status)") }
+                if status != 200 {
+                    failed("store \(status)")
+                } else if refused {
+                    failed("refused")
+                }
                 end()
             }
         }
@@ -806,10 +815,10 @@ final class HermesNativeCalls: NSObject {
     /// The Watch answered and its call can't start: the missed call it
     /// leaves, so the user can answer it in the chat, and Hermes hears it
     /// wasn't taken. A ring this phone has no record of says only that
-    /// Hermes called.
-    private func missedOnWatch(_ target: ConduitNotificationTarget?) {
+    /// Hermes called, and Hermes can't be told: nothing names the call.
+    private func missedOnWatch(_ target: ConduitNotificationTarget?, sentAt: Date?) {
         post(target == nil ? .unreadable : .missed, for: target)
-        report(.missed, for: target, sentAt: nil)
+        report(.missed, for: target, sentAt: sentAt)
     }
 
     // MARK: Kept from the Watch (#1204)
@@ -937,11 +946,11 @@ final class HermesNativeCalls: NSObject {
     /// Kept from the Watch, then couldn't be: the Watch takes the call, as
     /// when it answers with no headset here.
     private func handBackToWatch(_ id: UUID, ring: HermesRing, sealedStart: String) {
-        guard calls[id]?.answered == false else { return }
+        guard let call = calls[id], !call.answered else { return }
         HermesCallTrace.shared.note("Couldn't keep it here: the Watch takes it")
         calls[id]?.keptFromWatch = false
         finish(id, reason: .answeredElsewhere, notice: .none, end: .elsewhere(.answered))
-        startWatchCall(sealedStart, ringID: ring.id, ring: ring)
+        startWatchCall(sealedStart, ringID: ring.id, ring: ring, target: call.target, sentAt: call.sentAt)
     }
 
     /// The Watch's Mute or End, for a call kept from its answer.
@@ -1303,6 +1312,8 @@ struct HermesRingRecords: Codable, Equatable {
         var token: String
         var url: URL
         var at: Date
+        /// When the relay sent the call, for the outcome Hermes hears.
+        var sentAt: Date?
         var profile: String?
         var profileName: String?
         var sessionID: String
@@ -1317,12 +1328,13 @@ struct HermesRingRecords: Codable, Equatable {
         var reason: String?
 
         /// Nil for a push that isn't a call.
-        init?(ring: HermesRing, target: ConduitNotificationTarget, at: Date) {
+        init?(ring: HermesRing, target: ConduitNotificationTarget, sentAt: Date? = nil, at: Date) {
             guard let call = target.call else { return nil }
             ringID = ring.id
             token = ring.token
             url = ring.url
             self.at = at
+            self.sentAt = sentAt
             profile = target.profile
             profileName = target.profileName
             sessionID = target.sessionId
@@ -1384,7 +1396,10 @@ struct HermesRingRecords: Codable, Equatable {
     static func load(from defaults: UserDefaults, now: Date = Date()) -> HermesRingRecords {
         guard let data = defaults.data(forKey: storageKey),
               var records = try? JSONDecoder().decode(HermesRingRecords.self, from: data) else { return HermesRingRecords() }
+        let count = records.entries.count
         records.prune(now: now)
+        // An outlived ring's token goes from disk too, not at the next ring.
+        if records.entries.count != count { records.store(in: defaults) }
         return records
     }
 
