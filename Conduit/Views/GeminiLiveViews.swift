@@ -543,9 +543,15 @@ struct VoiceJobModelSettingsSection: View {
         let held = parse(selection)
         // A pick saved under another of its provider's spellings (an alias,
         // `custom:<key>`) is that provider's listed row, not a row of its own.
+        // One row only: the provider named exactly, else the first whose
+        // other spellings match, among those listing the model.
+        let heldProvider: String? = {
+            guard selection != defaultTag, !held.model.isEmpty, let wanted = held.provider else { return nil }
+            let listing = providers.filter { $0.models.contains { $0.id == held.model } }
+            return (listing.first { $0.name == wanted } ?? listing.first { $0.matches(wanted) })?.name
+        }()
         func isHeld(_ provider: ProviderInfo, _ model: ModelInfo) -> Bool {
-            guard selection != defaultTag, !held.model.isEmpty, model.id == held.model else { return false }
-            return provider.matches(held.provider ?? "")
+            heldProvider == provider.name && model.id == held.model
         }
         if selection != defaultTag, !providers.contains(where: { provider in
             provider.models.contains { isHeld(provider, $0) }

@@ -335,6 +335,19 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertEqual(aliased[0].choices.map(\.id), [VoiceReplyModelPicks.sameAsChats],
                        "a pick saved under its provider's alias is the listed row, not a held one")
         XCTAssertEqual(aliased[1].choices.map(\.id), [aliasPick], "so the provider's row carries the pick")
+        let crowded = VoiceJobModelSettingsSection.modelMenuGroups(
+            defaultTitle: "chats", defaultTag: VoiceReplyModelPicks.sameAsChats, selection: aliasPick,
+            providers: [
+                ProviderInfo(name: "custom:key", models: [ModelInfo(id: "qwen3", label: nil, reasoningCapable: false)]),
+                ProviderInfo(name: "custom", models: [ModelInfo(id: "qwen3", label: nil, reasoningCapable: false),
+                                                      ModelInfo(id: "llama", label: nil, reasoningCapable: false)],
+                             aliases: ["custom:key"]),
+            ]
+        )
+        XCTAssertEqual(crowded[1].choices.map(\.id), [aliasPick], "the provider named exactly holds the pick")
+        XCTAssertEqual(crowded[2].choices.map(\.id), [VoiceJobModelSettingsSection.tag(provider: "custom", model: "qwen3"),
+                                                      VoiceJobModelSettingsSection.tag(provider: "custom", model: "llama")],
+                       "only one row is the pick; the other route stays pickable")
         picks.selection = VoiceReplyModelPicks.sameAsChats
         let unpinned = try XCTUnwrap(picks.writeAsked())
         XCTAssertEqual(unpinned.provider, "auto")
