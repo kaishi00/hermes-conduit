@@ -2276,6 +2276,8 @@ final class AppState: ObservableObject {
     var workspaceRevealGeneration = 0
     /// The "isn't on the server" notice the last file lookup put above the composer.
     var workspaceLookupNotice: String?
+    /// The notice the lookup's covered, shown again when the lookup's goes.
+    var workspaceNoticeUnder: (text: String, systemImage: String)?
     /// Counts the tools Hermes finished that may have changed files, so an
     /// open Folder tab reads its folders again.
     @Published var workspaceChanges = 0

@@ -146,11 +146,10 @@ extension AppState {
         case .success(nil):
             let name = (path as NSString).lastPathComponent
             let notice = AppLocalization.string("\(name) isn’t on the server. It may have been deleted, or it’s on another computer.")
-            guard composerNotice == nil else {
-                // A message that came back keeps its notice; this one goes
-                // to the chat's error banner instead.
-                errorMessage = notice
-                return
+            // A notice already up (a message that came back) waits under
+            // this one and comes back when it goes.
+            if let shown = composerNotice {
+                workspaceNoticeUnder = (shown, composerNoticeSystemImage)
             }
             composerNotice = notice
             composerNoticeSystemImage = "questionmark.folder"
@@ -162,8 +161,12 @@ extension AppState {
 
     /// Takes away the last file lookup's notice, if it's still the one shown.
     func clearWorkspaceLookupNotice() {
-        if let said = workspaceLookupNotice, composerNotice == said { composerNotice = nil }
+        if let said = workspaceLookupNotice, composerNotice == said {
+            composerNotice = workspaceNoticeUnder?.text
+            if let under = workspaceNoticeUnder { composerNoticeSystemImage = under.systemImage }
+        }
         workspaceLookupNotice = nil
+        workspaceNoticeUnder = nil
     }
 
     /// A path from the top of a disk or a home folder, as opposed to one
