@@ -1829,11 +1829,26 @@ struct UserMessageContent: View, Equatable {
         return equal
     }
 
+    /// One picture shows whole; two or more go side by side as tiles
+    /// (issue 1801), then the files.
     @ViewBuilder private var attachmentViews: some View {
         if let attachments = message.attachments {
+            let pictures = attachments.filter { $0.kind == .image }
+            if pictures.count > 1 {
+                let shown = PictureGrid.shownCount(pictures.count)
+                let more = PictureGrid.moreCount(total: pictures.count)
+                PictureGridLayout {
+                    ForEach(Array(pictures.prefix(shown).enumerated()), id: \.element.id) { index, picture in
+                        UserImageAttachmentPreview(attachment: picture, gatewayResolver: gatewayResolver, isTile: true)
+                            .modifier(PictureGridMoreBadge(more: index == shown - 1 ? more : nil))
+                    }
+                }
+            }
             ForEach(attachments) { attachment in
                 if attachment.kind == .image {
-                    UserImageAttachmentPreview(attachment: attachment, gatewayResolver: gatewayResolver)
+                    if pictures.count == 1 {
+                        UserImageAttachmentPreview(attachment: attachment, gatewayResolver: gatewayResolver)
+                    }
                 } else {
                     UserDocumentAttachmentChip(attachment: attachment, gatewayResolver: gatewayResolver)
                 }
@@ -1950,6 +1965,9 @@ private struct UserImageAttachmentPreview: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let attachment: Attachment
     let gatewayResolver: GatewayMediaDataURLResolver?
+    /// A square tile of a message's picture grid, filling the size it is
+    /// proposed, instead of the picture at its own shape (issue 1801).
+    var isTile = false
     @State private var gatewayImage: UIImage?
     /// The cache key `gatewayImage` was loaded for, so a reused view never
     /// shows the picture it held before.
@@ -2033,7 +2051,9 @@ private struct UserImageAttachmentPreview: View {
 
     var body: some View {
         Group {
-            if let image = cachedLocalImage ?? currentLocalPreview ?? currentGatewayImage {
+            if isTile {
+                tileContent
+            } else if let image = cachedLocalImage ?? currentLocalPreview ?? currentGatewayImage {
                 imagePreview(image)
             } else if loadsFromHermes && localFileURL == nil && !gatewayLoadFailed {
                 placeholder
@@ -2226,6 +2246,37 @@ private struct UserImageAttachmentPreview: View {
         isGatewayImage || attachment.inlineImage != nil
     }
 
+    /// The tile: the picture cropped to its square, else its place with a
+    /// spinner while it loads or a symbol when it won't. Every state takes
+    /// the same square, so the row never changes height as it loads.
+    @ViewBuilder private var tileContent: some View {
+        if let image = cachedLocalImage ?? currentLocalPreview ?? currentGatewayImage {
+            PictureTileImage(image: image, onAccent: true)
+                .opensMediaPreview { openPreview(showing: image) }
+                .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
+                .accessibilityLabel("Attached image: \(attachment.imageDescription ?? attachment.name)")
+                .accessibilityAddTraits(.isImage)
+        } else {
+            // `localPreviewFailed` compares paths, so without a local file
+            // it would say a picture from Hermes still loading had failed.
+            let failed = gatewayLoadFailed || (localFileURL != nil && localPreviewFailed)
+            let loading = !failed && (loadsFromHermes || localFileURL != nil)
+            // A tile still loading, or one that won't, opens the viewer too:
+            // the viewer fetches the picture itself, and the "+N" tile is
+            // the only way to the pictures without a tile.
+            // One element first, so VoiceOver keeps the tap's button trait.
+            PictureTilePlaceholder(state: loading ? .loading : failed ? .unavailable : .attached, onAccent: true)
+                .accessibilityElement()
+                .accessibilityLabel(
+                    loading ? AppLocalization.string("Loading image…")
+                        : failed ? AppLocalization.string("Image unavailable") : AppLocalization.string("Image attached")
+                )
+                .opensMediaPreview { openPreview(showing: nil) }
+                .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
+                .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
+        }
+    }
+
     private func imagePreview(_ image: UIImage) -> some View {
         Image(uiImage: image)
                 .resizable()
@@ -2247,7 +2298,7 @@ private struct UserImageAttachmentPreview: View {
     /// bytes re-fetched from Hermes, with the row's copy shown meanwhile.
     /// The row keeps only the downsampled/decoded image, never the original
     /// bytes, so an image-heavy transcript doesn't pin them all in memory.
-    private func openPreview(showing image: UIImage) {
+    private func openPreview(showing image: UIImage?) {
         guard let item = ImageGalleryItem.attachment(attachment, resolver: gatewayResolver) else { return }
         ImageGallery.open(item, in: imageGallery, placeholder: image)
     }

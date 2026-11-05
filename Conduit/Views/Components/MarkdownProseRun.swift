@@ -12,6 +12,9 @@ enum MarkdownProseRun {
     struct Piece: Identifiable, Equatable {
         let blocks: Range<Int>
         let isRun: Bool
+        /// Two or more pictures in a row, drawn as one grid of tiles
+        /// (issue 1801).
+        var isPictures = false
         var id: Int { blocks.lowerBound }
     }
 
@@ -66,19 +69,70 @@ enum MarkdownProseRun {
         return ranges
     }
 
-    static func pieces(blockCount: Int, runs: [Range<Int>]) -> [Piece] {
+    /// Whether a block is a picture that can share a grid: an image, but
+    /// not a video, sound or document Hermes sent, which draws a card.
+    static func isGridPicture(_ block: MarkdownBlock) -> Bool {
+        guard case .image(let url, _) = block else { return false }
+        guard url.hasPrefix("MEDIA:") else { return true }
+        let path = url.dropFirst("MEDIA:".count).trimmingCharacters(in: .whitespacesAndNewlines)
+        return GatewayMediaKind(path: path) == .image
+    }
+
+    /// Runs of two or more pictures in a row, each drawn as one grid of
+    /// tiles instead of a stack of full pictures (issue 1801).
+    static func pictureRanges(in blocks: [MarkdownBlock]) -> [Range<Int>] {
+        pictureRanges(flags: blocks.map(isGridPicture))
+    }
+
+    /// Runs of two or more `true`s: the pictures of a list of blocks, or
+    /// of a large document's chunks.
+    static func pictureRanges(flags: [Bool]) -> [Range<Int>] {
+        var ranges: [Range<Int>] = []
+        var start: Int?
+        for index in 0...flags.count {
+            if index < flags.count, flags[index] {
+                if start == nil { start = index }
+            } else if let runStart = start {
+                start = nil
+                if index - runStart > 1 { ranges.append(runStart..<index) }
+            }
+        }
+        return ranges
+    }
+
+    /// What a block draws in a view that mounts its blocks one at a time,
+    /// some of them only (a large document's window, a budgeted reply):
+    /// itself, the grid of its run's pictures that are shown, or nothing,
+    /// being in the grid drawn at the first of them shown.
+    enum PictureSlot: Equatable {
+        case single
+        case grid(Range<Int>)
+        case covered
+    }
+
+    static func pictureSlot(at index: Int, in ranges: [Range<Int>], shown: Range<Int>) -> PictureSlot {
+        guard let range = ranges.first(where: { $0.contains(index) }) else { return .single }
+        let visible = max(range.lowerBound, shown.lowerBound)..<max(min(range.upperBound, shown.upperBound), max(range.lowerBound, shown.lowerBound))
+        guard index == visible.lowerBound else { return .covered }
+        return visible.count > 1 ? .grid(visible) : .single
+    }
+
+    static func pieces(blockCount: Int, runs: [Range<Int>], pictures: [Range<Int>] = []) -> [Piece] {
         var pieces: [Piece] = []
-        var remainingRuns = runs[...]
+        let groups = (runs.map { ($0, false) } + pictures.map { ($0, true) })
+            .sorted { $0.0.lowerBound < $1.0.lowerBound }
+        var remainingRuns = groups[...]
         var index = 0
         while index < blockCount {
-            // Runs come sorted and apart from `ranges(in:)`; anything else
-            // is skipped rather than allowed to stall the loop.
-            while let run = remainingRuns.first, run.lowerBound < index || run.isEmpty {
+            // Runs come sorted and apart from `ranges(in:)` and
+            // `pictureRanges(in:)`; anything else is skipped rather than
+            // allowed to stall the loop.
+            while let run = remainingRuns.first, run.0.lowerBound < index || run.0.isEmpty {
                 remainingRuns = remainingRuns.dropFirst()
             }
-            if let run = remainingRuns.first, run.lowerBound == index {
+            if let (run, isPictures) = remainingRuns.first, run.lowerBound == index {
                 let blocks = index..<min(run.upperBound, blockCount)
-                pieces.append(Piece(blocks: blocks, isRun: true))
+                pieces.append(Piece(blocks: blocks, isRun: !isPictures, isPictures: isPictures))
                 index = blocks.upperBound
                 remainingRuns = remainingRuns.dropFirst()
             } else {
