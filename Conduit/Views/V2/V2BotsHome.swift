@@ -82,62 +82,259 @@ extension EnvironmentValues {
     }
 }
 
-/// Bots Home's live rooms: one chip for each group room whose bots are
-/// talking now, with its members' faces; a tap opens the room. A bot can
-/// be in several rooms, so the rooms show here rather than round the
-/// portraits, whose pills say "In <room>". It shows only while a room
-/// talks (BotsTalkingRoomsReader asks which).
-struct BotsLiveRooms: View {
+/// Bots Home's Group Chats: each room a small portrait under the bots, four
+/// across on a phone (Eric 2026-11-05, option B of the Group Chats canvas),
+/// so the rooms read like the bots above them, smaller. A room whose bots
+/// are talking now is ringed in gold and says so, in its place: like a bot,
+/// a room never moves for being busy.
+struct BotRoomGrid<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        let columns = typeSize.isAccessibilitySize
+            ? Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .top), count: 3)
+            : [GridItem(.adaptive(minimum: 76, maximum: 110), spacing: 8, alignment: .top)]
+        LazyVGrid(columns: columns, alignment: .center, spacing: 16) {
+            content()
+        }
+    }
+}
+
+/// A room's portrait: its icon in a ring, its name under it, and "Talking
+/// now" while its bots talk. A room being started has a dashed ring.
+struct BotRoomPortraitLabel<Icon: View>: View {
+    let title: String
+    var talking = false
+    /// Ringed in gold: open beside the list, or the room being started.
+    var highlighted = false
+    var dashed = false
+    var animates = false
+    @ViewBuilder let icon: (CGFloat) -> Icon
+    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 56
+
+    var body: some View {
+        let gold = talking || highlighted
+        VStack(spacing: 6) {
+            icon(size)
+                .frame(width: size, height: size)
+                .padding(4)
+                .overlay {
+                    Circle().strokeBorder(
+                        gold ? Color.conduitAccent.opacity(0.85) : Color.primary.opacity(0.14),
+                        style: StrokeStyle(lineWidth: 2, dash: dashed ? [5, 4] : [])
+                    )
+                }
+                .shadow(color: talking ? Color.conduitAccent.opacity(0.35) : .clear, radius: 8)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                .accessibilityHidden(true)
+            Text(verbatim: title)
+                .scaledFont(.caption.weight(.semibold))
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+            if talking {
+                HStack(spacing: 4) {
+                    BotsLiveDot(animates: animates)
+                    Text(AppLocalization.string("Talking now"))
+                        .scaledFont(.caption2.weight(.semibold))
+                        .foregroundStyle(Color.conduitAccent)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+    }
+}
+
+/// A hosted room on Bots Home; a tap opens it.
+struct GroupRoomPortrait: View {
+    let room: GroupRoom
     @EnvironmentObject private var appState: AppState
+    @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.v2Shell) private var shell
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.botsHomeCovered) private var covered
     @ObservedObject private var devicePower = DevicePowerState.shared
 
-    private var isShown: Bool {
+    private var talking: Bool { appState.talkingRoomIDs.contains(room.roomID) }
+    private var selection: V2RowSelection { .room(room.roomID, beside: openBeside) }
+    private var animates: Bool {
         shell.isTabActive && !shell.isRootCovered && !covered && scenePhase == .active
-            && !devicePower.isLowPowerModeEnabled
+            && !reduceMotion && !devicePower.isLowPowerModeEnabled
     }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(appState.talkingRooms) { chip($0) }
-            }
-            .padding(.vertical, 2)
-        }
-    }
-
-    private func chip(_ room: GroupRoom) -> some View {
         Button {
             Haptics.light()
             appState.dismissSidebarDrawer()
             Task { await appState.openGroupRoom(room) }
         } label: {
-            HStack(spacing: 8) {
-                GroupRoomIcon(picture: appState.groupRoomPicture(roomID: room.roomID), members: room.members, size: 26)
-                Text(verbatim: room.name)
-                    .scaledFont(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                BotsLiveDot(animates: isShown && !reduceMotion)
+            BotRoomPortraitLabel(title: room.name, talking: talking, highlighted: selection == .open,
+                                 animates: animates) { size in
+                GroupRoomIcon(picture: appState.groupRoomPicture(roomID: room.roomID), members: room.members, size: size)
             }
-            .padding(.leading, 5)
-            .padding(.trailing, 12)
-            .frame(minHeight: 36)
-            .background(Capsule().fill(Color.conduitAccent.opacity(0.12)))
-            .overlay(Capsule().strokeBorder(Color.conduitAccent.opacity(0.30), lineWidth: 1))
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
-        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .accessibilityLabel(Text(room.name))
-        .accessibilityValue(Text(AppLocalization.string("Talking now")))
+        .accessibilityValue(Text(accessibilityValue))
         .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
-        .accessibilityIdentifier("bots.live-room.\(room.roomID)")
+        .accessibilityIdentifier("bots.room.\(room.roomID)")
+        .v2SelectedTrait(selection)
     }
+
+    private var accessibilityValue: String {
+        let members = AppLocalization.string("\(room.members.count) members")
+        return talking ? "\(AppLocalization.string("Talking now")), \(members)" : members
+    }
+}
+
+/// A group chat Hermes Desktop mirrored, on Bots Home: read-only, so a tap
+/// shows its latest messages. A small computer marks it as Desktop's.
+struct DesktopGroupPortrait: View {
+    let group: DesktopGroupChat
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button {
+            Haptics.light()
+            onOpen()
+        } label: {
+            BotRoomPortraitLabel(title: group.name) { size in
+                GroupRoomIcon(
+                    picture: GroupRoomPictureImages.image(from: group.imageData),
+                    members: group.groupMembers,
+                    size: size
+                )
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "desktopcomputer")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .background(Circle().fill(Color(.secondarySystemBackground)))
+                        .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2))
+                        .offset(x: 4, y: 4)
+                }
+            }
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel(Text(group.name))
+        .accessibilityValue(Text(AppLocalization.string("\(group.members.count) members")))
+        .accessibilityHint(Text(AppLocalization.string("Shows this Hermes Desktop group chat.")))
+    }
+}
+
+/// Where Bots Home's faces and the room being started sit, so a bot that
+/// joins the room can fly from its portrait into the room's icon.
+struct BotsHomeAnchorKey: PreferenceKey {
+    static let defaultValue: [String: Anchor<CGRect>] = [:]
+    static func reduce(value: inout [String: Anchor<CGRect>], nextValue: () -> [String: Anchor<CGRect>]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+
+    static let newRoom = "room:new"
+    static func bot(_ name: String) -> String { "bot:" + name.lowercased() }
+}
+
+/// The room being started, among the rooms: its bots' faces overlapping as
+/// a room's icon does, in a dashed gold ring. A bot dropped on it joins; a
+/// tap is Create. Faces still flying in from their portraits aren't drawn
+/// yet, so each arrives.
+struct NewRoomPortrait: View {
+    let bots: [BotProfile]
+    /// Bots whose faces are still on their way.
+    let flying: Set<String>
+    let title: String
+    let onCreate: () -> Void
+    /// Whether the dragged bot can join: never a hidden bot, one already
+    /// in, or one past the room's limit. Without it the tile never swells.
+    let canJoin: (String) -> Bool
+    let onDrop: (String) -> Bool
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isTargeted = false
+
+    var body: some View {
+        Button {
+            guard bots.count >= 2 else { return }
+            Haptics.light()
+            onCreate()
+        } label: {
+            BotRoomPortraitLabel(title: AppLocalization.string("New room"), highlighted: true, dashed: true) { size in
+                faces(size)
+                    .anchorPreference(key: BotsHomeAnchorKey.self, value: .bounds) { [BotsHomeAnchorKey.newRoom: $0] }
+                    .scaleEffect(isTargeted && !reduceMotion ? 1.12 : 1)
+            }
+        }
+        .buttonStyle(PressableButtonStyle())
+        .dropDestination(for: String.self) { items, _ in
+            guard let dragged = items.first.flatMap(BotDragPayload.botName(from:)) else { return false }
+            BotDragPayload.lifted = nil
+            return onDrop(dragged)
+        } isTargeted: { targeted in
+            let joins = targeted && BotDragPayload.lifted.map(canJoin) == true
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { isTargeted = joins }
+        }
+        .accessibilityLabel(Text(AppLocalization.string("New room")))
+        .accessibilityValue(Text(verbatim: title))
+        .accessibilityHint(bots.count >= 2 ? Text(AppLocalization.string("Opens New Group Chat with these bots.")) : Text(verbatim: ""))
+        .accessibilityIdentifier("bots.newRoom.tile")
+    }
+
+    private func faces(_ size: CGFloat) -> some View {
+        let shown = Array(bots.prefix(3))
+        let spots = GroupRoomIcon.layout(count: shown.count)
+        return ZStack {
+            // Brighter under a bot that can join, Reduce Motion too.
+            Circle().fill(Color.conduitAccent.opacity(isTargeted ? 0.30 : 0.10))
+            ForEach(Array(shown.enumerated()), id: \.element.id) { index, bot in
+                let spot = spots[index]
+                BotAvatarView(
+                    name: bot.name,
+                    label: bot.displayLabel,
+                    colorString: bot.appearanceColor,
+                    image: appState.botAvatarImage(for: bot),
+                    size: size * spot.diameter
+                )
+                .overlay {
+                    if shown.count > 1 {
+                        Circle().strokeBorder(Color.conduitBackgroundColor, lineWidth: max(1, size * 0.03))
+                    }
+                }
+                .offset(x: size * spot.x, y: size * spot.y)
+                .opacity(flying.contains(bot.name.lowercased()) ? 0 : 1)
+            }
+        }
+        .frame(width: size, height: size)
+    }
+
+    /// Where the face of the bot at `index` of `count` lands in the icon
+    /// at `rect`: its center and diameter. Past the third it sinks into the
+    /// middle, as the icon shows three.
+    static func slot(index: Int, count: Int, in rect: CGRect) -> (center: CGPoint, diameter: CGFloat) {
+        let spots = GroupRoomIcon.layout(count: min(count, 3))
+        guard index < spots.count else {
+            return (CGPoint(x: rect.midX, y: rect.midY), rect.width * 0.3)
+        }
+        let spot = spots[index]
+        return (CGPoint(x: rect.midX + rect.width * spot.x, y: rect.midY + rect.height * spot.y),
+                rect.width * spot.diameter)
+    }
+}
+
+/// A face on its way from a portrait into the room being started.
+struct BotRoomFlight: Identifiable, Equatable {
+    let id = UUID()
+    /// The bot's name, lowercased.
+    let name: String
+    var landed = false
+
+    /// Quick and a little playful: the faces shrink as they go and settle
+    /// with a small bounce.
+    static let motion = Animation.spring(duration: 0.5, bounce: 0.28)
 }
 
 /// While Bots Home shows, asks which group rooms talk every
@@ -163,7 +360,7 @@ struct BotsTalkingRoomsReader: ViewModifier {
 }
 
 /// A live room's dot: it breathes while the room talks and Bots Home shows.
-private struct BotsLiveDot: View {
+struct BotsLiveDot: View {
     let animates: Bool
 
     var body: some View {
@@ -563,6 +760,8 @@ struct BotPortraitCell<MenuContent: View>: View {
         // accessibility1 (about 115), so a two-column cell still holds it.
         return BotMonogramView(bot: bot, size: 72, animates: animates)
             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+            // Where its face flies from when it joins a room being started.
+            .anchorPreference(key: BotsHomeAnchorKey.self, value: .bounds) { [BotsHomeAnchorKey.bot(bot.name): $0] }
             .padding(4)
             .modifier(BotZoomSource(name: bot.name))
             .modifier(BotPortraitMotion(
