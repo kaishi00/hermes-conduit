@@ -471,6 +471,46 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(store.loadChatList(dashboardID: dashboard, profile: "default"), list)
     }
 
+    /// A copy that isn't in memory is read on the store's queue and handed
+    /// back on the main queue, so an open never reads and decodes it on the
+    /// tap (issue 1826); one in memory answers at once, and a removal while
+    /// the read is out hands back nothing.
+    func testACopyNotInMemoryIsReadOffTheMainThread() throws {
+        let writer = makeStore(writesAsynchronously: true)
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        writer.record(dashboardID: dashboard, profile: "default", sessionID: "a", title: "A", messages: row, sessions: [session("a"), session("b")])
+        writer.record(dashboardID: dashboard, profile: "default", sessionID: "b", title: "B", messages: row, sessions: [session("a"), session("b")])
+        writer.waitForPendingWrites()
+        let directory = writer.fileURL(dashboardID: dashboard, profile: "default").deletingLastPathComponent()
+
+        // The next launch's store holds nothing in memory yet.
+        let store = OfflineChatCacheStore(directory: directory, writesAsynchronously: true)
+        var answered: OfflineCachedTranscript??
+        let read = expectation(description: "the copy comes back")
+        store.readTranscript("a", dashboardID: dashboard, profile: "default") { transcript in
+            answered = .some(transcript)
+            read.fulfill()
+        }
+        XCTAssertNil(answered, "The file is read on the store's queue, not on the caller")
+        wait(for: [read], timeout: 5)
+        XCTAssertEqual(answered??.messages.map(\.id), ["m"])
+
+        // Now in memory: it answers before the call returns.
+        var kept: OfflineCachedTranscript?
+        store.readTranscript("a", dashboardID: dashboard, profile: "default") { kept = $0 }
+        XCTAssertEqual(kept?.messages.map(\.id), ["m"])
+
+        // A chat deleted while its copy is read shows nothing.
+        let gone = expectation(description: "nothing comes back")
+        store.readTranscript("b", dashboardID: dashboard, profile: "default") { transcript in
+            XCTAssertNil(transcript)
+            gone.fulfill()
+        }
+        store.removeTranscripts(sessionIDs: ["b"], dashboardID: dashboard, profile: "default")
+        wait(for: [gone], timeout: 5)
+    }
+
     /// A removal waits for the saves queued before it, so a copy or held
     /// rows queued just before a delete or a sign-out never land after it,
     /// and what it took is gone when it returns.

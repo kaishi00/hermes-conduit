@@ -429,11 +429,13 @@ final class SessionPresentationCache {
         guard !cached.isEmpty else { return messages }
 
         var remaining = Set(cached.indices)
+        let pool = CachedPoolIndex(cached, stableToolID: stableToolID)
         var merged = messages.enumerated().map { position, original in
             var message = original
             guard let index = bestMatch(
                 for: message,
                 in: cached,
+                pool: pool,
                 remaining: remaining,
                 preferredPosition: position
             ) else {
@@ -1703,7 +1705,116 @@ final class SessionPresentationCache {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
+    /// The cached rows a transcript row can match, by what it can match on,
+    /// built once per merge. Each list is in pool order. A merge used to
+    /// score every cached row for every transcript row, so a re-resume of a
+    /// chat Load earlier had filled scanned the whole pool for each of its
+    /// older rows, which match nothing (issue 1826).
+    private struct CachedPoolIndex {
+        var byID: [String: [Int]] = [:]
+        var bySignature: [String: [Int]] = [:]
+        var byToolID: [String: [Int]] = [:]
+        /// Tool rows with no stable id, by tool name.
+        var byIDLessToolName: [String: [Int]] = [:]
+
+        init(_ cached: [CachedMessage], stableToolID: (String?) -> String?) {
+            for (index, candidate) in cached.enumerated() {
+                byID[candidate.id, default: []].append(index)
+                bySignature[candidate.signature, default: []].append(index)
+                if let toolID = stableToolID(candidate.toolID) {
+                    byToolID[toolID, default: []].append(index)
+                } else if let name = candidate.toolName {
+                    byIDLessToolName[name, default: []].append(index)
+                }
+            }
+        }
+    }
+
+    /// `bestMatchByScanning`'s answer from the pool's index: the same row,
+    /// looking only at the rows that can score.
     private func bestMatch(
+        for message: ChatMessage,
+        in cached: [CachedMessage],
+        pool: CachedPoolIndex,
+        remaining: Set<Int>,
+        preferredPosition: Int
+    ) -> Int? {
+        func isOpen(_ index: Int) -> Bool {
+            remaining.contains(index) && cached[index].role == message.role
+        }
+        // A row with the same id wins outright, the first in pool order.
+        if let index = pool.byID[message.id]?.first(where: isOpen) { return index }
+        if let tool = message.tool {
+            let toolName = normalized(tool.name)
+            let gatewayToolID = stableToolID(tool.id)
+            let candidates: [Int]
+            if let gatewayToolID {
+                candidates = pool.byToolID[gatewayToolID] ?? []
+            } else {
+                // A locally recorded start belongs after the cached history.
+                candidates = (pool.byIDLessToolName[toolName] ?? []).filter {
+                    cached[$0].toolStatus != .running
+                }
+            }
+            let toolInputSignature = tool.input.map(Self.fingerprint)
+            let toolOutputSignature = tool.output.map(Self.fingerprint)
+            var bestIndex: Int?
+            var bestScore = Int.min
+            for index in candidates where isOpen(index) {
+                let candidate = cached[index]
+                var score = gatewayToolID != nil ? 80 : 50
+                if candidate.toolName == toolName { score += 10 }
+                if let toolInputSignature, candidate.toolInputSignature == toolInputSignature { score += 30 }
+                if let toolOutputSignature, candidate.toolOutputSignature == toolOutputSignature { score += 30 }
+                if (tool.input ?? "").isEmpty, candidate.toolPreview?.isEmpty == false { score += 5 }
+                if score > bestScore {
+                    bestScore = score
+                    bestIndex = index
+                }
+            }
+            return bestIndex
+        }
+        let contentSignature = Self.fingerprint(message.content)
+        if let index = pool.bySignature[contentSignature]?.first(where: isOpen) { return index }
+        // Hermes can re-render a completed response before placing it in
+        // history: a nearby row with a time stands in for it.
+        var bestIndex: Int?
+        var bestScore = Int.min
+        let low = max(cached.startIndex, preferredPosition - 3)
+        let high = min(cached.endIndex - 1, preferredPosition + 3)
+        guard low <= high else { return nil }
+        for index in low...high where isOpen(index) {
+            guard !cached[index].timestamp.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            let score = 20 - abs(index - preferredPosition)
+            if score > bestScore {
+                bestScore = score
+                bestIndex = index
+            }
+        }
+        return bestIndex
+    }
+
+    #if DEBUG
+    /// Whether the index's matches are the full scan's, row for row, for a
+    /// merge of `messages` over a pool of `pool`'s rows. Test-only.
+    func indexedMatchesAgreeWithScanForTesting(_ messages: [ChatMessage], pool: [ChatMessage]) -> Bool {
+        let cached = pool.map(CachedMessage.init)
+        let index = CachedPoolIndex(cached, stableToolID: stableToolID)
+        var remaining = Set(cached.indices)
+        for (position, message) in messages.enumerated() {
+            let scanned = bestMatchByScanning(for: message, in: cached, remaining: remaining, preferredPosition: position)
+            let indexed = bestMatch(for: message, in: cached, pool: index, remaining: remaining, preferredPosition: position)
+            guard scanned == indexed else { return false }
+            if let scanned { remaining.remove(scanned) }
+        }
+        return true
+    }
+    #endif
+
+    /// The matcher as it was before the pool's index: every cached row
+    /// scored for every transcript row. Kept for the test that holds the
+    /// index to the same answers.
+    private func bestMatchByScanning(
         for message: ChatMessage,
         in cached: [CachedMessage],
         remaining: Set<Int>,

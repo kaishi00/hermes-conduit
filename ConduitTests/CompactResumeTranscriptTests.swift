@@ -1411,6 +1411,99 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
     }
 
+    /// A chat left after Load earlier and opened again keeps the older rows
+    /// it had (issue 1825): Hermes' newest page grafts onto them, as a
+    /// reconnect's does, instead of the chat starting again from one page.
+    func testAChatOpenedAgainKeepsTheRowsLoadEarlierBroughtIn() async throws {
+        let first = session("stored-a", alternateIDs: ["runtime-a"])
+        let other = session("stored-b", alternateIDs: ["runtime-b"])
+        let harness = try makeHarness(
+            openSession: { _, sessionId, _ in
+                SessionResumeResult(
+                    sessionId: sessionId.hasSuffix("b") ? "runtime-b" : "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { sessionId, _, _ in
+                if sessionId.hasSuffix("b") {
+                    return self.tailPagePayload(sessionId: "stored-b", rows: self.syntheticRows(5000..<5010), offset: 0)
+                }
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1760..<1880), offset: offset)
+            }
+        )
+        harness.appState.sessions = [first, other]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        await harness.appState.loadEarlierMessages()
+        XCTAssertEqual(harness.appState.messages.count, 240)
+
+        let openedOther = await harness.appState.openSession("stored-b")
+        XCTAssertTrue(openedOther)
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 5000")
+
+        let openedAgain = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(openedAgain)
+        XCTAssertEqual(harness.appState.messages.count, 240, "The rows Load earlier brought in came back with the chat")
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 1760")
+        XCTAssertEqual(harness.appState.messages.last?.content, "Row 1999")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.hasBackfilledPrefix, true)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
+
+        // Another chat never takes them, and a chat whose rows are one page
+        // keeps nothing beyond its saved copy.
+        let openedOtherAgain = await harness.appState.openSession("stored-b")
+        XCTAssertTrue(openedOtherAgain)
+        XCTAssertEqual(harness.appState.messages.map(\.content), (5000..<5010).map { "Row \($0)" })
+    }
+
+    /// Tapping the chat already open, settled and connected, reads it and
+    /// nothing else: no second resume or page read (issue 1825).
+    func testTappingTheOpenChatAgainDoesNotOpenItAgain() async throws {
+        let resumes = Counter()
+        let first = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                resumes.value += 1
+                return SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _, _ in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1760..<1880), offset: offset)
+            }
+        )
+        harness.appState.sessions = [first]
+        harness.appState.isConnected = true
+        let opened = await harness.appState.requestOpenSession("stored-a").value
+        XCTAssertTrue(opened)
+        XCTAssertEqual(resumes.value, 1)
+        await harness.appState.loadEarlierMessages()
+        XCTAssertEqual(harness.appState.messages.count, 240)
+
+        // By the row's id, or by the runtime id the chat is open as.
+        for id in ["stored-a", "runtime-a"] {
+            XCTAssertTrue(harness.appState.openChatIsSettled(as: id))
+            let openedAgain = await harness.appState.requestOpenSession(id).value
+            XCTAssertTrue(openedAgain)
+        }
+        XCTAssertEqual(resumes.value, 1, "The open chat wasn't resumed again")
+        XCTAssertEqual(harness.appState.messages.count, 240, "Nothing Load earlier brought in was dropped")
+        XCTAssertFalse(harness.appState.openChatIsSettled(as: "stored-b"), "Another chat still opens")
+
+        // Not connected, a tap opens it as before.
+        harness.appState.isConnected = false
+        XCTAssertFalse(harness.appState.openChatIsSettled(as: "stored-a"), "Not while the dashboard isn't connected")
+    }
+
     /// Pins the request contract: the production history request is an
     /// explicit tail-anchored bounded page — never the implicit default and
     /// never an unbounded one-shot — and older pages continue the same
