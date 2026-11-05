@@ -80,6 +80,7 @@ struct V2TopBar<Trailing: View, LowerLeading: View>: View {
 
     private func strip(scrolls: Bool, unread: Set<String>) -> some View {
         V2ProfileStrip(
+            needsYou: appState.needsYou,
             scrolls: scrolls,
             unread: unread,
             showsAllChip: leadsWithAllChip && AllProfilesChats.isAvailable(profiles: appState.profiles),
@@ -225,6 +226,9 @@ struct V2ProfileStrip: View {
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Chats waiting on the user in each profile (issue 1705): observed, so
+    /// a chip's count and what VoiceOver says of it follow each read.
+    @ObservedObject var needsYou: NeedsYouStore
     let scrolls: Bool
     /// Profiles other than the selected one with unread chats
     /// (`unreadProfiles`).
@@ -355,6 +359,7 @@ struct V2ProfileStrip: View {
     private func chip(_ profile: String, unread: Bool) -> some View {
         let name = appState.profileDisplayName(profile)
         let isSelected = !allSelected && profile == appState.activeProfile
+        let waiting = needsYou.count(for: profile, matches: appState.profilesMatch)
         return Button {
             // While a switch runs, every chip is a pick the shell keeps for
             // when it ends (`V2QueuedProfilePick`), the one on screen too.
@@ -391,8 +396,12 @@ struct V2ProfileStrip: View {
                     // Chats waiting on the user there (issue 1705): on
                     // every chip, the selected one too, over the unread dot.
                     .overlay(alignment: .topTrailing) {
-                        V2ProfileNeedsYouBadge(store: appState.needsYou, profile: profile)
-                            .offset(x: 5, y: -4)
+                        if waiting > 0 {
+                            NeedsYouCountBadge(count: waiting)
+                                .offset(x: 5, y: -4)
+                                .transition(.opacity)
+                                .accessibilityHidden(true)
+                        }
                     }
                 if isSelected {
                     Text(name)
@@ -422,7 +431,7 @@ struct V2ProfileStrip: View {
         .modifier(DashboardSwitchMenu(enabled: profile == appState.activeProfile))
         .accessibilityIdentifier(isSelected ? "sidebar.workspace" : "v2.profile.\(profile)")
         .accessibilityLabel(AppLocalization.string("\(name) profile"))
-        .accessibilityValue(V2ProfileNeedsYouBadge.spoken(appState.needsYouCount(for: profile), unread: unread))
+        .accessibilityValue(Self.spokenValue(waiting: waiting, unread: unread))
         .accessibilityHint(isSelected && !(appState.isProfileSwitching || shell.isPickingProfile) ? AppLocalization.string("Manage profiles") : AppLocalization.string("Switches to this profile"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
@@ -661,25 +670,11 @@ struct V2SegmentedControl<Value: Hashable>: View {
     }
 }
 
-/// A profile chip's count of chats Hermes waits on the user in. Its own
-/// view, so a read of the waits redraws the badges alone.
-struct V2ProfileNeedsYouBadge: View {
-    @EnvironmentObject private var appState: AppState
-    @ObservedObject var store: NeedsYouStore
-    let profile: String
 
-    var body: some View {
-        let count = store.count(for: profile, matches: appState.profilesMatch)
-        if count > 0 {
-            NeedsYouCountBadge(count: count)
-                .transition(.opacity)
-                .accessibilityHidden(true)
-        }
-    }
-
-    /// The chip's spoken value: what waits there, then unread.
-    static func spoken(_ count: Int, unread: Bool) -> String {
-        [count > 0 ? AppLocalization.string("\(count) waiting on you") : nil,
+extension V2ProfileStrip {
+    /// A chip's spoken value: what waits there, then unread.
+    static func spokenValue(waiting: Int, unread: Bool) -> String {
+        [waiting > 0 ? AppLocalization.string("\(Int(waiting)) waiting on you") : nil,
          unread ? AppLocalization.string("Unread") : nil].compactMap { $0 }.joined(separator: ", ")
     }
 }

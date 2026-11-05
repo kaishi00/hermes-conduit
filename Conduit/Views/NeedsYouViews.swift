@@ -106,6 +106,15 @@ struct NeedsYouBanner: View {
         .padding(.vertical, 6)
         .conduitGlassSurface(cornerRadius: 18, tint: Color.conduitAttention.opacity(0.10))
         .accessibilityElement(children: .contain)
+        // The text's tap, for VoiceOver: the list when others wait too.
+        .accessibilityActions {
+            if others > 0 {
+                Button(AppLocalization.string("Needs you")) {
+                    store.dismissBanner(item)
+                    showsList = true
+                }
+            }
+        }
     }
 }
 

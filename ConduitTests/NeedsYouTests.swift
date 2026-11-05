@@ -79,4 +79,17 @@ extension ChatOnScreenTests {
         XCTAssertNil(store.banner)
         XCTAssertEqual(store.items.count, 1, "the wait stays listed")
     }
+
+    func testNeedsYouReadsNeverOverlapAndABurstMakesOneMoreRead() async {
+        let store = NeedsYouStore()
+        var reads = 0
+        await store.coalescing {
+            reads += 1
+            guard reads == 1 else { return }
+            // Two asks while the first read runs: one more read after it.
+            await store.coalescing { reads += 100 }
+            await store.coalescing { reads += 100 }
+        }
+        XCTAssertEqual(reads, 2)
+    }
 }

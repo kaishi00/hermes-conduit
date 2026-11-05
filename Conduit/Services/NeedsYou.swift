@@ -73,7 +73,9 @@ struct NeedsYouItem: Identifiable, Equatable {
             title: (host["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
             summary: (host["summary"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
             questions: (host["questions"] as? NSNumber)?.intValue ?? 0,
-            since: at.map { Date(timeIntervalSince1970: $0) } ?? Date()
+            // A host that sends no time: one fixed date, so the row neither
+            // reads "now" forever nor changes on every read.
+            since: at.map { Date(timeIntervalSince1970: $0) } ?? .distantPast
         )
     }
 
@@ -139,6 +141,24 @@ final class NeedsYouStore: ObservableObject {
     /// shows no banner for what already waited there.
     private var readProfiles: Set<String> = []
     private var seen: Set<String> = []
+    private var reading = false
+    private var readAgain = false
+
+    /// Runs `read`, or, while one runs, has it run once more after: a
+    /// burst of asks makes at most one more read, and reads never overlap
+    /// (an older one landing last would bring back an answered wait).
+    func coalescing(_ read: @escaping @MainActor () async -> Void) async {
+        guard !reading else {
+            readAgain = true
+            return
+        }
+        reading = true
+        defer { reading = false }
+        repeat {
+            readAgain = false
+            await read()
+        } while readAgain
+    }
 
     func count(for profile: String, matches: (String, String) -> Bool) -> Int {
         items.reduce(0) { $0 + (matches($1.profile, profile) ? 1 : 0) }

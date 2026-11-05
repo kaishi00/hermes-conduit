@@ -2814,6 +2814,25 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertFalse(harness.appState.isOpeningNotificationSession)
     }
 
+    /// Issue 1705: an approval's or a question's notification opens on its
+    /// waiting card; a reply's doesn't scroll anywhere.
+    func testAWaitsNotificationOpensOnItsCard() async {
+        for (type, reveals) in [("approval.needed", true), ("input.needed", true), ("response_ready", false)] {
+            let harness = makeHarness(
+                lifecycleOperations: ChatResumeLifecycleOperations(
+                    loadCatalog: { _, _ in throw ControlledLifecycleError.failed }
+                )
+            )
+            let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+            harness.appState.connection = connection
+            harness.appState.client = HermesClient(connection: connection, profile: "default")
+            _ = await harness.appState.openNotificationTarget(
+                ConduitNotificationTarget(profile: nil, sessionId: "stored-a", type: type)
+            )
+            XCTAssertEqual(harness.appState.pendingNeedsYouReveal?.opening, reveals ? "stored-a" : nil, type)
+        }
+    }
+
     /// #789: an open Hermes refuses for good is final, so the route doesn't
     /// retry it; one that failed on the way can pass on the next try.
     private func notificationOpenOutcome(

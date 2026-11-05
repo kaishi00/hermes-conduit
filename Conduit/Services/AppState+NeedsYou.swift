@@ -21,20 +21,23 @@ extension AppState {
         profiles.isEmpty ? [activeProfile] : profiles
     }
 
-    /// How many chats wait on the user in `profile`.
-    func needsYouCount(for profile: String) -> Int {
-        needsYou.count(for: profile, matches: profilesMatch)
+    /// Reads every profile's waits. Quiet on failure: a profile that can't
+    /// be read, or a connection that dropped for a moment, keeps what it
+    /// last showed; only a dashboard without the list clears it. Reads
+    /// asked for while one runs (a burst of pushes) make one more read
+    /// after it, never several at once.
+    func refreshNeedsYou() async {
+        await needsYou.coalescing { [weak self] in await self?.readNeedsYou() }
     }
 
-    /// Reads every profile's waits (or only `only`). Quiet on failure: a
-    /// profile that can't be read keeps what it last showed.
-    func refreshNeedsYou(only: String? = nil) async {
-        guard servesNeedsYou, isConnected, let bridge = dashboardTicketBridge else {
+    private func readNeedsYou() async {
+        guard servesNeedsYou else {
             if !needsYou.items.isEmpty || needsYou.banner != nil { needsYou.reset(dashboardID: activeDashboardID) }
             return
         }
+        guard isConnected, let bridge = dashboardTicketBridge else { return }
         let dashboard = activeDashboardID
-        let profiles = only.map { [$0] } ?? needsYouProfiles
+        let profiles = needsYouProfiles
         for profile in profiles {
             let path = DashboardPath.withProfile(NeedsYouStore.path, profile: profile)
             guard let response = try? await bridge.requestJSON(path: path, timeoutMilliseconds: 6_000) else { continue }
@@ -46,7 +49,7 @@ extension AppState {
                 self?.isOpenChat(item) ?? false
             }
         }
-        if only == nil { needsYou.forget(profilesOtherThan: Set(needsYouProfiles)) }
+        needsYou.forget(profilesOtherThan: Set(needsYouProfiles))
     }
 
     /// Reads while Conduit is on screen, every `pollInterval` seconds. The
