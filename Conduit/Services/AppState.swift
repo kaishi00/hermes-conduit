@@ -32747,7 +32747,8 @@ final class AppState: ObservableObject {
         to profile: String,
         reusing viewportTransitionGeneration: UInt64?,
         refusingCallsWith callRefusal: String? = nil,
-        widgetLease: WidgetLaunchLease? = nil
+        widgetLease: WidgetLaunchLease? = nil,
+        navigationSeenAt seenGeneration: UInt64? = nil
     ) async -> Bool {
         let signposter = ResponsivenessSignposts.signposter
         let switching = signposter.beginInterval("Profile switch", id: signposter.makeSignpostID())
@@ -32779,6 +32780,11 @@ final class AppState: ObservableObject {
             // screen now.
             if let viewportTransitionGeneration,
                !chatViewportTransitionIsCurrent(generation: viewportTransitionGeneration) {
+                return false
+            }
+            // A tap that began no transition of its own (New conversation
+            // in another profile) gives way to one that began meanwhile.
+            if let seenGeneration, !chatViewportTransitionIsCurrent(generation: seenGeneration) {
                 return false
             }
             guard widgetLease?.isCurrent != false else {
@@ -41173,14 +41179,20 @@ extension AppState {
         ).filter { $0.profile != nil && $0.messageCount != 0 && !$0.isArchived }
     }
 
-    private func listAllProfilesCatalog(_ rows: [SessionSummary], dashboardID: UUID?) {
-        // A bot's chats belong to its Bot Chat, as in each profile's own list.
+    /// Other profiles' rows as a mixed list shows them (All, a project page
+    /// gathering profiles): a bot's chats belong to its Bot Chat, as in each
+    /// profile's own list, and a workstream's to its bot.
+    func otherProfileRowsShown(_ rows: [SessionSummary]) -> [SessionSummary] {
         let botOwned = botOwnedSessionIDs
-        let kept = rows.filter { session in
+        return rows.filter { session in
             !BotChatHygiene.isCanonicalBotChatRow(session, roster: botRoster)
                 && !BotChatHygiene.isBotOwnedRow(session, botOwnedSessionIDs: botOwned)
                 && !isWorkstreamRow(session)
         }
+    }
+
+    private func listAllProfilesCatalog(_ rows: [SessionSummary], dashboardID: UUID?) {
+        let kept = otherProfileRowsShown(rows)
         // Each other profile's rows are noted the way its own list notes
         // them, so a reply that lands there later lights its dot here.
         // A row whose profile isn't listed goes in no group.
@@ -41219,6 +41231,29 @@ extension AppState {
         Task { await routeLinkedSession(id, toProfile: profile) }
     }
 
+    /// A project page's New conversation in a folder, here or in `profile`
+    /// after a switch to it: a page gathering profiles asks which (issue
+    /// 1761). A switch ends a call, so none while one is up.
+    func createNewSession(cwd: String, inProfile profile: String) {
+        guard !Self.profilesMatch(profile, activeProfile) else {
+            Task { await self.createNewSession(cwd: cwd) }
+            return
+        }
+        guard !isVoiceCallInProgress else {
+            showSessionMutationNotice(AppLocalization.string("End the call to open a chat in another profile."))
+            return
+        }
+        let refusal = AppLocalization.string("End the call to open a chat in another profile.")
+        let seen = chatViewportTransitionGeneration
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            // Only a switch that went through: one a newer navigation or a
+            // call superseded starts nothing.
+            guard await self.switchProfile(to: profile, reusing: nil, refusingCallsWith: refusal, navigationSeenAt: seen) else { return }
+            await self.createNewSession(cwd: cwd)
+        }
+    }
+
     /// New Chat from All's menu: here, or in `profile` after a switch to
     /// it. A switch ends a call, so none while one is up.
     func startNewChat(inProfile profile: String) {
@@ -41230,10 +41265,13 @@ extension AppState {
             showSessionMutationNotice(AppLocalization.string("End the call to open a chat in another profile."))
             return
         }
+        let refusal = AppLocalization.string("End the call to open a chat in another profile.")
+        let seen = chatViewportTransitionGeneration
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.switchProfile(to: profile)
-            guard self.activeProfile == profile else { return }
+            // As createNewSession(cwd:inProfile:): a superseded switch
+            // starts nothing.
+            guard await self.switchProfile(to: profile, reusing: nil, refusingCallsWith: refusal, navigationSeenAt: seen) else { return }
             self.startNewChat()
         }
     }

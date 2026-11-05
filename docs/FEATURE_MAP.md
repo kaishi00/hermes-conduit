@@ -542,7 +542,7 @@ describes it
 **Code**
 - Keeping the row: `Conduit/Services/AppState.swift` (newChatAwaitingListing, set in createAndReconcileSession for createNewSession; newChatRowAwaitingListing and settleNewChatAwaitingListing, in loadSessions and syncSession's catalog; chatListListedIDs; knownProjectID; loadProjectSessions, quiet when a newer read cancels it), `Conduit/Services/ChatSync.swift` (NewChatAwaitingListing)
 - The create, for either server: `Conduit/Services/HermesClient.swift` (createSession, createParams)
-- Project page: `Conduit/Views/V2/V2ProjectPage.swift` (lanes, the task keyed on chatListCatalogGeneration)
+- Project page: `Conduit/Views/V2/V2ProjectPage.swift` (ownLanes, the task keyed on chatListCatalogGeneration)
 - Tests: `ConduitTests/SessionRenameTests.swift` (testANewChatStaysListedWhileOpenUntilHermesListsIt, testANewChatLeftEmptyLeavesTheList, testANewChatBelongsToTheProjectItStartedIn, testANewChatGoesOnTopOfItsFoldersLaneOnAProjectPage)
 
 **Rulings**
@@ -550,12 +550,12 @@ describes it
 - Only a chat someone started (createNewSession): one a sync starts because there was nothing to resume waits for Hermes, as before.
 - It still counts as unlisted for the registry poll, so the poll reads the catalog in for it as for a chat started on another device. A first turn that compressed lists it under a new tip, matched by its lineage root.
 - It is marked as the open chat beside the list, though it is open by its runtime id: the row by any of its ids, Hermes' row by the stored id the create confirmed (The open chat in the list beside it).
-- A project's page shows it on top of the lane of the folder it started in (Hermes names that folder in the lane's path, or in its label when the two are one), else in a new Recent lane on top; Home's page shows a plain chat in a Recent lane. The page reads Hermes' list again whenever the chats list changes, from a list read or a chat sync. It follows while it stays beside the chat (2026-10-28, #1456).
+- A project's page shows it, while the page's profile is the one in use (a chat started after a switch shows in that profile's part: Whose project page), on top of the lane of the folder it started in (Hermes names that folder in the lane's path, or in its label when the two are one), else in a new Recent lane on top; Home's page shows a plain chat in a Recent lane. The page reads Hermes' list again whenever the chats list changes, from a list read or a chat sync. It follows while it stays beside the chat (2026-10-28, #1456).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-02, #1631 (every create goes through createSession, which on the gateway's own listener sends `source: gui`, `reasoning` and `service_tier` and no `cols`; a folder's `cwd` is within its create fields, checked against the canary's session_policy; see Two Hermes servers); 2026-10-28, added at #1456.
+**Checked:** 2026-11-05, #1773 (the project page shows it in its own profile's part; a folder's trailing backslash, a Windows host's, matches too); 2026-11-02, #1631 (every create goes through createSession, which on the gateway's own listener sends `source: gui`, `reasoning` and `service_tier` and no `cols`; a folder's `cwd` is within its create fields, checked against the canary's session_policy; see Two Hermes servers); 2026-10-28, added at #1456.
 
 ## An empty new chat Hermes lost
 
@@ -3816,7 +3816,8 @@ reordering its pins) · search and "In messages" across profiles · the
 status, Starred and source filters · opening, renaming, archiving and
 deleting another profile's chat · New chat (asks which profile) · the open
 chat's row on the iPad and Mac (same view) · unread dots (another profile's
-replies) · VoiceOver · README.md
+replies) · a project's page, which gathers the same profiles' chats in its
+folder (Whose project page) · VoiceOver · README.md
 
 **Code**
 - Settings, merge and groups: `Conduit/Models/AllProfilesChats.swift` (AllProfilesChatsSettings, rows, groups, preview, groupPreviewCount, holdsOpen), `Conduit/Models/ChatListSections.swift` (latestActivity)
@@ -3838,7 +3839,7 @@ replies) · VoiceOver · README.md
 **Open gaps**
 - Live status (the live registry's Running and waits) and scheduled runs follow the profile in use only, as built in #1128.
 
-**Checked:** 2026-11-04, #1734 (All's poll reads nothing off screen, issue 1728); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-01, #1619 (All profiles leaves bot workstreams out, see Bot workstreams); 2026-10-31, #1571.
+**Checked:** 2026-11-05, #1773 (which other profiles' rows show is otherProfileRowsShown, shared with a project page gathering profiles; All is unchanged); 2026-11-04, #1734 (All's poll reads nothing off screen, issue 1728); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-01, #1619 (All profiles leaves bot workstreams out, see Bot workstreams); 2026-10-31, #1571.
 
 ## Unread dot on projects
 
@@ -3869,6 +3870,48 @@ README.md
 - Projects belong to the profile in use; All profiles has no Projects list of its own.
 
 **Checked:** 2026-11-03, #1685 (the Projects list gained New Project controls; a new project's row takes the dot like any other); 2026-10-29, #1499.
+
+## Whose project page
+
+A project's page (Chats › Projects › a project) shows the chats every
+profile has in the project's folder, each row with its profile's picture,
+and a row of chips above the lanes (All, then each profile with chats here)
+that shows one profile's; with one profile's chats on the page, the header
+names it beside the count (issue 1761: on a Mac with several bots, nothing
+on the page said which agent a chat was with until it was opened).
+
+**Siblings:** the V2 project page (iPhone, iPad and Mac, one view) · its New
+conversation (the toolbar's and the empty page's) · the classic drawer's
+project sheet · All profiles in Chats (the same profiles, picture and
+row actions; no Projects there) · the Projects list and the Chats list,
+which keep the profile row above them · each chat's composer ("Message
+Atlas…") · unread dots and the Running signal on the rows · the open chat's
+row beside the list · VoiceOver · README.md
+
+**Code**
+- Matching and merging: `Conduit/Models/ProjectAcrossProfiles.swift` (ProjectAcrossProfiles.match, folderKey, lanes, profilesWithChats; ProjectProfileLanes)
+- Reads: `Conduit/Services/AppState+ProjectProfiles.swift` (projectPageProfiles, loadProjectSessions(_:inProfile:), loadProject(_:inProfiles:known:)), `Conduit/Services/HermesClient.swift` (projects(inProfile:), projectSessions(_:inProfile:)), `Conduit/Services/AppState.swift` (otherProfileRowsShown, shared with All; createNewSession(cwd:inProfile:); startNewChat(inProfile:); openListedSession)
+- Page: `Conduit/Views/V2/V2ProjectPage.swift` (owner, otherProfiles, profileFilterRow, filterChip, profileBadge, newConversationButton, reload, ProjectProfileLabel)
+- Row picture: `Conduit/Views/V2/V2SessionRow.swift` (profileBadge ahead of the title on a row without an icon)
+- Classic sheet: `Conduit/Views/SidebarView.swift` (ProjectSessionsSheet)
+- Docs: `README.md` (Features)
+- Tests: `ConduitTests/SidebarLayoutTests+AllProfiles.swift` (testAProjectPageFindsTheSameFolderInAnotherProfile, testAProjectPageMergesEachProfilesLanesNewestFirst)
+
+**Rulings**
+- Hermes keeps a projects.db per profile, so one folder is a separate project in each. The page finds each one through its profile (`projects.tree` and `projects.project_sessions` with that profile): Home is Home, any other project is the one with the same main folder, and a folderless project gathers none. Lanes on the same folder are one lane, its chats newest first (Eric, 2026-11-05, issue 1761, picked gathering the profiles over naming the one profile).
+- The profiles gathered are All's (Show in All), with two or more profiles on the dashboard; a bot's own chats and workstreams stay out, as in All. The page opened in one profile and stays on it: a tap on another profile's chat switches to that profile to open it, as All does, and the page keeps what it showed.
+- Rows carry their profile's picture while the page shows more than one profile's chats; a chip shows only its profile's, and then the header names it, as it names the only profile with chats here. The chips are offered only with chats from two or more profiles. The pick lasts while the page is open.
+- New conversation starts in the picked profile; with All picked and the project in more than one profile it asks which (the empty page's button too), and another profile's starts after the switch to it, in the same folder (Home: a plain chat in that profile).
+- The other profiles are read when the page opens, again at most every 20 s as the chats list changes, and every 20 s while the page is open, as All's poll does; a pull, Try Again, a reconnect or a change made from a row's actions reads them at once. A profile's project, once found, is kept for the page; a profile without one, or whose kept project stops answering, is looked at again on each read, as it may have been made since. A profile whose read fails keeps what the page showed of it, as All does. A switch for another profile's New conversation that a call or a newer navigation stops (one begun while its ticket is minted too) starts nothing. While the other profiles are first read, New conversation starts in the page's profile.
+- A chat just started here shows in the page's own profile's lanes until Hermes lists it (issue 1454) only while that profile is in use; one started after a switch shows in the other profile's part, with its picture, until that profile's read lists it. The classic drawer's sheet names its profile once a read has listed the chats.
+
+**Open gaps**
+- The Running and approval signals on other profiles' rows follow the profile in use only, as in All.
+- With Settings › Appearance › Main button swapped, the page's gold button starts in the profile in use without asking which, as it does everywhere (it starts calls and chats, not a profile choice).
+- The classic drawer's sheet lists the profile in use's chats and names it; it doesn't gather profiles, as the classic drawer has no All.
+- A project with several folders matches by its main folder only: the project tree gives Conduit no others.
+
+**Checked:** 2026-11-05, added at #1773.
 
 ## New project
 
