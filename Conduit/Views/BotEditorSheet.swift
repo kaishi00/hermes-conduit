@@ -326,7 +326,8 @@ struct BotEditorSheet: View {
     private var playgroundPrompt: ImagePlaygroundPicture.Prompt {
         ImagePlaygroundPicture.Prompt(
             name: draft.name.isEmpty ? editedBot?.displayLabel ?? "" : draft.name,
-            details: [draft.description, draft.soul]
+            // The SOUL shown, kept from last time until Hermes answers.
+            details: [draft.description, showsKeptDetails ? keptDetails?.soul ?? "" : draft.soul]
         )
     }
 

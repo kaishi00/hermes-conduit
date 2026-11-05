@@ -1804,7 +1804,7 @@ profiles lines)
 - It's offered only where `supportsImagePlayground` is true: iOS 18.1+, Apple Intelligence hardware, turned on and set up, in a supported language and region. The system doesn't say which condition failed, so 8 GB of RAM or more (every Apple Intelligence device has it, every iPhone without it has 6 GB or less) separates a device that could turn it on from one that never can.
 - A capable device with it off gets one line in the bot editor naming Settings > Apple Intelligence & Siri. No public link opens that page. Menus (Profiles, group chats) only show the item when it works. A device that never can shows nothing. (Eric 2026-11-05, #1813: hint if capable, else hide.)
 - The sheet starts from the name as one concept and the description and SOUL (a group's members) as text to extract ideas from, capped at 2,000 characters, with the current picture as the source image. It opens on Animation, the style that reads best as a small round face. The person can change all of it in the sheet.
-- The picked picture is saved like a chosen photo: a 256 px PNG for a bot or profile, the room's 256 px JPEG for a group chat. The headless ImageCreator isn't used: it stops working in iOS 27.
+- The picked picture is saved like a chosen photo: a 256 px PNG for a bot or a profile on Hermes, a JPEG for a profile kept on the phone alone, the room's 256 px JPEG for a group chat. The headless ImageCreator isn't used: it stops working in iOS 27.
 
 **Open gaps**
 - Not yet tried on a device: the sheet can't run on a simulator without Apple Intelligence. On a Mac (iPad app), what `supportsImagePlayground` says is untested.

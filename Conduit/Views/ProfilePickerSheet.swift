@@ -245,7 +245,10 @@ private struct ProfilePickerRow: View {
             prompt: ImagePlaygroundPicture.Prompt(name: appState.profileDisplayName(profile)),
             source: appState.profileAvatarURL(for: profile).flatMap(ProfileAvatarImageCache.image(at:)),
             onImage: { savePhoto($0) },
-            onFailure: { saveError = AppLocalization.string("That picture could not be used.") }
+            onFailure: {
+                saveError = AppLocalization.string("That picture could not be used.")
+                UIAccessibility.post(notification: .announcement, argument: saveError)
+            }
         )
         .alert(AppLocalization.string("Rename profile"), isPresented: $isRenaming) {
             TextField(AppLocalization.string("Name"), text: $draftName)
