@@ -15,8 +15,6 @@ enum PictureGrid {
     static let minTile: CGFloat = 104
     /// The largest a tile gets on a wide chat.
     static let maxTile: CGFloat = 180
-    /// A tile's side when the width isn't known yet.
-    static let idealTile: CGFloat = 140
     static let cornerRadius: CGFloat = 12
 
     /// How the tiles are laid out for a width.
@@ -33,26 +31,22 @@ enum PictureGrid {
         }
     }
 
-    /// The layout of `count` tiles in `width` (nil: not known). At least
-    /// two to a row, as many as fit at `minTile`, then the rows evened out:
-    /// six on a wide chat are two rows of three, not five and one.
+    /// The layout of `count` tiles in `width`. At least two to a row, as
+    /// many as fit at `minTile`, then the rows evened out: six in a 640 pt
+    /// column are two rows of three, not five and one. Without a width (a
+    /// view asking for its ideal size) it is the width a row of every tile
+    /// takes at `maxTile`, so a bubble that hugs its ideal width, as a
+    /// group room's does, still offers the grid all the room it has.
     static func plan(count: Int, width: CGFloat?) -> Plan {
         guard count > 0 else { return Plan(columns: 0, rows: 0, tile: 0) }
-        let fitting: Int
-        if let width, width.isFinite {
-            fitting = max(2, Int((max(width, 0) + spacing) / (minTile + spacing)))
-        } else {
-            fitting = 2
+        guard let width, width.isFinite else {
+            return plan(count: count, width: CGFloat(count) * maxTile + CGFloat(count - 1) * spacing)
         }
+        let fitting = max(2, Int((max(width, 0) + spacing) / (minTile + spacing)))
         let rows = (count + fitting - 1) / fitting
         let columns = (count + rows - 1) / rows
-        let tile: CGFloat
-        if let width, width.isFinite, width > 0 {
-            let fill = (width - CGFloat(columns - 1) * spacing) / CGFloat(columns)
-            tile = max(1, min(maxTile, fill.rounded(.down)))
-        } else {
-            tile = idealTile
-        }
+        let fill = (width - CGFloat(columns - 1) * spacing) / CGFloat(columns)
+        let tile = max(1, min(maxTile, fill.rounded(.down)))
         return Plan(columns: columns, rows: rows, tile: tile)
     }
 

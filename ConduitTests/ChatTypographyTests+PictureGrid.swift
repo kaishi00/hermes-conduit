@@ -27,13 +27,25 @@ extension ChatTypographyTests {
         XCTAssertEqual(six.rows, 2)
     }
 
-    func testPictureGridWithoutAWidthTakesItsIdealTiles() {
-        let plan = PictureGrid.plan(count: 2, width: nil)
+    func testPictureGridWithoutAWidthAsksForARowOfLargestTiles() {
+        // Asked for its ideal size, the grid wants every tile in a row at
+        // its largest, so a bubble hugging that ideal (a group room's)
+        // still offers it the room's width.
+        let plan = PictureGrid.plan(count: 3, width: nil)
 
-        XCTAssertEqual(plan.columns, 2)
+        XCTAssertEqual(plan.columns, 3)
         XCTAssertEqual(plan.rows, 1)
-        XCTAssertEqual(plan.tile, PictureGrid.idealTile)
+        XCTAssertEqual(plan.tile, PictureGrid.maxTile)
+        XCTAssertEqual(PictureGrid.plan(count: 3, width: .infinity), plan)
         XCTAssertEqual(PictureGrid.plan(count: 0, width: 300).size, .zero)
+    }
+
+    func testPictureGridPutsSixInOneRowOnAWideColumn() {
+        let six = PictureGrid.plan(count: 6, width: 760)
+
+        XCTAssertEqual(six.columns, 6)
+        XCTAssertEqual(six.rows, 1)
+        XCTAssertLessThanOrEqual(six.size.width, 760)
     }
 
     func testPictureGridShowsSixTilesTheLastSayingHowManyMore() {
