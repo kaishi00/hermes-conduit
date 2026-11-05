@@ -3380,7 +3380,7 @@ size limit (its own entry) · README.md (the share sheet line)
 **Rulings**
 - A picture offered only as an image object (the screenshot editor's Share hands over UIKit's own `com.apple.uikit.image`) is attached as a PNG, as a pasted one is. UIKit's archived image type is never read as a picture file; a provider that also offers a picture file is read as that file (2026-11-04, #1750, issue 1747).
 - A picture offered only as an image object takes its suggested name without that name's extension: it is always written as PNG (2026-11-04, #1750 review).
-- A shared file is read every way its provider offers, in turn: its file, then a picture's bytes (only when they decode as a picture), then the picture as an image object (as PNG; never for a video or document, whose preview would stand in for the file), then the item it hands over under its type and then as its file URL; it is left out only when all of them failed. A provider offering a file URL that doesn't load as a link is read this way too, rather than skipped. Bytes are read only for a picture, so a video or document is never read into the extension's memory whole (2026-11-05, #1821, issue 1747 on build 251).
+- A shared file is read every way its provider offers, in turn: its file, then a picture's bytes (only when they decode as a picture: the header's pixel count first, at most 64 million, then a small thumbnail of the first frame, so a small file claiming a huge picture is never decoded at full size), then the picture as an image object (as PNG; never for a video or document, whose preview would stand in for the file), then the item it hands over under its type and then as its file URL; it is left out only when all of them failed. A provider offering a file URL that doesn't load as a link is read this way too, rather than skipped. Bytes are read only for a picture, so a video or document is never read into the extension's memory whole (2026-11-05, #1821, issue 1747 on build 251).
 - An unreadable item's Left out line adds the system's reason under it, and each failed step is logged (category ShareDraft, the reason kept private), so one try on a device shows which step failed (2026-11-05, #1821).
 - A picture with no bitmap of its own (`pngData()` nil) is drawn once and that is written, in the share sheet, paste and drop alike; a dropped picture whose file can't be read is taken as its image object too (2026-11-05, #1821).
 - When nothing could be added, the sheet shows the Left out list a draft has, each thing with why (too large, unreadable), scrolling however many there are; the general "nothing here" line is only for a share that offered nothing Conduit reads (2026-11-04, #1750, issue 1747).
@@ -3404,8 +3404,8 @@ message · the group room composer · the Settings caption for the limit
 - The limit and its message: `Conduit/Views/Components/ComposerAttachments.swift` (AttachmentSizeLimit, tooLargeMessage)
 - Chat composer: `Conduit/Views/Components/ComposerBar.swift`
 - Paste: `Conduit/Views/Components/ComposerPasteTextView.swift`
-- Dropped files: `Conduit/Views/Components/AttachmentDrop.swift` (through AttachmentStaging.stageCopy, the Document picker's path)
-- Share extension: `Conduit/Services/AppState+ShareDraft.swift`
+- Dropped files: `Conduit/Views/Components/AttachmentDrop.swift` (through AttachmentStaging.stageCopy, the Document picker's path; a picture whose file fails, through stageImageObject, which holds its PNG to the limit before writing it, #1821)
+- Share extension: `Conduit/Services/AppState+ShareDraft.swift`; `Shared/ShareDraft/ShareDraftCollector.swift` (stageFile: a file's size before and after its copy, a picture's bytes before they are decoded or written, #1821)
 - Ask Hermes About Screen: `Conduit/Intents/AskHermesAboutScreenIntent.swift`
 - Voice message: `Conduit/Services/AppState+VoiceMessage.swift`
 - Group rooms: `Conduit/Services/GroupRoomFiles.swift` (stagingLimit, tooLargeMessage), `Conduit/Views/Components/GroupRoomComposer.swift`
@@ -3419,7 +3419,7 @@ message · the group room composer · the Settings caption for the limit
 - A pasted picture link whose header claims more pixels than a reply's picture may have is refused as "The image provider returned invalid image data.", not as too large.
 - The Settings caption doesn't say that a group room takes at most 50 MB whatever the limit.
 
-**Checked:** 2026-10-29, #1515 (a long paste over the limit isn't attached: it goes into the field, as pastes did before); 2026-10-28, #1411 (dropped files refused with the same limit and message as picked ones); 2026-10-24, at #1190; the paste's pixel bound at #1191 (#892 review).
+**Checked:** 2026-11-05, #1821 (a picture whose file fails is held to the same limit when it is taken as its bytes or its image object, on the share sheet and a drop); 2026-10-29, #1515 (a long paste over the limit isn't attached: it goes into the field, as pastes did before); 2026-10-28, #1411 (dropped files refused with the same limit and message as picked ones); 2026-10-24, at #1190; the paste's pixel bound at #1191 (#892 review).
 
 ## Sending files in a chat
 

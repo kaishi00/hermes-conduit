@@ -297,6 +297,41 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
         try? FileManager.default.removeItem(at: staged)
     }
 
+    /// The PNG made from the image object is held to the limit before it
+    /// is written.
+    func testADroppedPictureObjectOverTheLimitIsTooLarge() async throws {
+        let provider = droppedPictureWhoseFileFails(named: "noise.jpg")
+        // Noise doesn't compress: 800 x 800 is well over 1 MB as PNG.
+        var generator = SystemRandomNumberGenerator()
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 800, height: 800), format: format).image { context in
+            for y in stride(from: 0, to: 800, by: 2) {
+                for x in stride(from: 0, to: 800, by: 2) {
+                    UIColor(
+                        red: CGFloat(UInt8.random(in: 0...255, using: &generator)) / 255,
+                        green: CGFloat(UInt8.random(in: 0...255, using: &generator)) / 255,
+                        blue: CGFloat(UInt8.random(in: 0...255, using: &generator)) / 255,
+                        alpha: 1
+                    ).setFill()
+                    context.fill(CGRect(x: x, y: y, width: 2, height: 2))
+                }
+            }
+        }
+        XCTAssertGreaterThan(try XCTUnwrap(image.pngData()).count, 1024 * 1024)
+        let archived = try NSKeyedArchiver.archivedData(withRootObject: image, requiringSecureCoding: true)
+        provider.registerDataRepresentation(forTypeIdentifier: ShareDraftCollector.imageObjectType, visibility: .all) { completion in
+            completion(archived, nil)
+            return nil
+        }
+
+        let outcome = await AttachmentDrop.stage(provider, ordinal: 1, limitMegabytes: 1)
+        guard case .tooLarge(let name) = outcome else {
+            return XCTFail("Expected the PNG to be refused under a 1 MB limit, got \(outcome)")
+        }
+        XCTAssertEqual(name, "noise.png")
+    }
+
     func testADroppedPictureNoWayReadsStillFails() async {
         let outcome = await AttachmentDrop.stage(droppedPictureWhoseFileFails(named: "shot.png"), ordinal: 1, limitMegabytes: 16)
         guard case .failed(let name) = outcome else {

@@ -477,7 +477,7 @@ final class ShareDraftTests: XCTestCase {
             return XCTFail("\(result.problems)")
         }
         XCTAssertEqual(name, "shot.png")
-        XCTAssertNotNil(reason, "the system's reason is kept")
+        XCTAssertFalse(reason?.isEmpty ?? true, "the system's reason is kept")
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: staging.url.path), [], "nothing left on disk")
     }
 
@@ -487,8 +487,101 @@ final class ShareDraftTests: XCTestCase {
         let ciImage = CIImage(color: CIColor(red: 1, green: 0, blue: 0)).cropped(to: CGRect(x: 0, y: 0, width: 4, height: 4))
         let data = try XCTUnwrap(ProviderPicture.pngData(UIImage(ciImage: ciImage)))
         XCTAssertEqual(Array(data.prefix(4)), [0x89, 0x50, 0x4E, 0x47])
-        XCTAssertNotNil(UIImage(data: data))
+        let decoded = try XCTUnwrap(UIImage(data: data)?.cgImage)
+        XCTAssertEqual(decoded.width, 4 * Int(UIImage(ciImage: ciImage).scale), "the whole picture is drawn")
+        // Its pixel is the red that was drawn, not a blank redraw.
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let drawn = pixel.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.draw(decoded, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+            return true
+        }
+        XCTAssertTrue(drawn)
+        XCTAssertGreaterThan(pixel[0], 200, "red")
+        XCTAssertLessThan(pixel[1], 60, "not green")
+        XCTAssertEqual(pixel[3], 255, "opaque")
         XCTAssertNotNil(ProviderPicture.pngData(redSquare()))
+    }
+
+    /// A provider whose file can't be handed over whatever it registers,
+    /// as the screenshot editor's was on build 251.
+    private final class FileFailingProvider: NSItemProvider {
+        override func loadFileRepresentation(forTypeIdentifier typeIdentifier: String, completionHandler: @escaping @Sendable (URL?, Error?) -> Void) -> Progress {
+            completionHandler(nil, ProviderFailure())
+            return Progress(totalUnitCount: 0)
+        }
+    }
+
+    private func picturePNG() throws -> Data {
+        try XCTUnwrap(redSquare().pngData())
+    }
+
+    /// When the file fails, the picture's own bytes are taken next, as
+    /// they are: a PNG stays the PNG it was.
+    func testAPictureWhoseFileFailsIsTakenAsItsBytes() async throws {
+        let (collector, staging) = try collector()
+        let png = try picturePNG()
+        let provider = FileFailingProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.png.identifier, visibility: .all) { completion in
+            completion(png, nil)
+            return nil
+        }
+        provider.suggestedName = "shot.png"
+
+        let result = await collector.collect(providers: [provider])
+
+        XCTAssertEqual(result.problems, [])
+        XCTAssertEqual(result.attachments.map(\.displayName), ["shot.png"])
+        XCTAssertEqual(result.attachments.map(\.byteCount), [Int64(png.count)])
+        XCTAssertEqual(try Data(contentsOf: staging.url.appendingPathComponent("1.png")), png, "the bytes as handed over")
+    }
+
+    /// Bytes over the limit are refused as too large, not decoded, and
+    /// nothing else is tried: the same picture is no smaller another way.
+    func testAPictureWhoseBytesAreOverTheLimitIsTooLarge() async throws {
+        let png = try picturePNG()
+        let (collector, staging) = try collector(fileLimit: Int64(png.count) - 1)
+        let provider = FileFailingProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.png.identifier, visibility: .all) { completion in
+            completion(png, nil)
+            return nil
+        }
+        provider.suggestedName = "shot.png"
+
+        let result = await collector.collect(providers: [provider])
+
+        XCTAssertTrue(result.attachments.isEmpty)
+        XCTAssertEqual(result.problems, [.fileTooLarge(name: "shot.png", limitBytes: Int64(png.count) - 1)])
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: staging.url.path), [], "nothing left on disk")
+    }
+
+    /// Bytes that aren't a picture, or whose header claims more pixels
+    /// than a redraw may take, are not taken as one.
+    func testPictureBytesMustDecodeWithinTheBound() throws {
+        XCTAssertTrue(ProviderPicture.decodes(try picturePNG()))
+        XCTAssertFalse(ProviderPicture.decodes(Data(repeating: 7, count: 64)))
+        XCTAssertFalse(ProviderPicture.decodes(Self.pngHeader(width: 20_000, height: 20_000)), "400 megapixels is never decoded")
+    }
+
+    /// A PNG signature and header chunk alone: enough for ImageIO to read
+    /// the size it claims.
+    private static func pngHeader(width: UInt32, height: UInt32) -> Data {
+        func bigEndian(_ value: UInt32) -> [UInt8] { [24, 16, 8, 0].map { UInt8((value >> $0) & 0xFF) } }
+        func crc32(_ bytes: [UInt8]) -> UInt32 {
+            var crc: UInt32 = 0xFFFF_FFFF
+            for byte in bytes {
+                crc ^= UInt32(byte)
+                for _ in 0..<8 { crc = (crc >> 1) ^ (0xEDB8_8320 & (0 &- (crc & 1))) }
+            }
+            return ~crc
+        }
+        let chunk: [UInt8] = Array("IHDR".utf8) + bigEndian(width) + bigEndian(height) + [8, 6, 0, 0, 0]
+        var bytes: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+        bytes += bigEndian(13) + chunk + bigEndian(crc32(chunk))
+        return Data(bytes)
     }
 
     func testCapsLeaveFilesOutAndSayWhy() async throws {

@@ -48,12 +48,25 @@ enum ProviderPicture {
         return data.isEmpty ? nil : data
     }
 
-    /// Whether bytes handed over as a picture decode as one.
+    /// Whether bytes handed over as a picture decode as one. The pixel
+    /// count is read from the header first, as for a remote picture
+    /// (BoundedRemoteImage): one over `maximumRedrawPixels` is refused
+    /// unread, and the first frame is proved with a small thumbnail, so a
+    /// small file claiming a huge picture never decodes at full size.
     static func decodes(_ data: Data) -> Bool {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              CGImageSourceGetCount(source) > 0 else { return false }
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              CGImageSourceGetCount(source) > 0,
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
+              let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue,
+              width > 0, height > 0, width * height <= Double(maximumRedrawPixels) else { return false }
         // A source and a frame count can still hold a frame that won't
         // decode (a corrupt HEIC); only a first image proves it.
-        return CGImageSourceCreateImageAtIndex(source, 0, nil) != nil
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCache: false,
+            kCGImageSourceThumbnailMaxPixelSize: 64,
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) != nil
     }
 }
