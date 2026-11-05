@@ -158,6 +158,9 @@ struct SidebarView: View {
                 .padding(.horizontal, 14)
                 .padding(.top, 10)
             }
+            // The persistent column sits on the window's leading side: the
+            // trailing safe area isn't its own (#1765).
+            .modifier(PersistentColumnContent(isPersistent: presentation == .persistent))
             .toolbar(.hidden, for: .navigationBar)
         }
         .sheet(isPresented: $showProfilePicker) {
@@ -2755,5 +2758,19 @@ struct RenameSheet: View {
         isCommitting = true
         dismiss()
         onRename(name)
+    }
+}
+
+/// The persistent sidebar's screen keeps to its column (`leadingColumnContent`);
+/// the drawer, which can span a phone's width, keeps the window's insets.
+private struct PersistentColumnContent: ViewModifier {
+    let isPersistent: Bool
+
+    func body(content: Content) -> some View {
+        if isPersistent {
+            content.leadingColumnContent()
+        } else {
+            content
+        }
     }
 }

@@ -1012,12 +1012,16 @@ struct V2Shell: View {
         return HStack(spacing: 0) {
             NavigationStack(path: V2SplitLayout.listPath(path)) {
                 list
+                    .leadingColumnContent()
                     .navigationDestination(for: V2Route.self) { route in
-                        if route == .pulse {
-                            tabBarClearance(V2PulsePage())
-                        } else {
-                            destination(route)
+                        Group {
+                            if route == .pulse {
+                                tabBarClearance(V2PulsePage())
+                            } else {
+                                destination(route)
+                            }
                         }
+                        .leadingColumnContent()
                     }
             }
             .frame(width: column.width)
@@ -1315,6 +1319,22 @@ struct V2QueuedProfilePick: Equatable {
         }
         guard self.dashboardID == dashboardID else { return nil }
         return profile == landed ? nil : profile
+    }
+}
+
+extension View {
+    /// A leading column's screens (the split window's Chats or Bots list
+    /// and the pages it pushes, the drawer shell's persistent sidebar)
+    /// inside the column's own navigation stack. The column never reaches
+    /// the window's trailing edge, but UIKit can still hand its stack the
+    /// window's trailing safe area: an iPhone Duo's inner screen gave the
+    /// 375 pt list its 84 pt side status bar, the list's bar no longer fit
+    /// in what was left, and centering the overflow cut the profile pill,
+    /// section headers and row icons off on the left (#1765). The screen
+    /// ignores that inset and keeps to the column's leading edge.
+    func leadingColumnContent() -> some View {
+        frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            .ignoresSafeArea(.container, edges: .trailing)
     }
 }
 

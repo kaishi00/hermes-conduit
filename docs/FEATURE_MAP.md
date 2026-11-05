@@ -5429,18 +5429,20 @@ clipped · the one-column screens they match (Tasks, a list shown alone, a
 phone)
 
 **Code**
-- `Conduit/Views/V2/V2Shell.swift` (splitColumns, v2ClippedToColumn)
-- Drawer shell: `Conduit/Views/RootView.swift` (sidebarLayoutContent)
+- `Conduit/Views/V2/V2Shell.swift` (splitColumns, v2ClippedToColumn, leadingColumnContent)
+- Drawer shell: `Conduit/Views/RootView.swift` (sidebarLayoutContent), `Conduit/Views/SidebarView.swift` (PersistentColumnContent)
 - The line between them: `Conduit/Views/Components/ColumnDivider.swift` (ColumnDivider, which drags a column's width: Resizable columns on a split window)
 - The backdrop: `Conduit/Theme.swift` (ConduitBackdrop ignores the safe area)
 
 **Rulings**
 - Each column's backdrop stays clipped at the divider, so the glows don't cross it, and runs under the window's safe areas at the top, the bottom and its own outer side: the home indicator, and a landscape status bar or sensor. Clipped at the safe area, every split tab showed black bars along the bottom and the right of an iPhone Duo's inner screen while Tasks filled it (2026-10-29, #1472, a tester's report).
+- The list column's screens (the Chats or Bots list and every page it pushes, and the drawer shell's persistent sidebar) take no trailing safe area and keep to the column's leading edge (`leadingColumnContent`). The column never reaches the window's trailing edge, but UIKit can hand its navigation stack the window's trailing inset: on an iPhone Duo's inner screen the list got the 84 pt side status bar, its two-row bar no longer fit in the 291 pt left, and centering the overflow cut the profile pill, section headers and row icons off on the left (2026-11-05, #1798, #1765). Reproduced on the Duo simulator by giving the list's stack that inset; the trigger on the reporter's phone wasn't reproduced. Constraining the row of columns (#1767) didn't change it: the row was never wider than the window.
 
 **Open gaps**
-- Not seen on a device yet: the simulator suites have no Duo before Xcode 27.1, so a Duo or a split iPad from TestFlight confirms it.
+- Not seen on a device yet: a Duo or a split iPad from TestFlight confirms both rulings.
+- A page pushed over the split list keeps its navigation bar's share of the stale trailing inset: with the 84 pt inset, Pulse's trailing filter button sat about 22 pt in, still fully visible (#1798's simulator check). Covering the bar takes setting the list's navigation controller's safe area from UIKit, which the simulator can't verify, since it never produces the stale inset itself. The Duo simulator (iOS 27.2 Duo runtime) needs unfolding by hand in Device Hub.
 
-**Checked:** 2026-10-29, #1498 (ColumnDivider's store rules and drag direction are ColumnWidth functions; the layout is unchanged); 2026-10-29, #1492 (the 1 pt line between the columns is a draggable ColumnDivider above them; the drawer shell's sidebar threshold counts it); 2026-10-29, #1472.
+**Checked:** 2026-11-05, #1798 (the list column's screens drop the trailing safe area; #1765). Earlier 2026-10-29, #1498 (ColumnDivider's store rules and drag direction are ColumnWidth functions; the layout is unchanged); 2026-10-29, #1492 (the 1 pt line between the columns is a draggable ColumnDivider above them; the drawer shell's sidebar threshold counts it); 2026-10-29, #1472.
 
 ## Resizable columns on a split window
 
