@@ -449,7 +449,8 @@ struct LiveVoiceWaitingPanel: View {
     }
 
     static func waits(_ job: VoiceBackgroundJob) -> Bool {
-        guard job.status == .needsInput else { return false }
+        // One the call let go of (its chat deleted, issue 1797) isn't the call's to answer.
+        guard job.status == .needsInput, !job.isDetachedThreadTurn else { return false }
         return job.waitingApproval != nil || job.waitingQuestion.flatMap { HermesCallWaiting(clarify: $0)?.openQuestion } != nil
     }
 }
