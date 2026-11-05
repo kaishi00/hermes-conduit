@@ -301,23 +301,18 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
     /// is written.
     func testADroppedPictureObjectOverTheLimitIsTooLarge() async throws {
         let provider = droppedPictureWhoseFileFails(named: "noise.jpg")
-        // Noise doesn't compress: 800 x 800 is well over 1 MB as PNG.
+        // Noise doesn't compress: 1024 x 1024 random pixels are about
+        // 3 MB as PNG.
+        let side = 1024
         var generator = SystemRandomNumberGenerator()
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        let image = UIGraphicsImageRenderer(size: CGSize(width: 800, height: 800), format: format).image { context in
-            for y in stride(from: 0, to: 800, by: 2) {
-                for x in stride(from: 0, to: 800, by: 2) {
-                    UIColor(
-                        red: CGFloat(UInt8.random(in: 0...255, using: &generator)) / 255,
-                        green: CGFloat(UInt8.random(in: 0...255, using: &generator)) / 255,
-                        blue: CGFloat(UInt8.random(in: 0...255, using: &generator)) / 255,
-                        alpha: 1
-                    ).setFill()
-                    context.fill(CGRect(x: x, y: y, width: 2, height: 2))
-                }
-            }
-        }
+        let bytes = (0..<(side * side * 4)).map { _ in UInt8.random(in: 0...255, using: &generator) }
+        let pixels = try XCTUnwrap(CGDataProvider(data: Data(bytes) as CFData))
+        let cgImage = try XCTUnwrap(CGImage(
+            width: side, height: side, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: side * 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+            provider: pixels, decode: nil, shouldInterpolate: false, intent: .defaultIntent
+        ))
+        let image = UIImage(cgImage: cgImage)
         XCTAssertGreaterThan(try XCTUnwrap(image.pngData()).count, 1024 * 1024)
         let archived = try NSKeyedArchiver.archivedData(withRootObject: image, requiringSecureCoding: true)
         provider.registerDataRepresentation(forTypeIdentifier: ShareDraftCollector.imageObjectType, visibility: .all) { completion in
