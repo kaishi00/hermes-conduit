@@ -2500,6 +2500,9 @@ private struct ProfileModelSettingsDetail: View {
     /// Hermes has answered. Until then the page shows what it kept, and
     /// Save waits: it writes all three, and a kept one may be stale.
     @State private var answered = false
+    /// Counts the catalog reads, so a read again a later read overtook
+    /// never lands.
+    @State private var catalogRead = 0
     /// A pick was changed here: Hermes' answer then updates the catalog
     /// under the picks, not the picks.
     @State private var edited = false
@@ -2590,6 +2593,7 @@ private struct ProfileModelSettingsDetail: View {
     }
 
     private func reload() async {
+        catalogRead += 1
         loadFailed = false
         guard let loaded = await load() else {
             loadFailed = true
@@ -2605,7 +2609,9 @@ private struct ProfileModelSettingsDetail: View {
     private func settleCatalog() async {
         // After a first read that failed, the whole page reads again.
         guard answered else { return await reload() }
-        guard let loaded = await load(), defaults != nil else { return }
+        catalogRead += 1
+        let asked = catalogRead
+        guard let loaded = await load(), asked == catalogRead, defaults != nil else { return }
         defaults?.providers = loaded.providers
     }
 
@@ -2666,6 +2672,9 @@ private struct DelegationModelSettings: View {
     /// Hermes' catalog is in. Until then Save waits: it writes all three,
     /// and a kept one may be stale.
     @State private var answered = false
+    /// Counts the catalog reads, so a read again a later read overtook
+    /// never lands.
+    @State private var catalogRead = 0
     /// A pick was changed here: Hermes' answer leaves the picks alone.
     @State private var edited = false
 
@@ -2755,6 +2764,7 @@ private struct DelegationModelSettings: View {
     }
 
     private func reload() async {
+        catalogRead += 1
         loadFailed = false
         async let modelRequest = loadModels()
         async let settingRequest = loadSettings(Self.settingKeys)
@@ -2772,7 +2782,9 @@ private struct DelegationModelSettings: View {
     private func settleCatalog() async {
         // After a first read that failed, the whole page reads again.
         guard answered else { return await reload() }
-        guard let loaded = await loadModels(), defaults != nil else { return }
+        catalogRead += 1
+        let asked = catalogRead
+        guard let loaded = await loadModels(), asked == catalogRead, defaults != nil else { return }
         defaults?.providers = loaded.providers
     }
 
@@ -2917,6 +2929,9 @@ private struct FallbackModelsSettings: View {
     /// saved: a save replaces the whole list, and the kept one may be
     /// stale and has no credentials (an entry's `api_key`) to write back.
     @State private var answered = false
+    /// Counts the catalog reads, so a read again a later read overtook
+    /// never lands.
+    @State private var catalogRead = 0
     @State private var saving = false
     @State private var error: String?
 
@@ -3064,6 +3079,7 @@ private struct FallbackModelsSettings: View {
     }
 
     private func reload() async {
+        catalogRead += 1
         error = nil
         async let modelRequest = loadModels()
         async let entryRequest = load()
@@ -3095,7 +3111,9 @@ private struct FallbackModelsSettings: View {
     private func settleCatalog() async {
         // After a first read that failed, the whole page reads again.
         guard answered else { return await reload() }
-        guard let models = await loadModels(), defaults != nil else { return }
+        catalogRead += 1
+        let asked = catalogRead
+        guard let models = await loadModels(), asked == catalogRead, defaults != nil else { return }
         defaults?.providers = models.providers
     }
 
