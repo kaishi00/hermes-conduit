@@ -823,6 +823,12 @@ final class LocationSharingController: ObservableObject {
     /// the dashboard in use (issue 1800). What the host kept stays there:
     /// it can't be reached to delete it.
     func endSharing(unlessBoundTo saved: Set<UUID>) {
+        // The host pass is the only way to reach a dashboard that isn't the
+        // one in use: forgotten even while the config can't be read, so
+        // nothing reaches the removed host before the next connect unbinds.
+        if let pass = LocationKeychain.loadHostPass(), !saved.contains(pass.dashboardID) {
+            LocationKeychain.clearHostPass()
+        }
         guard readConfigIfNeeded(), config.isBound(outside: saved) else { return }
         voiceCallEnded()
         lastTalkingUpload = nil
