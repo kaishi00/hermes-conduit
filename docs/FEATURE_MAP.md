@@ -3292,14 +3292,14 @@ in V2's look)
 - Used by: `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotWorkSettingsView.swift`, `Conduit/Views/BotCapabilitiesView.swift`, `Conduit/Views/SidebarView.swift` (ProjectCreateSheet, RenameSheet), `Conduit/Views/V2/CronJobEditorSheet.swift`, `Conduit/Views/GeneratePictureSheet.swift`, `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/CustomHeadersEditor.swift`, `Conduit/Views/KanbanViews.swift`, `Conduit/Views/Kanban/KanbanTaskComposerView.swift`, `Conduit/Views/Kanban/KanbanTaskDetailView.swift`, `Conduit/Views/Kanban/KanbanBoardEditorView.swift`, `Conduit/Views/Kanban/KanbanBoardFilterSheet.swift`, `Conduit/Views/Kanban/KanbanOrchestrationSettingsSheet.swift`, `Conduit/Views/Kanban/KanbanProfileRoutingScreen.swift`, `Conduit/Views/PinnedChatsOrderSheet.swift`, `Conduit/Views/Components/ChatCards.swift`
 
 **Rulings**
-- A new sheet or page with a grouped Form or List uses ConduitForm or ConduitList, never a bare Form (Eric 2026-11-05 chose skinning the Forms over rebuilding them as Settings cards, #PRNUM).
+- A new sheet or page with a grouped Form or List uses ConduitForm or ConduitList, never a bare Form (Eric 2026-11-05 chose skinning the Forms over rebuilding them as Settings cards, #1793).
 - Rows keep their Form behavior (pickers, toggles, swipe and edit); only the fill changes: Settings' card fill, 0.05 in light mode and 0.08 in dark. A row that sets its own background, such as Edit Bot's avatar, keeps it.
 - Section headers keep the system's text; they don't take Settings' symbol headers.
 
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-05, #PRNUM (entry added)
+**Checked:** 2026-11-05, #1793 (entry added)
 
 ## Sharing into Conduit
 
