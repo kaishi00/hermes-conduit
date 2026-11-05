@@ -282,7 +282,11 @@ struct ShareDraftCollector {
             }
             // Bytes that don't decode as a picture fall through to the
             // image object, which may hold a good one.
-            let written = data.flatMap { ProviderPicture.decodes($0) ? write($0, type: type, displayName: displayName, ordinal: ordinal) : nil }
+            // Size first: a payload over the limit is never decoded.
+            let written = data.flatMap { data -> StagedFile? in
+                guard Int64(data.count) <= fileByteLimit else { return .tooLarge(displayName) }
+                return ProviderPicture.decodes(data) ? write(data, type: type, displayName: displayName, ordinal: ordinal) : nil
+            }
             if let written, Self.settles(written) { return written }
             failed("data", written, error: error)
         }
@@ -327,7 +331,15 @@ struct ShareDraftCollector {
                     case let image as UIImage:
                         continuation.resume(returning: (write(ProviderPicture.pngData(image), type: .png, displayName: Self.pngName(suggested: suggestedName, ordinal: ordinal), ordinal: ordinal), error))
                     case let data as Data where !asFileURL:
-                        continuation.resume(returning: (write(data, type: type, displayName: displayName, ordinal: ordinal), error))
+                        // Picture bytes count only when they decode, as in step 2.
+                        let isPicture = type?.conforms(to: .image) == true
+                        if Int64(data.count) > fileByteLimit {
+                            continuation.resume(returning: (.tooLarge(displayName), error))
+                        } else if isPicture, !ProviderPicture.decodes(data) {
+                            continuation.resume(returning: (nil, error))
+                        } else {
+                            continuation.resume(returning: (write(data, type: type, displayName: displayName, ordinal: ordinal), error))
+                        }
                     default:
                         continuation.resume(returning: (nil, error))
                     }
