@@ -3767,6 +3767,34 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testResumeAsksAgainForAnOpenBotScreenSudo() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let asked = expectation(forNotification: .hermesDisplaySudo, object: client) { note in
+            note.userInfo?["request_id"] as? String == "srq-sudo00000001"
+                && note.userInfo?["profile_key"] as? String == "furina"
+        }
+        let openTask = Task<SessionResumeResult, Error> { try await client.openSession("runtime-1") }
+        try await sent.wait("the session.resume request to be sent")
+        let id = try XCTUnwrap(try sentFrame(socket)["id"] as? Int)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": id,
+            "result": [
+                "session_id": "runtime-1", "running": false, "messages": [Any](), "info": [String: Any](),
+                "open_requests": [[
+                    "id": "srq-sudo00000001", "method": "display.install.sudo",
+                    "params": ["profile_key": "furina"]
+                ]]
+            ]
+        ], to: socket)
+        _ = try await awaitResult(of: openTask, "the session.resume response")
+        await fulfillment(of: [asked], timeout: 2)
+        XCTAssertEqual(client.pendingDisplaySudo["srq-sudo00000001"], "furina")
+        XCTAssertTrue(client.isServerRequestID("srq-sudo00000001"))
+        client.disconnect()
+    }
+
     func testResumeKeepsAnOpenClarifyWhenPendingClarifyIsAlsoPresent() async throws {
         let (client, socket) = try await connectedClientForServerRequests()
         let sent = Gate()

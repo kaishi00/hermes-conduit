@@ -2591,7 +2591,7 @@ workstream told when the screen is free · a workstream's ask for the user on
 the screen (`work_progress` `screen`), a "Needs you" count and card, the Bot
 Chat told in its update and its note · the worker's brief and the tool's
 description · the notifier's README and the app's README · Hermes Desktop's
-own Bot Screen panel (Hermes', not ours) · the sheet covering its chat, so replies under it keep their notifications (see Notifications) · a takeover handed back when the app goes to the background, and the status read again on return · which hosts can have a screen, read per bot and read again for a new server · the Watch and CarPlay (not
+own Bot Screen panel (Hermes', not ours) · the sheet covering its chat, so replies under it keep their notifications (see Notifications) · a takeover handed back when the app goes to the background or the sheet closes, one answered after either handed straight back, and the status read again on return · an install's sudo ask shown again after a reconnect, from the resume's open requests · which hosts can have a screen, read per bot and read again for a new server · the Watch and CarPlay (not
 needed: driving a desktop needs a screen to see it on)
 
 **Code**
@@ -2607,7 +2607,8 @@ needed: driving a desktop needs a screen to see it on)
 
 **Open gaps**
 - Typing goes as a US keyboard types it (X keysyms); a hardware keyboard goes through noVNC, as Hermes Desktop's does.
-- Where the host has a real desktop and no Bot Screen, the plugin's hold is the host's, shared by every bot, but the app shows no screen there (Hermes' Bot Screen isn't on).
+- Where the host has a real desktop and no Bot Screen, the plugin's hold is the host's, shared by every bot, but the app shows no screen there (Hermes' Bot Screen isn't on), and a workstream can't ask the user onto it there (notifier #559).
+- A stream's page messages carry no stream tag: a stale close racing a reattach's finished handshake can drop the new stream, which the user reopens (rare; from GLM's review).
 
 **Checked:** 2026-11-05, #1832 (with notifier #559: the screen in the app, one chat driving it at a time, install from the phone)
 

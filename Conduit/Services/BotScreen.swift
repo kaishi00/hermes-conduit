@@ -210,6 +210,9 @@ final class BotScreenModel: ObservableObject {
     private var receiveTask: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
     private var attachGeneration = 0
+    /// Bumped when the sheet closes or the app goes to the background: a
+    /// takeover answered after that is handed straight back.
+    private var leaveGeneration = 0
     private var rapidEvictions = 0
     private var dialedAt = Date.distantPast
     private let logger = Logger(subsystem: "com.milim.relay", category: "BotScreen")
@@ -358,9 +361,16 @@ final class BotScreenModel: ObservableObject {
     /// bot's screen tools are refused until they hand back.
     func takeOver() async {
         guard let viewerID else { return }
+        let leave = leaveGeneration
         await perform { client in
             let answer = try await client.display("display.lease.acquire", profile: self.profile,
                                                   params: ["viewer_id": viewerID, "reason": "Conduit"])
+            guard leave == self.leaveGeneration else {
+                // Nobody watches any more: the bot isn't kept off its screen.
+                _ = try? await client.display("display.lease.release", profile: self.profile,
+                                              params: ["viewer_id": viewerID])
+                return
+            }
             self.applyLease(BotScreenLease(answer["lease"]?.objectValue))
         }
     }
@@ -379,6 +389,7 @@ final class BotScreenModel: ObservableObject {
     /// The view is going: the person's hold goes with it (as closing the
     /// pane does on Hermes Desktop), then the stream.
     func close() {
+        leaveGeneration += 1
         if iHold, let client, let viewerID {
             let profile = profile
             Task { _ = try? await client.display("display.lease.release", profile: profile,
@@ -443,7 +454,8 @@ final class BotScreenModel: ObservableObject {
     }
 
     private func applyLease(_ lease: BotScreenLease) {
-        guard let status else { return }
+        // A late answer never undoes a newer change another device made.
+        guard let status, lease.epoch >= status.lease.epoch else { return }
         self.status = status.replacingLease(lease)
         page?.setViewOnly(!iHold)
     }
@@ -588,6 +600,7 @@ final class BotScreenModel: ObservableObject {
     /// bot isn't kept off its screen while nobody watches, and the stream
     /// closes until it's watched again.
     func backgrounded() {
+        leaveGeneration += 1
         if iHold { Task { await handBack(force: false) } }
         detach()
     }

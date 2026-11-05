@@ -2977,6 +2977,19 @@ final class HermesClient: ObservableObject {
         for id in Self.openRequestIDs(in: object["open_requests"]) {
             openServerRequestIDs.insert(id)
         }
+        // A Bot Screen install still waiting on its sudo password asks again
+        // on the new connection, as the live frame does.
+        for entry in object["open_requests"]?.arrayValue ?? [] {
+            guard let request = entry.objectValue,
+                  request["method"]?.stringValue == Self.displayInstallSudo,
+                  let id = request["id"]?.stringValue, !id.isEmpty,
+                  pendingDisplaySudo[id] == nil else { continue }
+            let profileKey = request["params"]?.objectValue?["profile_key"]?.stringValue ?? ""
+            pendingDisplaySudo[id] = profileKey
+            NotificationCenter.default.post(name: .hermesDisplaySudo, object: self, userInfo: [
+                "request_id": id, "profile_key": profileKey
+            ])
+        }
         // Anything replayed that this client cannot present is declined
         // exactly like the live frame, or it would stall the agent until its
         // deadline after every reconnect.
