@@ -4923,6 +4923,7 @@ struct SettingsPickerField<SelectionValue: Hashable, Content: View>: View {
         HStack {
             title
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             Spacer(minLength: 8)
             Picker(selection: $selection) {
                 content
@@ -4932,6 +4933,9 @@ struct SettingsPickerField<SelectionValue: Hashable, Content: View>: View {
             .labelsHidden()
             .pickerStyle(.menu)
             .tint(.conduitAccent)
+            // labelsHidden drops the name for VoiceOver too: it reads
+            // "Name, Value", as ConduitMenuPicker does.
+            .accessibilityLabel(title)
         }
         .scaledFont(.subheadline.weight(.medium))
         .padding(.leading, 12)
