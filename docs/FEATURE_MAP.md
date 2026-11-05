@@ -1744,7 +1744,7 @@ the picture buttons, README.md's bots and profiles lines)
 - Not yet tried on a device: that the picker hands over a GIF's own file (`imageURL`) after its crop screen, and what many moving portraits cost on Bots Home.
 - A Live Photo is picked as a still.
 
-**Checked:** 2026-11-05, #PRNUM (the Bot Overview's header plays its fallback profile face too; the phone-only carry-over is tested); 2026-11-05, #1778 (added: moving pictures from a GIF or a short video)
+**Checked:** 2026-11-05, #1782 (the Bot Overview's header plays its fallback profile face too; the phone-only carry-over is tested); 2026-11-05, #1778 (added: moving pictures from a GIF or a short video)
 
 ## Opening a Bot Chat
 
