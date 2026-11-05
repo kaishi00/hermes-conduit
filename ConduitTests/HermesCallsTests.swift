@@ -1259,6 +1259,12 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(HermesRingRecords.Entry(ring: try ringRecord(at: now).ring, target: notACall, at: now))
         let malformed = ConduitNotificationTarget(profile: "work", sessionId: "rt-1", hasMalformedDashboardID: true,
                                                   type: HermesCallRequest.type, call: outcomeTarget().call)
+        XCTAssertNil(HermesRingRecords.entry(ringID: "ring-5", in: defaults, now: now)?.handled, "A ring nothing has taken or noticed yet")
+        HermesRingRecords.markHandled(ringID: "ring-5", in: defaults, now: now)
+        XCTAssertEqual(HermesRingRecords.entry(ringID: "ring-5", in: defaults, now: now)?.handled, true,
+                       "Taken or noticed here: a later stop for it leaves no second missed call, after a relaunch too")
+        HermesRingRecords.markHandled(ringID: "ring-none", in: defaults, now: now)
+        XCTAssertNil(HermesRingRecords.entry(ringID: "ring-none", in: defaults, now: now))
         let unreadable = try XCTUnwrap(HermesRingRecords.Entry(ring: try ringRecord(at: now).ring, target: malformed, at: now)).target
         XCTAssertTrue(unreadable.hasMalformedDashboardID, "A dashboard Conduit can't read is still unreadable after a relaunch")
         XCTAssertEqual(HermesNativeCalls.watchMissedNotice(for: unreadable), .unreadable, "so its missed call routes nowhere")
