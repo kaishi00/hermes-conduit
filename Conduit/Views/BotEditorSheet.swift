@@ -475,7 +475,10 @@ struct BotEditorSheet: View {
                             .rotationEffect(.degrees(showsAdvanced ? 90 : 0))
                             .accessibilityHidden(true)
                     }
+                    .contentShape(Rectangle())
                 }
+                // A row like Work's above it, not an accent link.
+                .buttonStyle(.plain)
                 .accessibilityValue(Text(showsAdvanced ? AppLocalization.string("Shown") : AppLocalization.string("Hidden")))
                 if showsAdvanced {
                     if isCreating {
@@ -769,16 +772,17 @@ private struct BotSoulEditorPage: View {
     let footer: String
 
     var body: some View {
-        Form {
-            Section {
-                TextEditor(text: $soul)
-                    .frame(minHeight: 320)
-                    .scaledFont(.callout.monospaced())
-                    .disabled(isReadOnly)
-            } footer: {
-                Text(footer)
-            }
+        VStack(alignment: .leading, spacing: 8) {
+            TextEditor(text: $soul)
+                .scaledFont(.callout.monospaced())
+                .disabled(isReadOnly)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Text(footer)
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
         }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
         .navigationTitle(AppLocalization.string("Personality"))
         .navigationBarTitleDisplayMode(.inline)
     }

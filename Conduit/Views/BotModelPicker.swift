@@ -48,21 +48,27 @@ struct BotModelPicker: View {
                 if !ModelSearchQuery(query).isEmpty {
                     searchResults(providers)
                 }
-                ForEach(ModelSearchQuery(query).isEmpty ? providers : [], id: \.name) { option in
+                if ModelSearchQuery(query).isEmpty, !providers.isEmpty {
+                    // One list of providers, each opening its models under it.
                     Section {
-                        providerRow(option)
-                        if expandedProviders.contains(option.name) {
-                            ForEach(option.models, id: \.id) { item in
-                                row(
-                                    title: item.label ?? item.id,
-                                    isSelected: option.matches(provider) && item.id == model
-                                ) {
-                                    provider = option.name
-                                    model = item.id
+                        ForEach(providers, id: \.name) { option in
+                            providerRow(option)
+                            if expandedProviders.contains(option.name) {
+                                ForEach(option.models, id: \.id) { item in
+                                    row(
+                                        title: item.label ?? item.id,
+                                        isSelected: option.matches(provider) && item.id == model
+                                    ) {
+                                        provider = option.name
+                                        model = item.id
+                                    }
+                                    .padding(.leading, 16)
+                                    .disabled(!catalog.answered)
                                 }
-                                .disabled(!catalog.answered)
                             }
                         }
+                    } header: {
+                        Text(AppLocalization.string("Providers"))
                     }
                 }
                 if catalog.failed {
@@ -146,6 +152,9 @@ struct BotModelPicker: View {
             }
             .contentShape(Rectangle())
         }
+        // Plain: a List tints a button's whole label with the accent, so
+        // every row read as a link rather than a choice.
+        .buttonStyle(.plain)
         .accessibilityValue(Text(isExpanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed")))
     }
 
@@ -205,7 +214,9 @@ struct BotModelPicker: View {
                         .accessibilityHidden(true)
                 }
             }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
