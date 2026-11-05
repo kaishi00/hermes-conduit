@@ -1173,6 +1173,10 @@ final class AppState: ObservableObject {
             if oldValue != activeSessionId {
                 noteChatLeft(oldValue)
                 noteActiveChatSeen()
+                // A file lookup's "isn't on the server" was about the chat
+                // left, and an answer still coming is too.
+                clearWorkspaceLookupNotice()
+                workspaceRevealGeneration &+= 1
                 // The chat New Chat made takes the New Chat's draft only
                 // while it's the one open.
                 if let created = newChatOpenedSessionID, activeSessionId != created {
@@ -2268,6 +2272,12 @@ final class AppState: ObservableObject {
     /// A file path tapped in a reply, for the open chat's Folder tab to
     /// show (AppState+Workspace.swift).
     @Published var workspaceReveal: WorkspaceReveal?
+    /// Counts file taps, so a slow lookup for an earlier one is dropped.
+    var workspaceRevealGeneration = 0
+    /// The "isn't on the server" notice the last file lookup put above the composer.
+    var workspaceLookupNotice: String?
+    /// The notice the lookup's covered, shown again when the lookup's goes.
+    var workspaceNoticeUnder: (text: String, systemImage: String)?
     /// Counts the tools Hermes finished that may have changed files, so an
     /// open Folder tab reads its folders again.
     @Published var workspaceChanges = 0

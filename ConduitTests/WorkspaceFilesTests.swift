@@ -137,6 +137,30 @@ extension HermesVoiceGatewayTimeoutTests {
         } catch {}
     }
 
+    func testAReplysFileNameIsResolvedForTheChat() async throws {
+        var asked = ""
+        var answer: [String: Any] = ["ok": true, "path": "/root/audits/Conduit/AppState.swift", "via": "chat"]
+        let client = workspaceClient(answer: { _, _, _ in answer }, requests: { path, method, _ in
+            asked = path
+            XCTAssertEqual(method, "GET")
+        })
+        let found = try await client.resolve(path: "Conduit/App State.swift", sessionIDs: ["live-1", "20261105_a"])
+        XCTAssertEqual(found, "/root/audits/Conduit/AppState.swift")
+        XCTAssertTrue(asked.hasPrefix("/api/plugins/conduit_push/workspace/resolve?path=Conduit%2FApp%20State.swift"), asked)
+        XCTAssertTrue(asked.contains("session_id=live-1&session_id=20261105_a"), asked)
+        XCTAssertTrue(asked.contains("profile=work"), asked)
+
+        answer = ["ok": true, "path": NSNull()]
+        let missing = try await client.resolve(path: "gone.md", sessionIDs: ["live-1"])
+        XCTAssertNil(missing, "no such file on the host")
+
+        answer = ["ok": true]
+        do {
+            _ = try await client.resolve(path: "gone.md", sessionIDs: ["live-1"])
+            XCTFail("an answer without a path is a failed lookup, not a missing file")
+        } catch {}
+    }
+
     func testWorkspaceSaveSendsTheDateItWasReadAt() async throws {
         var sent: [String: Any]?
         var path = ""
@@ -231,6 +255,42 @@ extension HermesVoiceGatewayTimeoutTests {
         appState.revealWorkspaceFile("docs/a.md", line: 3)
         XCTAssertEqual(appState.workspaceReveal?.path, "/home/me/app/docs/a.md")
         XCTAssertEqual(appState.workspaceReveal?.line, 3)
+    }
+
+    func testAFileLookupOpensTheFileOrSaysItIsntOnTheServer() throws {
+        let suite = "WorkspaceFilesTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.runtime.cwd = "/home/me/app"
+
+        appState.showWorkspaceLookup(.success("/root/audits/AppState.swift"), for: "AppState.swift", line: 4)
+        XCTAssertEqual(appState.workspaceReveal?.path, "/root/audits/AppState.swift")
+        XCTAssertEqual(appState.workspaceReveal?.line, 4)
+
+        appState.workspaceReveal = nil
+        appState.showWorkspaceLookup(.success(nil), for: "out/gone.xlsx", line: nil)
+        XCTAssertNil(appState.workspaceReveal, "nothing to open")
+        // Said above the composer, which shows while the chat is connected.
+        XCTAssertEqual(appState.composerNotice?.hasPrefix("gone.xlsx isn"), true, appState.composerNotice ?? "")
+
+        appState.showWorkspaceLookup(.failure(URLError(.timedOut)), for: "docs/a.md", line: nil)
+        XCTAssertEqual(appState.workspaceReveal?.path, "/home/me/app/docs/a.md", "a failed lookup keeps the chat's folder")
+        XCTAssertNil(appState.composerNotice, "a later tap's answer takes the earlier notice away")
+
+        appState.composerNotice = "Your message wasn't sent. It's back in the composer."
+        appState.showWorkspaceLookup(.success("/w/a.md"), for: "a.md", line: nil)
+        XCTAssertEqual(appState.composerNotice, "Your message wasn't sent. It's back in the composer.", "other notices stay")
+        appState.showWorkspaceLookup(.success(nil), for: "gone.xlsx", line: nil)
+        XCTAssertEqual(appState.composerNotice?.hasPrefix("gone.xlsx isn"), true)
+        appState.showWorkspaceLookup(.success("/w/b.md"), for: "b.md", line: nil)
+        XCTAssertEqual(appState.composerNotice, "Your message wasn't sent. It's back in the composer.",
+                       "the message that came back has its notice again")
+
+        appState.composerNotice = nil
+        appState.showWorkspaceLookup(.success(nil), for: "gone.xlsx", line: nil)
+        appState.activeSessionId = "another-chat"
+        XCTAssertNil(appState.composerNotice, "the notice was about the chat left")
     }
 
     func testToolsThatChangeFilesRefreshTheFolder() throws {
