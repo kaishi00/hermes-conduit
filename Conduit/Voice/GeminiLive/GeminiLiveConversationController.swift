@@ -46,6 +46,10 @@ protocol GeminiLiveAudioOutput: AnyObject {
     func play(_ pcm: Data, sampleRate: Double) throws
     /// Drop everything queued now (the user started speaking).
     func interrupt()
+    /// The model's reply ended (turnComplete): an odd trailing PCM16 byte
+    /// is invalid and is dropped, never shifted into the next reply.
+    /// Whatever is queued plays on.
+    func endReply()
     func stop()
     /// Silences the speaker (#487) without stopping playback, so the
     /// call's timing (turns, echo tail, drains) is unchanged. Kept until
@@ -114,6 +118,7 @@ final class PlaybackServiceGeminiLiveOutput: GeminiLiveAudioOutput {
     }
 
     func interrupt() { playback.stop() }
+    func endReply() { playback.discardRemainder() }
     func stop() { playback.stop() }
     func setMuted(_ muted: Bool) { playback.isMuted = muted }
 }
@@ -1093,6 +1098,9 @@ final class GeminiLiveConversationController: ObservableObject {
             // No turnComplete checks the utterance this turn answered.
             scheduleLateEndPhraseCheck()
         case .turnComplete:
+            // The reply's audio ended: an odd byte left of it would shift
+            // every sample of the next reply.
+            output.endReply()
             suppressingModelTurn = false
             modelTurnActive = false
             lastModelTurnEndedAt = now()

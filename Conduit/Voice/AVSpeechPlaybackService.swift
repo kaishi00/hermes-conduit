@@ -295,10 +295,18 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         }
     }
 
+    /// Drops an odd trailing byte of streamed PCM16 at the end of a reply:
+    /// it is invalid PCM16 and would shift every sample of the next one.
+    /// A live call's stream stays open across replies, so it calls this at
+    /// each reply's end instead of `finish()`.
+    func discardRemainder() {
+        remainder.removeAll(keepingCapacity: true)
+    }
+
     func finish() throws {
         // An odd tail is invalid PCM16 and is intentionally discarded rather
         // than shifted into the next response.
-        remainder.removeAll(keepingCapacity: true)
+        discardRemainder()
         // Standalone speech that a phone call or a lost route ended after
         // its last chunk didn't play out: Read Aloud settles as it would on
         // a refused chunk, and the speech test can't report a pass.
