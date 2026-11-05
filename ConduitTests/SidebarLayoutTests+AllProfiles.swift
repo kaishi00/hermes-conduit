@@ -224,6 +224,7 @@ extension SidebarLayoutTests {
                        "Home is Home")
         XCTAssertNil(ProjectAcrossProfiles.match(project("p_none", path: nil), in: theirs), "no folder, no match")
         XCTAssertNil(ProjectAcrossProfiles.match(project("p_x", path: "/srv"), in: theirs))
+        XCTAssertEqual(ProjectAcrossProfiles.folderKey("C:\\work\\app\\"), "C:\\work\\app", "a Windows host's folder too")
     }
 
     func testAProjectPageMergesEachProfilesLanesNewestFirst() {

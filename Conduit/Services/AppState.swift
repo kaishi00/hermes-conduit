@@ -41177,10 +41177,12 @@ extension AppState {
             showSessionMutationNotice(AppLocalization.string("End the call to open a chat in another profile."))
             return
         }
+        let refusal = AppLocalization.string("End the call to open a chat in another profile.")
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.switchProfile(to: profile)
-            guard Self.profilesMatch(self.activeProfile, profile) else { return }
+            // Only a switch that went through: one a newer navigation or a
+            // call superseded starts nothing.
+            guard await self.switchProfile(to: profile, reusing: nil, refusingCallsWith: refusal) else { return }
             await self.createNewSession(cwd: cwd)
         }
     }

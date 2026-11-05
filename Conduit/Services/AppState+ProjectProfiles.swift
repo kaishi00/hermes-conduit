@@ -29,13 +29,17 @@ extension AppState {
     func loadProjectSessions(_ project: ProjectSummary, inProfile owner: String) async -> ProjectSessionDetail? {
         if Self.profilesMatch(owner, activeProfile) { return await loadProjectSessions(project) }
         guard let client, supportsProjects else { return nil }
-        return try? await client.projectSessions(project.id, inProfile: owner)
+        let detail = try? await client.projectSessions(project.id, inProfile: owner)
+        // An answer through a connection since replaced shows nothing.
+        guard self.client === client else { return nil }
+        return detail
     }
 
     /// The same project in each of `others`, and its chats there. `known`
-    /// holds the matches an earlier read found, so each profile's projects
-    /// are read once a page. A profile that can't answer is left out; nil
-    /// when the connection changed under the read.
+    /// holds the matches an earlier read found, so a profile's projects are
+    /// read once a page; a profile without one is looked at again on each
+    /// read, as the project may have been made since. A profile that can't
+    /// answer is left out; nil when the connection changed under the read.
     func loadProject(
         _ project: ProjectSummary,
         inProfiles others: [String],
@@ -47,7 +51,7 @@ extension AppState {
         for profile in others {
             guard !Task.isCancelled else { return nil }
             let projectID: String?
-            if let kept = known[profile] {
+            if let kept = known[profile] ?? nil {
                 projectID = kept
             } else {
                 guard let listed = try? await client.projects(inProfile: profile) else { continue }

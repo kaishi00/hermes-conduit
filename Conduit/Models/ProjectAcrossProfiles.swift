@@ -28,10 +28,11 @@ enum ProjectAcrossProfiles {
         return candidates.first { !$0.isHome && folderKey($0.primaryPath) == folder }
     }
 
-    /// A folder as compared: trimmed, without a trailing slash.
+    /// A folder as compared: trimmed, without a trailing slash (a Windows
+    /// host's backslash too).
     static func folderKey(_ path: String?) -> String? {
         var folder = path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        while folder.count > 1, folder.hasSuffix("/") { folder.removeLast() }
+        while folder.count > 1, folder.hasSuffix("/") || folder.hasSuffix("\\") { folder.removeLast() }
         return folder.isEmpty ? nil : folder
     }
 

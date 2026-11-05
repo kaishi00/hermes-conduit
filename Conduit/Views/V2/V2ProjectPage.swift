@@ -211,7 +211,7 @@ struct V2ProjectPage: View {
                 guard let session = sessionPendingDeletion else { return }
                 sessionPendingDeletion = nil
                 Task {
-                    if await appState.deleteSession(session) { await reload() }
+                    if await appState.deleteSession(session) { await reload(force: true) }
                 }
             }
             Button("Cancel", role: .cancel) { sessionPendingDeletion = nil }
@@ -221,7 +221,7 @@ struct V2ProjectPage: View {
         .sheet(item: $sessionPendingRename) { session in
             RenameSheet.conversation(session) { title in
                 Task {
-                    if await appState.renameSession(session, to: title) { await reload() }
+                    if await appState.renameSession(session, to: title) { await reload(force: true) }
                 }
             }
         }
@@ -328,7 +328,7 @@ struct V2ProjectPage: View {
                         excludingProjectID: project.id,
                         onRename: { sessionPendingRename = session },
                         onDelete: { sessionPendingDeletion = session },
-                        onChanged: { Task { await reload() } }
+                        onChanged: { Task { await reload(force: true) } }
                     )
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
