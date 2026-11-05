@@ -441,8 +441,16 @@ final class LocationSharingController: ObservableObject {
             )
         }
         // Sharing ended or moved to another dashboard while the fix came:
-        // it and these events were taken for the old one.
-        guard config.binding == bound, settings.shares(source, at: now()) else { return false }
+        // it and these events were taken for the old one, so the events
+        // kept above leave too, or a rebind's flush would send them there.
+        guard config.binding == bound else {
+            if !events.isEmpty {
+                unsent.remove(fixID: nil, eventIDs: Set(events.map(\.id)))
+                saveUnsent()
+            }
+            return false
+        }
+        guard settings.shares(source, at: now()) else { return false }
         // The place the host already has from a message moments ago: the
         // message goes without sending it again (or looking up its area).
         if source == .message, events.isEmpty, unsent.fix == nil, let location,
