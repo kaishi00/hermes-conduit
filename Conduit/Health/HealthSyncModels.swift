@@ -204,6 +204,10 @@ enum HealthSyncLimits {
     static let backfillChunkDays = 30
     /// The host refuses times before this (health_store.py's EARLIEST).
     static let hostEarliest = Date(timeIntervalSince1970: 946_684_800)
+    /// The longest workout, sleep stage or reading the host keeps
+    /// (health_store.py's _parse_event): one past it, or one that ends
+    /// before it starts, stays on the iPhone (notifier issue 555).
+    static let longestEvent: TimeInterval = 7 * 24 * 3600
 
     /// The first day history may start on: the first local midnight whose
     /// sleep window, which opens 12 hours before it, is not before
