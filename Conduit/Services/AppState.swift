@@ -18388,9 +18388,10 @@ final class AppState: ObservableObject {
                     hasBackfilledPrefix: graftedBackfilledPrefix,
                     // The grafted prefix keeps its rows, so the page starts
                     // noted on it still mark where a long chat can cut back
-                    // to (issue 1828). Their offsets only undercount once
-                    // newer rows came in, the safe direction.
-                    loadedPageStarts: graftedBackfilledPrefix ? (priorWindowForGraft?.loadedPageStarts ?? []) : []
+                    // to (issue 1828), covering no more than this page.
+                    loadedPageStarts: graftedBackfilledPrefix
+                        ? (priorWindowForGraft?.pageStartsCarried(into: page.rawReturned) ?? [])
+                        : []
                 )
             } else {
                 persistedTranscriptWindow = nil
@@ -22277,7 +22278,8 @@ final class AppState: ObservableObject {
                 runtimeSessionID: runtimeSessionID,
                 nextOffset: page.rawReturned,
                 canLoadEarlier: page.mayHaveOlderRows(fetchedRowCount: page.rawReturned),
-                hasBackfilledPrefix: priorOwned?.hasBackfilledPrefix ?? false
+                hasBackfilledPrefix: priorOwned?.hasBackfilledPrefix ?? false,
+                loadedPageStarts: priorOwned?.pageStartsCarried(into: page.rawReturned) ?? []
             )
         }
     }

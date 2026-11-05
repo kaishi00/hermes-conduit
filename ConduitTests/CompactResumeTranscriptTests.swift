@@ -1634,8 +1634,19 @@ final class CompactResumeTranscriptTests: XCTestCase {
         harness.appState.trimLoadedHistoryIfLong()
         XCTAssertEqual(harness.appState.messages.count, 1_080, "The graft kept the page starts to cut back to")
         XCTAssertEqual(harness.appState.messages.first?.content, "Row 920")
-        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 1_080)
+        XCTAssertEqual(
+            harness.appState.persistedTranscriptWindow?.nextOffset, 120,
+            "A carried start claims no more coverage than the refreshed page: Hermes' newer side may have shrunk"
+        )
         XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
+
+        // Load earlier reads back over held rows, which dedup drops, and
+        // reaches the dropped pages without a gap.
+        for _ in 0..<9 { await harness.appState.loadEarlierMessages() }
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 800")
+        let ids = harness.appState.messages.map(\.id)
+        XCTAssertEqual(ids.count, 1_200)
+        XCTAssertEqual(Set(ids).count, ids.count)
     }
 
     /// Tapping the chat already open, settled and connected, reads it and

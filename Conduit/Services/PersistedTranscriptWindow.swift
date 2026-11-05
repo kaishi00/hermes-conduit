@@ -127,6 +127,22 @@ struct PersistedTranscriptWindowState: Equatable {
         let hasBackfilledPrefix: Bool
     }
 
+    /// The page starts a refreshed window keeps when its older rows stay
+    /// (a reconcile's graft, a foreground advance). Their rows are still
+    /// there, but Hermes' newer side may have grown or shrunk (an /undo,
+    /// another device), so none claims more coverage than the refreshed
+    /// window does: undercounting only reads back over held rows, which
+    /// dedup drops, while overcounting would skip rows.
+    func pageStartsCarried(into refreshedCoverage: Int) -> [LoadedPageStart] {
+        loadedPageStarts.map {
+            LoadedPageStart(
+                firstRowID: $0.firstRowID,
+                nextOffset: min($0.nextOffset, refreshedCoverage),
+                hasBackfilledPrefix: $0.hasBackfilledPrefix
+            )
+        }
+    }
+
     /// Every session identity the accepted hydration/resume transaction
     /// vouched for together: the requested ID, the persisted stored ID, and
     /// the runtime ID. Trusted as one conversation because they arrived in
