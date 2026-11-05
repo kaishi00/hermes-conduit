@@ -671,8 +671,10 @@ struct ModelPickerView: View {
                 await loadModels(refresh: true)
                 refreshingModels = false
                 // A provider added meanwhile isn't in the refresh's answer.
-                if readAfterRefresh {
-                    readAfterRefresh = false
+                // A refresh that failed stays said: Try Again reads again.
+                let readSkipped = readAfterRefresh
+                readAfterRefresh = false
+                if readSkipped, !catalog.failed {
                     await loadModels()
                 }
             }

@@ -100,8 +100,11 @@ struct BotModelPicker: View {
                         refreshing = true
                         await load(refresh: true)
                         refreshing = false
-                        if readAfterRefresh {
-                            readAfterRefresh = false
+                        // A refresh that failed stays said: Try Again
+                        // reads again.
+                        let readSkipped = readAfterRefresh
+                        readAfterRefresh = false
+                        if readSkipped, !catalog.failed {
                             await load()
                         }
                     }
