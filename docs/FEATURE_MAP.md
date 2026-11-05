@@ -1753,8 +1753,8 @@ would cost battery for little) · Hermes' asset store (not needed: it takes a
 PNG up to 2 MB by its bytes, and an animated PNG is one) · Hermes Desktop
 (not needed: its picture is an img tag, which plays it; its own uploads stay
 stills, upstream) · Duplicate (not needed: it copies the bytes) · generated
-pictures and group room pictures (not needed: Hermes' image generation makes
-stills, and rooms show as rows and chips) · Watch, CarPlay, widgets and
+pictures and group room pictures (not needed: Hermes' image generation and
+Image Playground make stills, and rooms show as rows and chips) · Watch, CarPlay, widgets and
 notifications (not needed: they draw no faces) · the notifier (not needed: it
 serves no pictures) · the text that describes it (the editor's caption under
 the picture buttons, README.md's bots and profiles lines)
@@ -1776,7 +1776,7 @@ the picture buttons, README.md's bots and profiles lines)
 - A video can't be trimmed to the part to keep: the first 3 seconds are used.
 - A Live Photo is picked as a still.
 
-**Checked:** 2026-11-05, #1812 (Choose GIF or Video, the Photos picker, since Choose Photo's crop flattened a GIF on Eric's device); 2026-11-05, #1782 (the Bot Overview's header plays its fallback profile face too; the phone-only carry-over is tested); 2026-11-05, #1778 (added: moving pictures from a GIF or a short video)
+**Checked:** 2026-11-05, #1813 (Image Playground's pictures are stills too, see Pictures from Image Playground); 2026-11-05, #1812 (Choose GIF or Video, the Photos picker, since Choose Photo's crop flattened a GIF on Eric's device); 2026-11-05, #1782 (the Bot Overview's header plays its fallback profile face too; the phone-only carry-over is tested); 2026-11-05, #1778 (added: moving pictures from a GIF or a short video)
 
 ## Pictures from Image Playground
 
