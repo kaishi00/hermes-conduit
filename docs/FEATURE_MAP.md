@@ -4712,22 +4712,26 @@ custom headers and sign out, and the places that send people to it.
 
 **Siblings:** the V2 Settings row (Connection, first under the profile name)
 and the page title · the legacy Settings sheet (Gateway, under Connection) ·
-the chat's Gateway sheet · README.md (Cloudflare Access) · the notifier's
-support page · the website's setup page (setup/index.html in
-hermes-conduit-website)
+the chat's Gateway sheet · Diagnostics & logs, pushed from the page, and its
+sheet from the sign-in screen (first launch and the saved dashboards list) ·
+README.md (Cloudflare Access) · the notifier's support page · the website's
+setup page (setup/index.html in hermes-conduit-website)
 
 **Code**
 - Rows and page: `Conduit/Views/AuxiliaryViews.swift` (v2Sections, SettingsHome, GatewaySettingsDetail and its title)
-- Chat's sheet: `Conduit/Views/ChatSupportSheets.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`
+- Chat's sheet and Diagnostics & logs: `Conduit/Views/ChatSupportSheets.swift` (GatewayDiagnosticsSheet and its Placement), `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Services/AppState.swift` (refreshGatewayDiagnostics)
+- Sign-in screen's link: `Conduit/Views/Login/LoginScreens.swift` (LoginDiagnosticsLink, LoginFlowPresentations), `Conduit/Views/Login/LoginFlowModel.swift` (showsDiagnostics)
 - Docs: `README.md`, `notifier/docs/support/index.html`
+- Tests: `ConduitTests/ConnectionFailureTests+ChatTraces.swift` (testGatewayDiagnosticsWithNoDashboardSayNotConnected)
 
 **Rulings**
 - The page takes its row's name: Connection in V2's Settings, Gateway in the legacy sheet. Docs and support text say Settings > Connection (2026-10-26, #1298).
+- Diagnostics & logs opens whatever the connection: signed out, never connected or reconnecting, it still shows and shares what the device keeps (the last connection, device reports, chat traces). With no dashboard to ask, its gateway part says it isn't connected, and the connectors and gateway logs are left out until there's something to show; from the sign-in screen it has no gateway part or gateway buttons at all. Its sheets have Done, for the iPad app on a Mac (Eric, 2026-11-05: Diagnostics & logs couldn't be opened while disconnected; #1840).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-26, at #1298.
+**Checked:** 2026-11-05, #1840 (Diagnostics & logs opens while disconnected and from the sign-in screen; Siblings, Code, Rulings); 2026-10-26, at #1298.
 
 ## Another saved dashboard's address
 
@@ -5764,7 +5768,8 @@ as a chat trace when a chat jumps, stops scrolling or freezes, and the trace
 rides with the freeze's report or goes from Diagnostics & logs.
 
 **Siblings:** the card over the main screen (both shells; the iPad app on a
-Mac too) · Settings > Connection > Diagnostics & logs (its Device reports
+Mac too) · Settings > Connection > Diagnostics & logs, which opens while
+disconnected and from the sign-in screen too (its Device reports
 caption, the shared reports file's `about` line, and Chat traces: its
 captions, Send and Share) · the chat recorder's watchers in chats, project
 chats, Bot Chat and Kanban workers' transcripts (one ChatView) and in group
@@ -5806,7 +5811,7 @@ read-only legacy groups (no transcript to watch)
 - A crash with no stall before it carries no trace: the recorder's lines are in memory until a watcher saves them.
 - Until relay 0.25 is deployed, Send in Chat traces fails (the relay refuses kind chat) and a report's trace is dropped by the relay and kept on the phone.
 
-**Checked:** 2026-11-05, #1783 (issue #1687: a finger on a chat's or room's transcript, where it landed, what it hit and the gestures that took it, a drag's start and end, and the system's swipe back go in the recorder; Code, Rulings); 2026-10-31, #1590 (a group room's transcript feeds the recorder as a chat's does, through its own TranscriptScroller and collection view; the blank-screen rebuild and its trace are gone, the reason kept so a trace an older build saved still lists and sends; Siblings, Code, Rulings); 2026-10-31, #1577 (the chat's transcript feeds the recorder: TranscriptScroller's writes and passes, the collection view's size, insets and content height, a row changing height by id, but for the live turn's thinking and reply, whose growth would push out the moves a trace is for; a chat has no blank-screen rebuild; Code, Rulings); 2026-10-31, #1566 (TranscriptScroller writes through the same recorder: the engine's write, mode, transcript and room lines, plus its own for the reply hold armed or disarmed, a switch, a landing at the reply start and a restoration placed or given up; not called yet; traces unchanged; Code); 2026-10-31, #1565 (the recorder logs each change of the chat's rows by id; a stall the app was suspended in no longer reports an end counting the time away, and a stall's end goes only in its own trace; Code, Rulings); 2026-10-31, #1554 (chat traces: the recorder in every build, its watchers in chats and group rooms, the stall trace riding with a freeze's report, Diagnostics & logs' Chat traces, the privacy manifest's Other Diagnostic Data; notifier #481, relay 0.25.0); 2026-10-29, #1505.
+**Checked:** 2026-11-05, #1840 (Diagnostics & logs, and so Chat traces and Device reports, open while disconnected and from the sign-in screen; Siblings); 2026-11-05, #1783 (issue #1687: a finger on a chat's or room's transcript, where it landed, what it hit and the gestures that took it, a drag's start and end, and the system's swipe back go in the recorder; Code, Rulings); 2026-10-31, #1590 (a group room's transcript feeds the recorder as a chat's does, through its own TranscriptScroller and collection view; the blank-screen rebuild and its trace are gone, the reason kept so a trace an older build saved still lists and sends; Siblings, Code, Rulings); 2026-10-31, #1577 (the chat's transcript feeds the recorder: TranscriptScroller's writes and passes, the collection view's size, insets and content height, a row changing height by id, but for the live turn's thinking and reply, whose growth would push out the moves a trace is for; a chat has no blank-screen rebuild; Code, Rulings); 2026-10-31, #1566 (TranscriptScroller writes through the same recorder: the engine's write, mode, transcript and room lines, plus its own for the reply hold armed or disarmed, a switch, a landing at the reply start and a restoration placed or given up; not called yet; traces unchanged; Code); 2026-10-31, #1565 (the recorder logs each change of the chat's rows by id; a stall the app was suspended in no longer reports an end counting the time away, and a stall's end goes only in its own trace; Code, Rulings); 2026-10-31, #1554 (chat traces: the recorder in every build, its watchers in chats and group rooms, the stall trace riding with a freeze's report, Diagnostics & logs' Chat traces, the privacy manifest's Other Diagnostic Data; notifier #481, relay 0.25.0); 2026-10-29, #1505.
 
 ## A blocked Kanban task
 
