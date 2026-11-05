@@ -773,16 +773,23 @@ private struct BotSoulEditorPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // A field the page's height, drawn as the editor's rows are,
+            // so it reads as something to type in.
             TextEditor(text: $soul)
                 .scaledFont(.callout.monospaced())
                 .disabled(isReadOnly)
+                .scrollContentBackground(.hidden)
+                .padding(8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             Text(footer)
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 16)
+        .padding(.top, 8)
         .padding(.bottom, 12)
+        .background(Color(.systemGroupedBackground))
         .navigationTitle(AppLocalization.string("Personality"))
         .navigationBarTitleDisplayMode(.inline)
     }
