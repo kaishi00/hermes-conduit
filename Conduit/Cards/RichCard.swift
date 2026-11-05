@@ -38,6 +38,7 @@ struct RichCard: Identifiable, Equatable, Hashable {
         case list
         case progress
         case callout
+        case diff
     }
 
     enum TravelMode: String {
@@ -81,6 +82,8 @@ struct RichCard: Identifiable, Equatable, Hashable {
     let ranked: Bool
     let progress: [RichProgress]
     let callout: RichCallout?
+    /// Changes line by line (RichDiffCard.swift).
+    let diff: RichDiff?
 
     init?(normalized json: [String: Any], id: Int) {
         guard let kind = (json["type"] as? String).flatMap(Kind.init(rawValue:)) else { return nil }
@@ -117,6 +120,7 @@ struct RichCard: Identifiable, Equatable, Hashable {
         ranked = json["ranked"] as? Bool ?? false
         progress = (json["progress"] as? [[String: Any]] ?? []).compactMap(RichProgress.init(json:))
         callout = RichCallout(json: json["callout"])
+        diff = RichDiff(json: json["diff"])
         switch kind {
         case .map, .place, .places: guard !places.isEmpty else { return nil }
         case .stats: guard !stats.isEmpty else { return nil }
@@ -133,6 +137,7 @@ struct RichCard: Identifiable, Equatable, Hashable {
         case .list: guard !list.isEmpty else { return nil }
         case .progress: guard !progress.isEmpty else { return nil }
         case .callout: guard callout != nil else { return nil }
+        case .diff: guard diff != nil else { return nil }
         }
     }
 

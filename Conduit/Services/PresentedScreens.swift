@@ -209,9 +209,10 @@ final class PresentedScreensSync: ObservableObject {
     /// contact card's message (plugin 0.67+); "board-cards": tables,
     /// timelines, checklists, lists, progress and callouts, up to 12 cards
     /// as a stack or tabs, and follow-ups (plugin 0.128+); "room-boards": a
-    /// group room's boards under its agents' messages (plugin 0.129+).
+    /// group room's boards under its agents' messages (plugin 0.129+);
+    /// "diff-cards": changes line by line (plugin 0.133+).
     static let features = ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards",
-                           "text-drafts", "board-cards", "room-boards"]
+                           "text-drafts", "board-cards", "room-boards", "diff-cards"]
     /// Card ids remembered as seen, so a card is shown at most once.
     private static let maxSeenCards = 200
     private static let resultsKey = "conduit.presentedScreens.results.v1"

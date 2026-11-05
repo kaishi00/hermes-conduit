@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "about": "Shared examples for card-schema.json: normalize_cards(input) must equal output, in the plugin (tests/test_cards.py) and in Conduit (RichCardSchemaTests). Regenerate only when the schema changes, and copy both files to Conduit together.",
   "cases": [
     {
@@ -3300,6 +3300,291 @@
           }
         }
       ]
+    },
+    {
+      "name": "A diff keeps its files, hunks and totals, and a renamed file its old path",
+      "input": [
+        {
+          "type": "diff",
+          "title": "Fix the login retry",
+          "source": {
+            "name": "PR #1713",
+            "url": "https://github.com/example/app/pull/1713"
+          },
+          "diff": {
+            "files": [
+              {
+                "path": "Sources/Login.swift",
+                "status": "modified",
+                "added": 2,
+                "removed": 1,
+                "hunks": [
+                  {
+                    "old_start": 40,
+                    "new_start": 40,
+                    "context": "func retry() {",
+                    "lines": [
+                      "     let delay = 2.0",
+                      "-    attempts += 2",
+                      "+    attempts += 1",
+                      "+    log(attempts)",
+                      "     return delay"
+                    ]
+                  }
+                ]
+              },
+              {
+                "path": "docs/login.md",
+                "old_path": "docs/sign-in.md",
+                "status": "renamed",
+                "added": 0,
+                "removed": 0
+              },
+              {
+                "path": "Assets/logo.png",
+                "status": "ADDED",
+                "binary": true,
+                "added": 0,
+                "removed": 0
+              }
+            ],
+            "added": 2,
+            "removed": 1,
+            "more_files": 3,
+            "id": "cd-0123456789abcdef"
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "diff",
+          "title": "Fix the login retry",
+          "source": {
+            "name": "PR #1713",
+            "url": "https://github.com/example/app/pull/1713"
+          },
+          "diff": {
+            "files": [
+              {
+                "path": "Sources/Login.swift",
+                "status": "modified",
+                "added": 2,
+                "removed": 1,
+                "hunks": [
+                  {
+                    "old_start": 40,
+                    "new_start": 40,
+                    "context": "func retry() {",
+                    "lines": [
+                      "     let delay = 2.0",
+                      "-    attempts += 2",
+                      "+    attempts += 1",
+                      "+    log(attempts)",
+                      "     return delay"
+                    ]
+                  }
+                ]
+              },
+              {
+                "path": "docs/login.md",
+                "old_path": "docs/sign-in.md",
+                "status": "renamed",
+                "added": 0,
+                "removed": 0
+              },
+              {
+                "path": "Assets/logo.png",
+                "status": "added",
+                "binary": true,
+                "added": 0,
+                "removed": 0
+              }
+            ],
+            "added": 2,
+            "removed": 1,
+            "more_files": 3,
+            "id": "cd-0123456789abcdef"
+          }
+        }
+      ]
+    },
+    {
+      "name": "A hunk keeps lines starting with +, - or a space, with their spaces; a binary file and a bad id keep nothing",
+      "input": [
+        {
+          "type": "diff",
+          "diff": {
+            "files": [
+              {
+                "path": "a.py",
+                "status": "modified",
+                "added": 1,
+                "removed": 0,
+                "hunks": [
+                  {
+                    "old_start": 1,
+                    "new_start": 1,
+                    "lines": [
+                      "  indented\t context",
+                      "@@ not a line",
+                      "+added",
+                      ""
+                    ]
+                  },
+                  {
+                    "old_start": 9,
+                    "new_start": 10,
+                    "lines": [
+                      "no prefix"
+                    ]
+                  }
+                ]
+              },
+              {
+                "path": "b.bin",
+                "status": "modified",
+                "binary": true,
+                "added": 0,
+                "removed": 0,
+                "hunks": [
+                  {
+                    "old_start": 1,
+                    "new_start": 1,
+                    "lines": [
+                      "+x"
+                    ]
+                  }
+                ]
+              },
+              {
+                "path": "c.txt",
+                "added": 1,
+                "removed": 0
+              }
+            ],
+            "added": 1,
+            "removed": 0,
+            "id": "cd-XYZ"
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "diff",
+          "diff": {
+            "files": [
+              {
+                "path": "a.py",
+                "status": "modified",
+                "added": 1,
+                "removed": 0,
+                "hunks": [
+                  {
+                    "old_start": 1,
+                    "new_start": 1,
+                    "lines": [
+                      "  indented  context",
+                      "+added"
+                    ]
+                  }
+                ]
+              },
+              {
+                "path": "b.bin",
+                "status": "modified",
+                "binary": true,
+                "added": 0,
+                "removed": 0
+              }
+            ],
+            "added": 1,
+            "removed": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "A diff line longer than 1001 characters is cut there, never trimmed",
+      "input": [
+        {
+          "type": "diff",
+          "diff": {
+            "files": [
+              {
+                "path": "min.js",
+                "status": "modified",
+                "added": 1,
+                "removed": 0,
+                "hunks": [
+                  {
+                    "old_start": 1,
+                    "new_start": 1,
+                    "lines": [
+                      "+ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx "
+                    ]
+                  }
+                ]
+              }
+            ],
+            "added": 1,
+            "removed": 0
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "diff",
+          "diff": {
+            "files": [
+              {
+                "path": "min.js",
+                "status": "modified",
+                "added": 1,
+                "removed": 0,
+                "hunks": [
+                  {
+                    "old_start": 1,
+                    "new_start": 1,
+                    "lines": [
+                      "+ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "added": 1,
+            "removed": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "A diff with no file left is dropped",
+      "input": [
+        {
+          "type": "diff",
+          "diff": {
+            "files": [
+              {
+                "path": "a",
+                "added": 1,
+                "removed": 0
+              }
+            ],
+            "added": 1,
+            "removed": 0
+          }
+        },
+        {
+          "type": "diff",
+          "diff": {
+            "files": [],
+            "added": 0,
+            "removed": 0
+          }
+        }
+      ],
+      "output": []
     }
   ]
 }

@@ -80,6 +80,10 @@ struct ChatResumeLifecycleOperations {
     ) async throws -> BranchResult)?
     var setSessionTitle: (@MainActor (HermesClient, String, String) async throws -> Void)?
     var refreshContext: (@MainActor (HermesClient, String) async -> Void)?
+    /// Test seam: awaited by a reconcile right after it applied Hermes'
+    /// transcript, before it settles, so a test can act in that window. Nil
+    /// in the app, where nothing waits there (issue 1824).
+    var afterResumeApplied: (@MainActor (HermesClient, String) async -> Void)?
     var pendingApprovals: (@MainActor (HermesClient, String) async throws -> [ApprovalActivity])?
     /// Profile-aware variant of `pendingApprovals`. Preferred over the 2-argument
     /// seam when set, so tests can pin WHICH Hermes profile a pending approvals
@@ -197,6 +201,7 @@ struct ChatResumeLifecycleOperations {
         ) async throws -> BranchResult)? = nil,
         setSessionTitle: (@MainActor (HermesClient, String, String) async throws -> Void)? = nil,
         refreshContext: (@MainActor (HermesClient, String) async -> Void)? = nil,
+        afterResumeApplied: (@MainActor (HermesClient, String) async -> Void)? = nil,
         pendingApprovals: (@MainActor (HermesClient, String) async throws -> [ApprovalActivity])? = nil,
         pendingApprovalsWithProfile: (@MainActor (HermesClient, String, String?) async throws -> [ApprovalActivity])? = nil,
         respondToApproval: (@MainActor (HermesClient, String, String?, String, String?) async throws -> Bool)? = nil,
@@ -245,6 +250,7 @@ struct ChatResumeLifecycleOperations {
         self.branchSession = branchSession
         self.setSessionTitle = setSessionTitle
         self.refreshContext = refreshContext
+        self.afterResumeApplied = afterResumeApplied
         self.pendingApprovals = pendingApprovals
         self.pendingApprovalsWithProfile = pendingApprovalsWithProfile
         self.respondToApproval = respondToApproval
@@ -1265,6 +1271,9 @@ final class AppState: ObservableObject {
     private var chatPickedFromSavedList: SavedChatListPick?
     /// The Bot Chats left this run, by dashboard and bot (`keepBotChatCopy`).
     private var keptBotChatCopies: [String: KeptBotChatCopy] = [:]
+    /// The last chats left after Load earlier brought in older rows, newest
+    /// last (`keepLeftBackfilledTranscript`).
+    private var leftBackfilledTranscripts: [LeftBackfilledTranscript] = []
     /// The bot the chat on screen was open for, taken before a bot open
     /// notes its destination's ids (`noteBotChatOpen`): the destination can
     /// share the id the chat on screen is open as.
@@ -6579,7 +6588,17 @@ final class AppState: ObservableObject {
     /// back to a chat never shows it blank first (#1352). A chat with no
     /// copy opens as before, and so does one already picked in the saved
     /// list (its copy is up).
-    private func presentSavedCopyWhileOpening(_ session: SessionSummary, openedAs sessionID: String) {
+    ///
+    /// A copy in memory shows at once. One that isn't is read off the main
+    /// thread while the open goes ahead (issue 1826), and shows when it's
+    /// in if this open (`transition`, `reconcileToken`) still owns the chat
+    /// and Hermes' rows haven't come first.
+    private func presentSavedCopyWhileOpening(
+        _ session: SessionSummary,
+        openedAs sessionID: String,
+        transition: UInt64,
+        reconcileToken: UUID
+    ) {
         guard let dashboardID = activeDashboardID else { return }
         var ids = Set(session.nestingIDs)
         ids.insert(sessionID)
@@ -6588,17 +6607,25 @@ final class AppState: ObservableObject {
         guard botStoreProfile(forSessionIDs: Array(ids)) == nil else { return }
         if let picked = offlineChatPresentation?.picked, !picked.sessionIDs.isDisjoint(with: ids) { return }
         let durableID = session.storedSessionId ?? session.id
-        guard let saved = offlineChatCache.loadTranscript(durableID, dashboardID: dashboardID, profile: activeProfile) else {
-            return
+        let profile = activeProfile
+        offlineChatCache.readTranscript(durableID, dashboardID: dashboardID, profile: profile) { [weak self] saved in
+            guard let self, let saved,
+                  self.chatViewportTransitionIsCurrent(generation: transition),
+                  self.reconciliationToken == reconcileToken,
+                  self.reconciliation?.token == reconcileToken,
+                  self.activeSessionId == sessionID,
+                  self.activeDashboardID == dashboardID,
+                  self.activeProfile == profile,
+                  self.messages.isEmpty else { return }
+            self.offlineChatPresentation = OfflineChatPresentation(
+                dashboardID: dashboardID,
+                profile: profile,
+                snapshot: OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: []),
+                displayedTranscript: saved,
+                picked: OfflineChatPresentation.PickedChat(title: session.title, sessionIDs: ids, durableSessionID: durableID)
+            )
+            ResponsivenessSignposts.signposter.emitEvent("Saved rows shown")
         }
-        offlineChatPresentation = OfflineChatPresentation(
-            dashboardID: dashboardID,
-            profile: activeProfile,
-            snapshot: OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: []),
-            displayedTranscript: saved,
-            picked: OfflineChatPresentation.PickedChat(title: session.title, sessionIDs: ids, durableSessionID: durableID)
-        )
-        ResponsivenessSignposts.signposter.emitEvent("Saved rows shown")
     }
 
     /// The chat a profile switched to opens on: the outgoing profile's
@@ -6625,21 +6652,30 @@ final class AppState: ObservableObject {
         let row = rows.first { $0.id == sessionID || $0.storedSessionId == sessionID }
             ?? (aliasRows.count == 1 ? aliasRows.first : nil)
         let durableID = row.map { $0.storedSessionId ?? $0.id } ?? sessionID
-        guard let dashboardID = activeDashboardID,
-              let saved = offlineChatCache.loadTranscript(durableID, dashboardID: dashboardID, profile: activeProfile) else {
-            return
-        }
-        offlineChatPresentation = OfflineChatPresentation(
-            dashboardID: dashboardID,
-            profile: activeProfile,
-            snapshot: OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: []),
-            displayedTranscript: saved,
-            picked: OfflineChatPresentation.PickedChat(
-                title: activeSessionTitle,
-                sessionIDs: Set([sessionID] + (row?.nestingIDs ?? [])),
-                durableSessionID: durableID
+        guard let dashboardID = activeDashboardID else { return }
+        let profile = activeProfile
+        let sessionIDs = Set([sessionID] + (row?.nestingIDs ?? []))
+        // Off the main thread when it isn't in memory (issue 1826): it shows
+        // if the switch still opens on this chat with nothing else up yet.
+        offlineChatCache.readTranscript(durableID, dashboardID: dashboardID, profile: profile) { [weak self] saved in
+            guard let self, let saved,
+                  self.activeSessionId == sessionID,
+                  self.activeDashboardID == dashboardID,
+                  self.activeProfile == profile,
+                  self.messages.isEmpty,
+                  self.offlineChatPresentation == nil else { return }
+            self.offlineChatPresentation = OfflineChatPresentation(
+                dashboardID: dashboardID,
+                profile: profile,
+                snapshot: OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: []),
+                displayedTranscript: saved,
+                picked: OfflineChatPresentation.PickedChat(
+                    title: self.activeSessionTitle,
+                    sessionIDs: sessionIDs,
+                    durableSessionID: durableID
+                )
             )
-        )
+        }
     }
 
     /// A Bot Chat has no row of its own, so it keeps no copy on the phone:
@@ -6652,6 +6688,84 @@ final class AppState: ObservableObject {
 
     private static func keptBotChatCopyKey(dashboardID: UUID, bot: String) -> String {
         "\(dashboardID.uuidString)|\(bot)"
+    }
+
+    /// A chat left after Load earlier brought in rows older than Hermes'
+    /// newest page: its loaded rows and paging window, kept in memory so
+    /// opening it again grafts Hermes' newest page onto them, as a reconnect
+    /// does, instead of starting again from one page (issue 1825). Only such
+    /// chats are kept: any other one's rows are its saved copy and the page
+    /// the open reads anyway.
+    private struct LeftBackfilledTranscript {
+        /// Nil for a connection with no saved dashboard.
+        let dashboardID: UUID?
+        let sessionIDs: Set<String>
+        let messages: [ChatMessage]
+        let window: PersistedTranscriptWindowState
+    }
+
+    static let maxLeftBackfilledTranscripts = 3
+
+    /// Keeps the chat on screen as it's left, when Load earlier brought in
+    /// its older rows: Hermes' rows only, never saved rows standing in.
+    private func keepLeftBackfilledTranscript() {
+        guard offlineChatPresentation == nil,
+              turnState != .synchronizing,
+              !messages.isEmpty,
+              let window = persistedTranscriptWindow, window.hasBackfilledPrefix else { return }
+        let dashboardID = activeDashboardID
+        // The ids its window's own open vouched for together, never the
+        // scroll identity's aliases, which can name the chat it replaced.
+        let sessionIDs = window.trustedSessionIDs
+        leftBackfilledTranscripts.removeAll {
+            $0.dashboardID == dashboardID && !$0.sessionIDs.isDisjoint(with: sessionIDs)
+        }
+        leftBackfilledTranscripts.append(LeftBackfilledTranscript(
+            dashboardID: dashboardID,
+            sessionIDs: sessionIDs,
+            messages: messages,
+            window: window
+        ))
+        if leftBackfilledTranscripts.count > Self.maxLeftBackfilledTranscripts {
+            leftBackfilledTranscripts.removeFirst(leftBackfilledTranscripts.count - Self.maxLeftBackfilledTranscripts)
+        }
+    }
+
+    /// An open that never landed (cancelled, or overtaken by a newer one)
+    /// puts back the kept rows it took, for the next open.
+    private func putBackLeftBackfilledTranscript(_ kept: LeftBackfilledTranscript) {
+        guard !leftBackfilledTranscripts.contains(where: {
+            $0.dashboardID == kept.dashboardID && !$0.sessionIDs.isDisjoint(with: kept.sessionIDs)
+        }) else { return }
+        leftBackfilledTranscripts.append(kept)
+        if leftBackfilledTranscripts.count > Self.maxLeftBackfilledTranscripts {
+            leftBackfilledTranscripts.removeFirst(leftBackfilledTranscripts.count - Self.maxLeftBackfilledTranscripts)
+        }
+    }
+
+    /// The kept chat a reconcile into an empty chat is (an open, the chat a
+    /// profile switch opens on), taken from memory: the transcript it builds
+    /// is the chat's from here, kept again when it's left. The reconcile
+    /// grafts onto it only when its window owns the conversation Hermes
+    /// resumed and Hermes' page overlaps its rows, as a reconnect's graft
+    /// does; otherwise Hermes' page stands alone.
+    private func takeLeftBackfilledTranscript(for sessionIDs: Set<String>, profile: String) -> LeftBackfilledTranscript? {
+        let dashboardID = activeDashboardID
+        guard let index = leftBackfilledTranscripts.lastIndex(where: {
+                  $0.dashboardID == dashboardID
+                      && profilesMatch($0.window.profile, profile)
+                      && !$0.sessionIDs.isDisjoint(with: sessionIDs)
+              }) else { return nil }
+        return leftBackfilledTranscripts.remove(at: index)
+    }
+
+    /// Kept chats go with their saved copies: a deleted chat, a removed
+    /// dashboard, a sign-out, Delete saved chats.
+    private func forgetLeftBackfilledTranscripts(dashboardID: UUID?, sessionIDs: Set<String>? = nil) {
+        leftBackfilledTranscripts.removeAll { kept in
+            (dashboardID == nil || kept.dashboardID == dashboardID)
+                && sessionIDs.map { !kept.sessionIDs.isDisjoint(with: $0) } != false
+        }
     }
 
     /// Keeps the Bot Chat on screen, as `recordOfflineChatCopy` saves any
@@ -6799,6 +6913,7 @@ final class AppState: ObservableObject {
             offlineChatCache.removeAll()
             keptBotChatCopies.removeAll()
         }
+        forgetLeftBackfilledTranscripts(dashboardID: dashboardID)
         // Chat pictures kept on the phone go with the chats. Their files are
         // named by a hash, so they cannot be told apart by server.
         TranscriptImageCache.purge()
@@ -6845,6 +6960,7 @@ final class AppState: ObservableObject {
         // the messages currently loaded in memory.
         offlineChatCache.removeSavedChats()
         keptBotChatCopies.removeAll()
+        forgetLeftBackfilledTranscripts(dashboardID: nil)
         TranscriptImageCache.purge()
         TranscriptPictureMemory.forgetAll()
         // The summaries describing runs of steps go with the chats.
@@ -7448,19 +7564,9 @@ final class AppState: ObservableObject {
         let initialRegistry = preloadedRegistry
             ?? SavedDashboardMigrator.loadRegistry(defaults: defaults)
         self.savedDashboardRegistry = initialRegistry
-        // A phone that was signed in before keeps project chats out of
-        // Chats, as it had them (#1317). The defaults also say so when the
-        // registry is empty. A locked phone that can't read the registry at
-        // all decides on a later launch.
-        if defaults.string(forKey: ProjectChatsInChats.deviceDefaultKey) == nil,
-           preloadedRegistry != nil || SavedDashboardRegistryStore.load() != nil {
-            ProjectChatsInChats.settleDefault(
-                in: defaults,
-                existingInstall: !initialRegistry.dashboards.isEmpty
-                    || defaults.string(forKey: Self.chatResumeServerIdentityKey) != nil
-                    || defaults.string(forKey: "conduit.dashboardURL") != nil
-            )
-        }
+        // #1317 kept Off for older installs; Recent holds for every install
+        // that hasn't picked one now (issue 1583).
+        defaults.removeObject(forKey: ProjectChatsInChats.retiredDeviceDefaultKey)
         self.profileAppearanceStore = profileAppearanceStore ?? ProfileAppearanceStore(defaults: defaults)
         self.sessionPresentationCache = sessionPresentationCache
         self.offlineChatCache = offlineChatCache ?? Self.makeDefaultOfflineChatCache()
@@ -7573,6 +7679,7 @@ final class AppState: ObservableObject {
             }
         // After init's own defaults reads, so they don't queue behind it.
         sessionPresentationCache.prewarm()
+        installRichDiffReader()
     }
 
     func deviceConditionsChanged(_ conditions: DeviceConditions) {
@@ -18132,8 +18239,27 @@ final class AppState: ObservableObject {
             // itself happens after the graft: whether the refreshed tail
             // grafted onto the backfilled prefix determines whether the
             // prefix-preservation fact survives into the refreshed window.
-            let previousTranscriptMessages = messages
-            let priorWindow = persistedTranscriptWindow
+            // A chat left after Load earlier comes back empty (an open, the
+            // chat a profile switch opens on): the rows it had are kept for
+            // this reconcile to graft onto (issue 1825), under the same
+            // ownership and overlap rules as a reconnect's.
+            // Stored rows or the resume's (reconcileRowsSource).
+            let rowsSource = Self.reconcileRowsSource(
+                transcriptMatches: transcriptMatches,
+                storedMessages: transcript?.messages,
+                result: result
+            )
+            // Taken only for a graft onto Hermes' stored rows: a live turn's
+            // rows come from the resume, which grafts nothing, and the kept
+            // rows stay for the next open.
+            let reopenedTranscript = messages.isEmpty && persistedTranscriptWindow == nil && rowsSource == .stored
+                ? takeLeftBackfilledTranscript(
+                    for: Set([sessionId, result.sessionId, transcript?.resolvedSessionId].compactMap { $0 }),
+                    profile: conversationScopeProfile ?? profile
+                )
+                : nil
+            let previousTranscriptMessages = reopenedTranscript?.messages ?? messages
+            let priorWindow = reopenedTranscript?.window ?? persistedTranscriptWindow
             if let transcript, transcriptMatches, result.snapshot.hasLiveProjection, !transcript.messages.isEmpty {
                 // Desktop keeps its live projection during an active turn. Seed
                 // the same durable presentation details first so the completed
@@ -18152,12 +18278,6 @@ final class AppState: ObservableObject {
                     )
                 )
             }
-            // Stored rows or the resume's (reconcileRowsSource).
-            let rowsSource = Self.reconcileRowsSource(
-                transcriptMatches: transcriptMatches,
-                storedMessages: transcript?.messages,
-                result: result
-            )
             let priorWindowForGraft = priorWindowOwnsThisConversation(
                 priorWindow,
                 requestedSessionId: sessionId,
@@ -18248,11 +18368,19 @@ final class AppState: ObservableObject {
                 automaticWorkToken: automaticWorkToken,
                 automaticSyncOperationID: automaticSyncOperationID
             ) else {
+                if let reopenedTranscript { putBackLeftBackfilledTranscript(reopenedTranscript) }
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 return false
             }
             schedulePendingApprovalsRefresh(sessionId: result.sessionId, using: client)
-            await refreshChatResumeContext(sessionId: result.sessionId, using: client)
+            // The context meter's read goes on beside the open, as the
+            // approvals read does: the resume's snapshot already set the
+            // meter, and the open settles, lands and finishes without
+            // waiting a round trip for it (issue 1824).
+            scheduleChatResumeContextRefresh(sessionId: result.sessionId, using: client)
+            if let afterResumeApplied = chatResumeLifecycleOperations.afterResumeApplied {
+                await afterResumeApplied(client, result.sessionId)
+            }
 
             guard automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
@@ -18368,7 +18496,7 @@ final class AppState: ObservableObject {
                 // Re-assert only after the ownership guard above (token,
                 // profile, client) re-validated this reconciliation and after
                 // the synchronous settle, so a profile or client switch during
-                // the suspending context refresh above cannot push a stale
+                // the suspending reads above cannot push a stale
                 // write through the old client for the old profile's session.
                 // A user YOLO write that completed since the resume began
                 // already pushed the server, so skip instead of duplicating
@@ -18470,6 +18598,19 @@ final class AppState: ObservableObject {
         } catch {
             noteConnectionStep(label, since: startedAt, error: error)
             throw error
+        }
+    }
+
+    /// Reads the resumed chat's context breakdown without holding the
+    /// reconcile. Its answer applies only while the same client still has
+    /// the same chat open (refreshContextUsage).
+    @discardableResult
+    private func scheduleChatResumeContextRefresh(
+        sessionId: String,
+        using client: HermesClient
+    ) -> Task<Void, Never> {
+        Task { @MainActor [weak self] in
+            await self?.refreshChatResumeContext(sessionId: sessionId, using: client)
         }
     }
 
@@ -25321,6 +25462,17 @@ final class AppState: ObservableObject {
     /// superseded it).
     @discardableResult
     func requestOpenSession(_ sessionId: String, onFailure: (@MainActor () -> Void)? = nil) -> Task<Bool, Never> {
+        // Tapping the chat already open and settled reads it, and nothing
+        // else: it shows Hermes' rows as they stand, streamed in live, so a
+        // second open would only read them again and drop rows Load earlier
+        // brought in (issue 1825). The scroll stays where it is, as a
+        // re-tap of the same chat always left it.
+        if openChatIsSettled(as: sessionId) {
+            cancelExplicitSessionOpen()
+            widgetLaunchCoordinator.supersede()
+            noteActiveChatSeen()
+            return Task { true }
+        }
         cancelExplicitSessionOpen()
         let requestID = UUID()
         explicitSessionOpenRequestID = requestID
@@ -25339,6 +25491,29 @@ final class AppState: ObservableObject {
         }
         explicitSessionOpenTask = task
         return task
+    }
+
+    /// The chat on screen is `sessionId`'s (the same id, or one its Chats
+    /// row lists beside the open one), connected, with its own rows up and
+    /// nothing under way: no open, reconcile, restoration or room, no turn.
+    /// A viewport transition still waiting for the chat's layout finishes on
+    /// its own, as it would have under the open the tap no longer starts.
+    func openChatIsSettled(as sessionId: String) -> Bool {
+        guard let activeSessionId,
+              client != nil,
+              isConnected,
+              turnState == .idle,
+              !messages.isEmpty,
+              offlineChatPresentation == nil,
+              reconciliation == nil,
+              chatResumeRestorationRequest == nil,
+              chatPickedFromSavedList == nil,
+              activeRoomSurface == nil,
+              explicitSessionOpenTask == nil else { return false }
+        if activeSessionId == sessionId { return true }
+        let rows = (sessions + cronSessions).filter { $0.nestingIDs.contains(sessionId) }
+        guard rows.count == 1, let row = rows.first else { return false }
+        return row.nestingIDs.contains(activeSessionId)
     }
 
     private func cancelExplicitSessionOpen() {
@@ -25451,6 +25626,9 @@ final class AppState: ObservableObject {
         // carries its kind, so the Sessions surface never adopts it while a
         // cold launch still restores exactly what was on screen. Ownership
         // comes from the bot registry (seeded above), never the id's shape.
+        // A chat left after Load earlier keeps its older rows for coming
+        // back to it (issue 1825); the reconcile below takes them.
+        keepLeftBackfilledTranscript()
         setActiveSessionState(id: sessionId)
         keepDelegateAgents(of: acceptedSessionIDs)
         messages = []
@@ -25462,7 +25640,12 @@ final class AppState: ObservableObject {
         if let bot = conversationProfile ?? botConversationProfile(for: sessionId) {
             presentKeptBotChatCopy(bot: bot, openedAs: sessionId, title: preferredTitle)
         } else if let listedSession {
-            presentSavedCopyWhileOpening(listedSession, openedAs: sessionId)
+            presentSavedCopyWhileOpening(
+                listedSession,
+                openedAs: sessionId,
+                transition: transitionGeneration,
+                reconcileToken: token
+            )
         }
         // Explicit navigation owns the chat surface from here. A chat picked
         // in the saved list, or opened with a saved copy, keeps that copy up
@@ -26470,6 +26653,7 @@ final class AppState: ObservableObject {
         // The chat being left shows as it is now when it's opened again.
         recordOfflineChatCopy()
         keepBotChatCopy()
+        keepLeftBackfilledTranscript()
         outgoingBotChatCopyOwner = nil
         let newTitle = AppLocalization.string("New conversation")
         activeSessionTitle = newTitle
@@ -33116,6 +33300,8 @@ final class AppState: ObservableObject {
             voiceControllerSessionProfile = nil
             // The outgoing profile's list as it shows now, for switching back.
             recordSavedChatList()
+            // And its chat, when Load earlier brought in older rows.
+            keepLeftBackfilledTranscript()
             // Fence any residual deferred cache write scheduled under the
             // outgoing profile before identities and namespaces change over.
             setActiveProfile(target)
@@ -41534,6 +41720,7 @@ extension AppState {
     /// as their own kept lists do (#1533).
     private func removeSavedCopies(ofDeleted sessionIDs: Set<String>, dashboardID: UUID, profile: String) {
         offlineChatCache.removeTranscripts(sessionIDs: sessionIDs, dashboardID: dashboardID, profile: profile)
+        forgetLeftBackfilledTranscripts(dashboardID: dashboardID, sessionIDs: sessionIDs)
         for showMissing in [true, false] {
             guard let route = ArtifactsClient.keptRoute(ArtifactSource(profile: profile, sessionIDs: []), filter: .all,
                                                         query: "", showMissing: showMissing),

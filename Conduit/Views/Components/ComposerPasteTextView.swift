@@ -611,7 +611,7 @@ final class ImagePasteTextView: ReturnKeyTextView {
         // during compilation even though UIImage supports this API.
         provider.loadObject(ofClass: UIImage.self) { [weak self] (object: NSItemProviderReading?, error: Error?) in
             guard let image = object as? UIImage,
-                  let data = image.pngData(),
+                  let data = ProviderPicture.pngData(image),
                   !data.isEmpty else {
                 self?.reportImageLoadFailure(
                     error ?? fallbackError,
@@ -636,7 +636,7 @@ final class ImagePasteTextView: ReturnKeyTextView {
         let pastedImage: PastedImage
         if typeIdentifier == UTType.image.identifier {
             guard let image = UIImage(data: data),
-                  let normalizedData = image.pngData(),
+                  let normalizedData = ProviderPicture.pngData(image),
                   !normalizedData.isEmpty else {
                 reportImageNormalizationFailure(editorIdentity: pasteEditorIdentity)
                 return

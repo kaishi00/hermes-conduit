@@ -2631,7 +2631,7 @@ final class AppStateChatResumeTests: XCTestCase {
                         )
                     )
                 },
-                refreshContext: { _, _ in await contextGate.suspend() }
+                afterResumeApplied: { _, _ in await contextGate.suspend() }
             )
         )
         installComposerClient(in: harness)
@@ -3891,7 +3891,7 @@ final class AppStateChatResumeTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: [:])
                     )
                 },
-                refreshContext: { _, _ in
+                afterResumeApplied: { _, _ in
                     appReference.value?.messages.append(lateMessage)
                 }
             )
@@ -3939,6 +3939,40 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.store.snapshot(for: key), .latest)
     }
 
+    /// The context meter's read goes on beside an open: the open settles
+    /// and says it opened while the read is still out (issue 1824).
+    func testAnOpenDoesNotWaitForTheContextRead() async {
+        let contextGate = ControlledSuspension()
+        let messagesB = [
+            ChatMessage(id: "b", role: .assistant, content: "B", timestamp: "1")
+        ]
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [self.session("stored-b")] },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: messagesB,
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in await contextGate.suspend() }
+            )
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.sessions = [session("stored-b")]
+
+        let opened = await harness.appState.openSession("stored-b")
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages, messagesB)
+        XCTAssertFalse(harness.appState.activeChatScrollSessionIdentity.isReconciling, "The open settled")
+        await contextGate.waitUntilSuspended()
+        contextGate.resume()
+    }
+
     func testNotificationOpenLaidOutDuringItsContextRefreshStillOpened() async {
         // On screen, the chat lays out the resumed transcript while the open
         // still waits on its context refresh, which ends the viewport
@@ -3959,7 +3993,7 @@ final class AppStateChatResumeTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: [:])
                     )
                 },
-                refreshContext: { _, _ in
+                afterResumeApplied: { _, _ in
                     guard let app = appReference.value,
                           let key = app.activeChatScrollSessionIdentity.canonicalSessionKey
                             ?? app.activeSessionId.map({ ChatScrollSessionKey(profile: app.activeProfile, sessionID: $0) })
@@ -7278,7 +7312,7 @@ final class AppStateChatResumeTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(true)])
                     )
                 },
-                refreshContext: { _, _ in
+                afterResumeApplied: { _, _ in
                     contextRefreshes += 1
                     if contextRefreshes == 1 {
                         await contextGate.suspend()
@@ -7460,7 +7494,7 @@ final class AppStateChatResumeTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(true)])
                     )
                 },
-                refreshContext: { _, _ in
+                afterResumeApplied: { _, _ in
                     contextRefreshes += 1
                     if contextRefreshes == 1 {
                         await contextGate.suspend()
