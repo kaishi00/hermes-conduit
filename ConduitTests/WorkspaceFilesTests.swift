@@ -148,6 +148,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(found, "/root/audits/Conduit/AppState.swift")
         XCTAssertTrue(asked.hasPrefix("/api/plugins/conduit_push/workspace/resolve?path=Conduit%2FApp%20State.swift"), asked)
         XCTAssertTrue(asked.contains("session_id=live-1&session_id=20261105_a"), asked)
+        XCTAssertTrue(asked.contains("profile=work"), asked)
 
         answer = ["ok": true, "path": NSNull()]
         let missing = try await client.resolve(path: "gone.md", sessionIDs: ["live-1"])
