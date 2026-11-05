@@ -752,9 +752,10 @@ private struct BotWorkRow: View {
         if item.kind == .workstream {
             let controls: [BotWorkItem.Action] = [.check, .continue, .stop].filter { item.actions.contains($0) }
             if !controls.isEmpty {
-                // Side by side, equal widths, only while the widest label
-                // fits its share ("Check first" was cut in a narrow sheet);
-                // stacked otherwise, and always at accessibility Text Sizes.
+                // Side by side while every label fits on one line, each
+                // button as wide as its label needs ("Check first" was cut
+                // when they split the row equally); stacked otherwise, and
+                // always at accessibility Text Sizes.
                 let buttons = ForEach(controls, id: \.self) { action in
                     controlButton(action, prominent: action == controls.first && action != .stop)
                 }
@@ -762,7 +763,7 @@ private struct BotWorkRow: View {
                     if dynamicTypeSize.isAccessibilitySize {
                         VStack(spacing: 8) { buttons }
                     } else {
-                        EqualRowOrStack(spacing: 8) { buttons }
+                        FittedRowOrStack(spacing: 8) { buttons }
                     }
                 }
                 .disabled(isActing || !appState.isConnected)
@@ -1242,40 +1243,49 @@ private struct WorkstreamApprovalBox: View {
     }
 }
 
-/// Equal-width buttons in a row while the widest one's label fits its
-/// share of the row; one under another otherwise. (A ViewThatFits only
-/// checks the labels' total, so the widest could still be cut once the
-/// row split them equally.)
-struct EqualRowOrStack: Layout {
+/// Buttons in a row while all their labels fit on one line, each as wide
+/// as its label plus an even share of the room left; one under another
+/// otherwise. (An HStack of full-width buttons splits the row equally, so
+/// the widest label, "Check first", was cut while the others had room.)
+struct FittedRowOrStack: Layout {
     var spacing: CGFloat = 8
 
-    private func fitsInRow(_ width: CGFloat?, _ subviews: Subviews) -> Bool {
-        guard let width, !subviews.isEmpty else { return true }
-        let share = (width - spacing * CGFloat(subviews.count - 1)) / CGFloat(subviews.count)
-        let widest = subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
-        return widest <= share
+    private func ideals(_ subviews: Subviews) -> [CGFloat] {
+        subviews.map { $0.sizeThatFits(.unspecified).width }
+    }
+
+    private func gaps(_ subviews: Subviews) -> CGFloat {
+        spacing * CGFloat(max(subviews.count - 1, 0))
+    }
+
+    /// Each button's width in the row, or nil when they don't fit in one.
+    private func rowWidths(_ width: CGFloat?, _ subviews: Subviews) -> [CGFloat]? {
+        let ideal = ideals(subviews)
+        guard let width else { return ideal }
+        let room = width - gaps(subviews) - ideal.reduce(0, +)
+        guard room >= 0, !subviews.isEmpty else { return nil }
+        let extra = room / CGFloat(subviews.count)
+        return ideal.map { $0 + extra }
     }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? subviews.reduce(0) { $0 + $1.sizeThatFits(.unspecified).width }
-            + spacing * CGFloat(max(subviews.count - 1, 0))
-        if fitsInRow(proposal.width, subviews) {
-            let share = (width - spacing * CGFloat(max(subviews.count - 1, 0))) / CGFloat(max(subviews.count, 1))
-            let height = subviews.map { $0.sizeThatFits(ProposedViewSize(width: share, height: nil)).height }.max() ?? 0
-            return CGSize(width: width, height: height)
+        if let widths = rowWidths(proposal.width, subviews) {
+            let height = zip(subviews, widths)
+                .map { $0.sizeThatFits(ProposedViewSize(width: $1, height: nil)).height }.max() ?? 0
+            return CGSize(width: proposal.width ?? widths.reduce(0, +) + gaps(subviews), height: height)
         }
+        let width = proposal.width ?? 0
         let heights = subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height }
-        return CGSize(width: width, height: heights.reduce(0, +) + spacing * CGFloat(max(subviews.count - 1, 0)))
+        return CGSize(width: width, height: heights.reduce(0, +) + gaps(subviews))
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        if fitsInRow(bounds.width, subviews) {
-            let share = (bounds.width - spacing * CGFloat(max(subviews.count - 1, 0))) / CGFloat(max(subviews.count, 1))
+        if let widths = rowWidths(bounds.width, subviews) {
             var x = bounds.minX
-            for subview in subviews {
+            for (subview, width) in zip(subviews, widths) {
                 subview.place(at: CGPoint(x: x, y: bounds.minY),
-                              proposal: ProposedViewSize(width: share, height: bounds.height))
-                x += share + spacing
+                              proposal: ProposedViewSize(width: width, height: bounds.height))
+                x += width + spacing
             }
         } else {
             var y = bounds.minY
