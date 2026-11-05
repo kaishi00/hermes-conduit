@@ -30,6 +30,13 @@ extension AppState {
     /// Wires location sharing to this app's connections. Once, at launch.
     func activateLocationSharing() {
         let controller = LocationSharingController.shared
+        // At launch and on each foreground, before any send or monitor: a
+        // dashboard removed before the sweep existed, or while the location
+        // config couldn't be read, is found here rather than at the next
+        // connect. Only from a list that was read: launched before the
+        // first unlock, the saved dashboards come back empty, which isn't
+        // a removal (removing the last one ends its sharing itself).
+        if !savedDashboardRegistry.dashboards.isEmpty { endSharingWithRemovedDashboards() }
         guard controller.requestProvider == nil else { return }
         controller.requestProvider = { [weak self] binding in
             await self?.locationRequest(for: binding)
