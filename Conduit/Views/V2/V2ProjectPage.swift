@@ -147,7 +147,7 @@ struct V2ProjectPage: View {
                         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 8, trailing: 0))
                 }
 
-                if isLoading && detail == nil {
+                if isLoading && detail == nil && lanes.isEmpty {
                     ProgressView("Loading conversations…")
                         .frame(maxWidth: .infinity, minHeight: 140)
                         .listRowBackground(Color.clear)
@@ -258,7 +258,7 @@ struct V2ProjectPage: View {
 
     private var header: some View {
         let runningCount = allSessions.filter { appState.sessionLiveStatus($0) == .working }.count
-        let count = detail.map { _ in allSessions.count } ?? project.sessionCount
+        let count = detail != nil || !allSessions.isEmpty ? allSessions.count : project.sessionCount
         return HStack(alignment: .center, spacing: 16) {
             V2ProjectTile(project: project, size: 56)
             VStack(alignment: .leading, spacing: 3) {
