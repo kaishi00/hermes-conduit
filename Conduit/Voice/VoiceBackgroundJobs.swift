@@ -1945,6 +1945,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// resume one (a Desktop delete). A call never pins one again (issue 1797).
     private var deletedChatIDs: Set<String> = []
 
+    /// The chat the call was attached to until it was deleted: the call's
+    /// new chat is made on its bot. Cleared when the call leaves.
+    private(set) var deletedLiveThread: VoiceThreadTarget?
+
     /// Whether `chat` was deleted (`noteChatDeleted`).
     func isDeletedChat(_ chat: VoiceThreadTarget) -> Bool {
         [chat.runtimeSessionID, chat.storedSessionID].compactMap { $0 }.contains { deletedChatIDs.contains($0) }
@@ -1960,6 +1964,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         guard !ids.isEmpty else { return }
         deletedChatIDs.formUnion(ids)
         guard let thread = liveThread, ids.contains(where: { backend.threadOwnsSession(thread, $0) }) else { return }
+        deletedLiveThread = thread
         liveThread = nil
         // Nothing to archive or tell its bot: the chat is gone.
         keptCallChat = nil
@@ -1987,6 +1992,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     func detachLiveThread() {
         liveThread = nil
+        deletedLiveThread = nil
         if let kept = keptCallChat {
             keptCallChat = nil
             backend.callLeftChat(kept.profile, kept.chat, kept.call)
@@ -2443,6 +2449,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         callChatClaim = nil
         callChatClosedCallID = nil
         deletedChatIDs.removeAll()
+        deletedLiveThread = nil
         liveCallID = nil
         liveCallStartedAt = nil
         callOpening = nil

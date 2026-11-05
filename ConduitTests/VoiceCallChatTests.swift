@@ -500,6 +500,7 @@ extension VoiceConversationControllerTests {
         supervisor.noteChatDeleted(["st-chat"])
         XCTAssertNil(supervisor.liveThread, "the call lets go of the deleted chat")
         XCTAssertTrue(fake.leftChats.isEmpty, "nothing to archive: the chat is gone")
+        XCTAssertEqual(supervisor.deletedLiveThread?.runtimeSessionID, "rt-chat", "Local Live makes its new chat on its bot")
         XCTAssertTrue(supervisor.isDeletedChat(VoiceThreadTarget(runtimeSessionID: "rt-2", storedSessionID: "st-chat", title: "")),
                       "a pin by its stored id is the deleted chat under a new runtime too")
 
@@ -509,6 +510,8 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.created, 1)
         XCTAssertEqual(supervisor.liveThread?.runtimeSessionID, "rt-1")
         XCTAssertEqual(supervisor.callChatJobID, supervisor.jobs.last?.id)
+        supervisor.detachLiveThread()
+        XCTAssertNil(supervisor.deletedLiveThread, "hanging up forgets it")
     }
 
     func testACallWhoseChatWasDeletedInDesktopGoesOnInANewChat() async {

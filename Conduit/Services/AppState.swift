@@ -4604,7 +4604,8 @@ final class AppState: ObservableObject {
             // chat was deleted (issue 1797).
             let own = self.localLiveOwnChat
             let resolved = try await LocalLiveTurnRunner.callChat(
-                attached: self.voiceBackgroundJobSupervisor.liveThread,
+                // A deleted one still names the bot its new chat is made on.
+                attached: self.voiceBackgroundJobSupervisor.liveThread ?? self.voiceBackgroundJobSupervisor.deletedLiveThread,
                 own: own,
                 runtime: { try await self.localLiveChatRuntime($0) },
                 create: { profile in
@@ -4639,6 +4640,7 @@ final class AppState: ObservableObject {
                     }
                 }
                 if foundBusy { throw VoiceThreadBusyError() }
+                if let thread = self.voiceBackgroundJobSupervisor.liveThread { self.noteCallChatIfGone(thread) }
                 throw VoiceAudioError.unavailable(self.callRefusalMessageForOpenChat()
                     ?? AppLocalization.string("Hermes could not send this to the chat."))
             }
@@ -9736,6 +9738,16 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// A call's turn didn't go into the open chat: when a resume this run
+    /// found the chat gone (deleted in Desktop while it was open), the call
+    /// lets go of it and its next request makes a new chat (issue 1797).
+    private func noteCallChatIfGone(_ thread: VoiceThreadTarget) {
+        let ids = knownSessionIDs(for: thread.runtimeSessionID)
+            .union([thread.runtimeSessionID, thread.storedSessionID].compactMap { $0 })
+        guard conversationIsGone(sessionIDs: ids, dashboardID: activeDashboardID, profile: thread.profile ?? activeProfile) else { return }
+        voiceBackgroundJobSupervisor.noteChatDeleted(ids)
+    }
+
     /// The chat resumed again by its stored id, for a runtime Hermes no
     /// longer has (a Shortcuts run right after a cold launch, before the open
     /// chat's own resume). When it is the chat on screen, the screen moves to
@@ -9830,6 +9842,7 @@ final class AppState: ObservableObject {
                 if sent { return sessionID }
             }
             if foundBusy { throw VoiceThreadBusyError() }
+            noteCallChatIfGone(thread)
             throw VoiceAudioError.unavailable(callRefusalMessageForOpenChat()
                 ?? AppLocalization.string("Hermes could not send this to the chat."))
         }
