@@ -1905,7 +1905,7 @@ struct ProjectCreateSheet: View {
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(isCreating)
-                                .accessibilityLabel(Text(AppLocalization.string("Remove")))
+                                .accessibilityLabel(Text(AppLocalization.string("Remove \(folder)")))
                             }
                         }
                     }
