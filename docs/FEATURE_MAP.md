@@ -1689,7 +1689,7 @@ same bot.
 
 **Siblings:** New Bot · Edit Bot, from the Bots list, a Bot Chat's ⋯ menu (#1677) and the Bot Overview (#1678) · Hermes Desktop's bot editor (same
 profile records) · the bot's face in the Bots list (a portrait on Bots Home, with the row's menu on a long press; see Bots Home), its Bot Chat and group
-rooms · generated pictures, shared with group pictures · profile pictures in the profile picker · the profile's name everywhere else in Conduit (Profile names) · a GIF or short video as the picture (see Moving pictures) · the SOUL a new bot is
+rooms · generated pictures, shared with group pictures · pictures from Apple's Image Playground (see Pictures from Image Playground) · profile pictures in the profile picker · the profile's name everywhere else in Conduit (Profile names) · a GIF or short video as the picture (see Moving pictures) · the SOUL a new bot is
 born with (the messaging section older gateways need) · the Bots list's row
 menu (New Chat, Groups, Pin, Hide, Duplicate, Delete) and its Hidden section,
 as on Desktop's bot row · Edit Bot's MCP catalog (adding a server with
@@ -1733,7 +1733,7 @@ and README.md's bots line)
 - Desktop's drawn faces, shapes and pets show only as stills; Conduit draws an initial on the color.
 - The group picture switch guard has no test: it needs a ready DashboardTicketBridge double and a room switch mid-request (#1191).
 
-**Checked:** 2026-11-05, #1793 (Edit Bot, its Model and Work pages built from Settings' pieces, see Sheets in Settings' look); 2026-11-05, #1787 (the SOUL is a row opening its own page, so Work and Advanced sit under it; the Model page's providers open and close, see Model lists grouped by provider; New Bot's + is the shared one, see The + that makes something new); 2026-11-05, #1778 (Choose Photo takes a GIF or a short video, see Moving pictures); 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1679 (on `bot-workstreams`: the row menu on Bots Home gains Start a Room with… and Reorder Bots; New Group Chat can open with a title suggested and say when it made the room; its members and New Bot's Start From follow the bots' order, see Bots Home); 2026-11-03, #1678 (on `bot-workstreams`, Bots Home: the roster as portraits, each with the row's menu on a long press, BotMonogramView at a size its caller picks, and Edit Bot in the Bot Overview, opened once the overview has closed); 2026-11-03, #1677 (on `bot-workstreams`: Edit Bot in a Bot Chat's ⋯ menu, disabled where the Bots list's is; the model picker's inherit row named by its caller, "Same as Bot Chat" for Edit Bot > Work's Workstream Model); 2026-11-02, #1649 (Edit Bot gains Work, the bot's workstream settings, only for a bot that exists on a plugin that serves them; see Bot workstreams); 2026-11-02, #1640 (the MCP sign-in moved to NativeMCPSignIn, shared with Connectors; a switch still says the setup stopped; a Connectors sign-in is kept for the MCP page too, keepMcpSignedIn); 2026-10-31, #1588 (Edit Bot, New Bot's Start From lists and the MCP page open on what Hermes gave last time, read-only until it answers, and a save, MCP add or sign-in Hermes took is what they open on next; see Screens that open on their last answer); 2026-10-31, #1568 (a kept bot is never written, Delete included, a bot's face shows from the phone's copy until its fetch lands, its Bot Chat's face and color included, and a deleted bot leaves the kept roster); 2026-10-31, #1567 (the editor's Model page opens on the models kept from Hermes' last answer, picked once Hermes answers, with Try Again after a read that fails; see Model lists that fail to load); 2026-10-28, #1457 (the main bot goes by its Conduit name, see Profile names); 2026-10-28, #1448 (an unnamed bot shows its id capitalized); 2026-10-28, #1413 (a rename here names the profile everywhere, see Profile names); 2026-10-27, at #1395 (the editor's Model page gained search with each match's provider; saving unchanged); 2026-10-25, at #1222 (configure and MCP add wait in the profile config queue); before that #1192; group pictures at #1191.
+**Checked:** 2026-11-05, #1813 (Generate opens Image Playground too, or a menu of it and Hermes' generator; see Pictures from Image Playground); 2026-11-05, #1793 (Edit Bot, its Model and Work pages built from Settings' pieces, see Sheets in Settings' look); 2026-11-05, #1787 (the SOUL is a row opening its own page, so Work and Advanced sit under it; the Model page's providers open and close, see Model lists grouped by provider; New Bot's + is the shared one, see The + that makes something new); 2026-11-05, #1778 (Choose Photo takes a GIF or a short video, see Moving pictures); 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1679 (on `bot-workstreams`: the row menu on Bots Home gains Start a Room with… and Reorder Bots; New Group Chat can open with a title suggested and say when it made the room; its members and New Bot's Start From follow the bots' order, see Bots Home); 2026-11-03, #1678 (on `bot-workstreams`, Bots Home: the roster as portraits, each with the row's menu on a long press, BotMonogramView at a size its caller picks, and Edit Bot in the Bot Overview, opened once the overview has closed); 2026-11-03, #1677 (on `bot-workstreams`: Edit Bot in a Bot Chat's ⋯ menu, disabled where the Bots list's is; the model picker's inherit row named by its caller, "Same as Bot Chat" for Edit Bot > Work's Workstream Model); 2026-11-02, #1649 (Edit Bot gains Work, the bot's workstream settings, only for a bot that exists on a plugin that serves them; see Bot workstreams); 2026-11-02, #1640 (the MCP sign-in moved to NativeMCPSignIn, shared with Connectors; a switch still says the setup stopped; a Connectors sign-in is kept for the MCP page too, keepMcpSignedIn); 2026-10-31, #1588 (Edit Bot, New Bot's Start From lists and the MCP page open on what Hermes gave last time, read-only until it answers, and a save, MCP add or sign-in Hermes took is what they open on next; see Screens that open on their last answer); 2026-10-31, #1568 (a kept bot is never written, Delete included, a bot's face shows from the phone's copy until its fetch lands, its Bot Chat's face and color included, and a deleted bot leaves the kept roster); 2026-10-31, #1567 (the editor's Model page opens on the models kept from Hermes' last answer, picked once Hermes answers, with Try Again after a read that fails; see Model lists that fail to load); 2026-10-28, #1457 (the main bot goes by its Conduit name, see Profile names); 2026-10-28, #1448 (an unnamed bot shows its id capitalized); 2026-10-28, #1413 (a rename here names the profile everywhere, see Profile names); 2026-10-27, at #1395 (the editor's Model page gained search with each match's provider; saving unchanged); 2026-10-25, at #1222 (configure and MCP add wait in the profile config queue); before that #1192; group pictures at #1191.
 
 ## Moving pictures
 
@@ -1777,6 +1777,39 @@ the picture buttons, README.md's bots and profiles lines)
 - A Live Photo is picked as a still.
 
 **Checked:** 2026-11-05, #1812 (Choose GIF or Video, the Photos picker, since Choose Photo's crop flattened a GIF on Eric's device); 2026-11-05, #1782 (the Bot Overview's header plays its fallback profile face too; the phone-only carry-over is tested); 2026-11-05, #1778 (added: moving pictures from a GIF or a short video)
+
+## Pictures from Image Playground
+
+Apple's Image Playground makes a bot's, a profile's or a group chat's
+picture, using the system's own sheet. It needs no Hermes backend, no key
+and no cost to us.
+
+**Siblings:** Edit Bot and New Bot's Generate (see Bots: create and edit) ·
+a Settings > Profiles card's Edit menu · a group chat's menu, in the
+drawer shell and V2's conversation menu (GroupRoomActionItems) · Hermes' own
+generated pictures (kept, next to it in a menu when both work) · Moving
+pictures (not needed: Image Playground makes stills) · Watch, CarPlay,
+widgets and notifications (not needed: they draw no faces) · Hermes Desktop
+and the notifier (not needed: the picture is saved like a chosen photo) ·
+the text that describes it (the editor's hint, README.md's bots and
+profiles lines)
+
+**Code**
+- `Conduit/Views/Components/ImagePlaygroundPicture.swift` (availability, current, Prompt, image(at:), imagePlaygroundPicture, readsImagePlaygroundAvailability)
+- `Conduit/Views/BotEditorSheet.swift` (generateButton, playgroundPrompt, the hint), `Conduit/Views/ProfilePickerSheet.swift` (the Edit menu item), `Conduit/Views/GroupChatView.swift` (GroupRoomPictureRequest.playground, GroupRoomPicturePicker's sheet)
+- `project.yml` (ImagePlayground.framework weak-linked: iOS 17 has none)
+- Tests: `ConduitTests/ImagePlaygroundPictureTests.swift`
+
+**Rulings**
+- It's offered only where `supportsImagePlayground` is true: iOS 18.1+, Apple Intelligence hardware, turned on and set up, in a supported language and region. The system doesn't say which condition failed, so 8 GB of RAM or more (every Apple Intelligence device has it, every iPhone without it has 6 GB or less) separates a device that could turn it on from one that never can.
+- A capable device with it off gets one line in the bot editor naming Settings > Apple Intelligence & Siri. No public link opens that page. Menus (Profiles, group chats) only show the item when it works. A device that never can shows nothing. (Recommended to Eric 2026-11-05, his pick pending.)
+- The sheet starts from the name as one concept and the description and SOUL (a group's members) as text to extract ideas from, capped at 2,000 characters, with the current picture as the source image. It opens on Animation, the style that reads best as a small round face. The person can change all of it in the sheet.
+- The picked picture is saved like a chosen photo (256 px PNG). The headless ImageCreator isn't used: it stops working in iOS 27.
+
+**Open gaps**
+- Not yet tried on a device: the sheet can't run on a simulator without Apple Intelligence. On a Mac (iPad app), what `supportsImagePlayground` says is untested.
+
+**Checked:** 2026-11-05, #1813 (added)
 
 ## Opening a Bot Chat
 
