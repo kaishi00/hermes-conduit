@@ -9,6 +9,53 @@ import XCTest
 @MainActor
 final class SessionPresentationCacheTests: XCTestCase {
 
+    // MARK: - Merge: matching rows by the pool's index (issue 1826)
+
+    /// The merge finds each row's cached match through an index of the pool
+    /// rather than scoring every cached row for every row. Over transcripts
+    /// of repeated text, repeated tools with and without ids, re-rendered
+    /// replies and rows with no match at all, it picks the same rows the
+    /// full scan did, in the same order.
+    func testTheIndexedMatcherPicksWhatTheFullScanDid() {
+        var seed: UInt64 = 0x1826
+        func next(_ bound: Int) -> Int {
+            seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            return Int((seed >> 33) % UInt64(bound))
+        }
+        let roles: [MessageRole] = [.user, .assistant, .tool]
+        let texts = ["OK", "Done.", "Here it is", "  here   it is ", "Thinking", ""]
+        let tools = ["read_file", "Read_File ", "terminal", "search"]
+        func row(_ index: Int, prefix: String) -> ChatMessage {
+            let role = roles[next(roles.count)]
+            let id = next(4) == 0 ? "shared-\(next(6))" : "\(prefix)-\(index)"
+            let tool: ToolActivity? = role == .tool && next(5) != 0
+                ? ToolActivity(
+                    id: next(3) == 0 ? nil : (next(2) == 0 ? " call-\(next(5)) " : "call-\(next(5))"),
+                    name: tools[next(tools.count)],
+                    input: next(3) == 0 ? nil : texts[next(texts.count)],
+                    output: next(2) == 0 ? nil : texts[next(texts.count)],
+                    status: next(4) == 0 ? .running : .complete
+                )
+                : nil
+            return ChatMessage(
+                id: id,
+                role: role,
+                content: texts[next(texts.count)],
+                timestamp: next(3) == 0 ? "" : "t\(index)",
+                tool: tool
+            )
+        }
+        let cache = SessionPresentationCache.shared
+        for round in 0..<200 {
+            let pool = (0..<next(40)).map { row($0, prefix: "cached") }
+            let transcript = (0..<next(60)).map { row($0, prefix: "live") }
+            XCTAssertTrue(
+                cache.indexedMatchesAgreeWithScanForTesting(transcript, pool: pool),
+                "Round \(round) matched other rows than the full scan"
+            )
+        }
+    }
+
     // MARK: - Merge: timestamp restoration
 
     func testMergeRestoresMissingTimestamp() {

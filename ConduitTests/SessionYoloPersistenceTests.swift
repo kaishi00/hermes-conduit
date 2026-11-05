@@ -652,7 +652,7 @@ final class SessionYoloPersistenceTests: XCTestCase {
                     ])
                 )
             },
-            refreshContext: { _, _ in await refreshGate.suspend() },
+            afterResumeApplied: { _, _ in await refreshGate.suspend() },
             setSessionYolo: { _, sessionID, enabled in recorder.record(sessionID, enabled) }
         )
         let store = SessionYoloStore(defaults: defaults, storageKey: "test.session-yolo")
