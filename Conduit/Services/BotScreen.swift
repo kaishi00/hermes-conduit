@@ -243,6 +243,7 @@ final class BotScreenModel: ObservableObject {
             let id = note.userInfo?["request_id"] as? String ?? ""
             MainActor.assumeIsolated {
                 if self?.sudoRequestID == id { self?.sudoRequestID = nil }
+                if self?.pendingSudo?.id == id { self?.pendingSudo = nil }
             }
         })
     }
