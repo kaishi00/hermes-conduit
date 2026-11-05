@@ -25466,6 +25466,19 @@ final class AppState: ObservableObject {
     /// Routes a notification to its originating profile/session without
     /// allowing the ordinary cold-start session restoration to win first.
     func openNotificationTargetOutcome(_ target: ConduitNotificationTarget) async -> NotificationOpenOutcome {
+        let outcome = await openNotificationTargetOutcomeRouted(target)
+        // A wait's notification whose id the open resolved to another (a
+        // runtime id from an older notifier): its card is in the chat that
+        // opened, so the reveal names that one (issue 1705).
+        if outcome == .opened, let type = target.type, NeedsYouStore.notificationTypes.contains(type),
+           let reveal = pendingNeedsYouReveal, !isShowingChat(for: reveal),
+           let opened = activeSessionId, !opened.isEmpty {
+            pendingNeedsYouReveal = NeedsYouReveal(opening: opened)
+        }
+        return outcome
+    }
+
+    private func openNotificationTargetOutcomeRouted(_ target: ConduitNotificationTarget) async -> NotificationOpenOutcome {
         widgetLaunchCoordinator.supersede()
         // Where an open for a call from Hermes stopped (#449).
         var traceStage = "dashboard check"

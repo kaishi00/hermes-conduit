@@ -186,6 +186,8 @@ struct SessionList: View {
     @State private var showArchivedSessions = false
     /// Every pinned reply of the profile (#918).
     @State private var showPinnedReplies = false
+    /// Every profile's chats waiting on the user (issue 1705).
+    @State private var showNeedsYou = false
     @State private var showProjectCreator = false
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingRename: SessionSummary?
@@ -285,6 +287,14 @@ struct SessionList: View {
                 }
 
                 Menu {
+                    if appState.servesNeedsYou {
+                        Button {
+                            Haptics.selection()
+                            showNeedsYou = true
+                        } label: {
+                            Label(AppLocalization.string("Needs you"), systemImage: "exclamationmark.bubble")
+                        }
+                    }
                     Button {
                         Haptics.selection()
                         showFilterOrder = true
@@ -476,6 +486,12 @@ struct SessionList: View {
         }
         .sheet(isPresented: $showPinnedReplies) {
             PinnedRepliesSheet()
+                .environmentObject(appState)
+        }
+        .sheet(isPresented: $showNeedsYou) {
+            NeedsYouSheet(store: appState.needsYou)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
                 .environmentObject(appState)
         }
         .sheet(item: $selectedProject) { project in

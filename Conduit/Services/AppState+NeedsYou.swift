@@ -92,8 +92,10 @@ extension AppState {
             // The open chat names itself, so a switch away never takes its reveal.
             pendingNeedsYouReveal = NeedsYouReveal(opening: isOpen ? activeSessionId : sessionID)
         }
-        // The Chats list may cover even the open chat: it comes forward.
+        // The Chats list, or a group room, may cover even the open chat:
+        // it comes forward.
         dismissSidebarDrawer()
+        if isOpen, activeRoomSurface != nil { closeGroupRoom() }
         guard !isOpen else { return }
         openAppLink(.session(id: sessionID, profile: item.profile))
     }
