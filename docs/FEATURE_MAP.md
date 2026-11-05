@@ -5701,17 +5701,17 @@ stops. The V2 shell keeps each visited tab's screens mounted, hidden, so a
 loop that only checks the app being active keeps reading for a screen nobody
 sees.
 
-**Siblings:** the Chats list's live registry poll (Running and Needs
-approval in the chats list) · All profiles' catalog poll · a project's page
-(its 20 s reads of other profiles' chats) · the open chat's 5 s check against
-the registry (the same chat on another device) · a group room's 3 s
-`groups.log` and `groups.state` poll · a bot's work (the Bot Chat's title
-line, the Work panel, a workstream's bar; see Bot workstreams) · Tasks and
-the Kanban board · Pulse's page · Bots Home's portraits and talking rooms ·
-not needed: the Bot Overview's talking-rooms read (a sheet: no tab changes
-under it), Needs you (its own 20 s read already keys on what shows), Watch and
-CarPlay (no tabs), the notifier (it answers what it's asked) · text: none
-(no Settings caption or doc gives the cadence)
+**Siblings:** a project's page (its 20 s reads of other profiles' chats) ·
+the open chat's 5 s check against the registry (the same chat on another
+device) · a group room's 3 s `groups.log` and `groups.state` poll · a bot's
+work (the Bot Chat's title line, the Work panel, a workstream's bar; see Bot
+workstreams) · not needed, already gated on what shows: the Chats list's live
+registry poll (Running and Needs approval in the chats list), All profiles'
+catalog poll, Tasks and the Kanban board, Pulse's page, Bots Home's portraits
+and talking rooms, Needs you (its own 20 s read) · not needed: the Bot
+Overview's talking-rooms read (a sheet: no tab changes under it), Watch and
+CarPlay (no tabs), the notifier (it answers what it's asked) · text: none (no
+Settings caption or doc gives the cadence)
 
 **Code**
 - Tab visibility: `Conduit/Views/V2/V2Shell.swift` (v2Shell's isTabActive and showsChatRows per tab)
