@@ -2861,6 +2861,8 @@ final class AppStateChatResumeTests: XCTestCase {
     /// retry it; one that failed on the way can pass on the next try.
     private func notificationOpenOutcome(
         catalog: [SessionSummary],
+        target: String = "stored-a",
+        type: String = "response_ready",
         open: @escaping (String) throws -> SessionResumeResult
     ) async -> (outcome: AppState.NotificationOpenOutcome, appState: AppState) {
         let harness = makeHarness(
@@ -2874,9 +2876,30 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.connection = connection
         harness.appState.client = HermesClient(connection: connection, profile: "default")
         let outcome = await harness.appState.openNotificationTargetOutcome(
-            ConduitNotificationTarget(profile: nil, sessionId: "stored-a", type: "response_ready")
+            ConduitNotificationTarget(profile: nil, sessionId: target, type: type)
         )
         return (outcome, harness.appState)
+    }
+
+    /// Issue 1705: a wait's notification that names the chat's runtime id
+    /// (an older notifier) still lands on its card in the chat it opened.
+    func testAWaitsNotificationByRuntimeIDRevealsTheChatItOpened() async {
+        let result = await notificationOpenOutcome(
+            catalog: [session("stored-a", alternateIDs: ["runtime-a"])],
+            target: "runtime-a",
+            type: "approval.needed"
+        ) { _ in
+            SessionResumeResult(
+                sessionId: "stored-a",
+                messages: [],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        XCTAssertEqual(result.outcome, .opened)
+        guard let reveal = result.appState.pendingNeedsYouReveal else {
+            return XCTFail("the wait's notification sets a reveal")
+        }
+        XCTAssertTrue(result.appState.isShowingChat(for: reveal), "it names the chat that opened")
     }
 
     func testNotificationOpenOfAMissingConversationIsFinal() async {

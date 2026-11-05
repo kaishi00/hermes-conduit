@@ -15108,6 +15108,8 @@ final class AppState: ObservableObject {
     }
 
     func disconnect() {
+        // Its waits belong to the signed-out user (issue 1705).
+        needsYou.reset(dashboardID: nil)
         // The next sign-in to it asks for Face ID again.
         if let activeDashboardID { faceIDUnlockedDashboards[activeDashboardID] = nil }
         // Its turns' Lock Screen progress has nothing left to follow.

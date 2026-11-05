@@ -59,7 +59,7 @@ app side C7 on the `linked-rooms` branch only, see Linked Rooms) · a
 workstream's "Needs you" card on Bot Chat's Work panel (Bot workstreams) · the
 resume jump · Needs you across chats and profiles (issue 1705): the count on
 each profile's chip in the profile strip, the banner when another chat starts
-waiting (iPhone, iPad and Mac, over every screen and a call's), the Needs you list (the
+waiting (iPhone, iPad and Mac, over the main screens and a call's, not over a sheet such as Settings), the Needs you list (the
 Chats filter menu, and the banner when several wait), each opening its chat at
 the card, as an approval's or question's notification now does too; the
 plugin's `/waiting` list and its `waiting-list` capability · what models and

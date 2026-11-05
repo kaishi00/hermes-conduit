@@ -153,11 +153,15 @@ final class NeedsYouStore: ObservableObject {
             return
         }
         reading = true
-        defer { reading = false }
-        repeat {
-            readAgain = false
-            await read()
-        } while readAgain
+        // Unstructured, so a follow-up a push asked for still runs when the
+        // caller (the sheet's task) is cancelled.
+        await Task { @MainActor in
+            defer { self.reading = false }
+            repeat {
+                self.readAgain = false
+                await read()
+            } while self.readAgain
+        }.value
     }
 
     func count(for profile: String, matches: (String, String) -> Bool) -> Int {
@@ -181,6 +185,8 @@ final class NeedsYouStore: ObservableObject {
         if merged != items { items = merged }
         if let banner, !merged.contains(where: { $0.id == banner.id }) { self.banner = nil }
         guard !firstRead, let newest = fresh.filter({ !isOpenChat($0) }).max(by: { $0.since < $1.since }) else { return }
+        // Another profile read in the same refresh may have shown a newer one.
+        if let banner, banner.since > newest.since { return }
         banner = newest
     }
 
