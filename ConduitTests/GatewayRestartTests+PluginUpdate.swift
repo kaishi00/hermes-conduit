@@ -948,6 +948,12 @@ extension GatewayRestartTests {
     func testHostJobOutcomes() {
         XCTAssertNil(NotifierPluginUpdater.hostOutcome(["step": "restarting_gateway"]))
         XCTAssertEqual(NotifierPluginUpdater.hostStep(["step": "restarting_gateway"]), .restartingGateway(nil))
+        XCTAssertEqual(NotifierPluginUpdater.hostStep(["step": "restarting_gateway", "gateway_stage": "waiting", "running_chats": 2]),
+                       .restartingGateway(.draining))
+        XCTAssertEqual(NotifierPluginUpdater.hostStep(["step": "restarting_gateway", "gateway_stage": "draining"]),
+                       .restartingGateway(.draining))
+        XCTAssertEqual(NotifierPluginUpdater.hostStep(["step": "restarting_gateway", "gateway_stage": "later"]),
+                       .restartingGateway(nil))
         XCTAssertEqual(NotifierPluginUpdater.hostOutcome(["step": "failed", "detail": "no"]), .failed(detail: "no"))
         XCTAssertEqual(NotifierPluginUpdater.hostOutcome(["step": "failed", "code": "restart_needed", "detail": "Restart it"]),
                        .needsDashboardRestart(detail: "Restart it"))
