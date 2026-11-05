@@ -1101,7 +1101,7 @@ extension BotModeTests {
         XCTAssertEqual(snapshot.items[1].screen, "controlling")
         XCTAssertFalse(snapshot.items[1].needsYou)
         // Told to carry on: its ask goes, and so does its "needs you".
-        var row: [String: Any] = (response["work"] as! [[String: Any]])[0]
+        var row: [String: Any] = try XCTUnwrap((response["work"] as? [[String: Any]])?.first)
         row["status"] = "running"
         row["screen_ask"] = ""
         let moved = snapshot.replacing(try XCTUnwrap(BotWorkItem(row: row)))
