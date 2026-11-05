@@ -56,6 +56,8 @@ struct V2ProjectPage: View {
         guard let read = otherProfiles else { return [pageProfile] }
         let others = appState.projectPageProfiles(besides: pageProfile).filter { profile in
             (read.matches[profile] ?? nil) != nil
+                // A profile whose read failed keeps its rows, and its project.
+                || read.parts.contains { AppState.profilesMatch($0.profile, profile) }
         }
         return [pageProfile] + others
     }
@@ -215,6 +217,14 @@ struct V2ProjectPage: View {
         // Read again when the chats list's catalog changes: beside the open
         // chat on a wide window the page stays on screen (issue 1454).
         .task(id: "\(project.id)|\(appState.chatListCatalogGeneration)") { await reload() }
+        // Another profile's changes move nothing here: read them every 20 s
+        // while the page is open, as All's poll does.
+        .task(id: project.id) {
+            while true {
+                do { try await Task.sleep(for: .seconds(20)) } catch { return }
+                await reload()
+            }
+        }
         .onChange(of: appState.isConnected) { _, isConnected in
             guard isConnected else { return }
             Task { await reload(force: true) }
