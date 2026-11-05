@@ -2676,9 +2676,9 @@ private struct RemoteMarkdownImage: View {
                 // The viewer fetches the picture itself, so a tile still
                 // loading opens it too, the "+N" tile included.
                 PictureTilePlaceholder(state: failed ? .unavailable : .loading)
-                    .opensMediaPreview { openImage(showing: nil) }
                     .accessibilityElement()
                     .accessibilityLabel(Text(verbatim: label))
+                    .opensMediaPreview { openImage(showing: nil) }
             }
         }
     }

@@ -2264,14 +2264,15 @@ private struct UserImageAttachmentPreview: View {
             // A tile still loading, or one that won't, opens the viewer too:
             // the viewer fetches the picture itself, and the "+N" tile is
             // the only way to the pictures without a tile.
+            // One element first, so VoiceOver keeps the tap's button trait.
             PictureTilePlaceholder(state: loading ? .loading : failed ? .unavailable : .attached, onAccent: true)
-                .opensMediaPreview { openPreview(showing: nil) }
-                .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
                 .accessibilityElement()
                 .accessibilityLabel(
                     loading ? AppLocalization.string("Loading image…")
                         : failed ? AppLocalization.string("Image unavailable") : AppLocalization.string("Image attached")
                 )
+                .opensMediaPreview { openPreview(showing: nil) }
+                .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
                 .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
         }
     }
