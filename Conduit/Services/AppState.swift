@@ -38822,7 +38822,8 @@ final class AppState: ObservableObject {
         }
         // Something else started voice meanwhile (Siri, a call from Hermes).
         guard isConnected, !isVoiceInUse, minimisedLiveVoice == nil else { return .stop }
-        return .proceed(thread)
+        // Deleted during the wait: the new mode starts without it.
+        return .proceed(thread.flatMap { voiceBackgroundJobSupervisor.isDeletedChat($0) ? nil : $0 })
     }
 
     /// Picks another voice mode from a call screen. It is saved as the
