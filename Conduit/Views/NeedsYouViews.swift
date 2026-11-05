@@ -225,11 +225,14 @@ struct NeedsYouRow: View {
                         .scaledFont(.subheadline.weight(.semibold))
                         .lineLimit(1)
                     Spacer(minLength: 4)
-                    Text(item.since, format: .relative(presentation: .numeric, unitsStyle: .narrow))
-                        .scaledFont(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .fixedSize()
+                    // A host that sent no time: no age to show.
+                    if item.since != .distantPast {
+                        Text(item.since, format: .relative(presentation: .numeric, unitsStyle: .narrow))
+                            .scaledFont(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
                 }
                 HStack(spacing: 6) {
                     NeedsYouDot(size: 7)

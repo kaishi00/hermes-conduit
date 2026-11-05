@@ -174,8 +174,11 @@ struct MainView: View {
                 NotifierPluginUpdateBanner()
                 // Send the report of a crash or freeze? (CrashReportOffer.swift)
                 CrashReportBanner()
-                // Another chat started waiting on the user (NeedsYou.swift).
-                NeedsYouBanner(store: appState.needsYou)
+                // Another chat started waiting on the user (NeedsYou.swift);
+                // a call's screen shows it over the call.
+                if !appState.isVoiceCallScreenPresented {
+                    NeedsYouBanner(store: appState.needsYou)
+                }
                 // Calendar changes Hermes asked for (AppState+PhoneSync.swift);
                 // a call's screen shows them over the call.
                 if !appState.isVoiceCallScreenPresented {
@@ -710,6 +713,8 @@ struct MainView: View {
         VStack(spacing: 0) {
             voiceScreenshotBanner
             PhoneChangeOverlay(engine: appState.phoneSync)
+                .environmentObject(appState)
+            NeedsYouBanner(store: appState.needsYou)
                 .environmentObject(appState)
             // Only V2 draws notices, as its shell does under the call.
             if useV2Shell, let notice = appState.pinSyncNotice {
