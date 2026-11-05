@@ -627,6 +627,21 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(other.liveThread?.runtimeSessionID, "rt-chat")
     }
 
+    func testAWatchRequestRunningInADeletedChatIsLetGo() async {
+        let fake = FakeVoiceJobBackend()
+        let base = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))
+        let watch = WatchCallJobSupervisor(base)
+        _ = await watch.startJob(instructions: "plan the trip", profile: nil, joinsCall: true, onJobCreated: nil)
+        base.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Plan.", reasoning: nil))
+        _ = await watch.startJob(instructions: "and book the hotel", profile: nil, joinsCall: true, onJobCreated: nil)
+        guard await waitForCallChat({ base.jobs.last?.status == .running }) else { return }
+        let continued = base.jobs.last?.id
+
+        base.noteChatDeleted(["st-1"])
+        XCTAssertEqual(base.jobs.first { $0.id == continued }?.isDetachedThreadTurn, true,
+                       "its end isn't said to the call, as at a hang-up")
+    }
+
     func testAWatchCallWhoseChatIsDeletedGoesOnInANewChat() async {
         let fake = FakeVoiceJobBackend()
         let base = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))

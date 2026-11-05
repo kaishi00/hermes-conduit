@@ -1971,6 +1971,19 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let ids = sessionIDs.filter { !$0.isEmpty }
         guard !ids.isEmpty else { return }
         deletedChatIDs.formUnion(ids)
+        // A call's request already running in the deleted chat (a Watch
+        // call's later requests included, which have no liveThread) is let
+        // go of, as at a hang-up: its end, its OK or its question is never
+        // said to the call nor counted against a bare yes. One still
+        // starting fails when it finds the chat gone, and is said so.
+        for index in jobs.indices where !jobs[index].isDetachedThreadTurn && !jobs[index].isThreadTurn
+            && (jobs[index].callAnchor != nil || jobs[index].isCallChat || jobs[index].sharesCallChat)
+            && (jobs[index].status == .running || jobs[index].status == .needsInput)
+            && [jobs[index].runtimeSessionID, jobs[index].storedSessionID].compactMap({ $0 }).contains(where: ids.contains) {
+            jobs[index].outcomeDelivered = true
+            jobs[index].isDetachedThreadTurn = true
+            jobs[index].settledByPoll = false
+        }
         guard let thread = liveThread, ids.contains(where: { backend.threadOwnsSession(thread, $0) }) else { return }
         deletedLiveThread = thread
         liveThread = nil
@@ -2157,7 +2170,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             // the rest. Its settling pumps the queue again. A turn left
             // running in another chat (an earlier call's) doesn't.
             let chatHasSentTurn = jobs.contains { job in
-                job.isThreadTurn && job.threadTurnSubmitted && job.status.isActive
+                job.isThreadTurn && job.threadTurnSubmitted && job.status.isActive && !job.isDetachedThreadTurn
                     && threadTargets[job.id].map { Self.sameChat($0, thread) } == true
             } || callChatJobRuns(in: thread)
             if chatHasSentTurn { return }
