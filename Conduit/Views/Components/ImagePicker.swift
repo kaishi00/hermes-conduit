@@ -14,9 +14,10 @@ import UniformTypeIdentifiers
 
 struct ImagePicker: UIViewControllerRepresentable {
     @Binding var image: UIImage?
-    /// A picked video or animated picture, as a copy the caller owns. Nil
-    /// offers pictures only, and an animated one arrives as a still.
-    var onAnimated: ((AnimatedAvatar.Source) -> Void)? = nil
+    /// A picked video or animated picture, as a copy the caller owns; nil
+    /// when the copy couldn't be made. Without it, the picker offers
+    /// pictures only, and an animated one arrives as a still.
+    var onAnimated: ((AnimatedAvatar.Source?) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
@@ -44,14 +45,16 @@ struct ImagePicker: UIViewControllerRepresentable {
             if let onAnimated = parent.onAnimated {
                 // The trimmed video, or the picture's own file when it
                 // moves: the crop and the image hand over one frame.
-                if let movie = info[.mediaURL] as? URL, let copy = AnimatedAvatar.keptCopy(of: movie) {
-                    onAnimated(.movie(copy))
+                // A copy that fails is still handed over, so the pick says
+                // it couldn't be used rather than closing on nothing or a
+                // still.
+                if let movie = info[.mediaURL] as? URL {
+                    onAnimated(AnimatedAvatar.keptCopy(of: movie).map(AnimatedAvatar.Source.movie))
                     parent.dismiss()
                     return
                 }
-                if let file = info[.imageURL] as? URL, AnimatedAvatar.isAnimated(at: file),
-                   let copy = AnimatedAvatar.keptCopy(of: file) {
-                    onAnimated(.image(copy))
+                if let file = info[.imageURL] as? URL, AnimatedAvatar.isAnimated(at: file) {
+                    onAnimated(AnimatedAvatar.keptCopy(of: file).map(AnimatedAvatar.Source.image))
                     parent.dismiss()
                     return
                 }

@@ -392,7 +392,7 @@ private struct ProfilePickerRow: View {
     /// Nil removes the photo.
     /// A picked GIF or video, made into a looping APNG (AnimatedAvatar)
     /// first, then saved like a photo.
-    private func saveAnimation(_ source: AnimatedAvatar.Source) {
+    private func saveAnimation(_ source: AnimatedAvatar.Source?) {
         isSavingPhoto = true
         saveError = nil
         Task { @MainActor in

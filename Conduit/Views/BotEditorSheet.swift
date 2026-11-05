@@ -269,7 +269,7 @@ struct BotEditorSheet: View {
 
     /// A picked GIF or video, made into a looping APNG (AnimatedAvatar) and
     /// saved like any picture.
-    private func useAnimation(_ source: AnimatedAvatar.Source) {
+    private func useAnimation(_ source: AnimatedAvatar.Source?) {
         isPreparingAnimation = true
         error = nil
         Task { @MainActor in
@@ -675,7 +675,8 @@ struct BotEditorSheet: View {
     }
 
     private var canSave: Bool {
-        guard !isSaving else { return false }
+        // A picked GIF or video lands in the draft once it's made.
+        guard !isSaving, !isPreparingAnimation else { return false }
         // An edit saves only once the editor snapshot settled: before it,
         // the form still holds placeholders that would overwrite the bot.
         guard isCreating else { return detailsState == .loaded || detailsState == .failed }

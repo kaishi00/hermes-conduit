@@ -1724,7 +1724,7 @@ the picture buttons, README.md's bots and profiles lines)
 
 **Code**
 - Making one: `Conduit/Services/AnimatedAvatar.swift` (frames from a picture file or a video, thinned, squared and written as a looping APNG under maxBytes, picture(fromPicked:), message(for:)), `Conduit/Views/Components/ImagePicker.swift` (onAnimated: videos trimmed to maxDuration, an animated picture's own file)
-- Saving: `Conduit/Views/BotEditorSheet.swift` (useAnimation, previewPlayback, the caption), `Conduit/Views/ProfilePickerSheet.swift` (saveAnimation), `Conduit/Services/AppState.swift` (setProfilePhoto's animation, botAvatarPlayback, profileAvatarPlayback), `Conduit/Services/ProfileAppearanceStore.swift` (saveAvatar keeps a moving picture's bytes; ProfileAvatarImageCache.isAnimated and revision)
+- Saving: `Conduit/Views/BotEditorSheet.swift` (useAnimation, previewPlayback, canSave waiting for it, the caption), `Conduit/Views/ProfilePickerSheet.swift` (saveAnimation), `Conduit/Services/AppState.swift` (setProfilePhoto's animation, moveDevicePhotoToHermes carrying a phone-only moving picture over as it is, botAvatarPlayback, profileAvatarPlayback), `Conduit/Services/ProfileAppearanceStore.swift` (saveAvatar keeps a moving picture's bytes; ProfileAvatarImageCache.isAnimated and revision)
 - Playing: `Conduit/Views/Components/AnimatedAvatarFrames.swift` (AnimatedAvatarFrames, AnimatedAvatarPlayer), `Conduit/Views/BotEditorSheet.swift` (BotAvatarView's playback), `Conduit/Views/BotRosterView.swift` (BotMonogramView's animates), `Conduit/Views/ProfilePickerSheet.swift` (ProfileAvatarView's animates), `Conduit/Views/V2/V2BotsHome.swift` (the portrait and the Bot Overview's header)
 - Tests: `ConduitTests/AnimatedAvatarTests.swift`
 

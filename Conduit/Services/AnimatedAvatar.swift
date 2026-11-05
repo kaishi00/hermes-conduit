@@ -78,8 +78,10 @@ enum AnimatedAvatar {
         return encode(frames)
     }
 
-    /// `picture(from:)` for a picker's copy, which it deletes after.
-    static func picture(fromPicked source: Source) async -> Result<Data, Failure> {
+    /// `picture(from:)` for a picker's copy, which it deletes after. Nil is
+    /// a pick the picker couldn't copy.
+    static func picture(fromPicked source: Source?) async -> Result<Data, Failure> {
+        guard let source else { return .failure(.unreadable) }
         let result = await picture(from: source)
         switch source {
         case .image(let url), .movie(let url): try? FileManager.default.removeItem(at: url)
