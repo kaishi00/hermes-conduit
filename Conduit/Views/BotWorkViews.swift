@@ -291,7 +291,7 @@ struct BotWorkPanel: View {
     private func sectionHeader(_ title: String, symbol: String, tint: Color) -> some View {
         SettingsSectionHeader(title: title, symbol: symbol, tint: tint)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .listRowInsets(EdgeInsets(top: 12, leading: 4, bottom: 2, trailing: 16))
+            .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 2, trailing: 16))
     }
 
     var body: some View {
@@ -313,9 +313,12 @@ struct BotWorkPanel: View {
                 openList
             }
         }
-        // Settings' backdrop, in the Bot Overview and beside a Bot Chat
-        // alike (see Sheets in Settings' look).
-        .background { SettingsBackdrop().ignoresSafeArea() }
+        // Settings' backdrop beside a Bot Chat (see Sheets in Settings'
+        // look). In the Bot Overview the sheet's own shows through, so the
+        // header and the list are one surface, with no seam between them.
+        .background {
+            if showsHeader { SettingsBackdrop().ignoresSafeArea() }
+        }
         .refreshesBotWork(profile: profile)
         // A refusal belongs to the panel it was tapped in. The Resolved
         // list stays, so a resolved workstream opened from it knows its
@@ -412,7 +415,7 @@ struct BotWorkPanel: View {
                     }
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 4, trailing: 16))
+                    .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 0, trailing: 16))
                 } else if snapshot.resolvedCount == 0 {
                     Text("No work yet")
                         .scaledFont(.subheadline)
@@ -753,12 +756,20 @@ private struct BotWorkRow: View {
         if item.kind == .workstream {
             let controls: [BotWorkItem.Action] = [.check, .continue, .stop].filter { item.actions.contains($0) }
             if !controls.isEmpty {
-                // Stacked at accessibility Text Sizes, so no label is cut.
-                let layout = dynamicTypeSize.isAccessibilitySize
-                    ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
-                layout {
-                    ForEach(controls, id: \.self) { action in
-                        controlButton(action, prominent: action == controls.first && action != .stop)
+                // Side by side only while every label fits on one line
+                // ("Check first" was cut in a narrow sheet); stacked
+                // otherwise, and always at accessibility Text Sizes.
+                let buttons = ForEach(controls, id: \.self) { action in
+                    controlButton(action, prominent: action == controls.first && action != .stop)
+                }
+                Group {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        VStack(spacing: 8) { buttons }
+                    } else {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 8) { buttons }
+                            VStack(spacing: 8) { buttons }
+                        }
                     }
                 }
                 .disabled(isActing || !appState.isConnected)
@@ -813,6 +824,8 @@ private struct BotWorkRow: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                // Dims with its neighbours while the row can't act.
+                .opacity(isActing || !appState.isConnected ? 0.45 : 1)
             } else {
                 Button(action: act) { text }
                     .buttonStyle(prominent ? .settingsPrimary : .settings)
