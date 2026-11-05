@@ -739,6 +739,24 @@ extension BotModeTests {
         XCTAssertTrue(build.isEmpty)
     }
 
+    /// A face flying into the room being started lands where the room's
+    /// icon draws it: the first two side by side, three in a triangle, and
+    /// a fourth or later sinking into the middle, as the icon shows three.
+    func testAFaceJoiningANewRoomLandsWhereTheIconDrawsIt() {
+        let rect = CGRect(x: 100, y: 200, width: 60, height: 60)
+        let alone = NewRoomPortrait.slot(index: 0, count: 1, in: rect)
+        XCTAssertEqual(alone.center, CGPoint(x: 130, y: 230))
+        XCTAssertEqual(alone.diameter, 60, accuracy: 0.001)
+        let second = NewRoomPortrait.slot(index: 1, count: 2, in: rect)
+        XCTAssertEqual(second.center.x, 130 + 60 * 0.17, accuracy: 0.001)
+        XCTAssertEqual(second.diameter, 60 * 0.64, accuracy: 0.001)
+        let top = NewRoomPortrait.slot(index: 0, count: 3, in: rect)
+        XCTAssertEqual(top.center.y, 230 - 60 * 0.22, accuracy: 0.001)
+        let fourth = NewRoomPortrait.slot(index: 3, count: 4, in: rect)
+        XCTAssertEqual(fourth.center, CGPoint(x: 130, y: 230))
+        XCTAssertLessThan(fourth.diameter, top.diameter)
+    }
+
     /// A Bot Chat zooms out of its portrait only when that portrait was
     /// just tapped: the push takes the arm and keeps it while the chat is
     /// in the stack; a stale or failed tap, another bot's chat, or an open

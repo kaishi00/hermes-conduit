@@ -32,6 +32,15 @@ struct BotRosterView: View {
     /// (empty: none). Nothing reaches the host until Create.
     @State private var newRoom = BotRoomBuild()
     @State private var showingNewRoomSheet = false
+    /// Faces flying from their portraits into the room being started.
+    @State private var roomFlights: [BotRoomFlight] = []
+    /// The rooms there were as Create was tapped: one Hermes lists after it
+    /// is the room just made, kept out of the grid until it takes the new
+    /// room's place, so it slides there from it.
+    @State private var roomsBeforeCreate: Set<String>?
+    /// The room just made, which takes the new room's place.
+    @State private var landingRoomID: String?
+    @Namespace private var roomTiles
     @State private var showingReorder = false
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -85,11 +94,11 @@ struct BotRosterView: View {
             let kept = newRoom.pruned(visible: visibleBotNames)
             if kept != newRoom { newRoom = kept }
         }
-        .sheet(isPresented: $showingNewRoomSheet) {
+        .sheet(isPresented: $showingNewRoomSheet, onDismiss: { roomsBeforeCreate = nil }) {
             GroupCreateSheet(
                 preselected: Set(newRoomBots.map(\.name)),
                 suggestedName: joinedNames(newRoomBots),
-                onCreated: { newRoom.clear() }
+                onCreated: newRoomCreated
             )
             .environmentObject(appState)
         }
@@ -401,10 +410,107 @@ struct BotRosterView: View {
     }
 
     private func addToNewRoom(_ names: [String]) {
+        var seen = Set<String>()
+        let joining = names.filter { !newRoom.contains($0) && seen.insert($0.lowercased()).inserted }
         guard newRoom.add(names) else {
             Haptics.warning()
             managementNotice = AppLocalization.string("A room holds up to 6 bots.")
             return
+        }
+        flyIntoNewRoom(joining)
+    }
+
+    /// The joining bots' faces leave their portraits, which stay put,
+    /// shrink as they go and settle into the room's icon among the rooms
+    /// below, so the room grows out of the drop instead of popping in.
+    /// With Reduce Motion the faces are just there.
+    private func flyIntoNewRoom(_ names: [String]) {
+        guard !reduceMotion, !names.isEmpty else { return }
+        let flights = names.map { BotRoomFlight(name: $0.lowercased()) }
+        roomFlights += flights
+        let ids = Set(flights.map(\.id))
+        Task { @MainActor in
+            // A frame for the new room's icon to be laid out, so the faces
+            // know where they land.
+            try? await Task.sleep(for: .milliseconds(30))
+            withAnimation(BotRoomFlight.motion) {
+                for index in roomFlights.indices where ids.contains(roomFlights[index].id) {
+                    roomFlights[index].landed = true
+                }
+            } completion: {
+                roomFlights.removeAll { ids.contains($0.id) }
+                if !newRoom.isEmpty { Haptics.light() }
+            }
+        }
+    }
+
+    /// The faces in flight, over Bots Home: from each portrait to its place
+    /// in the new room's icon. One whose portrait or room isn't laid out
+    /// (scrolled away) isn't drawn, and its face shows in the room when it
+    /// would have landed.
+    @ViewBuilder
+    private func roomFlightLayer(_ anchors: [String: Anchor<CGRect>]) -> some View {
+        if !roomFlights.isEmpty, let target = anchors[BotsHomeAnchorKey.newRoom] {
+            GeometryReader { proxy in
+                let room = proxy[target]
+                let names = newRoom.names.map { $0.lowercased() }
+                ForEach(roomFlights) { flight in
+                    if let from = anchors[BotsHomeAnchorKey.bot(flight.name)],
+                       let bot = visibleBots.first(where: { $0.name.lowercased() == flight.name }),
+                       let index = names.firstIndex(of: flight.name) {
+                        let start = proxy[from]
+                        let slot = NewRoomPortrait.slot(index: index, count: names.count, in: room)
+                        BotAvatarView(
+                            name: bot.name,
+                            label: bot.displayLabel,
+                            colorString: bot.appearanceColor,
+                            image: appState.botAvatarImage(for: bot),
+                            size: start.width
+                        )
+                        .scaleEffect(flight.landed ? slot.diameter / max(start.width, 1) : 1)
+                        .opacity(flight.landed && index >= 3 ? 0 : 1)
+                        .position(flight.landed ? slot.center : CGPoint(x: start.midX, y: start.midY))
+                    }
+                }
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+    }
+
+    /// A bot dropped on the room being started joins it, as on a member.
+    private func dropOnNewRoom(_ dragged: String) -> Bool {
+        guard canStartRoomHere,
+              let bot = visibleBots.first(where: { $0.name.caseInsensitiveCompare(dragged) == .orderedSame })
+        else { return false }
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            addToNewRoom([bot.name])
+        }
+        return true
+    }
+
+    private func openNewRoomSheet() {
+        roomsBeforeCreate = Set(appState.shownGroupRooms.map(\.roomID))
+        showingNewRoomSheet = true
+    }
+
+    /// Hermes made the room: it takes the new room's place, sliding to
+    /// where Hermes lists it. Then its tile lets go of that place, with no
+    /// motion, so the next room started has it to itself.
+    private func newRoomCreated() {
+        let made = roomsBeforeCreate.flatMap { before in
+            appState.shownGroupRooms.first { !before.contains($0.roomID) }?.roomID
+        }
+        Haptics.success()
+        withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : BotRoomFlight.motion) {
+            landingRoomID = made
+            roomsBeforeCreate = nil
+            roomFlights = []
+            newRoom.clear()
+        } completion: {
+            var settle = Transaction()
+            settle.disablesAnimations = true
+            withTransaction(settle) { landingRoomID = nil }
         }
     }
 
@@ -420,7 +526,10 @@ struct BotRosterView: View {
     }
 
     private func cancelNewRoom() {
-        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { newRoom.clear() }
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            roomFlights = []
+            newRoom.clear()
+        }
     }
 
     /// The room's bots that are still shown and not hidden: a bot hidden or
@@ -479,7 +588,7 @@ struct BotRosterView: View {
                 .accessibilityIdentifier("bots.newRoom.cancel")
             Button(AppLocalization.string("Create")) {
                 Haptics.light()
-                showingNewRoomSheet = true
+                openNewRoomSheet()
             }
             .buttonStyle(.borderedProminent)
             .tint(.conduitAccent)
@@ -604,14 +713,13 @@ struct BotRosterView: View {
                         .padding(.vertical, 3)
                 }
                 if !appState.shownBotRoster.isEmpty {
-                    if !appState.talkingRooms.isEmpty {
-                        BotsLiveRooms()
-                            .rosterListRow(divider: false)
-                    }
                     portraitGrid
                         .padding(.bottom, 8)
                 }
                 homeGroupSection
+            }
+            .overlayPreferenceValue(BotsHomeAnchorKey.self) { anchors in
+                roomFlightLayer(anchors)
             }
             .environment(\.rosterRowsInScroll, true)
         }
@@ -741,11 +849,51 @@ struct BotRosterView: View {
             .padding(.top, 10)
             .padding(.bottom, 4)
             .frame(minHeight: 44)
-            VStack(spacing: 0) {
-                groupRows
+            if let message = groupProbeFailure {
+                // A probe failure must explain itself, as on the list.
+                botModeFailure(message)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 3)
             }
-            .padding(.bottom, 16)
+            BotRoomGrid { homeRoomTiles }
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 16)
         }
+    }
+
+    /// Bots Home's rooms as small portraits: the hosted rooms, Desktop's,
+    /// then the room being started, last, where the faces fly to.
+    @ViewBuilder
+    private var homeRoomTiles: some View {
+        ForEach(homeRooms) { room in
+            GroupRoomPortrait(room: room)
+                .matchedGeometryEffect(id: room.roomID == landingRoomID ? BotsHomeAnchorKey.newRoom : room.roomID,
+                                       in: roomTiles)
+        }
+        ForEach(appState.shownDesktopGroupChats) { group in
+            DesktopGroupPortrait(group: group) {
+                presentedDesktopGroup = group
+            }
+        }
+        if !newRoom.isEmpty {
+            NewRoomPortrait(
+                bots: newRoomBots,
+                flying: Set(roomFlights.map(\.name)),
+                title: joinedNames(newRoomBots),
+                onCreate: openNewRoomSheet,
+                onDrop: dropOnNewRoom
+            )
+            .matchedGeometryEffect(id: BotsHomeAnchorKey.newRoom, in: roomTiles)
+            .transition(.scale(scale: 0.4).combined(with: .opacity))
+        }
+    }
+
+    /// The rooms, less one Hermes made after Create was tapped while the
+    /// room being started still stands in for it.
+    private var homeRooms: [GroupRoom] {
+        guard let before = roomsBeforeCreate, !newRoom.isEmpty else { return appState.shownGroupRooms }
+        return appState.shownGroupRooms.filter { before.contains($0.roomID) }
     }
 
     private var newBotButton: some View {
