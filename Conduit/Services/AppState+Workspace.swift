@@ -138,8 +138,7 @@ extension AppState {
     func showWorkspaceLookup(_ answer: Result<String?, Error>, for path: String, line: Int?) {
         // An earlier tap's "isn't on the server" goes once a later one
         // answers; any other notice stays.
-        if let said = workspaceLookupNotice, composerNotice == said { composerNotice = nil }
-        workspaceLookupNotice = nil
+        clearWorkspaceLookupNotice()
         switch answer {
         case .success(let found?):
             workspaceReveal = WorkspaceReveal(path: found, line: line)
@@ -152,6 +151,12 @@ extension AppState {
         case .failure:
             workspaceReveal = WorkspaceReveal(path: absoluteWorkspacePath(path), line: line)
         }
+    }
+
+    /// Takes away the last file lookup's notice, if it's still the one shown.
+    func clearWorkspaceLookupNotice() {
+        if let said = workspaceLookupNotice, composerNotice == said { composerNotice = nil }
+        workspaceLookupNotice = nil
     }
 
     /// A path from the top of a disk or a home folder, as opposed to one

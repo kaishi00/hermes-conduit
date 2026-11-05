@@ -281,6 +281,11 @@ extension HermesVoiceGatewayTimeoutTests {
         appState.composerNotice = "Your message wasn't sent. It's back in the composer."
         appState.showWorkspaceLookup(.success("/w/a.md"), for: "a.md", line: nil)
         XCTAssertEqual(appState.composerNotice, "Your message wasn't sent. It's back in the composer.", "other notices stay")
+
+        appState.composerNotice = nil
+        appState.showWorkspaceLookup(.success(nil), for: "gone.xlsx", line: nil)
+        appState.activeSessionId = "another-chat"
+        XCTAssertNil(appState.composerNotice, "the notice was about the chat left")
     }
 
     func testToolsThatChangeFilesRefreshTheFolder() throws {
