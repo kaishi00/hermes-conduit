@@ -527,11 +527,17 @@ final class VoiceAudioSessionCoordinator {
                 // playing it owns the session, which is what makes Read Aloud
                 // the Now Playing app (lock screen, Control Center, AirPods
                 // play/pause, #373).
-                let configuration = session.isOtherAudioPlaying
-                    ? VoiceAudioSessionConfiguration.standalonePlayback
-                    : VoiceAudioSessionConfiguration.standaloneNowPlaying
-                try session.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
-                try session.setActive(true, options: [])
+                // In a call from Hermes the session is CallKit's: a clip
+                // plays within the call's session, which is neither
+                // reconfigured nor re-activated here (#1093, issue 1770).
+                // The call's end applies this policy in full.
+                if !isInNativeCall {
+                    let configuration = session.isOtherAudioPlaying
+                        ? VoiceAudioSessionConfiguration.standalonePlayback
+                        : VoiceAudioSessionConfiguration.standaloneNowPlaying
+                    try session.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
+                    try session.setActive(true, options: [])
+                }
                 appliedPolicy = .standalonePlayback
             case .wakeListening:
                 let configuration = VoiceAudioSessionConfiguration.wakeListening

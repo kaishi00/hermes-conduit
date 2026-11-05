@@ -38273,6 +38273,37 @@ final class AppState: ObservableObject {
     /// transcription, mic permission, or Apple Speech — a profile with TTS
     /// but no STT must still be able to read responses aloud.
     var readAloudUnavailableReason: String? {
+        readAloudCapabilityUnavailableReason ?? readAloudAudioBusyReason
+    }
+
+    /// Read Aloud never plays over a call or the microphone (issue 1770):
+    /// the call's microphone would hear it as the user talking (its echo
+    /// cancelling knows only its own voice), and two voices would talk at
+    /// once. A tap is refused rather than ending the call; the live modes
+    /// and Classic stop Read Aloud as they open, and dictation or a voice
+    /// message taking the microphone ends it (onTakenOverByCapture).
+    var readAloudAudioBusyReason: String? {
+        if isCallHoldingAudio {
+            return AppLocalization.string("Read aloud can't play during a call.")
+        }
+        if VoiceAudioSessionCoordinator.shared.hasCaptureOwner {
+            return AppLocalization.string("Read aloud can't play while the microphone is in use.")
+        }
+        return nil
+    }
+
+    /// A call holds the audio: Classic or a live mode (open or minimised),
+    /// or a call from Hermes. The speech test isn't a call: Read Aloud
+    /// takes over from it.
+    var isCallHoldingAudio: Bool {
+        showVoiceSheet || isLiveVoiceCallActive || voiceConversationController.hasConversationSession
+            || minimisedLiveVoice != nil || isNativeHermesCallActive
+            || VoiceAudioSessionCoordinator.shared.isInNativeCall
+    }
+
+    /// Whether this profile's Hermes can read aloud at all; the gateway is
+    /// kept only while it can.
+    private var readAloudCapabilityUnavailableReason: String? {
         // Opening a stream needs the dashboard bridge; while it is absent
         // (mid sign-out, before the connection lands) disable the button
         // instead of failing at tap time. Mirrors makeVoiceGateway().
@@ -38351,10 +38382,11 @@ final class AppState: ObservableObject {
         if !readAloudGateway(isCurrentFor: speaker ?? activeProfile) {
             assignReadAloudGateway(speakingAs: speaker)
         }
-        // Mutual exclusion (reverse of openVoiceConversation / runVoiceTTSTest):
-        // the voice conversation and read aloud each own their own playback
-        // instance, so a speech test or conversation still speaking must stop
-        // before the manual stream opens — otherwise both engines play at once.
+        // Mutual exclusion (reverse of runVoiceTTSTest): the voice
+        // controller and read aloud each own their own playback instance,
+        // so a speech test still speaking must stop before the manual
+        // stream opens — otherwise both engines play at once. A call is
+        // never ended here: readAloudUnavailableReason refuses the tap.
         voiceConversationController.stop()
         messageReadAloudController.toggle(messageID: messageID, content: content)
     }
@@ -39827,6 +39859,7 @@ final class AppState: ObservableObject {
     }
 
     func runVoiceASRTest() async -> VoiceProviderTestResult {
+        guard !isCallHoldingAudio else { return .failure(AppLocalization.string("End the call to run this test.")) }
         // Ownership first: a playing read aloud must release its standalone
         // lease before anything else in this flow — the capability refresh
         // and the capture test itself — can claim conversation-capture
@@ -39850,6 +39883,8 @@ final class AppState: ObservableObject {
     }
 
     func runVoiceTTSTest() async -> VoiceProviderTestResult {
+        // The call's microphone would hear the test as the user (issue 1770).
+        guard !isCallHoldingAudio else { return .failure(AppLocalization.string("End the call to run this test.")) }
         await refreshVoiceCapabilities()
         guard isVoiceEnabled else {
             return .failure(AppLocalization.string("Enable voice for this profile before running a speech playback test."))
@@ -39929,7 +39964,7 @@ final class AppState: ObservableObject {
     }
 
     func refreshReadAloudGateway(rebuild: Bool = false) {
-        if readAloudUnavailableReason != nil {
+        if readAloudCapabilityUnavailableReason != nil {
             messageReadAloudController.setGateway(nil)
             readAloudGatewayBridge = nil
             readAloudSpeaker = nil

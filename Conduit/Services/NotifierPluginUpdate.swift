@@ -382,7 +382,11 @@ struct NotifierPluginUpdater {
     static func hostStep(_ job: [String: Any]) -> NotifierPluginUpdateStep? {
         switch job["step"] as? String ?? "" {
         case "downloading": return .downloading
-        case "restarting_gateway": return .restartingGateway(nil)
+        case "restarting_gateway":
+            // The host waits for the gateway's running work before the restart, and a restart
+            // that meets some lets it finish first (notifier #546).
+            let stage = job["gateway_stage"] as? String
+            return .restartingGateway(stage == "waiting" || stage == "draining" ? .draining : nil)
         case "waiting_for_chats": return .waitingForChats(count: max(1, job["running_chats"] as? Int ?? 1))
         case "restarting_dashboard": return .restartingDashboard
         default: return nil
