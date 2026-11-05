@@ -465,13 +465,13 @@ mode menu)
 - Picking the call's own mode leaves the call as it is, except a hands-free Local Live call listed as Classic, which moves (VoiceModeSwitch.movesOnCurrent).
 - A failed live call offers Switch voice beside Try again, so a mode that keeps refusing (a plan's limit, a provider's outage) needn't end the conversation (#964).
 - Switch voice is a round button like the call's others: only the glyph is the menu's label, and the caption sits under it, hidden from VoiceOver since the menu carries the name. On iOS 26 a menu draws its glass over its whole label, so a caption inside it made a large slab that clipped the caption (2026-10-27, #1355).
-- A Local Live call working in a chat it made for itself (started from Home, or after its chat was deleted) switches in that chat, as an attached call does (2026-11-05, issue 1797, #1799).
+- A Local Live call working in a chat it made for itself (started from Home, or after its chat was deleted) switches in that chat, as an attached call does, unless that chat was deleted since: then the new mode starts with none (2026-11-05, issue 1797, #1799, #1804).
 
 **Open gaps**
 - CarPlay and the Watch have no mode menu: a call there changes mode only through Voice settings.
 - Switch voice's caption no longer opens the menu; only the round glyph does (#1355).
 
-**Checked:** 2026-11-05, #1799 (a Local Live call's own chat goes with it to the new mode, issue 1797); 2026-10-27, added at #1355 (Switch voice on a failed call is a round button).
+**Checked:** 2026-11-05, #1804 (a deleted own chat stays behind on a mode switch); 2026-11-05, #1799 (a Local Live call's own chat goes with it to the new mode, issue 1797); 2026-10-27, added at #1355 (Switch voice on a failed call is a round button).
 
 ## Voice beside the tabs
 
