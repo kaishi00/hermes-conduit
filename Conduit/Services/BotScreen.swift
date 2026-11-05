@@ -203,6 +203,8 @@ final class BotScreenModel: ObservableObject {
     private weak var client: HermesClient?
     private var viewerID: String?
     private var pendingSudo: (id: String, profileKey: String)?
+    /// Counts the installs that ended, so a late answer to one can't say it's still going.
+    private var installsEnded = 0
     private var socket: (any HermesWebSocket)?
     private var transport: (any HermesWebSocketTransport)?
     private var receiveTask: Task<Void, Never>?
@@ -303,8 +305,10 @@ final class BotScreenModel: ObservableObject {
     func install() async {
         await perform { client in
             self.installLog = []
+            let ended = self.installsEnded
             let answer = try await client.display("display.install", profile: self.profile)
-            self.isInstalling = answer["started"]?.boolValue ?? false
+            // The install may have finished before its own answer came back.
+            if self.installsEnded == ended { self.isInstalling = answer["started"]?.boolValue ?? false }
         }
     }
 
@@ -413,6 +417,13 @@ final class BotScreenModel: ObservableObject {
                 sudoRequestID = pending.id
             }
         }
+        // An ask that came before this view opened (the sheet closed and
+        // reopened, or an install started elsewhere) is still answerable.
+        if sudoRequestID == nil, !next.profileKey.isEmpty,
+           let open = client?.pendingDisplaySudo.first(where: { $0.value == next.profileKey }) {
+            isInstalling = true
+            sudoRequestID = open.key
+        }
         page?.setViewOnly(!iHold)
         if wasRunning, !next.isRunning { detach() }
     }
@@ -443,6 +454,7 @@ final class BotScreenModel: ObservableObject {
             installLog.append(line)
             if installLog.count > Self.maxLogLines { installLog.removeFirst(installLog.count - Self.maxLogLines) }
         case "display.install.done":
+            installsEnded += 1
             isInstalling = false
             sudoRequestID = nil
             let code = payload["code"]?.intValue ?? 1

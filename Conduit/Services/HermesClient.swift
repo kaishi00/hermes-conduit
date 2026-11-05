@@ -1087,6 +1087,9 @@ final class HermesClient: ObservableObject {
     /// builds a fresh client per reconnect, so in practice this is rebuilt
     /// from `session.resume`'s `open_requests` (same ids) on each connection.
     private var openServerRequestIDs = Set<String>()
+    /// Bot Screen sudo asks still open, by request id, with the profile key
+    /// they're for: a screen view opened after one came finds it here.
+    private(set) var pendingDisplaySudo: [String: String] = [:]
     /// Approval server request id (`srq-…`) → the approval queue
     /// `request_id` its card is keyed by (and the session the request named),
     /// so `request.cancel` can reach it. Rebuilt like `openServerRequestIDs`.
@@ -1870,6 +1873,7 @@ final class HermesClient: ObservableObject {
                                                         userInfo: ["request_id": id])
                     }
                     openServerRequestIDs.remove(id)
+                    pendingDisplaySudo.removeValue(forKey: id)
                     authorityPrompts.removeValue(forKey: id)
                     authorityPromptSessions.removeValue(forKey: id)
                     if let session = clarifySessions.removeValue(forKey: id),
@@ -1996,8 +2000,10 @@ final class HermesClient: ObservableObject {
             // The masked sudo password for a Bot Screen install this
             // connection started; the screen view asks for it.
             openServerRequestIDs.insert(requestID)
+            let profileKey = params["profile_key"]?.stringValue ?? ""
+            pendingDisplaySudo[requestID] = profileKey
             NotificationCenter.default.post(name: .hermesDisplaySudo, object: self, userInfo: [
-                "request_id": requestID, "profile_key": params["profile_key"]?.stringValue ?? ""
+                "request_id": requestID, "profile_key": profileKey
             ])
         case _ where InputPromptActivity.Kind(rawValue: method) != nil:
             guard let activity = InputPromptActivity.from(requestId: requestID, method: method, params: params) else {
@@ -2647,6 +2653,7 @@ final class HermesClient: ObservableObject {
     func respondToDisplaySudo(requestId: String, password: String) async throws {
         try await sendServerRequestResult(id: requestId, result: ["value": password])
         openServerRequestIDs.remove(requestId)
+        pendingDisplaySudo.removeValue(forKey: requestId)
     }
 
     /// `mcp.servers.add` from a catalog preset.
