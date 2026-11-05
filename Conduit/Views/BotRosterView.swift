@@ -412,6 +412,13 @@ struct BotRosterView: View {
     private func addToNewRoom(_ names: [String]) {
         var seen = Set<String>()
         let joining = names.filter { !newRoom.contains($0) && seen.insert($0.lowercased()).inserted }
+        // A room just made still sliding into its place gives up the new
+        // room's tile id first, so the two never share it.
+        if newRoom.isEmpty, landingRoomID != nil {
+            var settle = Transaction()
+            settle.disablesAnimations = true
+            withTransaction(settle) { landingRoomID = nil }
+        }
         guard newRoom.add(names) else {
             Haptics.warning()
             managementNotice = AppLocalization.string("A room holds up to 6 bots.")
