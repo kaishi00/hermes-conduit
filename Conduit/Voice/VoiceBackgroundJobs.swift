@@ -1975,10 +1975,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             backend.callLeftChat(kept.profile, kept.chat, kept.call)
         }
         // The request whose chat it was is let go of, as at a hang-up: a
-        // later adoption replaces callChatJobID, and its outcome is no
-        // later call's to hear.
+        // later adoption replaces callChatJobID, and neither its outcome
+        // nor a question or approval it waits on is said to this call or a
+        // later one.
         if let id = callChatJobID, let index = jobs.firstIndex(where: { $0.id == id }) {
             jobs[index].outcomeDelivered = true
+            jobs[index].isDetachedThreadTurn = true
+            jobs[index].settledByPoll = false
         }
         callChatJobID = nil
         callChatClaim = nil
