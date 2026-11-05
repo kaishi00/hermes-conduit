@@ -21,6 +21,38 @@ extension BotModeTests {
         return (0..<count).map { AnimatedAvatar.Frame(image: solidFrame(colors[$0 % colors.count]), delay: delay) }
     }
 
+    func testBotAvatarDecodesDownsampledNotAtItsOwnSize() async throws {
+        // Hermes takes pictures up to 2 MB; one this size decoded whole is
+        // 36 MB per bot, for a face drawn at 72 pt at most (#1829).
+        let large = try XCTUnwrap(UIImage(cgImage: solidFrame(.red, width: 3000, height: 2000)).pngData())
+        let image = await AppState.botAvatarThumbnail(large)
+        let pixels = try XCTUnwrap(image?.cgImage)
+        XCTAssertEqual(max(pixels.width, pixels.height), Int(AppState.botAvatarMaxPixelSize))
+        XCTAssertEqual(pixels.width * 2, pixels.height * 3, "The shape is kept")
+
+        let small = try XCTUnwrap(UIImage(cgImage: solidFrame(.blue, width: 64, height: 64)).pngData())
+        let kept = await AppState.botAvatarThumbnail(small)
+        XCTAssertEqual(kept?.cgImage?.width, 64, "A small picture isn't enlarged")
+
+        let notAPicture = await AppState.botAvatarThumbnail(Data("not a picture".utf8))
+        XCTAssertNil(notAPicture)
+        let nothing = await AppState.botAvatarThumbnail(nil)
+        XCTAssertNil(nothing)
+    }
+
+    func testKeptBotChatCopiesDropTheLeastRecentlyKeptPastTheirCount() {
+        // Up to 500 rows each, kept for the run: bounded by count (#1831).
+        let start = Date(timeIntervalSince1970: 1_000)
+        var kept: [String: Date] = [:]
+        for index in 0..<AppState.maxKeptBotChatCopies {
+            XCTAssertNil(AppState.keptBotChatCopyToDrop(keptAt: kept, adding: "bot\(index)"))
+            kept["bot\(index)"] = start.addingTimeInterval(TimeInterval(index))
+        }
+        kept["bot0"] = start.addingTimeInterval(100)
+        XCTAssertEqual(AppState.keptBotChatCopyToDrop(keptAt: kept, adding: "new"), "bot1")
+        XCTAssertNil(AppState.keptBotChatCopyToDrop(keptAt: kept, adding: "bot3"), "Kept again in place")
+    }
+
     func testAnimatedAvatarEncodesALoopingSquareAPNGUnderTheCap() throws {
         let data = try AnimatedAvatar.encode(frames(6)).get()
         XCTAssertLessThanOrEqual(data.count, AnimatedAvatar.maxBytes)

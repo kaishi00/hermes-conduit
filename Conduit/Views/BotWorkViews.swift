@@ -15,8 +15,12 @@ import SwiftUI
 
 /// Reads a bot's work while something shows it: often while work runs,
 /// now and then otherwise, and once for a bot whose workstreams are off.
+/// Its tab hidden or the app in the background, it stops, and reads again
+/// at once when it shows (#1827).
 private struct BotWorkRefresh: ViewModifier {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.v2Shell) private var shell
+    @Environment(\.scenePhase) private var scenePhase
     let profile: String
 
     static let busyInterval: UInt64 = 5_000_000_000
@@ -26,7 +30,9 @@ private struct BotWorkRefresh: ViewModifier {
         // Keyed on the bot's work being on too: turned on in Edit Bot,
         // its reads start again.
         let isOn = appState.botWork.snapshot(profile)?.isOn ?? true
-        content.task(id: "\(profile)\u{1F}\(appState.isConnected)\u{1F}\(appState.servesBotWorkstreams)\u{1F}\(isOn)") {
+        let shows = shell.isTabActive && scenePhase != .background
+        content.task(id: "\(profile)\u{1F}\(appState.isConnected)\u{1F}\(appState.servesBotWorkstreams)\u{1F}\(isOn)\u{1F}\(shows)") {
+            guard shows else { return }
             while !Task.isCancelled {
                 await appState.refreshBotWork(profile: profile)
                 let snapshot = appState.botWork.snapshot(profile)

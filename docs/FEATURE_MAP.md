@@ -5694,6 +5694,41 @@ and the widget's pickers (no status), and no Settings caption or doc names it
 
 **Checked:** 2026-10-27, #1369.
 
+## Reads while a screen shows
+
+What a screen reads from Hermes or the plugin on a timer, and when it
+stops. The V2 shell keeps each visited tab's screens mounted, hidden, so a
+loop that only checks the app being active keeps reading for a screen nobody
+sees.
+
+**Siblings:** the Chats list's live registry poll (Running and Needs
+approval in the chats list) · All profiles' catalog poll · a project's page
+(its 20 s reads of other profiles' chats) · the open chat's 5 s check against
+the registry (the same chat on another device) · a group room's 3 s
+`groups.log` and `groups.state` poll · a bot's work (the Bot Chat's title
+line, the Work panel, a workstream's bar; see Bot workstreams) · Tasks and
+the Kanban board · Pulse's page · Bots Home's portraits and talking rooms ·
+not needed: the Bot Overview's talking-rooms read (a sheet: no tab changes
+under it), Needs you (its own 20 s read already keys on what shows), Watch and
+CarPlay (no tabs), the notifier (it answers what it's asked)
+
+**Code**
+- Tab visibility: `Conduit/Views/V2/V2Shell.swift` (v2Shell's isTabActive and showsChatRows per tab)
+- Project page: `Conduit/Views/V2/V2ProjectPage.swift` (pageShows, missedReads)
+- Open chat: `Conduit/Views/ChatView.swift` (the openChatSyncTick task), `Conduit/Services/AppState.swift` (openChatSyncTick, openChatSyncBecameVisible)
+- Group room: `Conduit/Services/AppState.swift` (startRoomPolling, pollActiveRoomOnce, noteRoomView, roomSurfaceShows), `Conduit/Views/GroupChatView.swift` (roomViewID)
+- Bot work: `Conduit/Views/BotWorkViews.swift` (BotWorkRefresh)
+- Tests: `ConduitTests/GroupChatSessionSafetyTests.swift` (testRoomPollStopsWhileHiddenAndCatchesUpWhenShown)
+
+**Rulings**
+- A timed read runs only while its screen shows: its tab selected, nothing pushed over it (beside it on a wide window still shows) and the app not in the background. Showing it again reads at once, so what changed meanwhile is there on return (2026-11-05, #PRNUM, issue #1827).
+- A group room whose screen hasn't appeared yet (just opened) counts as showing, as does one with no screen mounted. A poll tick that brings the same driver status publishes nothing.
+
+**Open gaps**
+- A screen covered by a sheet still reads: the sheet doesn't tell the tab it covers.
+
+**Checked:** 2026-11-05, #PRNUM (added: hidden tabs stop the project page, open chat, room and bot work reads)
+
 ## Swiping list rows on a Mac
 
 A list row's swipe actions in the iPad app on a Mac, and what keeps a mouse
