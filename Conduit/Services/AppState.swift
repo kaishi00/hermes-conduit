@@ -1199,6 +1199,12 @@ final class AppState: ObservableObject {
     /// The open chat's plan card (AppState+ChatCards). Its own observable:
     /// the card changing redraws the card alone.
     let chatCards = ChatCardsModel()
+    /// Every chat Hermes waits on the user in, every profile's (issue 1705;
+    /// AppState+NeedsYou). Its own observable, as `chatCards`.
+    let needsYou = NeedsYouStore()
+    /// A chat opened from the Needs you list or banner, to scroll to its
+    /// waiting card once its transcript has it.
+    @Published var pendingNeedsYouReveal: NeedsYouReveal?
     /// Cached once per transcript mutation so view updates do not rescan the full history.
     @Published private(set) var pendingClarifyMessageID: String?
     /// What that card is, for the jump button's words.
@@ -25534,6 +25540,11 @@ final class AppState: ObservableObject {
             return .opened
         }
         traceStage = "open start"
+        // An approval's or a question's notification lands on its card, as
+        // the Needs you list's Open does (issue 1705).
+        if let type = target.type, NeedsYouStore.notificationTypes.contains(type) {
+            pendingNeedsYouReveal = NeedsYouReveal(opening: target.durableSessionID ?? target.sessionId)
+        }
         let notificationAttemptID = UUID()
         activeNotificationOpenAttemptID = notificationAttemptID
         isOpeningNotificationSession = true

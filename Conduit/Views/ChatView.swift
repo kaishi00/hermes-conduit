@@ -680,16 +680,20 @@ struct ChatView: View {
             }
             .onChange(of: appState.pendingClarifyMessageID) { _, id in
                 scroller.trackMessageVisibility(of: id)
+                revealPendingNeedsYou()
             }
             // An Artifacts screen's "Show in chat": once the row is in and
             // any restore is done.
             .onChange(of: appState.chatTranscriptRevision) { _, _ in
                 revealPendingArtifact()
                 revealPendingPinnedReply()
+                revealPendingNeedsYou()
                 appState.refreshOpenChatPinnedReplies()
             }
             .onChange(of: appState.pendingArtifactReveal) { _, _ in revealPendingArtifact() }
             .onChange(of: appState.pendingPinnedReplyReveal) { _, _ in revealPendingPinnedReply() }
+            // The Needs you list's or banner's Open: the chat's waiting card.
+            .onChange(of: appState.pendingNeedsYouReveal) { _, _ in revealPendingNeedsYou() }
             // A "Replying to" card's tap (issue 1420): the reply it quoted.
             .onChange(of: appState.pendingQuotedReplyJump) { _, jump in
                 guard let jump else { return }
@@ -699,16 +703,18 @@ struct ChatView: View {
             .onAppear {
                 revealPendingArtifact()
                 revealPendingPinnedReply()
+                revealPendingNeedsYou()
             }
             .onChange(of: appState.chatResumeRestorationRequest) { oldRequest, newRequest in
                 guard oldRequest != nil, newRequest == nil else { return }
                 // The published request disappeared on the AppState side
                 // (completed/abandoned/cancelled elsewhere).
                 scroller.restorationSystemCancelled()
-                // A pinned reply, artifact or Pulse card waiting on the
-                // restore goes now.
+                // A pinned reply, artifact, Pulse card or waiting card
+                // waiting on the restore goes now.
                 revealPendingArtifact()
                 revealPendingPinnedReply()
+                revealPendingNeedsYou()
             }
     }
 
@@ -721,6 +727,22 @@ struct ChatView: View {
         guard appState.chatResumeRestorationRequest == nil, appState.isShowingChat(for: reveal),
               let id = ArtifactReveal.rowID(for: reveal.messageID, in: appState.messages) else { return }
         appState.pendingArtifactReveal = nil
+        // After this update's layout, so the scroller knows the row.
+        DispatchQueue.main.async { scroller.explicitMessageRequested(id: id) }
+    }
+
+    /// A waiting chat opened from the Needs you list or banner: its newest
+    /// question, approval or input card, the one the jump button goes to,
+    /// once its chat shows and has the card.
+    private func revealPendingNeedsYou() {
+        guard let reveal = appState.pendingNeedsYouReveal else { return }
+        guard reveal.expires > Date() else {
+            appState.pendingNeedsYouReveal = nil
+            return
+        }
+        guard appState.chatResumeRestorationRequest == nil, appState.isShowingChat(for: reveal),
+              let id = appState.pendingClarifyMessageID else { return }
+        appState.pendingNeedsYouReveal = nil
         // After this update's layout, so the scroller knows the row.
         DispatchQueue.main.async { scroller.explicitMessageRequested(id: id) }
     }

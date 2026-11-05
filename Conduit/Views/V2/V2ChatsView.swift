@@ -308,6 +308,8 @@ struct V2ChatsView: View, Equatable {
     @State private var showArchivedSessions = false
     /// Every pinned reply of the profile (#918).
     @State private var showPinnedReplies = false
+    /// Every profile's chats waiting on the user (issue 1705).
+    @State private var showNeedsYou = false
     /// Reorder pinned chats, from a pinned row's menu or the Pinned header
     /// (issue 1354).
     @State private var pinnedOrderTarget: PinnedChatsOrderTarget?
@@ -569,6 +571,12 @@ struct V2ChatsView: View, Equatable {
         }
         .sheet(isPresented: $showPinnedReplies) {
             PinnedRepliesSheet()
+                .environmentObject(appState)
+        }
+        .sheet(isPresented: $showNeedsYou) {
+            NeedsYouSheet(store: appState.needsYou)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
                 .environmentObject(appState)
         }
         .sheet(item: $pinnedOrderTarget) { target in
@@ -906,6 +914,16 @@ struct V2ChatsView: View, Equatable {
                 }
                 .disabled(!canCreateProject)
             } else {
+                if appState.servesNeedsYou {
+                    // Every profile's waiting chats, beside the filters
+                    // that narrow this list to its own.
+                    Button {
+                        Haptics.selection()
+                        showNeedsYou = true
+                    } label: {
+                        Label(AppLocalization.string("Needs you"), systemImage: "exclamationmark.bubble")
+                    }
+                }
                 filterToggle(.all)
                 filterToggle(.starred)
 

@@ -174,6 +174,8 @@ struct MainView: View {
                 NotifierPluginUpdateBanner()
                 // Send the report of a crash or freeze? (CrashReportOffer.swift)
                 CrashReportBanner()
+                // Another chat started waiting on the user (NeedsYou.swift).
+                NeedsYouBanner(store: appState.needsYou)
                 // Calendar changes Hermes asked for (AppState+PhoneSync.swift);
                 // a call's screen shows them over the call.
                 if !appState.isVoiceCallScreenPresented {
@@ -181,6 +183,8 @@ struct MainView: View {
                 }
             }
         }
+        // Every profile's waiting chats, read while Conduit is on screen.
+        .task { await appState.runNeedsYouPoll() }
         // Confirmations Hermes asks to present (PresentedScreens.swift); a
         // call's screen shows its own over the call.
         .overlay(alignment: .bottom) {

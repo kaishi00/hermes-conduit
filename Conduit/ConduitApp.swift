@@ -259,6 +259,11 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             completionHandler([.banner, .list, .sound])
             return
         }
+        // A push while Conduit is open may be a wait in another chat: the
+        // Needs you list reads now, and its banner shows instead (#1705).
+        if notification.request.trigger is UNPushNotificationTrigger {
+            Task { @MainActor in AppStateRuntimeRegistry.shared.appState.noteNeedsYouPush() }
+        }
         completionHandler([])
     }
 }

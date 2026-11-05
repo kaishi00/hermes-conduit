@@ -388,6 +388,12 @@ struct V2ProfileStrip: View {
                                 .transition(.opacity)
                         }
                     }
+                    // Chats waiting on the user there (issue 1705): on
+                    // every chip, the selected one too, over the unread dot.
+                    .overlay(alignment: .topTrailing) {
+                        V2ProfileNeedsYouBadge(store: appState.needsYou, profile: profile)
+                            .offset(x: 5, y: -4)
+                    }
                 if isSelected {
                     Text(name)
                         .scaledFont(.subheadline.weight(.semibold))
@@ -416,7 +422,7 @@ struct V2ProfileStrip: View {
         .modifier(DashboardSwitchMenu(enabled: profile == appState.activeProfile))
         .accessibilityIdentifier(isSelected ? "sidebar.workspace" : "v2.profile.\(profile)")
         .accessibilityLabel(AppLocalization.string("\(name) profile"))
-        .accessibilityValue(unread ? AppLocalization.string("Unread") : "")
+        .accessibilityValue(V2ProfileNeedsYouBadge.spoken(appState.needsYouCount(for: profile), unread: unread))
         .accessibilityHint(isSelected && !(appState.isProfileSwitching || shell.isPickingProfile) ? AppLocalization.string("Manage profiles") : AppLocalization.string("Switches to this profile"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
@@ -652,5 +658,28 @@ struct V2SegmentedControl<Value: Hashable>: View {
         .padding(3)
         .conduitGlassControl(cornerRadius: 21, interactive: false)
         .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
+    }
+}
+
+/// A profile chip's count of chats Hermes waits on the user in. Its own
+/// view, so a read of the waits redraws the badges alone.
+struct V2ProfileNeedsYouBadge: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject var store: NeedsYouStore
+    let profile: String
+
+    var body: some View {
+        let count = store.count(for: profile, matches: appState.profilesMatch)
+        if count > 0 {
+            NeedsYouCountBadge(count: count)
+                .transition(.opacity)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// The chip's spoken value: what waits there, then unread.
+    static func spoken(_ count: Int, unread: Bool) -> String {
+        [count > 0 ? AppLocalization.string("\(count) waiting on you") : nil,
+         unread ? AppLocalization.string("Unread") : nil].compactMap { $0 }.joined(separator: ", ")
     }
 }
