@@ -472,7 +472,8 @@ struct BotEditorSheet: View {
     @ViewBuilder
     private var workSection: some View {
         if let bot = editedBot, appState.servesBotWorkSettings {
-            ConduitSettingsSection(title: AppLocalization.string("Work"), symbol: "arrow.triangle.branch", tint: .conduitAccent) {
+            // No name over it: its one row is Work.
+            SettingsCard {
                 NavigationLink {
                     BotWorkSettingsView(profile: bot.name, botName: bot.displayLabel)
                 } label: {
