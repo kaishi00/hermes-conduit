@@ -6710,12 +6710,18 @@ final class AppState: ObservableObject {
     /// Load earlier brought in: twice the saved copy's 500 (issue 1828).
     static let loadedHistoryRowLimit = 1_000
 
+    /// The reader has scrolled up off the chat's newest row (the scroller
+    /// says so as it starts and stops following it): a long chat's oldest
+    /// pages stay while they may be reading them.
+    var chatReaderIsUpInOlderRows = false
+
     /// The reader is back at the newest row: a chat past the limit lets go
     /// of its oldest loaded pages, out of sight above them, and Load earlier
     /// brings them back from Hermes (Eric, 2026-11-05, issue 1828). Only
     /// between turns and on Hermes' own rows.
     func trimLoadedHistoryIfLong() {
         guard turnState == .idle,
+              !chatReaderIsUpInOlderRows,
               offlineChatPresentation == nil,
               reconciliation == nil,
               let window = persistedTranscriptWindow,
@@ -6741,10 +6747,18 @@ final class AppState: ObservableObject {
         leftBackfilledTranscripts.removeAll {
             $0.dashboardID == dashboardID && !$0.sessionIDs.isDisjoint(with: sessionIDs)
         }
-        // A long chat lets go of its oldest pages as it's left (issue 1828).
-        let kept = PersistedTranscriptWindow.trimmingLoadedHistory(
-            messages, window: window, keeping: Self.loadedHistoryRowLimit
-        ) ?? (messages: messages, window: window)
+        // A long chat lets go of its oldest pages as it's left between
+        // turns from its newest row (issue 1828). A reader up in the older
+        // rows keeps them, so their place there comes back with the chat.
+        // A Load earlier still in flight is dropped by the open.
+        var leftWindow = window
+        leftWindow.isLoadingEarlier = false
+        let trimmed = turnState == .idle && !chatReaderIsUpInOlderRows
+            ? PersistedTranscriptWindow.trimmingLoadedHistory(
+                messages, window: leftWindow, keeping: Self.loadedHistoryRowLimit
+            )
+            : nil
+        let kept = trimmed ?? (messages: messages, window: leftWindow)
         guard kept.window.hasBackfilledPrefix else { return }
         leftBackfilledTranscripts.append(LeftBackfilledTranscript(
             dashboardID: dashboardID,
@@ -18371,7 +18385,12 @@ final class AppState: ObservableObject {
                     runtimeSessionID: result.sessionId,
                     nextOffset: page.rawReturned,
                     canLoadEarlier: page.mayHaveOlderRows(fetchedRowCount: page.rawReturned),
-                    hasBackfilledPrefix: graftedBackfilledPrefix
+                    hasBackfilledPrefix: graftedBackfilledPrefix,
+                    // The grafted prefix keeps its rows, so the page starts
+                    // noted on it still mark where a long chat can cut back
+                    // to (issue 1828). Their offsets only undercount once
+                    // newer rows came in, the safe direction.
+                    loadedPageStarts: graftedBackfilledPrefix ? (priorWindowForGraft?.loadedPageStarts ?? []) : []
                 )
             } else {
                 persistedTranscriptWindow = nil

@@ -1585,6 +1585,59 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
     }
 
+    /// A reader up in the older rows keeps them as the chat is left, so
+    /// their place comes back with it; the reopened chat still lets go of
+    /// them once the reader is back at the newest row, from the page starts
+    /// the graft carried over (issue 1828, #1839 review).
+    func testALongChatLeftWhileReadingOlderRowsKeepsThemUntilBackAtTheNewestRow() async throws {
+        let first = session("stored-a", alternateIDs: ["runtime-a"])
+        let other = session("stored-b", alternateIDs: ["runtime-b"])
+        let harness = try makeHarness(
+            openSession: { _, sessionId, _ in
+                SessionResumeResult(
+                    sessionId: sessionId.hasSuffix("b") ? "runtime-b" : "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { sessionId, _, _ in
+                if sessionId.hasSuffix("b") {
+                    return self.tailPagePayload(sessionId: "stored-b", rows: self.syntheticRows(5000..<5010), offset: 0)
+                }
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                self.tailPagePayload(
+                    sessionId: "stored-a",
+                    rows: self.syntheticRows((1880 - offset)..<(2000 - offset)),
+                    offset: offset
+                )
+            }
+        )
+        harness.appState.sessions = [first, other]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        for _ in 0..<9 { await harness.appState.loadEarlierMessages() }
+        XCTAssertEqual(harness.appState.messages.count, 1_200)
+
+        harness.appState.chatReaderIsUpInOlderRows = true
+        harness.appState.trimLoadedHistoryIfLong()
+        XCTAssertEqual(harness.appState.messages.count, 1_200, "Nothing goes while the reader is up in them")
+        let openedOther = await harness.appState.openSession("stored-b")
+        XCTAssertTrue(openedOther)
+        let openedAgain = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(openedAgain)
+        XCTAssertEqual(harness.appState.messages.count, 1_200, "Left while reading them, they came back whole")
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 800")
+
+        harness.appState.chatReaderIsUpInOlderRows = false
+        harness.appState.trimLoadedHistoryIfLong()
+        XCTAssertEqual(harness.appState.messages.count, 1_080, "The graft kept the page starts to cut back to")
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 920")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 1_080)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
+    }
+
     /// Tapping the chat already open, settled and connected, reads it and
     /// nothing else: no second resume or page read (issue 1825).
     func testTappingTheOpenChatAgainDoesNotOpenItAgain() async throws {

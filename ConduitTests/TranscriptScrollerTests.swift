@@ -629,6 +629,10 @@ final class TranscriptScrollerTests: XCTestCase {
         surface.userScroll(to: 3170)
         XCTAssertTrue(scroller.isFollowingLatest)
         XCTAssertEqual(events.filter { $0 == .reachedLatest }.count, 1)
+        XCTAssertEqual(
+            events.filter { if case .browsingOlderRows = $0 { return true } else { return false } },
+            [.browsingOlderRows(true), .browsingOlderRows(false)]
+        )
     }
 
     func testAFlingThatReachesTheEndResumesFollowing() {
