@@ -1631,8 +1631,8 @@ private struct ProjectSessionsSheet: View {
                 ConduitBackdrop()
                 List {
                     // Whose chats these are: the sheet lists one profile's
-                    // (issue 1761).
-                    if ProjectProfileLabel.shows(in: appState) {
+                    // (issue 1761), once a read has listed them.
+                    if detail != nil, ProjectProfileLabel.shows(in: appState) {
                         ProjectProfileLabel(profile: detailProfile)
                             .scaledFont(.subheadline)
                             .foregroundStyle(.secondary)

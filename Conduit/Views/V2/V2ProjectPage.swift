@@ -75,10 +75,13 @@ struct V2ProjectPage: View {
 
     /// Hermes' lanes, with the chat just started here on top of its folder's
     /// until Hermes lists it: Hermes stores a chat with its first message,
-    /// and the page beside the open chat would miss it (issue 1454).
+    /// and the page beside the open chat would miss it (issue 1454). Only
+    /// while the page's profile is in use: a chat started after a switch
+    /// is another profile's, which that profile's read lists.
     private var ownLanes: [ProjectSessionLane] {
         let lanes = detail?.lanes ?? []
-        guard let created = appState.newChatAwaitingListing(in: project) else { return lanes }
+        guard AppState.profilesMatch(pageProfile, appState.activeProfile),
+              let created = appState.newChatAwaitingListing(in: project) else { return lanes }
         return created.awaiting.lanes(lanes, with: created.row, newLaneID: "\(project.id)-new")
     }
 

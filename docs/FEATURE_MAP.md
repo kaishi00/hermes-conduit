@@ -3856,6 +3856,7 @@ row beside the list · VoiceOver · README.md
 - Rows carry their profile's picture while the page shows more than one profile's chats; a chip shows only its profile's, and then the header names it, as it names the only profile with chats here. The chips are offered only with chats from two or more profiles. The pick lasts while the page is open.
 - New conversation starts in the picked profile; with All picked and the project in more than one profile it asks which, and another profile's starts after the switch to it, in the same folder (Home: a plain chat in that profile).
 - The other profiles are read when the page opens and again at most every 20 s as the chats list changes, as All's poll does; a pull, Try Again, a reconnect or a change made from a row's actions reads them at once. A profile's project, once found, is kept for the page; a profile without one is looked at again on each read, as it may have been made since. A switch for another profile's New conversation that a call or a newer navigation stops starts nothing.
+- A chat just started here shows in the page's own profile's lanes until Hermes lists it (issue 1454) only while that profile is in use; one started after a switch is the other profile's, and its read lists it. The classic drawer's sheet names its profile once a read has listed the chats.
 
 **Open gaps**
 - The Running and approval signals on other profiles' rows follow the profile in use only, as in All.
