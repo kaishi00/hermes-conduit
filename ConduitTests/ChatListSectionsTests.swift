@@ -152,6 +152,20 @@ extension SessionNestingModelTests {
         XCTAssertEqual(ProjectChatsInChats.stored(in: defaults), .all)
     }
 
+    /// Launch clears the retired Off and leaves a choice alone (issue 1583).
+    func testLaunchClearsTheRetiredProjectChatsOff() throws {
+        let suite = "ChatListSectionsTests.retiredOff.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(ProjectChatsInChats.hidden.rawValue, forKey: ProjectChatsInChats.retiredDeviceDefaultKey)
+        defaults.set(ProjectChatsInChats.all.rawValue, forKey: ProjectChatsInChats.key)
+
+        _ = AppState(defaults: defaults, loadSavedConnection: false)
+
+        XCTAssertNil(defaults.object(forKey: ProjectChatsInChats.retiredDeviceDefaultKey))
+        XCTAssertEqual(ProjectChatsInChats.stored(in: defaults), .all)
+    }
+
     /// Filter > Projects keeps each profile's hidden projects apart, and a
     /// pinned chat stays listed.
     func testHiddenChatProjectsArePerProfileAndSparePinnedChats() {
