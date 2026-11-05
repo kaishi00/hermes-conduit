@@ -750,7 +750,9 @@ struct SelectableTextView: UIViewRepresentable {
                     )
                     continue
                 }
-                bridged.addAttribute(.link, value: link, range: range)
+                // A link to a file on the Hermes host opens in the Folder,
+                // as a path the reply names does, not on this device.
+                bridged.addAttribute(.link, value: WorkspacePathLinks.url(forLink: link) ?? link, range: range)
                 bridged.addAttribute(.foregroundColor, value: linkColor, range: range)
             } else {
                 // A file path a reply names opens in the Folder tab (#1389).

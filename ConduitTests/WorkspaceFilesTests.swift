@@ -169,6 +169,44 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(found, ["meta-app-review/tutorial.md", "~/notes/today.txt"], "a sentence's period stays out")
     }
 
+    func testMarkdownLinksToHostFilesOpenInTheFolder() throws {
+        let cases: [(String, String)] = [
+            ("clients/acme/report.xlsx", "clients/acme/report.xlsx"),
+            ("report.json", "report.json"),
+            ("/srv/out/summary.pdf", "/srv/out/summary.pdf"),
+            ("~/notes/today.md", "~/notes/today.md"),
+            ("./out/a.csv#L12", "./out/a.csv"),
+            ("file:///srv/data/notes.txt", "/srv/data/notes.txt"),
+            ("Client%20Files/Q3%20report.xlsx", "Client Files/Q3 report.xlsx"),
+            ("C:/work/a.md", "C:/work/a.md"),
+        ]
+        for (destination, path) in cases {
+            let link = try XCTUnwrap(URL(string: destination), destination)
+            let url = try XCTUnwrap(WorkspacePathLinks.url(forLink: link), destination)
+            XCTAssertEqual(ConduitAppLink(url: url), .file(path: path), destination)
+        }
+        for destination in [
+            "https://example.com/a.md", "mailto:me@example.com", "#section-2", "guide", "docs/guide",
+            "example.com/a.html", "conduit://session/abc", "file://nas/share/a.md", "tel:123",
+        ] {
+            let link = try XCTUnwrap(URL(string: destination), destination)
+            XCTAssertNil(WorkspacePathLinks.url(forLink: link), destination)
+        }
+    }
+
+    func testAReplysMarkdownFileLinkIsDrawnAsAFolderLink() throws {
+        let markdown = "Saved [the report](clients/acme/report.xlsx) and [site](https://example.com)."
+        let attributed = try AttributedString(markdown: markdown, options: .init(interpretedSyntax: .full))
+        let bridged = SelectableTextView.bridge(attributed, defaultFont: .systemFont(ofSize: 17), defaultColor: .label, linkColor: .link)
+        var links: [URL] = []
+        bridged.enumerateAttribute(.link, in: NSRange(location: 0, length: bridged.length)) { value, _, _ in
+            if let url = value as? URL { links.append(url) }
+        }
+        XCTAssertEqual(links.count, 2)
+        XCTAssertEqual(links.first.flatMap(ConduitAppLink.init(url:)), .file(path: "clients/acme/report.xlsx"))
+        XCTAssertEqual(links.last?.absoluteString, "https://example.com")
+    }
+
     func testFileLinksOpenOnlyInsideTheApp() throws {
         let url = ConduitAppLink.file(path: "/w/a b+c.md").url
         XCTAssertEqual(ConduitAppLink(url: url), .file(path: "/w/a b+c.md"))
