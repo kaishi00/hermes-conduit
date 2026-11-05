@@ -18483,7 +18483,7 @@ final class AppState: ObservableObject {
                 // Re-assert only after the ownership guard above (token,
                 // profile, client) re-validated this reconciliation and after
                 // the synchronous settle, so a profile or client switch during
-                // the suspending context refresh above cannot push a stale
+                // the suspending reads above cannot push a stale
                 // write through the old client for the old profile's session.
                 // A user YOLO write that completed since the resume began
                 // already pushed the server, so skip instead of duplicating
