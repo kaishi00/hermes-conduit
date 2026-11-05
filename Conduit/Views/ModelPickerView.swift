@@ -191,6 +191,43 @@ enum ModelCatalogState: Equatable {
     }
 }
 
+/// Hermes answers a model picker from its cache of each provider's model
+/// list and fetches a list that is stale or missing in the background, so
+/// a first read can list only a provider's built-in models and miss the
+/// ones only its live list has (issue 1807). Every model picker reads once
+/// more after that fetch has had time to land, while it's still open.
+enum ModelCatalogSettle {
+    static let delay: Duration = .seconds(4)
+
+    /// `read` again after the delay, unless the picker closed meanwhile.
+    static func readAgain(_ read: () async -> Void) async {
+        try? await Task.sleep(for: delay)
+        guard !Task.isCancelled else { return }
+        await read()
+    }
+}
+
+/// Refresh models, in a model picker's toolbar: asks Hermes for every
+/// provider's live list, for a model it hasn't listed yet (issue 1807).
+struct RefreshModelsButton: View {
+    let refreshing: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            if refreshing {
+                ProgressView()
+            } else {
+                Image(systemName: "arrow.clockwise")
+            }
+        }
+        .disabled(refreshing)
+        .tint(.conduitAccent)
+        .macTooltip(AppLocalization.string("Refresh models"))
+        .accessibilityLabel(AppLocalization.string("Refresh models"))
+    }
+}
+
 /// A model picker's catalog (the model sheet's, the bot editor's): the
 /// models kept from Hermes' last answer until it answers again (#1533),
 /// and whether a read failed.
@@ -204,8 +241,10 @@ struct KeptModelCatalog: Equatable {
     private(set) var failed = false
 
     var state: ModelCatalogState { .of(providers: loaded ? providers : nil, failed: failed) }
-    /// A read failed under the kept rows: they stay up, saying so.
-    var keptRowsFailed: Bool { failed && !answered && state == .ready }
+    /// A read failed under the rows shown, kept or from an earlier answer
+    /// (a Refresh models or the read again that failed): they stay up,
+    /// saying so.
+    var keptRowsFailed: Bool { failed && state == .ready }
 
     /// The models Hermes gave last, before the first frame. Nothing kept,
     /// or none, leaves the picker loading.
@@ -292,6 +331,13 @@ struct ModelPickerView: View {
     @State private var searchWasFocused = false
     /// The Add a provider sheet is up; the models are read again when it closes.
     @State private var addingProvider = false
+    /// Refresh models is asking Hermes for every provider's live list.
+    @State private var refreshingModels = false
+    /// Counts the catalog reads, so only the last one asked lands.
+    @State private var catalogRead = 0
+    /// A plain read was asked while Refresh models ran (a provider added
+    /// meanwhile): it runs once the refresh lands.
+    @State private var readAfterRefresh = false
 
     var body: some View {
         NavigationStack {
@@ -343,6 +389,9 @@ struct ModelPickerView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    refreshModelsButton
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(editingVisibility ? AppLocalization.string("Done") : AppLocalization.string("Edit")) {
                         if editingVisibility {
@@ -395,7 +444,12 @@ struct ModelPickerView: View {
                 selectedProvider = appState.runtime.provider
             }
         }
-        .task { await loadModels() }
+        .task {
+            await loadModels()
+            // Hermes fetches a stale provider list in the background
+            // meanwhile; a Refresh models under way asks for it anyway.
+            await ModelCatalogSettle.readAgain { await loadModels() }
+        }
         .task {
             // On a Mac or with a hardware keyboard, typing a model's name
             // comes first. Asked again once the sheet settles, since a focus
@@ -606,6 +660,26 @@ struct ModelPickerView: View {
             .background(rowFoundation, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .accessibilityIdentifier("modelPicker.addProvider")
         }
+    }
+
+    /// A read that fails keeps the models shown, saying so with Try Again.
+    private var refreshModelsButton: some View {
+        RefreshModelsButton(refreshing: refreshingModels) {
+            Task {
+                guard !refreshingModels else { return }
+                refreshingModels = true
+                await loadModels(refresh: true)
+                refreshingModels = false
+                // A provider added meanwhile isn't in the refresh's answer.
+                // A refresh that failed stays said: Try Again reads again.
+                let readSkipped = readAfterRefresh
+                readAfterRefresh = false
+                if readSkipped, !catalog.failed {
+                    await loadModels()
+                }
+            }
+        }
+        .accessibilityIdentifier("modelPicker.refreshModels")
     }
 
     private var catalogFailedRow: some View {
@@ -1096,15 +1170,48 @@ struct ModelPickerView: View {
     /// A read that fails keeps the models shown, saying so: model options
     /// are supplementary to the session's state, but the list says it
     /// didn't load rather than that there are none.
-    private func loadModels() async {
+    /// `refresh` is Refresh models: Hermes fetches every provider's live
+    /// list first (issue 1807). The search, the open provider and the
+    /// checked row stay as they are.
+    private func loadModels(refresh: Bool = false) async {
+        // A Refresh models under way has the newer answer coming; the
+        // read runs after it, in case something changed meanwhile.
+        guard refresh || !refreshingModels else {
+            readAfterRefresh = true
+            return
+        }
+        catalogRead += 1
+        let read = catalogRead
         catalog.readStarted()
-        guard let loaded = await appState.loadModelProviders(sessionId: appState.activeSessionId) else {
+        let loaded = await appState.loadModelProviders(sessionId: appState.activeSessionId, refresh: refresh)
+        // A read asked since has the newer answer.
+        guard read == catalogRead else { return }
+        guard let loaded else {
             catalog.readFailed()
             return
         }
+        // The highlighted match stays the same model when rows come or go
+        // above it, so Return picks what the highlight showed.
+        let before = searchMatches
+        let held = before.indices.contains(highlightedMatch) ? before[highlightedMatch].id : nil
         catalog.hermesAnswered(loaded)
+        if let held {
+            highlightedMatch = searchMatches.firstIndex { $0.id == held } ?? 0
+        }
         // A row being switched to keeps its checkmark.
         guard switchingRow == nil else { return }
+        // So does a row switched to that Hermes ran under another id, while
+        // the session still runs what it resolved to.
+        if let switchedRow, !modelPickerShouldSwitch(
+            switchedRow.selection,
+            lastSwitched: switchedRow,
+            runtimeModel: appState.runtime.model,
+            runtimeProvider: appState.runtime.provider
+        ) {
+            selectedModel = switchedRow.selection.model
+            selectedProvider = switchedRow.selection.provider
+            return
+        }
         selectedModel = appState.runtime.model
         selectedProvider = appState.runtime.provider
     }
