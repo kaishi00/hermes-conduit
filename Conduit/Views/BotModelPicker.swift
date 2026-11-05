@@ -29,6 +29,9 @@ struct BotModelPicker: View {
     @State private var refreshing = false
     /// Counts the catalog reads, so only the last one asked lands.
     @State private var catalogRead = 0
+    /// A plain read was asked while Refresh models ran: it runs once the
+    /// refresh lands.
+    @State private var readAfterRefresh = false
 
     var body: some View {
         // Settings' own page, as Work and Edit Bot that push it.
@@ -95,8 +98,12 @@ struct BotModelPicker: View {
                     Task {
                         guard !refreshing else { return }
                         refreshing = true
-                        defer { refreshing = false }
                         await load(refresh: true)
+                        refreshing = false
+                        if readAfterRefresh {
+                            readAfterRefresh = false
+                            await load()
+                        }
                     }
                 }
                 .accessibilityIdentifier("botModelPicker.refreshModels")
@@ -122,7 +129,10 @@ struct BotModelPicker: View {
     /// list first. The search and the pick stay as they are.
     private func load(refresh: Bool = false) async {
         // A Refresh models under way has the newer answer coming.
-        guard refresh || !refreshing else { return }
+        guard refresh || !refreshing else {
+            readAfterRefresh = true
+            return
+        }
         catalogRead += 1
         let read = catalogRead
         catalog.readStarted()
