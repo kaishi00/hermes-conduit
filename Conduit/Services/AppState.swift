@@ -17625,9 +17625,14 @@ final class AppState: ObservableObject {
     }
 
     /// The same by a chat's id alone (a call's chat search hit), in `profile`.
+    /// A listed row it names (by any of its ids) goes by the row's rule.
     func isUnlistedChat(id: String, profile: String) -> Bool {
-        isWorkstreamSession(id) || canonicalSessionID(for: id).map(isWorkstreamSession) == true
-            || isPulseHomeChat(id: id, profile: profile)
+        if let row = sessions.first(where: {
+            sessionBelongsToProfile($0, profile: profile) && SessionContentSearch.identities(of: $0).contains(id)
+        }), isUnlistedChat(row) {
+            return true
+        }
+        return isWorkstreamSession(id) || isPulseHomeChat(id: id, profile: profile)
     }
 
     @discardableResult
