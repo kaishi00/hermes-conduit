@@ -393,6 +393,9 @@ struct ShareDraftCollector {
         do {
             try FileManager.default.copyItem(at: source, to: destination)
         } catch {
+            // A copy cut short would otherwise ride along in the draft
+            // folder beside a later step's file.
+            try? FileManager.default.removeItem(at: destination)
             return .failed(displayName, reason: error.localizedDescription)
         }
         // Checked again on the copy: the source could have grown meanwhile.
