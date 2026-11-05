@@ -6706,6 +6706,27 @@ final class AppState: ObservableObject {
 
     static let maxLeftBackfilledTranscripts = 3
 
+    /// How many rows a chat holds before it lets go of the oldest pages
+    /// Load earlier brought in: twice the saved copy's 500 (issue 1828).
+    static let loadedHistoryRowLimit = 1_000
+
+    /// The reader is back at the newest row: a chat past the limit lets go
+    /// of its oldest loaded pages, out of sight above them, and Load earlier
+    /// brings them back from Hermes (Eric, 2026-11-05, issue 1828). Only
+    /// between turns and on Hermes' own rows.
+    func trimLoadedHistoryIfLong() {
+        guard turnState == .idle,
+              offlineChatPresentation == nil,
+              reconciliation == nil,
+              let window = persistedTranscriptWindow,
+              persistedTranscriptWindowOwnershipIsCurrent(window),
+              let trimmed = PersistedTranscriptWindow.trimmingLoadedHistory(
+                messages, window: window, keeping: Self.loadedHistoryRowLimit
+              ) else { return }
+        messages = trimmed.messages
+        persistedTranscriptWindow = trimmed.window
+    }
+
     /// Keeps the chat on screen as it's left, when Load earlier brought in
     /// its older rows: Hermes' rows only, never saved rows standing in.
     private func keepLeftBackfilledTranscript() {
@@ -6720,11 +6741,16 @@ final class AppState: ObservableObject {
         leftBackfilledTranscripts.removeAll {
             $0.dashboardID == dashboardID && !$0.sessionIDs.isDisjoint(with: sessionIDs)
         }
+        // A long chat lets go of its oldest pages as it's left (issue 1828).
+        let kept = PersistedTranscriptWindow.trimmingLoadedHistory(
+            messages, window: window, keeping: Self.loadedHistoryRowLimit
+        ) ?? (messages: messages, window: window)
+        guard kept.window.hasBackfilledPrefix else { return }
         leftBackfilledTranscripts.append(LeftBackfilledTranscript(
             dashboardID: dashboardID,
             sessionIDs: sessionIDs,
-            messages: messages,
-            window: window
+            messages: kept.messages,
+            window: kept.window
         ))
         if leftBackfilledTranscripts.count > Self.maxLeftBackfilledTranscripts {
             leftBackfilledTranscripts.removeFirst(leftBackfilledTranscripts.count - Self.maxLeftBackfilledTranscripts)
@@ -32680,6 +32706,13 @@ final class AppState: ObservableObject {
                 return false
             }
             var didPrepend = false
+            let startBeforePage = messages.first.map {
+                PersistedTranscriptWindowState.LoadedPageStart(
+                    firstRowID: $0.id,
+                    nextOffset: offset,
+                    hasBackfilledPrefix: current.hasBackfilledPrefix
+                )
+            }
             if fetchedRowCount > 0 {
                 let normalizedPage = MessageNormalizer.normalizeMessages(
                     rawRows.map(AnyCodable.from),
@@ -32739,6 +32772,16 @@ final class AppState: ObservableObject {
             current.nextOffset = offset + fetchedRowCount
             current.canLoadEarlier = fetchedRowCount > 0
                 && page.mayHaveOlderRows(fetchedRowCount: fetchedRowCount)
+            if didPrepend, let first = messages.first {
+                if current.loadedPageStarts.isEmpty, let startBeforePage {
+                    current.loadedPageStarts.append(startBeforePage)
+                }
+                current.loadedPageStarts.append(.init(
+                    firstRowID: first.id,
+                    nextOffset: current.nextOffset,
+                    hasBackfilledPrefix: true
+                ))
+            }
             return didPrepend
         case .unavailable:
             // The history source went away mid-conversation; there is no

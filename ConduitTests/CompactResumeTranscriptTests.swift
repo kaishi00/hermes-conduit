@@ -1460,6 +1460,71 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertEqual(harness.appState.messages.map(\.content), (5000..<5010).map { "Row \($0)" })
     }
 
+    /// A chat past 1,000 rows lets go of its oldest loaded pages once the
+    /// reader is back at the newest row, or as it's left, and Load earlier
+    /// reads on from the page it went back to (issue 1828).
+    func testALongChatLetsGoOfItsOldestPagesAndLoadEarlierBringsThemBack() async throws {
+        let first = session("stored-a", alternateIDs: ["runtime-a"])
+        let other = session("stored-b", alternateIDs: ["runtime-b"])
+        let offsets = Counter()
+        let harness = try makeHarness(
+            openSession: { _, sessionId, _ in
+                SessionResumeResult(
+                    sessionId: sessionId.hasSuffix("b") ? "runtime-b" : "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { sessionId, _, _ in
+                if sessionId.hasSuffix("b") {
+                    return self.tailPagePayload(sessionId: "stored-b", rows: self.syntheticRows(5000..<5010), offset: 0)
+                }
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                offsets.value = offset
+                return self.tailPagePayload(
+                    sessionId: "stored-a",
+                    rows: self.syntheticRows((1880 - offset)..<(2000 - offset)),
+                    offset: offset
+                )
+            }
+        )
+        harness.appState.sessions = [first, other]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        for _ in 0..<9 { await harness.appState.loadEarlierMessages() }
+        XCTAssertEqual(harness.appState.messages.count, 1_200)
+
+        harness.appState.trimLoadedHistoryIfLong()
+        XCTAssertEqual(harness.appState.messages.count, 1_080, "Back to the newest page start that keeps 1,000 rows")
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 920")
+        XCTAssertEqual(harness.appState.messages.last?.content, "Row 1999")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 1_080)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.hasBackfilledPrefix, true)
+
+        harness.appState.trimLoadedHistoryIfLong()
+        XCTAssertEqual(harness.appState.messages.count, 1_080, "Within reach of the limit, nothing more goes")
+
+        await harness.appState.loadEarlierMessages()
+        XCTAssertEqual(offsets.value, 1_080, "Load earlier reads on from the page it went back to")
+        XCTAssertEqual(harness.appState.messages.count, 1_200)
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 800")
+        let ids = harness.appState.messages.map(\.id)
+        XCTAssertEqual(Set(ids).count, ids.count)
+
+        // Left past the limit, it's kept cut back too.
+        let openedOther = await harness.appState.openSession("stored-b")
+        XCTAssertTrue(openedOther)
+        let openedAgain = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(openedAgain)
+        XCTAssertEqual(harness.appState.messages.count, 1_080)
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 920")
+        XCTAssertEqual(harness.appState.messages.last?.content, "Row 1999")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
+    }
+
     /// Tapping the chat already open, settled and connected, reads it and
     /// nothing else: no second resume or page read (issue 1825).
     func testTappingTheOpenChatAgainDoesNotOpenItAgain() async throws {

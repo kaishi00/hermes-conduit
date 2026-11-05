@@ -114,6 +114,18 @@ struct PersistedTranscriptWindowState: Equatable {
     /// backfill prepends; kept by a reconcile that grafts onto the prefix;
     /// cleared when a refreshed tail is authoritative (no safe anchor).
     var hasBackfilledPrefix = false
+    /// Where the chat's rows started before each Load earlier page and
+    /// after it, oldest page last, with the window as it stood then. A long
+    /// chat lets go of its oldest pages by going back to one of these, so
+    /// the next Load earlier reads on from that page exactly (issue 1828).
+    /// A window a reconcile builds starts without any.
+    var loadedPageStarts: [LoadedPageStart] = []
+
+    struct LoadedPageStart: Equatable {
+        let firstRowID: String
+        let nextOffset: Int
+        let hasBackfilledPrefix: Bool
+    }
 
     /// Every session identity the accepted hydration/resume transaction
     /// vouched for together: the requested ID, the persisted stored ID, and
@@ -228,6 +240,30 @@ enum PersistedTranscriptWindow {
         }
         guard !fresh.isEmpty else { return nil }
         return fresh + existing
+    }
+
+    /// A long chat's rows cut back to the newest of its page starts that
+    /// still keeps `limit` rows, with the window as it stood at that start,
+    /// so Load earlier brings the older pages back from Hermes. Nil when the
+    /// chat is within the limit or no page start would drop a row.
+    static func trimmingLoadedHistory(
+        _ messages: [ChatMessage],
+        window: PersistedTranscriptWindowState,
+        keeping limit: Int
+    ) -> (messages: [ChatMessage], window: PersistedTranscriptWindowState)? {
+        guard messages.count > limit, !window.isLoadingEarlier else { return nil }
+        for (position, start) in window.loadedPageStarts.enumerated() {
+            guard let index = messages.firstIndex(where: { $0.id == start.firstRowID }) else { continue }
+            guard messages.count - index >= limit else { continue }
+            guard index > 0 else { return nil }
+            var trimmed = window
+            trimmed.nextOffset = start.nextOffset
+            trimmed.canLoadEarlier = true
+            trimmed.hasBackfilledPrefix = start.hasBackfilledPrefix
+            trimmed.loadedPageStarts = Array(window.loadedPageStarts[...position])
+            return (Array(messages[index...]), trimmed)
+        }
+        return nil
     }
 
     /// Re-anchors a refreshed tail onto a transcript with backfilled older

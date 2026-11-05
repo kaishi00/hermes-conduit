@@ -619,6 +619,18 @@ final class TranscriptScrollerTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 3600)
     }
 
+    /// Coming back down tells AppState, so a long chat can let go of its
+    /// oldest loaded pages (issue 1828); following from the start doesn't.
+    func testScrollingBackDownToTheLatestRowSaysSo() {
+        let (scroller, surface) = makeScroller()
+        XCTAssertFalse(events.contains(.reachedLatest))
+        surface.userScroll(to: 1000)
+        XCTAssertFalse(events.contains(.reachedLatest))
+        surface.userScroll(to: 3170)
+        XCTAssertTrue(scroller.isFollowingLatest)
+        XCTAssertEqual(events.filter { $0 == .reachedLatest }.count, 1)
+    }
+
     func testAFlingThatReachesTheEndResumesFollowing() {
         let (scroller, surface) = makeScroller()
         surface.userScroll(to: 1000)
