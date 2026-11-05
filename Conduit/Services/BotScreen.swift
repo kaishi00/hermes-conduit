@@ -299,12 +299,20 @@ final class BotScreenModel: ObservableObject {
         }
     }
 
+    /// Leaves an ended install's log for the screen's own view.
+    func continueAfterInstall() async {
+        installLog = []
+        await load()
+    }
+
     func answerSudo(_ password: String) async {
         guard let id = sudoRequestID, let client else { return }
         sudoRequestID = nil
         do {
             try await client.respondToDisplaySudo(requestId: id, password: password)
         } catch {
+            // Asked again: the field comes back for another try.
+            sudoRequestID = id
             errorText = error.localizedDescription
         }
     }
@@ -404,7 +412,8 @@ final class BotScreenModel: ObservableObject {
                 if next.isRunning, stream == .idle { Task { await attach() } }
             }
         case "display.install.log":
-            guard isInstalling, let line = payload["line"]?.stringValue else { return }
+            guard let line = payload["line"]?.stringValue else { return }
+            isInstalling = true
             installLog.append(line)
             if installLog.count > Self.maxLogLines { installLog.removeFirst(installLog.count - Self.maxLogLines) }
         case "display.install.done":
@@ -412,7 +421,10 @@ final class BotScreenModel: ObservableObject {
             sudoRequestID = nil
             let code = payload["code"]?.intValue ?? 1
             if let next = payload["status"]?.objectValue.flatMap(BotScreenStatus.init) { apply(next) }
-            if code != 0 {
+            if code == 0 {
+                // Installed: the screen's own view takes over from the log.
+                installLog = []
+            } else {
                 errorText = code == -2
                     ? AppLocalization.string("This host has no sudo. Run the install command on the host yourself.")
                     : AppLocalization.string("The install didn't finish. Its log is below.")
@@ -423,7 +435,10 @@ final class BotScreenModel: ObservableObject {
     }
 
     private func receiveSudo(id: String, profileKey: String, from sender: AnyObject?) {
-        guard sender === client, isInstalling, !id.isEmpty, profileKey == status?.profileKey else { return }
+        // Any install of this bot's screen, one started elsewhere too: the
+        // host waits on its password either way.
+        guard sender === client, !id.isEmpty, profileKey == status?.profileKey else { return }
+        isInstalling = true
         sudoRequestID = id
     }
 

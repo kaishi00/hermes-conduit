@@ -17,6 +17,8 @@ struct BotScreenSheet: View {
 
     var body: some View {
         BotScreenContent(target: target, client: appState.client, work: appState.botWork)
+            // A reconnect makes a new client: the screen is read again on it.
+            .id(appState.client.map { ObjectIdentifier($0) })
     }
 }
 
@@ -197,7 +199,7 @@ private struct BotScreenContent: View {
             }
             if !model.isInstalling {
                 Button(AppLocalization.string("Continue")) {
-                    Task { await model.load() }
+                    Task { await model.continueAfterInstall() }
                 }
                 .buttonStyle(.borderedProminent)
                 if !status.isInstalled, let command = status.installCommand {

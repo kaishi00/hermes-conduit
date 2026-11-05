@@ -658,7 +658,7 @@ private struct BotWorkRow: View {
                         Haptics.light()
                         Task {
                             await appState.actOnWorkstream(item, profile: profile, action: .send,
-                                                           text: "I did it on the screen. Carry on.")
+                                                           text: AppLocalization.string("I did it on the screen. Carry on."))
                         }
                     } label: {
                         Text(AppLocalization.string("Done, Carry On"))
