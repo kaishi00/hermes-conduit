@@ -5740,8 +5740,8 @@ Settings caption or doc gives the cadence)
 - Tests: `ConduitTests/GroupChatSessionSafetyTests.swift` (testRoomPollStopsWhileHiddenAndCatchesUpWhenShown)
 
 **Rulings**
-- A timed read runs only while its screen shows: its tab selected, nothing pushed over it (beside it on a wide window still shows), a chat's column not covered (Settings hosted beside the list, Back to the list: AppState.showSidebar) and the app not in the background. Showing it again reads at once, so what changed meanwhile is there on return (2026-11-05, #1837, issue #1827).
-- A group room whose screen hasn't appeared yet (just opened) counts as showing, as does one with no screen mounted. A poll tick that brings the same driver status publishes nothing.
+- A timed read runs only while its screen shows: its tab selected, nothing pushed over it (beside it on a wide window still shows), a chat's column not covered (Settings hosted beside the list, Back to the list: AppState.showSidebar; on a split window a page in the list column, Pulse say, leaves the chat beside it showing: v2Shell's hasChatBeside) and the app not in the background. Showing it again reads at once, so what changed meanwhile is there on return (2026-11-05, #1837, issue #1827).
+- A group room whose screen hasn't appeared yet (just opened) counts as showing. One whose last screen went away while it stayed open (a page pushed over it on one column) doesn't, until a screen shows it again. A poll tick that brings the same driver status publishes nothing.
 
 **Open gaps**
 - A screen covered by a sheet still reads: the sheet doesn't tell the tab it covers.

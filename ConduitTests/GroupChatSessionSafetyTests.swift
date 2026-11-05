@@ -1141,10 +1141,18 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         XCTAssertEqual(box.logCalls, [1])
         XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1, 2, 3])
 
-        // Gone: a room nobody has mounted still counts as showing.
+        // Its screen gone while the room stays open (a page pushed over it):
+        // hidden, until a screen shows it again.
         appState.noteRoomView(screen, shows: nil)
+        XCTAssertFalse(appState.roomSurfaceShows)
+        let next = UUID()
+        appState.noteRoomView(next, shows: true)
         XCTAssertTrue(appState.roomSurfaceShows)
+        appState.noteRoomView(next, shows: nil)
+
+        // Another room opened before its screen appears counts as showing.
         appState.closeGroupRoom()
+        XCTAssertTrue(appState.roomSurfaceShows)
     }
 
     /// `groups.create` REQUIRES a client-minted `room_id` (it is the room's

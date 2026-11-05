@@ -18,8 +18,12 @@ struct GroupChatView: View {
     /// shows (`noteRoomView`).
     @State private var roomViewID = UUID()
     /// Active, not just out of the background: the poll waits for the scene
-    /// to be active, so a return's catch-up lands when it can read.
-    private var roomShows: Bool { shell.isTabActive && !appState.showSidebar && scenePhase == .active }
+    /// to be active, so a return's catch-up lands when it can read. Split,
+    /// the chat column shows it beside whatever the list column holds
+    /// (Pulse, say); otherwise Back to the list or Settings covers it.
+    private var roomShows: Bool {
+        shell.isTabActive && (shell.hasChatBeside || !appState.showSidebar) && scenePhase == .active
+    }
     @State private var showingDisbandConfirmation = false
     @State private var choosingPicture: GroupRoomPictureRequest?
     /// Moves the transcript by the chat's rules (#1533, the transcript

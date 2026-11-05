@@ -12528,7 +12528,11 @@ final class AppState: ObservableObject {
 
     @Published private(set) var activeRoomSurface: GroupRoomSurface? {
         // A room takes the chat's place without changing the open chat.
-        didSet { if (oldValue == nil) != (activeRoomSurface == nil) { updateChatOnScreen() } }
+        didSet {
+            if (oldValue == nil) != (activeRoomSurface == nil) { updateChatOnScreen() }
+            // Another room (or none): no screen of it has left yet.
+            if oldValue?.room.roomID != activeRoomSurface?.room.roomID { roomScreenLeft = false }
+        }
     }
     @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "") {
         // An agent's new message may have a board kept for it (RoomBoards).
@@ -13295,11 +13299,14 @@ final class AppState: ObservableObject {
     /// The room screens mounted, and whether each shows: the V2 shell
     /// keeps a hidden tab's screens mounted (#1827). Set by GroupChatView.
     private var roomViewsShowing: [UUID: Bool] = [:]
+    /// The open room's last screen went away while the room stayed open
+    /// (a page pushed over it on one column).
+    private var roomScreenLeft = false
 
     /// Whether a room screen shows. None mounted yet (the room just opened)
-    /// counts as showing.
+    /// counts as showing; none left after one went away doesn't.
     var roomSurfaceShows: Bool {
-        roomViewsShowing.isEmpty || roomViewsShowing.values.contains(true)
+        roomViewsShowing.values.contains(true) || (roomViewsShowing.isEmpty && !roomScreenLeft)
     }
 
     /// A room screen showing, hidden (`shows` false), or gone (nil). Shown
@@ -13307,6 +13314,7 @@ final class AppState: ObservableObject {
     func noteRoomView(_ id: UUID, shows: Bool?) {
         let before = roomSurfaceShows
         roomViewsShowing[id] = shows
+        if shows != nil { roomScreenLeft = false } else if roomViewsShowing.isEmpty { roomScreenLeft = true }
         guard !before, roomSurfaceShows, activeRoomSurface != nil else { return }
         let epoch = groupRoomEpoch
         Task { @MainActor [weak self] in await self?.pollActiveRoomOnce(epoch: epoch) }

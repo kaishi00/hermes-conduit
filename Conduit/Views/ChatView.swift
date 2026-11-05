@@ -638,8 +638,9 @@ struct ChatView: View {
             // live registry while this chat shows. Each turn edge checks at
             // once. A tab hiding it stops the check (#1827), and showing
             // it again checks at once.
-            .task(id: "\(appState.activeSessionId ?? "")|\(appState.isBusy)|\(scenePhase == .active)|\(appState.showSidebar)|\(shell.isTabActive)") {
-                guard scenePhase == .active, !appState.showSidebar, shell.isTabActive else { return }
+            .task(id: "\(appState.activeSessionId ?? "")|\(appState.isBusy)|\(scenePhase == .active)|\(appState.showSidebar && !shell.hasChatBeside)|\(shell.isTabActive)") {
+                // Split, a page in the list column (Pulse) leaves it showing.
+                guard scenePhase == .active, !appState.showSidebar || shell.hasChatBeside, shell.isTabActive else { return }
                 appState.openChatSyncBecameVisible()
                 while !Task.isCancelled {
                     await appState.openChatSyncTick()

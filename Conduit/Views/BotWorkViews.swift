@@ -33,7 +33,8 @@ private struct BotWorkRefresh: ViewModifier {
         // Keyed on the bot's work being on too: turned on in Edit Bot,
         // its reads start again.
         let isOn = appState.botWork.snapshot(profile)?.isOn ?? true
-        let shows = shell.isTabActive && scenePhase != .background && !(inChat && appState.showSidebar)
+        let shows = shell.isTabActive && scenePhase != .background
+            && !(inChat && appState.showSidebar && !shell.hasChatBeside)
         content.task(id: "\(profile)\u{1F}\(appState.isConnected)\u{1F}\(appState.servesBotWorkstreams)\u{1F}\(isOn)\u{1F}\(shows)") {
             guard shows else { return }
             while !Task.isCancelled {
