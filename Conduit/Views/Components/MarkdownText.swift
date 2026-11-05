@@ -2772,8 +2772,11 @@ private struct RemoteMarkdownImage: View {
     /// after Hermes sweeps its own, else from Hermes; a web picture again
     /// (usually from URLCache) to share it at full quality.
     private func openImage(showing image: UIImage?) {
+        // The "+N" tile is the way to the pictures without a tile, so when
+        // its own address can't be shown it opens the run at its first.
         guard let item = ImageGalleryItem.markdownImage(url: url, alt: alt, resolver: gatewayMediaFiles,
-                                                        dataURL: gatewayMediaDataURL) else { return }
+                                                        dataURL: gatewayMediaDataURL)
+            ?? (opensViewerWhenUnavailable ? imageGallery?.items().first : nil) else { return }
         ImageGallery.open(item, in: imageGallery, placeholder: image)
     }
 }
