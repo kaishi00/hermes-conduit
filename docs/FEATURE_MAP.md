@@ -2661,7 +2661,7 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   update that asked, never inside it, and several asks before then come to
   the last. Resigning inside the update asked the hosting view whether it
   could take focus, which re-entered the view graph: on iOS 27 the whole
-  app froze mid-typing until force-quit (2026-11-05, PRNUM, issue 1781).
+  app froze mid-typing until force-quit (2026-11-05, #1785, issue 1781).
   A chat's field, a room's and the full editor share the code
   (ReturnKeyTextView.setFocusIntent), the field being dismantled included.
 
@@ -2672,7 +2672,7 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   `updateUIView` passing the binding's focus to the field (it needs a SwiftUI
   Context), so that link is checked on a device only.
 
-**Checked:** 2026-11-05, PRNUM (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
+**Checked:** 2026-11-05, #1785 (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
 
 ## A chat's last reply
 
