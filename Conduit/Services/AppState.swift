@@ -38752,6 +38752,16 @@ final class AppState: ObservableObject {
     /// The longest a switch waits for a live screen's dismissal to land.
     static let voiceModeSwitchDismissalTimeout: Duration = .milliseconds(1500)
 
+    /// The chat a mode switch starts the new mode in: Classic's open chat,
+    /// else the live call's attached chat, else the chat a Local Live call
+    /// made for itself (from Home, or after its chat was deleted, issue 1797).
+    static func voiceModeSwitchThread(
+        classicChat: VoiceThreadTarget?, classicWasOpen: Bool,
+        liveThread: VoiceThreadTarget?, localLiveOwnChat: VoiceThreadTarget?
+    ) -> VoiceThreadTarget? {
+        classicWasOpen ? classicChat : (liveThread ?? localLiveOwnChat)
+    }
+
     private enum VoiceModeHandoff {
         /// Open the new mode, in this chat.
         case proceed(VoiceThreadTarget?)
@@ -38773,7 +38783,10 @@ final class AppState: ObservableObject {
         // one, or the chat a Local Live call made for itself (from Home, or
         // after its chat was deleted, issue 1797).
         let classicWasOpen = showVoiceSheet
-        let thread = classicWasOpen ? liveVoiceThreadForOpenChat() : (voiceBackgroundJobSupervisor.liveThread ?? localLiveOwnChat)
+        let thread = Self.voiceModeSwitchThread(
+            classicChat: classicWasOpen ? liveVoiceThreadForOpenChat() : nil, classicWasOpen: classicWasOpen,
+            liveThread: voiceBackgroundJobSupervisor.liveThread, localLiveOwnChat: localLiveOwnChat
+        )
         let shownLiveScreen: VoiceCallEngine? = showQwenLiveSheet ? .qwenLive
             : showGeminiLiveSheet ? .geminiLive
             : showGPTLiveSheet ? .gptLive

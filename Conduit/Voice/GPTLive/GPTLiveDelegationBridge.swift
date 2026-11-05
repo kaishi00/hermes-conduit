@@ -1483,10 +1483,20 @@ final class GPTLiveDelegationBridge {
             supervisor.holdOutcome(jobID: jobID)
             supervisor.markOutcomeDelivered(jobID: jobID)
             deliveredReplies[delegationID] = jobID
+            // A request the call let go of when its chat was deleted (issue
+            // 1797): its end isn't said, only noted for the model.
+            if job.isDetachedThreadTurn {
+                outgoing.append(.delegationReply(delegationID: delegationID, text: Self.chatDeletedNote, channel: .commentary))
+                continue
+            }
             outgoing.append(.delegationReply(delegationID: delegationID, text: Self.outcome(of: job), channel: .speakable))
         }
         return outgoing
     }
+
+    /// A request whose chat was deleted mid-call. Read by the model, not
+    /// spoken: not localized.
+    static let chatDeletedNote = "The chat this request ran in was deleted, so it has no result to tell. Don't mention it unless the user asks."
 
     /// A settled job's outcome, for the model to say in its own words.
     static func outcome(of job: VoiceBackgroundJob) -> String {
