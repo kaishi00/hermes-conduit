@@ -29,6 +29,9 @@ extension BotModeTests {
         XCTAssertTrue(long.details.hasPrefix("Spy\n\n"))
 
         XCTAssertEqual(ImagePlaygroundPicture.Prompt(name: "").details, "")
+
+        let name = String(repeating: "n", count: ImagePlaygroundPicture.maxNameLength + 40)
+        XCTAssertEqual(ImagePlaygroundPicture.Prompt(name: name).name.count, ImagePlaygroundPicture.maxNameLength)
     }
 
     func testImagePlaygroundResultIsReadThenRemoved() throws {

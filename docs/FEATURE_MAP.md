@@ -5049,7 +5049,7 @@ What Conduit calls a profile, and where it is renamed. A bot is a Hermes
 profile, so its name in Bots and its name everywhere else are one name.
 
 **Siblings:** the Profiles sheet's Edit menu (Rename, Choose Photo, Remove
-Photo) · Settings > Edit profile (the profile in use) · Edit Bot's name
+Photo, and Image Playground, see Pictures from Image Playground) · Settings > Edit profile (the profile in use) · Edit Bot's name
 · Hermes Desktop's bot editor (the same title) · every place Conduit names a
 profile through `profileDisplayName` (sidebar, profile switcher and chips,
 All profiles, chat placeholders, call screens, voice settings, widgets, the
@@ -5089,7 +5089,7 @@ profiles line)
 - A push carries no Bot Chat marker, so a regular main-profile chat titled exactly the bot's name, "Hermes" or "Default" is renamed in its push as the Bot Chat is (#1457). A marker from the notifier would let the extension rename only Bot Chats.
 - A plugin older than #1257 sends no `profile_name`, so with a phone name its titled main bot's Bot Chat push keeps the bot's title over the phone name as subtitle (#1457).
 
-**Checked:** 2026-11-01, #1616 (the Add a provider sheet names the profile through `profileDisplayName`); 2026-10-31, #1568 (a spoken job and a Watch call's names reach a bot from the kept roster until Hermes answers); 2026-10-28, #1457 (the main bot goes by its Conduit name in Bot Mode and its pushes); 2026-10-28, #1448 (an unnamed profile goes by its id capitalized in Bots, rooms, the widget, Artifacts and pushes); 2026-10-28, #1413.
+**Checked:** 2026-11-05, #1813 (the Edit menu offers Image Playground; see Pictures from Image Playground); 2026-11-01, #1616 (the Add a provider sheet names the profile through `profileDisplayName`); 2026-10-31, #1568 (a spoken job and a Watch call's names reach a bot from the kept roster until Hermes answers); 2026-10-28, #1457 (the main bot goes by its Conduit name in Bot Mode and its pushes); 2026-10-28, #1448 (an unnamed profile goes by its id capitalized in Bots, rooms, the widget, Artifacts and pushes); 2026-10-28, #1413.
 
 ## Settings rows a toggle reveals
 
