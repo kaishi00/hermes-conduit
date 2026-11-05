@@ -1098,7 +1098,7 @@ private struct SessionFilterOrderSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            ConduitList {
                 Section {
                     ForEach(appState.sessionFilterOrder, id: \.self) { source in
                         Label(source.label, systemImage: source.iconName)

@@ -1244,7 +1244,7 @@ struct PulseMemoryList: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        List {
+        ConduitList {
             if let errorMessage {
                 Text(verbatim: errorMessage)
                     .scaledFont(.footnote)
