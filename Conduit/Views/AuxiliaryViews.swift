@@ -2506,6 +2506,8 @@ private struct ProfileModelSettingsDetail: View {
     /// Counts the whole-page reads, so an older one never lands over a
     /// newer one.
     @State private var pageRead = 0
+    /// The newest catalog read whose models are shown.
+    @State private var catalogLanded = 0
     /// Counts the saves Hermes took, so a read asked before one never puts
     /// back what the save replaced.
     @State private var savesLanded = 0
@@ -2610,11 +2612,11 @@ private struct ProfileModelSettingsDetail: View {
             loadFailed = true
             return
         }
-        // A read again asked since keeps its newer models; a save that
-        // landed meanwhile keeps its picks.
-        let newerModels = read.catalog != catalogRead ? defaults?.providers : nil
+        // A read again that landed since keeps its newer models; a save
+        // that landed meanwhile keeps its picks.
+        let newerModels = catalogLanded > read.catalog ? defaults?.providers : nil
         show(loaded, picks: read.saves == savesLanded)
-        if let newerModels { defaults?.providers = newerModels }
+        if let newerModels { defaults?.providers = newerModels } else { catalogLanded = read.catalog }
         answered = true
     }
 
@@ -2628,6 +2630,7 @@ private struct ProfileModelSettingsDetail: View {
         let asked = catalogRead
         guard let loaded = await load(), asked == catalogRead, defaults != nil else { return }
         defaults?.providers = loaded.providers
+        catalogLanded = asked
     }
 
     /// The catalog, and the picks unless they were changed here.
@@ -2694,6 +2697,8 @@ private struct DelegationModelSettings: View {
     /// Counts the whole-page reads, so an older one never lands over a
     /// newer one.
     @State private var pageRead = 0
+    /// The newest catalog read whose models are shown.
+    @State private var catalogLanded = 0
     /// Counts the saves Hermes took, so a read asked before one never puts
     /// back what the save replaced.
     @State private var savesLanded = 0
@@ -2798,11 +2803,11 @@ private struct DelegationModelSettings: View {
         // A catalog that didn't load says so, with Try Again, instead of
         // loading forever; a re-load that fails keeps the one it had.
         if loaded == nil { loadFailed = true }
-        // A read again asked since keeps its newer models; a save that
-        // landed meanwhile keeps its picks.
-        let newerModels = read.catalog != catalogRead ? defaults?.providers : nil
+        // A read again that landed since keeps its newer models; a save
+        // that landed meanwhile keeps its picks.
+        let newerModels = catalogLanded > read.catalog ? defaults?.providers : nil
         show(loaded, settings: settings, picks: read.saves == savesLanded)
-        if let newerModels { defaults?.providers = newerModels }
+        if let newerModels { defaults?.providers = newerModels } else if loaded != nil { catalogLanded = read.catalog }
         if loaded != nil { answered = true }
     }
 
@@ -2816,6 +2821,7 @@ private struct DelegationModelSettings: View {
         let asked = catalogRead
         guard let loaded = await loadModels(), asked == catalogRead, defaults != nil else { return }
         defaults?.providers = loaded.providers
+        catalogLanded = asked
     }
 
     /// The catalog when there is one, and the picks unless they were
@@ -2966,6 +2972,8 @@ private struct FallbackModelsSettings: View {
     /// Counts the whole-page reads, so an older one never lands over a
     /// newer one.
     @State private var pageRead = 0
+    /// The newest catalog read whose models are shown.
+    @State private var catalogLanded = 0
     /// Counts the saves Hermes took, so a read asked before one never puts
     /// back what the save replaced.
     @State private var savesLanded = 0
@@ -3037,7 +3045,10 @@ private struct FallbackModelsSettings: View {
                 catalogRead += 1
                 let asked = catalogRead
                 // A read asked since has the newer models.
-                if let models = await loadModels(), asked == catalogRead { defaults = models }
+                if let models = await loadModels(), asked == catalogRead {
+                    defaults = models
+                    catalogLanded = asked
+                }
             }
         }
     }
@@ -3138,8 +3149,11 @@ private struct FallbackModelsSettings: View {
             error = AppLocalization.string("Could not load fallback models.")
             return
         }
-        // A read again asked since has the newer models.
-        if read.catalog == catalogRead || defaults == nil { defaults = models }
+        // A read again that landed since has the newer models.
+        if catalogLanded < read.catalog || defaults == nil {
+            defaults = models
+            catalogLanded = max(catalogLanded, read.catalog)
+        }
         // A save that landed meanwhile holds the newer list.
         guard read.saves == savesLanded else {
             loaded = true
@@ -3168,6 +3182,7 @@ private struct FallbackModelsSettings: View {
         let asked = catalogRead
         guard let models = await loadModels(), asked == catalogRead, defaults != nil else { return }
         defaults?.providers = models.providers
+        catalogLanded = asked
     }
 
     private func persist() {
