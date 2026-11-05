@@ -434,7 +434,7 @@ final class BotScreenModel: ObservableObject {
 
     private func apply(_ next: BotScreenStatus) {
         let wasRunning = status?.isRunning ?? false
-        status = next
+        status = keepingNewerLease(next)
         if let pending = pendingSudo {
             pendingSudo = nil
             if pending.profileKey == next.profileKey {
@@ -451,6 +451,16 @@ final class BotScreenModel: ObservableObject {
         }
         page?.setViewOnly(!iHold)
         if wasRunning, !next.isRunning { detach() }
+    }
+
+    /// A status read before another device's takeover or hand back landed
+    /// keeps the newer lease (one without a lease reads as epoch 0).
+    private func keepingNewerLease(_ next: BotScreenStatus) -> BotScreenStatus {
+        // Across a stop or start the lease starts over: taken as it comes.
+        guard let previous = status, previous.isRunning, next.isRunning,
+              next.lease.epoch < previous.lease.epoch else { return next }
+        let current = previous.lease
+        return next.replacingLease(current)
     }
 
     private func applyLease(_ lease: BotScreenLease) {
@@ -533,7 +543,10 @@ final class BotScreenModel: ObservableObject {
             viewerID = id
             Self.viewerIDs[profile] = id
             viewerHash = BotScreenLease.hash(ofViewer: id)
-            if let next = BotScreenStatus(observed) { status = next }
+            if let next = BotScreenStatus(observed) {
+                status = keepingNewerLease(next)
+                page?.setViewOnly(!iHold)
+            }
             let request = try await client.displayStreamRequest(path: observed["path"]?.stringValue ?? "/api/display/ws",
                                                                 ticket: ticket)
             guard generation == attachGeneration else { return }
