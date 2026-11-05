@@ -427341,6 +427341,182 @@
           }
         }
       }
+    },
+    "That animation is too large. Try a shorter or simpler clip.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Animation ist zu groß. Versuche einen kürzeren oder einfacheren Clip."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That animation is too large. Try a shorter or simpler clip."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esa animación es demasiado grande. Prueba con un clip más corto o más sencillo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cette animation est trop lourde. Essayez un extrait plus court ou plus simple."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Animasi itu terlalu besar. Coba klip yang lebih pendek atau lebih sederhana."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quell'animazione è troppo grande. Prova una clip più breve o più semplice."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "そのアニメーションは大きすぎます。もっと短いか、シンプルなクリップを試してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "애니메이션이 너무 커요. 더 짧거나 단순한 클립을 사용해 보세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ta animacja jest za duża. Spróbuj krótszego lub prostszego klipu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Essa animação é grande demais. Tente um clipe mais curto ou mais simples."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Эта анимация слишком большая. Попробуйте более короткий или простой клип."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu animasyon çok büyük. Daha kısa veya daha basit bir klip deneyin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个动画太大了。请换一个更短或更简单的片段。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這個動畫太大了。請換一個更短或更簡單的片段。"
+          }
+        }
+      }
+    },
+    "A GIF or a short video moves on Bots Home and in Hermes Desktop.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein GIF oder ein kurzes Video bewegt sich auf der Bots-Startseite und in Hermes Desktop."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A GIF or a short video moves on Bots Home and in Hermes Desktop."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un GIF o un vídeo corto se mueve en el inicio de Bots y en Hermes Desktop."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un GIF ou une courte vidéo s'anime sur l'accueil des Bots et dans Hermes Desktop."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GIF atau video pendek akan bergerak di Beranda Bot dan di Hermes Desktop."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una GIF o un breve video si muove nella Home dei Bot e in Hermes Desktop."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GIF や短い動画は、Bots ホームと Hermes Desktop で動きます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GIF나 짧은 동영상은 봇 홈과 Hermes Desktop에서 움직여요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GIF lub krótkie wideo porusza się na ekranie głównym botów i w Hermes Desktop."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um GIF ou um vídeo curto se move no Início dos Bots e no Hermes Desktop."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GIF или короткое видео двигается на главном экране ботов и в Hermes Desktop."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GIF veya kısa bir video, Botlar Ana Ekranı'nda ve Hermes Desktop'ta hareket eder."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GIF 或短视频会在机器人主页和 Hermes Desktop 中动起来。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GIF 或短影片會在機器人主頁和 Hermes Desktop 中動起來。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
