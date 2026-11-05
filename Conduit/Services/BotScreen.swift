@@ -299,8 +299,9 @@ final class BotScreenModel: ObservableObject {
 
     func stop() async {
         await perform { client in
-            self.detach()
+            // Detached once Hermes says it stopped: a failed stop keeps the live screen.
             let answer = try await client.display("display.stop", profile: self.profile)
+            self.detach()
             if let next = BotScreenStatus(answer) { self.apply(next) }
         }
     }

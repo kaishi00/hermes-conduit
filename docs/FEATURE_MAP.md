@@ -2619,6 +2619,7 @@ needed: driving a desktop needs a screen to see it on)
 **Open gaps**
 - Typing goes as a US keyboard types it (X keysyms); a hardware keyboard goes through noVNC, as Hermes Desktop's does.
 - Where the host has a real desktop and no Bot Screen, the plugin's hold is the host's, shared by every bot, but the app shows no screen there (Hermes' Bot Screen isn't on), and a workstream can't ask the user onto it there (notifier #559).
+- The hold handed back when the sheet closes is sent once: if that send fails, Hermes keeps it until its idle expiry, and the sheet shows You're in control with Hand Back when reopened (from GLM's review).
 - A stream's page messages carry no stream tag: a stale close racing a reattach's finished handshake can drop the new stream, which the user reopens (rare; from GLM's review).
 
 **Checked:** 2026-11-05, #1832 (with notifier #559: the screen in the app, one chat driving it at a time, install from the phone)
