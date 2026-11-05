@@ -16814,6 +16814,8 @@ final class AppState: ObservableObject {
             // that cannot host Bot Mode cannot hold a bot chat either.
             let savedReferenceIsAuthoritative = !(storedReference?.isUnverified ?? false)
                 || botEvidenceIsAvailable
+            // Before the saved id can be resumed directly (#1810).
+            dropSavedPulseChat(profile: profile, purpose: purpose, among: allSessions)
             let missingSavedSessionID = botSavedReference?.sessionID
                 ?? (savedReferenceIsAuthoritative
                     ? chatResumeCoordinator.missingSavedSessionID(
@@ -17582,12 +17584,7 @@ final class AppState: ObservableObject {
         if purpose == .automaticReturn {
             chatResumeRestorationRequest = nil
         }
-        // Pulse's chat is never the chat Conduit opens by itself, even a saved
-        // one (picked before this phone knew it, or opened from a push): the
-        // Pulse screen stands in for it. The chat on screen stays.
-        if purpose != .preserveCurrent, let home = pulseHomeChat, showsPulseScreen {
-            forgetResumedPulseChat(home, profile: profile, among: catalog)
-        }
+        dropSavedPulseChat(profile: profile, purpose: purpose, among: catalog)
         // The stored selection is authoritative only when its kind is known or
         // bot evidence could be read: a v1-migrated id cannot be told from a
         // bot chat, and adopting a catalog row by it is the fail-open the
@@ -17618,6 +17615,14 @@ final class AppState: ObservableObject {
     /// list, a call's chat search); one the user opened stays open.
     func isUnlistedChat(_ session: SessionSummary) -> Bool {
         isWorkstreamRow(session) || isPulseHomeChat(session)
+    }
+
+    /// Pulse's chat is never the chat Conduit opens by itself, even a saved
+    /// one (picked before this phone knew it, or opened from a push): the
+    /// Pulse screen stands in for it. The chat on screen stays.
+    func dropSavedPulseChat(profile: String, purpose: ChatResumeSyncPurpose, among catalog: [SessionSummary]) {
+        guard purpose != .preserveCurrent, let home = pulseHomeChat, showsPulseScreen else { return }
+        forgetResumedPulseChat(home, profile: profile, among: catalog)
     }
 
     /// Drops Pulse's chat as the saved chat to resume, so the pick goes to a
