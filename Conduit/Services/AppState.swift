@@ -80,6 +80,10 @@ struct ChatResumeLifecycleOperations {
     ) async throws -> BranchResult)?
     var setSessionTitle: (@MainActor (HermesClient, String, String) async throws -> Void)?
     var refreshContext: (@MainActor (HermesClient, String) async -> Void)?
+    /// Test seam: awaited by a reconcile right after it applied Hermes'
+    /// transcript, before it settles, so a test can act in that window. Nil
+    /// in the app, where nothing waits there (issue 1824).
+    var afterResumeApplied: (@MainActor (HermesClient, String) async -> Void)?
     var pendingApprovals: (@MainActor (HermesClient, String) async throws -> [ApprovalActivity])?
     /// Profile-aware variant of `pendingApprovals`. Preferred over the 2-argument
     /// seam when set, so tests can pin WHICH Hermes profile a pending approvals
@@ -197,6 +201,7 @@ struct ChatResumeLifecycleOperations {
         ) async throws -> BranchResult)? = nil,
         setSessionTitle: (@MainActor (HermesClient, String, String) async throws -> Void)? = nil,
         refreshContext: (@MainActor (HermesClient, String) async -> Void)? = nil,
+        afterResumeApplied: (@MainActor (HermesClient, String) async -> Void)? = nil,
         pendingApprovals: (@MainActor (HermesClient, String) async throws -> [ApprovalActivity])? = nil,
         pendingApprovalsWithProfile: (@MainActor (HermesClient, String, String?) async throws -> [ApprovalActivity])? = nil,
         respondToApproval: (@MainActor (HermesClient, String, String?, String, String?) async throws -> Bool)? = nil,
@@ -245,6 +250,7 @@ struct ChatResumeLifecycleOperations {
         self.branchSession = branchSession
         self.setSessionTitle = setSessionTitle
         self.refreshContext = refreshContext
+        self.afterResumeApplied = afterResumeApplied
         self.pendingApprovals = pendingApprovals
         self.pendingApprovalsWithProfile = pendingApprovalsWithProfile
         self.respondToApproval = respondToApproval
@@ -18354,7 +18360,14 @@ final class AppState: ObservableObject {
                 return false
             }
             schedulePendingApprovalsRefresh(sessionId: result.sessionId, using: client)
-            await refreshChatResumeContext(sessionId: result.sessionId, using: client)
+            // The context meter's read goes on beside the open, as the
+            // approvals read does: the resume's snapshot already set the
+            // meter, and the open settles, lands and finishes without
+            // waiting a round trip for it (issue 1824).
+            scheduleChatResumeContextRefresh(sessionId: result.sessionId, using: client)
+            if let afterResumeApplied = chatResumeLifecycleOperations.afterResumeApplied {
+                await afterResumeApplied(client, result.sessionId)
+            }
 
             guard automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
@@ -18572,6 +18585,19 @@ final class AppState: ObservableObject {
         } catch {
             noteConnectionStep(label, since: startedAt, error: error)
             throw error
+        }
+    }
+
+    /// Reads the resumed chat's context breakdown without holding the
+    /// reconcile. Its answer applies only while the same client still has
+    /// the same chat open (refreshContextUsage).
+    @discardableResult
+    private func scheduleChatResumeContextRefresh(
+        sessionId: String,
+        using client: HermesClient
+    ) -> Task<Void, Never> {
+        Task { @MainActor [weak self] in
+            await self?.refreshChatResumeContext(sessionId: sessionId, using: client)
         }
     }
 
