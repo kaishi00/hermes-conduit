@@ -423,7 +423,9 @@ final class LocalLiveTurnRunner {
     /// else the one it made for itself, while `runtime` finds it (nil: the
     /// chat was deleted); else a chat `create` makes on the profile of the
     /// chat it lost, kept as the call's own for the rest of the call (issue
-    /// 1797). `own` is the call's own chat after this turn.
+    /// 1797). `own` is the call's own chat after this turn, on the runtime
+    /// it was found on: a delete of the resumed chat names that one, even
+    /// where it has no stored id (a legacy gateway).
     static func callChat(
         attached: VoiceThreadTarget?,
         own: VoiceThreadTarget?,
@@ -436,7 +438,11 @@ final class LocalLiveTurnRunner {
             profile = attached.profile
         }
         if let own {
-            if let runtimeID = try await runtime(own) { return (Chat(runtimeID: runtimeID, profile: own.profile), own) }
+            if let runtimeID = try await runtime(own) {
+                var found = own
+                found.runtimeSessionID = runtimeID
+                return (Chat(runtimeID: runtimeID, profile: own.profile), found)
+            }
             profile = own.profile
         }
         let made = try await create(profile)

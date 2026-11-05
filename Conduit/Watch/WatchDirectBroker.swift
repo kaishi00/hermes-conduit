@@ -1867,7 +1867,14 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
         }
         if waited, callIsLive?() == false { return "The call ended before Hermes took this request." }
         if joins, let callChat {
-            return await base.continueJob(instructions: instructions, in: callChat, onJobCreated: created)
+            // Resumed on another runtime: the call's chat follows it, so a
+            // delete naming that one is found where the chat has no stored
+            // id (a legacy gateway, issue 1797).
+            return await base.continueJob(instructions: instructions, in: callChat, onJobCreated: created, onRuntime: { [weak self] runtimeID in
+                guard let self, var chat = self.callChat, chat == callChat else { return }
+                chat.runtimeSessionID = runtimeID
+                self.callChat = chat
+            })
         }
         let claims = joins
         if claims { startingCallChat = true }

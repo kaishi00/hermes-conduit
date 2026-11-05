@@ -665,4 +665,28 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.created, 3)
         XCTAssertEqual(watch.callChat?.runtimeSessionID, "rt-3")
     }
+
+    /// A Watch call's chat resumed on another runtime follows it, so a
+    /// delete naming only that one (no stored id, a legacy gateway) is the
+    /// chat's delete (issue 1797).
+    func testAWatchCallsChatResumedOnANewRuntimeIsStillFoundDeleted() async {
+        let fake = FakeVoiceJobBackend()
+        fake.storedIDs = false
+        let base = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))
+        let watch = WatchCallJobSupervisor(base)
+        _ = await watch.startJob(instructions: "plan the trip", profile: nil, joinsCall: true, onJobCreated: nil)
+        XCTAssertEqual(watch.callChat?.runtimeSessionID, "rt-1")
+        base.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Plan.", reasoning: nil))
+
+        fake.threadRuntime = "rt-1b"
+        _ = await watch.startJob(instructions: "and book the hotel", profile: nil, joinsCall: true, onJobCreated: nil)
+        guard await waitForCallChat({ base.jobs.last?.requestSent == true }) else { return }
+        base.observe(.messageComplete(sessionId: "rt-1b", messageId: nil, content: "Booked.", reasoning: nil))
+        fake.threadRuntime = nil
+
+        base.noteChatDeleted(["rt-1b"])
+        _ = await watch.startJob(instructions: "and the car", profile: nil, joinsCall: true, onJobCreated: nil)
+        XCTAssertEqual(fake.created, 2, "the deleted chat isn't resumed: a new one is made")
+        XCTAssertEqual(watch.callChat?.runtimeSessionID, "rt-2")
+    }
 }
