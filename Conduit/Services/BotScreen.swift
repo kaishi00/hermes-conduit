@@ -350,7 +350,7 @@ final class BotScreenModel: ObservableObject {
     func handBack(force: Bool = false) async {
         await perform { client in
             var params: [String: Any] = [:]
-            if let viewerID, !force { params["viewer_id"] = viewerID }
+            if let viewerID = self.viewerID, !force { params["viewer_id"] = viewerID }
             if force { params["force"] = true }
             let answer = try await client.display("display.lease.release", profile: self.profile, params: params)
             self.applyLease(BotScreenLease(answer["lease"]?.objectValue))

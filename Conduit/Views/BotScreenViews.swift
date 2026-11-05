@@ -194,7 +194,7 @@ private struct BotScreenContent: View {
                     VStack(alignment: .leading, spacing: 2) {
                         ForEach(Array(model.installLog.enumerated()), id: \.offset) { index, line in
                             Text(line)
-                                .scaledFont(.caption, design: .monospaced)
+                                .scaledFont(.caption.monospaced())
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .id(index)
                         }
@@ -233,7 +233,7 @@ private struct BotScreenContent: View {
                 .foregroundStyle(.secondary)
             HStack(alignment: .top) {
                 Text(command)
-                    .scaledFont(.caption, design: .monospaced)
+                    .scaledFont(.caption.monospaced())
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button {
