@@ -2307,12 +2307,6 @@ private struct ResponseBehaviorSettings: View {
     }
 }
 
-/// A custom menu picker matching the Chat settings selector style,
-/// used by Model and Delegate model settings for visual consistency.
-/// The settings picker row: the setting's name on the left and its current
-/// value on the right ("Provider    OpenRouter"), the whole row opening the
-/// menu. Every menu-style choice in Settings uses it, so a bare value never
-/// floats on its own. Choice titles arrive localized.
 /// A titled run of a menu picker's choices, shown as a submenu that opens
 /// in place, so a long list (every provider's models) reads as its groups.
 /// An untitled group's choices sit in the menu itself.
@@ -2321,6 +2315,12 @@ struct ConduitMenuGroup<ID: Hashable> {
     var choices: [(id: ID, title: String)]
 }
 
+/// A custom menu picker matching the Chat settings selector style,
+/// used by Model and Delegate model settings for visual consistency.
+/// The settings picker row: the setting's name on the left and its current
+/// value on the right ("Provider    OpenRouter"), the whole row opening the
+/// menu. Every menu-style choice in Settings uses it, so a bare value never
+/// floats on its own. Choice titles arrive localized.
 struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let label: Label

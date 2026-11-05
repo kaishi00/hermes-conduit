@@ -540,10 +540,22 @@ struct VoiceJobModelSettingsSection: View {
         providers: [ProviderInfo]
     ) -> [ConduitMenuGroup<String>] {
         var top = [(id: defaultTag, title: defaultTitle)]
+        let held = parse(selection)
+        // A pick saved under another of its provider's spellings (an alias,
+        // `custom:<key>`) is that provider's listed row, not a row of its own.
+        // One row only: the provider named exactly, else the first whose
+        // other spellings match, among those listing the model.
+        let heldProvider: String? = {
+            guard selection != defaultTag, !held.model.isEmpty, let wanted = held.provider else { return nil }
+            let listing = providers.filter { $0.models.contains { $0.id == held.model } }
+            return (listing.first { $0.name == wanted } ?? listing.first { $0.matches(wanted) })?.name
+        }()
+        func isHeld(_ provider: ProviderInfo, _ model: ModelInfo) -> Bool {
+            heldProvider == provider.name && model.id == held.model
+        }
         if selection != defaultTag, !providers.contains(where: { provider in
-            provider.models.contains { tag(provider: provider.name, model: $0.id) == selection }
+            provider.models.contains { isHeld(provider, $0) }
         }) {
-            let held = parse(selection)
             // A provider pinned without a model runs on its default one.
             top.append((id: selection, title: held.model.isEmpty
                 ? providerDefaultTitle(held.provider ?? "")
@@ -553,7 +565,9 @@ struct VoiceJobModelSettingsSection: View {
         for provider in providers where !provider.models.isEmpty {
             groups.append(ConduitMenuGroup(
                 title: provider.name,
-                choices: provider.models.map { (id: tag(provider: provider.name, model: $0.id), title: $0.label ?? $0.id) }
+                choices: provider.models.map { model in
+                    (id: isHeld(provider, model) ? selection : tag(provider: provider.name, model: model.id), title: model.label ?? model.id)
+                }
             ))
         }
         return groups
