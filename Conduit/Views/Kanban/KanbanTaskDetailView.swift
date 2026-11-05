@@ -535,7 +535,7 @@ struct KanbanTaskDetailView: View {
                 Button {
                     showReassignSheet = true
                 } label: {
-                    Image(systemName: "arrow.triangle.2.circlepath.person")
+                    Image(systemName: "person.2")
                         .foregroundStyle(.conduitAccent)
                         .frame(minWidth: 32, minHeight: 32)
                         .contentShape(Rectangle())
