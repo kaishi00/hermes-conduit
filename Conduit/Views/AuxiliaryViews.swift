@@ -2414,7 +2414,9 @@ struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
                     // notification"), it goes under the name, on one line.
                     ViewThatFits(in: .horizontal) {
                         HStack {
-                            label
+                            // One line here, so a long name can't fit this
+                            // candidate by wrapping beside the value.
+                            label.lineLimit(1)
                             Spacer(minLength: 8)
                             valueText.fixedSize().accessibilityHidden(true)
                             chevron
