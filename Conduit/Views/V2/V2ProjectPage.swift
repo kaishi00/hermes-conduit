@@ -188,7 +188,6 @@ struct V2ProjectPage: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     newConversationButton
                         .disabled(newConversationDisabled)
-                        .accessibilityLabel(newConversationLabel)
                         .macTooltip(newConversationLabel)
                 }
             }
@@ -472,10 +471,12 @@ struct V2ProjectPage: View {
             } label: {
                 Image(systemName: "square.and.pencil")
             }
+            .accessibilityLabel(newConversationLabel)
         } else {
             Button { startNewConversation() } label: {
                 Image(systemName: "square.and.pencil")
             }
+            .accessibilityLabel(newConversationLabel)
         }
     }
 
