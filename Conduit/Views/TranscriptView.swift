@@ -159,10 +159,14 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         dropParkedIfIdle()
+        // Fingers on the transcript and the swipe back over it, in the
+        // recorder (issue 1687).
+        TranscriptTouchTrace.watch(collectionView, navigationController: navigationController)
     }
 
     func detach() {
         scroller.detach(collectionView)
+        TranscriptTouchTrace.unwatch(collectionView)
         attached = false
     }
 
@@ -439,8 +443,12 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         guard attached else { return }
         switch recognizer.state {
         case .began:
+            ChatViewportTrace.shared.log(String(format: "drag began offset %.1f", collectionView.contentOffset.y))
             scroller.userDragBegan()
         case .ended, .cancelled, .failed:
+            ChatViewportTrace.shared.log(String(
+                format: "drag %@ offset %.1f", TranscriptTouchTrace.stateName(recognizer.state), collectionView.contentOffset.y
+            ))
             scroller.userDragEnded()
         default:
             break
