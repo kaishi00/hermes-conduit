@@ -130,6 +130,19 @@ extension BotModeTests {
             return XCTFail("A still should be read as one")
         }
         XCTAssertFalse(FileManager.default.fileExists(atPath: still.path))
+
+        // A name that doesn't say: a picture is still read by its bytes,
+        // anything else goes to the video reader rather than into memory.
+        let unnamedStill = dir.appendingPathComponent("picked")
+        try XCTUnwrap(UIImage(cgImage: solidFrame(.blue)).pngData()).write(to: unnamedStill)
+        guard case .still = AnimatedAvatar.pick(fileAt: unnamedStill) else {
+            return XCTFail("A still without an extension should be read as one")
+        }
+        let unnamedOther = dir.appendingPathComponent("clip")
+        try Data("not a picture".utf8).write(to: unnamedOther)
+        guard case .animation(.movie) = AnimatedAvatar.pick(fileAt: unnamedOther) else {
+            return XCTFail("A file that isn't a picture should go to the video reader")
+        }
     }
 
     func testChooseGIFOrVideoWritesMovingBytesToAFileOfTheirOwn() throws {

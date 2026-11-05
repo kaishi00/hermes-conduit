@@ -265,6 +265,9 @@ enum AnimatedAvatar {
             return .animation(.movie(url))
         }
         if isAnimated(at: url) { return .animation(.image(url)) }
+        // A file whose name doesn't say what it is: one ImageIO can't read
+        // as a picture goes to the video reader, never read whole here.
+        guard AttachmentStaging.imageType(at: url) != nil else { return .animation(.movie(url)) }
         defer { try? FileManager.default.removeItem(at: url) }
         guard let data = try? Data(contentsOf: url) else { return .unreadable }
         return pick(data: data)
