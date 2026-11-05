@@ -848,6 +848,9 @@ struct WindowAccentTint: UIViewRepresentable {
 /// 44 pt glass circle (New Bot, New Group Chat, the Projects heading's New
 /// Project, a workspace folder's Add), so every + reads as one control.
 struct V2AddGlyph: View {
+    /// A custom button style doesn't dim a disabled label on its own.
+    @Environment(\.isEnabled) private var isEnabled
+
     var body: some View {
         Image(systemName: "plus")
             .font(.system(size: 17, weight: .semibold))
@@ -855,6 +858,7 @@ struct V2AddGlyph: View {
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
             .conduitGlassControl(cornerRadius: 22, interactive: false)
+            .opacity(isEnabled ? 1 : 0.45)
     }
 }
 
