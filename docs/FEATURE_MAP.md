@@ -3243,7 +3243,7 @@ caption describes the lists)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-05, #1788 (a pick under a provider's alias is its listed row); 2026-11-05, #1787 (entry added)
+**Checked:** 2026-11-05, #1793 (the Model page draws on Settings' backdrop and cards, its grouping unchanged, see Sheets in Settings' look); 2026-11-05, #1788 (a pick under a provider's alias is its listed row); 2026-11-05, #1787 (entry added)
 
 ## The + that makes something new
 
@@ -3288,14 +3288,15 @@ Location's place editor (done) · custom headers (done) · Kanban's task,
 model, skills, parent, reassign, board, filter, orchestration, routing and
 bulk sheets (done) · the plan card's sheet (done) · reorder bots, reorder
 pinned chats, reorder session filters and What Pulse remembers (Settings'
-backdrop and card fill only: they keep a List for move and swipe) · the share
+backdrop and card fill only: they keep a List for move and swipe) · Bot
+Overview (done: Settings' backdrop behind its Work and artifacts) · the share
 extension's sheet (not needed: its own target, without Settings' pieces) ·
 lists that already draw their own backdrop, such as Chats, Tasks, Needs you
 and Bots Home (not needed: already in V2's look)
 
 **Code**
 - The pieces: `Conduit/Views/AuxiliaryViews.swift` (SettingsDetailContainer, ConduitSettingsSection, SettingsCard, SettingsLinkRow, SettingsChevron, SettingsPickerField, settingsCaption, settingsEditorBox, SettingsNames, ConduitMenuPicker, SettingsButtonStyle's `.settings` and `.settingsPrimary`, ConduitList, ConduitFormRowFill, conduitFormBackdrop)
-- Used by: `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotWorkSettingsView.swift`, `Conduit/Views/BotCapabilitiesView.swift`, `Conduit/Views/SidebarView.swift` (ProjectCreateSheet, RenameSheet), `Conduit/Views/V2/CronJobEditorSheet.swift`, `Conduit/Views/GeneratePictureSheet.swift`, `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/CustomHeadersEditor.swift`, `Conduit/Views/KanbanViews.swift` (bulk sheets), `Conduit/Views/Kanban/KanbanTaskComposerView.swift`, `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (KanbanReassignSheet), `Conduit/Views/Kanban/KanbanBoardEditorView.swift`, `Conduit/Views/Kanban/KanbanBoardFilterSheet.swift`, `Conduit/Views/Kanban/KanbanOrchestrationSettingsSheet.swift`, `Conduit/Views/Kanban/KanbanProfileRoutingScreen.swift`, `Conduit/Views/Components/ChatCards.swift` (PlanSheet), `Conduit/Views/GroupChatView.swift` (GroupCreateSheet), `Conduit/Views/V2/V2PulsePage.swift` (PulseLearnedSheet, PulseLeftOutSheet), `Conduit/Views/V2/V2WorkspaceViews.swift` (WorkspaceMoveSheet)
+- Used by: `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotWorkSettingsView.swift`, `Conduit/Views/BotCapabilitiesView.swift`, `Conduit/Views/SidebarView.swift` (ProjectCreateSheet, RenameSheet), `Conduit/Views/V2/CronJobEditorSheet.swift`, `Conduit/Views/GeneratePictureSheet.swift`, `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/CustomHeadersEditor.swift`, `Conduit/Views/KanbanViews.swift` (bulk sheets), `Conduit/Views/Kanban/KanbanTaskComposerView.swift`, `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (KanbanReassignSheet), `Conduit/Views/Kanban/KanbanBoardEditorView.swift`, `Conduit/Views/Kanban/KanbanBoardFilterSheet.swift`, `Conduit/Views/Kanban/KanbanOrchestrationSettingsSheet.swift`, `Conduit/Views/Kanban/KanbanProfileRoutingScreen.swift`, `Conduit/Views/Components/ChatCards.swift` (PlanSheet), `Conduit/Views/GroupChatView.swift` (GroupCreateSheet), `Conduit/Views/V2/V2PulsePage.swift` (PulseLearnedSheet, PulseLeftOutSheet), `Conduit/Views/V2/V2WorkspaceViews.swift` (WorkspaceMoveSheet), `Conduit/Views/V2/V2BotsHome.swift` (BotOverviewSheet)
 - Lists kept for move and swipe (ConduitList): `Conduit/Views/PinnedChatsOrderSheet.swift`, `Conduit/Views/SidebarView.swift` (SessionFilterOrderSheet), `Conduit/Views/V2/V2BotsHome.swift` (BotReorderSheet), `Conduit/Views/PulseSettingsViews.swift` (PulseMemoryList)
 
 **Rulings**

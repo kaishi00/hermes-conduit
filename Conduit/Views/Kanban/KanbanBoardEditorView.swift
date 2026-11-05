@@ -219,13 +219,13 @@ struct KanbanBoardEditorView: View {
                 .settingsEditorBox()
                 .accessibilityLabel("Board description")
             Group {
-            if isCreate && !trimmedName.isEmpty && !hasValidSlug {
-                Text("The slug must be 1-64 lowercase letters or numbers, with hyphens or underscores after the first character.")
-            } else if isCreate {
-                Text("The slug is generated from the name (like Desktop) and cannot be changed after creation.")
-            } else {
-                Text("The slug is immutable after creation.")
-            }
+                if isCreate && !trimmedName.isEmpty && !hasValidSlug {
+                    Text("The slug must be 1-64 lowercase letters or numbers, with hyphens or underscores after the first character.")
+                } else if isCreate {
+                    Text("The slug is generated from the name (like Desktop) and cannot be changed after creation.")
+                } else {
+                    Text("The slug is immutable after creation.")
+                }
             }
             .settingsCaption()
         }
@@ -294,11 +294,11 @@ struct KanbanBoardEditorView: View {
                     .accessibilityLabel("Custom workspace directory")
             }
             Group {
-            if projectID != nil, workspaceRow == .projectDefault {
-                Text("New tasks mirror the project's primary repository.")
-            } else if workspaceRow == .none {
-                Text("New tasks use scratch workspaces.")
-            }
+                if projectID != nil, workspaceRow == .projectDefault {
+                    Text("New tasks mirror the project's primary repository.")
+                } else if workspaceRow == .none {
+                    Text("New tasks use scratch workspaces.")
+                }
             }
             .settingsCaption()
         }

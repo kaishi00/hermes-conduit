@@ -812,7 +812,8 @@ struct BotOverviewSheet: View {
                     BotArtifactsList(profile: profile, willShowInChat: onClose)
                 }
             }
-            .background(Color(.systemGroupedBackground).ignoresSafeArea())
+            // Settings' backdrop, as every sheet (see Sheets in Settings' look).
+            .background { SettingsBackdrop().ignoresSafeArea() }
             .toolbar(.hidden, for: .navigationBar)
         }
         .presentationDetents([.medium, .large])

@@ -44,10 +44,8 @@ struct KanbanBoardFilterSheet: View {
                         .accessibilityLabel("Show archived tasks")
                     Toggle("Group Running by Profile", isOn: $groupRunningByProfile)
                         .accessibilityLabel("Group the Running lane by assignee")
-                    Group {
                     Text("Group Running by Profile is a saved preference. Show Archived applies to the board fetch. Assignee and tenant filters are temporary until changed.")
-                    }
-                    .settingsCaption()
+                        .settingsCaption()
                 }
                 SettingsCard {
                     Button("Reset Filters") {

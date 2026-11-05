@@ -30,10 +30,8 @@ struct KanbanProfileRoutingScreen: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    Group {
                     Text("Hermes routes triage decomposition across these profiles by their routing description. A clear description helps the decomposer pick the right specialist.")
-                    }
-                    .settingsCaption()
+                        .settingsCaption()
                 }
             }
             // Text fields as Settings draws them.
@@ -148,10 +146,8 @@ struct KanbanProfileDescriptionEditorView: View {
                         .scaledFont(.caption)
                         .foregroundStyle(.orange)
                 }
-                Group {
                 Text("The decomposer reads these descriptions to route child tasks to the best specialist profile. Saving an empty description clears it (Hermes then falls back to name matching).")
-                }
-                .settingsCaption()
+                    .settingsCaption()
             }
 
             SettingsCard {

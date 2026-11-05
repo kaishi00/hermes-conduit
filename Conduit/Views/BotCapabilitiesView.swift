@@ -114,22 +114,22 @@ struct BotCapabilitiesView: View {
                     }
                 }
                 Group {
-                if mcpProfile == nil {
-                    Text(AppLocalization.string("Add servers from Hermes' catalog in Edit Bot, once the bot is made."))
-                } else if mcpSetup == nil && mcpSetupRead {
-                    Text(AppLocalization.string("Add new MCP servers from Hermes on your computer."))
-                } else if mcpSetupKept && mcpSetupRead {
-                    // Hermes didn't answer: Add and Sign In wait over the
-                    // kept catalog until it does.
-                    VStack(alignment: .leading, spacing: 6) {
+                    if mcpProfile == nil {
+                        Text(AppLocalization.string("Add servers from Hermes' catalog in Edit Bot, once the bot is made."))
+                    } else if mcpSetup == nil && mcpSetupRead {
                         Text(AppLocalization.string("Add new MCP servers from Hermes on your computer."))
-                        Button(AppLocalization.string("Try Again")) {
-                            Task { await readMcpSetup() }
+                    } else if mcpSetupKept && mcpSetupRead {
+                        // Hermes didn't answer: Add and Sign In wait over the
+                        // kept catalog until it does.
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(AppLocalization.string("Add new MCP servers from Hermes on your computer."))
+                            Button(AppLocalization.string("Try Again")) {
+                                Task { await readMcpSetup() }
+                            }
+                            .buttonStyle(.settings)
+                            .disabled(mcpSetupReading)
                         }
-                        .buttonStyle(.settings)
-                        .disabled(mcpSetupReading)
                     }
-                }
                 }
                 .settingsCaption()
             }

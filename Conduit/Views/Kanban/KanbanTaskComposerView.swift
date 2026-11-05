@@ -157,10 +157,8 @@ struct KanbanTaskComposerView: View {
                 Text("Parked (won't run)")
                     .tag(KanbanAssigneeSelection.parked)
             }
-            Group {
             Text("Default uses Hermes' resolved default assignee (\(resolvedDefaultAssignee)). Parked leaves the task unassigned so no worker claims it.")
-            }
-            .settingsCaption()
+                .settingsCaption()
         }
     }
 
@@ -195,9 +193,9 @@ struct KanbanTaskComposerView: View {
             skillsRow
             goalModeRows
             Group {
-            if boardDefaultDir != nil && !draft.workspaceKind.allowsPathOverride {
-                Text("The board's project directory (\(boardDefaultDir!)) applies to this task.")
-            }
+                if boardDefaultDir != nil && !draft.workspaceKind.allowsPathOverride {
+                    Text("The board's project directory (\(boardDefaultDir!)) applies to this task.")
+                }
             }
             .settingsCaption()
         }
@@ -225,14 +223,12 @@ struct KanbanTaskComposerView: View {
                     .scaledFont(.callout)
                     .foregroundStyle(draft.modelOverride.isInherited ? .secondary : .primary)
                     .lineLimit(1)
-                Image(systemName: "chevron.right")
-                    .scaledFont(.caption.weight(.semibold))
-                    .foregroundStyle(.conduitTertiary)
+                SettingsChevron()
             }
             .contentShape(Rectangle())
         }
-        // Plain: a Form tints a button's whole label with the accent, so
-        // Model and Skills read as links beside Workspace and Goal Mode.
+        // Plain, with a primary title: a row that opens something, as in
+        // Settings (see Sheets in Settings' look).
         .buttonStyle(.plain)
         .accessibilityHint("Opens the per-task model, provider, and reasoning override picker")
     }
@@ -248,14 +244,12 @@ struct KanbanTaskComposerView: View {
                 Text(draft.skills.isEmpty ? AppLocalization.string("None") : AppLocalization.string("\(draft.skills.count) selected"))
                     .scaledFont(.callout)
                     .foregroundStyle(draft.skills.isEmpty ? .secondary : .primary)
-                Image(systemName: "chevron.right")
-                    .scaledFont(.caption.weight(.semibold))
-                    .foregroundStyle(.conduitTertiary)
+                SettingsChevron()
             }
             .contentShape(Rectangle())
         }
-        // Plain: a Form tints a button's whole label with the accent, so
-        // Model and Skills read as links beside Workspace and Goal Mode.
+        // Plain, with a primary title: a row that opens something, as in
+        // Settings (see Sheets in Settings' look).
         .buttonStyle(.plain)
         .accessibilityHint("Opens the task skill picker")
     }
@@ -296,9 +290,7 @@ struct KanbanTaskComposerView: View {
                         Spacer()
                         Text("None")
                             .foregroundStyle(.secondary)
-                        Image(systemName: "chevron.right")
-                            .scaledFont(.caption.weight(.semibold))
-                            .foregroundStyle(.conduitTertiary)
+                        SettingsChevron()
                     }
                 }
             } else {
@@ -327,10 +319,8 @@ struct KanbanTaskComposerView: View {
                     Label("Change…", systemImage: "arrow.triangle.2.circlepath")
                 }
             }
-            Group {
             Text("The new task stays blocked until its parent completes.")
-            }
-            .settingsCaption()
+                .settingsCaption()
         }
     }
 
@@ -499,10 +489,8 @@ struct KanbanModelOverrideSheet: View {
                     }
                     .disabled(value.isInherited)
                     .accessibilityHint("Uses the assigned profile's own model and reasoning settings")
-                    Group {
                     Text("An unset override runs the task on the assigned profile's own model, provider, and reasoning effort.")
-                    }
-                    .settingsCaption()
+                        .settingsCaption()
                 }
 
                 reasoningSection
@@ -589,10 +577,8 @@ struct KanbanModelOverrideSheet: View {
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
-            Group {
             Text("Curated by Hermes so a worker can always spawn what you pick.")
-            }
-            .settingsCaption()
+                .settingsCaption()
         }
     }
 
