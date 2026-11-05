@@ -222,6 +222,7 @@ struct BotModelPicker: View {
                         .accessibilityHidden(true)
                 }
             }
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

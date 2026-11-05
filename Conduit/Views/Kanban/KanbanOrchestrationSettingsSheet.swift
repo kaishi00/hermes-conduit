@@ -56,8 +56,9 @@ struct KanbanOrchestrationSettingsSheet: View {
         )
     }
 
+    /// The Default row's own label, never the pinned profile's: that one
+    /// has its row below, so the menu doesn't list it twice.
     private var orchestratorSelectionLabel: String {
-        if !orchestratorProfile.isEmpty { return orchestratorProfile }
         return KanbanOrchestrationDisplay.defaultOptionLabel(
             configured: "",
             resolved: store.orchestration?.resolvedOrchestratorProfile ?? ""
@@ -65,7 +66,6 @@ struct KanbanOrchestrationSettingsSheet: View {
     }
 
     private var assigneeSelectionLabel: String {
-        if !defaultAssignee.isEmpty { return defaultAssignee }
         return KanbanOrchestrationDisplay.defaultOptionLabel(
             configured: "",
             resolved: store.orchestration?.resolvedDefaultAssignee ?? ""
@@ -101,8 +101,7 @@ struct KanbanOrchestrationSettingsSheet: View {
                             }
                             .pickerStyle(.menu)
                             Text(footnote(configured: orchestratorProfile, resolved: store.orchestration?.resolvedOrchestratorProfile ?? ""))
-                                .scaledFont(.caption)
-                                .foregroundStyle(.secondary)
+                                .settingsCaption()
                         }
 
                         ConduitSettingsSection(title: AppLocalization.string("Default Assignee"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
@@ -114,8 +113,7 @@ struct KanbanOrchestrationSettingsSheet: View {
                             }
                             .pickerStyle(.menu)
                             Text(footnote(configured: defaultAssignee, resolved: store.orchestration?.resolvedDefaultAssignee ?? ""))
-                                .scaledFont(.caption)
-                                .foregroundStyle(.secondary)
+                                .settingsCaption()
                         }
 
                         if let errorMessage {

@@ -221,6 +221,7 @@ struct KanbanTaskComposerView: View {
                     .lineLimit(1)
                 SettingsChevron()
             }
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         // Plain, with a primary title: a row that opens something, as in
@@ -242,6 +243,7 @@ struct KanbanTaskComposerView: View {
                     .foregroundStyle(draft.skills.isEmpty ? .secondary : .primary)
                 SettingsChevron()
             }
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         // Plain, with a primary title: a row that opens something, as in
@@ -287,6 +289,7 @@ struct KanbanTaskComposerView: View {
                             .foregroundStyle(.secondary)
                         SettingsChevron()
                     }
+                    .frame(minHeight: 44)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -484,6 +487,7 @@ struct KanbanModelOverrideSheet: View {
                                     .foregroundStyle(.conduitAccent)
                             }
                         }
+                        .frame(minHeight: 44)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -752,7 +756,10 @@ struct KanbanSkillsPickerSheet: View {
                                 } label: {
                                     Image(systemName: "xmark.circle.fill")
                                         .foregroundStyle(.secondary)
+                                        .frame(minWidth: 44, minHeight: 44)
+                                        .contentShape(Rectangle())
                                 }
+                                .buttonStyle(.plain)
                                 .accessibilityLabel("Remove skill \(name)")
                             }
                         }
@@ -780,6 +787,7 @@ struct KanbanSkillsPickerSheet: View {
                                         .foregroundStyle(.conduitAccent)
                                 }
                             }
+                            .frame(minHeight: 44)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -879,6 +887,7 @@ struct KanbanParentPickerSheet: View {
                                     .foregroundStyle(.conduitAccent)
                             }
                         }
+                        .frame(minHeight: 44)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -905,6 +914,7 @@ struct KanbanParentPickerSheet: View {
                                         .foregroundStyle(.conduitAccent)
                                 }
                             }
+                            .frame(minHeight: 44)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)

@@ -580,6 +580,7 @@ struct KanbanTaskDetailView: View {
                         .multilineTextAlignment(.trailing)
                     SettingsChevron()
                 }
+                .frame(minHeight: 44)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
