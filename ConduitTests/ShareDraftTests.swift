@@ -445,6 +445,27 @@ final class ShareDraftTests: XCTestCase {
         XCTAssertEqual(Array(stored.prefix(4)), [0x89, 0x50, 0x4E, 0x47], "written as PNG")
     }
 
+    /// A document whose file fails is never replaced by a picture of it.
+    func testADocumentWhoseFileFailsIsNotTakenAsItsPreview() async throws {
+        let (collector, _) = try collector()
+        let provider = NSItemProvider()
+        provider.registerFileRepresentation(forTypeIdentifier: UTType.pdf.identifier, fileOptions: [], visibility: .all) { completion in
+            completion(nil, false, ProviderFailure())
+            return nil
+        }
+        let archived = try NSKeyedArchiver.archivedData(withRootObject: redSquare(), requiringSecureCoding: true)
+        provider.registerDataRepresentation(forTypeIdentifier: ShareDraftCollector.imageObjectType, visibility: .all) { completion in
+            completion(archived, nil)
+            return nil
+        }
+        provider.suggestedName = "Report.pdf"
+
+        let result = await collector.collect(providers: [provider])
+
+        XCTAssertTrue(result.attachments.isEmpty, "\(result.attachments)")
+        XCTAssertEqual(result.problems.count, 1)
+    }
+
     /// When every way fails, the sheet says so with the system's reason.
     func testAPictureNoWayReadsIsLeftOutWithTheReason() async throws {
         let (collector, staging) = try collector()

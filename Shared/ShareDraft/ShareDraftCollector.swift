@@ -86,12 +86,17 @@ struct ShareDraftCollector {
                 if let text = await Self.loadText(provider) { texts.append(text) }
                 continue
             case .link:
-                guard let url = await Self.loadURL(provider) else { continue }
-                // A file handed over as a link is a file like any other.
-                guard url.isFileURL else {
-                    links.append(url.absoluteString)
+                if let url = await Self.loadURL(provider) {
+                    // A file handed over as a link is a file like any other.
+                    guard url.isFileURL else {
+                        links.append(url.absoluteString)
+                        continue
+                    }
+                } else if !Self.offersFileURL(provider) {
                     continue
                 }
+                // A file URL that didn't load as a link is read as a file,
+                // or named as left out.
             case .file:
                 break
             }
@@ -239,7 +244,7 @@ struct ShareDraftCollector {
     /// in turn (issue 1747): its file, then a picture's bytes, then the
     /// picture as an image object (written as PNG), then whatever item it
     /// hands over. It is left out only when every way failed, with the
-    /// first reason the system gave; each step is logged.
+    /// first reason the system gave; each failed step is logged.
     func stageFile(_ provider: NSItemProvider, ordinal: Int) async -> StagedFile {
         let type = Self.fileType(of: provider) ?? Self.fileURLType(of: provider)
         let displayName = Self.displayName(suggested: provider.suggestedName, type: type, ordinal: ordinal)
@@ -248,7 +253,7 @@ struct ShareDraftCollector {
         func failed(_ step: String, _ outcome: StagedFile?, error: Error?) {
             var reason = error?.localizedDescription
             if case .failed(_, let own)? = outcome { reason = reason ?? own }
-            Self.log.error("Share #\(ordinal, privacy: .public) \(step, privacy: .public) failed: \(reason ?? "no reason given", privacy: .public)")
+            Self.log.error("Share #\(ordinal, privacy: .public) \(step, privacy: .public) failed: \(reason ?? "no reason given", privacy: .private)")
             if let reason, !reason.isEmpty { reasons.append(reason) }
         }
         Self.log.info("Share #\(ordinal, privacy: .public) types \(provider.registeredTypeIdentifiers.joined(separator: ","), privacy: .public), file type \(type?.identifier ?? "none", privacy: .public), named \(suggestedName != nil, privacy: .public)")
@@ -275,14 +280,18 @@ struct ShareDraftCollector {
                     continuation.resume(returning: (data, error))
                 }
             }
-            let written = data.map { write($0, type: type, displayName: displayName, ordinal: ordinal) }
+            // Bytes that don't decode as a picture fall through to the
+            // image object, which may hold a good one.
+            let written = data.flatMap { ProviderPicture.decodes($0) ? write($0, type: type, displayName: displayName, ordinal: ordinal) : nil }
             if let written, Self.settles(written) { return written }
             failed("data", written, error: error)
         }
 
-        // 3. The picture as an image object, whatever file type it lists
-        // too: the screenshot editor's Share hands over UIKit's own image.
-        if provider.canLoadObject(ofClass: UIImage.self) {
+        // 3. The picture as an image object, whatever picture type it
+        // lists too: the screenshot editor's Share hands over UIKit's own
+        // image. Never for a video or document, whose preview would stand
+        // in for the file.
+        if type.map({ $0.conforms(to: .image) }) ?? true, provider.canLoadObject(ofClass: UIImage.self) {
             let (image, error) = await ProviderPicture.loadImage(provider)
             let name = Self.pngName(suggested: suggestedName, ordinal: ordinal)
             let written = image.map { write(ProviderPicture.pngData($0), type: .png, displayName: name, ordinal: ordinal) }
@@ -290,14 +299,17 @@ struct ShareDraftCollector {
             failed("image", written, error: error)
         }
 
-        // 4. Whatever item it hands over under its type, or the file URL
-        // it offers (a file shared by name only). UIKit's archived image
-        // is never read as a file.
+        // 4. Whatever item it hands over under its type, then the file
+        // URL it offers (a file shared by name only). UIKit's archived
+        // image is never read as a file.
         let registered = provider.registeredTypeIdentifiers.filter { $0 != Self.imageObjectType }
         let fileURL = registered.first { UTType($0)?.conforms(to: .fileURL) == true }
-        let identifier = type.flatMap { type in registered.contains(type.identifier) ? type.identifier : nil }
-            ?? fileURL ?? registered.first
-        if let identifier {
+        var identifiers: [String] = []
+        for candidate in [type.flatMap { registered.contains($0.identifier) ? $0.identifier : nil }, fileURL] {
+            if let candidate, !identifiers.contains(candidate) { identifiers.append(candidate) }
+        }
+        if identifiers.isEmpty, let first = registered.first { identifiers = [first] }
+        for identifier in identifiers {
             let (item, error): (StagedFile?, Error?) = await withCheckedContinuation { continuation in
                 provider.loadItem(forTypeIdentifier: identifier, options: nil) { item, error in
                     switch item {
@@ -335,6 +347,10 @@ struct ShareDraftCollector {
     private static func settles(_ outcome: StagedFile) -> Bool {
         if case .failed = outcome { return false }
         return true
+    }
+
+    private static func offersFileURL(_ provider: NSItemProvider) -> Bool {
+        provider.registeredTypeIdentifiers.contains { UTType($0)?.conforms(to: .fileURL) == true }
     }
 
     private static func fileURLType(of provider: NSItemProvider) -> UTType? {

@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import ImageIO
 import UIKit
 
 enum ProviderPicture {
@@ -25,12 +26,19 @@ enum ProviderPicture {
         }
     }
 
+    /// The largest bitmap a redraw may allocate, as for a remote picture
+    /// (BoundedRemoteImage): a huge image is refused, not drawn, so the
+    /// share extension isn't ended for its memory.
+    static let maximumRedrawPixels: CGFloat = 64_000_000
+
     /// The image as PNG. One with no bitmap of its own (drawn from a
     /// `CIImage`, say) has no `pngData()`, so it is drawn once and that is
     /// encoded.
     static func pngData(_ image: UIImage) -> Data? {
         if let data = image.pngData(), !data.isEmpty { return data }
         guard image.size.width > 0, image.size.height > 0 else { return nil }
+        let pixels = image.size.width * image.scale * image.size.height * image.scale
+        guard pixels.isFinite, pixels <= maximumRedrawPixels else { return nil }
         let format = UIGraphicsImageRendererFormat()
         format.scale = image.scale
         format.opaque = false
@@ -38,5 +46,11 @@ enum ProviderPicture {
             image.draw(in: CGRect(origin: .zero, size: image.size))
         }
         return data.isEmpty ? nil : data
+    }
+
+    /// Whether bytes handed over as a picture decode as one.
+    static func decodes(_ data: Data) -> Bool {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return false }
+        return CGImageSourceGetCount(source) > 0
     }
 }

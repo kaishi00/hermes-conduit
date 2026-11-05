@@ -165,6 +165,7 @@ enum AttachmentDrop {
               let data = ProviderPicture.pngData(image) else { return nil }
         let stem = ((provider.suggestedName ?? "") as NSString).deletingPathExtension
         let name = AttachmentTypePolicy.filename(suggested: stem.isEmpty ? nil : "\(stem).png", type: .png, ordinal: ordinal)
+        guard AttachmentSizeLimit.allows(byteCount: Int64(data.count), megabytes: limitMegabytes) else { return .tooLarge(name) }
         guard let staged = try? AttachmentStaging.destination(for: name),
               (try? data.write(to: staged, options: .atomic)) != nil else { return .failed(name) }
         return AttachmentStaging.finishStaging(fileAt: staged, name: name, type: .png, limitMegabytes: limitMegabytes)
