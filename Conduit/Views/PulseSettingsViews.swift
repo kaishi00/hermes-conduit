@@ -1282,8 +1282,6 @@ struct PulseMemoryList: View {
         .overlay {
             if !loaded { ProgressView() }
         }
-        .scrollContentBackground(.hidden)
-        .background(SettingsBackdrop())
         .navigationTitle(Text(AppLocalization.string("What Pulse remembers")))
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await load() }

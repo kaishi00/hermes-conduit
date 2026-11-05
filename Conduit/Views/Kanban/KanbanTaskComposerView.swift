@@ -474,13 +474,16 @@ struct KanbanModelOverrideSheet: View {
                     } label: {
                         HStack {
                             Text(inheritCopy)
+                                .foregroundStyle(.primary)
                             Spacer()
                             if value.isInherited {
                                 Image(systemName: "checkmark")
                                     .foregroundStyle(.conduitAccent)
                             }
                         }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                     .disabled(value.isInherited)
                     .accessibilityHint("Uses the assigned profile's own model and reasoning settings")
                     Text("An unset override runs the task on the assigned profile's own model, provider, and reasoning effort.")
