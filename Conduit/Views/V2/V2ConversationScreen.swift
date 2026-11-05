@@ -268,7 +268,7 @@ struct V2ConversationScreen: View {
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
         // The bot's overview and Edit Bot cover the chat too.
-        .onChange(of: artifactSessionIDs != nil || chatTitlePendingRename != nil
+        .onChange(of: screenTarget != nil || artifactSessionIDs != nil || chatTitlePendingRename != nil
                   || chatTitlePendingDeletion != nil || editedBot != nil
                   || (workPanelOpen && !fitsSidePanel && workProfile != nil)) { _, covered in
             appState.chatCoveredBySheet = covered

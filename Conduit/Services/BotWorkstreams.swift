@@ -201,6 +201,7 @@ struct BotWorkItem: Identifiable, Equatable {
 
     var statusText: String {
         if isResolvedUnfinished { return AppLocalization.string("Resolved") }
+        if kind == .workstream, !isClosed, !screenAsk.isEmpty { return AppLocalization.string("Needs you") }
         switch kind {
         case .askOut:
             switch status {

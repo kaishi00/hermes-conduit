@@ -202,6 +202,7 @@ final class BotScreenModel: ObservableObject {
 
     private weak var client: HermesClient?
     private var viewerID: String?
+    private var pendingSudo: (id: String, profileKey: String)?
     private var socket: (any HermesWebSocket)?
     private var transport: (any HermesWebSocketTransport)?
     private var receiveTask: Task<Void, Never>?
@@ -368,8 +369,16 @@ final class BotScreenModel: ObservableObject {
 
     func type(_ text: String) {
         guard iHold else { return }
-        page?.sendKeysyms(text.unicodeScalars.map(BotScreenKey.keysym(for:)))
+        // A pasted CRLF is one Return; sent in the page's batches, so long
+        // text all goes.
+        let keysyms = text.replacingOccurrences(of: "\r\n", with: "\n").unicodeScalars.map(BotScreenKey.keysym(for:))
+        for start in stride(from: 0, to: keysyms.count, by: Self.keysymBatch) {
+            page?.sendKeysyms(Array(keysyms[start..<min(start + Self.keysymBatch, keysyms.count)]))
+        }
     }
+
+    /// The most the page sends in one call.
+    static let keysymBatch = 4096
 
     func press(_ key: BotScreenKey) {
         guard iHold else { return }
@@ -395,6 +404,13 @@ final class BotScreenModel: ObservableObject {
     private func apply(_ next: BotScreenStatus) {
         let wasRunning = status?.isRunning ?? false
         status = next
+        if let pending = pendingSudo {
+            pendingSudo = nil
+            if pending.profileKey == next.profileKey {
+                isInstalling = true
+                sudoRequestID = pending.id
+            }
+        }
         page?.setViewOnly(!iHold)
         if wasRunning, !next.isRunning { detach() }
     }
@@ -445,7 +461,13 @@ final class BotScreenModel: ObservableObject {
     private func receiveSudo(id: String, profileKey: String, from sender: AnyObject?) {
         // Any install of this bot's screen, one started elsewhere too: the
         // host waits on its password either way.
-        guard sender === client, !id.isEmpty, profileKey == status?.profileKey else { return }
+        guard sender === client, !id.isEmpty else { return }
+        guard let status else {
+            // Before the first status read: kept until it says whose it is.
+            pendingSudo = (id, profileKey)
+            return
+        }
+        guard profileKey == status.profileKey else { return }
         isInstalling = true
         sudoRequestID = id
     }
@@ -518,8 +540,26 @@ final class BotScreenModel: ObservableObject {
         rapidEvictions = 0
     }
 
+    /// The page closed its end: only a live stream's, since a detach's own
+    /// stop reports a close after the next stream may have started dialling.
     func pageClosedStream() {
+        guard stream == .live else { return }
         socket?.cancel(with: .normalClosure, reason: nil)
+    }
+
+    /// The page's RFB handshake failed (the server refused it).
+    func pageFailed(_ reason: String) {
+        guard stream == .connecting || stream == .live else { return }
+        detach()
+        stream = .lost(reason.isEmpty ? AppLocalization.string("The screen's stream was lost.") : reason)
+    }
+
+    /// The app went to the background: a takeover is handed back, so the
+    /// bot isn't kept off its screen while nobody watches, and the stream
+    /// closes until it's watched again.
+    func backgrounded() {
+        if iHold { Task { await handBack(force: false) } }
+        detach()
     }
 
     private func opened(_ socket: any HermesWebSocket, generation: Int) {
@@ -529,7 +569,8 @@ final class BotScreenModel: ObservableObject {
             while !Task.isCancelled {
                 do {
                     let message = try await socket.receive()
-                    guard let self else { return }
+                    guard let self, !Task.isCancelled, generation == self.attachGeneration,
+                          self.socket === socket else { return }
                     switch message {
                     case .data(let data): self.page?.streamData(data)
                     case .string(let text): self.page?.streamData(Data(text.utf8))
@@ -586,6 +627,7 @@ protocol BotScreenPage: AnyObject {
 final class BotScreenSupport: ObservableObject {
     @Published private(set) var supported: [String: Bool] = [:]
     private var reading: Set<String> = []
+    private var generation = 0
 
     func isSupported(_ profile: String) -> Bool { supported[profile] == true }
 
@@ -593,12 +635,15 @@ final class BotScreenSupport: ObservableObject {
     func check(_ profile: String, client: HermesClient?) {
         guard let client, supported[profile] == nil, !reading.contains(profile) else { return }
         reading.insert(profile)
+        let generation = self.generation
         Task { @MainActor in
-            defer { reading.remove(profile) }
+            defer { if generation == self.generation { reading.remove(profile) } }
             do {
                 let answer = try await client.display("display.status", profile: profile)
+                guard generation == self.generation else { return }
                 supported[profile] = BotScreenStatus(answer)?.isSupported ?? false
             } catch let error as RpcError where error.code == HermesClient.methodNotFoundCode {
+                guard generation == self.generation else { return }
                 supported[profile] = false
             } catch {
                 // Not known: read again next time.
@@ -607,6 +652,9 @@ final class BotScreenSupport: ObservableObject {
     }
 
     func reset() {
+        // A probe still under way answers for the old server: dropped.
+        generation += 1
+        reading = []
         supported = [:]
     }
 }

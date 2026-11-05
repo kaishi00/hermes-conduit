@@ -26,6 +26,7 @@ private struct BotScreenContent: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var model: BotScreenModel
     @ObservedObject var work: BotWorkStore
     let target: BotScreenTarget
@@ -65,11 +66,18 @@ private struct BotScreenContent: View {
                 ConduitSheetHeader(title: AppLocalization.string("\(target.botName)'s Screen"), close: { dismiss() })
             }
         }
-        .task {
-            await model.load()
-            await appState.refreshBotWork(profile: target.profile)
-        }
+        .task { await model.load() }
+        // Who drives the screen now, read again while the sheet is open.
+        .refreshesBotWork(profile: target.profile)
         .onDisappear { model.close() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { model.backgrounded() }
+            if phase == .active, model.status?.isRunning == true, model.stream == .idle {
+                Task { await model.attach() }
+            }
+        }
+        // A new or cancelled ask never takes the password typed for another.
+        .onChange(of: model.sudoRequestID) { _, _ in sudoPassword = "" }
         .confirmationDialog(AppLocalization.string("Stop the screen?"), isPresented: $confirmsStop,
                             titleVisibility: .visible) {
             Button(AppLocalization.string("Stop Screen"), role: .destructive) {
@@ -109,10 +117,12 @@ private struct BotScreenContent: View {
     @ViewBuilder private func available(_ status: BotScreenStatus) -> some View {
         if model.isInstalling || !model.installLog.isEmpty {
             installProgress(status)
+        } else if let image = status.imageSwitch {
+            // A sandbox that needs the desktop image switches first; the
+            // install comes after, inside it.
+            imageSwitch(image)
         } else if !status.isInstalled {
             notInstalled(status)
-        } else if let image = status.imageSwitch {
-            imageSwitch(image)
         } else if !status.isRunning {
             stopped(status)
         } else {
@@ -520,6 +530,8 @@ struct BotScreenWebView: UIViewRepresentable {
                 model?.pageConnected()
             case "close":
                 model?.pageClosedStream()
+            case "failed":
+                model?.pageFailed(body["reason"] as? String ?? "")
             default:
                 break
             }

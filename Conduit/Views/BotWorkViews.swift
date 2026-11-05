@@ -49,6 +49,7 @@ extension View {
 enum BotWorkLook {
     static func tint(_ item: BotWorkItem) -> Color {
         if item.isResolvedUnfinished { return .secondary }
+        if !item.screenAsk.isEmpty, !item.isClosed { return .orange }
         switch item.status {
         case "needs_you", "interrupted": return .orange
         case "failed": return .red
@@ -60,6 +61,7 @@ enum BotWorkLook {
 
     static func symbol(_ item: BotWorkItem) -> String {
         if item.isResolvedUnfinished { return "archivebox" }
+        if !item.screenAsk.isEmpty, !item.isClosed { return "display" }
         switch item.status {
         case "needs_you", "interrupted": return "exclamationmark"
         case "failed": return "xmark"
