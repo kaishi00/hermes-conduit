@@ -303,12 +303,25 @@ final class BotScreenModel: ObservableObject {
     }
 
     func install() async {
-        await perform { client in
-            self.installLog = []
-            let ended = self.installsEnded
-            let answer = try await client.display("display.install", profile: self.profile)
-            // The install may have finished before its own answer came back.
-            if self.installsEnded == ended { self.isInstalling = answer["started"]?.boolValue ?? false }
+        guard let client else {
+            errorText = AppLocalization.string("Not connected to Hermes.")
+            return
+        }
+        installLog = []
+        errorText = nil
+        isBusy = true
+        defer { isBusy = false }
+        let ended = installsEnded
+        do {
+            // A long install may answer late; its log and its end come as events.
+            let answer = try await client.display("display.install", profile: profile, timeout: 900)
+            // It may have finished before its own answer came back: what its
+            // end said stands.
+            if installsEnded == ended { isInstalling = answer["started"]?.boolValue ?? false }
+        } catch {
+            guard installsEnded == ended, !isInstalling else { return }
+            errorText = error.localizedDescription
+            logger.notice("Bot Screen install failed: \(LogRedaction.message(error), privacy: .public)")
         }
     }
 
