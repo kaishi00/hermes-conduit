@@ -114,16 +114,15 @@ struct BotModelPicker: View {
             await load()
             // Hermes fetches a stale provider list in the background
             // meanwhile (issue 1807).
-            await ModelCatalogSettle.readAgain {
-                guard !refreshing else { return }
-                await load()
-            }
+            await ModelCatalogSettle.readAgain { await load() }
         }
     }
 
     /// `refresh` is Refresh models: Hermes fetches every provider's live
     /// list first. The search and the pick stay as they are.
     private func load(refresh: Bool = false) async {
+        // A Refresh models under way has the newer answer coming.
+        guard refresh || !refreshing else { return }
         catalogRead += 1
         let read = catalogRead
         catalog.readStarted()

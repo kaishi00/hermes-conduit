@@ -2584,7 +2584,7 @@ private struct ProfileModelSettingsDetail: View {
             await reload()
             // Hermes fetches a stale provider list in the background
             // meanwhile (issue 1807).
-            await ModelCatalogSettle.readAgain { await reload() }
+            await ModelCatalogSettle.readAgain { await settleCatalog() }
         }
         .onChange(of: refresh) { _, _ in Task { await reload() } }
     }
@@ -2597,6 +2597,13 @@ private struct ProfileModelSettingsDetail: View {
         }
         show(loaded)
         answered = true
+    }
+
+    /// The read again (issue 1807) takes only Hermes' models, so a save
+    /// that lands while it's asked keeps its picks.
+    private func settleCatalog() async {
+        guard let loaded = await load(), defaults != nil else { return }
+        defaults?.providers = loaded.providers
     }
 
     /// The catalog, and the picks unless they were changed here.
@@ -2740,7 +2747,7 @@ private struct DelegationModelSettings: View {
             await reload()
             // Hermes fetches a stale provider list in the background
             // meanwhile (issue 1807).
-            await ModelCatalogSettle.readAgain { await reload() }
+            await ModelCatalogSettle.readAgain { await settleCatalog() }
         }
     }
 
@@ -2754,6 +2761,13 @@ private struct DelegationModelSettings: View {
         if loaded == nil { loadFailed = true }
         show(loaded, settings: settings)
         if loaded != nil { answered = true }
+    }
+
+    /// The read again (issue 1807) takes only Hermes' models, so a save
+    /// that lands while it's asked keeps its picks.
+    private func settleCatalog() async {
+        guard let loaded = await loadModels(), defaults != nil else { return }
+        defaults?.providers = loaded.providers
     }
 
     /// The catalog when there is one, and the picks unless they were
@@ -2958,7 +2972,7 @@ private struct FallbackModelsSettings: View {
             await reload()
             // Hermes fetches a stale provider list in the background
             // meanwhile (issue 1807).
-            await ModelCatalogSettle.readAgain { await reload() }
+            await ModelCatalogSettle.readAgain { await settleCatalog() }
         }
         .onChange(of: refresh) { _, _ in
             Task { if let models = await loadModels() { defaults = models } }
@@ -3067,6 +3081,13 @@ private struct FallbackModelsSettings: View {
         saved = loadedEntries
         loaded = true
         answered = true
+    }
+
+    /// The read again (issue 1807) takes only Hermes' models, so a save
+    /// that lands while it's asked keeps its picks.
+    private func settleCatalog() async {
+        guard let models = await loadModels(), defaults != nil else { return }
+        defaults?.providers = models.providers
     }
 
     private func persist() {

@@ -445,10 +445,7 @@ struct ModelPickerView: View {
             await loadModels()
             // Hermes fetches a stale provider list in the background
             // meanwhile; a Refresh models under way asks for it anyway.
-            await ModelCatalogSettle.readAgain {
-                guard !refreshingModels else { return }
-                await loadModels()
-            }
+            await ModelCatalogSettle.readAgain { await loadModels() }
         }
         .task {
             // On a Mac or with a hardware keyboard, typing a model's name
@@ -1167,6 +1164,8 @@ struct ModelPickerView: View {
     /// list first (issue 1807). The search, the open provider and the
     /// checked row stay as they are.
     private func loadModels(refresh: Bool = false) async {
+        // A Refresh models under way has the newer answer coming.
+        guard refresh || !refreshingModels else { return }
         catalogRead += 1
         let read = catalogRead
         catalog.readStarted()

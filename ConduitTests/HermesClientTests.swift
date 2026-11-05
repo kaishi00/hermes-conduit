@@ -2029,7 +2029,7 @@ final class HermesClientTests: XCTestCase {
         let (client, socket) = try await connectedClientForServerRequests()
         try await advertise(socket, result: [:])
         var count = socket.sentTexts.count
-        let refresh = Task { Self.modelIDs(try await client.modelOptionsAnswer(refresh: true)) }
+        let refresh = Task { Self.modelIDs(try await client.modelOptionsAnswer(sessionId: "sess-1", refresh: true)) }
         try await answerRequest(on: socket, after: count, method: "model.options", error: [
             "code": 4000,
             "message": "invalid params for model.options: refresh: Extra inputs are not permitted"
@@ -2037,6 +2037,8 @@ final class HermesClientTests: XCTestCase {
         count += 1
         let again = try await answerRequest(on: socket, after: count, method: "model.options", result: ["providers": []])
         XCTAssertNil(again["refresh"])
+        XCTAssertEqual(again["session_id"] as? String, "sess-1")
+        XCTAssertEqual(again["explicit_only"] as? Bool, true)
         _ = try await awaitResult(of: refresh, "the read without the flag")
         client.disconnect()
     }

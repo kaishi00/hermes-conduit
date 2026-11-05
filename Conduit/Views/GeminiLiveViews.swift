@@ -960,10 +960,10 @@ struct VoiceReplyModelSettingsSection: View {
         .task {
             await read()
             // Hermes fetches a stale provider list in the background
-            // meanwhile (issue 1807); a read that failed waits for the
-            // page's next check, as before.
+            // meanwhile (issue 1807); a setting read that failed waits for
+            // the page's next check, as before.
             await ModelCatalogSettle.readAgain {
-                guard modelsAnswered else { return }
+                guard !picks.readFailed else { return }
                 await reloadProviders()
             }
         }
@@ -1011,8 +1011,12 @@ struct VoiceReplyModelSettingsSection: View {
         }
     }
 
+    /// A read that fails keeps the models listed, saying so.
     private func reloadProviders() async {
-        guard let loaded = await settings.loadProviders() else { return }
+        guard let loaded = await settings.loadProviders() else {
+            providersFailed = true
+            return
+        }
         providers = loaded
         modelsAnswered = true
         providersFailed = false
