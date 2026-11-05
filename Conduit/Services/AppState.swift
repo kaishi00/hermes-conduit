@@ -15829,11 +15829,19 @@ final class AppState: ObservableObject {
     func endSharingWithRemovedDashboards() {
         let saved = Set(savedDashboardRegistry.dashboards.map(\.id))
         LocationSharingController.shared.endSharing(unlessBoundTo: saved)
+        // Each turn-off checks that sharing still goes there when it runs:
+        // a turn-on for the dashboard in use may have come first.
         if let destination = healthSyncPreferences.destination, !saved.contains(destination.dashboardID) {
-            Task { await turnOffHealthSync(deleteFromHost: false) }
+            Task {
+                guard healthSyncPreferences.destination == destination else { return }
+                await turnOffHealthSync(deleteFromHost: false)
+            }
         }
         if let destination = phoneSync.preferences.destination, !saved.contains(destination.dashboardID) {
-            Task { await turnOffPhoneSync(deleteFromHost: false) }
+            Task {
+                guard phoneSync.preferences.destination == destination else { return }
+                await turnOffPhoneSync(deleteFromHost: false)
+            }
         }
     }
 
@@ -27698,6 +27706,9 @@ final class AppState: ObservableObject {
     /// Asks the plugin what it serves. Cheap, so it runs on every connect.
     func refreshNotifierPluginStatus() async {
         guard let bridge = dashboardTicketBridge else { return }
+        // Connected, so the saved dashboards were read: sharing bound to one
+        // removed earlier ends first, whatever the status read says.
+        endSharingWithRemovedDashboards()
         notifierPluginStatusGeneration += 1
         let generation = notifierPluginStatusGeneration
         let state: NotifierPluginStatus.State
@@ -27743,8 +27754,6 @@ final class AppState: ObservableObject {
         // Notifications from this dashboard's profile, without a pairing
         // code, after the rest so connecting doesn't wait on it.
         Task { await pairActiveProfileAutomatically(bridge: bridge) }
-        // Sharing bound to a dashboard removed earlier ends first.
-        endSharingWithRemovedDashboards()
         // Health data catches up once this host is known to serve it.
         Task { await runHealthSync(reason: .connected) }
         // Location waiting to go to this host, and its host pass.

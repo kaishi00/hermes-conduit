@@ -487,12 +487,16 @@ final class LocationSharingController: ObservableObject {
         guard readConfigIfNeeded(), config.binding != nil, settings.shares(source, at: now()) else { return false }
         let endBackground = beginBackgroundWork(for: source)
         defer { endBackground() }
+        let bound = config.binding
         var record: LocationFixRecord?
         if let location {
             // Any fix may move the shops watched along (walking past).
             spots.moved(location)
             let precision = settings.precision(for: source)
             let area = precision == .places ? nil : await fixes.area(for: location)
+            // Sharing ended or moved to another dashboard during the lookup:
+            // this fix and its events were taken for the old one.
+            guard config.binding == bound, settings.shares(source, at: now()) else { return false }
             record = LocationFixRecord(source: source, raw: LocationRawFix(location), area: area)
         }
         guard record != nil || !events.isEmpty else { return false }
