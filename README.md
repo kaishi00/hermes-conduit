@@ -48,7 +48,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 - Open a picture full screen and swipe through the chat's pictures (or Artifacts' or a folder's): pinch or double-tap to zoom, swipe down to close, share or save
 - Steer, queue or stop a running turn; context meter; slash commands
 - Branch, pin (in the order you set), archive and delete sessions; project chats, with a dot on a project that holds an unread reply, and a project's page gathering every profile's chats in its folder with a filter by profile; make a project from the Projects heading's +, from a new or an existing folder on the Hermes host; Artifacts browser for every file and page Hermes made
-- Browse the chat's folder and your projects' folders beside Artifacts: preview and edit files, search names and contents, make, rename, move and delete files, upload from the phone, and tap a file path in a reply to open it (the folder's search and changes need the plugin)
+- Browse the chat's folder and your projects' folders beside Artifacts: preview and edit files, search names and contents, make, rename, move and delete files, upload from the phone, and tap a file path or a link to a file in a reply to open it (the folder's search and changes need the plugin)
 - Saved chats open instantly, and you can type while Conduit reconnects
 
 **Voice**
@@ -63,7 +63,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 **Tasks, bots and groups**
 
 - Tasks board for Hermes' Kanban tasks
-- Bots Home, the first tab: your bots as portraits, each opening its Bot Chat, dragged into your own order or dropped on each other to start a room, the rooms whose bots are talking now over them, with an overview of its chat, work and artifacts; Bots and their Bot Chats, with each bot's model, skills, tools and MCP servers, pictures Hermes can generate or a GIF or short video that moves on its portrait, and @mentions that bring another bot in; gateway-hosted group chats with @mentions, files and approvals
+- Bots Home, the first tab: your bots as portraits, each opening its Bot Chat, dragged into your own order or dropped on each other to start a room, the rooms whose bots are talking now over them, with an overview of its chat, work and artifacts; Bots and their Bot Chats, with each bot's model, skills, tools and MCP servers, pictures Hermes or Apple's Image Playground can generate or a GIF or short video that moves on its portrait, and @mentions that bring another bot in; gateway-hosted group chats with @mentions, files and approvals
 - Scheduled jobs: review runs, run now, edit, mute their notifications, delete
 - Pulse (beta): once you turn it on, Hermes brings things up on its own (a morning brief, follow-ups on what you said you'd do, deadlines and birthdays) as cards you can act on, rate or put off, and learns what's worth raising
 
@@ -85,7 +85,7 @@ Each is off until you turn it on, and goes only to your own Hermes host, encrypt
 - Provider, model and reasoning effort switching mid-conversation
 - Connect model providers in Settings > Models & providers: sign in, paste an API key once for every profile (or give one profile its own), or add your own OpenAI-compatible server. Keys stay on your Hermes host and are never shown again
 - Pick the helper models Hermes runs smaller jobs on (chat titles, compaction, reading images, Conduit predictions and the rest) in Settings > Models & providers > Helper models, and the order a provider's keys take turns in on its page
-- Multiple dashboards and profiles, each with its own credentials and settings; rename a profile or change its photo (a GIF or short video moves) and glow in Settings > Profiles; All in the profile row lists every profile's chats together, newest first with each row's profile picture, or grouped by profile with each profile's pinned chats and five newest until Show more
+- Multiple dashboards and profiles, each with its own credentials and settings; rename a profile or change its photo (a GIF or short video moves, or make one with Image Playground) and glow in Settings > Profiles; All in the profile row lists every profile's chats together, newest first with each row's profile picture, or grouped by profile with each profile's pinned chats and five newest until Show more
 - Capabilities: skills, tools, connectors (MCP servers you can test and edit, by form or as JSON) and plugins, plus Hermes settings and gateway logs
 - Native OAuth sign-in through your dashboard, QR code and setup links, Cloudflare Access service tokens
 - Face ID or Touch ID lock, credentials in the Keychain

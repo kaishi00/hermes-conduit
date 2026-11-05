@@ -43,6 +43,10 @@ struct BotEditorSheet: View {
     /// Whether Hermes can generate pictures; nil until asked.
     @State private var canGeneratePictures: Bool?
     @State private var showingGenerator = false
+    /// Apple's Image Playground (ImagePlaygroundPicture), as the system
+    /// says now.
+    @State private var playground: ImagePlaygroundPicture.Availability = .unavailable
+    @State private var showingPlayground = false
     @State private var seeded = false
     @State private var showsAdvanced = false
     /// The gateway's message for a model pick it wants confirmed.
@@ -170,6 +174,14 @@ struct BotEditorSheet: View {
             }
             .environmentObject(appState)
         }
+        .imagePlaygroundPicture(
+            isPresented: $showingPlayground,
+            prompt: playgroundPrompt,
+            source: previewImage,
+            onImage: usePicture,
+            onFailure: { error = AppLocalization.string("That picture could not be used.") }
+        )
+        .readsImagePlaygroundAvailability($playground)
         .onChange(of: pickedImage) { _, image in
             guard let image else { return }
             usePicture(image)
@@ -225,15 +237,7 @@ struct BotEditorSheet: View {
                     Label(AppLocalization.string("Choose GIF or Video"), systemImage: "film")
                 }
                 .buttonStyle(.settings)
-                if canGeneratePictures == true {
-                    Button {
-                        Haptics.light()
-                        showingGenerator = true
-                    } label: {
-                        Label(AppLocalization.string("Generate"), systemImage: "sparkles")
-                    }
-                    .buttonStyle(.settings)
-                }
+                generateButton
                 if previewImage != nil || (hasStoredAvatar && !draft.removesAvatar) {
                     Button(role: .destructive) {
                         Haptics.light()
@@ -266,7 +270,12 @@ struct BotEditorSheet: View {
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            if canGeneratePictures == false {
+            if playground == .canTurnOn {
+                Text(AppLocalization.string("Turn on Apple Intelligence in Settings > Apple Intelligence & Siri to create pictures with Image Playground."))
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            } else if canGeneratePictures == false, playground != .available {
                 Text(AppLocalization.string("Set up image generation in Hermes to generate pictures."))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
@@ -275,6 +284,52 @@ struct BotEditorSheet: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 4)
+    }
+
+    /// Generate: Image Playground, Hermes' own image generation, or a menu
+    /// of both when both can.
+    @ViewBuilder
+    private var generateButton: some View {
+        let hermes = canGeneratePictures == true
+        // Not before an edited bot's SOUL has loaded, which the sheet starts from.
+        let apple = playground == .available && (isCreating || showsKeptDetails || detailsState == .loaded || detailsState == .failed)
+        if hermes && apple {
+            Menu {
+                Button {
+                    Haptics.light()
+                    showingPlayground = true
+                } label: {
+                    Label(AppLocalization.string("Image Playground"), systemImage: "apple.image.playground")
+                }
+                Button {
+                    Haptics.light()
+                    showingGenerator = true
+                } label: {
+                    Label(AppLocalization.string("With Hermes"), systemImage: "sparkles")
+                }
+            } label: {
+                Label(AppLocalization.string("Generate"), systemImage: "sparkles")
+            }
+            .buttonStyle(.settings)
+        } else if apple || hermes {
+            Button {
+                Haptics.light()
+                if apple { showingPlayground = true } else { showingGenerator = true }
+            } label: {
+                Label(AppLocalization.string("Generate"), systemImage: "sparkles")
+            }
+            .buttonStyle(.settings)
+        }
+    }
+
+    /// What Image Playground starts from: the bot's name, and its
+    /// description and SOUL to pick ideas out of.
+    private var playgroundPrompt: ImagePlaygroundPicture.Prompt {
+        ImagePlaygroundPicture.Prompt(
+            name: draft.name.isEmpty ? editedBot?.displayLabel ?? "" : draft.name,
+            // The SOUL shown, kept from last time until Hermes answers.
+            details: [draft.description, showsKeptDetails ? keptDetails?.soul ?? "" : draft.soul]
+        )
     }
 
     /// A chosen or generated picture, scaled to the stored square.

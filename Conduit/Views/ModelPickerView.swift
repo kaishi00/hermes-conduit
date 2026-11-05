@@ -223,7 +223,7 @@ struct RefreshModelsButton: View {
         }
         .disabled(refreshing)
         .tint(.conduitAccent)
-        .help(AppLocalization.string("Refresh models"))
+        .macTooltip(AppLocalization.string("Refresh models"))
         .accessibilityLabel(AppLocalization.string("Refresh models"))
     }
 }

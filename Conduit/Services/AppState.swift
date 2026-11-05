@@ -1173,6 +1173,10 @@ final class AppState: ObservableObject {
             if oldValue != activeSessionId {
                 noteChatLeft(oldValue)
                 noteActiveChatSeen()
+                // A file lookup's "isn't on the server" was about the chat
+                // left, and an answer still coming is too.
+                clearWorkspaceLookupNotice()
+                workspaceRevealGeneration &+= 1
                 // The chat New Chat made takes the New Chat's draft only
                 // while it's the one open.
                 if let created = newChatOpenedSessionID, activeSessionId != created {
@@ -2268,6 +2272,12 @@ final class AppState: ObservableObject {
     /// A file path tapped in a reply, for the open chat's Folder tab to
     /// show (AppState+Workspace.swift).
     @Published var workspaceReveal: WorkspaceReveal?
+    /// Counts file taps, so a slow lookup for an earlier one is dropped.
+    var workspaceRevealGeneration = 0
+    /// The "isn't on the server" notice the last file lookup put above the composer.
+    var workspaceLookupNotice: String?
+    /// The notice the lookup's covered, shown again when the lookup's goes.
+    var workspaceNoticeUnder: (text: String, systemImage: String)?
     /// Counts the tools Hermes finished that may have changed files, so an
     /// open Folder tab reads its folders again.
     @Published var workspaceChanges = 0
@@ -7600,6 +7610,10 @@ final class AppState: ObservableObject {
 
     func restoreActiveSessionState(for profile: String) {
         clearPendingDecisionRestorationGuard()
+        // A switch to Pulse's profile doesn't open Pulse's hidden chat either.
+        if let home = pulseHomeChat, showsPulseScreen {
+            forgetResumedPulseChat(home, profile: profile, among: sessions)
+        }
         // The stored reference's KIND decides how its conversation restores.
         // Positive bot evidence reclassifies a legacy id-only reference (every
         // install upgrading from a build that could not record the kind), so a
@@ -9451,7 +9465,8 @@ final class AppState: ObservableObject {
         let profile = callProfile ?? activeProfile
         do {
             let response = try await dashboardTicketBridge.requestJSON(path: VoiceChatFinder.path(query: query, profile: profile))
-            return VoiceChatFinder.matches(from: response)
+            // Hermes' search knows nothing of the chats Conduit's lists leave out.
+            return VoiceChatFinder.matches(from: response).filter { !isUnlistedChat(id: $0.sessionID, profile: profile) }
         } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
             // A Watch call on another profile is asked by that profile's
             // chats Conduit has listed (All profiles lists them).
@@ -9461,10 +9476,9 @@ final class AppState: ObservableObject {
                     sessionBelongsToProfile($0, profile: profile)
                         && !BotChatHygiene.isCanonicalBotChatRow($0, roster: botRoster)
                         && !BotChatHygiene.isBotOwnedRow($0, botOwnedSessionIDs: botOwned)
-                        && !isWorkstreamRow($0)
                 }
             } ?? activeProfileSessions
-            return VoiceChatFinder.titleMatches(in: listed, query: query)
+            return VoiceChatFinder.titleMatches(in: listed.filter { !isUnlistedChat($0) }, query: query)
         }
     }
 
@@ -16816,6 +16830,8 @@ final class AppState: ObservableObject {
             // that cannot host Bot Mode cannot hold a bot chat either.
             let savedReferenceIsAuthoritative = !(storedReference?.isUnverified ?? false)
                 || botEvidenceIsAvailable
+            // Before the saved id can be resumed directly (#1810).
+            dropSavedPulseChat(profile: profile, purpose: purpose, among: allSessions)
             let missingSavedSessionID = botSavedReference?.sessionID
                 ?? (savedReferenceIsAuthoritative
                     ? chatResumeCoordinator.missingSavedSessionID(
@@ -17584,6 +17600,7 @@ final class AppState: ObservableObject {
         if purpose == .automaticReturn {
             chatResumeRestorationRequest = nil
         }
+        dropSavedPulseChat(profile: profile, purpose: purpose, among: catalog)
         // The stored selection is authoritative only when its kind is known or
         // bot evidence could be read: a v1-migrated id cannot be told from a
         // bot chat, and adopting a catalog row by it is the fail-open the
@@ -17602,9 +17619,56 @@ final class AppState: ObservableObject {
             botOwnedSessionIDs: botOwnedSessionIDs,
             savedSelectionIsAuthoritative: savedReferenceIsAuthoritative,
             // Read at the moment of selection too: a bot's work read that
-            // lands mid-sync names its workstreams for this pick.
-            workstreamSessionIDs: botWork.workstreamSessionIDs
+            // lands mid-sync names its workstreams for this pick, and a feed
+            // read names Pulse's chat.
+            unlistedSessionIDs: Set(catalog.lazy.filter { self.isUnlistedChat($0) }.map(\.id))
         )
+    }
+
+    /// A chat of this profile's that no list shows: a bot's workstream
+    /// (#1755) or Pulse's own chat, which the Pulse screen stands in for.
+    /// Conduit never opens one by itself (the chat it resumes, CarPlay's
+    /// list, a call's chat search); one the user opened stays open.
+    func isUnlistedChat(_ session: SessionSummary) -> Bool {
+        isWorkstreamRow(session) || isPulseHomeChat(session)
+    }
+
+    /// Pulse's chat is never the chat Conduit opens by itself, even a saved
+    /// one (picked before this phone knew it, or opened from a push): the
+    /// Pulse screen stands in for it. The chat on screen stays.
+    func dropSavedPulseChat(profile: String, purpose: ChatResumeSyncPurpose, among catalog: [SessionSummary]) {
+        guard purpose != .preserveCurrent, let home = pulseHomeChat, showsPulseScreen else { return }
+        forgetResumedPulseChat(home, profile: profile, among: catalog)
+    }
+
+    /// Drops Pulse's chat as the saved chat to resume, so the pick goes to a
+    /// listed chat. The two are matched by any of the chat's ids.
+    /// Only in Pulse's own profile, and never through a shared lineage root,
+    /// so a branch of Pulse's chat stays a chat of its own.
+    func forgetResumedPulseChat(_ home: String, profile: String, among catalog: [SessionSummary]) {
+        guard profilesMatch(profile, pulseHomeProfile),
+              let saved = chatResumeCoordinator.lastSessionID(for: profile) else { return }
+        func names(_ id: String) -> Set<String> {
+            var ids: Set<String> = [id]
+            if let canonical = canonicalSessionID(for: id) { ids.insert(canonical) }
+            for row in catalog + sessions
+            where sessionBelongsToProfile(row, profile: profile) && row.nestingIDs.contains(id) {
+                ids.formUnion(row.nestingIDs)
+            }
+            return ids
+        }
+        guard !names(saved).isDisjoint(with: names(home)) else { return }
+        chatResumeCoordinator.rememberSession(nil, for: profile)
+    }
+
+    /// The same by a chat's id alone (a call's chat search hit), in `profile`.
+    /// Any listed row it names (by any of its ids) goes by the row's rule.
+    func isUnlistedChat(id: String, profile: String) -> Bool {
+        sessions.contains {
+            sessionBelongsToProfile($0, profile: profile)
+                && SessionContentSearch.identities(of: $0).contains(id) && isUnlistedChat($0)
+        }
+            || isWorkstreamSession(id) || isPulseHomeChat(id: id, profile: profile)
     }
 
     @discardableResult
@@ -27664,6 +27728,7 @@ final class AppState: ObservableObject {
             if oldValue.state != notifierPlugin.state {
                 updateChatOnScreen()
                 forgetPulseHomeIfGone()
+                readPulseHomeIfUnknown()
                 sharePulseQuiet()
             }
             // An open room's boards, once the plugin says it keeps them.

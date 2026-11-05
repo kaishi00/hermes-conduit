@@ -1,6 +1,170 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%@ isn’t on the server. It may have been deleted, or it’s on another computer.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ist nicht auf dem Server. Die Datei wurde vielleicht gelöscht oder liegt auf einem anderen Computer."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ no está en el servidor. Puede que se haya borrado o que esté en otro ordenador."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ n’est pas sur le serveur. Le fichier a peut-être été supprimé ou se trouve sur un autre ordinateur."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ tidak ada di server. Mungkin sudah dihapus, atau ada di komputer lain."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ non è sul server. Potrebbe essere stato eliminato o trovarsi su un altro computer."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ はサーバー上にありません。削除されたか、別のコンピュータにある可能性があります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 파일이 서버에 없습니다. 삭제되었거나 다른 컴퓨터에 있을 수 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ nie ma na serwerze. Mógł zostać usunięty albo jest na innym komputerze."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ não está no servidor. Pode ter sido apagado ou estar em outro computador."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ нет на сервере. Возможно, файл удалён или находится на другом компьютере."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ sunucuda yok. Silinmiş ya da başka bir bilgisayarda olabilir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器上没有 %@。它可能已被删除，或在另一台电脑上。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "伺服器上沒有 %@。它可能已被刪除，或在另一台電腦上。"
+          }
+        }
+      }
+    },
+    "Refresh models": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelle aktualisieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualizar modelos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualiser les modèles"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Segarkan model"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiorna modelli"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "モデルを更新"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모델 새로 고침"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odśwież modele"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atualizar modelos"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Обновить модели"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelleri yenile"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刷新模型"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新整理模型"
+          }
+        }
+      }
+    },
     "Sorted ascending": {
       "localizations": {
         "de": {
@@ -428862,84 +429026,248 @@
         }
       }
     },
-    "Refresh models": {
+    "Image Playground": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Modelle aktualisieren"
+            "value": "Image Playground"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Actualizar modelos"
+            "value": "Image Playground"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Actualiser les modèles"
+            "value": "Image Playground"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Segarkan model"
+            "value": "Image Playground"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aggiorna modelli"
+            "value": "Image Playground"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "モデルを更新"
+            "value": "Image Playground"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "모델 새로 고침"
+            "value": "Image Playground"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Odśwież modele"
+            "value": "Image Playground"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Atualizar modelos"
+            "value": "Image Playground"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Обновить модели"
+            "value": "Image Playground"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Modelleri yenile"
+            "value": "Image Playground"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "刷新模型"
+            "value": "图乐园"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "重新整理模型"
+            "value": "影像樂園"
+          }
+        }
+      }
+    },
+    "With Hermes": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit Hermes"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Con Hermes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avec Hermes"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dengan Hermes"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Con Hermes"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermesで"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes로"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Przez Hermes"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Com o Hermes"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Через Hermes"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes ile"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用 Hermes"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用 Hermes"
+          }
+        }
+      }
+    },
+    "Turn on Apple Intelligence in Settings > Apple Intelligence & Siri to create pictures with Image Playground.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schalte Apple Intelligence unter „Einstellungen“ > „Apple Intelligence & Siri“ ein, um Bilder mit Image Playground zu erstellen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activa Apple Intelligence en Ajustes > Apple Intelligence y Siri para crear imágenes con Image Playground."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activez Apple Intelligence dans Réglages > Apple Intelligence et Siri pour créer des images avec Image Playground."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nyalakan Apple Intelligence di Pengaturan > Apple Intelligence & Siri untuk membuat gambar dengan Image Playground."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attiva Apple Intelligence in Impostazioni > Apple Intelligence e Siri per creare immagini con Image Playground."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image Playgroundで画像を作成するには、「設定」>「Apple IntelligenceとSiri」でApple Intelligenceをオンにしてください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image Playground로 이미지를 만들려면 설정 > Apple Intelligence 및 Siri에서 Apple Intelligence를 켜십시오."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Włącz Apple Intelligence w Ustawieniach > Apple Intelligence i Siri, aby tworzyć obrazy w Image Playground."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ative a Apple Intelligence em Ajustes > Apple Intelligence e Siri para criar imagens com o Image Playground."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Включите Apple Intelligence в разделе «Настройки» > «Apple Intelligence и Siri», чтобы создавать изображения в Image Playground."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image Playground ile resim oluşturmak için Ayarlar > Apple Intelligence ve Siri'de Apple Intelligence'ı açın."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在“设置”>“Apple 智能与 Siri”中打开 Apple 智能，即可使用图乐园创建图片。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在「設定」>「Apple Intelligence 與 Siri」中開啟 Apple Intelligence，即可使用「影像樂園」製作圖片。"
           }
         }
       }
