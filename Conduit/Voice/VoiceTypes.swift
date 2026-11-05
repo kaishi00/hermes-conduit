@@ -790,6 +790,12 @@ protocol SpeechPlaybackService: AnyObject {
     /// Conversation playback joins the capture-owned session; standalone
     /// flows (Read Aloud, provider tests) own the session alone.
     var ownershipIntent: VoiceAudioIntent { get set }
+    /// Called, on a later main-actor turn, when something takes the
+    /// microphone while this playback holds the session (composer
+    /// dictation, a voice message, a call): the owner then stops, so the
+    /// microphone never hears it. Read Aloud sets it; conversations, whose
+    /// own capture is what arrives, leave it nil (issue 1770).
+    var onTakenOverByCapture: (@MainActor () -> Void)? { get set }
     /// Speed applied to the next stream or clip; 1.0 is normal speed.
     var playbackRate: Float { get set }
     func start(sampleRate: Double) throws
@@ -817,6 +823,12 @@ protocol SpeechPlaybackService: AnyObject {
 }
 
 extension SpeechPlaybackService {
+    /// Services that never give way keep playing.
+    var onTakenOverByCapture: (@MainActor () -> Void)? {
+        get { nil }
+        set {}
+    }
+
     /// Services without a speed control play at normal speed.
     var playbackRate: Float {
         get { 1 }

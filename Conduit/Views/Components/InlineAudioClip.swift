@@ -159,7 +159,12 @@ final class ChatAudioClipPlayer: NSObject, ObservableObject {
         if lease == nil {
             // Playback still starts if the session can't be claimed: the
             // clip then plays under whatever category is already active.
-            lease = try? coordinator.acquire(.standalonePlayback)
+            // Dictation or a voice message taking the microphone pauses it,
+            // so the recording never hears it (issue 1770).
+            lease = try? coordinator.acquire(.standalonePlayback) { [weak self] in
+                guard self?.clip?.phase == .playing else { return }
+                self?.pause()
+            }
         }
         guard player.play() else {
             releaseLease()
