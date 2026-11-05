@@ -46,6 +46,8 @@ struct PulseSettingsPage: View {
     /// Hermes answered the models read: only then is a model picked, as a
     /// list that didn't load is never picked from.
     @State private var modelsAnswered = false
+    /// Counts the models reads, so only the last one asked lands.
+    @State private var modelsRead = 0
     /// The profile `providers` are from: Pulse's, as its state names it.
     @State private var modelsProfile: String?
     /// The note to Pulse as it's being edited; nil shows the plugin's.
@@ -804,6 +806,9 @@ struct PulseSettingsPage: View {
         // Pulse's profile's models, where its model is set (issue 1681).
         .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(state.profile ?? "")") {
             await loadModels(profile: state.profile)
+            // Hermes fetches a stale provider list in the background
+            // meanwhile (issue 1807).
+            await ModelCatalogSettle.readAgain { await loadModels(profile: state.profile) }
         }
     }
 
@@ -818,9 +823,13 @@ struct PulseSettingsPage: View {
             modelsFailed = false
         }
         modelsProfile = profile
+        modelsRead += 1
+        let asked = modelsRead
         let loaded = await appState.loadModelProviders(inProfile: profile ?? AppState.pulseDefaultProfile)
-        // A read for a profile no longer shown never lands on the picker.
-        guard !Task.isCancelled, modelsProfile == profile, appState.activeDashboardID == dashboard else { return }
+        // A read for a profile no longer shown never lands on the picker,
+        // nor one a later read (the read again, Try Again) overtook.
+        guard !Task.isCancelled, modelsProfile == profile, appState.activeDashboardID == dashboard,
+              asked == modelsRead else { return }
         if let loaded {
             providers = loaded
             modelsAnswered = true

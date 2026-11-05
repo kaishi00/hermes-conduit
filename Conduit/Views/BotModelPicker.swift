@@ -25,6 +25,16 @@ struct BotModelPicker: View {
     /// long list reads as its providers, except the one holding the pick.
     @State private var expandedProviders: Set<String> = []
     @State private var openedPicked = false
+    /// Refresh models is asking Hermes for every provider's live list.
+    @State private var refreshing = false
+    /// Counts the catalog reads, so only the last one asked lands.
+    @State private var catalogRead = 0
+    /// A plain read was asked while Refresh models ran: it runs once the
+    /// refresh lands.
+    @State private var readAfterRefresh = false
+    /// The read that failed was Refresh models, so Try Again asks for the
+    /// live lists again rather than the cached ones.
+    @State private var refreshFailed = false
 
     var body: some View {
         // Settings' own page, as Work and Edit Bot that push it.
@@ -85,6 +95,14 @@ struct BotModelPicker: View {
         .searchable(text: $query, prompt: Text(AppLocalization.string("Search providers or models")))
         .navigationTitle(AppLocalization.string("Model"))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                RefreshModelsButton(refreshing: refreshing) {
+                    Task { await refreshModels() }
+                }
+                .accessibilityIdentifier("botModelPicker.refreshModels")
+            }
+        }
         // What Hermes listed last time, before the first frame; its answer
         // follows.
         .onAppear {
@@ -95,12 +113,44 @@ struct BotModelPicker: View {
         .task {
             guard !catalog.answered else { return }
             await load()
+            // Hermes fetches a stale provider list in the background
+            // meanwhile (issue 1807).
+            await ModelCatalogSettle.readAgain { await load() }
         }
     }
 
-    private func load() async {
+    /// Refresh models, from the toolbar or Try Again after one failed.
+    private func refreshModels() async {
+        guard !refreshing else { return }
+        refreshing = true
+        await load(refresh: true)
+        refreshing = false
+        // A refresh that failed stays said: Try Again asks again.
+        let readSkipped = readAfterRefresh
+        readAfterRefresh = false
+        if readSkipped, !catalog.failed {
+            await load()
+        }
+    }
+
+    /// `refresh` is Refresh models: Hermes fetches every provider's live
+    /// list first. The search and the pick stay as they are.
+    private func load(refresh: Bool = false) async {
+        // A Refresh models under way has the newer answer coming.
+        guard refresh || !refreshing else {
+            readAfterRefresh = true
+            return
+        }
+        catalogRead += 1
+        let read = catalogRead
         catalog.readStarted()
-        if let loaded = await appState.loadModelProviders() {
+        let loaded = await appState.loadModelProviders(refresh: refresh)
+        // A read asked since has the newer answer.
+        guard read == catalogRead else { return }
+        // A plain read that fails after a failed refresh keeps the refresh
+        // owed, so Try Again still asks for the live lists.
+        refreshFailed = loaded == nil && (refresh || refreshFailed)
+        if let loaded {
             catalog.hermesAnswered(Self.pickable(loaded))
             // Hermes' answer can list the pick where the kept one didn't,
             // under the same provider names.
@@ -175,7 +225,9 @@ struct BotModelPicker: View {
     private var loadFailedRows: some View {
         Text(AppLocalization.string("Could not load models."))
             .foregroundStyle(.secondary)
-        Button(AppLocalization.string("Try Again")) { Task { await load() } }
+        Button(AppLocalization.string("Try Again")) {
+            Task { if refreshFailed { await refreshModels() } else { await load() } }
+        }
             .buttonStyle(.settings)
     }
 

@@ -343,6 +343,14 @@ private struct ProfilePickerRow: View {
                     Label(AppLocalization.string("Image Playground"), systemImage: "apple.image.playground")
                 }
             }
+            if let url = appState.profileAvatarURL(for: profile), !ProfileAvatarImageCache.isAnimated(at: url) {
+                Button {
+                    Haptics.light()
+                    bringToLife(url)
+                } label: {
+                    Label(AppLocalization.string("Bring to Life"), systemImage: "wand.and.stars")
+                }
+            }
             if appState.profileAvatarURL(for: profile) != nil {
                 Button(role: .destructive) {
                     Haptics.warning()
@@ -449,6 +457,29 @@ private struct ProfilePickerRow: View {
                 saveError = await appState.setProfilePhoto(nil, animation: apng, for: profile)
             case .failure(let failure):
                 saveError = AnimatedAvatar.message(for: failure)
+            }
+            isSavingPhoto = false
+            if let saveError {
+                UIAccessibility.post(notification: .announcement, argument: saveError)
+            }
+        }
+    }
+
+    /// Bring to Life: the still photo, its subject swaying (LivingPortrait),
+    /// saved as the profile's moving picture.
+    private func bringToLife(_ url: URL) {
+        guard let image = UIImage(contentsOfFile: url.path) else {
+            saveError = AppLocalization.string("That picture could not be used.")
+            return
+        }
+        isSavingPhoto = true
+        saveError = nil
+        Task { @MainActor in
+            switch await LivingPortrait.picture(from: image) {
+            case .success(let apng):
+                saveError = await appState.setProfilePhoto(nil, animation: apng, for: profile)
+            case .failure(let failure):
+                saveError = LivingPortrait.message(for: failure)
             }
             isSavingPhoto = false
             if let saveError {
