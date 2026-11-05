@@ -33,19 +33,10 @@ struct V2BotsView: View {
                         .scaledFont(.title2.weight(.bold))
                         .accessibilityAddTraits(.isHeader)
                     Spacer(minLength: 0)
-                    Button {
+                    V2AddButton(title: AppLocalization.string("New Bot")) {
                         createRequest = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 17, weight: .semibold))
-                            .conduitFixedGlyph()
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
                     }
-                    .buttonStyle(PressableButtonStyle())
-                    .conduitGlassControl(cornerRadius: 22, interactive: false)
                     .disabled(!canCreate)
-                    .accessibilityLabel(AppLocalization.string("New Bot"))
                 }
                 // Pulse and Artifacts are global, not any one bot's: small
                 // shortcuts under the title rather than cards among the bots.

@@ -478,7 +478,7 @@ struct VoiceJobModelSettingsSection: View {
         ConduitSettingsSection(title: AppLocalization.string("Voice jobs"), symbol: "bolt.horizontal.circle", tint: .conduitAccent) {
             ConduitMenuPicker(
                 value: selection,
-                choices: VoiceJobModelSettingsSection.modelChoices(
+                groups: VoiceJobModelSettingsSection.modelMenuGroups(
                     defaultTitle: AppLocalization.string("Profile default"),
                     defaultTag: Self.profileDefault,
                     selection: selection,
@@ -530,30 +530,33 @@ struct VoiceJobModelSettingsSection: View {
     }
 
     /// Model menu: the default choice, a saved model the list doesn't carry
-    /// (kept visible even before the list loads), then every provider's
-    /// models.
-    static func modelChoices(
+    /// (kept visible even before the list loads), then a submenu per
+    /// provider, closed until opened, so a long list of providers stays
+    /// short (Eric 2026-11-05).
+    static func modelMenuGroups(
         defaultTitle: String,
         defaultTag: String,
         selection: String,
         providers: [ProviderInfo]
-    ) -> [(id: String, title: String)] {
-        var choices = [(id: defaultTag, title: defaultTitle)]
+    ) -> [ConduitMenuGroup<String>] {
+        var top = [(id: defaultTag, title: defaultTitle)]
         if selection != defaultTag, !providers.contains(where: { provider in
             provider.models.contains { tag(provider: provider.name, model: $0.id) == selection }
         }) {
             let held = parse(selection)
             // A provider pinned without a model runs on its default one.
-            choices.append((id: selection, title: held.model.isEmpty
+            top.append((id: selection, title: held.model.isEmpty
                 ? providerDefaultTitle(held.provider ?? "")
-                : held.model))
+                : (held.provider ?? "").isEmpty ? held.model : "\(held.model) · \(held.provider ?? "")"))
         }
-        for provider in providers {
-            for model in provider.models {
-                choices.append((id: tag(provider: provider.name, model: model.id), title: "\(model.label ?? model.id) · \(provider.name)"))
-            }
+        var groups = [ConduitMenuGroup(title: nil, choices: top)]
+        for provider in providers where !provider.models.isEmpty {
+            groups.append(ConduitMenuGroup(
+                title: provider.name,
+                choices: provider.models.map { (id: tag(provider: provider.name, model: $0.id), title: $0.label ?? $0.id) }
+            ))
         }
-        return choices
+        return groups
     }
 
     /// Reasoning levels, the same as the model picker's reasoning control.
@@ -878,7 +881,7 @@ struct VoiceReplyModelSettingsSection: View {
                 ) {
                     ConduitMenuPicker(
                         value: picks.selection,
-                        choices: VoiceJobModelSettingsSection.modelChoices(
+                        groups: VoiceJobModelSettingsSection.modelMenuGroups(
                             defaultTitle: helper?.followTitle ?? AppLocalization.string("Same as chats"),
                             defaultTag: VoiceReplyModelPicks.sameAsChats,
                             selection: picks.selection,

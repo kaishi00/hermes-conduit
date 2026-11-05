@@ -777,7 +777,7 @@ struct PulseSettingsPage: View {
         return ConduitSettingsSection(title: AppLocalization.string("Model"), symbol: "cpu", tint: .conduitAccent) {
             ConduitMenuPicker(
                 value: selection,
-                choices: VoiceJobModelSettingsSection.modelChoices(
+                groups: VoiceJobModelSettingsSection.modelMenuGroups(
                     defaultTitle: Self.defaultModelTitle(state, providers: providers),
                     defaultTag: "",
                     selection: selection,

@@ -1563,7 +1563,7 @@ README.md
 - Client and path links: `Conduit/Services/WorkspaceFiles.swift` (WorkspaceFilesClient and its kept listing and recent files, WorkspacePathLinks, WorkspaceRoot, WorkspaceReveal)
 - Roots, profile, reveal and refresh: `Conduit/Services/AppState+Workspace.swift` (workspaceRoots, workspaceProfile, absoluteWorkspacePath, revealWorkspaceFile, noteWorkspaceToolCompleted, readWorkspaceText, workspaceDirectoryEntries, parentWorkspacePath for the project folder picker's Enclosing Folder); `Conduit/Services/AppState.swift` (makeProjectFolder, the project folder picker's New Folder through the same plugin route)
 - Tree, search, viewing and changes: `Conduit/Services/WorkspaceExplorer.swift` (askPluginIfUnanswered, from open and refresh)
-- Screens: `Conduit/Views/V2/V2WorkspaceViews.swift` (WorkspaceFolderView, WorkspaceFileSheet, WorkspaceMoveSheet), `Conduit/Views/V2/V2ArtifactsViews.swift` (ChatArtifactsContent, the page's tabs), `Conduit/Views/V2/V2ConversationScreen.swift` (ChatSidePanel, openArtifacts), `Conduit/Views/ChatSupportSheets.swift` (WorkspaceSheet), `Conduit/Views/RootView.swift`, `Conduit/Views/Components/ComposerBar.swift` (+ › Workspace)
+- Screens: `Conduit/Views/V2/V2WorkspaceViews.swift` (WorkspaceFolderView, its Add menu on the shared V2AddGlyph in `Conduit/Theme.swift`, WorkspaceFileSheet, WorkspaceMoveSheet), `Conduit/Views/V2/V2ArtifactsViews.swift` (ChatArtifactsContent, the page's tabs), `Conduit/Views/V2/V2ConversationScreen.swift` (ChatSidePanel, openArtifacts), `Conduit/Views/ChatSupportSheets.swift` (WorkspaceSheet), `Conduit/Views/RootView.swift`, `Conduit/Views/Components/ComposerBar.swift` (+ › Workspace)
 - Links: `Conduit/Views/Components/SelectableTextView.swift` (bridge), `Conduit/Services/ConduitAppLink.swift` (file)
 - State: `Conduit/Models/Models.swift` (WorkspaceEntry, WorkspaceFilePreview), `Conduit/Services/AppState.swift` (workspaceReveal, workspaceChanges, showWorkspaceSheet, openWorkspace)
 - Tests: `ConduitTests/WorkspaceFilesTests.swift` (testWorkspaceListingAndRecentFilesAreKeptForNextTime), `ConduitTests/AppStateMultiDashboardTests.swift` (workspace listing and file pick, testAFolderOpensOnItsListingKeptLastTime)
@@ -1583,7 +1583,7 @@ README.md
 **Open gaps**
 - Group rooms have no Artifacts: a path tapped in a room opens the Folder on its own, at the projects' folders.
 
-**Checked:** 2026-11-03, #1711 (an empty file uploads from the Folder, notifier #527, 0.127.2, issue #1708); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1685 (the New Project folder picker reads the same listing, goes above the chat's folder and makes a folder through the plugin's route; the tree is unchanged); 2026-11-01, #1619 (opening the Folder beside the chat closes a Bot Chat's Work panel, which shares the column; see Artifacts); 2026-10-31, #1584 (from #1582's review, the folder asks a plugin that never answered again as it opens and on a refresh); 2026-10-31, #1582 (a folder opens on its kept listing and recent files, which wait for the plugin's word, and keeps only an answer it can read); 2026-10-29, #1491 (a picture, opened or Share or Save, opens in the picture viewer among its folder's pictures); 2026-10-29, #1492 (ChatSidePanel's width drags; the Folder in it is unchanged); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1407 with notifier #431 and its follow-up; 2026-10-27, #1399 with notifier #431.
+**Checked:** 2026-11-05, #1787 (a folder's Add uses the shared glass +, see The + that makes something new); 2026-11-03, #1711 (an empty file uploads from the Folder, notifier #527, 0.127.2, issue #1708); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1685 (the New Project folder picker reads the same listing, goes above the chat's folder and makes a folder through the plugin's route; the tree is unchanged); 2026-11-01, #1619 (opening the Folder beside the chat closes a Bot Chat's Work panel, which shares the column; see Artifacts); 2026-10-31, #1584 (from #1582's review, the folder asks a plugin that never answered again as it opens and on a refresh); 2026-10-31, #1582 (a folder opens on its kept listing and recent files, which wait for the plugin's word, and keeps only an answer it can read); 2026-10-29, #1491 (a picture, opened or Share or Save, opens in the picture viewer among its folder's pictures); 2026-10-29, #1492 (ChatSidePanel's width drags; the Folder in it is unchanged); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1407 with notifier #431 and its follow-up; 2026-10-27, #1399 with notifier #431.
 
 ## Bots Home
 
@@ -1623,7 +1623,7 @@ live room's "Talking now") · the transcript's environment copy
 
 **Code**
 - Tabs and routes: `Conduit/Services/AppState.swift` (beginOpeningBotChat, botChatOpening and placesConversationAsBotChat, a Bot Chat coming from Bots; see Opening a Bot Chat), `Conduit/Views/V2/V2Shell.swift` (V2Tab.destinations, title and conversationTab, openConversation, the first tab, pulseVisible and openConversation on Bots too, the Bots stack's botZoom namespace)
-- Bots Home: `Conduit/Views/V2/V2BotsView.swift` (title, +, BotsHomeShortcuts), `Conduit/Views/V2/V2BotsHome.swift` (V2ShortcutPill, BotsHomeShortcuts, BotPortraitGrid and its drop at the end, BotPortraitStatus, BotPortraitCell's drop targeting and room membership, BotPortraitDrag, BotDragPayload, BotReorderSheet, BotOverviewSheet, BotZoomSource, BotZoomDestination, BotZoomArm, BotPortraitMotion, BotsLiveRooms, BotsTalkingRoomsReader and botsHomeCovered), `Conduit/Views/BotRosterView.swift` (homeScroll, a scroll view rather than plainList's List, with RosterListRow's rosterRowsInScroll chrome, homeGroupSection and its +, portraitGrid, portrait, coveredBySheet, the live rooms over the grid, handleDrop, newRoomBar, BotRosterMenu's Start a Room with… and Reorder Bots, homeCards, the overview's sheet and Edit Bot after it), `Conduit/Views/V2/V2PulsePage.swift` (V2PulseButton's named pill); a bot's color: `Conduit/Services/AppState+V2Shell.swift` (botColor, from profileGlowColors); the zoom's arm: `Conduit/Views/V2/V2Shell.swift` (the Bots stack's onChange of activeBotChatProfile and of botsPath, closeConversation); the swipe home from anywhere: `Conduit/Views/V2/V2ConversationScreen.swift` (backSwipe, swipesBack, read from BotZoomDestination's botChatZoomed); tests: `ConduitTests/BotWorkstreamsTests.swift` (the zoom arm, a bot's ring color)
+- Bots Home: `Conduit/Views/V2/V2BotsView.swift` (title, + as the shared V2AddButton in `Conduit/Theme.swift`, BotsHomeShortcuts), `Conduit/Views/V2/V2BotsHome.swift` (V2ShortcutPill, BotsHomeShortcuts, BotPortraitGrid and its drop at the end, BotPortraitStatus, BotPortraitCell's drop targeting and room membership, BotPortraitDrag, BotDragPayload, BotReorderSheet, BotOverviewSheet, BotZoomSource, BotZoomDestination, BotZoomArm, BotPortraitMotion, BotsLiveRooms, BotsTalkingRoomsReader and botsHomeCovered), `Conduit/Views/BotRosterView.swift` (homeScroll, a scroll view rather than plainList's List, with RosterListRow's rosterRowsInScroll chrome, homeGroupSection and its +, portraitGrid, portrait, coveredBySheet, the live rooms over the grid, handleDrop, newRoomBar, BotRosterMenu's Start a Room with… and Reorder Bots, homeCards, the overview's sheet and Edit Bot after it), `Conduit/Views/V2/V2PulsePage.swift` (V2PulseButton's named pill); a bot's color: `Conduit/Services/AppState+V2Shell.swift` (botColor, from profileGlowColors); the zoom's arm: `Conduit/Views/V2/V2Shell.swift` (the Bots stack's onChange of activeBotChatProfile and of botsPath, closeConversation); the swipe home from anywhere: `Conduit/Views/V2/V2ConversationScreen.swift` (backSwipe, swipesBack, read from BotZoomDestination's botChatZoomed); tests: `ConduitTests/BotWorkstreamsTests.swift` (the zoom arm, a bot's ring color)
 - Order: `Conduit/Models/BotOrder.swift`, `Conduit/Services/AppState+BotOrder.swift` (orderedBots, moveBot, moveBots, botOrderSlot), `Conduit/Services/AppState.swift` (botOrder, setBotOrder, shownBotRoster; sign-out and a new server clear it), `Conduit/Services/AppState+SyncedPreferences.swift` (bots.order), `Conduit/Views/SyncedPreferencesViews.swift` (the caption), `Conduit/Services/AppState+Widgets.swift` (the widget's bots), `Conduit/Views/GroupChatView.swift` (GroupCreateSheet's visibleBots), `Conduit/Views/BotEditorSheet.swift` (cloneSources, New Bot's Start From)
 - Live rooms: `Conduit/Services/AppState.swift` (refreshTalkingRooms, refreshTalkingRoomsIfDue, talkingRoomIDs, talkingRooms, talkingRooms(of:), cleared with the rooms), `Conduit/Views/TranscriptCellEnvironment.swift` (botsHomeCovered, botChatZoomed and rosterRowsInScroll copied)
 - A new room: `Conduit/Models/BotRoomBuild.swift` (the room being started), `Conduit/Views/GroupChatView.swift` (GroupCreateSheet's preselected, suggestedName and onCreated), `Conduit/Services/GroupChatModels.swift` (GroupRoomLimits)
@@ -1668,7 +1668,7 @@ live room's "Talking now") · the transcript's environment copy
 - Bots Home's voice menu calls a working bot like any other: with Classic voice, whose call waits for a running reply, its chat opens and voice says to stop the reply first.
 - Not yet tried on a device: the portraits' motion and what many working bots cost (one 30 fps timeline each while they move); the scroll view's long press, drag and drop on each portrait (#1714); whether a drag's lift and the portrait's long-press menu share the hold (a long press crashed on build 248: the drag's preview is drawn without the app's state, which is now handed to it), the merge dwell's feel, and whether a cancelled drag lets go of its item at once (a portrait reads the dragged bot only while it lives).
 
-**Checked:** 2026-11-05, #1778 (a portrait and the Bot Overview's header play a moving picture, see Moving pictures); 2026-11-04, #1742 (from Eric's TestFlight test: the overview's Chat and its workstreams zoom like a portrait's tap, pinned bots come first with a pin, a drop on a swollen face starts a room; the Bots list rows and Reorder Bots follow the pinned order); 2026-11-04, #1735 (the Group Chats and roster reads ask again after a failure, so their notice clears); 2026-11-03, #1714 (Eric's next round: Bots Home a scroll view, so each portrait has its own menu and drag; New Group Chat a + on its heading; no line under the bots; the zoom kept through a workstream visit and a swipe home from anywhere; the voice button calls a picked bot); 2026-11-03, #1706 (Eric's build 248 test: a long press no longer crashes, portraits show again, the zoom holds until the tapped chat lands, rings take the bot's glow color; the overview's Chat button keeps room above the artifacts' search when Work isn't shown); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1700 (the overview's Chat opened its Bot Chat in Sessions on an iPad simulator when the chat open before wasn't a Bot Chat: Bots Home marks a Bot Chat as coming before it steps aside; Bots Home and the overview share each round's room read; the ruling names every sheet that stills the portraits); 2026-11-03, #1698 (live rooms over the grid and "In <room>" pills, read from Bots Home and the Bot Overview; the portraits keep still under Bots Home's own sheets); 2026-11-03, #1686 (the portraits' motion, the overview header's, and hand-offs between bots); 2026-11-03, #1682 (the portrait-to-chat zoom; a drop on a portrait's pill lands on it); 2026-11-03, #1679 (the bots' order, synced, and starting a room by dropping bots together, with a confirm step); 2026-11-03, #1678 (added).
+**Checked:** 2026-11-05, #1787 (New Bot and New Group Chat use the shared glass +, see The + that makes something new); 2026-11-05, #1778 (a portrait and the Bot Overview's header play a moving picture, see Moving pictures); 2026-11-04, #1742 (from Eric's TestFlight test: the overview's Chat and its workstreams zoom like a portrait's tap, pinned bots come first with a pin, a drop on a swollen face starts a room; the Bots list rows and Reorder Bots follow the pinned order); 2026-11-04, #1735 (the Group Chats and roster reads ask again after a failure, so their notice clears); 2026-11-03, #1714 (Eric's next round: Bots Home a scroll view, so each portrait has its own menu and drag; New Group Chat a + on its heading; no line under the bots; the zoom kept through a workstream visit and a swipe home from anywhere; the voice button calls a picked bot); 2026-11-03, #1706 (Eric's build 248 test: a long press no longer crashes, portraits show again, the zoom holds until the tapped chat lands, rings take the bot's glow color; the overview's Chat button keeps room above the artifacts' search when Work isn't shown); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1700 (the overview's Chat opened its Bot Chat in Sessions on an iPad simulator when the chat open before wasn't a Bot Chat: Bots Home marks a Bot Chat as coming before it steps aside; Bots Home and the overview share each round's room read; the ruling names every sheet that stills the portraits); 2026-11-03, #1698 (live rooms over the grid and "In <room>" pills, read from Bots Home and the Bot Overview; the portraits keep still under Bots Home's own sheets); 2026-11-03, #1686 (the portraits' motion, the overview header's, and hand-offs between bots); 2026-11-03, #1682 (the portrait-to-chat zoom; a drop on a portrait's pill lands on it); 2026-11-03, #1679 (the bots' order, synced, and starting a room by dropping bots together, with a confirm step); 2026-11-03, #1678 (added).
 
 ## Bots: create and edit
 
@@ -1714,6 +1714,7 @@ and README.md's bots line)
 - Hide is the ui_meta `hidden` flag Desktop writes: a hidden bot moves to a collapsed Hidden section at the end of the list, and Desktop hides it too. It keeps working and keeps its rooms, but isn't offered for a new group, whose picker lists visible bots only (2026-10-24, #1192).
 - Groups lists the hosted rooms the bot is in, then New Group Chat with the bot already picked. Hosted groups can't add or remove members after they start, so there's no Add to Group (2026-10-24).
 - A kept bot, drawn from Hermes' last answer until it answers again (Screens that open on their last answer), is never written: its copy has no ui_meta to send back whole, so its row offers only New Chat and Groups' rooms, and updateBot, setBotPinned, setBotHidden, duplicateBot and deleteBot (canDeleteBot) refuse one. A bot's face shows from the copy of its picture the profile pictures keep on the phone until the fetch lands, and a kept bot's Bot Chat shows its face and color from the kept roster. A deleted bot leaves the kept roster as it goes, on the dashboard it was deleted from even if its bridge was rebuilt meanwhile, so neither a read after the delete that fails nor one asked before it brings it back (2026-10-31, #1568).
+- The SOUL is one row on the editor, its first three lines, and opens on a page of its own to edit: inline, a long one pushed Work and Advanced out of sight (Eric 2026-11-05, #1787).
 - Edit Bot opens on the bot's SOUL, model, skills, tools and MCP servers as Hermes gave them last time, New Bot on its Start From profile's lists and the MCP page on the catalog and sign-ins, all read-only until Hermes answers, since a save compares with Hermes' own; what a save, a catalog add or a sign-in Hermes took is what they open on next (Screens that open on their last answer, 2026-10-31, #1588).
 
 **Open gaps**
@@ -1721,7 +1722,7 @@ and README.md's bots line)
 - Desktop's drawn faces, shapes and pets show only as stills; Conduit draws an initial on the color.
 - The group picture switch guard has no test: it needs a ready DashboardTicketBridge double and a room switch mid-request (#1191).
 
-**Checked:** 2026-11-05, #1778 (Choose Photo takes a GIF or a short video, see Moving pictures); 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1679 (on `bot-workstreams`: the row menu on Bots Home gains Start a Room with… and Reorder Bots; New Group Chat can open with a title suggested and say when it made the room; its members and New Bot's Start From follow the bots' order, see Bots Home); 2026-11-03, #1678 (on `bot-workstreams`, Bots Home: the roster as portraits, each with the row's menu on a long press, BotMonogramView at a size its caller picks, and Edit Bot in the Bot Overview, opened once the overview has closed); 2026-11-03, #1677 (on `bot-workstreams`: Edit Bot in a Bot Chat's ⋯ menu, disabled where the Bots list's is; the model picker's inherit row named by its caller, "Same as Bot Chat" for Edit Bot > Work's Workstream Model); 2026-11-02, #1649 (Edit Bot gains Work, the bot's workstream settings, only for a bot that exists on a plugin that serves them; see Bot workstreams); 2026-11-02, #1640 (the MCP sign-in moved to NativeMCPSignIn, shared with Connectors; a switch still says the setup stopped; a Connectors sign-in is kept for the MCP page too, keepMcpSignedIn); 2026-10-31, #1588 (Edit Bot, New Bot's Start From lists and the MCP page open on what Hermes gave last time, read-only until it answers, and a save, MCP add or sign-in Hermes took is what they open on next; see Screens that open on their last answer); 2026-10-31, #1568 (a kept bot is never written, Delete included, a bot's face shows from the phone's copy until its fetch lands, its Bot Chat's face and color included, and a deleted bot leaves the kept roster); 2026-10-31, #1567 (the editor's Model page opens on the models kept from Hermes' last answer, picked once Hermes answers, with Try Again after a read that fails; see Model lists that fail to load); 2026-10-28, #1457 (the main bot goes by its Conduit name, see Profile names); 2026-10-28, #1448 (an unnamed bot shows its id capitalized); 2026-10-28, #1413 (a rename here names the profile everywhere, see Profile names); 2026-10-27, at #1395 (the editor's Model page gained search with each match's provider; saving unchanged); 2026-10-25, at #1222 (configure and MCP add wait in the profile config queue); before that #1192; group pictures at #1191.
+**Checked:** 2026-11-05, #1787 (the SOUL is a row opening its own page, so Work and Advanced sit under it; the Model page's providers open and close, see Model lists grouped by provider; New Bot's + is the shared one, see The + that makes something new); 2026-11-05, #1778 (Choose Photo takes a GIF or a short video, see Moving pictures); 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1679 (on `bot-workstreams`: the row menu on Bots Home gains Start a Room with… and Reorder Bots; New Group Chat can open with a title suggested and say when it made the room; its members and New Bot's Start From follow the bots' order, see Bots Home); 2026-11-03, #1678 (on `bot-workstreams`, Bots Home: the roster as portraits, each with the row's menu on a long press, BotMonogramView at a size its caller picks, and Edit Bot in the Bot Overview, opened once the overview has closed); 2026-11-03, #1677 (on `bot-workstreams`: Edit Bot in a Bot Chat's ⋯ menu, disabled where the Bots list's is; the model picker's inherit row named by its caller, "Same as Bot Chat" for Edit Bot > Work's Workstream Model); 2026-11-02, #1649 (Edit Bot gains Work, the bot's workstream settings, only for a bot that exists on a plugin that serves them; see Bot workstreams); 2026-11-02, #1640 (the MCP sign-in moved to NativeMCPSignIn, shared with Connectors; a switch still says the setup stopped; a Connectors sign-in is kept for the MCP page too, keepMcpSignedIn); 2026-10-31, #1588 (Edit Bot, New Bot's Start From lists and the MCP page open on what Hermes gave last time, read-only until it answers, and a save, MCP add or sign-in Hermes took is what they open on next; see Screens that open on their last answer); 2026-10-31, #1568 (a kept bot is never written, Delete included, a bot's face shows from the phone's copy until its fetch lands, its Bot Chat's face and color included, and a deleted bot leaves the kept roster); 2026-10-31, #1567 (the editor's Model page opens on the models kept from Hermes' last answer, picked once Hermes answers, with Try Again after a read that fails; see Model lists that fail to load); 2026-10-28, #1457 (the main bot goes by its Conduit name, see Profile names); 2026-10-28, #1448 (an unnamed bot shows its id capitalized); 2026-10-28, #1413 (a rename here names the profile everywhere, see Profile names); 2026-10-27, at #1395 (the editor's Model page gained search with each match's provider; saving unchanged); 2026-10-25, at #1222 (configure and MCP add wait in the profile config queue); before that #1192; group pictures at #1191.
 
 ## Moving pictures
 
@@ -3186,8 +3187,9 @@ same model and the pick switches to that provider's route.
 picker · the Kanban task's model override · the model sheet's Edit
 (visibility) search (not needed: its matches sit under their provider's name)
 · the Model page's Default, Delegate and Fallback model editors and the voice
-job and voice reply model pickers (not needed: the provider is picked first,
-or the menu row already reads "model · provider") · Text (not needed: no
+job, voice reply, helper and Pulse model menus (not needed: the provider is
+picked first, or the menu opens a provider's models from its name, and the
+row reads "model · provider", see Model lists grouped by provider) · Text (not needed: no
 README, docs or Settings caption describes the pickers)
 
 **Code**
@@ -3206,7 +3208,62 @@ README, docs or Settings caption describes the pickers)
 **Open gaps**
 - A hardware keyboard connected while the sheet is open doesn't turn on the highlight until the sheet opens again.
 
-**Checked:** 2026-10-31, #1567 (the sheet and a bot's picker search the models kept from Hermes' last answer until it answers, their matches waiting for it like their rows, and the sheet says a failed read under its matches); 2026-10-27, at #1395.
+**Checked:** 2026-11-05, #1787 (the menus' models sit under their provider's submenu; a bot's picker closes its providers but its search still lists every match); 2026-10-31, #1567 (the sheet and a bot's picker search the models kept from Hermes' last answer until it answers, their matches waiting for it like their rows, and the sheet says a failed read under its matches); 2026-10-27, at #1395.
+
+## Model lists grouped by provider
+
+A list of every provider's models, shown as its providers, each opened to
+its models when tapped, so a long catalog stays short (Eric 2026-11-05).
+
+**Siblings:** the model sheet (done before: its provider cards open one at a
+time) · a bot's Model page, from New Bot, Edit Bot and Edit Bot > Work's
+Workstream Model (done) · the voice job, voice reply and Helper models menus
+and Settings > Pulse's model menu (done: one shared menu, a submenu per
+provider) · the Model page's Default, Delegate and Fallback model editors
+(not needed: the provider is picked first, then its models) · the Kanban
+model override (done before: a disclosure per provider) · Searching for a
+model (every match still lists, whatever is closed) · Text (not needed: no
+caption describes the lists)
+
+**Code**
+- Bot's Model page: `Conduit/Views/BotModelPicker.swift` (providerRow, expandedProviders, openPickedProvider)
+- Menus: `Conduit/Views/AuxiliaryViews.swift` (ConduitMenuGroup, ConduitMenuPicker's groups), `Conduit/Views/GeminiLiveViews.swift` (VoiceJobModelSettingsSection.modelMenuGroups), used by `Conduit/Views/PulseSettingsViews.swift` (modelSection) and `Conduit/Views/HelperModelViews.swift` (through VoiceReplyModelSettingsSection)
+- Model sheet: `Conduit/Views/ModelPickerView.swift` (providerCard)
+- Tests: `ConduitTests/HermesVoiceConfigurationServiceTests+KeptAnswers.swift` (testAPinnedProviderAndAnEndpointAreShownAndKept)
+
+**Rulings**
+- Providers start closed; a bot's Model page opens the one holding the pick, once, and a menu marks that provider's name with a check (Eric 2026-11-05, #1787).
+- A menu's default choice and a held model the catalog doesn't list sit above the providers, outside any submenu; the row names a pick as "model · provider" (#1787).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-05, #1787 (entry added)
+
+## The + that makes something new
+
+V2's + that starts something new: one 44 pt glass circle, as Bots Home's
+New Bot draws it (Eric 2026-11-05: the Projects + looked different).
+
+**Siblings:** Bots Home's New Bot (done) · Group Chats' New Group Chat (done)
+· the Projects heading's New Project (done, see New project) · a workspace
+folder's Add menu (done, see Workspace files) · the Kanban board's New task
+(gap: its row of square glass buttons, ⋯, Select and Refresh, would need the
+same look together) · the classic drawer's New Chat and New project (not
+needed: the drawer keeps its own style) · menus' "New …" items (not needed:
+menu rows)
+
+**Code**
+- The button: `Conduit/Theme.swift` (V2AddGlyph, V2AddButton)
+- Used by: `Conduit/Views/V2/V2BotsView.swift`, `Conduit/Views/BotRosterView.swift` (homeGroupSection), `Conduit/Views/V2/V2ChatsView.swift` (projectsHeader), `Conduit/Views/V2/V2WorkspaceViews.swift`
+
+**Rulings**
+- A heading's + sits at its end, 16 pt from the edge, as on Bots Home (#1787).
+
+**Open gaps**
+- The Kanban board's New task is still a square glass button with its row.
+
+**Checked:** 2026-11-05, #1787 (entry added)
 
 ## Sharing into Conduit
 
@@ -3951,7 +4008,8 @@ empty state, the filter menu) · the iPad and Mac list (same view) · the
 classic drawer (its New project button and ⋯ menu, its empty state) · the
 Folder tab beside Artifacts (the same plugin route makes its New Folder) ·
 Unread dot on projects (the new project's row takes the dot like any
-other) · README.md
+other) · The + that makes something new (the heading's + is Bots Home's
+glass one) · README.md
 
 **Code**
 - Buttons: `Conduit/Views/V2/V2ChatsView.swift` (projectsHeader, canCreateProject, projectsList's empty state, filterMenu), `Conduit/Views/SidebarView.swift` (the drawer's New project button and menu item)
@@ -3973,7 +4031,7 @@ other) · README.md
 - IDEA.md is checked by a listing, then written by Hermes' own write route: a file another writer puts there between the two is written over. Hermes has no create-only write.
 - The open chat's folder is `runtime.cwd`, which a chat that reports no folder leaves as the last chat's, here as in the Folder tab.
 
-**Checked:** 2026-11-03, #1693.
+**Checked:** 2026-11-05, #1787 (the heading's + is the shared glass one); 2026-11-03, #1693.
 
 ## Pinned chats order
 

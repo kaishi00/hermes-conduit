@@ -843,3 +843,36 @@ struct WindowAccentTint: UIViewRepresentable {
         }
     }
 }
+
+/// V2's + for making something new, as Bots Home's New Bot draws it: a
+/// 44 pt glass circle (New Bot, New Group Chat, the Projects heading's New
+/// Project, a workspace folder's Add), so every + reads as one control.
+struct V2AddGlyph: View {
+    /// A custom button style doesn't dim a disabled label on its own.
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Image(systemName: "plus")
+            .font(.system(size: 17, weight: .semibold))
+            .conduitFixedGlyph()
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+            .conduitGlassControl(cornerRadius: 22, interactive: false)
+            .opacity(isEnabled ? 1 : 0.45)
+    }
+}
+
+/// `V2AddGlyph` as a button, with V2's press feedback.
+struct V2AddButton: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            V2AddGlyph()
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel(Text(title))
+        .macTooltip(title)
+    }
+}

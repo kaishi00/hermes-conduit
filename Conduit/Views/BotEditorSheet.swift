@@ -407,15 +407,23 @@ struct BotEditorSheet: View {
         }
     }
 
+    /// The bot's SOUL.md as one row with its opening lines, edited on a
+    /// page of its own: a long one inline pushed Work and Advanced out of
+    /// sight (Eric 2026-11-05).
     @ViewBuilder
     private var personalitySection: some View {
         Section {
             if isCreating || detailsState == .loaded || keptDetails != nil {
-                // The kept SOUL can't be edited: Hermes' own comes first.
-                TextEditor(text: showsKeptDetails ? Binding.constant(keptDetails?.soul ?? "") : $draft.soul)
-                    .frame(minHeight: 160)
-                    .scaledFont(.callout.monospaced())
-                    .disabled(showsKeptDetails)
+                NavigationLink {
+                    BotSoulEditorPage(
+                        // The kept SOUL can't be edited: Hermes' own comes first.
+                        soul: showsKeptDetails ? Binding.constant(keptDetails?.soul ?? "") : $draft.soul,
+                        isReadOnly: showsKeptDetails,
+                        footer: personalityFooter
+                    )
+                } label: {
+                    personalityPreview(showsKeptDetails ? keptDetails?.soul ?? "" : draft.soul)
+                }
                 if showsKeptDetails, detailsState == .failed {
                     Text(AppLocalization.string("Could not load this bot's personality."))
                         .foregroundStyle(.secondary)
@@ -430,10 +438,33 @@ struct BotEditorSheet: View {
         } header: {
             Text(AppLocalization.string("Personality"))
         } footer: {
-            Text(isCreating
-                ? AppLocalization.string("Optional. Leave empty to start from a short identity built from the name and description.")
-                : AppLocalization.string("Saved as the bot's SOUL.md."))
+            Text(personalityFooter)
         }
+    }
+
+    private var personalityFooter: String {
+        isCreating
+            ? AppLocalization.string("Optional. Leave empty to start from a short identity built from the name and description.")
+            : AppLocalization.string("Saved as the bot's SOUL.md.")
+    }
+
+    /// The row's opening lines of the SOUL, or what an empty one means.
+    private func personalityPreview(_ soul: String) -> some View {
+        let trimmed = soul.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Group {
+            if trimmed.isEmpty {
+                Text(isCreating
+                    ? AppLocalization.string("Built from the name and description")
+                    : AppLocalization.string("Not set"))
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(verbatim: trimmed)
+                    .scaledFont(.callout.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+        }
+        .padding(.vertical, 2)
     }
 
     /// Edit Bot > Work: how the bot's Bot Chat coordinates its work, kept
@@ -477,7 +508,10 @@ struct BotEditorSheet: View {
                             .rotationEffect(.degrees(showsAdvanced ? 90 : 0))
                             .accessibilityHidden(true)
                     }
+                    .contentShape(Rectangle())
                 }
+                // A row like Work's above it, not an accent link.
+                .buttonStyle(.plain)
                 .accessibilityValue(Text(showsAdvanced ? AppLocalization.string("Shown") : AppLocalization.string("Hidden")))
                 if showsAdvanced {
                     if isCreating {
@@ -769,6 +803,51 @@ struct BotEditorSheet: View {
                 onFinished(nil, AppLocalization.string("The model was not saved."), false)
             }
         }
+    }
+}
+
+/// Edit Bot > Personality: the SOUL.md on a page of its own, the whole
+/// height to write in.
+private struct BotSoulEditorPage: View {
+    @Binding var soul: String
+    let isReadOnly: Bool
+    let footer: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // A field the page's height, drawn as the editor's rows are,
+            // so it reads as something to type in.
+            Group {
+                if isReadOnly {
+                    // The kept SOUL, shown until Hermes answers: still
+                    // scrolls and selects, but can't be changed.
+                    ScrollView {
+                        Text(verbatim: soul)
+                            .scaledFont(.callout.monospaced())
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(5)
+                    }
+                    .foregroundStyle(.secondary)
+                } else {
+                    TextEditor(text: $soul)
+                        .scaledFont(.callout.monospaced())
+                        .scrollContentBackground(.hidden)
+                }
+            }
+                .padding(8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            Text(footer)
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle(AppLocalization.string("Personality"))
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

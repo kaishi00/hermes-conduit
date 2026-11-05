@@ -2111,22 +2111,14 @@ struct V2ChatsView: View, Equatable {
     private var projectsHeader: some View {
         HStack(spacing: 0) {
             sectionHeader(AppLocalization.string("Projects"))
-            Button {
+            // Bots Home's glass +, as New Group Chat's heading has it.
+            V2AddButton(title: AppLocalization.string("New Project")) {
                 Haptics.selection()
                 showProjectCreator = true
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(canCreateProject ? Color.conduitAccent : Color.secondary)
-                    .conduitFixedGlyph()
-                    .frame(width: 44, height: 32)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
             .disabled(!canCreateProject)
-            .padding(.trailing, 8)
-            .accessibilityLabel(AppLocalization.string("New Project"))
-            .macTooltip(AppLocalization.string("New Project"))
+            .padding(.trailing, 16)
+            .padding(.vertical, 4)
         }
         .listRowInsets(EdgeInsets())
     }
