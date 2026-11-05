@@ -241,8 +241,10 @@ struct KeptModelCatalog: Equatable {
     private(set) var failed = false
 
     var state: ModelCatalogState { .of(providers: loaded ? providers : nil, failed: failed) }
-    /// A read failed under the kept rows: they stay up, saying so.
-    var keptRowsFailed: Bool { failed && !answered && state == .ready }
+    /// A read failed under the rows shown, kept or from an earlier answer
+    /// (a Refresh models or the read again that failed): they stay up,
+    /// saying so.
+    var keptRowsFailed: Bool { failed && state == .ready }
 
     /// The models Hermes gave last, before the first frame. Nothing kept,
     /// or none, leaves the picker loading.
