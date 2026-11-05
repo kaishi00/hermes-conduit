@@ -85,9 +85,7 @@ extension AppState {
     /// chat's working folder, as Hermes wrote it there.
     func absoluteWorkspacePath(_ path: String) -> String {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.hasPrefix("/") || trimmed.hasPrefix("~") || trimmed.range(of: #"^[A-Za-z]:[\\/]"#, options: .regularExpression) != nil {
-            return trimmed
-        }
+        if Self.isAbsoluteWorkspacePath(trimmed) { return trimmed }
         guard let folder = chatWorkspaceFolder else { return trimmed }
         var relative = trimmed
         while relative.hasPrefix("./") { relative.removeFirst(2) }
@@ -98,10 +96,49 @@ extension AppState {
     /// A file path tapped in a reply: the open chat shows it in the Folder
     /// tab (beside the chat on a wide window, in its Artifacts sheet on a
     /// phone).
+    ///
+    /// A bare name or a relative path (`AppState.swift`) is often not in the
+    /// chat's folder: the folder is unset, or the agent worked elsewhere. The
+    /// plugin finds where the chat's own tool calls had it (issue 1809), and
+    /// says so plainly when the host has no such file.
     func revealWorkspaceFile(_ path: String, line: Int? = nil) {
-        let absolute = absoluteWorkspacePath(path)
-        guard !absolute.isEmpty else { return }
-        workspaceReveal = WorkspaceReveal(path: absolute, line: line)
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        // Each id the open chat goes by; none in a group room, whose tap
+        // opens the projects' folders as before.
+        let ids = activeChatArtifactSessionIDs
+        guard !Self.isAbsoluteWorkspacePath(trimmed), !ids.isEmpty,
+              notifierPlugin.reports(WorkspaceFilesClient.resolveCapability),
+              let owner = currentDashboardRuntimeOwner() else {
+            workspaceReveal = WorkspaceReveal(path: absoluteWorkspacePath(trimmed), line: line)
+            return
+        }
+        let client = workspaceFilesClient(profile: workspaceProfile)
+        let session = activeSessionId
+        Task { @MainActor [weak self] in
+            let found: String?
+            do {
+                found = try await client.resolve(path: trimmed, sessionIDs: ids)
+            } catch {
+                // The lookup failed, not the file: the chat's folder, as before.
+                guard let self, self.ownsDashboardRuntime(owner), self.activeSessionId == session else { return }
+                self.workspaceReveal = WorkspaceReveal(path: self.absoluteWorkspacePath(trimmed), line: line)
+                return
+            }
+            guard let self, self.ownsDashboardRuntime(owner), self.activeSessionId == session else { return }
+            if let found {
+                self.workspaceReveal = WorkspaceReveal(path: found, line: line)
+            } else {
+                let name = (trimmed as NSString).lastPathComponent
+                self.errorMessage = AppLocalization.string("\(name) isn’t on the server. It may have been deleted, or it’s on another computer.")
+            }
+        }
+    }
+
+    /// A path from the top of a disk or a home folder, as opposed to one
+    /// inside a folder.
+    static func isAbsoluteWorkspacePath(_ path: String) -> Bool {
+        path.hasPrefix("/") || path.hasPrefix("~") || path.range(of: #"^[A-Za-z]:[\\/]"#, options: .regularExpression) != nil
     }
 
     /// Hermes finished a tool that may have changed files: an open Folder

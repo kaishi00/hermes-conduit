@@ -137,6 +137,23 @@ extension HermesVoiceGatewayTimeoutTests {
         } catch {}
     }
 
+    func testAReplysFileNameIsResolvedForTheChat() async throws {
+        var asked = ""
+        var answer: [String: Any] = ["ok": true, "path": "/root/audits/Conduit/AppState.swift", "via": "chat"]
+        let client = workspaceClient(answer: { _, _, _ in answer }, requests: { path, method, _ in
+            asked = path
+            XCTAssertEqual(method, "GET")
+        })
+        let found = try await client.resolve(path: "Conduit/App State.swift", sessionIDs: ["live-1", "20261105_a"])
+        XCTAssertEqual(found, "/root/audits/Conduit/AppState.swift")
+        XCTAssertTrue(asked.hasPrefix("/api/plugins/conduit_push/workspace/resolve?path=Conduit%2FApp%20State.swift"), asked)
+        XCTAssertTrue(asked.contains("session_id=live-1&session_id=20261105_a"), asked)
+
+        answer = ["ok": true, "path": NSNull()]
+        let missing = try await client.resolve(path: "gone.md", sessionIDs: ["live-1"])
+        XCTAssertNil(missing, "no such file on the host")
+    }
+
     func testWorkspaceSaveSendsTheDateItWasReadAt() async throws {
         var sent: [String: Any]?
         var path = ""
