@@ -3159,6 +3159,37 @@ task composer and on a task's page)
 
 **Checked:** 2026-11-03, #1684 (Settings > Pulse's picker lists the models of Pulse's profile); 2026-11-01, #1625 (the Helper models pages reuse the voice reply section and its failed row); 2026-11-01, #1616 (a provider's page in Models & providers picks a default only from a catalog Hermes gave since the page opened, and says a failed read with Try Again; the Model sheet's Add a provider row reads the models again when its sheet closes); 2026-10-31, #1588 (from #1584's review, a provider row the Kanban override can't read drops on its own, never the whole roster); 2026-10-31, #1584 (the Kanban model override opens on its kept roster, picked once the plugin answers, and says a failed read with Try Again, closing its gap; from its review, neither the empty roster's note nor the free-text entry shows before the first read answers, and a roster with nothing to offer isn't kept); 2026-10-31, #1567 (the model sheet and a bot's model picker open on the kept models, picked once Hermes answers, and the bot picker's failed read offers Try Again, closing its gap; the voice and Pulse pickers say a failed read with Try Again, the voice reply section's setting read included, closing theirs, and their Model menus wait for Hermes' answer); 2026-10-31, #1563 (the voice and Pulse pickers' loader, loadModelProviders since #1558, and its gap brought up to date; nothing else changed); 2026-10-31, #1555 (a Default model save reads the catalog again for its kept copy; the Save buttons' rule moved to KeptAnswerGate); 2026-10-31, #1552 (the Model page's editors open on a kept catalog, with Try Again under it when the read fails); 2026-10-27, at #1395 (search matches show only once the catalog is in; loading, failed and empty states unchanged, the Kanban composer's included); at #1334 (the model sheet's loading, failed and empty states unchanged under its new error row); 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
 
+## Model lists Hermes is still fetching
+
+Hermes answers a model picker from its cache of each provider's model list,
+and fetches a list that is stale or missing in the background, so a first
+read can list only a provider's built-in models and miss the ones only its
+live list has (issue 1807: Sonnet and Haiku missing beside Opus).
+
+**Siblings:** the model sheet (iPhone, iPad and Mac) · a bot's Model page ·
+the Model page's Default model, Delegate model and Fallback models editors ·
+Models & providers' providers · the voice job and voice reply model pickers
+and the Helper models pages (the voice reply section) · Settings > Pulse's
+model picker · the Kanban model override (not needed: the kanban plugin's
+route waits for the live lists) · Text (not needed: no README, docs or
+Settings caption describes the lists)
+
+**Code**
+- The read again and Refresh models: `Conduit/Views/ModelPickerView.swift` (ModelCatalogSettle, RefreshModelsButton, the model sheet's loadModels and refreshModelsButton), `Conduit/Services/HermesClient.swift` (modelOptionsAnswer's refresh), `Conduit/Services/AppState.swift` (loadModelProviders' refresh)
+- Bots: `Conduit/Views/BotModelPicker.swift` (load, the toolbar's Refresh models)
+- Settings: `Conduit/Views/AuxiliaryViews.swift` (ProfileModelSettingsDetail, DelegationModelSettings and FallbackModelsSettings' tasks), `Conduit/Views/ProviderSettingsViews.swift` (ModelPageProviders' task), `Conduit/Views/GeminiLiveViews.swift` (VoiceJobModelSettingsSection's and VoiceReplyModelSettingsSection's tasks), `Conduit/Views/PulseSettingsViews.swift` (the model picker's task)
+- Tests: `ConduitTests/HermesClientTests.swift` (testRefreshModelsAsksHermesForLiveListsAndAPlainReadDoesNot, testRefreshModelsOnAHermesWithoutTheFlagReadsAgainWithoutIt)
+
+**Rulings**
+- Every model picker reads Hermes' models once more four seconds after it opens, while it's still open, so the lists Hermes fetched meanwhile show without a reopen. A read that fails then is like any other (see Model lists that fail to load); the voice reply section's waits for the page's next check, and Models & providers skips it while a default is being picked.
+- The model sheet and a bot's Model page have Refresh models in their toolbar: Hermes drops its cached lists and fetches every provider's live list before it answers, which can take a while (a 60 s wait), with a spinner in its place meanwhile. The search, the open provider and the checked row stay; a read that fails keeps the models shown, saying so with Try Again. A Hermes that doesn't know the flag answers from its cache. Only the last read asked lands, and the read again skips while a refresh runs (Hermes Desktop's model menu has the same Refresh Models).
+- A provider's models are Hermes' rows as given; the same model from two providers is two rows (see Searching for a model).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-05, #9999 (added: the read again in every model picker, Refresh models in the model sheet and a bot's Model page).
+
 ## The Model sheet's settings
 
 How the composer's Model sheet changes the chat's model, reasoning, speed and

@@ -505,7 +505,12 @@ struct VoiceJobModelSettingsSection: View {
                 .foregroundStyle(.secondary)
         }
         .onAppear { if providers.isEmpty { providers = settings.keptProviders() } }
-        .task { await loadProviders() }
+        .task {
+            await loadProviders()
+            // Hermes fetches a stale provider list in the background
+            // meanwhile (issue 1807).
+            await ModelCatalogSettle.readAgain { await loadProviders() }
+        }
         .onChange(of: selection) { _, _ in save() }
         .onChange(of: reasoning) { _, _ in save() }
     }
@@ -952,7 +957,16 @@ struct VoiceReplyModelSettingsSection: View {
             }
         }
         .onAppear(perform: showKept)
-        .task { await read() }
+        .task {
+            await read()
+            // Hermes fetches a stale provider list in the background
+            // meanwhile (issue 1807); a read that failed waits for the
+            // page's next check, as before.
+            await ModelCatalogSettle.readAgain {
+                guard modelsAnswered else { return }
+                await reloadProviders()
+            }
+        }
         // After a read that failed, the page's next check (its Check again
         // too) asks Hermes again.
         .onChange(of: pageIsChecking) { _, checking in

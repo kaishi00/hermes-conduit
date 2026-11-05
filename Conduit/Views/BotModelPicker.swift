@@ -25,6 +25,10 @@ struct BotModelPicker: View {
     /// long list reads as its providers, except the one holding the pick.
     @State private var expandedProviders: Set<String> = []
     @State private var openedPicked = false
+    /// Refresh models is asking Hermes for every provider's live list.
+    @State private var refreshing = false
+    /// Counts the catalog reads, so only the last one asked lands.
+    @State private var catalogRead = 0
 
     var body: some View {
         // Settings' own page, as Work and Edit Bot that push it.
@@ -85,6 +89,19 @@ struct BotModelPicker: View {
         .searchable(text: $query, prompt: Text(AppLocalization.string("Search providers or models")))
         .navigationTitle(AppLocalization.string("Model"))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                RefreshModelsButton(refreshing: refreshing) {
+                    Task {
+                        guard !refreshing else { return }
+                        refreshing = true
+                        defer { refreshing = false }
+                        await load(refresh: true)
+                    }
+                }
+                .accessibilityIdentifier("botModelPicker.refreshModels")
+            }
+        }
         // What Hermes listed last time, before the first frame; its answer
         // follows.
         .onAppear {
@@ -95,12 +112,25 @@ struct BotModelPicker: View {
         .task {
             guard !catalog.answered else { return }
             await load()
+            // Hermes fetches a stale provider list in the background
+            // meanwhile (issue 1807).
+            await ModelCatalogSettle.readAgain {
+                guard !refreshing else { return }
+                await load()
+            }
         }
     }
 
-    private func load() async {
+    /// `refresh` is Refresh models: Hermes fetches every provider's live
+    /// list first. The search and the pick stay as they are.
+    private func load(refresh: Bool = false) async {
+        catalogRead += 1
+        let read = catalogRead
         catalog.readStarted()
-        if let loaded = await appState.loadModelProviders() {
+        let loaded = await appState.loadModelProviders(refresh: refresh)
+        // A read asked since has the newer answer.
+        guard read == catalogRead else { return }
+        if let loaded {
             catalog.hermesAnswered(Self.pickable(loaded))
             // Hermes' answer can list the pick where the kept one didn't,
             // under the same provider names.

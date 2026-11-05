@@ -2580,7 +2580,12 @@ private struct ProfileModelSettingsDetail: View {
             guard defaults == nil, let keptDefaults = kept() else { return }
             show(keptDefaults)
         }
-        .task { await reload() }
+        .task {
+            await reload()
+            // Hermes fetches a stale provider list in the background
+            // meanwhile (issue 1807).
+            await ModelCatalogSettle.readAgain { await reload() }
+        }
         .onChange(of: refresh) { _, _ in Task { await reload() } }
     }
 
@@ -2731,7 +2736,12 @@ private struct DelegationModelSettings: View {
             guard defaults == nil, let models = keptModels(), let settings = keptSettings(Self.settingKeys) else { return }
             show(models, settings: settings)
         }
-        .task { await reload() }
+        .task {
+            await reload()
+            // Hermes fetches a stale provider list in the background
+            // meanwhile (issue 1807).
+            await ModelCatalogSettle.readAgain { await reload() }
+        }
     }
 
     private func reload() async {
@@ -2944,7 +2954,12 @@ private struct FallbackModelsSettings: View {
             saved = keptEntries
             loaded = true
         }
-        .task { await reload() }
+        .task {
+            await reload()
+            // Hermes fetches a stale provider list in the background
+            // meanwhile (issue 1807).
+            await ModelCatalogSettle.readAgain { await reload() }
+        }
         .onChange(of: refresh) { _, _ in
             Task { if let models = await loadModels() { defaults = models } }
         }

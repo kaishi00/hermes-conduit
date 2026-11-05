@@ -103,7 +103,15 @@ struct ModelPageProviders: View {
             )
         ))
         .onAppear { if catalog == nil { catalog = kept() } }
-        .task { await reloadCatalog() }
+        .task {
+            await reloadCatalog()
+            // Hermes fetches a stale provider list in the background
+            // meanwhile (issue 1807).
+            await ModelCatalogSettle.readAgain {
+                guard !picking else { return }
+                await reloadCatalog()
+            }
+        }
         // Read apart from the catalog, so a slow answer holds only Remove:
         // it names the helper models pinned to a provider as Hermes holds
         // them, not only as this phone last kept them (a read that fails

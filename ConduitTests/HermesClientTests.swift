@@ -1995,6 +1995,69 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    /// Refresh models asks Hermes for every provider's live list (issue
+    /// 1807); a plain read stays on Hermes' cache.
+    func testRefreshModelsAsksHermesForLiveListsAndAPlainReadDoesNot() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        try await advertise(socket, result: [:])
+        let providers: [String: Any] = ["providers": [["slug": "anthropic", "name": "Anthropic", "models": ["claude-sonnet-5-5"]]]]
+
+        var count = socket.sentTexts.count
+        let plain = Task { Self.modelIDs(try await client.modelOptionsAnswer(sessionId: "sess-1")) }
+        let plainParams = try await answerRequest(on: socket, after: count, method: "model.options", result: providers)
+        XCTAssertNil(plainParams["refresh"])
+        XCTAssertEqual(plainParams["session_id"] as? String, "sess-1")
+        _ = try await awaitResult(of: plain, "the plain read")
+
+        count = socket.sentTexts.count
+        let refresh = Task { Self.modelIDs(try await client.modelOptionsAnswer(sessionId: "sess-1", refresh: true)) }
+        let refreshParams = try await answerRequest(on: socket, after: count, method: "model.options", result: providers)
+        XCTAssertEqual(refreshParams["refresh"] as? Bool, true)
+        XCTAssertEqual(refreshParams["explicit_only"] as? Bool, true)
+        let answer = try await awaitResult(of: refresh, "the refresh")
+        XCTAssertEqual(answer, ["claude-sonnet-5-5"])
+        client.disconnect()
+    }
+
+    private static func modelIDs(_ answer: [String: Any]) -> [String] {
+        AppState.modelProviders(in: answer).flatMap { $0.models.map(\.id) }
+    }
+
+    /// A Hermes that doesn't know the flag answers Refresh models from its
+    /// cache rather than failing it.
+    func testRefreshModelsOnAHermesWithoutTheFlagReadsAgainWithoutIt() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        try await advertise(socket, result: [:])
+        var count = socket.sentTexts.count
+        let refresh = Task { Self.modelIDs(try await client.modelOptionsAnswer(refresh: true)) }
+        try await answerRequest(on: socket, after: count, method: "model.options", error: [
+            "code": 4000,
+            "message": "invalid params for model.options: refresh: Extra inputs are not permitted"
+        ])
+        count += 1
+        let again = try await answerRequest(on: socket, after: count, method: "model.options", result: ["providers": []])
+        XCTAssertNil(again["refresh"])
+        _ = try await awaitResult(of: refresh, "the read without the flag")
+        client.disconnect()
+    }
+
+    /// Any other refusal of Refresh models stands: nothing is sent again.
+    func testRefreshModelsRefusedForAnotherReasonFails() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        try await advertise(socket, result: [:])
+        let count = socket.sentTexts.count
+        let refresh = Task { Self.modelIDs(try await client.modelOptionsAnswer(refresh: true)) }
+        try await answerRequest(on: socket, after: count, method: "model.options", error: [
+            "code": 5033, "message": "provider probe failed"
+        ])
+        do {
+            _ = try await awaitResult(of: refresh, "the refused refresh")
+            XCTFail("The refusal stands")
+        } catch is RpcError {}
+        XCTAssertEqual(socket.sentTexts.count, count + 1)
+        client.disconnect()
+    }
+
     func testPromptSentBeforeTheReadyIsResentOnceInTheAuthorityShape() async throws {
         // The prompt goes before the socket's gateway.ready is read; the
         // authority refuses the dashboard's shape before admitting it.

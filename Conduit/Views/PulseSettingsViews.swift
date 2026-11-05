@@ -804,6 +804,9 @@ struct PulseSettingsPage: View {
         // Pulse's profile's models, where its model is set (issue 1681).
         .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(state.profile ?? "")") {
             await loadModels(profile: state.profile)
+            // Hermes fetches a stale provider list in the background
+            // meanwhile (issue 1807).
+            await ModelCatalogSettle.readAgain { await loadModels(profile: state.profile) }
         }
     }
 
