@@ -3988,15 +3988,15 @@ Screen widget's and the Share extension's pickers, the home voice button's
 Recent menu) · the Archived sheet · README.md
 
 **Code**
-- Setting, its default and hidden projects: `Conduit/Models/ChatListSections.swift` (ProjectChatsInChats, deviceDefaultKey, settleDefault, HiddenChatProjects)
-- Old installs keep Off: `Conduit/Services/AppState.swift` (init, after the dashboard registry loads)
+- Setting, its default and hidden projects: `Conduit/Models/ChatListSections.swift` (ProjectChatsInChats, retiredDeviceDefaultKey, HiddenChatProjects)
+- The retired older-install Off, cleared at launch: `Conduit/Services/AppState.swift` (init, after the dashboard registry loads)
 - List and menu: `Conduit/Views/V2/V2ChatsView.swift` (mainListShows, uncachedFilterRows, projectsFilterMenu, projectToggle, hiddenProjectCount, shownHiddenProjectCount, hidesEverything, selectionTitles, searchCapsule)
 - Project of a row: `Conduit/Services/AppState.swift` (knownProjectID: the chats the project tree previews)
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (Project chats section)
 - Sync: `Conduit/Services/AppState+SyncedPreferences.swift` (app.project_chats, hiddenChatProjectsSlot as app.hidden_chat_projects)
 
 **Rulings**
-- Recent is the default for a new install; a phone signed in before the change keeps Off, set once at launch from its saved dashboards or connection (a launch that can't read the dashboard registry, on a locked phone, leaves it to a later one), and a choice already made stays (2026-10-26, #1317, Eric). That default is the device's own (`deviceDefaultKey`), never the synced choice, so it can't overwrite a choice made on another device; a synced choice wins over it.
+- Recent is the default on every install that hasn't picked one, an install from before #1317 included; a choice made on any device (the synced `app.project_chats`) stays. #1317 kept Off on older installs (2026-10-26, Eric), which left a user whose day was all in projects with no Today in Chats and no way to find the day's chats there (issue 1583); that device-only Off is read no more and is cleared at launch (2026-11-05, issue 1583, #PRNUM, Eric).
 - Filter ▸ Projects is a multi-select with every project ticked to start, Home's chats standing in for the ones in no project ("Not in a project" without a Home). It narrows every filter, is kept per profile, and All doesn't clear it; the gold chip names it and its × shows every project again (2026-10-26, #1317, Eric picked a menu over a switch on each project). The chip counts projects ("2 projects hidden") and names Home on its own ("Home hidden", or "Chats outside projects hidden" without a Home), since Home's chats are in no project (Eric, 2026-10-26, #1328).
 - A pinned chat stays listed whatever is hidden, and a search looks through every chat, a hidden project's too, as it does with the setting at Off (#708).
 - A hidden project's chat that waits for approval leaves the list like its other chats, but the filter's amber dot and its spoken count still count it, and Needs approval lists it (its count too), so hiding a project never keeps a wait from the dot out of Needs approval (2026-10-26, #1322; Needs approval in #1328, Eric). Starred and the sources still narrow Needs approval as they narrow every filter, while the dot counts every wait; that predates hidden projects.
@@ -4009,7 +4009,7 @@ Recent menu) · the Archived sheet · README.md
 - Until the profile's projects load, nothing is hidden: every chat would read as one in no project.
 - A row's project comes from the chats the project tree previews, so a project chat beyond its preview counts as in no project: it shows with the setting at Off, and hides with "Not in a project".
 
-**Checked:** 2026-10-26, #1328.
+**Checked:** 2026-11-05, #PRNUM (Recent for every install that hasn't picked; siblings: the list with no filter and All profiles follow the setting as before; Settings caption, README and Sync unchanged, as the choices and their wording are); 2026-10-26, #1328.
 
 ## All profiles in Chats
 

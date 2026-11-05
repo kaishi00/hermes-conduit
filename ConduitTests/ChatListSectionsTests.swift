@@ -135,30 +135,21 @@ extension SessionNestingModelTests {
         XCTAssertEqual(ProjectChatsInChats.stored("hidden"), .hidden)
     }
 
-    /// Recent is the default for a new install; one signed in before
-    /// keeps the Off it had, once, and a choice saved on any device wins.
-    /// The default stays on the device: the synced choice is never written
-    /// (#1317).
-    func testProjectChatsDefaultSettlesOnceAndKeepsOlderInstallsOff() {
+    /// Recent unless a choice was made, on any device, an install from
+    /// before #1317 included: the Off #1317 kept for it on the device is
+    /// read no more (issue 1583).
+    func testProjectChatsDefaultIsRecentUnlessChosen() {
         let suite = "ChatListSectionsTests.projectChats.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        ProjectChatsInChats.settleDefault(in: defaults, existingInstall: true)
+        defaults.set(ProjectChatsInChats.hidden.rawValue, forKey: ProjectChatsInChats.retiredDeviceDefaultKey)
+        XCTAssertEqual(ProjectChatsInChats.stored(in: defaults), .recent)
+        // A choice, synced from another device or made here, wins.
+        defaults.set(ProjectChatsInChats.hidden.rawValue, forKey: ProjectChatsInChats.key)
         XCTAssertEqual(ProjectChatsInChats.stored(in: defaults), .hidden)
-        XCTAssertEqual(ProjectChatsInChats.deviceDefault(in: defaults), .hidden)
-        XCTAssertNil(defaults.object(forKey: ProjectChatsInChats.key))
-        // A choice synced from another device wins over the default.
         defaults.set(ProjectChatsInChats.all.rawValue, forKey: ProjectChatsInChats.key)
         XCTAssertEqual(ProjectChatsInChats.stored(in: defaults), .all)
-
-        defaults.removePersistentDomain(forName: suite)
-        ProjectChatsInChats.settleDefault(in: defaults, existingInstall: false)
-        XCTAssertEqual(ProjectChatsInChats.stored(in: defaults), .recent)
-        // Signing in later doesn't make it an older install.
-        ProjectChatsInChats.settleDefault(in: defaults, existingInstall: true)
-        XCTAssertEqual(ProjectChatsInChats.stored(in: defaults), .recent)
-        XCTAssertNil(defaults.object(forKey: ProjectChatsInChats.key))
     }
 
     /// Filter > Projects keeps each profile's hidden projects apart, and a
