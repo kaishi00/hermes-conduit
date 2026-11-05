@@ -1795,7 +1795,10 @@ private struct ProjectSessionsSheet: View {
     /// Read through the profile in use, and named by it.
     private func loadDetail() async {
         let profile = appState.activeProfile
-        detail = await appState.loadProjectSessions(project)
+        // A failed re-read (the profile changed under the sheet) keeps
+        // what it listed rather than blanking it.
+        guard let read = await appState.loadProjectSessions(project) else { return }
+        detail = read
         detailProfile = profile
     }
 

@@ -542,7 +542,7 @@ describes it
 **Code**
 - Keeping the row: `Conduit/Services/AppState.swift` (newChatAwaitingListing, set in createAndReconcileSession for createNewSession; newChatRowAwaitingListing and settleNewChatAwaitingListing, in loadSessions and syncSession's catalog; chatListListedIDs; knownProjectID; loadProjectSessions, quiet when a newer read cancels it), `Conduit/Services/ChatSync.swift` (NewChatAwaitingListing)
 - The create, for either server: `Conduit/Services/HermesClient.swift` (createSession, createParams)
-- Project page: `Conduit/Views/V2/V2ProjectPage.swift` (lanes, the task keyed on chatListCatalogGeneration)
+- Project page: `Conduit/Views/V2/V2ProjectPage.swift` (ownLanes, the task keyed on chatListCatalogGeneration)
 - Tests: `ConduitTests/SessionRenameTests.swift` (testANewChatStaysListedWhileOpenUntilHermesListsIt, testANewChatLeftEmptyLeavesTheList, testANewChatBelongsToTheProjectItStartedIn, testANewChatGoesOnTopOfItsFoldersLaneOnAProjectPage)
 
 **Rulings**
@@ -550,12 +550,12 @@ describes it
 - Only a chat someone started (createNewSession): one a sync starts because there was nothing to resume waits for Hermes, as before.
 - It still counts as unlisted for the registry poll, so the poll reads the catalog in for it as for a chat started on another device. A first turn that compressed lists it under a new tip, matched by its lineage root.
 - It is marked as the open chat beside the list, though it is open by its runtime id: the row by any of its ids, Hermes' row by the stored id the create confirmed (The open chat in the list beside it).
-- A project's page shows it on top of the lane of the folder it started in (Hermes names that folder in the lane's path, or in its label when the two are one), else in a new Recent lane on top; Home's page shows a plain chat in a Recent lane. The page reads Hermes' list again whenever the chats list changes, from a list read or a chat sync. It follows while it stays beside the chat (2026-10-28, #1456).
+- A project's page shows it, while the page's profile is the one in use (a chat started after a switch is the other profile's, which that profile's read lists: Whose project page), on top of the lane of the folder it started in (Hermes names that folder in the lane's path, or in its label when the two are one), else in a new Recent lane on top; Home's page shows a plain chat in a Recent lane. The page reads Hermes' list again whenever the chats list changes, from a list read or a chat sync. It follows while it stays beside the chat (2026-10-28, #1456).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-02, #1631 (every create goes through createSession, which on the gateway's own listener sends `source: gui`, `reasoning` and `service_tier` and no `cols`; a folder's `cwd` is within its create fields, checked against the canary's session_policy; see Two Hermes servers); 2026-10-28, added at #1456.
+**Checked:** 2026-11-05, #1773 (the project page shows it only while the page's profile is in use); 2026-11-02, #1631 (every create goes through createSession, which on the gateway's own listener sends `source: gui`, `reasoning` and `service_tier` and no `cols`; a folder's `cwd` is within its create fields, checked against the canary's session_policy; see Two Hermes servers); 2026-10-28, added at #1456.
 
 ## An empty new chat Hermes lost
 
@@ -3860,6 +3860,7 @@ row beside the list · VoiceOver · README.md
 
 **Open gaps**
 - The Running and approval signals on other profiles' rows follow the profile in use only, as in All.
+- With Settings › Appearance › Main button swapped, the page's gold button starts in the profile in use without asking which, as it does everywhere (it starts calls and chats, not a profile choice).
 - The classic drawer's sheet lists the profile in use's chats and names it; it doesn't gather profiles, as the classic drawer has no All.
 - A project with several folders matches by its main folder only: the project tree gives Conduit no others.
 
