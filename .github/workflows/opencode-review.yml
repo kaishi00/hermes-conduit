@@ -333,7 +333,9 @@ jobs:
       # first gets a one-line test request with its key, so a key at its
       # usage limit (a 429, or any other refusal) or a secret that isn't set
       # moves on at once: opencode would wait out a limit's retry-after,
-      # hours away. A review gets REVIEW_MINUTES; one that runs past it moves
+      # hours away. A review gets REVIEW_MINUTES when another model follows
+      # it in the chain (the last model, or a chain of one, gets whatever
+      # is left, since nothing would replace it); one that runs past it moves
       # on to the next key when its key now refuses (the limit hit
       # mid-review), and otherwise to the next model, since the model was
       # the slow part. A failed review moves on too: opencode posts nothing
@@ -412,7 +414,11 @@ jobs:
               if [ "$left" -lt 120 ] && [ "$left" -lt "$review_seconds" ]; then
                 say "Stopped before $what: the chain's $CHAIN_MINUTES minutes are nearly up."; break
               fi
-              limit=$((left < review_seconds ? left : review_seconds))
+              limit=$left
+              # Only a model with another model after it is cut short.
+              if jq -e --argjson i "$i" --arg n "$name" '.[$i + 1:] | any(.name != $n)' <<<"$CHAIN" >/dev/null; then
+                limit=$((left < review_seconds ? left : review_seconds))
+              fi
               say "Reviewing with $what."
               status=0
               env "$var=$value" MODEL="$model" PROMPT="${PROMPT//'{reviewer}'/$name}" \

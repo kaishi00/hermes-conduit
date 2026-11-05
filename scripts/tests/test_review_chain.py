@@ -57,6 +57,7 @@ case "$what" in
   ok) exit 0 ;;
   fail) exit 1 ;;
   hang) exec sleep 30 ;;
+  slow) sleep 4; exit 0 ;;
 esac
 """
 
@@ -176,6 +177,14 @@ class ReviewChainTests(unittest.TestCase):
                                              ("commandcode/deepseek/deepseek-v4.1-flash", "cc2", "fail")])
         labels = [line.split("label: ", 1)[1] for line in log if line.startswith("review ")]
         self.assertEqual(labels, ["Review by DeepSeek V4.1 Flash."] * 4 + ["Review by Beam."])
+
+    def test_the_last_model_isnt_cut_short(self):
+        # A chain of one has nothing to fall back to, so a slow GLM review
+        # gets the chain's whole budget, not REVIEW_MINUTES (1.8 s here).
+        tmp_runs = [("zai-custom/glm-5.3-flash", "zai", "slow")]
+        run, log, out = self.run_chain(reviewer="GLM-5.3-Flash", runs=tmp_runs, chain_minutes="0.2")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertEqual(out["model"], "zai-custom/glm-5.3-flash")
 
     def test_only_the_attempts_key_reaches_opencode(self):
         run, log, out = self.run_chain(codes=[("go1", 429)])
