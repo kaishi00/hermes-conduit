@@ -704,7 +704,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// The call's jobs waiting on the user's OK for a command.
     var jobsWaitingOnApproval: [UUID] {
-        jobs.filter { $0.status == .needsInput && $0.waitingApproval != nil }.map(\.id)
+        // A request the call let go of (its chat deleted, or a hang-up's) is no longer the call's.
+        jobs.filter { $0.status == .needsInput && $0.waitingApproval != nil && !$0.isDetachedThreadTurn }.map(\.id)
     }
 
     /// Answers the approval `jobID` waits on, `once` or `deny`, as its card
@@ -740,7 +741,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// The call's jobs waiting on the user's answer to a question.
     var jobsWaitingOnQuestion: [UUID] {
         jobs.filter { job in
-            job.status == .needsInput && job.waitingQuestion.flatMap { HermesCallWaiting(clarify: $0) } != nil
+            job.status == .needsInput && !job.isDetachedThreadTurn
+                && job.waitingQuestion.flatMap { HermesCallWaiting(clarify: $0) } != nil
         }.map(\.id)
     }
 
@@ -1451,11 +1453,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         // A job on the call's own bot (unnamed, or naming it) keeps the voice-job
         // model chosen for that bot, as an unnamed job on the phone's does.
         var callsOwnModel = callsModel
+        // A Bot Chat call whose chat was deleted stays on its bot (issue 1797).
+        let callsBot = liveThread?.profile ?? (liveThread == nil ? deletedLiveThread?.profile : nil)
         switch routed {
         case .run(let task, let target, let label):
             // A Bot Chat call's job runs on its bot, as the coordinator's own.
-            (instructions, profile, profileLabel) = (task, target ?? liveThread?.profile, label)
-            if target == nil || target == liveThread?.profile { callsOwnModel = true }
+            (instructions, profile, profileLabel) = (task, target ?? callsBot, label)
+            if target == nil || target == callsBot { callsOwnModel = true }
         case .unknown(let spokenProfile):
             // A named target that isn't a known profile is never guessed at.
             return AppLocalization.string("I don't know a profile or bot called \(spokenProfile), so I didn't start the job.")
@@ -1478,7 +1482,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         anchored.number = lastJobNumber
         jobs.append(anchored)
         onJobCreated?(job.id)
-        if joinsCall, profile == nil, liveThread == nil, callChatClaim == nil, let callID = liveCallID {
+        if joinsCall, profile == deletedLiveThread?.profile, liveThread == nil, callChatClaim == nil, let callID = liveCallID {
             callChatClaim = (job.id, callID)
             // Marked before Hermes can answer, so a reply that beats the
             // adoption is still matched against replays.
@@ -1643,7 +1647,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
         guard generation == self.generation, job(jobID)?.status == .starting else { return }
         do {
-            let runtimeID = try await backend.resolveThreadRuntime(chat)
+            let runtimeID = try await resolveRuntime(of: chat)
             guard generation == self.generation, job(jobID)?.status == .starting else { return }
             let request = job(jobID)?.instructions ?? ""
             update(jobID) {
@@ -1671,14 +1675,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// job's own call runs and nothing is attached yet, and only for a job
     /// on the profile in use that Hermes took.
     private func adoptCallChat(_ jobID: UUID) {
-        guard liveThread == nil, liveCallID != callChatClosedCallID, let job = job(jobID), job.profile == nil,
+        // A Bot Chat call whose chat was deleted takes its next chat on that bot.
+        guard liveThread == nil, liveCallID != callChatClosedCallID, let job = job(jobID), job.profile == deletedLiveThread?.profile,
               let callID = job.callAnchor?.callID, callID == liveCallID, liveCallTranscript?() != nil,
               let runtimeID = job.runtimeSessionID, !runtimeID.isEmpty else { return }
         switch job.status {
         case .failed, .cancelled: return
         case .starting, .running, .needsInput, .finished: break
         }
-        let thread = VoiceThreadTarget(runtimeSessionID: runtimeID, storedSessionID: job.storedSessionID, title: job.title)
+        let thread = VoiceThreadTarget(runtimeSessionID: runtimeID, storedSessionID: job.storedSessionID, title: job.title, profile: job.profile)
+        // Deleted while its job was starting (issue 1797).
+        guard !isDeletedChat(thread) else { return }
         callChatJobID = jobID
         update(jobID) { $0.isCallChat = true }
         liveThread = thread
@@ -1940,8 +1947,99 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         while dropped < 256, takePendingNotice() != nil { dropped += 1 }
     }
 
+    /// Chats deleted while the app ran, by any of their ids: here, from
+    /// another profile's row, or found gone when a call's turn went to
+    /// resume one (a Desktop delete). A call never pins one again (issue 1797).
+    private var deletedChatIDs: Set<String> = []
+
+    /// The chat the call was attached to until it was deleted: the call's
+    /// new chat is made on its bot. Cleared when the call leaves.
+    private(set) var deletedLiveThread: VoiceThreadTarget?
+
+    /// Whether `chat` was deleted (`noteChatDeleted`).
+    func isDeletedChat(_ chat: VoiceThreadTarget) -> Bool {
+        [chat.runtimeSessionID, chat.storedSessionID].compactMap { $0 }.contains { deletedChatIDs.contains($0) }
+    }
+
+    /// The chat `sessionIDs` name was deleted. A call attached to it lets go
+    /// of it but stays open to a new one: unlike a hang-up, the call's next
+    /// ordinary request makes a chat and the call goes on there, as a call
+    /// that started with none does (#1250). Turns still queued for the
+    /// deleted chat fail when they find it gone, and are said so; one
+    /// already in it is let go of, as at a hang-up.
+    func noteChatDeleted(_ sessionIDs: Set<String>) {
+        let ids = sessionIDs.filter { !$0.isEmpty }
+        guard !ids.isEmpty else { return }
+        deletedChatIDs.formUnion(ids)
+        // A call's request already running in the deleted chat (a Watch
+        // call's later requests included, which have no liveThread) is let
+        // go of, as at a hang-up: its end, its OK or its question is never
+        // said to the call nor counted against a bare yes. One still
+        // starting fails when it finds the chat gone, and is said so.
+        for index in jobs.indices where !jobs[index].isDetachedThreadTurn && !jobs[index].isThreadTurn
+            && (jobs[index].callAnchor != nil || jobs[index].isCallChat || jobs[index].sharesCallChat)
+            && (jobs[index].status == .running || jobs[index].status == .needsInput)
+            && [jobs[index].runtimeSessionID, jobs[index].storedSessionID].compactMap({ $0 }).contains(where: ids.contains) {
+            jobs[index].outcomeDelivered = true
+            jobs[index].isDetachedThreadTurn = true
+            jobs[index].settledByPoll = false
+        }
+        guard let thread = liveThread, ids.contains(where: { backend.threadOwnsSession(thread, $0) }) else { return }
+        deletedLiveThread = thread
+        liveThread = nil
+        // Its bot still hears the call left it, as at a hang-up, so nothing
+        // it holds for the call waits on.
+        if let kept = keptCallChat {
+            keptCallChat = nil
+            backend.callLeftChat(kept.profile, kept.chat, kept.call)
+        }
+        // The request whose chat it was is let go of, as at a hang-up: a
+        // later adoption replaces callChatJobID, and neither its outcome
+        // nor a question or approval it waits on is said to this call or a
+        // later one.
+        if let id = callChatJobID, let index = jobs.firstIndex(where: { $0.id == id }) {
+            jobs[index].outcomeDelivered = true
+            jobs[index].isDetachedThreadTurn = true
+            jobs[index].settledByPoll = false
+        }
+        // A turn already in there never finds the chat gone: it is let go of
+        // too, as at a hang-up, so its end, its OK or its question is never
+        // said to the call nor counted against a bare yes. Turns still
+        // queued fail when they find it gone, and are said so.
+        for index in jobs.indices where jobs[index].isThreadTurn && !jobs[index].isDetachedThreadTurn
+            && jobs[index].threadTurnSubmitted
+            && threadTargets[jobs[index].id].map({ Self.sameChat($0, thread) }) == true {
+            jobs[index].outcomeDelivered = true
+            jobs[index].isDetachedThreadTurn = true
+            jobs[index].settledByPoll = false
+        }
+        callChatJobID = nil
+        callChatClaim = nil
+        chatNotes.removeAll()
+        callChatPrompts.removeAll()
+        notedChatTurns.removeAll()
+        lastUnidentifiedChatReply = nil
+    }
+
+    /// The runtime `chat`'s next turn runs on. A chat Hermes has no session
+    /// for any more (deleted in Desktop, say) is noted as deleted, so the
+    /// call's next request makes a new one; this turn still fails.
+    private func resolveRuntime(of chat: VoiceThreadTarget) async throws -> String {
+        let generation = generation
+        do {
+            return try await backend.resolveThreadRuntime(chat)
+        } catch {
+            // Not after a reset: that answer is an earlier scope's.
+            if generation == self.generation, HermesClient.isSessionNotFoundError(error) {
+                noteChatDeleted(Set([chat.runtimeSessionID, chat.storedSessionID].compactMap { $0 }))
+            }
+            throw error
+        }
+    }
+
     func detachLiveThread() {
         liveThread = nil
+        deletedLiveThread = nil
         if let kept = keptCallChat {
             keptCallChat = nil
             backend.callLeftChat(kept.profile, kept.chat, kept.call)
@@ -2072,7 +2170,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             // the rest. Its settling pumps the queue again. A turn left
             // running in another chat (an earlier call's) doesn't.
             let chatHasSentTurn = jobs.contains { job in
-                job.isThreadTurn && job.threadTurnSubmitted && job.status.isActive
+                job.isThreadTurn && job.threadTurnSubmitted && job.status.isActive && !job.isDetachedThreadTurn
                     && threadTargets[job.id].map { Self.sameChat($0, thread) } == true
             } || callChatJobRuns(in: thread)
             if chatHasSentTurn { return }
@@ -2086,7 +2184,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             do {
                 // The runtime id is known before the send, so none of the
                 // turn's events arrive under an id it doesn't own yet.
-                let target = try await backend.resolveThreadRuntime(thread)
+                let target = try await resolveRuntime(of: thread)
                 guard generation == self.generation else { return }
                 if !target.isEmpty { update(next.id) { $0.runtimeSessionID = target } }
                 // Resolving can suspend (a resume): a turn that started in
@@ -2397,6 +2495,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         callChatJobID = nil
         callChatClaim = nil
         callChatClosedCallID = nil
+        deletedChatIDs.removeAll()
+        deletedLiveThread = nil
         liveCallID = nil
         liveCallStartedAt = nil
         callOpening = nil

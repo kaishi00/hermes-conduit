@@ -419,6 +419,30 @@ final class LocalLiveTurnRunner {
         onDone?(turnID)
     }
 
+    /// Where a call's next turn runs: the chat the call is attached to, or
+    /// else the one it made for itself, while `runtime` finds it (nil: the
+    /// chat was deleted); else a chat `create` makes on the profile of the
+    /// chat it lost, kept as the call's own for the rest of the call (issue
+    /// 1797). `own` is the call's own chat after this turn.
+    static func callChat(
+        attached: VoiceThreadTarget?,
+        own: VoiceThreadTarget?,
+        runtime: @MainActor (VoiceThreadTarget) async throws -> String?,
+        create: @MainActor (_ profile: String?) async throws -> VoiceThreadTarget
+    ) async throws -> (chat: Chat, own: VoiceThreadTarget?) {
+        var profile: String?
+        if let attached {
+            if let runtimeID = try await runtime(attached) { return (Chat(runtimeID: runtimeID, profile: attached.profile), own) }
+            profile = attached.profile
+        }
+        if let own {
+            if let runtimeID = try await runtime(own) { return (Chat(runtimeID: runtimeID, profile: own.profile), own) }
+            profile = own.profile
+        }
+        let made = try await create(profile)
+        return (Chat(runtimeID: made.runtimeSessionID, profile: made.profile), made)
+    }
+
     // Spoken to the user by their speech server.
     static var busyLine: String {
         AppLocalization.string("Hermes is still busy in this chat. Try again in a moment.")

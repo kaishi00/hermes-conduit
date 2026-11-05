@@ -2092,6 +2092,20 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.created, 1)
     }
 
+    func testGPTLiveDoesNotSayTheEndOfARequestWhoseChatWasDeleted() async {
+        let fake = FakeVoiceJobBackend()
+        let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")
+        let bridge = GPTLiveDelegationBridge(supervisor: supervisor)
+        _ = await bridge.handleDelegation(id: "del_1", request: "find flights to Paris")
+        await waitForFollowUpState { supervisor.jobs.first?.status == .running }
+
+        supervisor.noteChatDeleted(["st-chat"])
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Three flights.", reasoning: nil))
+        let updates = bridge.pendingUpdates()
+        XCTAssertFalse(updates.contains { if case .delegationReply(_, _, .speakable) = $0 { return true }; return false }, "\(updates)")
+    }
+
     func testGPTLiveDelegationWhileTheCallsChatRequestRunsGoesIntoIt() async {
         let fake = FakeVoiceJobBackend()
         let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))

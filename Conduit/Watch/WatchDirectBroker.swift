@@ -1857,7 +1857,11 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
         }
         let joins = joinsCall && (profile ?? "").isEmpty
         var waited = false
-        while joins, callChat == nil, startingCallChat {
+        while true {
+            // Its chat was deleted, before or while this request waited: this
+            // request makes the call a new one (issue 1797).
+            if let chat = callChat, base.isDeletedChat(chat) { callChat = nil }
+            guard joins, callChat == nil, startingCallChat else { break }
             waited = true
             await withCheckedContinuation { callChatWaiters.append($0) }
         }
@@ -1895,7 +1899,9 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
             switch job.status {
             case .failed, .cancelled: break
             case .starting, .running, .needsInput, .finished:
-                callChat = VoiceThreadTarget(runtimeSessionID: runtimeID, storedSessionID: job.storedSessionID, title: job.title, profile: callProfile)
+                let chat = VoiceThreadTarget(runtimeSessionID: runtimeID, storedSessionID: job.storedSessionID, title: job.title, profile: callProfile)
+                // Not one deleted while its job was starting (issue 1797).
+                if !base.isDeletedChat(chat) { callChat = chat }
             }
         }
         return reply
