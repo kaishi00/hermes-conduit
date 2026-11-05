@@ -710,6 +710,7 @@ final class HermesNativeCalls: NSObject {
                 HermesCallTrace.shared.note(settled.outcome == .answered ? "Answered on the Watch" : "Declined on the Watch")
                 finish(match.key, reason: reason, notice: settled.outcome == .answered ? .none : .missed, end: .elsewhere(settled.outcome))
             }
+            if match == nil { declinedOnWatch(settled, record: record) }
             if let start = settled.start {
                 startWatchCall(start, ringID: settled.id, ring: match?.value.ring ?? record?.ring, target: match?.value.target ?? record?.target, sentAt: match?.value.sentAt ?? record?.sentAt)
             }
@@ -741,6 +742,7 @@ final class HermesNativeCalls: NSObject {
                     }
                 } else {
                     self.provider?.reportCall(with: id, endedAt: Date(), reason: reason)
+                    self.declinedOnWatch(settled, record: record)
                 }
                 if let start = settled.start {
                     self.startWatchCall(start, ringID: settled.id, ring: match?.value.ring ?? record?.ring, target: match?.value.target ?? record?.target, sentAt: match?.value.sentAt ?? record?.sentAt)
@@ -761,11 +763,20 @@ final class HermesNativeCalls: NSObject {
         let log = WatchVoiceLink.shared.log
         func failed(_ why: String) {
             HermesCallTrace.shared.note("The Watch's answer couldn't be handed its session (\(why))")
+            // Answered here meanwhile: the user is on the call, not missing it.
+            guard !calls.contains(where: { $0.value.ring?.id == ringID && $0.value.answered }) else { return }
             missedOnWatch(target, sentAt: sentAt)
         }
         guard let ring else {
             log.note("watchAnswerHandoff", ["ok": false, "why": "unknownRing"])
             failed("unknownRing")
+            return
+        }
+        // A dashboard Conduit can't read fails closed: no session is built
+        // for a call it can't place on a dashboard.
+        guard target?.hasMalformedDashboardID != true else {
+            log.note("watchAnswerHandoff", ["ok": false, "why": "unrecognizedDashboard"])
+            failed("unrecognizedDashboard")
             return
         }
         guard let key = HermesRingHandoffKey.load() else {
@@ -796,9 +807,13 @@ final class HermesNativeCalls: NSObject {
             if case .callRefused(_, _)? = try? JSONDecoder().decode(WatchVoiceWire.Message.self, from: data) { refused = true } else { refused = false }
             Task { @MainActor in
                 var status = await HermesRingHandoff.store(ring, sealed: sealed)
-                // No answer, or a relay that faltered: once more, since a lost
-                // response may still have stored it (a store replaces).
-                if status == 0 || status >= 500 { status = await HermesRingHandoff.store(ring, sealed: sealed) }
+                // No answer, a busy relay or one that faltered: once more, as
+                // the kept call's store does, since a lost response may still
+                // have stored it (a store replaces).
+                if status == 0 || status == 429 || (500..<600).contains(status) {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    status = await HermesRingHandoff.store(ring, sealed: sealed)
+                }
                 log.note("watchAnswerHandoff", [
                     "ok": status == 200,
                     "status": status,
@@ -820,9 +835,27 @@ final class HermesNativeCalls: NSObject {
     /// wasn't taken. A ring this phone has no record of says only that
     /// Hermes called, and Hermes can't be told: nothing names the call.
     private func missedOnWatch(_ target: ConduitNotificationTarget?, sentAt: Date?) {
-        // A dashboard Conduit can't read routes nowhere: the plain notice.
-        post(target == nil || target?.hasMalformedDashboardID == true ? .unreadable : .missed, for: target)
+        post(Self.watchMissedNotice(for: target), for: target)
         report(.missed, for: target, sentAt: sentAt)
+    }
+
+    /// Declined on the Watch, with no call here to finish: Conduit was
+    /// started afresh by the stop. The ring's record leaves the missed call a
+    /// decline here does, and Hermes hears it was declined (#1780).
+    private func declinedOnWatch(_ settled: HermesRingSettled, record: HermesRingRecords.Entry?) {
+        guard settled.by == .watch, settled.outcome == .declined, let record else { return }
+        HermesCallTrace.shared.note("Declined on the Watch")
+        let target = record.target
+        post(Self.watchMissedNotice(for: target), for: target)
+        report(.declined, for: target, sentAt: record.sentAt)
+    }
+
+    /// The notice a call the Watch settled leaves when this phone has no
+    /// call for it: the call's own, or, with no record of it or a dashboard
+    /// Conduit can't read (it routes nowhere), the plain one.
+    nonisolated static func watchMissedNotice(for target: ConduitNotificationTarget?) -> HermesNativeCallPlan.Notice {
+        guard let target, !target.hasMalformedDashboardID else { return .unreadable }
+        return .missed
     }
 
     // MARK: Kept from the Watch (#1204)
@@ -1036,7 +1069,14 @@ final class HermesNativeCalls: NSObject {
                 self.finish(id, reason: .answeredElsewhere, notice: .none, end: .elsewhere(.answered))
             }
         }
-        return HermesRingRecords.entry(ringID: ringID, in: ringRecords)?.target
+        guard let target = HermesRingRecords.entry(ringID: ringID, in: ringRecords)?.target else { return nil }
+        // A dashboard Conduit can't read fails closed: the call isn't run on
+        // the one open here.
+        guard !target.hasMalformedDashboardID else {
+            HermesCallTrace.shared.note("Answered on the Watch, for a dashboard Conduit can't read")
+            return nil
+        }
+        return target
     }
 
     /// Tells the relay how this phone settled the ring, with the time to

@@ -1213,7 +1213,9 @@ extension VoiceConversationControllerTests {
 
     func testARingRecordOutlivesTheProcessThatRangSoAWatchAnswerCanBeHandedOff() throws {
         // A stop that launches Conduit afresh reads the record the call push
-        // left: a new UserDefaults on the same suite has no memory of the write.
+        // left. A second UserDefaults on the suite reads it as a relaunch
+        // would; in one process the two share a cache, so surviving a kill
+        // itself is left to the device check.
         let suite = "HermesCallsTests.ringRecords.\(UUID().uuidString)"
         addTeardownBlock { UserDefaults.standard.removePersistentDomain(forName: suite) }
         let now = Date()
@@ -1230,8 +1232,11 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(target.durableSessionID, "st-1")
         XCTAssertEqual(target.dashboardID, UUID(uuidString: "6F9619FF-8B86-D011-B42D-00C04FC964FF"))
         XCTAssertEqual(target.call, outcomeTarget().call, "The call it rang for: a missed call and its outcome name it")
-        XCTAssertNotNil(HermesCallNotifications.callRequest(for: target, missed: true), "A failed handoff can post the missed call")
-        XCTAssertNotNil(HermesCallOutcomeOutbox.Entry(.missed, target: target, at: now), "and tell Hermes it wasn't taken")
+        XCTAssertEqual(HermesNativeCalls.watchMissedNotice(for: target), .missed, "A failed handoff posts the call's own missed call")
+        XCTAssertNotNil(HermesCallNotifications.callRequest(for: target, missed: true))
+        XCTAssertNotNil(HermesCallOutcomeOutbox.Entry(.missed, target: target, at: now), "and tells Hermes it wasn't taken")
+        XCTAssertNotNil(HermesCallOutcomeOutbox.Entry(.declined, target: target, at: now), "or, declined on the Watch, that it was declined")
+        XCTAssertEqual(HermesNativeCalls.watchMissedNotice(for: nil), .unreadable, "No record: only that Hermes called")
         XCTAssertNil(HermesRingRecords.entry(ringID: "ring-other", in: relaunched, now: now))
     }
 
@@ -1254,8 +1259,10 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(HermesRingRecords.Entry(ring: try ringRecord(at: now).ring, target: notACall, at: now))
         let malformed = ConduitNotificationTarget(profile: "work", sessionId: "rt-1", hasMalformedDashboardID: true,
                                                   type: HermesCallRequest.type, call: outcomeTarget().call)
-        XCTAssertTrue(try XCTUnwrap(HermesRingRecords.Entry(ring: try ringRecord(at: now).ring, target: malformed, at: now)).target.hasMalformedDashboardID,
-                      "A dashboard Conduit can't read still fails closed after a relaunch")
+        let unreadable = try XCTUnwrap(HermesRingRecords.Entry(ring: try ringRecord(at: now).ring, target: malformed, at: now)).target
+        XCTAssertTrue(unreadable.hasMalformedDashboardID, "A dashboard Conduit can't read is still unreadable after a relaunch")
+        XCTAssertEqual(HermesNativeCalls.watchMissedNotice(for: unreadable), .unreadable, "so its missed call routes nowhere")
+        XCTAssertNil(HermesCallOutcomeOutbox.Entry(.missed, target: unreadable, at: now), "and no host is told")
     }
 
     func testADeclinedCallTellsTheHostWhatItWasAboutAndHowLongAgo() async throws {
