@@ -1865,6 +1865,27 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    func testGeminiLiveInterruptAfterTheTurnEndedKeepsTheNextReply() async {
+        let (controller, session, _, output, _) = makeGeminiController(route: .speakerSafeHalfDuplex, clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        session.onEvent?(.outputTranscription("First reply."))
+        session.onEvent?(.turnComplete)
+        XCTAssertTrue(output.isPlaying, "The finished turn's tail still plays")
+
+        // Pressed while only the tail plays: there is no turn to drop (issue 1790).
+        controller.interruptSpeaking()
+        XCTAssertFalse(output.isPlaying)
+
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        session.onEvent?(.outputTranscription("Second reply."))
+        XCTAssertTrue(output.isPlaying, "The model's next reply is heard")
+        XCTAssertEqual(controller.transcript.last?.text, "Second reply.")
+        session.onEvent?(.turnComplete)
+        controller.stop()
+    }
+
     func testGeminiLiveHeadsetStaysFullDuplex() async {
         let (controller, session, input, _, _) = makeGeminiController(route: .fullDuplex, clock: Date.init)
         await controller.start()
