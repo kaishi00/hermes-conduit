@@ -5,14 +5,18 @@
 //  Moving bot and profile pictures (Eric 2026-11-05). Hermes' asset store
 //  takes PNG, JPEG or WebP up to 2 MB and tells them apart by their bytes,
 //  so an animated PNG (APNG) is stored and synced like any other picture,
-//  and Hermes Desktop's <img> plays it. A picked GIF, animated picture or
-//  short video becomes a looping square APNG here. Wherever a picture is
+//  and Hermes Desktop's <img> plays it. A GIF, animated picture or short
+//  video picked with Choose GIF or Video (the Photos picker, which hands
+//  over the original file; Choose Photo's crop flattens a GIF to one frame)
+//  becomes a looping square APNG here. Wherever a picture is
 //  drawn still, ImageIO hands over its first frame, so nothing else changes.
 //
 
 import AVFoundation
 import Foundation
 import ImageIO
+import PhotosUI
+import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
@@ -231,16 +235,50 @@ enum AnimatedAvatar {
         return context.makeImage()
     }
 
-    /// A copy of a picked file the picker may delete once it closes.
-    static func keptCopy(of url: URL) -> URL? {
-        let copy = FileManager.default.temporaryDirectory
-            .appendingPathComponent("avatar-\(UUID().uuidString)", isDirectory: false)
-            .appendingPathExtension(url.pathExtension)
-        do {
-            try FileManager.default.copyItem(at: url, to: copy)
-            return copy
-        } catch {
-            return nil
+    // MARK: Picking
+
+    /// What Choose GIF or Video handed over.
+    enum Pick {
+        /// A video or moving picture, as a file `picture(fromPicked:)` deletes.
+        case animation(Source)
+        /// A still picked there, used as any photo.
+        case still(UIImage)
+        case unreadable
+    }
+
+    /// A Photos pick, read from its original file so a GIF keeps its frames.
+    static func pick(from item: PhotosPickerItem) async -> Pick {
+        if let file = try? await item.loadTransferable(type: PickedMediaFile.self) {
+            return pick(fileAt: file.url)
         }
+        // Some pictures only hand over their bytes; a video never takes
+        // this path, which would hold all of it in memory.
+        guard item.supportedContentTypes.first?.conforms(to: .image) == true,
+              let data = try? await item.loadTransferable(type: Data.self) else { return .unreadable }
+        return pick(data: data)
+    }
+
+    /// A picked file: a video or moving picture is kept for
+    /// `picture(fromPicked:)`, a still is read and its file deleted.
+    static func pick(fileAt url: URL) -> Pick {
+        if UTType(filenameExtension: url.pathExtension)?.conforms(to: .audiovisualContent) == true {
+            return .animation(.movie(url))
+        }
+        if isAnimated(at: url) { return .animation(.image(url)) }
+        defer { try? FileManager.default.removeItem(at: url) }
+        guard let data = try? Data(contentsOf: url) else { return .unreadable }
+        return pick(data: data)
+    }
+
+    /// Picked bytes: a moving picture is written to a file of its own.
+    static func pick(data: Data) -> Pick {
+        if isAnimated(data) {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("avatar-\(UUID().uuidString)", isDirectory: false)
+            guard (try? data.write(to: url, options: .atomic)) != nil else { return .unreadable }
+            return .animation(.image(url))
+        }
+        guard let image = UIImage(data: data) else { return .unreadable }
+        return .still(image)
     }
 }

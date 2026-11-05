@@ -3,6 +3,7 @@
 //  Conduit
 //
 
+import PhotosUI
 import SwiftUI
 
 struct ProfilePickerSheet: View {
@@ -164,6 +165,10 @@ private struct ProfilePickerRow: View {
     let select: () -> Void
     @State private var showingImagePicker = false
     @State private var pickedImage: UIImage?
+    /// Choose GIF or Video: the Photos picker, which hands over a GIF's own
+    /// file (Choose Photo's crop keeps one frame).
+    @State private var showingMotionPicker = false
+    @State private var pickedMotion: PhotosPickerItem?
     @State private var saveError: String?
     @State private var isSavingPhoto = false
     @State private var isRenaming = false
@@ -215,7 +220,18 @@ private struct ProfilePickerRow: View {
         }
         .conduitGlassSurface(cornerRadius: 20, tint: isCurrent ? .conduitAccent.opacity(0.12) : .clear)
         .sheet(isPresented: $showingImagePicker) {
-            ImagePicker(image: $pickedImage, onAnimated: saveAnimation)
+            ImagePicker(image: $pickedImage)
+        }
+        .photosPicker(
+            isPresented: $showingMotionPicker,
+            selection: $pickedMotion,
+            matching: .any(of: [.images, .videos]),
+            preferredItemEncoding: .current
+        )
+        .onChange(of: pickedMotion) { _, item in
+            guard let item else { return }
+            pickedMotion = nil
+            saveAnimation(item)
         }
         .onChange(of: pickedImage) { _, newImage in
             guard let newImage else { return }
@@ -303,6 +319,11 @@ private struct ProfilePickerRow: View {
             } label: {
                 Label(AppLocalization.string("Choose Photo"), systemImage: "photo")
             }
+            Button {
+                showingMotionPicker = true
+            } label: {
+                Label(AppLocalization.string("Choose GIF or Video"), systemImage: "film")
+            }
             if appState.profileAvatarURL(for: profile) != nil {
                 Button(role: .destructive) {
                     Haptics.warning()
@@ -389,13 +410,21 @@ private struct ProfilePickerRow: View {
         )
     }
 
-    /// Nil removes the photo.
     /// A picked GIF or video, made into a looping APNG (AnimatedAvatar)
-    /// first, then saved like a photo.
-    private func saveAnimation(_ source: AnimatedAvatar.Source?) {
+    /// first, then saved like a photo; a still picked there is saved as one.
+    private func saveAnimation(_ item: PhotosPickerItem) {
         isSavingPhoto = true
         saveError = nil
         Task { @MainActor in
+            let source: AnimatedAvatar.Source?
+            switch await AnimatedAvatar.pick(from: item) {
+            case .animation(let picked): source = picked
+            case .still(let image):
+                isSavingPhoto = false
+                savePhoto(image)
+                return
+            case .unreadable: source = nil
+            }
             switch await AnimatedAvatar.picture(fromPicked: source) {
             case .success(let apng):
                 saveError = await appState.setProfilePhoto(nil, animation: apng, for: profile)
@@ -409,6 +438,7 @@ private struct ProfilePickerRow: View {
         }
     }
 
+    /// Nil removes the photo.
     private func savePhoto(_ image: UIImage?) {
         isSavingPhoto = true
         saveError = nil

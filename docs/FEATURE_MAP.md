@@ -1738,11 +1738,12 @@ and README.md's bots line)
 ## Moving pictures
 
 A bot's or profile's picture can move: a GIF, another animated picture or a
-short video picked as its photo becomes a looping animated PNG, stored and
-synced like any picture.
+short video picked with Choose GIF or Video becomes a looping animated PNG,
+stored and synced like any picture.
 
-**Siblings:** Choose Photo in New Bot and Edit Bot (see Bots: create and
-edit) · the photo on a Settings > Profiles card (the profile picker) · a
+**Siblings:** Choose GIF or Video beside Choose Photo in New Bot and Edit Bot
+(see Bots: create and edit) · the same item in a Settings > Profiles card's
+Edit menu (the profile picker) · a
 profile kept on the phone alone (a gateway without the asset store) · the
 faces that play it: Bots Home's portraits, the Bot Overview's header, the bot
 editor and the Profiles cards (see Bots Home) · the faces that keep the first
@@ -1759,21 +1760,23 @@ serves no pictures) · the text that describes it (the editor's caption under
 the picture buttons, README.md's bots and profiles lines)
 
 **Code**
-- Making one: `Conduit/Services/AnimatedAvatar.swift` (frames from a picture file or a video, thinned, squared and written as a looping APNG under maxBytes, picture(fromPicked:), message(for:)), `Conduit/Views/Components/ImagePicker.swift` (onAnimated: videos trimmed to maxDuration, an animated picture's own file)
-- Saving: `Conduit/Views/BotEditorSheet.swift` (useAnimation, previewPlayback, canSave waiting for it, the caption), `Conduit/Views/ProfilePickerSheet.swift` (saveAnimation), `Conduit/Services/AppState.swift` (setProfilePhoto's animation, moveDevicePhotoToHermes carrying a phone-only moving picture over as it is, through BotAvatarImage.hermesPicture in `Conduit/Services/BotManagement.swift`, botAvatarPlayback, profileAvatarPlayback), `Conduit/Services/ProfileAppearanceStore.swift` (saveAvatar keeps a moving picture's bytes; ProfileAvatarImageCache.isAnimated and revision)
+- Making one: `Conduit/Services/AnimatedAvatar.swift` (frames from a picture file or a video, thinned, squared and written as a looping APNG under maxBytes, picture(fromPicked:), message(for:), pick(from:): a Photos pick's own file, a still among them used as a photo)
+- Saving: `Conduit/Views/BotEditorSheet.swift` (Choose GIF or Video's photosPicker, useAnimation, previewPlayback, canSave waiting for it, the caption), `Conduit/Views/ProfilePickerSheet.swift` (the Edit menu's Choose GIF or Video, saveAnimation), `Conduit/Services/AppState.swift` (setProfilePhoto's animation, moveDevicePhotoToHermes carrying a phone-only moving picture over as it is, through BotAvatarImage.hermesPicture in `Conduit/Services/BotManagement.swift`, botAvatarPlayback, profileAvatarPlayback), `Conduit/Services/ProfileAppearanceStore.swift` (saveAvatar keeps a moving picture's bytes; ProfileAvatarImageCache.isAnimated and revision)
 - Playing: `Conduit/Views/Components/AnimatedAvatarFrames.swift` (AnimatedAvatarFrames, AnimatedAvatarPlayer), `Conduit/Views/BotEditorSheet.swift` (BotAvatarView's playback), `Conduit/Views/BotRosterView.swift` (BotMonogramView's animates), `Conduit/Views/ProfilePickerSheet.swift` (ProfileAvatarView's animates), `Conduit/Views/V2/V2BotsHome.swift` (the portrait and the Bot Overview's header)
 - Tests: `ConduitTests/AnimatedAvatarTests.swift`
 
 **Rulings**
 - Pictures people pick, not generated video: most Hermes hosts have no video backend, so a moving picture is a GIF or a short video the person brings (Eric, 2026-11-05). The on-device "living portrait" (a still cut out and swayed) wasn't built: it reads as alive, not animated.
-- A moving picture is an animated PNG in the same `avatar` asset, so nothing else changes: Hermes keeps it, Desktop plays it, and every still face shows its first frame. It's made on the phone from the first 3 seconds (a video is trimmed to them in the picker), at most 36 frames, 256 px, then smaller and fewer frames until it fits 1.5 MB, under Hermes' 2 MB cap since every fetch sends it whole; one that won't fit says to try a shorter or simpler clip.
+- A moving picture is an animated PNG in the same `avatar` asset, so nothing else changes: Hermes keeps it, Desktop plays it, and every still face shows its first frame. It's made on the phone from the first 3 seconds, at most 36 frames, 256 px, then smaller and fewer frames until it fits 1.5 MB, under Hermes' 2 MB cap since every fetch sends it whole; one that won't fit says to try a shorter or simpler clip.
+- It's picked with Choose GIF or Video, the Photos picker, which hands over the original file; Choose Photo stays the cropping picker for stills, since its crop keeps a GIF's first frame only and Conduit has no crop of its own (Eric 2026-11-05, #PRNUM: a GIF moved in the picker, not on the crop screen or after). The Photos picker can't trim, so a longer video gives its first 3 seconds. A still picked there is used as a photo, centered, without the crop.
 - It plays only where the face is what you're looking at (a Bots Home portrait, the Bot Overview, the editors), only while the app is active, and never with Reduce Motion or in Low Power Mode; Bots Home's portraits also stop while the tab doesn't show, as their motion does. ImageIO's player decodes a frame at a time, so a moving face holds one frame.
 
 **Open gaps**
-- Not yet tried on a device: that the picker hands over a GIF's own file (`imageURL`) after its crop screen, and what many moving portraits cost on Bots Home.
+- Not yet measured on a device: what many moving portraits cost on Bots Home.
+- A video can't be trimmed to the part to keep: the first 3 seconds are used.
 - A Live Photo is picked as a still.
 
-**Checked:** 2026-11-05, #1782 (the Bot Overview's header plays its fallback profile face too; the phone-only carry-over is tested); 2026-11-05, #1778 (added: moving pictures from a GIF or a short video)
+**Checked:** 2026-11-05, #PRNUM (Choose GIF or Video, the Photos picker, since Choose Photo's crop flattened a GIF on Eric's device); 2026-11-05, #1782 (the Bot Overview's header plays its fallback profile face too; the phone-only carry-over is tested); 2026-11-05, #1778 (added: moving pictures from a GIF or a short video)
 
 ## Opening a Bot Chat
 
