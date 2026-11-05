@@ -4828,7 +4828,7 @@ notifier README and CHANGELOG
 
 **Code**
 - Schema, shared byte for byte: `notifier/cards/card-schema.json`, `notifier/cards/card-vectors.json`, copied to `Conduit/Cards/card-schema.json` and `ConduitTests/Fixtures/card-vectors.json` (`scripts/check-card-schema.py`); normalized the same way in `notifier/card_schema.py` (normalize_cards with notes, normalize_next, normalize_layout, the Markdown) and `Conduit/Cards/RichCardSchema.swift` (prepared, cell, followUps)
-- The tool: `notifier/show_tool.py` (problems, markdown, the old-Conduit cap, BOARD_RULE), the rule and the checklist note in `notifier/__init__.py`, recipes in `notifier/skills/drawing-boards/SKILL.md`; the phone's features in `Conduit/Services/PresentedScreens.swift` ("board-cards") and `notifier/present_store.py`
+- The tool: `notifier/show_tool.py` (problems, markdown, the old-Conduit cap, BOARD_RULE, the typed chat's TYPED_CHAT_NOTE), how the turn's message was entered in `notifier/turn_surface.py` (turn_entry), the rule and the checklist note in `notifier/__init__.py`, recipes in `notifier/skills/drawing-boards/SKILL.md`; the phone's features in `Conduit/Services/PresentedScreens.swift` ("board-cards") and `notifier/present_store.py`
 - Checklist ticks on the host: `notifier/checklist_store.py`, `notifier/dashboard/api/boards.py` (`/boards/checklists`, capability "board-checklists"); in Conduit `Conduit/Cards/RichChecklistMemory.swift`, `Conduit/Services/AppState+Boards.swift`
 - Cards and views: `Conduit/Cards/RichCard.swift`, `Conduit/Cards/RichBoardCard.swift` (RichBoard, RichTable…), `Conduit/Cards/RichBoardCardViews.swift` (RichBoardLayout, RichBoardFollowUps, RichBoardMarkdown), `Conduit/Cards/RichCardViews.swift`; the chat row in `Conduit/Views/ChatView.swift`, its follow-ups in `Conduit/Views/ChatRowState.swift` (followUpBoardRowID) and `Conduit/Services/AppState.swift` (requestBoardFollowUp)
 - Live models: `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (showOnScreenDeclaration, invalidCardsNote)
@@ -4850,6 +4850,7 @@ notifier README and CHANGELOG
 - In Hermes Desktop the plugin's Desktop half ("Conduit boards", off until the user turns it on in Desktop) draws the board: conduit_show keeps it on the host (root home, the newest 500, a month) and asks the agent for `::conduit-board{id="cb-…"}` on a line of its own, only while the half has said it's loaded in the last two hours; otherwise Desktop gets the Markdown as before. The half draws the native kinds (stats, charts, comparisons, steps, status, tables, timelines, checklists with the chat's ticks, lists, progress, callouts) and each other card's own Markdown, with tabs and follow-ups. Conduit draws the same board from the tool row, so it hides the line on every surface (Eric, 2026-11-04, chose to build the half after the probe, notifier #539 with #1751).
 - A Conduit without "board-cards" gets at most four cards, no layout and no follow-ups (2026-11-03, notifier #528). Only the Conduits used in the last three days count, for board-cards, room-boards and the other card features, and the drawing rule names the weather and how to reach conduit_show behind Tool Search: on .52 four installs last used days before kept the rule off and trimmed the phone's boards (Eric, 2026-11-04, notifier #539).
 - Real data only: models are told to fill tables, stats and charts from tools, sites or the user's files, with their source (2026-11-03, notifier #528).
+- A turn whose message Conduit reported as typed keeps nothing for a call's screen: its chat is open, not a call. Its cards are drawn in the chat from the answer, and Markdown alone is refused (`typed_chat`) so Hermes writes it in its reply, never saying it's on a screen. A message typed during a call goes the same way: the user is typing in the chat, so that's where it shows. Spoken and unreported turns (calls, a call's jobs) reach the call screen as before. A group room has no call screen either, so Markdown alone there is refused too (`group_room`) (2026-11-05, issue 1808, notifier #556 with #1815).
 
 **Open gaps**
 - A room's checklists can't be ticked, and a board in a room another host runs (Linked Rooms) goes as text.
@@ -4860,8 +4861,9 @@ notifier README and CHANGELOG
 - A checklist in the saved copy, a chat on its way or a saved call's transcript can't be ticked and shows no ticks (a chat's are on the host; a call's stay with its live screen).
 - A checklist that stays on screen reads other devices' ticks only when it's drawn again or ticked here.
 - Boards are parsed again each time a row is drawn; no cache yet, as liveNames has.
+- A typed message on a Hermes where Conduit's report doesn't reach the turn (plugin isolation, a compute host) is unknown, so Markdown alone there still waits for a call screen that may not be open.
 
-**Checked:** 2026-11-04, #1751 with notifier #539 (boards drawn in Hermes Desktop by the plugin's Desktop half; Conduit hides its line; Siblings, Code, Rulings, gaps); 2026-11-04, #1748 (ticks fenced to their own dashboard; unsent ticks follow the chat's ids); 2026-11-04, #1736 with notifier #536 (boards drawn in group rooms); 2026-11-03, #1713 with notifier #528.
+**Checked:** 2026-11-05, #1815 with notifier #556 (a typed chat's conduit_show keeps nothing for a call screen, issue 1808; Code, Rulings, gaps); 2026-11-04, #1751 with notifier #539 (boards drawn in Hermes Desktop by the plugin's Desktop half; Conduit hides its line; Siblings, Code, Rulings, gaps); 2026-11-04, #1748 (ticks fenced to their own dashboard; unsent ticks follow the chat's ids); 2026-11-04, #1736 with notifier #536 (boards drawn in group rooms); 2026-11-03, #1713 with notifier #528.
 
 ## Cards drawn in web pages
 
@@ -5846,13 +5848,14 @@ as a live call's request) · a live voice call's turn into the open chat ·
 a call's request into an existing chat · a Shortcut's send · the plugin's
 own Watch jobs and call chats (they name the Watch themselves) · the line
 and its hints the model reads (`notifier/turn_surface.py`: FORM_HINT,
-SPOKEN_HINT) · the gateway's own listener (Two Hermes servers) · the
-notifier README's "Where a message was sent"
+SPOKEN_HINT) · the gateway's own listener (Two Hermes servers) · conduit_show,
+which keeps no call-screen card for a typed turn (Cards Hermes shows) · the
+notifier README's "Where in Conduit a message was sent"
 
 **Code**
 - The report and discard: `Conduit/Services/TurnSurface.swift`, `Conduit/Services/AppState+TurnSurface.swift` (reportTurnSurface, discardTurnSurface)
 - Send sites: `Conduit/Services/AppState.swift` (performComposerSubmission's report and its catch, the live call's chat turn, the call request into an existing chat), `Conduit/Services/AppState+ShortcutSend.swift` (the Shortcut's send)
-- Plugin: `notifier/turn_surface.py` (record, take, discard, record_for_authority, discard_digest_for_authority, note), `notifier/dashboard/api/chats.py` (record_turn_surface, discard_turn_surface)
+- Plugin: `notifier/turn_surface.py` (record, take, discard, record_for_authority, discard_digest_for_authority, note, start_turn, turn_entry), `notifier/dashboard/api/chats.py` (record_turn_surface, discard_turn_surface)
 - Tests: `ConduitTests/AppStateTurnSurfaceTests.swift`, `notifier/tests/test_turn_surface.py`
 
 **Rulings**
@@ -5862,7 +5865,7 @@ notifier README's "Where a message was sent"
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-02, #1631 (entry seeded with the discard; notifier #504).
+**Checked:** 2026-11-05, #1815 with notifier #556 (the turn's tools read how its message was entered, turn_entry; Siblings, Code); 2026-11-02, #1631 (entry seeded with the discard; notifier #504).
 
 ## Feature map rules
 
