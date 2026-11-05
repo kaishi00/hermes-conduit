@@ -288,7 +288,8 @@ struct NewRoomPortrait: View {
         let shown = Array(bots.prefix(3))
         let spots = GroupRoomIcon.layout(count: shown.count)
         return ZStack {
-            Circle().fill(Color.conduitAccent.opacity(0.10))
+            // Brighter under a bot that can join, Reduce Motion too.
+            Circle().fill(Color.conduitAccent.opacity(isTargeted ? 0.30 : 0.10))
             ForEach(Array(shown.enumerated()), id: \.element.id) { index, bot in
                 let spot = spots[index]
                 BotAvatarView(
