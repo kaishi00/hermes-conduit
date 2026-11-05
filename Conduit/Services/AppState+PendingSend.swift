@@ -255,6 +255,11 @@ extension AppState {
     }
 
     func dismissComposerNotice() {
+        // A file lookup's notice gives back the one it covered.
+        if let said = workspaceLookupNotice, composerNotice == said {
+            clearWorkspaceLookupNotice()
+            return
+        }
         composerNotice = nil
     }
 
