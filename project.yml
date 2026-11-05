@@ -71,6 +71,10 @@ targets:
         ENABLE_USER_SCRIPT_SANDBOXING: NO
     dependencies:
       - package: WebRTC
+      # Image Playground makes bot, profile and group pictures on iOS 18.1+
+      # (ImagePlaygroundPicture.swift); weak, since iOS 17 has no framework.
+      - sdk: ImagePlayground.framework
+        weak: true
       - target: ConduitWatch
       # Embedded as Conduit.app/PlugIns/ConduitNotificationService.appex.
       - target: ConduitNotificationService
