@@ -3234,11 +3234,12 @@ caption describes the lists)
 **Rulings**
 - Providers start closed; a bot's Model page opens the one holding the pick, once, and a menu marks that provider's name with a check (Eric 2026-11-05, #1787).
 - A menu's default choice and a held model the catalog doesn't list sit above the providers, outside any submenu; the row names a pick as "model · provider" (#1787).
+- A pick saved under another spelling of a listed provider (an alias, `custom:<key>`) is that provider's row, checked there, never a held row above it (#PRNUM).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-05, #1787 (entry added)
+**Checked:** 2026-11-05, #PRNUM (a pick under a provider's alias is its listed row); 2026-11-05, #1787 (entry added)
 
 ## The + that makes something new
 
