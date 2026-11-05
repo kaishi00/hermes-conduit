@@ -17,6 +17,7 @@ final class HeldDashboardRequests {
     struct Sent {
         let method: String
         let path: String
+        var query: String? = nil
     }
 
     let bridge: DashboardTicketBridge
@@ -37,7 +38,8 @@ final class HeldDashboardRequests {
             guard let self else { throw URLError(.cancelled) }
             self.sent.append(Sent(
                 method: request.httpMethod ?? "GET",
-                path: request.url?.path ?? ""
+                path: request.url?.path ?? "",
+                query: request.url?.query
             ))
             return try await withCheckedThrowingContinuation { continuation in
                 self.waiting.append((request.url ?? URL(fileURLWithPath: "/"), continuation))

@@ -1656,6 +1656,8 @@ extension AppStateMultiDashboardTests {
         appState.revealWorkspaceFile("AppState.swift", line: 3)
         for _ in 0..<1_000 where lookups() < 1 { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(lookups(), 1, "a bare name is looked up for the chat")
+        let query = held.sent.last(where: { $0.path.hasSuffix(resolve) })?.query ?? ""
+        XCTAssertTrue(query.contains("session_id=chat-1"), "the lookup names the chat: \(query)")
         XCTAssertNil(appState.workspaceReveal, "nothing opens until the plugin answers")
 
         // A second tap while the first lookup runs wins over its answer.
