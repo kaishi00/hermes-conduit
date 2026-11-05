@@ -69,6 +69,10 @@ extension AppState {
         }
         guard let pass = LocationKeychain.loadHostPass(), pass.dashboardID == binding.dashboardID else { return nil }
         return { path, method, body in
+            // Forgotten since (the dashboard was removed): nothing goes there.
+            guard LocationKeychain.loadHostPass()?.dashboardID == binding.dashboardID else {
+                throw DashboardTicketBridgeError.notReady
+            }
             do {
                 return try await LocationHostClient.requestJSON(
                     pass: pass, path: LocationHostClient.withProfile(path, profile: binding.profile),
