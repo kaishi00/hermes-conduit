@@ -191,6 +191,12 @@ struct V2ProjectPage: View {
                         .textSelection(.enabled)
                 }
                 HStack(spacing: 4) {
+                    // Whose chats these are: the page lists one profile's
+                    // (issue 1761).
+                    if ProjectProfileLabel.shows(in: appState) {
+                        ProjectProfileLabel()
+                        Text(verbatim: "·")
+                    }
                     Text("\(count) conversations")
                     if runningCount > 0 {
                         Text(verbatim: "·")
@@ -342,5 +348,35 @@ struct V2ProjectPage: View {
         Haptics.medium()
         appState.dismissSidebarDrawer()
         Task { await appState.createNewSession(cwd: path) }
+    }
+}
+
+/// Whose project a project's page shows. Hermes keeps each profile's
+/// projects apart (a projects.db per profile) and lists a project's chats
+/// from that profile's store, so every chat on the page is the profile in
+/// use: the page names it once, with its picture, rather than on each row
+/// (issue 1761). Shown with two or more profiles, as the All chip is.
+struct ProjectProfileLabel: View {
+    @EnvironmentObject private var appState: AppState
+    @ScaledMetric(relativeTo: .subheadline) private var avatarSize: CGFloat = 18
+
+    static func shows(in appState: AppState) -> Bool {
+        appState.profiles.count > 1
+    }
+
+    var body: some View {
+        let profile = appState.activeProfile
+        let name = appState.profileDisplayName(profile)
+        HStack(spacing: 5) {
+            ProfileAvatarView(
+                profile: profile,
+                displayName: name,
+                url: appState.profileAvatarURL(for: profile),
+                size: avatarSize
+            )
+            .accessibilityHidden(true)
+            Text(verbatim: name)
+                .lineLimit(1)
+        }
     }
 }

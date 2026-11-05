@@ -1627,6 +1627,16 @@ private struct ProjectSessionsSheet: View {
             ZStack {
                 ConduitBackdrop()
                 List {
+                    // Whose chats these are: the sheet lists one profile's
+                    // (issue 1761).
+                    if ProjectProfileLabel.shows(in: appState) {
+                        ProjectProfileLabel()
+                            .scaledFont(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .accessibilityElement(children: .combine)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                    }
                     if isLoading {
                         ProgressView(AppLocalization.string("Loading conversations…"))
                             .frame(maxWidth: .infinity, minHeight: 140)

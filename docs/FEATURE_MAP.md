@@ -3823,6 +3823,35 @@ README.md
 
 **Checked:** 2026-11-03, #1685 (the Projects list gained New Project controls; a new project's row takes the dot like any other); 2026-10-29, #1499.
 
+## Whose project page
+
+A project's page (Chats › Projects › a project) names the profile whose
+chats it lists, with its picture, beside the conversation count (issue
+1761: on a Mac with several bots, nothing on the page said which agent its
+chats were with until one was opened).
+
+**Siblings:** the V2 project page (iPhone, iPad and Mac, one view) · the
+classic drawer's project sheet · the Projects list and the Chats list, which
+keep the profile row above them · each chat's composer ("Message Atlas…"),
+which names the same profile · All profiles in Chats (no Projects there) ·
+VoiceOver · README.md
+
+**Code**
+- Label: `Conduit/Views/V2/V2ProjectPage.swift` (ProjectProfileLabel; the page's header)
+- Classic sheet: `Conduit/Views/SidebarView.swift` (ProjectSessionsSheet)
+- Names and pictures: `Conduit/Services/AppState.swift` (profileDisplayName, profileAvatarURL, loadProjectSessions)
+- Docs: `README.md` (Features)
+
+**Rulings**
+- Hermes keeps a projects.db per profile and lists a project's chats from that profile's store alone (`projects.project_sessions`), so every chat on a page is the profile in use: the page names it once rather than badging each row with the same face, and it offers no filter by agent, having one (2026-11-05, issue 1761).
+- Shown with two or more profiles on the dashboard, as the All chip is; with one there's nobody to tell it apart from.
+- The label follows the profile in use, which is the one the page reads its chats through.
+
+**Open gaps**
+- A folder several profiles work in is a separate project in each, so no page lists their chats together; that would need Conduit to merge projects across profiles, which Hermes doesn't group.
+
+**Checked:** 2026-11-05, #PRNUM.
+
 ## New project
 
 Making a project from Conduit (issue 1661): the + at the end of the
