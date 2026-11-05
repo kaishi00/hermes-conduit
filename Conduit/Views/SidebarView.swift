@@ -1618,6 +1618,9 @@ private struct ProjectSessionsSheet: View {
     @Environment(\.dismiss) private var dismiss
     let project: ProjectSummary
     @State private var detail: ProjectSessionDetail?
+    /// The profile the chats shown were read through: a switch while the
+    /// sheet is open (CarPlay, a widget) doesn't rename them.
+    @State private var detailProfile: String?
     @State private var isLoading = true
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingRename: SessionSummary?
@@ -1630,7 +1633,7 @@ private struct ProjectSessionsSheet: View {
                     // Whose chats these are: the sheet lists one profile's
                     // (issue 1761).
                     if ProjectProfileLabel.shows(in: appState) {
-                        ProjectProfileLabel()
+                        ProjectProfileLabel(profile: detailProfile)
                             .scaledFont(.subheadline)
                             .foregroundStyle(.secondary)
                             .accessibilityElement(children: .combine)
@@ -1781,12 +1784,19 @@ private struct ProjectSessionsSheet: View {
     private func load() async {
         guard appState.isConnected else { return }
         isLoading = true
-        detail = await appState.loadProjectSessions(project)
+        await loadDetail()
         isLoading = false
     }
 
     private func reloadDetail() {
-        Task { detail = await appState.loadProjectSessions(project) }
+        Task { await loadDetail() }
+    }
+
+    /// Read through the profile in use, and named by it.
+    private func loadDetail() async {
+        let profile = appState.activeProfile
+        detail = await appState.loadProjectSessions(project)
+        detailProfile = profile
     }
 
     private var newConversationPath: String? {

@@ -549,7 +549,7 @@ struct ProjectProfileLabel: View {
     }
 
     static func shows(in appState: AppState) -> Bool {
-        appState.profiles.count > 1
+        AllProfilesChats.isAvailable(profiles: appState.profiles)
     }
 
     var body: some View {
