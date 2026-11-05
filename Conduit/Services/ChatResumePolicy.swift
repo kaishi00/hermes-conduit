@@ -84,7 +84,7 @@ enum ChatResumeSessionResolver {
         activeProfile: String? = nil,
         botOwnedSessionIDs: Set<String> = [],
         savedSelectionIsAuthoritative: Bool = true,
-        workstreamSessionIDs: Set<String> = []
+        unlistedSessionIDs: Set<String> = []
     ) -> SessionSummary? {
         // Filter to the active profile when available so sessions from
         // other profiles don't interfere with ID matching or fallback.
@@ -143,14 +143,17 @@ enum ChatResumeSessionResolver {
         // AUTHORITATIVE paths (the saved-id match and the catalog-absent escape
         // hatch) on evidence instead of trusting a guess.
         //
-        // A bot's workstream chat is left out of the newest-chat pick the same
-        // way: like a Bot Chat it has no row of its own in Chats, search or All
-        // profiles, so picking it would open a chat no list names (#1755). The
-        // saved-selection match above still resumes one the user opened.
+        // A chat the lists leave out (a bot's workstream, #1755, or Pulse's
+        // own chat, which the Pulse screen stands in for) is left out of the
+        // newest-chat pick the same way: like a Bot Chat it has no row of its
+        // own in Chats, search or All profiles, so picking it would open a
+        // chat no list names. The caller names those rows by the lists' own
+        // rules (AppState.isUnlistedChat). The saved-selection match above
+        // still resumes one the user opened.
         return latestChat(
             in: scoped.filter {
                 !BotChatHygiene.isBotOwnedRow($0, botOwnedSessionIDs: botOwnedSessionIDs)
-                    && !BotWorkStore.isWorkstream($0, among: workstreamSessionIDs)
+                    && !unlistedSessionIDs.contains($0.id)
             }
         )
     }

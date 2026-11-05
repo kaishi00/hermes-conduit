@@ -1202,8 +1202,9 @@ final class CarPlayVoiceCoordinator {
     }
 
     private static func chatList(in appState: AppState) -> CarPlayChatList {
+        // Pulse's chat stays behind the Pulse screen, as in Chats.
         CarPlayBrowse.chatList(
-            from: appState.activeProfileSessions,
+            from: appState.activeProfileSessions.filter { !appState.isPulseHomeChat($0) },
             isPinned: { appState.isSessionPinned($0) },
             arrangePinned: { appState.arrangePinned($0, session: { $0 }) }
         )

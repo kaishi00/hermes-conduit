@@ -322,6 +322,59 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(appState.pulseHomeProfile, "rei-ii")
     }
 
+    /// Pulse's chat, left out of Chats, is never the chat Conduit opens on
+    /// by itself, though Pulse's turns make it the newest: Jump to latest
+    /// activity, and Continue with nothing saved, pick the newest listed
+    /// chat. One the user had open is still resumed by Continue. A call's
+    /// chat search never finds it either.
+    func testTheChatConduitResumesIsNeverPulsesHiddenChat() throws {
+        let suite = "PulseFeedTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let store = ChatResumeStore(defaults: defaults)
+        store.setBehavior(.latestActivity)
+        let coordinator = ChatResumeCoordinator(store: store)
+        let state = AppState(defaults: defaults, chatResumeCoordinator: coordinator, loadSavedConnection: false)
+        let now = Date().timeIntervalSince1970
+        func row(_ id: String, stored: String? = nil, at: TimeInterval) -> SessionSummary {
+            SessionSummary(id: id, storedSessionId: stored, alternateIds: [], title: "Chat", model: "Hermes",
+                           updatedLabel: "now", lastActivityAt: at, profile: nil, source: .chat,
+                           isActive: false, isArchived: false)
+        }
+        let catalog = [row("runtime-p", stored: "20261105_pulse", at: now), row("plain", at: now - 600)]
+        func pick() -> String? {
+            state.selectChatResumeTarget(in: catalog, profile: "default", purpose: .automaticReturn,
+                                         currentSessionID: nil)?.id
+        }
+        // Before the feed names Pulse's chat nothing hides it.
+        XCTAssertEqual(pick(), "runtime-p")
+
+        state.applyPulseFeed(try XCTUnwrap(PulseFeedPage(json: json(
+            #"{"home_chat_id": "20261105_pulse", "cards": []}"#))))
+        XCTAssertTrue(state.showsPulseScreen)
+        XCTAssertEqual(pick(), "plain")
+        XCTAssertEqual(
+            state.selectChatResumeTarget(in: catalog, profile: "default", purpose: .preserveCurrent,
+                                         currentSessionID: nil)?.id,
+            "plain"
+        )
+
+        coordinator.setBehavior(.continueWhereLeftOff)
+        XCTAssertEqual(pick(), "plain")
+        coordinator.rememberSession(.dashboard(profile: "default", sessionID: "runtime-p"), for: "default")
+        XCTAssertEqual(pick(), "runtime-p")
+
+        // With only Pulse's chat listed there's no chat to pick: a new one starts.
+        coordinator.setBehavior(.latestActivity)
+        XCTAssertNil(state.selectChatResumeTarget(in: [catalog[0]], profile: "default",
+                                                  purpose: .automaticReturn, currentSessionID: nil))
+
+        // A call's chat search: by id, in Pulse's profile only.
+        XCTAssertTrue(state.isUnlistedChat(id: "20261105_pulse", profile: "default"))
+        XCTAssertFalse(state.isUnlistedChat(id: "20261105_pulse", profile: "work"))
+        XCTAssertFalse(state.isUnlistedChat(id: "plain", profile: "default"))
+    }
+
     func testPulsesChatIsInTheProfileTheFeedNames() throws {
         // Issue 1681: a plugin in a named profile runs Pulse there.
         let suite = "PulseFeedTests.\(UUID().uuidString)"

@@ -9449,7 +9449,8 @@ final class AppState: ObservableObject {
         let profile = callProfile ?? activeProfile
         do {
             let response = try await dashboardTicketBridge.requestJSON(path: VoiceChatFinder.path(query: query, profile: profile))
-            return VoiceChatFinder.matches(from: response)
+            // Hermes' search knows nothing of the chats Conduit's lists leave out.
+            return VoiceChatFinder.matches(from: response).filter { !isUnlistedChat(id: $0.sessionID, profile: profile) }
         } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
             // A Watch call on another profile is asked by that profile's
             // chats Conduit has listed (All profiles lists them).
@@ -9459,10 +9460,9 @@ final class AppState: ObservableObject {
                     sessionBelongsToProfile($0, profile: profile)
                         && !BotChatHygiene.isCanonicalBotChatRow($0, roster: botRoster)
                         && !BotChatHygiene.isBotOwnedRow($0, botOwnedSessionIDs: botOwned)
-                        && !isWorkstreamRow($0)
                 }
             } ?? activeProfileSessions
-            return VoiceChatFinder.titleMatches(in: listed, query: query)
+            return VoiceChatFinder.titleMatches(in: listed.filter { !isUnlistedChat($0) }, query: query)
         }
     }
 
@@ -17600,9 +17600,24 @@ final class AppState: ObservableObject {
             botOwnedSessionIDs: botOwnedSessionIDs,
             savedSelectionIsAuthoritative: savedReferenceIsAuthoritative,
             // Read at the moment of selection too: a bot's work read that
-            // lands mid-sync names its workstreams for this pick.
-            workstreamSessionIDs: botWork.workstreamSessionIDs
+            // lands mid-sync names its workstreams for this pick, and a feed
+            // read names Pulse's chat.
+            unlistedSessionIDs: Set(catalog.lazy.filter { self.isUnlistedChat($0) }.map(\.id))
         )
+    }
+
+    /// A chat of this profile's that no list shows: a bot's workstream
+    /// (#1755) or Pulse's own chat, which the Pulse screen stands in for.
+    /// Conduit never opens one by itself (the chat it resumes, CarPlay's
+    /// list, a call's chat search); one the user opened stays open.
+    func isUnlistedChat(_ session: SessionSummary) -> Bool {
+        isWorkstreamRow(session) || isPulseHomeChat(session)
+    }
+
+    /// The same by a chat's id alone (a call's chat search hit), in `profile`.
+    func isUnlistedChat(id: String, profile: String) -> Bool {
+        isWorkstreamSession(id) || canonicalSessionID(for: id).map(isWorkstreamSession) == true
+            || isPulseHomeChat(id: id, profile: profile)
     }
 
     @discardableResult

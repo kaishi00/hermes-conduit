@@ -1189,6 +1189,12 @@ extension AppState {
         return session.nestingIDs.contains(home)
     }
 
+    /// The same by a chat's id alone (a search hit), in `profile`.
+    func isPulseHomeChat(id: String, profile: String) -> Bool {
+        guard let home = pulseHomeChat, showsPulseScreen, profilesMatch(profile, pulseHomeProfile) else { return false }
+        return id == home || canonicalSessionID(for: id) == home
+    }
+
     /// A reply Pulse pushed from its own chat opens the Pulse screen, where
     /// it is a card. Decisions, calls and chat links still open the chat, and
     /// so does any reply while a sheet is up, which the screen can't cover.
