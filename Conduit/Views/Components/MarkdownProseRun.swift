@@ -81,10 +81,16 @@ enum MarkdownProseRun {
     /// Runs of two or more pictures in a row, each drawn as one grid of
     /// tiles instead of a stack of full pictures (issue 1801).
     static func pictureRanges(in blocks: [MarkdownBlock]) -> [Range<Int>] {
+        pictureRanges(flags: blocks.map(isGridPicture))
+    }
+
+    /// Runs of two or more `true`s: the pictures of a list of blocks, or
+    /// of a large document's chunks.
+    static func pictureRanges(flags: [Bool]) -> [Range<Int>] {
         var ranges: [Range<Int>] = []
         var start: Int?
-        for index in 0...blocks.count {
-            if index < blocks.count, isGridPicture(blocks[index]) {
+        for index in 0...flags.count {
+            if index < flags.count, flags[index] {
                 if start == nil { start = index }
             } else if let runStart = start {
                 start = nil
@@ -92,6 +98,23 @@ enum MarkdownProseRun {
             }
         }
         return ranges
+    }
+
+    /// What a block draws in a view that mounts its blocks one at a time,
+    /// some of them only (a large document's window, a budgeted reply):
+    /// itself, the grid of its run's pictures that are shown, or nothing,
+    /// being in the grid drawn at the first of them shown.
+    enum PictureSlot: Equatable {
+        case single
+        case grid(Range<Int>)
+        case covered
+    }
+
+    static func pictureSlot(at index: Int, in ranges: [Range<Int>], shown: Range<Int>) -> PictureSlot {
+        guard let range = ranges.first(where: { $0.contains(index) }) else { return .single }
+        let visible = range.clamped(to: shown)
+        guard index == visible.lowerBound else { return .covered }
+        return visible.count > 1 ? .grid(visible) : .single
     }
 
     static func pieces(blockCount: Int, runs: [Range<Int>], pictures: [Range<Int>] = []) -> [Piece] {

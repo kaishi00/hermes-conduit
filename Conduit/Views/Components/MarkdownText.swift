@@ -148,7 +148,7 @@ struct MarkdownText: View {
                         let index = piece.blocks.lowerBound
                         if piece.isPictures {
                             MarkdownPictureGrid(
-                                blocks: rendering.blocks[piece.blocks],
+                                blocks: Array(rendering.blocks[piece.blocks]),
                                 gatewayMediaDataURL: gatewayMediaDataURL
                             )
                         } else if piece.isRun {
@@ -2380,8 +2380,8 @@ struct GuardedSourceCard: View {
 /// Two or more pictures in a row in a reply, as one grid of square tiles
 /// (issue 1801): as many to a row as the reply's width takes, the last one
 /// shown saying how many more there are.
-private struct MarkdownPictureGrid: View {
-    let blocks: ArraySlice<MarkdownBlock>
+struct MarkdownPictureGrid: View {
+    let blocks: [MarkdownBlock]
     let gatewayMediaDataURL: ((String) async -> String?)?
 
     var body: some View {

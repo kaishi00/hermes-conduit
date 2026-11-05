@@ -86,4 +86,21 @@ extension ChatTypographyTests {
         XCTAssertEqual(pieces.map(\.isRun), [true, false, true])
         XCTAssertEqual(pieces.map(\.isPictures), [false, true, false])
     }
+
+    /// A large document or a budgeted reply mounts some blocks only: a
+    /// grid draws the run's pictures that are mounted, at the first of them.
+    func testPictureSlotsGridTheMountedPicturesOfARun() {
+        let runs = [2..<6]
+
+        XCTAssertEqual(MarkdownProseRun.pictureSlot(at: 1, in: runs, shown: 0..<10), .single)
+        XCTAssertEqual(MarkdownProseRun.pictureSlot(at: 2, in: runs, shown: 0..<10), .grid(2..<6))
+        XCTAssertEqual(MarkdownProseRun.pictureSlot(at: 3, in: runs, shown: 0..<10), .covered)
+        // A window ending inside the run grids what it shows of it.
+        XCTAssertEqual(MarkdownProseRun.pictureSlot(at: 2, in: runs, shown: 0..<4), .grid(2..<4))
+        // A tail starting inside the run starts its own grid there.
+        XCTAssertEqual(MarkdownProseRun.pictureSlot(at: 4, in: runs, shown: 4..<10), .grid(4..<6))
+        // One picture of the run shown alone keeps its own shape.
+        XCTAssertEqual(MarkdownProseRun.pictureSlot(at: 2, in: runs, shown: 0..<3), .single)
+        XCTAssertEqual(MarkdownProseRun.pictureRanges(flags: [true, false, true, true, true]), [2..<5])
+    }
 }
