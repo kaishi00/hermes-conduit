@@ -1453,11 +1453,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         // A job on the call's own bot (unnamed, or naming it) keeps the voice-job
         // model chosen for that bot, as an unnamed job on the phone's does.
         var callsOwnModel = callsModel
+        // A Bot Chat call whose chat was deleted stays on its bot (issue 1797).
+        let callsBot = liveThread?.profile ?? (liveThread == nil ? deletedLiveThread?.profile : nil)
         switch routed {
         case .run(let task, let target, let label):
             // A Bot Chat call's job runs on its bot, as the coordinator's own.
-            (instructions, profile, profileLabel) = (task, target ?? liveThread?.profile, label)
-            if target == nil || target == liveThread?.profile { callsOwnModel = true }
+            (instructions, profile, profileLabel) = (task, target ?? callsBot, label)
+            if target == nil || target == callsBot { callsOwnModel = true }
         case .unknown(let spokenProfile):
             // A named target that isn't a known profile is never guessed at.
             return AppLocalization.string("I don't know a profile or bot called \(spokenProfile), so I didn't start the job.")
@@ -1480,7 +1482,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         anchored.number = lastJobNumber
         jobs.append(anchored)
         onJobCreated?(job.id)
-        if joinsCall, profile == nil, liveThread == nil, callChatClaim == nil, let callID = liveCallID {
+        if joinsCall, profile == deletedLiveThread?.profile, liveThread == nil, callChatClaim == nil, let callID = liveCallID {
             callChatClaim = (job.id, callID)
             // Marked before Hermes can answer, so a reply that beats the
             // adoption is still matched against replays.
@@ -1673,14 +1675,15 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// job's own call runs and nothing is attached yet, and only for a job
     /// on the profile in use that Hermes took.
     private func adoptCallChat(_ jobID: UUID) {
-        guard liveThread == nil, liveCallID != callChatClosedCallID, let job = job(jobID), job.profile == nil,
+        // A Bot Chat call whose chat was deleted takes its next chat on that bot.
+        guard liveThread == nil, liveCallID != callChatClosedCallID, let job = job(jobID), job.profile == deletedLiveThread?.profile,
               let callID = job.callAnchor?.callID, callID == liveCallID, liveCallTranscript?() != nil,
               let runtimeID = job.runtimeSessionID, !runtimeID.isEmpty else { return }
         switch job.status {
         case .failed, .cancelled: return
         case .starting, .running, .needsInput, .finished: break
         }
-        let thread = VoiceThreadTarget(runtimeSessionID: runtimeID, storedSessionID: job.storedSessionID, title: job.title)
+        let thread = VoiceThreadTarget(runtimeSessionID: runtimeID, storedSessionID: job.storedSessionID, title: job.title, profile: job.profile)
         // Deleted while its job was starting (issue 1797).
         guard !isDeletedChat(thread) else { return }
         callChatJobID = jobID

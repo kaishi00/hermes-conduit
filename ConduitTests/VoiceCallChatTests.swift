@@ -514,6 +514,21 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(supervisor.deletedLiveThread, "hanging up forgets it")
     }
 
+    func testABotChatCallWhoseChatIsDeletedGoesOnInANewChatOnItsBot() async {
+        let fake = FakeVoiceJobBackend()
+        let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))
+        supervisor.liveCallTranscript = { [] }
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-bot", storedSessionID: "st-bot",
+                                                      title: "Bot Chat", profile: "furina"))
+        supervisor.beginLiveCall()
+        supervisor.noteChatDeleted(["st-bot"])
+
+        _ = await supervisor.startJob(instructions: "check the backups", joinsCall: true)
+        XCTAssertEqual(fake.createdProfiles, ["furina"], "still the bot's work")
+        XCTAssertEqual(supervisor.liveThread?.runtimeSessionID, "rt-1", "its chat is the call's new one")
+        XCTAssertEqual(supervisor.liveThread?.profile, "furina")
+    }
+
     func testAQuestionFromADeletedCallChatIsNeverSaid() async {
         let (supervisor, _) = makeUnattachedCall()
         _ = await supervisor.startJob(instructions: "clean the logs", joinsCall: true)
