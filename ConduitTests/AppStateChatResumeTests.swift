@@ -2833,6 +2833,29 @@ final class AppStateChatResumeTests: XCTestCase {
         }
     }
 
+    /// Issue 1705: Open on the list or the banner scrolls the open chat to
+    /// its card, waits for another chat to open, and sets nothing when a
+    /// call refuses another profile's chat.
+    func testOpeningAWaitFromTheListRevealsItsCard() {
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in throw ControlledLifecycleError.failed }
+            )
+        )
+        let appState = harness.appState
+        appState.activeSessionId = "runtime-a"
+        appState.openNeedsYou(NeedsYouItem(waitID: "w1", profile: "default", kind: .approval, sessionIDs: ["runtime-a"]))
+        XCTAssertNotNil(appState.pendingNeedsYouReveal)
+        XCTAssertNil(appState.pendingNeedsYouReveal?.opening, "the open chat only scrolls")
+        appState.pendingNeedsYouReveal = nil
+        appState.isNativeHermesCallActive = true
+        appState.openNeedsYou(NeedsYouItem(waitID: "w2", profile: "other", kind: .question, sessionIDs: ["stored-b"]))
+        XCTAssertNil(appState.pendingNeedsYouReveal, "a call refuses another profile's chat")
+        appState.isNativeHermesCallActive = false
+        appState.openNeedsYou(NeedsYouItem(waitID: "w3", profile: "default", kind: .approval, sessionIDs: ["stored-c"]))
+        XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "stored-c")
+    }
+
     /// #789: an open Hermes refuses for good is final, so the route doesn't
     /// retry it; one that failed on the way can pass on the next try.
     private func notificationOpenOutcome(

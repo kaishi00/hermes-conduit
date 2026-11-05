@@ -49,7 +49,8 @@ struct NeedsYouBanner: View {
     }
 
     private func banner(_ item: NeedsYouItem) -> some View {
-        let others = store.items.count - 1
+        // Not counting the open chat's wait, whose card is on screen.
+        let others = store.items.filter { $0.id != item.id && !appState.isOpenChat($0) }.count
         return HStack(spacing: 10) {
             ProfileAvatarView(
                 profile: item.profile,
@@ -72,6 +73,18 @@ struct NeedsYouBanner: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
+            // One element for VoiceOver, which offers the text's tap as its
+            // actions: the list when others wait too.
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityActions {
+                if others > 0 {
+                    Button(AppLocalization.string("Needs you")) {
+                        store.dismissBanner(item)
+                        showsList = true
+                    }
+                }
+            }
             // The rest of the banner opens the list when others wait too.
             .onTapGesture {
                 if others > 0 {
@@ -106,15 +119,6 @@ struct NeedsYouBanner: View {
         .padding(.vertical, 6)
         .conduitGlassSurface(cornerRadius: 18, tint: Color.conduitAttention.opacity(0.10))
         .accessibilityElement(children: .contain)
-        // The text's tap, for VoiceOver: the list when others wait too.
-        .accessibilityActions {
-            if others > 0 {
-                Button(AppLocalization.string("Needs you")) {
-                    store.dismissBanner(item)
-                    showsList = true
-                }
-            }
-        }
     }
 }
 
