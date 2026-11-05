@@ -1176,7 +1176,14 @@ struct ModelPickerView: View {
             catalog.readFailed()
             return
         }
+        // The highlighted match stays the same model when rows come or go
+        // above it, so Return picks what the highlight showed.
+        let before = searchMatches
+        let held = before.indices.contains(highlightedMatch) ? before[highlightedMatch].id : nil
         catalog.hermesAnswered(loaded)
+        if let held {
+            highlightedMatch = searchMatches.firstIndex { $0.id == held } ?? 0
+        }
         // A row being switched to keeps its checkmark.
         guard switchingRow == nil else { return }
         selectedModel = appState.runtime.model
