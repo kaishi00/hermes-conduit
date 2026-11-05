@@ -1829,11 +1829,26 @@ struct UserMessageContent: View, Equatable {
         return equal
     }
 
+    /// One picture shows whole; two or more go side by side as tiles
+    /// (issue 1801), then the files.
     @ViewBuilder private var attachmentViews: some View {
         if let attachments = message.attachments {
+            let pictures = attachments.filter { $0.kind == .image }
+            if pictures.count > 1 {
+                let shown = PictureGrid.shownCount(pictures.count)
+                let more = PictureGrid.moreCount(total: pictures.count)
+                PictureGridLayout {
+                    ForEach(Array(pictures.prefix(shown).enumerated()), id: \.element.id) { index, picture in
+                        UserImageAttachmentPreview(attachment: picture, gatewayResolver: gatewayResolver, isTile: true)
+                            .modifier(PictureGridMoreBadge(more: index == shown - 1 ? more : nil))
+                    }
+                }
+            }
             ForEach(attachments) { attachment in
                 if attachment.kind == .image {
-                    UserImageAttachmentPreview(attachment: attachment, gatewayResolver: gatewayResolver)
+                    if pictures.count == 1 {
+                        UserImageAttachmentPreview(attachment: attachment, gatewayResolver: gatewayResolver)
+                    }
                 } else {
                     UserDocumentAttachmentChip(attachment: attachment, gatewayResolver: gatewayResolver)
                 }
@@ -1950,6 +1965,9 @@ private struct UserImageAttachmentPreview: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let attachment: Attachment
     let gatewayResolver: GatewayMediaDataURLResolver?
+    /// A square tile of a message's picture grid, filling the size it is
+    /// proposed, instead of the picture at its own shape (issue 1801).
+    var isTile = false
     @State private var gatewayImage: UIImage?
     /// The cache key `gatewayImage` was loaded for, so a reused view never
     /// shows the picture it held before.
@@ -2033,7 +2051,9 @@ private struct UserImageAttachmentPreview: View {
 
     var body: some View {
         Group {
-            if let image = cachedLocalImage ?? currentLocalPreview ?? currentGatewayImage {
+            if isTile {
+                tileContent
+            } else if let image = cachedLocalImage ?? currentLocalPreview ?? currentGatewayImage {
                 imagePreview(image)
             } else if loadsFromHermes && localFileURL == nil && !gatewayLoadFailed {
                 placeholder
@@ -2224,6 +2244,30 @@ private struct UserImageAttachmentPreview: View {
     /// inside its message.
     private var loadsFromHermes: Bool {
         isGatewayImage || attachment.inlineImage != nil
+    }
+
+    /// The tile: the picture cropped to its square, else its place with a
+    /// spinner while it loads or a symbol when it won't. Every state takes
+    /// the same square, so the row never changes height as it loads.
+    @ViewBuilder private var tileContent: some View {
+        if let image = cachedLocalImage ?? currentLocalPreview ?? currentGatewayImage {
+            PictureTileImage(image: image, onAccent: true)
+                .opensMediaPreview { openPreview(showing: image) }
+                .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
+                .accessibilityLabel("Attached image: \(attachment.imageDescription ?? attachment.name)")
+                .accessibilityAddTraits(.isImage)
+        } else {
+            let failed = gatewayLoadFailed || localPreviewFailed
+            let loading = !failed && (loadsFromHermes || localFileURL != nil)
+            PictureTilePlaceholder(state: loading ? .loading : failed ? .unavailable : .attached, onAccent: true)
+                .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
+                .accessibilityElement()
+                .accessibilityLabel(
+                    loading ? AppLocalization.string("Loading image…")
+                        : failed ? AppLocalization.string("Image unavailable") : AppLocalization.string("Image attached")
+                )
+                .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
+        }
     }
 
     private func imagePreview(_ image: UIImage) -> some View {

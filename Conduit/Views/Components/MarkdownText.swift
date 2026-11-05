@@ -140,9 +140,18 @@ struct MarkdownText: View {
                 )
             } else {
                 VStack(alignment: .leading, spacing: MarkdownProseRun.Spacing.betweenBlocks) {
-                    ForEach(MarkdownProseRun.pieces(blockCount: rendering.blocks.count, runs: proseRuns)) { piece in
+                    ForEach(MarkdownProseRun.pieces(
+                        blockCount: rendering.blocks.count,
+                        runs: proseRuns,
+                        pictures: MarkdownProseRun.pictureRanges(in: rendering.blocks)
+                    )) { piece in
                         let index = piece.blocks.lowerBound
-                        if piece.isRun {
+                        if piece.isPictures {
+                            MarkdownPictureGrid(
+                                blocks: rendering.blocks[piece.blocks],
+                                gatewayMediaDataURL: gatewayMediaDataURL
+                            )
+                        } else if piece.isRun {
                             MarkdownProseRunView(
                                 text: rendering.proseRunText(
                                     for: piece.blocks,
@@ -2368,11 +2377,44 @@ struct GuardedSourceCard: View {
     }
 }
 
+/// Two or more pictures in a row in a reply, as one grid of square tiles
+/// (issue 1801): as many to a row as the reply's width takes, the last one
+/// shown saying how many more there are.
+private struct MarkdownPictureGrid: View {
+    let blocks: ArraySlice<MarkdownBlock>
+    let gatewayMediaDataURL: ((String) async -> String?)?
+
+    var body: some View {
+        let pictures: [(url: String, alt: String)] = blocks.compactMap {
+            guard case .image(let url, let alt) = $0 else { return nil }
+            return (url, alt)
+        }
+        let shown = PictureGrid.shownCount(pictures.count)
+        let more = PictureGrid.moreCount(total: pictures.count)
+        PictureGridLayout {
+            ForEach(0..<shown, id: \.self) { index in
+                RemoteMarkdownImage(
+                    url: pictures[index].url,
+                    alt: pictures[index].alt,
+                    gatewayMediaDataURL: gatewayMediaDataURL,
+                    isTile: true
+                )
+                .modifier(PictureGridMoreBadge(more: index == shown - 1 ? more : nil))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 private struct RemoteMarkdownImage: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let url: String
     let alt: String
     let gatewayMediaDataURL: ((String) async -> String?)?
+    /// A square tile of a picture grid, filling the size it is proposed,
+    /// instead of the picture at its own shape (issue 1801).
+    var isTile = false
+    @Environment(\.openURL) private var openURL
     /// Scopes where a `MEDIA:` picture is kept on the phone; without one
     /// (a surface that sets no resolver) it is fetched each time.
     @Environment(\.gatewayMediaFiles) private var gatewayMediaFiles
@@ -2447,7 +2489,9 @@ private struct RemoteMarkdownImage: View {
 
     var body: some View {
         Group {
-            if let gatewayFileKind {
+            if isTile {
+                tileContent
+            } else if let gatewayFileKind {
                 GatewayMediaFileCard(
                     path: gatewayPath,
                     name: alt,
@@ -2577,6 +2621,43 @@ private struct RemoteMarkdownImage: View {
             withAnimation(.easeInOut(duration: 0.2)) { remoteOutcome = .image(image) }
         } else {
             remoteOutcome = .image(image)
+        }
+    }
+
+    /// The tile: the picture cropped to its square, else its place with a
+    /// spinner while it loads or a symbol when it won't. Every state takes
+    /// the same square, so the reply never changes height as they load. A
+    /// web picture that won't load here opens its address on a tap, as its
+    /// link does outside a grid.
+    @ViewBuilder
+    private var tileContent: some View {
+        let image: UIImage? = {
+            if isGatewayMedia { return shownGatewayImage }
+            if case .image(let image) = shownRemoteOutcome { return image }
+            return nil
+        }()
+        if let image {
+            PictureTileImage(image: image)
+                .opensMediaPreview { openImage(showing: image) }
+                .accessibilityLabel(alt.isEmpty ? Text("Image") : Text(verbatim: alt))
+                .accessibilityAddTraits(.isImage)
+        } else {
+            let failed = isGatewayMedia ? gatewayLoadFailed : shownRemoteOutcome != nil
+            let label = failed
+                ? (alt.isEmpty ? AppLocalization.string("Image unavailable") : AppLocalization.string("\(alt) unavailable"))
+                : (alt.isEmpty ? AppLocalization.string("Loading image…") : alt)
+            if failed, !isGatewayMedia, let webURL = URL(string: url) {
+                PictureTilePlaceholder(state: .unavailable)
+                    .contentShape(Rectangle())
+                    .onTapGesture { openURL(webURL) }
+                    .accessibilityElement()
+                    .accessibilityLabel(Text(verbatim: label))
+                    .accessibilityAddTraits(.isLink)
+            } else {
+                PictureTilePlaceholder(state: failed ? .unavailable : .loading)
+                    .accessibilityElement()
+                    .accessibilityLabel(Text(verbatim: label))
+            }
         }
     }
 
