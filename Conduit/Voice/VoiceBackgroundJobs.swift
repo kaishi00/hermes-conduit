@@ -1988,6 +1988,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             jobs[index].isDetachedThreadTurn = true
             jobs[index].settledByPoll = false
         }
+        // A turn there already waiting on the user's OK or answer never
+        // finds the chat gone: let go of it too, so neither is asked of the
+        // call nor counted against a bare yes. Turns still queued or running
+        // fail when they find it gone, and are said so.
+        for index in jobs.indices where jobs[index].isThreadTurn && !jobs[index].isDetachedThreadTurn
+            && jobs[index].status == .needsInput
+            && threadTargets[jobs[index].id].map({ Self.sameChat($0, thread) }) == true {
+            jobs[index].outcomeDelivered = true
+            jobs[index].isDetachedThreadTurn = true
+            jobs[index].settledByPoll = false
+        }
         callChatJobID = nil
         callChatClaim = nil
         chatNotes.removeAll()

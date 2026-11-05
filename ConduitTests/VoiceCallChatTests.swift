@@ -552,6 +552,29 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(supervisor.jobsWaitingOnApproval.isEmpty, "a bare yes is not taken for it")
     }
 
+    func testATurnWaitingOnApprovalInADeletedChatIsLetGo() async {
+        let (supervisor, _) = makeAttachedCall()
+        XCTAssertNotNil(supervisor.startThreadTurn(request: "clean the logs").jobID)
+        guard await waitForCallChat({ supervisor.jobs.first?.threadTurnSubmitted == true }) else { return }
+        let approval = ApprovalActivity(
+            sessionId: "rt-chat",
+            command: "rm -rf /var/log/old",
+            description: "Delete old logs",
+            choices: nil,
+            allowPermanent: false,
+            smartDenied: false,
+            status: .pending,
+            choice: nil,
+            error: nil
+        )
+        supervisor.observe(.approval(sessionId: "rt-chat", activity: approval))
+        XCTAssertEqual(supervisor.jobs.first?.status, .needsInput)
+
+        supervisor.noteChatDeleted(["st-chat"])
+        XCTAssertTrue(supervisor.jobsWaitingOnApproval.isEmpty, "a bare yes is not taken for the deleted chat")
+        XCTAssertNil(supervisor.takePendingNotice(), "nor is the call asked about it")
+    }
+
     func testAGeminiCallsAskThreadAfterItsChatIsDeletedMakesANewChat() async {
         let (supervisor, fake) = makeAttachedCall()
         let bridge = GeminiLiveToolBridge(supervisor: supervisor)
