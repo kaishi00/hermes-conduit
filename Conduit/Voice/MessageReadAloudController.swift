@@ -331,6 +331,13 @@ final class MessageReadAloudController: ObservableObject {
             // Pin output-only ownership per operation rather than inheriting
             // whatever intent a shared playback instance last claimed.
             playback.ownershipIntent = .standalonePlayback
+            // Dictation, a voice message or a call taking the microphone
+            // ends the reading, so the microphone never hears it and two
+            // voices never play at once (issue 1770).
+            playback.onTakenOverByCapture = { [weak self] in
+                guard let self, self.isCurrent(generation) else { return }
+                self.stop()
+            }
             playback.keepsRateAdjustable = true
             // The player shows one of the Read Aloud speeds, so the reply
             // plays at exactly that one.

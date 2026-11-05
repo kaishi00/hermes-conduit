@@ -944,3 +944,58 @@ private enum VoiceAudioSessionMockError: Error {
     case activationFailed
     case deactivationFailed
 }
+
+/// Read Aloud never plays under the microphone (issue 1770).
+@MainActor
+extension VoiceAudioSessionCoordinatorTests {
+    func testPlaybackThatGivesWayStopsWhenTheMicrophoneIsTaken() async throws {
+        var gaveWay = false
+        let playback = try coordinator.acquire(.standalonePlayback) { gaveWay = true }
+
+        _ = try coordinator.acquire(.conversationCapture)
+        for _ in 0..<100 where !gaveWay { await Task.yield() }
+
+        XCTAssertTrue(gaveWay, "dictation or a call taking the microphone ends Read Aloud")
+        coordinator.release(playback)
+    }
+
+    func testPlaybackThatGivesWayCannotStartUnderTheMicrophone() throws {
+        _ = try coordinator.acquire(.conversationCapture)
+        session.resetRecordings()
+
+        XCTAssertThrowsError(try coordinator.acquire(.standalonePlayback) {})
+        XCTAssertTrue(session.categoryCalls.isEmpty)
+        XCTAssertEqual(coordinator.appliedPolicy, .conversation)
+
+        // Playback that doesn't give way (a clip in the chat) still joins.
+        _ = try coordinator.acquire(.standalonePlayback)
+        XCTAssertEqual(coordinator.appliedPolicy, .conversation)
+    }
+
+    func testStandalonePlaybackInANativeCallLeavesCallKitsSession() throws {
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+        session.resetRecordings()
+
+        let clip = try coordinator.acquire(.standalonePlayback)
+
+        XCTAssertTrue(session.categoryCalls.isEmpty, "the call's category stays")
+        XCTAssertEqual(session.activationCount, 0, "CallKit keeps the call's audio active")
+        XCTAssertEqual(coordinator.appliedPolicy, .standalonePlayback)
+
+        coordinator.release(clip)
+        XCTAssertEqual(session.deactivationCount, 0, "CallKit deactivates the call's session, not Conduit")
+    }
+
+    func testStandalonePlaybackAfterTheNativeCallTakesTheSessionAgain() throws {
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+        _ = try coordinator.acquire(.standalonePlayback)
+        session.resetRecordings()
+
+        coordinator.nativeCallEnded()
+
+        XCTAssertEqual(session.categoryCalls.last?.category, .playback)
+        XCTAssertEqual(session.activationCount, 1)
+    }
+}
