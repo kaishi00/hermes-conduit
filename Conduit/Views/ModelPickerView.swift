@@ -335,6 +335,9 @@ struct ModelPickerView: View {
     @State private var refreshingModels = false
     /// Counts the catalog reads, so only the last one asked lands.
     @State private var catalogRead = 0
+    /// A plain read was asked while Refresh models ran (a provider added
+    /// meanwhile): it runs once the refresh lands.
+    @State private var readAfterRefresh = false
 
     var body: some View {
         NavigationStack {
@@ -665,8 +668,13 @@ struct ModelPickerView: View {
             Task {
                 guard !refreshingModels else { return }
                 refreshingModels = true
-                defer { refreshingModels = false }
                 await loadModels(refresh: true)
+                refreshingModels = false
+                // A provider added meanwhile isn't in the refresh's answer.
+                if readAfterRefresh {
+                    readAfterRefresh = false
+                    await loadModels()
+                }
             }
         }
         .accessibilityIdentifier("modelPicker.refreshModels")
@@ -1164,8 +1172,12 @@ struct ModelPickerView: View {
     /// list first (issue 1807). The search, the open provider and the
     /// checked row stay as they are.
     private func loadModels(refresh: Bool = false) async {
-        // A Refresh models under way has the newer answer coming.
-        guard refresh || !refreshingModels else { return }
+        // A Refresh models under way has the newer answer coming; the
+        // read runs after it, in case something changed meanwhile.
+        guard refresh || !refreshingModels else {
+            readAfterRefresh = true
+            return
+        }
         catalogRead += 1
         let read = catalogRead
         catalog.readStarted()
@@ -1186,6 +1198,18 @@ struct ModelPickerView: View {
         }
         // A row being switched to keeps its checkmark.
         guard switchingRow == nil else { return }
+        // So does a row switched to that Hermes ran under another id, while
+        // the session still runs what it resolved to.
+        if let switchedRow, !modelPickerShouldSwitch(
+            switchedRow.selection,
+            lastSwitched: switchedRow,
+            runtimeModel: appState.runtime.model,
+            runtimeProvider: appState.runtime.provider
+        ) {
+            selectedModel = switchedRow.selection.model
+            selectedProvider = switchedRow.selection.provider
+            return
+        }
         selectedModel = appState.runtime.model
         selectedProvider = appState.runtime.provider
     }
