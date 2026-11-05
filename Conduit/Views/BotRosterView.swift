@@ -478,6 +478,13 @@ struct BotRosterView: View {
         }
     }
 
+    /// Whether `dragged` can join the room being started: shown, not hidden,
+    /// not in it yet, and with room for it.
+    private func canJoinNewRoom(_ dragged: String) -> Bool {
+        canStartRoomHere && !newRoom.contains(dragged) && newRoom.fits([dragged])
+            && visibleBots.contains { $0.name.caseInsensitiveCompare(dragged) == .orderedSame }
+    }
+
     /// A bot dropped on the room being started joins it, as on a member.
     private func dropOnNewRoom(_ dragged: String) -> Bool {
         guard canStartRoomHere,
@@ -497,10 +504,10 @@ struct BotRosterView: View {
     /// Hermes made the room: it takes the new room's place, sliding to
     /// where Hermes lists it. Then its tile lets go of that place, with no
     /// motion, so the next room started has it to itself.
-    private func newRoomCreated() {
-        let made = roomsBeforeCreate.flatMap { before in
-            appState.shownGroupRooms.first { !before.contains($0.roomID) }?.roomID
-        }
+    private func newRoomCreated(_ roomID: String) {
+        // Only a room Hermes lists takes the place; one it hasn't listed
+        // yet shows as it lands, with no slide.
+        let made = appState.shownGroupRooms.contains { $0.roomID == roomID } ? roomID : nil
         Haptics.success()
         withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : BotRoomFlight.motion) {
             landingRoomID = made
@@ -882,6 +889,7 @@ struct BotRosterView: View {
                 flying: Set(roomFlights.map(\.name)),
                 title: joinedNames(newRoomBots),
                 onCreate: openNewRoomSheet,
+                canJoin: canJoinNewRoom,
                 onDrop: dropOnNewRoom
             )
             .matchedGeometryEffect(id: BotsHomeAnchorKey.newRoom, in: roomTiles)

@@ -249,6 +249,9 @@ struct NewRoomPortrait: View {
     let flying: Set<String>
     let title: String
     let onCreate: () -> Void
+    /// Whether the dragged bot can join: never a hidden bot, one already
+    /// in, or one past the room's limit. Without it the tile never swells.
+    let canJoin: (String) -> Bool
     let onDrop: (String) -> Bool
     @EnvironmentObject private var appState: AppState
     @State private var isTargeted = false
@@ -271,10 +274,12 @@ struct NewRoomPortrait: View {
             BotDragPayload.lifted = nil
             return onDrop(dragged)
         } isTargeted: { targeted in
-            withAnimation(.spring(duration: 0.25)) { isTargeted = targeted && BotDragPayload.lifted != nil }
+            let joins = targeted && BotDragPayload.lifted.map(canJoin) == true
+            withAnimation(.spring(duration: 0.25)) { isTargeted = joins }
         }
         .accessibilityLabel(Text(AppLocalization.string("New room")))
         .accessibilityValue(Text(verbatim: title))
+        .accessibilityHint(bots.count >= 2 ? Text(AppLocalization.string("Opens New Group Chat with these bots.")) : Text(verbatim: ""))
         .accessibilityIdentifier("bots.newRoom.tile")
     }
 
