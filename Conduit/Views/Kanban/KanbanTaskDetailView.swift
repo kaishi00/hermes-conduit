@@ -1775,14 +1775,15 @@ struct KanbanReassignSheet: View {
 
     var body: some View {
         NavigationStack {
-            ConduitForm {
-                Section("Profiles") {
+            SettingsDetailContainer {
+                ConduitSettingsSection(title: AppLocalization.string("Profiles"), symbol: "person.2", tint: .conduitAccent) {
                     ForEach(store.profiles) { profile in
                         Button {
                             Task { await reassign(to: profile.name) }
                         } label: {
                             HStack {
                                 Text(profile.name)
+                                    .foregroundStyle(.primary)
                                 Spacer()
                                 if profile.name == currentAssignee {
                                     Image(systemName: "checkmark")
@@ -1792,27 +1793,33 @@ struct KanbanReassignSheet: View {
                                     ProgressView()
                                 }
                             }
+                            .frame(minHeight: 36)
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                         .disabled(pendingProfile != nil)
                     }
                 }
                 if (currentAssignee ?? "").isEmpty == false {
-                    Section {
-                        Button(role: .destructive) {
+                    SettingsCard {
+                        Button {
                             Task { await reassign(to: nil) }
                         } label: {
                             HStack {
                                 Text("Unassign (parked — won't run)")
+                                    .foregroundStyle(.red)
+                                Spacer()
                                 if pendingProfile == "__unassign__" { ProgressView() }
                             }
+                            .frame(minHeight: 36)
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                         .disabled(pendingProfile != nil)
                     }
                 }
                 if let errorMessage {
-                    Section {
-                        Text(errorMessage).foregroundStyle(.red).scaledFont(.footnote)
-                    }
+                    Text(errorMessage).foregroundStyle(.red).scaledFont(.footnote)
                 }
             }
             .navigationTitle("Reassign")

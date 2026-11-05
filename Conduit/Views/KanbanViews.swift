@@ -1506,21 +1506,26 @@ struct KanbanView: View {
 
     private var bulkMoveSheet: some View {
         NavigationStack {
-            ConduitList {
-                ForEach(KanbanBulkDestinationPolicy.moveDestinations(), id: \.id) { presentation in
-                    Button {
-                        commitBulkFromStage { staged in
-                            PendingBulkOperation(ids: staged.ids, context: staged.context, action: .move(presentation.rawValue))
+            SettingsDetailContainer {
+                SettingsCard {
+                    ForEach(KanbanBulkDestinationPolicy.moveDestinations(), id: \.id) { presentation in
+                        Button {
+                            commitBulkFromStage { staged in
+                                PendingBulkOperation(ids: staged.ids, context: staged.context, action: .move(presentation.rawValue))
+                            }
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: presentation.systemImage)
+                                    .foregroundStyle(presentation.tint)
+                                Text(presentation.displayName)
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                            }
+                            .frame(minHeight: 36)
+                            .contentShape(Rectangle())
                         }
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: presentation.systemImage)
-                                .foregroundStyle(presentation.tint)
-                            Text(presentation.displayName)
-                            Spacer()
-                        }
+                        .buttonStyle(.plain)
                     }
-                    .foregroundStyle(.primary)
                 }
             }
             .navigationTitle(moveSheetTitle)
@@ -1541,30 +1546,36 @@ struct KanbanView: View {
 
     private var bulkAssignSheet: some View {
         NavigationStack {
-            ConduitList {
-                if store.profiles.isEmpty {
-                    Text("No profiles on this server yet.")
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(store.profiles) { profile in
-                    Button {
-                        commitBulkFromStage { staged in
-                            PendingBulkOperation(ids: staged.ids, context: staged.context, action: .assign(profile.name))
-                        }
-                    } label: {
-                        HStack(spacing: 10) {
-                            Text(profile.name)
-                            Spacer()
-                        }
+            SettingsDetailContainer {
+                ConduitSettingsSection(title: AppLocalization.string("Profiles"), symbol: "person.2", tint: .conduitAccent) {
+                    if store.profiles.isEmpty {
+                        Text("No profiles on this server yet.")
+                            .foregroundStyle(.secondary)
                     }
-                    .foregroundStyle(.primary)
+                    ForEach(store.profiles) { profile in
+                        Button {
+                            commitBulkFromStage { staged in
+                                PendingBulkOperation(ids: staged.ids, context: staged.context, action: .assign(profile.name))
+                            }
+                        } label: {
+                            HStack(spacing: 10) {
+                                Text(profile.name)
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                            }
+                            .frame(minHeight: 36)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                Section {
+                SettingsCard {
                     Button("Unassign") {
                         commitBulkFromStage { staged in
                             PendingBulkOperation(ids: staged.ids, context: staged.context, action: .assign(nil))
                         }
                     }
+                    .buttonStyle(.settings)
                 }
             }
             .navigationTitle(assignSheetTitle)
@@ -1590,8 +1601,8 @@ struct KanbanView: View {
 
     private var bulkPrioritySheet: some View {
         NavigationStack {
-            ConduitForm {
-                Section {
+            SettingsDetailContainer {
+                SettingsCard {
                     HStack(spacing: 12) {
                         Button {
                             // Clamped at Int bounds: the numeric field can
@@ -1620,11 +1631,11 @@ struct KanbanView: View {
                         .accessibilityLabel("Increase priority")
                     }
                     .padding(.vertical, 4)
-                } footer: {
                     // Audited contract: upstream applies the verbatim
                     // integer (direct SQL) - NO bounds exist; this control
                     // validates only that the value parses as Int.
                     Text("Any integer is valid; Hermes stores it verbatim (no bounds upstream).")
+                        .settingsCaption()
                 }
             }
             .navigationTitle(prioritySheetTitle)
@@ -1659,15 +1670,17 @@ struct KanbanView: View {
 
     private var bulkFailuresSheet: some View {
         NavigationStack {
-            ConduitList {
+            SettingsDetailContainer {
                 if let outcome = lastBulkOutcome {
-                    ForEach(KanbanBulkResultPolicy.failures(from: outcome), id: \.id) { failure in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Task \(failure.id)")
-                                .scaledFont(.subheadline.weight(.semibold))
-                            Text(failure.reason)
-                                .scaledFont(.caption)
-                                .foregroundStyle(.secondary)
+                    SettingsCard {
+                        ForEach(KanbanBulkResultPolicy.failures(from: outcome), id: \.id) { failure in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Task \(failure.id)")
+                                    .scaledFont(.subheadline.weight(.semibold))
+                                Text(failure.reason)
+                                    .scaledFont(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
