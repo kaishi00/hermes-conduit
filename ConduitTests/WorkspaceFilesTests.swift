@@ -276,6 +276,11 @@ extension HermesVoiceGatewayTimeoutTests {
 
         appState.showWorkspaceLookup(.failure(URLError(.timedOut)), for: "docs/a.md", line: nil)
         XCTAssertEqual(appState.workspaceReveal?.path, "/home/me/app/docs/a.md", "a failed lookup keeps the chat's folder")
+        XCTAssertNil(appState.composerNotice, "a later tap's answer takes the earlier notice away")
+
+        appState.composerNotice = "Your message wasn't sent. It's back in the composer."
+        appState.showWorkspaceLookup(.success("/w/a.md"), for: "a.md", line: nil)
+        XCTAssertEqual(appState.composerNotice, "Your message wasn't sent. It's back in the composer.", "other notices stay")
     }
 
     func testToolsThatChangeFilesRefreshTheFolder() throws {

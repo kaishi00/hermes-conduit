@@ -136,13 +136,19 @@ extension AppState {
     /// the chat is open and connected), or, when the lookup itself failed,
     /// the chat's folder as before.
     func showWorkspaceLookup(_ answer: Result<String?, Error>, for path: String, line: Int?) {
+        // An earlier tap's "isn't on the server" goes once a later one
+        // answers; any other notice stays.
+        if let said = workspaceLookupNotice, composerNotice == said { composerNotice = nil }
+        workspaceLookupNotice = nil
         switch answer {
         case .success(let found?):
             workspaceReveal = WorkspaceReveal(path: found, line: line)
         case .success(nil):
             let name = (path as NSString).lastPathComponent
-            composerNotice = AppLocalization.string("\(name) isn’t on the server. It may have been deleted, or it’s on another computer.")
+            let notice = AppLocalization.string("\(name) isn’t on the server. It may have been deleted, or it’s on another computer.")
+            composerNotice = notice
             composerNoticeSystemImage = "questionmark.folder"
+            workspaceLookupNotice = notice
         case .failure:
             workspaceReveal = WorkspaceReveal(path: absoluteWorkspacePath(path), line: line)
         }
