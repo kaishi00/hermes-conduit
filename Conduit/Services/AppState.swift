@@ -38769,9 +38769,11 @@ final class AppState: ObservableObject {
             isSwitchingVoiceMode = false
             voiceModeSwitchDismissing = nil
         }
-        // Classic voice works in the open chat; a live call in its attached one.
+        // Classic voice works in the open chat; a live call in its attached
+        // one, or the chat a Local Live call made for itself (from Home, or
+        // after its chat was deleted, issue 1797).
         let classicWasOpen = showVoiceSheet
-        let thread = classicWasOpen ? liveVoiceThreadForOpenChat() : voiceBackgroundJobSupervisor.liveThread
+        let thread = classicWasOpen ? liveVoiceThreadForOpenChat() : (voiceBackgroundJobSupervisor.liveThread ?? localLiveOwnChat)
         let shownLiveScreen: VoiceCallEngine? = showQwenLiveSheet ? .qwenLive
             : showGeminiLiveSheet ? .geminiLive
             : showGPTLiveSheet ? .gptLive
