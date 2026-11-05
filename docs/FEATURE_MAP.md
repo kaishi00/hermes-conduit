@@ -3996,7 +3996,7 @@ Recent menu) · the Archived sheet · README.md
 - Sync: `Conduit/Services/AppState+SyncedPreferences.swift` (app.project_chats, hiddenChatProjectsSlot as app.hidden_chat_projects)
 
 **Rulings**
-- Recent is the default on every install that hasn't picked one, an install from before #1317 included; a choice made on any device (the synced `app.project_chats`) stays. #1317 kept Off on older installs (2026-10-26, Eric), which left a user whose day was all in projects with no Today in Chats and no way to find the day's chats there (issue 1583); that device-only Off is read no more and is cleared at launch (2026-11-05, issue 1583, #PRNUM, Eric).
+- Recent is the default on every install that hasn't picked one, an install from before #1317 included; a choice made on any device (the synced `app.project_chats`) stays. #1317 kept Off on older installs (2026-10-26, Eric), which left a user whose day was all in projects with no Today in Chats and no way to find the day's chats there (issue 1583); that device-only Off is read no more and is cleared at launch (2026-11-05, issue 1583, #1838, Eric).
 - Filter ▸ Projects is a multi-select with every project ticked to start, Home's chats standing in for the ones in no project ("Not in a project" without a Home). It narrows every filter, is kept per profile, and All doesn't clear it; the gold chip names it and its × shows every project again (2026-10-26, #1317, Eric picked a menu over a switch on each project). The chip counts projects ("2 projects hidden") and names Home on its own ("Home hidden", or "Chats outside projects hidden" without a Home), since Home's chats are in no project (Eric, 2026-10-26, #1328).
 - A pinned chat stays listed whatever is hidden, and a search looks through every chat, a hidden project's too, as it does with the setting at Off (#708).
 - A hidden project's chat that waits for approval leaves the list like its other chats, but the filter's amber dot and its spoken count still count it, and Needs approval lists it (its count too), so hiding a project never keeps a wait from the dot out of Needs approval (2026-10-26, #1322; Needs approval in #1328, Eric). Starred and the sources still narrow Needs approval as they narrow every filter, while the dot counts every wait; that predates hidden projects.
@@ -4009,7 +4009,7 @@ Recent menu) · the Archived sheet · README.md
 - Until the profile's projects load, nothing is hidden: every chat would read as one in no project.
 - A row's project comes from the chats the project tree previews, so a project chat beyond its preview counts as in no project: it shows with the setting at Off, and hides with "Not in a project".
 
-**Checked:** 2026-11-05, #PRNUM (Recent for every install that hasn't picked; siblings: the list with no filter and All profiles follow the setting as before; Settings caption, README and Sync unchanged, as the choices and their wording are); 2026-10-26, #1328.
+**Checked:** 2026-11-05, #1838 (Recent for every install that hasn't picked; siblings: the list with no filter and All profiles follow the setting as before; Settings caption, README and Sync unchanged, as the choices and their wording are); 2026-10-26, #1328.
 
 ## All profiles in Chats
 
