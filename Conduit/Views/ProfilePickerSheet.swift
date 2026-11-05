@@ -169,6 +169,8 @@ private struct ProfilePickerRow: View {
     /// file (Choose Photo's crop keeps one frame).
     @State private var showingMotionPicker = false
     @State private var pickedMotion: PhotosPickerItem?
+    /// Apple's Image Playground (ImagePlaygroundPicture).
+    @State private var showingPlayground = false
     @State private var saveError: String?
     @State private var isSavingPhoto = false
     @State private var isRenaming = false
@@ -238,6 +240,12 @@ private struct ProfilePickerRow: View {
             pickedImage = nil
             savePhoto(newImage)
         }
+        .imagePlaygroundPicture(
+            isPresented: $showingPlayground,
+            prompt: ImagePlaygroundPicture.Prompt(name: appState.profileDisplayName(profile)),
+            onImage: { savePhoto($0) },
+            onFailure: { saveError = AppLocalization.string("That picture could not be used.") }
+        )
         .alert(AppLocalization.string("Rename profile"), isPresented: $isRenaming) {
             TextField(AppLocalization.string("Name"), text: $draftName)
                 .textInputAutocapitalization(.words)
@@ -323,6 +331,13 @@ private struct ProfilePickerRow: View {
                 showingMotionPicker = true
             } label: {
                 Label(AppLocalization.string("Choose GIF or Video"), systemImage: "film")
+            }
+            if ImagePlaygroundPicture.current == .available {
+                Button {
+                    showingPlayground = true
+                } label: {
+                    Label(AppLocalization.string("Image Playground"), systemImage: "apple.image.playground")
+                }
             }
             if appState.profileAvatarURL(for: profile) != nil {
                 Button(role: .destructive) {
