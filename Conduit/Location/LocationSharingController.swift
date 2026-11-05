@@ -849,6 +849,8 @@ final class LocationSharingController: ObservableObject {
         saveUnsent()
         engine.forgetHost()
         LocationKeychain.clearHostPass()
+        // A reply still coming from the removed host lists its shops.
+        spotsForgotten += 1
         save { $0.unbind() }
         // Unbound, the monitors stop and the shops' monitor is emptied.
         reconfigureMonitors()
