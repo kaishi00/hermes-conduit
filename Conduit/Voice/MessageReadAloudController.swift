@@ -72,6 +72,9 @@ final class MessageReadAloudController: ObservableObject {
     /// Headphones came out while this operation was still opening: its
     /// first audio starts paused rather than on the speaker.
     private var pauseWhenAudioStarts: UInt64?
+    /// Dictation, a voice message or a call holds the microphone, or a
+    /// call from Hermes holds the session.
+    private let microphoneIsHeld: @MainActor () -> Bool
 
     init(
         playback: SpeechPlaybackService? = nil,
@@ -82,8 +85,13 @@ final class MessageReadAloudController: ObservableObject {
         },
         beginBackgroundActivity: (@MainActor (@escaping @MainActor () -> Void) -> @MainActor () -> Void)? = nil,
         nowPlaying: ReadAloudNowPlayingPresenting? = nil,
+        microphoneIsHeld: @escaping @MainActor () -> Bool = {
+            let coordinator = VoiceAudioSessionCoordinator.shared
+            return coordinator.hasCaptureOwner || coordinator.isInNativeCall
+        },
         reportError: @escaping @MainActor (String) -> Void = { _ in }
     ) {
+        self.microphoneIsHeld = microphoneIsHeld
         self.playback = playback ?? AVSpeechPlaybackService()
         self.nowPlaying = nowPlaying ?? SystemReadAloudNowPlaying()
         self.activeGateway = gateway
@@ -331,6 +339,13 @@ final class MessageReadAloudController: ObservableObject {
             // Pin output-only ownership per operation rather than inheriting
             // whatever intent a shared playback instance last claimed.
             playback.ownershipIntent = .standalonePlayback
+            // Dictation, a voice message or a call taking the microphone
+            // ends the reading, so the microphone never hears it and two
+            // voices never play at once (issue 1770).
+            playback.onTakenOverByCapture = { [weak self] in
+                guard let self, self.isCurrent(generation) else { return }
+                self.stop()
+            }
             playback.keepsRateAdjustable = true
             // The player shows one of the Read Aloud speeds, so the reply
             // plays at exactly that one.
@@ -338,16 +353,19 @@ final class MessageReadAloudController: ObservableObject {
             let stream = try await gateway.openSpeechStream(
                 onStart: { [weak self] sampleRate in
                     guard let self, self.isCurrent(generation) else { return }
+                    try self.yieldToHeldMicrophone()
                     try self.playback.start(sampleRate: sampleRate)
                     self.transitionToPlaying(messageID: messageID, generation: generation)
                 },
                 onPCM16: { [weak self] data, sampleRate in
                     guard let self, self.isCurrent(generation) else { return }
+                    try self.yieldToHeldMicrophone()
                     _ = try self.playback.enqueuePCM16(data, sampleRate: sampleRate)
                     self.transitionToPlaying(messageID: messageID, generation: generation)
                 },
                 onEncodedAudio: { [weak self] data in
                     guard let self, self.isCurrent(generation) else { return }
+                    try self.yieldToHeldMicrophone()
                     try self.playback.playEncodedAudioData(data)
                     self.transitionToPlaying(messageID: messageID, generation: generation)
                 }
@@ -422,6 +440,16 @@ final class MessageReadAloudController: ObservableObject {
                 pause()
             }
         }
+    }
+
+    /// Audio that would reach a held microphone ends the reading instead:
+    /// one that opened as dictation started (issue 1770). A cancellation,
+    /// so the gateway never takes it for a Hermes speech failure and falls
+    /// back to the iPhone's voice.
+    private func yieldToHeldMicrophone() throws {
+        guard microphoneIsHeld() else { return }
+        stop()
+        throw CancellationError()
     }
 
     private func fail(messageID: String, message: String, generation: UInt64) {

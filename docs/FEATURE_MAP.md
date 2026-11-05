@@ -930,7 +930,9 @@ echo-cancelling audio) · GPT-Live (WebRTC) · calls from Hermes (CallKit's
 Speaker button) · CarPlay · AirPods and Bluetooth · Read Aloud · the Voice
 settings speech test · the call
 screen's Mute and Silence · the minimised call bar · a Watch-answered call
-kept on the iPhone's headset (the Watch's Mute and End)
+kept on the iPhone's headset (the Watch's Mute and End) · composer
+dictation and voice messages (chats and group rooms), which take the
+microphone · voice clips in the chat · the Read Aloud buttons in chats and group rooms
 
 **Code**
 - Session owner: `Conduit/Voice/VoiceAudioSessionCoordinator.swift` (ensureConversationSpeaker, isNativeCallAudioActive), `Conduit/Voice/VoiceAudioSessionConfiguration.swift`
@@ -938,7 +940,8 @@ kept on the iPhone's headset (the Watch's Mute and End)
 - Live audio: `Conduit/Voice/GPTLive/GPTLiveAudioLink.swift`, `Conduit/Voice/GeminiLive/LiveVoiceEchoCancellingAudio.swift`, `Conduit/Voice/EchoCancellingVoiceConversationAudio.swift`
 - Mute and Silence: `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Views/MinimisedLiveVoiceBar.swift`, `Conduit/Voice/HeadsetMicrophoneMute.swift`
 - A Watch answer kept on the iPhone's headset: `Conduit/Voice/HermesNativeCalls.swift` (keepsWatchAnswer, muteOnWatch, inAppMuteChanged), `Conduit/Services/AppState+HermesCalls.swift` (nativeCallVoiceMuted), `ConduitWatch/HermesWatchCalls.swift` (phoneCallMuted)
-- Read Aloud: `Conduit/Voice/MessageReadAloudController.swift` (routeChanged), `Conduit/Views/ReadAloudPlayerBar.swift`
+- Read Aloud: `Conduit/Voice/MessageReadAloudController.swift` (routeChanged, onTakenOverByCapture), `Conduit/Views/ReadAloudPlayerBar.swift`
+- Read Aloud kept off calls and the microphone: `Conduit/Services/AppState.swift` (readAloudAudioBusyReason, under readAloudUnavailableReason, which the buttons in `Conduit/Views/ChatRowState.swift` and `Conduit/Views/GroupChatView.swift` read), `Conduit/Voice/VoiceAudioSessionCoordinator.swift` (acquire's onTakenOver), `Conduit/Voice/AVSpeechPlaybackService.swift` (onTakenOverByCapture), `Conduit/Voice/MessageReadAloudController.swift` (yieldToHeldMicrophone), `Conduit/Views/Components/InlineAudioClip.swift` (a clip's lease), `Conduit/Services/AppState+HermesCalls.swift` (setNativeHermesCallActive), the speech tests' gate in `Conduit/Services/AppState.swift` (isCallHoldingAudio, runVoiceTTSTest, runVoiceASRTest)
 - Speech test: `Conduit/Voice/VoiceConversationController.swift` (runSpeechTest)
 - Background time: `Conduit/Services/BackgroundTaskHold.swift` (HermesNativeCalls' muteOnWatch)
 
@@ -951,12 +954,14 @@ kept on the iPhone's headset (the Watch's Mute and End)
 - A route change mid-reply (AirPods, Speaker, a dock) never drops speech: a conversation's reply, Read Aloud and the speech test play on from where they were on a fresh engine; an encoded clip follows the route itself, and a fresh engine that won't start ends Read Aloud rather than restarting past the dropped audio (Eric 2026-11-02, from issue 1641, #1650).
 - A streamed reply's odd trailing byte waits for the next chunk on storage of its own (VoicePCMEncoding.splitPCM16), in the live modes' echo-cancelling audio and the default playback alike. A route change's restart copies it and tears down: left as an emptied slice of the stream, clearing it made Foundation trap (29 crash reports from build 244, 2026-11-04, #1733).
 - Headphones taken out (AirPods back in the case, a cable pulled) pause Read Aloud, as iOS media does, instead of reading on from the speaker; Resume carries on. Live calls and Classic keep talking, like a phone call (Eric 2026-11-02, #1650).
+- Read Aloud never plays over a call or the microphone: the call's microphone would hear it as the user (each engine's echo cancelling knows only its own voice) and two voices would talk at once. During any call (Classic, the live modes, minimised or not, a call from Hermes) its buttons in chats and group rooms are off, and a tap that still reaches it is refused with "Read aloud can't play during a call."; it never ends the call. A tap while dictation or a voice message holds the microphone says "Read aloud can't play while the microphone is in use." Opening a call stops Read Aloud, and so does dictation or a voice message taking the microphone; a reading whose stream opens under a held microphone ends before it plays, as a cancellation, so Hermes speech isn't marked failed and swapped for the iPhone's voice. A reading still opening when a call from Hermes starts ends then, or when its audio arrives. A voice clip playing in the chat pauses when dictation or a voice message takes the microphone too; one the user plays during a call still plays, by their choice. The Voice settings speech and transcription tests refuse to run during a call ("End the call to run this test."). The speech test is no call: Read Aloud takes over from it (2026-11-05, issue 1770, #1772).
+- In a call from Hermes, standalone playback (a clip in the chat) plays within CallKit's session and never reconfigures or re-activates it; the call's end applies its own policy (2026-11-05, issue 1770, #1772).
 
 **Open gaps**
 - Silence isn't on CarPlay or the minimised bar (#488).
 - Classic still ends with "Audio was interrupted." when an alarm or phone call takes the audio, where live calls pause; only CarPlay and calls from Hermes restart it (#380, #1155).
 
-**Checked:** 2026-11-04, #1733 (a stream's odd byte kept on its own storage, so a route change's restart no longer traps); 2026-11-02, #1650 (Read Aloud and the speech test play on after a route change instead of restarting with the queued middle dropped, issue 1641; headphones taken out pause Read Aloud); 2026-10-30, #1524 (Read Aloud reads a Desktop card as a short note; route, Speaker and mute unchanged); 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
+**Checked:** 2026-11-05, #1772 (Read Aloud kept off calls and the microphone, standalone playback leaves a call from Hermes' session alone, issue 1770); 2026-11-04, #1733 (a stream's odd byte kept on its own storage, so a route change's restart no longer traps); 2026-11-02, #1650 (Read Aloud and the speech test play on after a route change instead of restarting with the queued middle dropped, issue 1641; headphones taken out pause Read Aloud); 2026-10-30, #1524 (Read Aloud reads a Desktop card as a short note; route, Speaker and mute unchanged); 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
 
 ## Talking over Hermes
 

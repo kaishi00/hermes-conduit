@@ -85,6 +85,8 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// Conversation playback joins the capture-owned session; standalone
     /// flows (Read Aloud, TTS provider test) claim output-only ownership.
     var ownershipIntent: VoiceAudioIntent = .standalonePlayback
+    /// See SpeechPlaybackService: handed to the coordinator with each lease.
+    var onTakenOverByCapture: (@MainActor () -> Void)?
     /// Speed for the next stream (Read Aloud's speed setting), applied when a
     /// stream or encoded clip starts. At 1.0 the graph is the plain
     /// player→mixer path voice conversations use; any other rate inserts a
@@ -153,7 +155,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
             throw VoiceAudioError.unavailable(AppLocalization.string("The gateway reported an unsupported PCM format."))
         }
-        lease = try coordinator.acquire(ownershipIntent)
+        lease = try coordinator.acquire(ownershipIntent, onTakenOver: onTakenOverByCapture)
         do {
             self.format = format
             try startFreshGraph(format: format, stretchedTo: stretched ? rate : nil)
@@ -261,7 +263,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     func playEncodedAudioData(_ data: Data) throws {
         stop()
         interruptedStandaloneStream = false
-        lease = try coordinator.acquire(ownershipIntent)
+        lease = try coordinator.acquire(ownershipIntent, onTakenOver: onTakenOverByCapture)
         do {
             let player = try AVAudioPlayer(data: data)
             player.delegate = self
