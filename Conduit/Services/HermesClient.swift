@@ -1862,6 +1862,11 @@ final class HermesClient: ObservableObject {
                 // reason. What the card shows is decided by the event.
                 let payload = eventObject?["payload"]?.objectValue
                 if let id = payload?["id"]?.stringValue {
+                    if openServerRequestIDs.contains(id) {
+                        // A screen install's password card, if this was one, goes.
+                        NotificationCenter.default.post(name: .hermesDisplaySudoCancelled, object: self,
+                                                        userInfo: ["request_id": id])
+                    }
                     openServerRequestIDs.remove(id)
                     authorityPrompts.removeValue(forKey: id)
                     authorityPromptSessions.removeValue(forKey: id)
@@ -1881,6 +1886,13 @@ final class HermesClient: ObservableObject {
                         ))
                     }
                 }
+            case let type? where type.hasPrefix("display."):
+                // A bot's screen (Bot Screen): its status, lease and install
+                // log, for whichever screen view follows that profile.
+                let payload = eventObject?["payload"]?.objectValue ?? [:]
+                NotificationCenter.default.post(name: .hermesDisplayEvent, object: self,
+                                                userInfo: ["type": type, "payload": payload])
+                return
             default:
                 break
             }
@@ -1978,6 +1990,13 @@ final class HermesClient: ObservableObject {
             openServerRequestIDs.insert(requestID)
             clarifySessions[requestID] = sessionId
             onEvent?(.clarify(sessionId: sessionId, activity: activity))
+        case Self.displayInstallSudo:
+            // The masked sudo password for a Bot Screen install this
+            // connection started; the screen view asks for it.
+            openServerRequestIDs.insert(requestID)
+            NotificationCenter.default.post(name: .hermesDisplaySudo, object: self, userInfo: [
+                "request_id": requestID, "profile_key": params["profile_key"]?.stringValue ?? ""
+            ])
         case _ where InputPromptActivity.Kind(rawValue: method) != nil:
             guard let activity = InputPromptActivity.from(requestId: requestID, method: method, params: params) else {
                 writeServerRequestReply(id: id, error: (Self.invalidParamsCode, "\(method) request without the fields its card needs"))
@@ -1993,8 +2012,12 @@ final class HermesClient: ObservableObject {
 
     /// Methods this client presents (anything else is declined).
     static func handlesServerRequest(_ method: String) -> Bool {
-        method == "clarify" || method == "approval" || InputPromptActivity.Kind(rawValue: method) != nil
+        method == "clarify" || method == "approval" || method == displayInstallSudo
+            || InputPromptActivity.Kind(rawValue: method) != nil
     }
+
+    /// Bot Screen's package install asks for the host's sudo password.
+    static let displayInstallSudo = "display.install.sudo"
 
     /// Requests only the Hermes Desktop window showing the session can
     /// answer (`server_requests.py`, "window-owned bridges").
@@ -2581,6 +2604,47 @@ final class HermesClient: ObservableObject {
     func botMcpServers(profile: String) async throws -> [BotMcpServerSummary] {
         let result = try await rpc("mcp.servers.list", params: ["profile": profile], scoped: false)
         return BotMcpSetup.servers(from: result)
+    }
+
+    // MARK: - Bot Screen (display.*)
+
+    /// One of Hermes' `display.*` methods for a bot's screen, scoped to its
+    /// profile (every handler answers for the profile it's given; without
+    /// one, the dashboard's own).
+    func display(_ method: String, profile: String, params: [String: Any] = [:],
+                 timeout: TimeInterval = requestTimeout) async throws -> [String: AnyCodable] {
+        var params = params
+        params["profile"] = profile
+        let result = try await rpc(method, params: params, timeout: timeout, scoped: false)
+        return result.objectValue ?? [:]
+    }
+
+    /// The upgrade for a screen's RFB stream (`/api/display/ws`), with the
+    /// connection's own headers, as the chat socket's: the single-use ticket
+    /// `display.observe` minted on this socket is what admits it.
+    func displayStreamRequest(path: String, ticket: String) async throws -> URLRequest {
+        let url: URL
+        do {
+            url = try ConnectionURLPolicy.webSocketURL(
+                baseURL: connection.baseUrl,
+                path: path.hasPrefix("/") ? path : "/" + path,
+                queryItems: [URLQueryItem(name: "display_ticket", value: ticket)]
+            )
+        } catch {
+            throw HermesError.invalidUrl
+        }
+        var request = URLRequest(url: url)
+        request = request.applyingProxyHeaders(cloudflare: cloudflareAccess)
+        request.setValue("conduit", forHTTPHeaderField: "X-Conduit-Client")
+        guard let requestAuthorizer else { return request }
+        return try await requestAuthorizer.authorizeUpgrade(request)
+    }
+
+    /// Answers the Bot Screen install's sudo request; an empty password
+    /// cancels it.
+    func respondToDisplaySudo(requestId: String, password: String) async throws {
+        try await sendServerRequestResult(id: requestId, result: ["value": password])
+        openServerRequestIDs.remove(requestId)
     }
 
     /// `mcp.servers.add` from a catalog preset.
@@ -6579,4 +6643,16 @@ enum MessageNormalizer {
         let shortest = min(normR.count, normC.count)
         return shortest >= 80 && (normR.hasPrefix(normC) || normC.hasPrefix(normR))
     }
+}
+
+
+extension Notification.Name {
+    /// A `display.*` event (Bot Screen) on a client's socket: `type` and
+    /// `payload` in userInfo, the client as the object.
+    static let hermesDisplayEvent = Notification.Name("ConduitHermesDisplayEvent")
+    /// A Bot Screen install asks for the host's sudo password: `request_id`
+    /// and `profile_key`.
+    static let hermesDisplaySudo = Notification.Name("ConduitHermesDisplaySudo")
+    /// The gateway withdrew a server request (`request_id`).
+    static let hermesDisplaySudoCancelled = Notification.Name("ConduitHermesDisplaySudoCancelled")
 }

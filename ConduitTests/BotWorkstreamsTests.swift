@@ -980,3 +980,101 @@ extension BotModeTests {
         XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: response, profile: "furina")), .working(2))
     }
 }
+
+/// Bot Screen: the host's screen status and lease as Hermes gives them, who
+/// drives the bot's screen as the plugin keeps it, and the keys the type bar
+/// sends.
+extension BotModeTests {
+    private func screenStatus(_ fields: [String: Any]) throws -> BotScreenStatus {
+        let object = try XCTUnwrap(AnyCodable(jsonObject: fields).objectValue)
+        return try XCTUnwrap(BotScreenStatus(object))
+    }
+
+    func testBotScreenStatusReadsHermesFields() throws {
+        let status = try screenStatus([
+            "supported": true, "installed": false, "missing": ["xvfb", "xfce4"], "running": false,
+            "geometry": "1280x800", "install_command": "sudo apt-get install -y xvfb xfce4",
+            "profile": "furina", "profile_key": "abc",
+            "lease": ["holder": "human", "viewer_hash": "0123456789ab", "epoch": 3],
+            "image_switch": ["current_image": "python:3.12", "target_image": "hermes-desktop"],
+        ])
+        XCTAssertTrue(status.isSupported)
+        XCTAssertFalse(status.isInstalled)
+        XCTAssertEqual(status.missing, ["xvfb", "xfce4"])
+        XCTAssertEqual(status.installCommand, "sudo apt-get install -y xvfb xfce4")
+        XCTAssertEqual(status.aspectRatio, 1.6, accuracy: 0.001)
+        XCTAssertEqual(status.imageSwitch, .init(current: "python:3.12", target: "hermes-desktop"))
+        XCTAssertTrue(status.lease.isHuman)
+        XCTAssertEqual(status.lease.epoch, 3)
+        XCTAssertTrue(status.lease.isHeld(byViewerHash: "0123456789ab"))
+        XCTAssertFalse(status.lease.isHeld(byViewerHash: "ffffffffffff"))
+        XCTAssertFalse(status.lease.isHeld(byViewerHash: nil))
+        // No "supported" field: not a status at all.
+        XCTAssertNil(BotScreenStatus(try XCTUnwrap(AnyCodable(jsonObject: ["running": true]).objectValue)))
+    }
+
+    func testBotScreenLeaseDefaultsToTheBot() throws {
+        let status = try screenStatus(["supported": false, "geometry": "wide"])
+        XCTAssertFalse(status.isSupported)
+        XCTAssertFalse(status.lease.isHuman)
+        XCTAssertEqual(status.aspectRatio, 1.6, accuracy: 0.001)
+    }
+
+    func testBotScreenViewerHashMatchesHermes() {
+        // hashlib.sha256(b"viewer-1").hexdigest()[:12]
+        XCTAssertEqual(BotScreenLease.hash(ofViewer: "viewer-1"), "63a9e8a8c2d8")
+    }
+
+    func testBotScreenUseKeepsNowApartFromLast() throws {
+        let use = try XCTUnwrap(BotScreenUse([
+            "controlling": NSNull(),
+            "last": ["session_id": "w1", "kind": "workstream", "ref": "W1", "title": "Login bug", "at": 1_800_000_000.0],
+            "waiting": [["session_id": "w2", "ref": "W2"], ["session_id": "chat"]],
+        ]))
+        XCTAssertNil(use.controlling)
+        XCTAssertEqual(use.last?.ref, "W1")
+        XCTAssertEqual(use.last?.at, Date(timeIntervalSince1970: 1_800_000_000))
+        XCTAssertEqual(use.waitingRefs, ["W2"])
+        XCTAssertEqual(BotScreenUse.name(of: try XCTUnwrap(use.last)), "W1")
+        XCTAssertNil(BotScreenUse(nil))
+    }
+
+    func testBotScreenKeysyms() {
+        XCTAssertEqual(BotScreenKey.keysym(for: "a"), 0x61)
+        XCTAssertEqual(BotScreenKey.keysym(for: "é"), 0xE9)
+        XCTAssertEqual(BotScreenKey.keysym(for: "€"), 0x0100_20AC)
+        XCTAssertEqual(BotScreenKey.keysym(for: "\n"), 0xFF0D)
+        XCTAssertEqual(BotScreenKey.escape.keysym, 0xFF1B)
+    }
+
+    func testWorkRowReadsItsScreenAndAScreenAskNeedsYou() throws {
+        let response: [String: Any] = [
+            "ok": true, "policy": "strict", "bot": "Furina",
+            "counts": ["working": 0, "needs_you": 1, "ready": 0],
+            "screen": ["controlling": ["session_id": "w2", "kind": "workstream", "ref": "W2", "since": 1_800_000_000.0]],
+            "work": [
+                ["ref": "W1", "kind": "workstream", "status": "ready", "title": "Sign in", "session_id": "w1",
+                 "screen": "", "screen_used_at": 1_800_000_000.0, "screen_ask": "Sign in to GitHub",
+                 "actions": ["send"]],
+                ["ref": "W2", "kind": "workstream", "status": "running", "title": "Book", "session_id": "w2",
+                 "screen": "controlling", "screen_used_at": 1_800_000_100.0, "actions": ["send", "stop"]],
+            ],
+        ]
+        let snapshot = try XCTUnwrap(BotWorkSnapshot(response: response, profile: "furina"))
+        XCTAssertEqual(snapshot.screen?.controlling?.ref, "W2")
+        let asking = snapshot.items[0]
+        XCTAssertEqual(asking.screenAsk, "Sign in to GitHub")
+        XCTAssertTrue(asking.needsYou)
+        XCTAssertEqual(asking.screen, "")
+        XCTAssertNotNil(asking.screenUsedAt)
+        XCTAssertEqual(snapshot.items[1].screen, "controlling")
+        XCTAssertFalse(snapshot.items[1].needsYou)
+        // Told to carry on: its ask goes, and so does its "needs you".
+        var row: [String: Any] = (response["work"] as! [[String: Any]])[0]
+        row["status"] = "running"
+        row["screen_ask"] = ""
+        let moved = snapshot.replacing(try XCTUnwrap(BotWorkItem(row: row)))
+        XCTAssertEqual(moved.needsYouCount, 0)
+        XCTAssertEqual(moved.workingCount, 1)
+    }
+}

@@ -554,6 +554,7 @@ private struct BotWorkRow: View {
     @Binding var reply: String
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     var willOpen: (() -> Void)? = nil
+    @State private var screenTarget: BotScreenTarget?
 
     private var tint: Color { BotWorkLook.tint(item) }
 
@@ -565,6 +566,9 @@ private struct BotWorkRow: View {
         if item.isClosed {
             return item.resolvedBy == "bot" ? AppLocalization.string("\(item.statusText) · resolved by the bot")
                 : AppLocalization.string("\(item.statusText) · resolved by you")
+        }
+        if !item.screenAsk.isEmpty {
+            return AppLocalization.string("Needs you on the screen · \(item.screenAsk)")
         }
         if let doing = item.doing { return doing }
         if item.needsYou, !item.error.isEmpty {
@@ -589,6 +593,9 @@ private struct BotWorkRow: View {
             if item.status == "needs_you", !item.isClosed, item.kind == .workstream, !item.sessionID.isEmpty {
                 // Its approval, answered here or in its chat.
                 WorkstreamApprovalBox(item: item, profile: profile, isActing: isActing)
+            }
+            if !item.isClosed, item.kind == .workstream, !item.screenAsk.isEmpty || !item.screen.isEmpty {
+                screenBox
             }
             if expanded {
                 // At the top, where it shows without scrolling past a long
@@ -617,6 +624,52 @@ private struct BotWorkRow: View {
                               lineWidth: item.needsYou ? 1 : 0.5)
         )
         .accessibilityIdentifier("botWork.row.\(item.ref)")
+        .sheet(item: $screenTarget) { target in
+            BotScreenSheet(target: target)
+                .environmentObject(appState)
+        }
+    }
+
+    /// The bot's screen as this workstream uses it: driving it now, waiting
+    /// for it, or waiting on the user to do something there (a sign-in, a
+    /// CAPTCHA), with the screen a tap away and Continue once it's done.
+    private var screenBox: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label {
+                Text(item.screen == "controlling" ? AppLocalization.string("Using the bot's screen now")
+                     : item.screen == "waiting" ? AppLocalization.string("Waiting for the bot's screen")
+                     : AppLocalization.string("Needs you on the bot's screen"))
+                    .scaledFont(.footnote.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "display")
+            }
+            .foregroundStyle(item.screenAsk.isEmpty ? Color.secondary : Color.orange)
+            HStack(spacing: 8) {
+                BotScreenButton(support: appState.botScreens, profile: profile, open: {
+                    Haptics.light()
+                    screenTarget = BotScreenTarget(profile: profile,
+                                                   botName: appState.botWork.snapshot(profile)?.botName
+                                                       ?? appState.profileDisplayName(profile))
+                })
+                .buttonStyle(.settings)
+                if !item.screenAsk.isEmpty, item.actions.contains(.send) {
+                    Button {
+                        Haptics.light()
+                        Task {
+                            await appState.actOnWorkstream(item, profile: profile, action: .send,
+                                                           text: "I did it on the screen. Carry on.")
+                        }
+                    } label: {
+                        Text(AppLocalization.string("Done, Carry On"))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.settingsPrimary)
+                    .disabled(isActing || !appState.isConnected)
+                }
+            }
+        }
+        .accessibilityIdentifier("botWork.screen.\(item.ref)")
     }
 
     private var summary: some View {

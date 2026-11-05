@@ -12257,6 +12257,8 @@ final class AppState: ObservableObject {
         botRosterEpoch += 1
         botRosterRetry.succeeded()
         botWork.clear()
+        // Another server's hosts may or may not have a Bot Screen.
+        botScreens.reset()
         botRosterVerifiedForCurrentConnection = false
         botChatOpenFlights.values.forEach { $0.task?.cancel() }
         botChatSessionProfiles.removeAll()
@@ -27711,6 +27713,9 @@ final class AppState: ObservableObject {
 
     /// Each bot's work, for the Bot Chat's Work strip and panel
     /// (AppState+BotWorkstreams.swift).
+    /// Which bots' hosts can have a Bot Screen, as read (BotScreen.swift).
+    let botScreens = BotScreenSupport()
+
     lazy var botWork: BotWorkStore = {
         let store = BotWorkStore()
         store.onWorkstreamsChanged = { [weak self] in self?.workstreamsChanged() }
