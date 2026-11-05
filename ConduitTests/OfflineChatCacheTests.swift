@@ -1877,6 +1877,55 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(appState.chatRowsOnScreen.map(\.id), ["live-stored-a"])
     }
 
+    /// A chat whose saved copy isn't in memory (a cold launch's store, a
+    /// notification's chat) still shows it while it opens: the copy is read
+    /// on the store's queue and comes up while the resume waits, never
+    /// feeding the live transcript, and Hermes' rows take over (issue 1826).
+    func testACopyReadOffTheMainThreadShowsWhileTheChatOpens() async throws {
+        useInMemoryKeychain()
+        let gate = ControlledSuspension()
+        var gated = false
+        let live = [session("stored-a"), session("stored-b")]
+        let opened = OpenedChats()
+        let dashboard = UUID()
+        let writer = makeStore()
+        seedCopy(writer, dashboard: dashboard)
+        let directory = writer.fileURL(dashboardID: dashboard, profile: "default").deletingLastPathComponent()
+        let coldStore = OfflineChatCacheStore(directory: directory, writesAsynchronously: true)
+        addTeardownBlock { coldStore.waitForPendingWrites() }
+        let saved = SavedDashboard(id: dashboard, label: "One", normalizedURL: "https://one.example")
+        let (appState, _, _) = makeAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: dashboard, dashboards: [saved]),
+            store: coldStore,
+            configureDefaults: { defaults in
+                ChatResumeStore(defaults: defaults).setLastSessionID("stored-b", for: "default")
+            },
+            lifecycleOperations: connectedLifecycle(
+                catalog: { _ in live },
+                opened: opened,
+                beforeOpen: { sessionID in
+                    guard sessionID == "stored-a", !gated else { return }
+                    gated = true
+                    await gate.suspend()
+                }
+            )
+        )
+        addTeardownBlock { appState.client?.disconnect() }
+        await appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"))
+        await waitUntil { appState.activeSessionId == "stored-b" && appState.messages.map(\.id) == ["live-stored-b"] }
+
+        let opening = Task { @MainActor in await appState.openSession("stored-a") }
+        await gate.waitUntilSuspended()
+        await waitUntil { appState.offlineChatPresentation?.displayedMessages.map(\.id) == ["u1", "a1"] }
+        XCTAssertTrue(appState.messages.isEmpty, "The copy never feeds the live transcript")
+
+        gate.resume()
+        let landed = await opening.value
+        XCTAssertTrue(landed)
+        XCTAssertNil(appState.offlineChatPresentation)
+        XCTAssertEqual(appState.messages.map(\.id), ["live-stored-a"])
+    }
+
     /// An unread chat left while its turn ran lands at that turn's reply
     /// start from its saved rows as it opens: Hermes' rows start there too,
     /// so nothing moves when they land, and they don't land it again

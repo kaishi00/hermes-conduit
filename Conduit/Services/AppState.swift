@@ -18234,7 +18234,16 @@ final class AppState: ObservableObject {
             // chat a profile switch opens on): the rows it had are kept for
             // this reconcile to graft onto (issue 1825), under the same
             // ownership and overlap rules as a reconnect's.
-            let reopenedTranscript = messages.isEmpty && persistedTranscriptWindow == nil
+            // Stored rows or the resume's (reconcileRowsSource).
+            let rowsSource = Self.reconcileRowsSource(
+                transcriptMatches: transcriptMatches,
+                storedMessages: transcript?.messages,
+                result: result
+            )
+            // Taken only for a graft onto Hermes' stored rows: a live turn's
+            // rows come from the resume, which grafts nothing, and the kept
+            // rows stay for the next open.
+            let reopenedTranscript = messages.isEmpty && persistedTranscriptWindow == nil && rowsSource == .stored
                 ? takeLeftBackfilledTranscript(
                     for: Set([sessionId, result.sessionId, transcript?.resolvedSessionId].compactMap { $0 }),
                     profile: conversationScopeProfile ?? profile
@@ -18260,12 +18269,6 @@ final class AppState: ObservableObject {
                     )
                 )
             }
-            // Stored rows or the resume's (reconcileRowsSource).
-            let rowsSource = Self.reconcileRowsSource(
-                transcriptMatches: transcriptMatches,
-                storedMessages: transcript?.messages,
-                result: result
-            )
             let priorWindowForGraft = priorWindowOwnsThisConversation(
                 priorWindow,
                 requestedSessionId: sessionId,

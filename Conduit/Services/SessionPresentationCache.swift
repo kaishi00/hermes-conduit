@@ -1809,7 +1809,6 @@ final class SessionPresentationCache {
         }
         return true
     }
-    #endif
 
     /// The matcher as it was before the pool's index: every cached row
     /// scored for every transcript row. Kept for the test that holds the
@@ -1893,6 +1892,7 @@ final class SessionPresentationCache {
         }
         return bestIndex
     }
+    #endif
 
 
     /// Never replace a cached timestamp/preview with a newer history record
