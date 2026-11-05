@@ -291,7 +291,8 @@ struct BotEditorSheet: View {
     @ViewBuilder
     private var generateButton: some View {
         let hermes = canGeneratePictures == true
-        let apple = playground == .available
+        // Not before an edited bot's SOUL has loaded, which the sheet starts from.
+        let apple = playground == .available && (isCreating || showsKeptDetails || detailsState == .loaded || detailsState == .failed)
         if hermes && apple {
             Menu {
                 Button {
