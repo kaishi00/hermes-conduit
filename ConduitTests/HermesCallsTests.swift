@@ -1203,6 +1203,59 @@ extension VoiceConversationControllerTests {
         HermesCallOutcomeOutbox.load(from: defaults).entries.map(\.callID)
     }
 
+    // MARK: Ring records (#1780)
+
+    private func ringRecord(_ id: String = "ring-a1b2c3d4", target: ConduitNotificationTarget? = nil, at: Date) throws -> HermesRingRecords.Entry {
+        let ring = HermesRing(id: id, token: "tok-\(id)", url: URL(string: "https://relay.example/v1/rings/\(id)/settled")!)
+        let dashboard = UUID(uuidString: "6F9619FF-8B86-D011-B42D-00C04FC964FF")
+        return try XCTUnwrap(HermesRingRecords.Entry(ring: ring, target: target ?? outcomeTarget(dashboard: dashboard), at: at))
+    }
+
+    func testARingRecordOutlivesTheProcessThatRangSoAWatchAnswerCanBeHandedOff() throws {
+        // A stop that launches Conduit afresh reads the record the call push
+        // left: a new UserDefaults on the same suite has no memory of the write.
+        let suite = "HermesCallsTests.ringRecords.\(UUID().uuidString)"
+        addTeardownBlock { UserDefaults.standard.removePersistentDomain(forName: suite) }
+        let now = Date()
+        let record = try ringRecord(at: now)
+        HermesRingRecords.record(record, in: try XCTUnwrap(UserDefaults(suiteName: suite)), now: now)
+
+        let relaunched = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let found = try XCTUnwrap(HermesRingRecords.entry(ringID: "ring-a1b2c3d4", in: relaunched, now: now.addingTimeInterval(40)))
+        XCTAssertEqual(found.ring, HermesRing(id: "ring-a1b2c3d4", token: "tok-ring-a1b2c3d4", url: URL(string: "https://relay.example/v1/rings/ring-a1b2c3d4/settled")!))
+        let target = found.target
+        XCTAssertEqual(target.profile, "work")
+        XCTAssertEqual(target.sessionId, "rt-1")
+        XCTAssertEqual(target.durableSessionID, "st-1")
+        XCTAssertEqual(target.dashboardID, UUID(uuidString: "6F9619FF-8B86-D011-B42D-00C04FC964FF"))
+        XCTAssertEqual(target.call, outcomeTarget().call, "The call it rang for: a missed call and its outcome name it")
+        XCTAssertNotNil(HermesCallNotifications.callRequest(for: target, missed: true), "A failed handoff can post the missed call")
+        XCTAssertNotNil(HermesCallOutcomeOutbox.Entry(.missed, target: target, at: now), "and tell Hermes it wasn't taken")
+        XCTAssertNil(HermesRingRecords.entry(ringID: "ring-other", in: relaunched, now: now))
+    }
+
+    func testRingRecordsLastAsLongAsTheRelaysRingAndNoLonger() throws {
+        let defaults = makeScratchDefaults("HermesCallsTests.ringRecords")
+        let now = Date()
+        HermesRingRecords.record(try ringRecord("ring-old", at: now.addingTimeInterval(-HermesRingRecords.life)), in: defaults, now: now)
+        XCTAssertNil(HermesRingRecords.entry(ringID: "ring-old", in: defaults, now: now), "Ten minutes on, the relay has forgotten the ring")
+        for index in 0..<(HermesRingRecords.maximumEntries + 2) {
+            HermesRingRecords.record(try ringRecord("ring-\(index)", at: now), in: defaults, now: now)
+        }
+        let kept = HermesRingRecords.load(from: defaults, now: now).entries.map(\.ringID)
+        XCTAssertEqual(kept.count, HermesRingRecords.maximumEntries)
+        XCTAssertEqual(kept.last, "ring-\(HermesRingRecords.maximumEntries + 1)", "The newest rings are kept")
+        HermesRingRecords.record(try ringRecord("ring-3", target: outcomeTarget(profile: "home"), at: now), in: defaults, now: now)
+        XCTAssertEqual(HermesRingRecords.entry(ringID: "ring-3", in: defaults, now: now)?.profile, "home", "A ring pushed again keeps its latest call")
+        XCTAssertEqual(HermesRingRecords.load(from: defaults, now: now).entries.filter { $0.ringID == "ring-3" }.count, 1)
+        let notACall = ConduitNotificationTarget(profile: "work", sessionId: "rt-1", type: "turn.done")
+        XCTAssertNil(HermesRingRecords.Entry(ring: try ringRecord(at: now).ring, target: notACall, at: now))
+        let malformed = ConduitNotificationTarget(profile: "work", sessionId: "rt-1", hasMalformedDashboardID: true,
+                                                  type: HermesCallRequest.type, call: outcomeTarget().call)
+        XCTAssertTrue(try XCTUnwrap(HermesRingRecords.Entry(ring: try ringRecord(at: now).ring, target: malformed, at: now)).target.hasMalformedDashboardID,
+                      "A dashboard Conduit can't read still fails closed after a relaunch")
+    }
+
     func testADeclinedCallTellsTheHostWhatItWasAboutAndHowLongAgo() async throws {
         let at = Date(timeIntervalSince1970: 1_000_000)
         let entry = try XCTUnwrap(HermesCallOutcomeOutbox.Entry(.declined, target: outcomeTarget(), at: at))

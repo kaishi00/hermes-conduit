@@ -130,10 +130,6 @@ final class HermesNativeCalls: NSObject {
     private var storefrontTask: Task<Void, Never>?
     private var isActivated = false
 
-    /// How long a ringing call's target is kept for a Watch call that
-    /// answers it, as long as the relay keeps its ring.
-    static let ringTargetLife: TimeInterval = 600
-
     /// Calls ring through CallKit in this build. Off, every call comes as
     /// the "Hermes wants to talk" notification (#449's first step), for a
     /// build App Review wants without CallKit: set ConduitHermesCallsRing
@@ -189,8 +185,9 @@ final class HermesNativeCalls: NSObject {
     /// Calls reported to CallKit and not ended.
     private var calls: [UUID: Call] = [:]
     /// Each ring's call, for a Watch call that answers it, and the ring, to
-    /// store that call's session at the relay.
-    private var ringTargets: [String: (target: ConduitNotificationTarget, ring: HermesRing, at: Date)] = [:]
+    /// store that call's session at the relay: on disk, for a stop that
+    /// launches Conduit afresh (HermesRingRecords, #1780).
+    private let ringRecords = UserDefaults.standard
     private var audioActive = false
     /// Notes every route change of the call's audio in the call trace
     /// while CallKit has it, so a Speaker button that disagrees with where
@@ -327,9 +324,8 @@ final class HermesNativeCalls: NSObject {
         }
         let call = PushNotificationService.shared.receiveVoIPCall(userInfo)
         let ring = HermesRing.from(userInfo)
-        if let ring, let target = call.target {
-            pruneRingTargets()
-            ringTargets[ring.id] = (target, ring, Date())
+        if let ring, let target = call.target, let record = HermesRingRecords.Entry(ring: ring, target: target, at: Date()) {
+            HermesRingRecords.record(record, in: ringRecords)
         }
         // Never created here: reporting comes first.
         let appState = AppStateRuntimeRegistry.shared.existing
@@ -701,6 +697,9 @@ final class HermesNativeCalls: NSObject {
             return
         }
         let match = calls.first { $0.value.ring?.id == settled.id }
+        // Kept on disk: a stop that launched Conduit afresh has no call here,
+        // and still hands the Watch its session (#1780).
+        let record = HermesRingRecords.entry(ringID: settled.id, in: ringRecords)
         let reason: CXCallEndedReason = settled.outcome == .answered ? .answeredElsewhere : .declinedElsewhere
         guard mustReport else {
             if let match, !match.value.answered, keepWatchAnswer(match.key, settled: settled) {
@@ -712,16 +711,15 @@ final class HermesNativeCalls: NSObject {
                 finish(match.key, reason: reason, notice: settled.outcome == .answered ? .none : .missed, end: .elsewhere(settled.outcome))
             }
             if let start = settled.start {
-                pruneRingTargets()
-                startWatchCall(start, ringID: settled.id, ring: match?.value.ring ?? ringTargets[settled.id]?.ring)
+                startWatchCall(start, ringID: settled.id, ring: match?.value.ring ?? record?.ring, target: match?.value.target ?? record?.target)
             }
             completion()
             return
         }
         let id = match?.key ?? UUID()
         let update = CXCallUpdate()
-        update.remoteHandle = HermesCallerName.callHandle(profile: match?.value.target.profile)
-        update.localizedCallerName = match?.value.callerName ?? HermesCallerName.fallback
+        update.remoteHandle = HermesCallerName.callHandle(profile: match?.value.target.profile ?? record?.profile)
+        update.localizedCallerName = match?.value.callerName ?? record.map { Self.callerName($0.target) } ?? HermesCallerName.fallback
         update.hasVideo = false
         provider.reportNewIncomingCall(with: id, update: update) { _ in
             // CallKit calls back on its own queue: the provider is read again
@@ -745,8 +743,7 @@ final class HermesNativeCalls: NSObject {
                     self.provider?.reportCall(with: id, endedAt: Date(), reason: reason)
                 }
                 if let start = settled.start {
-                    self.pruneRingTargets()
-                    self.startWatchCall(start, ringID: settled.id, ring: match?.value.ring ?? self.ringTargets[settled.id]?.ring)
+                    self.startWatchCall(start, ringID: settled.id, ring: match?.value.ring ?? record?.ring, target: match?.value.target ?? record?.target)
                 }
                 completion()
             }
@@ -756,19 +753,28 @@ final class HermesNativeCalls: NSObject {
     /// The Apple Watch answered, and its link to this phone is down under
     /// its call screen: its call's start came with the stop. It's answered
     /// as if it had come over the link, and the answer (the session, or why
-    /// not) goes to the relay, sealed, for the Watch to fetch.
-    private func startWatchCall(_ sealedStart: String, ringID: String, ring: HermesRing?) {
+    /// not) goes to the relay, sealed, for the Watch to fetch. One that
+    /// can't reach the relay leaves the Watch's call to fail: the call is
+    /// missed then, here and for Hermes (#1780).
+    private func startWatchCall(_ sealedStart: String, ringID: String, ring: HermesRing?, target: ConduitNotificationTarget?) {
         let log = WatchVoiceLink.shared.log
+        func failed(_ why: String) {
+            HermesCallTrace.shared.note("The Watch's answer couldn't be handed its session (\(why))")
+            missedOnWatch(target)
+        }
         guard let ring else {
             log.note("watchAnswerHandoff", ["ok": false, "why": "unknownRing"])
+            failed("unknownRing")
             return
         }
         guard let key = HermesRingHandoffKey.load() else {
             log.note("watchAnswerHandoff", ["ok": false, "why": "noKey"])
+            failed("noKey")
             return
         }
         guard let start = HermesRingHandoff.openStart(sealedStart, key: key, ringID: ringID) else {
             log.note("watchAnswerHandoff", ["ok": false, "why": "unreadableStart"])
+            failed("unreadableStart")
             return
         }
         let end = BackgroundTaskHold.begin("conduit.hermesCall.watchStart")
@@ -777,7 +783,10 @@ final class HermesNativeCalls: NSObject {
             guard let data = reply[WatchVoiceWire.messageKey] as? Data,
                   let sealed = try? HermesRingHandoff.seal(data, root: key, direction: .session, ringID: ringID) else {
                 log.note("watchAnswerHandoff", ["ok": false, "why": "unsealable", "bytes": (reply[WatchVoiceWire.messageKey] as? Data)?.count ?? 0])
-                end()
+                Task { @MainActor in
+                    failed("unsealable")
+                    end()
+                }
                 return
             }
             Task { @MainActor in
@@ -788,9 +797,19 @@ final class HermesNativeCalls: NSObject {
                     "bytes": sealed.count,
                     "ms": Int(Date().timeIntervalSince(startedAt) * 1000),
                 ])
+                if status != 200 { failed("store \(status)") }
                 end()
             }
         }
+    }
+
+    /// The Watch answered and its call can't start: the missed call it
+    /// leaves, so the user can answer it in the chat, and Hermes hears it
+    /// wasn't taken. A ring this phone has no record of says only that
+    /// Hermes called.
+    private func missedOnWatch(_ target: ConduitNotificationTarget?) {
+        post(target == nil ? .unreadable : .missed, for: target)
+        report(.missed, for: target, sentAt: nil)
     }
 
     // MARK: Kept from the Watch (#1204)
@@ -993,7 +1012,6 @@ final class HermesNativeCalls: NSObject {
     /// killed Conduit in the background for that. It stops here after
     /// `watchStopWait`, in case the relay's word never comes.
     func answeredOnWatch(ringID: String) -> ConduitNotificationTarget? {
-        pruneRingTargets()
         if let match = calls.first(where: { $0.value.ring?.id == ringID }), !match.value.answered {
             let id = match.key
             HermesCallTrace.shared.note("Answered on the Watch, waiting for the relay's stop")
@@ -1005,11 +1023,7 @@ final class HermesNativeCalls: NSObject {
                 self.finish(id, reason: .answeredElsewhere, notice: .none, end: .elsewhere(.answered))
             }
         }
-        return ringTargets[ringID]?.target
-    }
-
-    private func pruneRingTargets(now: Date = Date()) {
-        ringTargets = ringTargets.filter { now.timeIntervalSince($0.value.at) < Self.ringTargetLife }
+        return HermesRingRecords.entry(ringID: ringID, in: ringRecords)?.target
     }
 
     /// Tells the relay how this phone settled the ring, with the time to
@@ -1272,5 +1286,125 @@ enum HermesCallAudioRoute {
         case .routeConfigurationChange?: return "configuration"
         default: return "other"
         }
+    }
+}
+
+// MARK: - Ring records
+
+/// Each ring's call, kept on disk for `life` (#1780): a Watch that answers sends its start with the relay's stop, a
+/// VoIP push that can launch Conduit afresh when the ringing app was quit
+/// or killed meanwhile. The record lets that launch store the Watch call's
+/// session as a running one would, open it on the calling profile, and say
+/// the call was missed when it can't. The ring's token only settles and
+/// hands off this ring, which the relay forgets within the same ten minutes.
+struct HermesRingRecords: Codable, Equatable {
+    struct Entry: Codable, Equatable {
+        var ringID: String
+        var token: String
+        var url: URL
+        var at: Date
+        var profile: String?
+        var profileName: String?
+        var sessionID: String
+        var durableSessionID: String?
+        var dashboard: String?
+        var hasMalformedDashboardID: Bool
+        var relayGatewayID: String?
+        var callID: String
+        var kind: String?
+        var title: String?
+        var sessionIDs: [String]
+        var reason: String?
+
+        /// Nil for a push that isn't a call.
+        init?(ring: HermesRing, target: ConduitNotificationTarget, at: Date) {
+            guard let call = target.call else { return nil }
+            ringID = ring.id
+            token = ring.token
+            url = ring.url
+            self.at = at
+            profile = target.profile
+            profileName = target.profileName
+            sessionID = target.sessionId
+            durableSessionID = target.durableSessionID
+            dashboard = target.dashboardID?.uuidString
+            hasMalformedDashboardID = target.hasMalformedDashboardID
+            relayGatewayID = target.relayGatewayID
+            callID = call.id
+            kind = call.kind?.rawValue
+            title = call.title
+            sessionIDs = call.sessionIDs
+            reason = call.reason
+        }
+
+        var ring: HermesRing { HermesRing(id: ringID, token: token, url: url) }
+
+        var target: ConduitNotificationTarget {
+            ConduitNotificationTarget(
+                profile: profile,
+                profileName: profileName,
+                sessionId: sessionID,
+                durableSessionID: durableSessionID,
+                dashboardID: dashboard.flatMap(UUID.init(uuidString:)),
+                hasMalformedDashboardID: hasMalformedDashboardID,
+                relayGatewayID: relayGatewayID,
+                type: HermesCallRequest.type,
+                call: HermesCallRequest(
+                    id: callID,
+                    kind: kind.flatMap(HermesCallRequest.Kind.init(rawValue:)),
+                    title: title,
+                    sessionIDs: sessionIDs,
+                    reason: reason
+                )
+            )
+        }
+    }
+
+    static let storageKey = "conduit.hermesRingRecords.v1"
+    /// How long a ringing call's record is kept for a Watch call that
+    /// answers it: as long as the relay keeps its ring.
+    static let life: TimeInterval = 600
+    /// Rings come one at a time: a handful covers any burst of them.
+    static let maximumEntries = 8
+
+    var entries: [Entry] = []
+
+    mutating func add(_ entry: Entry) {
+        entries.removeAll { $0.ringID == entry.ringID }
+        entries.append(entry)
+        if entries.count > Self.maximumEntries { entries.removeFirst(entries.count - Self.maximumEntries) }
+    }
+
+    mutating func prune(now: Date, life: TimeInterval = Self.life) {
+        entries.removeAll { now.timeIntervalSince($0.at) >= life || $0.at.timeIntervalSince(now) > life }
+    }
+
+    func entry(ringID: String) -> Entry? { entries.last { $0.ringID == ringID } }
+
+    static func load(from defaults: UserDefaults, now: Date = Date()) -> HermesRingRecords {
+        guard let data = defaults.data(forKey: storageKey),
+              var records = try? JSONDecoder().decode(HermesRingRecords.self, from: data) else { return HermesRingRecords() }
+        records.prune(now: now)
+        return records
+    }
+
+    func store(in defaults: UserDefaults) {
+        if entries.isEmpty {
+            defaults.removeObject(forKey: Self.storageKey)
+        } else if let data = try? JSONEncoder().encode(self) {
+            defaults.set(data, forKey: Self.storageKey)
+        }
+    }
+
+    /// Keeps `entry`, dropping any that outlived the ring.
+    static func record(_ entry: Entry, in defaults: UserDefaults, now: Date = Date()) {
+        var records = load(from: defaults, now: now)
+        records.add(entry)
+        records.store(in: defaults)
+    }
+
+    /// The ring's record, while the relay keeps the ring.
+    static func entry(ringID: String, in defaults: UserDefaults, now: Date = Date()) -> Entry? {
+        load(from: defaults, now: now).entry(ringID: ringID)
     }
 }
