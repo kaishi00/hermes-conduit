@@ -3369,21 +3369,25 @@ size limit (its own entry) · README.md (the share sheet line)
 
 **Code**
 - Reading the share: `Shared/ShareDraft/ShareDraftCollector.swift` (kind, fileType, offersImageObjectOnly, stageFile)
+- A picture as an image object, and its PNG: `Shared/ShareDraft/ProviderPicture.swift` (loadImage, pngData), used by the share sheet, paste and drop
 - The sheet: `ConduitShareExtension/ShareDraftModel.swift` (collect, ShareDraftProblem.message), `ConduitShareExtension/ShareDraftSheet.swift`
 - Paste: `Conduit/Views/Components/ComposerPasteTextView.swift` (canLoadImageProvider, loadImageObject)
-- Drop: `Conduit/Views/Components/AttachmentDrop.swift`, `Conduit/Views/Components/ReturnKeyTextView.swift` (fieldDrop)
+- Drop: `Conduit/Views/Components/AttachmentDrop.swift` (stage, stageImageObject), `Conduit/Views/Components/ReturnKeyTextView.swift` (fieldDrop)
 - Tests: `ConduitTests/ShareDraftTests.swift`
 
 **Rulings**
 - A picture offered only as an image object (the screenshot editor's Share hands over UIKit's own `com.apple.uikit.image`) is attached as a PNG, as a pasted one is. UIKit's archived image type is never read as a picture file; a provider that also offers a picture file is read as that file (2026-11-04, #1750, issue 1747).
 - A picture offered only as an image object takes its suggested name without that name's extension: it is always written as PNG (2026-11-04, #1750 review).
+- A shared file is read every way its provider offers, in turn: its file, then a picture's bytes, then the picture as an image object (as PNG), then the item it hands over; it is left out only when all of them failed. Bytes are read only for a picture, so a video or document is never read into the extension's memory whole (2026-11-05, #PRNUM, issue 1747 on build 251).
+- An unreadable item's Left out line adds the system's reason under it, and each step of the read is logged (category ShareDraft), so one try on a device shows which step failed (2026-11-05, #PRNUM).
+- A picture with no bitmap of its own (`pngData()` nil) is drawn once and that is written, in the share sheet, paste and drop alike; a dropped picture whose file can't be read is taken as its image object too (2026-11-05, #PRNUM).
 - When nothing could be added, the sheet shows the Left out list a draft has, each thing with why (too large, unreadable), scrolling however many there are; the general "nothing here" line is only for a share that offered nothing Conduit reads (2026-11-04, #1750, issue 1747).
 
 **Open gaps**
 - A drop decides from the dragged item's listed types alone, so a drag that offers only UIKit's image object isn't taken by a chat, a room or the composer field (no source is known to send one; pasting one works).
 - Something the share offered under a type Conduit doesn't read at all is skipped without a line, alongside things that were added.
 
-**Checked:** 2026-11-04, #1750 (issue 1747: the screenshot editor's picture is attached; the failed sheet names what was left out).
+**Checked:** 2026-11-05, #PRNUM (issue 1747 on build 251: the picture was still left out as unreadable; every read is now tried in turn, with the reason shown and logged).
 
 ## Files over the size limit
 

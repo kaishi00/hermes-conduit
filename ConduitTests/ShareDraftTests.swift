@@ -1,3 +1,4 @@
+import CoreImage
 import UIKit
 import UniformTypeIdentifiers
 import XCTest
@@ -398,6 +399,75 @@ final class ShareDraftTests: XCTestCase {
 
         XCTAssertEqual(result.attachments.map(\.displayName), ["shot.png"])
         XCTAssertEqual(result.attachments.map(\.byteCount), [10], "the PNG file, not the image object")
+    }
+
+    private func redSquare() -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+    }
+
+    private struct ProviderFailure: LocalizedError {
+        var errorDescription: String? { "The picture went away." }
+    }
+
+    /// A provider that lists a picture file it can't hand over.
+    private func brokenPictureProvider(named name: String) -> NSItemProvider {
+        let provider = NSItemProvider()
+        provider.registerFileRepresentation(forTypeIdentifier: UTType.png.identifier, fileOptions: [], visibility: .all) { completion in
+            completion(nil, false, ProviderFailure())
+            return nil
+        }
+        provider.suggestedName = name
+        return provider
+    }
+
+    /// The screenshot editor on build 251 (issue 1747): the provider lists
+    /// a PNG but can't hand its file over. The picture is still read, as
+    /// the image object it also offers.
+    func testAPictureWhoseFileCantBeReadIsTakenAsItsImageObject() async throws {
+        let (collector, staging) = try collector()
+        let provider = brokenPictureProvider(named: "Screenshot 2026-11-05 at 13.19.47.png")
+        let archived = try NSKeyedArchiver.archivedData(withRootObject: redSquare(), requiringSecureCoding: true)
+        provider.registerDataRepresentation(forTypeIdentifier: ShareDraftCollector.imageObjectType, visibility: .all) { completion in
+            completion(archived, nil)
+            return nil
+        }
+        XCTAssertEqual(ShareDraftCollector.fileType(of: provider), .png)
+
+        let result = await collector.collect(providers: [provider])
+
+        XCTAssertEqual(result.problems, [])
+        XCTAssertEqual(result.attachments.map(\.storedName), ["1.png"])
+        XCTAssertEqual(result.attachments.map(\.displayName), ["Screenshot 2026-11-05 at 13.19.47.png"])
+        let stored = try Data(contentsOf: staging.url.appendingPathComponent("1.png"))
+        XCTAssertEqual(Array(stored.prefix(4)), [0x89, 0x50, 0x4E, 0x47], "written as PNG")
+    }
+
+    /// When every way fails, the sheet says so with the system's reason.
+    func testAPictureNoWayReadsIsLeftOutWithTheReason() async throws {
+        let (collector, staging) = try collector()
+
+        let result = await collector.collect(providers: [brokenPictureProvider(named: "shot.png")])
+
+        XCTAssertTrue(result.attachments.isEmpty)
+        guard case .unreadable(let name, let reason)? = result.problems.first, result.problems.count == 1 else {
+            return XCTFail("\(result.problems)")
+        }
+        XCTAssertEqual(name, "shot.png")
+        XCTAssertNotNil(reason, "the system's reason is kept")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: staging.url.path), [], "nothing left on disk")
+    }
+
+    /// A picture with no bitmap of its own (drawn from a CIImage) has no
+    /// pngData(); it is drawn once and that is written.
+    func testAPictureWithoutABitmapIsDrawnBeforeItIsWritten() throws {
+        let ciImage = CIImage(color: CIColor(red: 1, green: 0, blue: 0)).cropped(to: CGRect(x: 0, y: 0, width: 4, height: 4))
+        let data = try XCTUnwrap(ProviderPicture.pngData(UIImage(ciImage: ciImage)))
+        XCTAssertEqual(Array(data.prefix(4)), [0x89, 0x50, 0x4E, 0x47])
+        XCTAssertNotNil(UIImage(data: data))
+        XCTAssertNotNil(ProviderPicture.pngData(redSquare()))
     }
 
     func testCapsLeaveFilesOutAndSayWhy() async throws {
