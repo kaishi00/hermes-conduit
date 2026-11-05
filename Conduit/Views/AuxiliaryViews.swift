@@ -2600,8 +2600,11 @@ private struct ProfileModelSettingsDetail: View {
     }
 
     /// The read again (issue 1807) takes only Hermes' models, so a save
-    /// that lands while it's asked keeps its picks.
+    /// that lands while it's asked keeps its picks; one that fails leaves
+    /// the page as it is.
     private func settleCatalog() async {
+        // After a first read that failed, the whole page reads again.
+        guard answered else { return await reload() }
         guard let loaded = await load(), defaults != nil else { return }
         defaults?.providers = loaded.providers
     }
@@ -2764,8 +2767,11 @@ private struct DelegationModelSettings: View {
     }
 
     /// The read again (issue 1807) takes only Hermes' models, so a save
-    /// that lands while it's asked keeps its picks.
+    /// that lands while it's asked keeps its picks; one that fails leaves
+    /// the page as it is.
     private func settleCatalog() async {
+        // After a first read that failed, the whole page reads again.
+        guard answered else { return await reload() }
         guard let loaded = await loadModels(), defaults != nil else { return }
         defaults?.providers = loaded.providers
     }
@@ -3084,8 +3090,11 @@ private struct FallbackModelsSettings: View {
     }
 
     /// The read again (issue 1807) takes only Hermes' models, so a save
-    /// that lands while it's asked keeps its picks.
+    /// that lands while it's asked keeps its picks; one that fails leaves
+    /// the page as it is.
     private func settleCatalog() async {
+        // After a first read that failed, the whole page reads again.
+        guard answered else { return await reload() }
         guard let models = await loadModels(), defaults != nil else { return }
         defaults?.providers = models.providers
     }
