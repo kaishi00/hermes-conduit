@@ -3298,6 +3298,7 @@ in V2's look)
 - A new sheet or page with a grouped Form or List uses ConduitForm or ConduitList, never a bare Form (Eric 2026-11-05 chose skinning the Forms over rebuilding them as Settings cards, #1793).
 - Rows keep their Form behavior (pickers, toggles, swipe and edit); only the fill changes: Settings' card fill, 0.05 in light mode and 0.08 in dark. A row that sets its own background, such as Edit Bot's avatar, keeps it.
 - Section headers keep the system's text; they don't take Settings' symbol headers.
+- A row that opens something (Kanban New task's Model and Skills, Edit Bot's Advanced) is a plain-style button, so its title reads like the rows beside it rather than in the accent; an empty multi-line field shows a placeholder, as New task's description does (#1793).
 
 **Open gaps**
 - None.

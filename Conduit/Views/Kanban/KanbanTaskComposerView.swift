@@ -121,6 +121,17 @@ struct KanbanTaskComposerView: View {
                 .accessibilityLabel("Task title")
             TextEditor(text: $draft.body)
                 .frame(minHeight: 100)
+                // The empty editor says what it's for, as the Title field does.
+                .overlay(alignment: .topLeading) {
+                    if draft.body.isEmpty {
+                        Text(AppLocalization.string("Description"))
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 8)
+                            .padding(.leading, 5)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
                 .accessibilityLabel("Task description")
             Picker("Priority", selection: $draft.priority) {
                 Text("Normal").tag(0)
@@ -214,7 +225,11 @@ struct KanbanTaskComposerView: View {
                     .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.conduitTertiary)
             }
+            .contentShape(Rectangle())
         }
+        // Plain: a Form tints a button's whole label with the accent, so
+        // Model and Skills read as links beside Workspace and Goal Mode.
+        .buttonStyle(.plain)
         .accessibilityHint("Opens the per-task model, provider, and reasoning override picker")
     }
 
@@ -233,7 +248,11 @@ struct KanbanTaskComposerView: View {
                     .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.conduitTertiary)
             }
+            .contentShape(Rectangle())
         }
+        // Plain: a Form tints a button's whole label with the accent, so
+        // Model and Skills read as links beside Workspace and Goal Mode.
+        .buttonStyle(.plain)
         .accessibilityHint("Opens the task skill picker")
     }
 
