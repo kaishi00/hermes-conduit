@@ -3911,7 +3911,7 @@ row beside the list · VoiceOver · README.md
 - The classic drawer's sheet lists the profile in use's chats and names it; it doesn't gather profiles, as the classic drawer has no All.
 - A project with several folders matches by its main folder only: the project tree gives Conduit no others.
 
-**Checked:** 2026-11-05, PRNUM (the other profiles' chats show when the page's own read fails); added at #1773.
+**Checked:** 2026-11-05, #1784 (the other profiles' chats show when the page's own read fails); added at #1773.
 
 ## New project
 
