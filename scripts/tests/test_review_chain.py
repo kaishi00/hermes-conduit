@@ -75,7 +75,7 @@ def chain(name):
 
 @unittest.skipUnless(shutil.which("jq") and shutil.which("timeout"), "jq or timeout isn't installed")
 class ReviewChainTests(unittest.TestCase):
-    def run_chain(self, reviewer="DeepSeek, then Beam", codes=(), runs=(), unset=()):
+    def run_chain(self, reviewer="DeepSeek, then Beam", codes=(), runs=(), unset=(), chain_minutes="70"):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         bin_dir = os.path.join(tmp, "bin")
@@ -93,7 +93,7 @@ class ReviewChainTests(unittest.TestCase):
         env = dict(os.environ, PATH=bin_dir + os.pathsep + os.environ["PATH"], FAKE=tmp, RUNNER_TEMP=tmp,
                    CONFIG=os.path.join(REPO_ROOT, "opencode.json"), GITHUB_OUTPUT=output,
                    GITHUB_EVENT_PATH="/dev/null", GITHUB_RUN_ID="1", REPO_OWNER="o",
-                   CHAIN=json.dumps(chain(reviewer)), REVIEW_MINUTES="0.03",
+                   CHAIN=json.dumps(chain(reviewer)), REVIEW_MINUTES="0.03", CHAIN_MINUTES=chain_minutes,
                    PROMPT="Start the review with the label: Review by {reviewer}.\nmore")
         env.pop("GITHUB_STEP_SUMMARY", None)
         for k, v in KEYS.items():
@@ -158,6 +158,24 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual(self.reviews(log), [["go-custom/deepseek-v4.1-flash", "go1"],
                                              ["go-custom/deepseek-v4.1-flash", "go2"]])
         self.assertIn("trying the next key", run.stdout)
+
+    def test_the_chain_stops_when_its_time_is_up(self):
+        # Every review hangs and every key then refuses, so each pair would
+        # run; 0.05 minutes (3 s) fits one 2 s review and a 1 s remainder,
+        # which is too short to start another.
+        run, log, out = self.run_chain(codes=[("go1", "later"), ("go2", "later")], chain_minutes="0.05",
+                                       runs=[("go-custom/deepseek-v4.1-flash", "go1", "hang")])
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertEqual(self.reviews(log), [["go-custom/deepseek-v4.1-flash", "go1"]])
+        self.assertIn("nearly up", run.stdout)
+
+    def test_each_fallback_is_labelled_with_its_own_model(self):
+        run, log, out = self.run_chain(runs=[("go-custom/deepseek-v4.1-flash", "go1", "fail"),
+                                             ("go-custom/deepseek-v4.1-flash", "go2", "fail"),
+                                             ("commandcode/deepseek/deepseek-v4.1-flash", "cc1", "fail"),
+                                             ("commandcode/deepseek/deepseek-v4.1-flash", "cc2", "fail")])
+        labels = [line.split("label: ", 1)[1] for line in log if line.startswith("review ")]
+        self.assertEqual(labels, ["Review by DeepSeek V4.1 Flash."] * 4 + ["Review by Beam."])
 
     def test_only_the_attempts_key_reaches_opencode(self):
         run, log, out = self.run_chain(codes=[("go1", 429)])
