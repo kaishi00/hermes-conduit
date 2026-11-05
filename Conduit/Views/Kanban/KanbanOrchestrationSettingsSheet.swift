@@ -93,25 +93,27 @@ struct KanbanOrchestrationSettingsSheet: View {
                         }
 
                         ConduitSettingsSection(title: AppLocalization.string("Orchestrator Profile"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
-                            SettingsPickerField(title: Text("Orchestrator Profile"), selection: $orchestratorProfile) {
-                                Text(orchestratorSelectionLabel).tag("")
-                                ForEach(store.profiles) { profile in
-                                    Text(profile.name).tag(profile.name)
-                                }
+                            ConduitMenuPicker(
+                                value: orchestratorProfile,
+                                choices: [(id: "", title: orchestratorSelectionLabel)]
+                                    + store.profiles.map { (id: $0.name, title: $0.name) },
+                                onSelect: { orchestratorProfile = $0 }
+                            ) {
+                                Text("Orchestrator Profile").foregroundStyle(.secondary)
                             }
-                            .pickerStyle(.menu)
                             Text(footnote(configured: orchestratorProfile, resolved: store.orchestration?.resolvedOrchestratorProfile ?? ""))
                                 .settingsCaption()
                         }
 
                         ConduitSettingsSection(title: AppLocalization.string("Default Assignee"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
-                            SettingsPickerField(title: Text("Default Assignee"), selection: $defaultAssignee) {
-                                Text(assigneeSelectionLabel).tag("")
-                                ForEach(store.profiles) { profile in
-                                    Text(profile.name).tag(profile.name)
-                                }
+                            ConduitMenuPicker(
+                                value: defaultAssignee,
+                                choices: [(id: "", title: assigneeSelectionLabel)]
+                                    + store.profiles.map { (id: $0.name, title: $0.name) },
+                                onSelect: { defaultAssignee = $0 }
+                            ) {
+                                Text("Default Assignee").foregroundStyle(.secondary)
                             }
-                            .pickerStyle(.menu)
                             Text(footnote(configured: defaultAssignee, resolved: store.orchestration?.resolvedDefaultAssignee ?? ""))
                                 .settingsCaption()
                         }

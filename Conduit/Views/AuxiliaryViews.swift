@@ -2409,11 +2409,24 @@ struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
                         }
                     }
                 } else {
-                    HStack {
-                        label
-                        Spacer(minLength: 8)
-                        valueText.multilineTextAlignment(.trailing).accessibilityHidden(true)
-                        chevron
+                    // The value never wraps beside the name: when both
+                    // don't fit on one line ("Right away, with a
+                    // notification"), it goes under the name, on one line.
+                    ViewThatFits(in: .horizontal) {
+                        HStack {
+                            label
+                            Spacer(minLength: 8)
+                            valueText.fixedSize().accessibilityHidden(true)
+                            chevron
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            label
+                            HStack {
+                                valueText.lineLimit(1).accessibilityHidden(true)
+                                Spacer(minLength: 8)
+                                chevron
+                            }
+                        }
                     }
                 }
             }
@@ -4908,65 +4921,6 @@ extension View {
         scrollContentBackground(.hidden)
             .padding(6)
             .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-}
-
-/// A system Picker drawn as Settings' dropdown field (ConduitMenuPicker's
-/// look): the name in grey, the menu with its pick on the right, on a
-/// glass field. For pickers whose choices are views with tags.
-struct SettingsPickerField<SelectionValue: Hashable, Content: View>: View {
-    let title: Text
-    @Binding var selection: SelectionValue
-    @ViewBuilder let content: Content
-
-    /// The value never wraps inside the field: beside the name when both
-    /// fit on one line, under it when they don't ("Right away, with a
-    /// notification" on a phone).
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack {
-                name
-                Spacer(minLength: 8)
-                picker
-                    .fixedSize()
-            }
-            VStack(alignment: .leading, spacing: 0) {
-                name
-                    .padding(.top, 8)
-                // Under the name it takes the field's width, and a value
-                // longer than that truncates inside the glass.
-                picker
-                    .lineLimit(1)
-                    .padding(.leading, -12)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .scaledFont(.subheadline.weight(.medium))
-        .padding(.leading, 12)
-        .padding(.vertical, 2)
-        .frame(minHeight: 42)
-        .conduitGlassControl(cornerRadius: 14)
-    }
-
-    private var name: some View {
-        title
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .accessibilityHidden(true)
-    }
-
-    private var picker: some View {
-        Picker(selection: $selection) {
-            content
-        } label: {
-            title
-        }
-        .labelsHidden()
-        .pickerStyle(.menu)
-        .tint(.conduitAccent)
-        // labelsHidden drops the name for VoiceOver too: it reads
-        // "Name, Value", as ConduitMenuPicker does.
-        .accessibilityLabel(title)
     }
 }
 

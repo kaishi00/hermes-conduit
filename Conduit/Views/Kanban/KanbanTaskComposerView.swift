@@ -137,25 +137,31 @@ struct KanbanTaskComposerView: View {
                     }
                 }
                 .accessibilityLabel("Task description")
-            SettingsPickerField(title: Text("Priority"), selection: $draft.priority) {
-                Text("Normal").tag(0)
-                Text("High").tag(1)
-                Text("Urgent").tag(2)
-                Text("Critical").tag(3)
+            ConduitMenuPicker(
+                value: draft.priority,
+                choices: [
+                    (id: 0, title: AppLocalization.string("Normal")),
+                    (id: 1, title: AppLocalization.string("High")),
+                    (id: 2, title: AppLocalization.string("Urgent")),
+                    (id: 3, title: AppLocalization.string("Critical")),
+                ],
+                onSelect: { draft.priority = $0 }
+            ) {
+                Text("Priority").foregroundStyle(.secondary)
             }
         }
     }
 
     private var assignmentSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Assignment"), symbol: "person.crop.circle", tint: .conduitAccent) {
-            SettingsPickerField(title: Text("Assigned to"), selection: assigneeSelectionBinding) {
-                Text("Default (\(resolvedDefaultAssignee))")
-                    .tag(KanbanAssigneeSelection.inheritDefault)
-                ForEach(rosterWithoutDefault) { profile in
-                    Text(profile.name).tag(KanbanAssigneeSelection.profile(profile.name))
-                }
-                Text("Parked (won't run)")
-                    .tag(KanbanAssigneeSelection.parked)
+            ConduitMenuPicker(
+                value: assigneeSelectionBinding.wrappedValue,
+                choices: [(id: KanbanAssigneeSelection.inheritDefault, title: AppLocalization.string("Default (\(resolvedDefaultAssignee))"))]
+                    + rosterWithoutDefault.map { (id: KanbanAssigneeSelection.profile($0.name), title: $0.name) }
+                    + [(id: KanbanAssigneeSelection.parked, title: AppLocalization.string("Parked (won't run)"))],
+                onSelect: { assigneeSelectionBinding.wrappedValue = $0 }
+            ) {
+                Text("Assigned to").foregroundStyle(.secondary)
             }
             Text("Default uses Hermes' resolved default assignee (\(resolvedDefaultAssignee)). Parked leaves the task unassigned so no worker claims it.")
                 .settingsCaption()
@@ -164,11 +170,14 @@ struct KanbanTaskComposerView: View {
 
     private var executionSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Execution"), symbol: "gearshape.2", tint: .conduitAccent) {
-            SettingsPickerField(title: Text("Workspace"), selection: $draft.workspaceKind) {
-                ForEach(KanbanWorkspaceKind.allCases) { kind in
-                    Text(kind.displayName + (kind == boardDefaultKind ? AppLocalization.string(" · board default") : ""))
-                        .tag(kind)
-                }
+            ConduitMenuPicker(
+                value: draft.workspaceKind,
+                choices: KanbanWorkspaceKind.allCases.map { kind in
+                    (id: kind, title: kind.displayName + (kind == boardDefaultKind ? AppLocalization.string(" · board default") : ""))
+                },
+                onSelect: { draft.workspaceKind = $0 }
+            ) {
+                Text("Workspace").foregroundStyle(.secondary)
             }
             if draft.workspaceKind.allowsPathOverride {
                 TextField(
@@ -524,11 +533,13 @@ struct KanbanModelOverrideSheet: View {
 
     private var reasoningSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Reasoning effort"), symbol: "brain", tint: .conduitAccent) {
-            SettingsPickerField(title: Text("Effort"), selection: effortBinding) {
-                Text("Inherit").tag("")
-                ForEach(TaskModelOverride.validReasoningEfforts, id: \.self) { effort in
-                    Text(displayEffort(effort)).tag(effort)
-                }
+            ConduitMenuPicker(
+                value: effortBinding.wrappedValue,
+                choices: [(id: "", title: AppLocalization.string("Inherit"))]
+                    + TaskModelOverride.validReasoningEfforts.map { (id: $0, title: displayEffort($0)) },
+                onSelect: { effortBinding.wrappedValue = $0 }
+            ) {
+                Text("Effort").foregroundStyle(.secondary)
             }
         }
     }

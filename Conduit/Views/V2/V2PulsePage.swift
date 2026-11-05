@@ -1631,13 +1631,12 @@ struct PulseLearnedSheet: View {
                 if let learned {
                     ConduitSettingsSection(title: AppLocalization.string("How Pulse tells you"), symbol: "bell.badge", tint: .conduitAccent) {
                         ForEach(learned.levels.keys.sorted(), id: \.self) { kind in
-                            SettingsPickerField(title: Text(verbatim: PulseCardKind.name(kind)), selection: Binding(
-                                get: { learned.levels[kind] ?? .push },
-                                set: { level in setLevel(level, for: kind) }
-                            )) {
-                                ForEach(PulseLevel.allCases) { level in
-                                    Text(verbatim: level.title).tag(level)
-                                }
+                            ConduitMenuPicker(
+                                value: learned.levels[kind] ?? .push,
+                                choices: PulseLevel.allCases.map { (id: $0, title: $0.title) },
+                                onSelect: { level in setLevel(level, for: kind) }
+                            ) {
+                                Text(verbatim: PulseCardKind.name(kind)).foregroundStyle(.secondary)
                             }
                             .disabled(working)
                         }
