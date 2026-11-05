@@ -1089,6 +1089,58 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(GPTLiveDelegationBridge.decisionMarker(in: "Please approve: it"))
     }
 
+    func testAYesFromTheNextCallNeverAnswersTheLastCallsApproval() async {
+        // #1792: the call is replaced while its approval waits on a yes
+        // still being transcribed, and the next call's user says yes.
+        let (supervisor, _, _) = hermesCallSupervisor()
+        let decisions = FakeCallDecisions()
+        supervisor.callDecisions = decisions.decisions
+
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        bridge.lastUserSpeechAt = { Date() }
+        bridge.lateYesWait = .seconds(2)
+        var reads = 0
+        bridge.lastUserWords = {
+            reads += 1
+            guard reads > 1 else {
+                bridge.connectionReplaced()
+                return "hmm"
+            }
+            return "yes"
+        }
+        let replaced = await bridge.handle(.init(id: "c1", name: "answer_approval", arguments: ["choice": "once"]))
+        XCTAssertEqual(replaced, [], "The call that asked is gone")
+        XCTAssertGreaterThan(reads, 1, "The next call's yes was heard")
+        XCTAssertTrue(decisions.choices.isEmpty, "Its yes answers nothing of the last call's")
+        bridge.lastUserWords = { "yes" }
+        _ = await bridge.handle(.init(id: "c2", name: "answer_approval", arguments: ["choice": "once"]))
+        XCTAssertEqual(decisions.choices, ["once"], "Asked in this call, its yes approves")
+
+        let gpt = GPTLiveDelegationBridge(supervisor: supervisor)
+        let words = FakeGPTLiveSpokenWords()
+        gpt.spokenWords = words
+        gpt.lateYesWait = .seconds(2)
+        words.mark = 1
+        var lineReads = 0
+        words.readLastLine = {
+            lineReads += 1
+            guard lineReads > 1 else {
+                gpt.connectionReplaced()
+                return "hmm"
+            }
+            return "yes"
+        }
+        let gone = await gpt.handleDelegation(id: "d1", request: "Approve:", userWords: "hmm")
+        XCTAssertEqual(gone, [], "The call that asked is gone")
+        XCTAssertGreaterThan(lineReads, 1, "The next call's yes was heard")
+        XCTAssertEqual(decisions.choices, ["once"], "Its yes answers nothing of the last call's")
+        XCTAssertTrue(words.settled.isEmpty, "The next call's words stay its own")
+        words.readLastLine = nil
+        words.lastLine = "yes"
+        _ = await gpt.handleDelegation(id: "d2", request: "Approve:", userWords: "yes")
+        XCTAssertEqual(decisions.choices, ["once", "once"], "Asked in this call, its yes approves")
+    }
+
     func testCallRulesGoToHostsThatKeepThemWithinTheirLimit() throws {
         let old = HermesCallSettings(json: ["enabled": true, "when_asked": true, "decides": true, "min_gap_s": 120, "per_hour": 6, "per_day": 20])
         XCTAssertNil(old?.rules, "A plugin before 0.16 has no note, so the field stays hidden")
