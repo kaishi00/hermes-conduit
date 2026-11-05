@@ -99,7 +99,7 @@ struct KanbanOrchestrationSettingsSheet: View {
                                     + store.profiles.map { (id: $0.name, title: $0.name) },
                                 onSelect: { orchestratorProfile = $0 }
                             ) {
-                                Text("Orchestrator Profile").foregroundStyle(.secondary)
+                                Text("Profile").foregroundStyle(.secondary)
                             }
                             Text(footnote(configured: orchestratorProfile, resolved: store.orchestration?.resolvedOrchestratorProfile ?? ""))
                                 .settingsCaption()
@@ -112,7 +112,7 @@ struct KanbanOrchestrationSettingsSheet: View {
                                     + store.profiles.map { (id: $0.name, title: $0.name) },
                                 onSelect: { defaultAssignee = $0 }
                             ) {
-                                Text("Default Assignee").foregroundStyle(.secondary)
+                                Text("Assignee").foregroundStyle(.secondary)
                             }
                             Text(footnote(configured: defaultAssignee, resolved: store.orchestration?.resolvedDefaultAssignee ?? ""))
                                 .settingsCaption()
