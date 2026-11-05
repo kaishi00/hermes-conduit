@@ -4911,6 +4911,42 @@ extension View {
     }
 }
 
+/// A system Picker drawn as Settings' dropdown field (ConduitMenuPicker's
+/// look): the name in grey, the menu with its pick on the right, on a
+/// glass field. For pickers whose choices are views with tags.
+struct SettingsPickerField<SelectionValue: Hashable, Content: View>: View {
+    let title: Text
+    @Binding var selection: SelectionValue
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        HStack {
+            title
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            Picker(selection: $selection) {
+                content
+            } label: {
+                title
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .tint(.conduitAccent)
+        }
+        .scaledFont(.subheadline.weight(.medium))
+        .padding(.leading, 12)
+        .padding(.vertical, 2)
+        .frame(minHeight: 42)
+        .conduitGlassControl(cornerRadius: 14)
+    }
+}
+
+/// Names a Settings card shows the same in every language.
+enum SettingsNames {
+    static let mcp = "MCP"
+    static let json = "JSON"
+}
+
 /// The chevron at the end of a Settings row that opens a page.
 struct SettingsChevron: View {
     var body: some View {

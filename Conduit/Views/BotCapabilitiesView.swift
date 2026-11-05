@@ -94,7 +94,7 @@ struct BotCapabilitiesView: View {
                         .settingsCaption()
                 }
             }
-            ConduitSettingsSection(title: "MCP", symbol: "server.rack", tint: .purple) {
+            ConduitSettingsSection(title: SettingsNames.mcp, symbol: "server.rack", tint: .purple) {
                 if let mcpNotice {
                     Text(verbatim: mcpNotice.text)
                         .scaledFont(.footnote)

@@ -18,9 +18,9 @@ struct KanbanBoardFilterSheet: View {
 
     var body: some View {
         NavigationStack {
-            ConduitForm {
-                Section("Assignee") {
-                    Picker("Assignee", selection: assigneeBinding) {
+            SettingsDetailContainer {
+                ConduitSettingsSection(title: AppLocalization.string("Assignee"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
+                    SettingsPickerField(title: Text("Assignee"), selection: assigneeBinding) {
                         Text("All Profiles").tag(String?.none)
                         ForEach(assignees, id: \.self) { name in
                             Text(name).tag(String?.some(name))
@@ -29,8 +29,8 @@ struct KanbanBoardFilterSheet: View {
                     .pickerStyle(.menu)
                 }
                 if !tenants.isEmpty {
-                    Section("Tenant") {
-                        Picker("Tenant", selection: tenantBinding) {
+                    ConduitSettingsSection(title: AppLocalization.string("Tenant"), symbol: "person.2", tint: .conduitAccent) {
+                        SettingsPickerField(title: Text("Tenant"), selection: tenantBinding) {
                             Text("All Tenants").tag(String?.none)
                             ForEach(tenants, id: \.self) { name in
                                 Text(name).tag(String?.some(name))
@@ -39,15 +39,17 @@ struct KanbanBoardFilterSheet: View {
                         .pickerStyle(.menu)
                     }
                 }
-                Section {
+                SettingsCard {
                     Toggle("Show Archived", isOn: $includeArchived)
                         .accessibilityLabel("Show archived tasks")
                     Toggle("Group Running by Profile", isOn: $groupRunningByProfile)
                         .accessibilityLabel("Group the Running lane by assignee")
-                } footer: {
+                    Group {
                     Text("Group Running by Profile is a saved preference. Show Archived applies to the board fetch. Assignee and tenant filters are temporary until changed.")
+                    }
+                    .settingsCaption()
                 }
-                Section {
+                SettingsCard {
                     Button("Reset Filters") {
                         // Transient filters only: the persisted grouping
                         // preference is NOT part of a transient reset.
@@ -57,6 +59,9 @@ struct KanbanBoardFilterSheet: View {
                     }
                 }
             }
+            // Text fields as Settings draws them.
+            .textFieldStyle(.roundedBorder)
+            .tint(.conduitAccent)
             .navigationTitle("Filters")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -931,7 +931,7 @@ struct ConnectorEditSheet: View {
             }
         }
         if showingJSON {
-            ConduitSettingsSection(title: "JSON", symbol: "curlybraces", tint: .purple) {
+            ConduitSettingsSection(title: SettingsNames.json, symbol: "curlybraces", tint: .purple) {
                 TextEditor(text: edit.json)
                     .scaledFont(.footnote.monospaced())
                     .textInputAutocapitalization(.never)
