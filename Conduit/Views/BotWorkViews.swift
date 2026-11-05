@@ -15,13 +15,16 @@ import SwiftUI
 
 /// Reads a bot's work while something shows it: often while work runs,
 /// now and then otherwise, and once for a bot whose workstreams are off.
-/// Its tab hidden or the app in the background, it stops, and reads again
-/// at once when it shows (#1827).
+/// Its tab hidden, the chat it's in covered (Settings in the chat column,
+/// Back to the list) or the app in the background, it stops, and reads
+/// again at once when it shows (#1827).
 private struct BotWorkRefresh: ViewModifier {
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2Shell) private var shell
     @Environment(\.scenePhase) private var scenePhase
     let profile: String
+    /// In a chat, so covering the chat hides it. Bots Home's overview isn't.
+    let inChat: Bool
 
     static let busyInterval: UInt64 = 5_000_000_000
     static let idleInterval: UInt64 = 20_000_000_000
@@ -30,7 +33,7 @@ private struct BotWorkRefresh: ViewModifier {
         // Keyed on the bot's work being on too: turned on in Edit Bot,
         // its reads start again.
         let isOn = appState.botWork.snapshot(profile)?.isOn ?? true
-        let shows = shell.isTabActive && scenePhase != .background
+        let shows = shell.isTabActive && scenePhase != .background && !(inChat && appState.showSidebar)
         content.task(id: "\(profile)\u{1F}\(appState.isConnected)\u{1F}\(appState.servesBotWorkstreams)\u{1F}\(isOn)\u{1F}\(shows)") {
             guard shows else { return }
             while !Task.isCancelled {
@@ -46,8 +49,8 @@ private struct BotWorkRefresh: ViewModifier {
 }
 
 extension View {
-    func refreshesBotWork(profile: String) -> some View {
-        modifier(BotWorkRefresh(profile: profile))
+    func refreshesBotWork(profile: String, inChat: Bool = true) -> some View {
+        modifier(BotWorkRefresh(profile: profile, inChat: inChat))
     }
 }
 
@@ -330,7 +333,7 @@ struct BotWorkPanel: View {
         .background {
             if showsHeader { SettingsBackdrop().ignoresSafeArea() }
         }
-        .refreshesBotWork(profile: profile)
+        .refreshesBotWork(profile: profile, inChat: showsHeader)
         // A refusal belongs to the panel it was tapped in. The Resolved
         // list stays, so a resolved workstream opened from it knows its
         // chat; it's read again when it shows.

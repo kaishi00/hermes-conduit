@@ -17,6 +17,7 @@ struct GroupChatView: View {
     /// This screen, to AppState's room poll: it stops while no room screen
     /// shows (`noteRoomView`).
     @State private var roomViewID = UUID()
+    private var roomShows: Bool { shell.isTabActive && !appState.showSidebar }
     @State private var showingDisbandConfirmation = false
     @State private var choosingPicture: GroupRoomPictureRequest?
     /// Moves the transcript by the chat's rules (#1533, the transcript
@@ -209,9 +210,11 @@ struct GroupChatView: View {
             rowDisclosure.scroller = scroller
             scroller.holdsRepliesAtStart = { ChatReplyStartPreference.isOn }
             scroller.setPaused(scenePhase == .background)
-            appState.noteRoomView(roomViewID, shows: shell.isTabActive)
+            appState.noteRoomView(roomViewID, shows: roomShows)
         }
-        .onChange(of: shell.isTabActive) { _, shows in
+        // Its tab hidden, or the chat column covered (Settings beside the
+        // list, Back to the list): the room isn't seen.
+        .onChange(of: roomShows) { _, shows in
             appState.noteRoomView(roomViewID, shows: shows)
         }
         .onDisappear {

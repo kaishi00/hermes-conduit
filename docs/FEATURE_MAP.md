@@ -2140,7 +2140,7 @@ Watch and CarPlay (not needed: neither shows a transcript)
 - The newest page's rows, read without the ones the phone holds: `Conduit/Services/HistoryPage.swift`, `Conduit/Services/AppState.swift` (historyPagePayload, from fetchPersistedHistoryPayload and voiceHistoryPage, which latestSavedThreadReply and voiceRowMessages read through), `Conduit/Services/DashboardTicketBridge.swift` (requestJSON's readsOnly: the read fails with the page on a sign-out, as a GET does; receive parses its answer, as every request's, off the main thread when it's over 64 KB, as a long chat's page is, and where it arrives when smaller, then hands it to answer on the main actor), `Conduit/Services/OfflineChatCache.swift` (heldRowsFileURL, loadHeldRows, writeHeldRows through recordHeldRows, removeHeldRows from deleteBot; boundedTranscripts for the copies' budget); notifier: `notifier/dashboard/api/history.py`
 - Bot Chat: `Conduit/Services/AppState.swift` (keepBotChatCopy, botChatCopyOwner, noteBotChatOpen, outgoingBotChatCopyOwner and where it's cleared: flushPendingPresentationCache, performSessionOpenNotingRefusal, switchDashboard, createNewSession; presentKeptBotChatCopy, keptBotChatCopies)
 - Group rooms: `Conduit/Services/AppState.swift` (openGroupRoom, parkActiveRoomSend, keptRoomReplays; chatSyncErrorMessage, chatErrorBehindRoom and closeRoomSurfaceBackToChat for the chat's error under a room)
-- Tests: `ConduitTests/OfflineChatCacheTests.swift`, `ConduitTests/ChatScrollStateTests+TranscriptModel.swift` (the rows drawn, the saved copy's status and the welcome), `ConduitTests/TranscriptScrollerTests.swift` (testHermesRowsAfterSavedOnesDoNotArmTheHold, testASwitchKeepsTheLandingItsOwnOpenAskedFor, testASwitchDropsALandingAnEarlierOpenAskedFor), `ConduitTests/HistoryPageTests.swift`, `ConduitTests/GroupChatSessionSafetyTests.swift`, `ConduitTests/CrossProfilePresentationCacheTests.swift` (testTheOutgoingTranscriptLeavesWhenTheProfileChangesOver), `ConduitTests/AppStateChatResumeTests.swift` (testAChatSyncErrorWaitsBehindAnOpenRoom); notifier: `notifier/tests/test_history_page.py`, `notifier/upstream/test_history_page.py`
+- Tests: `ConduitTests/OfflineChatCacheTests.swift`, `ConduitTests/ChatScrollStateTests+TranscriptModel.swift` (the rows drawn, the saved copy's status and the welcome), `ConduitTests/TranscriptScrollerTests.swift` (testHermesRowsAfterSavedOnesDoNotArmTheHold, testASwitchKeepsTheLandingItsOwnOpenAskedFor, testASwitchDropsALandingAnEarlierOpenAskedFor), `ConduitTests/HistoryPageTests.swift`, `ConduitTests/GroupChatSessionSafetyTests.swift`, `ConduitTests/CrossProfilePresentationCacheTests.swift` (testTheOutgoingTranscriptLeavesWhenTheProfileChangesOver), `ConduitTests/AppStateChatResumeTests.swift` (testAChatSyncErrorWaitsBehindAnOpenRoom), `ConduitTests/AnimatedAvatarTests.swift` (testKeptBotChatCopiesDropTheLeastRecentlyKeptPastTheirCount); notifier: `notifier/tests/test_history_page.py`, `notifier/upstream/test_history_page.py`
 
 **Rulings**
 - A chat that opens with saved rows (opened again, a Bot Chat's kept copy, the chat a launch or a profile switch opens on, a chat picked in the saved list) shows them as its own: the chat's scroll view draws them, provisional until Hermes answers, and Hermes' rows replace them by id in the same update, so the rows still there stay where they are and nothing is laid out again. They never enter the live transcript, so approvals, paging, resume and sends never read them, and while they stand in nothing that needs Hermes' word acts on them (Edit and resend, Retry, Branch, reactions, pins, Read aloud, Explain, a "Replying to" jump, Load earlier). The offline banner shows only while Hermes can't be reached. An unread chat whose saved rows end mid-turn lands at that turn's reply start from them, since Hermes' rows start there too (2026-10-30, #1550, from issue #1533: Eric replaced #1404's ruling, under which the copy was an overlay the live transcript replaced wholesale, with this).
@@ -5710,18 +5710,19 @@ line, the Work panel, a workstream's bar; see Bot workstreams) · Tasks and
 the Kanban board · Pulse's page · Bots Home's portraits and talking rooms ·
 not needed: the Bot Overview's talking-rooms read (a sheet: no tab changes
 under it), Needs you (its own 20 s read already keys on what shows), Watch and
-CarPlay (no tabs), the notifier (it answers what it's asked)
+CarPlay (no tabs), the notifier (it answers what it's asked) · text: none
+(no Settings caption or doc gives the cadence)
 
 **Code**
 - Tab visibility: `Conduit/Views/V2/V2Shell.swift` (v2Shell's isTabActive and showsChatRows per tab)
 - Project page: `Conduit/Views/V2/V2ProjectPage.swift` (pageShows, missedReads)
 - Open chat: `Conduit/Views/ChatView.swift` (the openChatSyncTick task), `Conduit/Services/AppState.swift` (openChatSyncTick, openChatSyncBecameVisible)
 - Group room: `Conduit/Services/AppState.swift` (startRoomPolling, pollActiveRoomOnce, noteRoomView, roomSurfaceShows), `Conduit/Views/GroupChatView.swift` (roomViewID)
-- Bot work: `Conduit/Views/BotWorkViews.swift` (BotWorkRefresh)
+- Bot work: `Conduit/Views/BotWorkViews.swift` (BotWorkRefresh, its inChat: the Bot Overview's panel isn't in a chat)
 - Tests: `ConduitTests/GroupChatSessionSafetyTests.swift` (testRoomPollStopsWhileHiddenAndCatchesUpWhenShown)
 
 **Rulings**
-- A timed read runs only while its screen shows: its tab selected, nothing pushed over it (beside it on a wide window still shows) and the app not in the background. Showing it again reads at once, so what changed meanwhile is there on return (2026-11-05, #1837, issue #1827).
+- A timed read runs only while its screen shows: its tab selected, nothing pushed over it (beside it on a wide window still shows), a chat's column not covered (Settings hosted beside the list, Back to the list: AppState.showSidebar) and the app not in the background. Showing it again reads at once, so what changed meanwhile is there on return (2026-11-05, #1837, issue #1827).
 - A group room whose screen hasn't appeared yet (just opened) counts as showing, as does one with no screen mounted. A poll tick that brings the same driver status publishes nothing.
 
 **Open gaps**
