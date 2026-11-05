@@ -180,24 +180,20 @@ struct KanbanTaskComposerView: View {
                 .accessibilityLabel("Workspace path override")
                 if let dir = boardDefaultDir {
                     Text("Leave empty to inherit the board's project directory: \(dir)")
-                        .scaledFont(.caption)
-                        .foregroundStyle(.secondary)
+                        .settingsCaption()
                 } else {
                     Text("Leave empty to inherit the board's project directory.")
-                        .scaledFont(.caption)
-                        .foregroundStyle(.secondary)
+                        .settingsCaption()
                 }
             }
 
             modelRow
             skillsRow
             goalModeRows
-            Group {
-                if boardDefaultDir != nil && !draft.workspaceKind.allowsPathOverride {
-                    Text("The board's project directory (\(boardDefaultDir!)) applies to this task.")
-                }
+            if boardDefaultDir != nil && !draft.workspaceKind.allowsPathOverride {
+                Text("The board's project directory (\(boardDefaultDir!)) applies to this task.")
+                    .settingsCaption()
             }
-            .settingsCaption()
         }
     }
 
@@ -273,8 +269,7 @@ struct KanbanTaskComposerView: View {
             )
             .accessibilityHint("Bounds how long the Goal Mode worker may loop")
             Text("The worker loops until a judge agrees the goal is met. Leave unlimited only with caution.")
-                .scaledFont(.caption)
-                .foregroundStyle(.secondary)
+                .settingsCaption()
         }
     }
 
@@ -339,8 +334,7 @@ struct KanbanTaskComposerView: View {
             Label(statusPresentation.displayName, systemImage: statusPresentation.systemImage)
                 .foregroundStyle(statusPresentation.tint)
             Text("The board selection is local to this device; creating this task will not switch Hermes' global board.")
-                .scaledFont(.caption)
-                .foregroundStyle(.secondary)
+                .settingsCaption()
         }
     }
 
@@ -770,8 +764,7 @@ struct KanbanSkillsPickerSheet: View {
                                         .foregroundStyle(.primary)
                                     if let description = skill.description, !description.isEmpty {
                                         Text(description)
-                                            .scaledFont(.caption)
-                                            .foregroundStyle(.secondary)
+                                            .settingsCaption()
                                             .lineLimit(2)
                                     }
                                 }
