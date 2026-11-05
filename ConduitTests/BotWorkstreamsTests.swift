@@ -1076,5 +1076,11 @@ extension BotModeTests {
         let moved = snapshot.replacing(try XCTUnwrap(BotWorkItem(row: row)))
         XCTAssertEqual(moved.needsYouCount, 0)
         XCTAssertEqual(moved.workingCount, 1)
+        // A done row still asking stays in Active, where its count points.
+        var done: [String: Any] = (response["work"] as! [[String: Any]])[0]
+        done["status"] = "done"
+        let doneAsking = try XCTUnwrap(BotWorkItem(row: done))
+        XCTAssertTrue(doneAsking.isActive)
+        XCTAssertTrue(doneAsking.needsYou)
     }
 }

@@ -327,7 +327,8 @@ final class BotScreenModel: ObservableObject {
         } catch {
             // Asked again: the field comes back for another try, unless a
             // newer ask or the install's end came in meanwhile.
-            if sudoRequestID == nil, isInstalling { sudoRequestID = id }
+            // Never one Hermes cancelled meanwhile.
+            if sudoRequestID == nil, isInstalling, client.pendingDisplaySudo[id] != nil { sudoRequestID = id }
             errorText = error.localizedDescription
         }
     }
@@ -551,7 +552,9 @@ final class BotScreenModel: ObservableObject {
 
     func pageConnected() {
         stream = .live
-        rapidEvictions = 0
+        // rapidEvictions isn't reset here: an attach that's evicted at once
+        // still completes its handshake first. A close after ten quiet
+        // seconds starts the count over.
     }
 
     /// The page closed its end: only a live stream's, since a detach's own
@@ -646,8 +649,9 @@ final class BotScreenSupport: ObservableObject {
 
     func isSupported(_ profile: String) -> Bool { supported[profile] == true }
 
-    /// Reads it once per profile and connection.
-    func check(_ profile: String, client: HermesClient?) {
+    /// Reads it once per profile and connection; a read that failed is
+    /// tried again a few times.
+    func check(_ profile: String, client: HermesClient?, attempt: Int = 0) {
         guard let client else { return }
         // Another server (a new client): what was read stood for the old one.
         if readFrom !== client {
@@ -668,7 +672,13 @@ final class BotScreenSupport: ObservableObject {
                 guard generation == self.generation else { return }
                 supported[profile] = false
             } catch {
-                // Not known: read again next time.
+                // Not known: read again shortly, while still on this server.
+                guard generation == self.generation, attempt < 3 else { return }
+                Task { @MainActor [weak self, weak client] in
+                    try? await Task.sleep(for: .seconds(15))
+                    guard let self, let client, generation == self.generation else { return }
+                    self.check(profile, client: client, attempt: attempt + 1)
+                }
             }
         }
     }

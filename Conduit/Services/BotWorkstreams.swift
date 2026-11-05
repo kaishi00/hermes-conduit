@@ -150,7 +150,9 @@ struct BotWorkItem: Identifiable, Equatable {
     /// Still the bot's or the user's to finish: a restart's cut-off waits
     /// on the user, so it stays with the active work.
     var isActive: Bool {
-        !isClosed && ["starting", "running", "needs_you", "waiting", "ready", "interrupted"].contains(status)
+        // A screen ask keeps a done row in Active until it's answered.
+        !isClosed && (["starting", "running", "needs_you", "waiting", "ready", "interrupted"].contains(status)
+                      || !screenAsk.isEmpty)
     }
 
     var isWorking: Bool { status == "starting" || status == "running" }
