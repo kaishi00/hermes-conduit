@@ -1697,6 +1697,7 @@ and README.md's bots line)
 - Hide is the ui_meta `hidden` flag Desktop writes: a hidden bot moves to a collapsed Hidden section at the end of the list, and Desktop hides it too. It keeps working and keeps its rooms, but isn't offered for a new group, whose picker lists visible bots only (2026-10-24, #1192).
 - Groups lists the hosted rooms the bot is in, then New Group Chat with the bot already picked. Hosted groups can't add or remove members after they start, so there's no Add to Group (2026-10-24).
 - A kept bot, drawn from Hermes' last answer until it answers again (Screens that open on their last answer), is never written: its copy has no ui_meta to send back whole, so its row offers only New Chat and Groups' rooms, and updateBot, setBotPinned, setBotHidden, duplicateBot and deleteBot (canDeleteBot) refuse one. A bot's face shows from the copy of its picture the profile pictures keep on the phone until the fetch lands, and a kept bot's Bot Chat shows its face and color from the kept roster. A deleted bot leaves the kept roster as it goes, on the dashboard it was deleted from even if its bridge was rebuilt meanwhile, so neither a read after the delete that fails nor one asked before it brings it back (2026-10-31, #1568).
+- The SOUL is one row on the editor, its first three lines, and opens on a page of its own to edit: inline, a long one pushed Work and Advanced out of sight (Eric 2026-11-05, #PRNUM).
 - Edit Bot opens on the bot's SOUL, model, skills, tools and MCP servers as Hermes gave them last time, New Bot on its Start From profile's lists and the MCP page on the catalog and sign-ins, all read-only until Hermes answers, since a save compares with Hermes' own; what a save, a catalog add or a sign-in Hermes took is what they open on next (Screens that open on their last answer, 2026-10-31, #1588).
 
 **Open gaps**
@@ -1704,7 +1705,7 @@ and README.md's bots line)
 - Desktop's drawn faces, shapes and pets show only as stills; Conduit draws an initial on the color.
 - The group picture switch guard has no test: it needs a ready DashboardTicketBridge double and a room switch mid-request (#1191).
 
-**Checked:** 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1679 (on `bot-workstreams`: the row menu on Bots Home gains Start a Room with… and Reorder Bots; New Group Chat can open with a title suggested and say when it made the room; its members and New Bot's Start From follow the bots' order, see Bots Home); 2026-11-03, #1678 (on `bot-workstreams`, Bots Home: the roster as portraits, each with the row's menu on a long press, BotMonogramView at a size its caller picks, and Edit Bot in the Bot Overview, opened once the overview has closed); 2026-11-03, #1677 (on `bot-workstreams`: Edit Bot in a Bot Chat's ⋯ menu, disabled where the Bots list's is; the model picker's inherit row named by its caller, "Same as Bot Chat" for Edit Bot > Work's Workstream Model); 2026-11-02, #1649 (Edit Bot gains Work, the bot's workstream settings, only for a bot that exists on a plugin that serves them; see Bot workstreams); 2026-11-02, #1640 (the MCP sign-in moved to NativeMCPSignIn, shared with Connectors; a switch still says the setup stopped; a Connectors sign-in is kept for the MCP page too, keepMcpSignedIn); 2026-10-31, #1588 (Edit Bot, New Bot's Start From lists and the MCP page open on what Hermes gave last time, read-only until it answers, and a save, MCP add or sign-in Hermes took is what they open on next; see Screens that open on their last answer); 2026-10-31, #1568 (a kept bot is never written, Delete included, a bot's face shows from the phone's copy until its fetch lands, its Bot Chat's face and color included, and a deleted bot leaves the kept roster); 2026-10-31, #1567 (the editor's Model page opens on the models kept from Hermes' last answer, picked once Hermes answers, with Try Again after a read that fails; see Model lists that fail to load); 2026-10-28, #1457 (the main bot goes by its Conduit name, see Profile names); 2026-10-28, #1448 (an unnamed bot shows its id capitalized); 2026-10-28, #1413 (a rename here names the profile everywhere, see Profile names); 2026-10-27, at #1395 (the editor's Model page gained search with each match's provider; saving unchanged); 2026-10-25, at #1222 (configure and MCP add wait in the profile config queue); before that #1192; group pictures at #1191.
+**Checked:** 2026-11-05, #PRNUM (the SOUL is a row opening its own page, so Work and Advanced sit under it; the Model page's providers open and close, see Model lists grouped by provider; New Bot's + is the shared one, see The + that makes something new); 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1679 (on `bot-workstreams`: the row menu on Bots Home gains Start a Room with… and Reorder Bots; New Group Chat can open with a title suggested and say when it made the room; its members and New Bot's Start From follow the bots' order, see Bots Home); 2026-11-03, #1678 (on `bot-workstreams`, Bots Home: the roster as portraits, each with the row's menu on a long press, BotMonogramView at a size its caller picks, and Edit Bot in the Bot Overview, opened once the overview has closed); 2026-11-03, #1677 (on `bot-workstreams`: Edit Bot in a Bot Chat's ⋯ menu, disabled where the Bots list's is; the model picker's inherit row named by its caller, "Same as Bot Chat" for Edit Bot > Work's Workstream Model); 2026-11-02, #1649 (Edit Bot gains Work, the bot's workstream settings, only for a bot that exists on a plugin that serves them; see Bot workstreams); 2026-11-02, #1640 (the MCP sign-in moved to NativeMCPSignIn, shared with Connectors; a switch still says the setup stopped; a Connectors sign-in is kept for the MCP page too, keepMcpSignedIn); 2026-10-31, #1588 (Edit Bot, New Bot's Start From lists and the MCP page open on what Hermes gave last time, read-only until it answers, and a save, MCP add or sign-in Hermes took is what they open on next; see Screens that open on their last answer); 2026-10-31, #1568 (a kept bot is never written, Delete included, a bot's face shows from the phone's copy until its fetch lands, its Bot Chat's face and color included, and a deleted bot leaves the kept roster); 2026-10-31, #1567 (the editor's Model page opens on the models kept from Hermes' last answer, picked once Hermes answers, with Try Again after a read that fails; see Model lists that fail to load); 2026-10-28, #1457 (the main bot goes by its Conduit name, see Profile names); 2026-10-28, #1448 (an unnamed bot shows its id capitalized); 2026-10-28, #1413 (a rename here names the profile everywhere, see Profile names); 2026-10-27, at #1395 (the editor's Model page gained search with each match's provider; saving unchanged); 2026-10-25, at #1222 (configure and MCP add wait in the profile config queue); before that #1192; group pictures at #1191.
 
 ## Opening a Bot Chat
 
@@ -3122,8 +3123,9 @@ same model and the pick switches to that provider's route.
 picker · the Kanban task's model override · the model sheet's Edit
 (visibility) search (not needed: its matches sit under their provider's name)
 · the Model page's Default, Delegate and Fallback model editors and the voice
-job and voice reply model pickers (not needed: the provider is picked first,
-or the menu row already reads "model · provider") · Text (not needed: no
+job, voice reply, helper and Pulse model menus (not needed: the provider is
+picked first, or the menu opens a provider's models from its name, and the
+row reads "model · provider", see Model lists grouped by provider) · Text (not needed: no
 README, docs or Settings caption describes the pickers)
 
 **Code**
@@ -3142,7 +3144,62 @@ README, docs or Settings caption describes the pickers)
 **Open gaps**
 - A hardware keyboard connected while the sheet is open doesn't turn on the highlight until the sheet opens again.
 
-**Checked:** 2026-10-31, #1567 (the sheet and a bot's picker search the models kept from Hermes' last answer until it answers, their matches waiting for it like their rows, and the sheet says a failed read under its matches); 2026-10-27, at #1395.
+**Checked:** 2026-11-05, #PRNUM (the menus' models sit under their provider's submenu; a bot's picker closes its providers but its search still lists every match); 2026-10-31, #1567 (the sheet and a bot's picker search the models kept from Hermes' last answer until it answers, their matches waiting for it like their rows, and the sheet says a failed read under its matches); 2026-10-27, at #1395.
+
+## Model lists grouped by provider
+
+A list of every provider's models, shown as its providers, each opened to
+its models when tapped, so a long catalog stays short (Eric 2026-11-05).
+
+**Siblings:** the model sheet (done before: its provider cards open one at a
+time) · a bot's Model page, from New Bot, Edit Bot and Edit Bot > Work's
+Workstream Model (done) · the voice job, voice reply and Helper models menus
+and Settings > Pulse's model menu (done: one shared menu, a submenu per
+provider) · the Model page's Default, Delegate and Fallback model editors
+(not needed: the provider is picked first, then its models) · the Kanban
+model override (done before: a disclosure per provider) · Searching for a
+model (every match still lists, whatever is closed) · Text (not needed: no
+caption describes the lists)
+
+**Code**
+- Bot's Model page: `Conduit/Views/BotModelPicker.swift` (providerRow, expandedProviders, openPickedProvider)
+- Menus: `Conduit/Views/AuxiliaryViews.swift` (ConduitMenuGroup, ConduitMenuPicker's groups), `Conduit/Views/GeminiLiveViews.swift` (VoiceJobModelSettingsSection.modelMenuGroups), used by `Conduit/Views/PulseSettingsViews.swift` (modelSection) and `Conduit/Views/HelperModelViews.swift` (through VoiceReplyModelSettingsSection)
+- Model sheet: `Conduit/Views/ModelPickerView.swift` (providerCard)
+- Tests: `ConduitTests/HermesVoiceConfigurationServiceTests+KeptAnswers.swift` (testAPinnedProviderAndAnEndpointAreShownAndKept)
+
+**Rulings**
+- Providers start closed; a bot's Model page opens the one holding the pick, once, and a menu marks that provider's name with a check (Eric 2026-11-05, #PRNUM).
+- A menu's default choice and a held model the catalog doesn't list sit above the providers, outside any submenu; the row names a pick as "model · provider" (#PRNUM).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-05, #PRNUM (entry added)
+
+## The + that makes something new
+
+V2's + that starts something new: one 44 pt glass circle, as Bots Home's
+New Bot draws it (Eric 2026-11-05: the Projects + looked different).
+
+**Siblings:** Bots Home's New Bot (done) · Group Chats' New Group Chat (done)
+· the Projects heading's New Project (done, see New project) · a workspace
+folder's Add menu (done, see Workspace files) · the Kanban board's New task
+(gap: its row of square glass buttons, ⋯, Select and Refresh, would need the
+same look together) · the classic drawer's New Chat and New project (not
+needed: the drawer keeps its own style) · menus' "New …" items (not needed:
+menu rows)
+
+**Code**
+- The button: `Conduit/Theme.swift` (V2AddGlyph, V2AddButton)
+- Used by: `Conduit/Views/V2/V2BotsView.swift`, `Conduit/Views/BotRosterView.swift` (homeGroupSection), `Conduit/Views/V2/V2ChatsView.swift` (projectsHeader), `Conduit/Views/V2/V2WorkspaceViews.swift`
+
+**Rulings**
+- A heading's + sits at its end, 16 pt from the edge, as on Bots Home (#PRNUM).
+
+**Open gaps**
+- The Kanban board's New task is still a square glass button with its row.
+
+**Checked:** 2026-11-05, #PRNUM (entry added)
 
 ## Sharing into Conduit
 
@@ -3844,7 +3901,8 @@ empty state, the filter menu) · the iPad and Mac list (same view) · the
 classic drawer (its New project button and ⋯ menu, its empty state) · the
 Folder tab beside Artifacts (the same plugin route makes its New Folder) ·
 Unread dot on projects (the new project's row takes the dot like any
-other) · README.md
+other) · The + that makes something new (the heading's + is Bots Home's
+glass one) · README.md
 
 **Code**
 - Buttons: `Conduit/Views/V2/V2ChatsView.swift` (projectsHeader, canCreateProject, projectsList's empty state, filterMenu), `Conduit/Views/SidebarView.swift` (the drawer's New project button and menu item)
@@ -3866,7 +3924,7 @@ other) · README.md
 - IDEA.md is checked by a listing, then written by Hermes' own write route: a file another writer puts there between the two is written over. Hermes has no create-only write.
 - The open chat's folder is `runtime.cwd`, which a chat that reports no folder leaves as the last chat's, here as in the Folder tab.
 
-**Checked:** 2026-11-03, #1693.
+**Checked:** 2026-11-05, #PRNUM (the heading's + is the shared glass one); 2026-11-03, #1693.
 
 ## Pinned chats order
 

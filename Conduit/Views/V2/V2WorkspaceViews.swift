@@ -300,10 +300,8 @@ struct WorkspaceFolderView: View {
                 Menu {
                     actions(in: root.path)
                 } label: {
-                    Image(systemName: "plus")
-                        .scaledFont(.body.weight(.semibold))
-                        .frame(width: 36, height: 36)
-                        .contentShape(Rectangle())
+                    // Bots Home's glass +.
+                    V2AddGlyph()
                 }
                 .accessibilityLabel(AppLocalization.string("Add to Folder"))
             }

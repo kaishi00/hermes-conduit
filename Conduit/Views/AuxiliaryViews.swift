@@ -2313,22 +2313,55 @@ private struct ResponseBehaviorSettings: View {
 /// value on the right ("Provider    OpenRouter"), the whole row opening the
 /// menu. Every menu-style choice in Settings uses it, so a bare value never
 /// floats on its own. Choice titles arrive localized.
+/// A titled run of a menu picker's choices, shown as a submenu that opens
+/// in place, so a long list (every provider's models) reads as its groups.
+/// An untitled group's choices sit in the menu itself.
+struct ConduitMenuGroup<ID: Hashable> {
+    var title: String?
+    var choices: [(id: ID, title: String)]
+}
+
 struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let label: Label
     let value: ID
-    let choices: [(id: ID, title: String)]
+    let groups: [ConduitMenuGroup<ID>]
     let onSelect: (ID) -> Void
 
     init(value: ID, choices: [(id: ID, title: String)], onSelect: @escaping (ID) -> Void, @ViewBuilder label: () -> Label) {
+        self.init(value: value, groups: [ConduitMenuGroup(title: nil, choices: choices)], onSelect: onSelect, label: label)
+    }
+
+    init(value: ID, groups: [ConduitMenuGroup<ID>], onSelect: @escaping (ID) -> Void, @ViewBuilder label: () -> Label) {
         self.value = value
-        self.choices = choices
+        self.groups = groups
         self.onSelect = onSelect
         self.label = label()
     }
 
+    /// The pick's name in the row: a grouped choice names its group too
+    /// ("gpt-5 · openrouter"), as the row stands without the menu.
     private var displayedTitle: String {
-        choices.first(where: { $0.id == value })?.title ?? (value as? String) ?? String(describing: value)
+        for group in groups {
+            if let choice = group.choices.first(where: { $0.id == value }) {
+                guard let groupTitle = group.title else { return choice.title }
+                return "\(choice.title) · \(groupTitle)"
+            }
+        }
+        return (value as? String) ?? String(describing: value)
+    }
+
+    private func choiceButton(_ choice: (id: ID, title: String)) -> some View {
+        Button {
+            onSelect(choice.id)
+        } label: {
+            if choice.id == value {
+                SwiftUI.Label(choice.title, systemImage: "checkmark")
+            } else {
+                Text(verbatim: choice.title)
+            }
+        }
+        .accessibilityAddTraits(choice.id == value ? .isSelected : [])
     }
 
     private var valueText: Text {
@@ -2341,18 +2374,26 @@ struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
 
     var body: some View {
         Menu {
-            ForEach(choices.indices, id: \.self) { index in
-                let choice = choices[index]
-                Button {
-                    onSelect(choice.id)
-                } label: {
-                    if choice.id == value {
-                        SwiftUI.Label(choice.title, systemImage: "checkmark")
-                    } else {
-                        Text(verbatim: choice.title)
+            ForEach(groups.indices, id: \.self) { groupIndex in
+                let group = groups[groupIndex]
+                if let title = group.title {
+                    Menu {
+                        ForEach(group.choices.indices, id: \.self) { index in
+                            choiceButton(group.choices[index])
+                        }
+                    } label: {
+                        // The group holding the pick says so while closed.
+                        if group.choices.contains(where: { $0.id == value }) {
+                            SwiftUI.Label(title, systemImage: "checkmark")
+                        } else {
+                            Text(verbatim: title)
+                        }
+                    }
+                } else {
+                    ForEach(group.choices.indices, id: \.self) { index in
+                        choiceButton(group.choices[index])
                     }
                 }
-                .accessibilityAddTraits(choice.id == value ? .isSelected : [])
             }
         } label: {
             Group {

@@ -21,6 +21,10 @@ struct BotModelPicker: View {
     /// model may be gone.
     @State private var catalog = KeptModelCatalog()
     @State private var query = ""
+    /// The providers opened to their models: each starts closed, so a
+    /// long list reads as its providers, except the one holding the pick.
+    @State private var expandedProviders: Set<String> = []
+    @State private var openedPicked = false
 
     var body: some View {
         List {
@@ -46,18 +50,19 @@ struct BotModelPicker: View {
                 }
                 ForEach(ModelSearchQuery(query).isEmpty ? providers : [], id: \.name) { option in
                     Section {
-                        ForEach(option.models, id: \.id) { item in
-                            row(
-                                title: item.label ?? item.id,
-                                isSelected: option.matches(provider) && item.id == model
-                            ) {
-                                provider = option.name
-                                model = item.id
+                        providerRow(option)
+                        if expandedProviders.contains(option.name) {
+                            ForEach(option.models, id: \.id) { item in
+                                row(
+                                    title: item.label ?? item.id,
+                                    isSelected: option.matches(provider) && item.id == model
+                                ) {
+                                    provider = option.name
+                                    model = item.id
+                                }
+                                .disabled(!catalog.answered)
                             }
-                            .disabled(!catalog.answered)
                         }
-                    } header: {
-                        Text(verbatim: option.title)
                     }
                 }
                 if catalog.failed {
@@ -75,7 +80,11 @@ struct BotModelPicker: View {
         .navigationBarTitleDisplayMode(.inline)
         // What Hermes listed last time, before the first frame; its answer
         // follows.
-        .onAppear { catalog.showKept(Self.pickable(appState.keptModelProviders())) }
+        .onAppear {
+            catalog.showKept(Self.pickable(appState.keptModelProviders()))
+            openPickedProvider()
+        }
+        .onChange(of: catalog.providers.map(\.name)) { _, _ in openPickedProvider() }
         .task {
             guard !catalog.answered else { return }
             await load()
@@ -89,6 +98,55 @@ struct BotModelPicker: View {
         } else {
             catalog.readFailed()
         }
+    }
+
+    /// Opens the provider holding the pick, once, when it is first listed.
+    private func openPickedProvider() {
+        guard !openedPicked, !model.isEmpty else { return }
+        guard let held = catalog.providers.first(where: { option in
+            option.matches(provider) && option.models.contains { $0.id == model }
+        }) else { return }
+        openedPicked = true
+        expandedProviders.insert(held.name)
+    }
+
+    /// A provider's row: its name and model count, opening or closing its
+    /// models, as the chat's Model sheet draws its providers.
+    private func providerRow(_ option: ProviderInfo) -> some View {
+        let isExpanded = expandedProviders.contains(option.name)
+        let holdsPick = option.matches(provider) && option.models.contains { $0.id == model }
+        return Button {
+            Haptics.selection()
+            withAnimation(ConduitMotion.response) {
+                if isExpanded {
+                    expandedProviders.remove(option.name)
+                } else {
+                    expandedProviders.insert(option.name)
+                }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Text(verbatim: option.title)
+                    .scaledFont(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                if holdsPick, !isExpanded {
+                    Image(systemName: "checkmark")
+                        .scaledFont(.caption.weight(.semibold))
+                        .foregroundStyle(Color.conduitAccent)
+                        .accessibilityHidden(true)
+                }
+                Spacer(minLength: 12)
+                Text(verbatim: "\(option.models.count)")
+                    .scaledFont(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .scaledFont(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .accessibilityValue(Text(isExpanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed")))
     }
 
     /// A provider with no models has nothing to pick.

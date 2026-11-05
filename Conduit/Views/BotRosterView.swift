@@ -732,18 +732,9 @@ struct BotRosterView: View {
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 8)
                 if canStartGroups {
-                    // New Bot's glass +, at its 44 pt size.
-                    Button(action: startNewGroup) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 17, weight: .semibold))
-                            .conduitFixedGlyph()
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(PressableButtonStyle())
-                    .conduitGlassControl(cornerRadius: 22, interactive: false)
-                    .accessibilityLabel(Text(AppLocalization.string("New Group Chat")))
-                    .accessibilityIdentifier("bots.newGroupChat")
+                    // New Bot's glass +.
+                    V2AddButton(title: AppLocalization.string("New Group Chat"), action: startNewGroup)
+                        .accessibilityIdentifier("bots.newGroupChat")
                 }
             }
             .padding(.horizontal, 16)

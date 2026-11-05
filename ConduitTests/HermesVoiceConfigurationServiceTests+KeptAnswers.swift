@@ -314,10 +314,16 @@ extension HermesVoiceConfigurationServiceTests {
         picks.hermesAnswered(pinned, to: picks.readAsked())
         XCTAssertEqual(picks.selection, VoiceJobModelSettingsSection.tag(provider: "openrouter", model: ""))
         XCTAssertNil(picks.writeAsked(), "Showing it writes nothing")
-        let choices = VoiceJobModelSettingsSection.modelChoices(
+        let groups = VoiceJobModelSettingsSection.modelMenuGroups(
             defaultTitle: "chats", defaultTag: VoiceReplyModelPicks.sameAsChats, selection: picks.selection, providers: []
         )
-        XCTAssertEqual(choices.last?.title, VoiceJobModelSettingsSection.providerDefaultTitle("openrouter"))
+        XCTAssertEqual(groups.first?.choices.last?.title, VoiceJobModelSettingsSection.providerDefaultTitle("openrouter"))
+        let listed = VoiceJobModelSettingsSection.modelMenuGroups(
+            defaultTitle: "chats", defaultTag: VoiceReplyModelPicks.sameAsChats, selection: picks.selection,
+            providers: [ProviderInfo(name: "openrouter", models: [ModelInfo(id: "gpt-5", label: nil, reasoningCapable: false)])]
+        )
+        XCTAssertEqual(listed.map(\.title), [nil, "openrouter"], "each provider is a submenu of its own, after the default")
+        XCTAssertEqual(listed[1].choices.map(\.title), ["gpt-5"], "a submenu's models don't repeat its provider")
         picks.selection = VoiceReplyModelPicks.sameAsChats
         let unpinned = try XCTUnwrap(picks.writeAsked())
         XCTAssertEqual(unpinned.provider, "auto")
