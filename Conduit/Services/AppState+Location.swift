@@ -94,7 +94,9 @@ extension AppState {
         // reach the host, and that may need the pass.
         guard let binding = controller.binding,
               activeDashboardID == binding.dashboardID, let bridge = dashboardTicketBridge else { return }
+        // Removed or unbound while the pass was read: it isn't kept.
         if let pass = await locationHostPass(bridge: bridge, dashboardID: binding.dashboardID),
+           controller.binding?.dashboardID == pass.dashboardID,
            !LocationKeychain.saveHostPass(pass) {
             // Logged by LocationKeychain. The previous pass (if any) stays;
             // the app still sends through the dashboard connection, but the

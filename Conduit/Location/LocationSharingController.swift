@@ -418,7 +418,7 @@ final class LocationSharingController: ObservableObject {
     /// the host has it.
     @discardableResult
     func shareFix(source: LocationFixSource, events: [LocationPlaceEvent] = []) async -> Bool {
-        guard settings.shares(source, at: now()) else { return false }
+        guard let bound = config.binding, settings.shares(source, at: now()) else { return false }
         // A background relaunch gets a few seconds: the fix, place name and
         // send run inside an assertion, and an arrive/leave is kept before
         // the fix so a suspension can't lose it.
@@ -440,6 +440,9 @@ final class LocationSharingController: ObservableObject {
                 timeout: source.isTalking ? .seconds(8) : .seconds(15)
             )
         }
+        // Sharing ended or moved to another dashboard while the fix came:
+        // it and these events were taken for the old one.
+        guard config.binding == bound, settings.shares(source, at: now()) else { return false }
         // The place the host already has from a message moments ago: the
         // message goes without sending it again (or looking up its area).
         if source == .message, events.isEmpty, unsent.fix == nil, let location,
