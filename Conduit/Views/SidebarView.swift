@@ -1864,40 +1864,52 @@ struct ProjectCreateSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                ConduitForm {
-                    Section {
+                // Settings' own page, as Edit Bot (Eric 2026-11-05).
+                SettingsDetailContainer {
+                    ConduitSettingsSection(title: AppLocalization.string("Name"), symbol: "folder.badge.plus", tint: .conduitAccent) {
                         TextField("e.g. Skunkworks", text: $name)
+                            .textFieldStyle(.roundedBorder)
                             .textInputAutocapitalization(.words)
                             .disabled(madeProjectID != nil || isCreating)
-                    } header: {
-                        Text("Name")
-                    } footer: {
                         Text("Name a workspace and add one or more folders.")
-                    }
-
-                    // Projects belong to a profile: the new one goes to the
-                    // profile whose projects the list shows, so it shows
-                    // there at once (issue 1661).
-                    Section {
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.secondary)
+                        // Projects belong to a profile: the new one goes to the
+                        // profile whose projects the list shows, so it shows
+                        // there at once (issue 1661).
                         LabeledContent(AppLocalization.string("Profile"), value: appState.profileDisplayName(madeProjectProfile ?? appState.activeProfile))
-                    } footer: {
                         Text(AppLocalization.string("New projects go to the profile in use. To make one in another profile, switch to it first."))
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.secondary)
                     }
 
-                    Section("Folders") {
+                    ConduitSettingsSection(title: AppLocalization.string("Folders"), symbol: "folder", tint: .blue) {
                         if folders.isEmpty {
                             Text("No folders added yet.")
                                 .foregroundStyle(.secondary)
                         }
                         ForEach(folders, id: \.self) { folder in
-                            Label(folder, systemImage: "folder.fill")
-                                .lineLimit(1)
+                            HStack {
+                                Label(folder, systemImage: "folder.fill")
+                                    .lineLimit(1)
+                                Spacer(minLength: 8)
+                                // Once the project is made, Save Idea writes to
+                                // the folder it was made with.
+                                if madeProjectID == nil {
+                                    Button {
+                                        folders.removeAll { $0 == folder }
+                                    } label: {
+                                        Image(systemName: "minus.circle.fill")
+                                            .foregroundStyle(.secondary)
+                                            .frame(minWidth: 44, minHeight: 44)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(isCreating)
+                                    .accessibilityLabel(Text(AppLocalization.string("Remove")))
+                                }
+                            }
                         }
-                        .onDelete { folders.remove(atOffsets: $0) }
-                        // Once the project is made, Save Idea writes to the
-                        // folder it was made with.
-                        .deleteDisabled(madeProjectID != nil || isCreating)
-
                         Button {
                             validationMessage = nil
                             guard !appState.projectFolderPickerRoot.isEmpty else {
@@ -1908,23 +1920,24 @@ struct ProjectCreateSheet: View {
                         } label: {
                             Label(AppLocalization.string("Add folder"), systemImage: "plus")
                         }
+                        .buttonStyle(.settings)
                         .disabled(madeProjectID != nil || isCreating)
                     }
 
-                    Section {
-                        TextEditor(text: $idea)
-                            .frame(minHeight: 120)
-                    } header: {
-                        Text("Idea (optional)")
-                    } footer: {
+                    ConduitSettingsSection(title: AppLocalization.string("Idea (optional)"), symbol: "lightbulb", tint: .yellow) {
+                        TextField("", text: $idea, axis: .vertical)
+                            .textFieldStyle(.roundedBorder)
+                            .lineLimit(5...12)
+                            .accessibilityLabel(Text(AppLocalization.string("Idea (optional)")))
                         Text(AppLocalization.string("Saved as IDEA.md in the first folder, as in Hermes Desktop, unless the folder already has one."))
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.secondary)
                     }
 
                     if let message = clash ?? validationMessage {
-                        Section {
-                            Label(message, systemImage: "exclamationmark.triangle")
-                                .foregroundStyle(.orange)
-                        }
+                        Label(message, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 16)
                     }
                 }
                 // A failed create's message goes once the name or folders
@@ -2713,11 +2726,14 @@ struct RenameSheet: View {
 
     var body: some View {
         NavigationStack {
-            ConduitForm {
-                TextField(placeholder, text: $draft)
-                    .focused($fieldFocused)
-                    .submitLabel(.done)
-                    .onSubmit(commit)
+            SettingsDetailContainer {
+                SettingsCard {
+                    TextField(placeholder, text: $draft)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($fieldFocused)
+                        .submitLabel(.done)
+                        .onSubmit(commit)
+                }
             }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
