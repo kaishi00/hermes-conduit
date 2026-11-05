@@ -113,6 +113,7 @@ extension AppState {
         guard !Self.isAbsoluteWorkspacePath(trimmed), !ids.isEmpty,
               notifierPlugin.reports(WorkspaceFilesClient.resolveCapability),
               let owner = currentDashboardRuntimeOwner() else {
+            clearWorkspaceLookupNotice()
             workspaceReveal = WorkspaceReveal(path: absoluteWorkspacePath(trimmed), line: line)
             return
         }
