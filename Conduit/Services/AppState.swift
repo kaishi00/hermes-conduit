@@ -24703,16 +24703,19 @@ final class AppState: ObservableObject {
         // is in flight must still refetch, in case it read the older asset.
         let generation = botAvatarGeneration
         let dashboardID = activeDashboardID
-        noteProfileAvatarWrite(name)
+        // The decode waited: a write mark is by name, so it goes on only
+        // while this dashboard is still the one open.
+        if botOpenFenceIsCurrent(epoch: epoch, client: client) { noteProfileAvatarWrite(name) }
         do {
             try await client.setBotAvatar(name: name, png: png)
         } catch {
             return false
         }
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return true }
         // Again after it landed: a fetch that started during the upload may
         // have read the older picture.
         noteProfileAvatarWrite(name)
-        if botOpenFenceIsCurrent(epoch: epoch, client: client), let image {
+        if let image {
             // The upload is the newest picture, but the recorded generation
             // never moves backwards past a newer fetch.
             botAvatarImages[name] = image
