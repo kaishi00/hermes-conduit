@@ -193,7 +193,7 @@ final class BotScreenModel: ObservableObject {
     @Published var errorText: String?
     @Published private(set) var installLog: [String] = []
     @Published private(set) var isInstalling = false
-    /// The open sudo request of an install this view started.
+    /// The open sudo request of an install of this screen, started here or elsewhere.
     @Published private(set) var sudoRequestID: String?
     @Published private(set) var viewerHash: String?
 
@@ -215,9 +215,16 @@ final class BotScreenModel: ObservableObject {
     static let maxRapidEvictions = 3
     static let maxLogLines = 400
 
+    /// The viewer id each bot's screen was last watched with, kept past the
+    /// sheet: a reconnect starts the sheet over, and the user's own hold is
+    /// still theirs on the new connection.
+    private static var viewerIDs: [String: String] = [:]
+
     init(profile: String, client: HermesClient?) {
         self.profile = profile
         self.client = client
+        viewerID = Self.viewerIDs[profile]
+        viewerHash = viewerID.map(BotScreenLease.hash(ofViewer:))
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: .hermesDisplayEvent, object: nil, queue: .main) { [weak self] note in
             let type = note.userInfo?["type"] as? String ?? ""
@@ -302,6 +309,7 @@ final class BotScreenModel: ObservableObject {
     /// Leaves an ended install's log for the screen's own view.
     func continueAfterInstall() async {
         installLog = []
+        errorText = nil
         await load()
     }
 
@@ -461,6 +469,7 @@ final class BotScreenModel: ObservableObject {
                 throw HermesError.invalidResponse
             }
             viewerID = id
+            Self.viewerIDs[profile] = id
             viewerHash = BotScreenLease.hash(ofViewer: id)
             if let next = BotScreenStatus(observed) { status = next }
             let request = try await client.displayStreamRequest(path: observed["path"]?.stringValue ?? "/api/display/ws",
