@@ -752,9 +752,9 @@ private struct BotWorkRow: View {
         if item.kind == .workstream {
             let controls: [BotWorkItem.Action] = [.check, .continue, .stop].filter { item.actions.contains($0) }
             if !controls.isEmpty {
-                // Side by side only while every label fits on one line
-                // ("Check first" was cut in a narrow sheet); stacked
-                // otherwise, and always at accessibility Text Sizes.
+                // Side by side, equal widths, only while the widest label
+                // fits its share ("Check first" was cut in a narrow sheet);
+                // stacked otherwise, and always at accessibility Text Sizes.
                 let buttons = ForEach(controls, id: \.self) { action in
                     controlButton(action, prominent: action == controls.first && action != .stop)
                 }
@@ -762,10 +762,7 @@ private struct BotWorkRow: View {
                     if dynamicTypeSize.isAccessibilitySize {
                         VStack(spacing: 8) { buttons }
                     } else {
-                        ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 8) { buttons }
-                            VStack(spacing: 8) { buttons }
-                        }
+                        EqualRowOrStack(spacing: 8) { buttons }
                     }
                 }
                 .disabled(isActing || !appState.isConnected)
@@ -1260,5 +1257,52 @@ private struct WorkstreamApprovalBox: View {
                 .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Equal-width buttons in a row while the widest one's label fits its
+/// share of the row; one under another otherwise. (A ViewThatFits only
+/// checks the labels' total, so the widest could still be cut once the
+/// row split them equally.)
+struct EqualRowOrStack: Layout {
+    var spacing: CGFloat = 8
+
+    private func fitsInRow(_ width: CGFloat?, _ subviews: Subviews) -> Bool {
+        guard let width, !subviews.isEmpty else { return true }
+        let share = (width - spacing * CGFloat(subviews.count - 1)) / CGFloat(subviews.count)
+        let widest = subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
+        return widest <= share
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? subviews.reduce(0) { $0 + $1.sizeThatFits(.unspecified).width }
+            + spacing * CGFloat(max(subviews.count - 1, 0))
+        if fitsInRow(proposal.width, subviews) {
+            let share = (width - spacing * CGFloat(max(subviews.count - 1, 0))) / CGFloat(max(subviews.count, 1))
+            let height = subviews.map { $0.sizeThatFits(ProposedViewSize(width: share, height: nil)).height }.max() ?? 0
+            return CGSize(width: width, height: height)
+        }
+        let heights = subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height }
+        return CGSize(width: width, height: heights.reduce(0, +) + spacing * CGFloat(max(subviews.count - 1, 0)))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        if fitsInRow(bounds.width, subviews) {
+            let share = (bounds.width - spacing * CGFloat(max(subviews.count - 1, 0))) / CGFloat(max(subviews.count, 1))
+            var x = bounds.minX
+            for subview in subviews {
+                subview.place(at: CGPoint(x: x, y: bounds.minY),
+                              proposal: ProposedViewSize(width: share, height: bounds.height))
+                x += share + spacing
+            }
+        } else {
+            var y = bounds.minY
+            for subview in subviews {
+                let height = subview.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil)).height
+                subview.place(at: CGPoint(x: bounds.minX, y: y),
+                              proposal: ProposedViewSize(width: bounds.width, height: height))
+                y += height + spacing
+            }
+        }
     }
 }
