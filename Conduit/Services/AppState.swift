@@ -15540,6 +15540,8 @@ final class AppState: ObservableObject {
             return
         }
         guard let dashboard = dashboardForSignIn(id) else { return }
+        // Another dashboard's waits never show on this one's chips.
+        needsYou.reset(dashboardID: id)
         dashboardSwitchGeneration &+= 1
         let generation = dashboardSwitchGeneration
         let previousDashboardID = activeDashboardID

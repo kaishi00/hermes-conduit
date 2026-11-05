@@ -2844,8 +2844,10 @@ final class AppStateChatResumeTests: XCTestCase {
         )
         let appState = harness.appState
         appState.activeSessionId = "runtime-a"
+        appState.showSidebar = true
         appState.openNeedsYou(NeedsYouItem(waitID: "w1", profile: "default", kind: .approval, sessionIDs: ["runtime-a"]))
         XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "runtime-a", "the open chat only scrolls, itself")
+        XCTAssertFalse(appState.showSidebar, "the Chats list over it gives way")
         appState.pendingNeedsYouReveal = nil
         appState.isNativeHermesCallActive = true
         appState.openNeedsYou(NeedsYouItem(waitID: "w2", profile: "other", kind: .question, sessionIDs: ["stored-b"]))

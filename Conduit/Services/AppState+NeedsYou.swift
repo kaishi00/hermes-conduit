@@ -88,8 +88,9 @@ extension AppState {
             // The open chat names itself, so a switch away never takes its reveal.
             pendingNeedsYouReveal = NeedsYouReveal(opening: isOpen ? activeSessionId : sessionID)
         }
-        guard !isOpen else { return }
+        // The Chats list may cover even the open chat: it comes forward.
         dismissSidebarDrawer()
+        guard !isOpen else { return }
         openAppLink(.session(id: sessionID, profile: item.profile))
     }
 
