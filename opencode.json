@@ -15,7 +15,7 @@
             "field": "reasoning_content"
           },
           "options": {
-            "reasoningEffort": "max"
+            "reasoningEffort": "high"
           }
         },
         "beam-free": {
@@ -44,7 +44,7 @@
             "field": "reasoning_content"
           },
           "options": {
-            "reasoningEffort": "max"
+            "reasoningEffort": "high"
           }
         },
         "reflection/beam:free": {
