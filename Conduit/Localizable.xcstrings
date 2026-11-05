@@ -346754,84 +346754,84 @@
         }
       }
     },
-    "This dashboard's saved sign-in and cookies will be deleted from this device. Other dashboards are not affected.": {
+    "This dashboard's saved sign-in and cookies will be deleted from this device, and location, health and phone sharing with it stops. Other dashboards are not affected.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Die gespeicherte Anmeldung und die Cookies dieses Dashboards werden von diesem Gerät gelöscht. Andere Dashboards sind nicht betroffen."
+            "value": "Die gespeicherte Anmeldung und die Cookies dieses Dashboards werden von diesem Gerät gelöscht, und das Teilen von Standort, Gesundheitsdaten und Telefon mit ihm endet. Andere Dashboards sind nicht betroffen."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "El inicio de sesión y las cookies guardados de este panel se eliminarán de este dispositivo. Los demás paneles no se verán afectados."
+            "value": "El inicio de sesión y las cookies guardados de este panel se eliminarán de este dispositivo, y se dejará de compartir con él la ubicación, los datos de salud y el teléfono. Los demás paneles no se verán afectados."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "La connexion enregistrée et les cookies de ce tableau de bord seront supprimés de cet appareil. Les autres tableaux de bord ne sont pas concernés."
+            "value": "La connexion enregistrée et les cookies de ce tableau de bord seront supprimés de cet appareil, et le partage de la position, des données de santé et du téléphone avec lui s'arrête. Les autres tableaux de bord ne sont pas concernés."
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Login dan cookie yang disimpan untuk dasbor ini akan dihapus dari perangkat ini. Dasbor lain tidak terpengaruh."
+            "value": "Login dan cookie yang disimpan untuk dasbor ini akan dihapus dari perangkat ini, dan berbagi lokasi, data kesehatan, serta ponsel dengannya akan berhenti. Dasbor lain tidak terpengaruh."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "L'accesso e i cookie salvati di questa dashboard verranno eliminati da questo dispositivo. Le altre dashboard non sono interessate."
+            "value": "L'accesso e i cookie salvati di questa dashboard verranno eliminati da questo dispositivo, e la condivisione di posizione, dati sulla salute e telefono con essa si interrompe. Le altre dashboard non sono interessate."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このダッシュボードの保存済みのサインイン情報とCookieがこのデバイスから削除されます。ほかのダッシュボードには影響しません。"
+            "value": "このダッシュボードの保存済みのサインイン情報とCookieがこのデバイスから削除され、このダッシュボードとの位置情報、ヘルスケアデータ、電話の共有も停止します。ほかのダッシュボードには影響しません。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "이 대시보드에 저장된 로그인 정보와 쿠키가 이 기기에서 삭제돼요. 다른 대시보드에는 영향이 없어요."
+            "value": "이 대시보드에 저장된 로그인 정보와 쿠키가 이 기기에서 삭제되고, 이 대시보드와의 위치, 건강 데이터, 전화 공유도 중단돼요. 다른 대시보드에는 영향이 없어요."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zapisane logowanie i pliki cookie tego panelu zostaną usunięte z tego urządzenia. Nie wpłynie to na inne panele."
+            "value": "Zapisane logowanie i pliki cookie tego panelu zostaną usunięte z tego urządzenia, a udostępnianie mu lokalizacji, danych zdrowotnych i telefonu zostanie zatrzymane. Nie wpłynie to na inne panele."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O login salvo e os cookies deste painel serão apagados deste aparelho. Os outros painéis não são afetados."
+            "value": "O login salvo e os cookies deste painel serão apagados deste aparelho, e o compartilhamento de localização, dados de saúde e telefone com ele para. Os outros painéis não são afetados."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Сохранённые данные входа и cookie этого дашборда будут удалены с этого устройства. Другие дашборды это не затронет."
+            "value": "Сохранённые данные входа и cookie этого дашборда будут удалены с этого устройства, а передача ему геопозиции, данных о здоровье и телефона прекратится. Другие дашборды это не затронет."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bu panelin kayıtlı girişi ve çerezleri bu cihazdan silinecek. Diğer paneller etkilenmez."
+            "value": "Bu panelin kayıtlı girişi ve çerezleri bu cihazdan silinecek ve onunla konum, sağlık verisi ve telefon paylaşımı duracak. Diğer paneller etkilenmez."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "此仪表板已保存的登录信息和 Cookie 将从此设备删除。其他仪表板不受影响。"
+            "value": "此仪表板已保存的登录信息和 Cookie 将从此设备删除，与它共享的位置、健康数据和电话信息也会停止。其他仪表板不受影响。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "此儀表板已儲存的登入資訊和 Cookie 將從此裝置刪除。其他儀表板不受影響。"
+            "value": "此儀表板已儲存的登入資訊和 Cookie 將從此裝置刪除，與它分享的位置、健康資料和電話資訊也會停止。其他儀表板不受影響。"
           }
         }
       }

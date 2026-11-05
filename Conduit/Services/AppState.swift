@@ -15811,8 +15811,29 @@ final class AppState: ObservableObject {
         forgetRelayGatewayIDs(of: id)
         // Log to Hermes events waiting for it, and its inbox keys.
         ShortcutInboxQueue.forgetDashboard(id)
+        // Location, health and phone sharing bound to it.
+        endSharingWithRemovedDashboards()
         if wasActive {
             showLogin = true
+        }
+    }
+
+    /// Location, health and phone sharing each go only to the dashboard they
+    /// were turned on for. Once it's no longer saved, nothing can switch back
+    /// to it, so sharing with it ends here, as turning it off without
+    /// deleting would, and the next turn-on binds to the dashboard in use
+    /// (issue 1800). Run when a dashboard is removed, and on each connect for
+    /// one removed before this ran: connected, the saved dashboards were
+    /// read for sure (before the first unlock they may not be, and an empty
+    /// list then isn't a removal).
+    func endSharingWithRemovedDashboards() {
+        let saved = Set(savedDashboardRegistry.dashboards.map(\.id))
+        LocationSharingController.shared.endSharing(unlessBoundTo: saved)
+        if let destination = healthSyncPreferences.destination, !saved.contains(destination.dashboardID) {
+            Task { await turnOffHealthSync(deleteFromHost: false) }
+        }
+        if let destination = phoneSync.preferences.destination, !saved.contains(destination.dashboardID) {
+            Task { await turnOffPhoneSync(deleteFromHost: false) }
         }
     }
 
@@ -27722,6 +27743,8 @@ final class AppState: ObservableObject {
         // Notifications from this dashboard's profile, without a pairing
         // code, after the rest so connecting doesn't wait on it.
         Task { await pairActiveProfileAutomatically(bridge: bridge) }
+        // Sharing bound to a dashboard removed earlier ends first.
+        endSharingWithRemovedDashboards()
         // Health data catches up once this host is known to serve it.
         Task { await runHealthSync(reason: .connected) }
         // Location waiting to go to this host, and its host pass.

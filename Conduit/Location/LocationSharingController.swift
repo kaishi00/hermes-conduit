@@ -813,6 +813,26 @@ final class LocationSharingController: ObservableObject {
         return await requestProvider?(binding)
     }
 
+    /// The dashboard sharing is bound to is no longer saved in Conduit, so
+    /// nothing can reconnect to it: sharing with it ends here, as turning
+    /// both layers off would, and is unbound, so turning a layer on binds to
+    /// the dashboard in use (issue 1800). What the host kept stays there:
+    /// it can't be reached to delete it.
+    func endSharing(unlessBoundTo saved: Set<UUID>) {
+        guard readConfigIfNeeded(), config.isBound(outside: saved) else { return }
+        voiceCallEnded()
+        lastTalkingUpload = nil
+        unsent.fix = nil
+        unsent.events = []
+        unsent.spotEntries = []
+        saveUnsent()
+        engine.forgetHost()
+        LocationKeychain.clearHostPass()
+        save { $0.unbind() }
+        // Unbound, the monitors stop and the shops' monitor is emptied.
+        reconfigureMonitors()
+    }
+
     /// Deletes what this phone (or, with `everything`, every device and the
     /// place rules) sent to the host. With both layers off, sharing is
     /// unbound too, so it can be turned on for another dashboard.

@@ -71,7 +71,7 @@ struct SavedDashboardsSettingsDetail: View {
                 pendingRemoval = nil
             }
         } message: {
-            Text("This dashboard's saved sign-in and cookies will be deleted from this device. Other dashboards are not affected.")
+            Text("This dashboard's saved sign-in and cookies will be deleted from this device, and location, health and phone sharing with it stops. Other dashboards are not affected.")
         }
         // Adding a dashboard is a sheet over this page: Cancel leaves the
         // current dashboard and chat as they were.
