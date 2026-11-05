@@ -902,10 +902,13 @@ final class ComposerPasteTextViewTests: XCTestCase {
         let wanted = ImagePasteTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
         wanted.isEditable = true
         wanted.setFocusIntent(true)
+        settleFocus()
         XCTAssertFalse(wanted.isFirstResponder)
         window.addSubview(wanted)
+        settleFocus()
         XCTAssertTrue(wanted.isFirstResponder)
         wanted.setFocusIntent(false)
+        settleFocus()
         XCTAssertFalse(wanted.isFirstResponder)
         wanted.removeFromSuperview()
 
@@ -915,7 +918,53 @@ final class ComposerPasteTextViewTests: XCTestCase {
         dropped.setFocusIntent(true)
         dropped.setFocusIntent(false)
         window.addSubview(dropped)
+        settleFocus()
         XCTAssertFalse(dropped.isFirstResponder)
+    }
+
+    /// Issue 1781: a focus change asked for during a SwiftUI update is made
+    /// after it, never inside it (resigning there re-entered the view graph
+    /// and froze the app), and asks made before it runs come to the last.
+    func testFocusChangesWaitUntilAfterTheUpdateThatAskedAndTheLastAskWins() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 120))
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        let field = ImagePasteTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        field.isEditable = true
+        window.addSubview(field)
+
+        field.setFocusIntent(true)
+        XCTAssertFalse(field.isFirstResponder, "taken inside the asking update")
+        settleFocus()
+        XCTAssertTrue(field.isFirstResponder)
+
+        field.setFocusIntent(false)
+        XCTAssertTrue(field.isFirstResponder, "let go inside the asking update")
+        settleFocus()
+        XCTAssertFalse(field.isFirstResponder)
+
+        // Taken and given up in one update: nothing changes.
+        field.setFocusIntent(true)
+        field.setFocusIntent(false)
+        settleFocus()
+        XCTAssertFalse(field.isFirstResponder)
+
+        // A group room's field and the full editor share the rule.
+        let editor = ReturnKeyTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        editor.isEditable = true
+        window.addSubview(editor)
+        editor.setFocusIntent(true)
+        XCTAssertFalse(editor.isFirstResponder)
+        settleFocus()
+        XCTAssertTrue(editor.isFirstResponder)
+        editor.setFocusIntent(false)
+        settleFocus()
+        XCTAssertFalse(editor.isFirstResponder)
+    }
+
+    /// Lets the focus change queued after an update run.
+    private func settleFocus() {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
     }
 
     /// Clears the general pasteboard, runs `body`, then clears it again.

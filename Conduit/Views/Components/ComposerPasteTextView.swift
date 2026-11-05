@@ -194,9 +194,9 @@ struct ComposerPasteTextView: UIViewRepresentable {
         uiView.returnKeySends = returnKeySends
         uiView.canSubmitFromReturn = canSubmitFromReturn
         uiView.onSubmitFromReturn = onSubmitFromReturn
-        // A field rebuilt with focus (a send on a Mac keeps it) is first
-        // updated before it's in the window, where it can't take focus: it
-        // takes it once it is (didMoveToWindow).
+        // Applied after this update, never inside it (issue 1781); a field
+        // rebuilt with focus (a send on a Mac keeps it) takes it once it's
+        // in the window.
         uiView.setFocusIntent(isFocused)
     }
 
@@ -349,14 +349,13 @@ struct ComposerPasteTextView: UIViewRepresentable {
                 textView.onPastedImageError = nil
                 textView.onDroppedFiles = nil
                 textView.onLongTextPaste = nil
-                textView.focusesInWindow = false
                 textView.returnKeySends = false
                 textView.canSubmitFromReturn = false
                 textView.onSubmitFromReturn = nil
             }
-            if textView.isFirstResponder {
-                textView.resignFirstResponder()
-            }
+            // Dismantling is part of a SwiftUI update: focus is let go
+            // after it, as every focus change is (issue 1781).
+            (textView as? ReturnKeyTextView)?.setFocusIntent(false)
         }
 
         /// A deferred intentional replacement lands at the first
@@ -433,24 +432,7 @@ final class ImagePasteTextView: ReturnKeyTextView {
     var boundsContentSizeCategory: UIContentSizeCategory?
     var boundsColumnText: ColumnText?
     var maximumReportedHeight: CGFloat = 160
-    /// The composer wants focus: taken when the view reaches a window.
-    var focusesInWindow = false
     private var lastReportedHeight: CGFloat = 0
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        if focusesInWindow, window != nil, !isFirstResponder { becomeFirstResponder() }
-    }
-
-    /// Takes or gives up focus as the composer asks; out of a window, the
-    /// wish waits for `didMoveToWindow`. Synchronous inside `updateUIView`,
-    /// as these calls were before #1527: a change UIKit refuses there is
-    /// asked again on the next update, since the binding still says so.
-    func setFocusIntent(_ wantsFocus: Bool) {
-        focusesInWindow = wantsFocus
-        if wantsFocus, !isFirstResponder, window != nil { becomeFirstResponder() }
-        if !wantsFocus, isFirstResponder { _ = resignFirstResponder() }
-    }
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
