@@ -15826,8 +15826,8 @@ final class AppState: ObservableObject {
     /// one removed before this ran: connected, the saved dashboards were
     /// read for sure (before the first unlock they may not be, and an empty
     /// list then isn't a removal).
-    func endSharingWithRemovedDashboards() {
-        let saved = Set(savedDashboardRegistry.dashboards.map(\.id))
+    func endSharingWithRemovedDashboards(saved: Set<UUID>? = nil) {
+        let saved = saved ?? Set(savedDashboardRegistry.dashboards.map(\.id))
         LocationSharingController.shared.endSharing(unlessBoundTo: saved)
         // Each turn-off checks that sharing still goes there when it runs:
         // a turn-on for the dashboard in use may have come first.

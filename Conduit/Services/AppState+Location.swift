@@ -33,10 +33,13 @@ extension AppState {
         // At launch and on each foreground, before any send or monitor: a
         // dashboard removed before the sweep existed, or while the location
         // config couldn't be read, is found here rather than at the next
-        // connect. Only from a list that was read: launched before the
-        // first unlock, the saved dashboards come back empty, which isn't
-        // a removal (removing the last one ends its sharing itself).
-        if !savedDashboardRegistry.dashboards.isEmpty { endSharingWithRemovedDashboards() }
+        // connect, the last one removed included (no connect follows it).
+        // Only from the stored list itself: before the first unlock the
+        // Keychain gives nothing, which isn't a removal, while removing the
+        // last dashboard stores an empty list.
+        if let stored = SavedDashboardRegistryStore.load() {
+            endSharingWithRemovedDashboards(saved: Set(stored.dashboards.map(\.id)))
+        }
         guard controller.requestProvider == nil else { return }
         controller.requestProvider = { [weak self] binding in
             await self?.locationRequest(for: binding)
