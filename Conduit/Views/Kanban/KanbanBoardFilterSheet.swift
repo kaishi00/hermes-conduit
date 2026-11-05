@@ -20,23 +20,25 @@ struct KanbanBoardFilterSheet: View {
         NavigationStack {
             SettingsDetailContainer {
                 ConduitSettingsSection(title: AppLocalization.string("Assignee"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
-                    SettingsPickerField(title: Text("Assignee"), selection: assigneeBinding) {
-                        Text("All Profiles").tag(String?.none)
-                        ForEach(assignees, id: \.self) { name in
-                            Text(name).tag(String?.some(name))
-                        }
+                    ConduitMenuPicker(
+                        value: assigneeBinding.wrappedValue,
+                        choices: [(id: String?.none, title: AppLocalization.string("All Profiles"))]
+                            + assignees.map { (id: String?.some($0), title: $0) },
+                        onSelect: { assigneeBinding.wrappedValue = $0 }
+                    ) {
+                        Text("Assignee").foregroundStyle(.secondary)
                     }
-                    .pickerStyle(.menu)
                 }
                 if !tenants.isEmpty {
                     ConduitSettingsSection(title: AppLocalization.string("Tenant"), symbol: "person.2", tint: .conduitAccent) {
-                        SettingsPickerField(title: Text("Tenant"), selection: tenantBinding) {
-                            Text("All Tenants").tag(String?.none)
-                            ForEach(tenants, id: \.self) { name in
-                                Text(name).tag(String?.some(name))
-                            }
+                        ConduitMenuPicker(
+                            value: tenantBinding.wrappedValue,
+                            choices: [(id: String?.none, title: AppLocalization.string("All Tenants"))]
+                                + tenants.map { (id: String?.some($0), title: $0) },
+                            onSelect: { tenantBinding.wrappedValue = $0 }
+                        ) {
+                            Text("Tenant").foregroundStyle(.secondary)
                         }
-                        .pickerStyle(.menu)
                     }
                 }
                 SettingsCard {

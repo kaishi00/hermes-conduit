@@ -56,8 +56,9 @@ struct KanbanOrchestrationSettingsSheet: View {
         )
     }
 
+    /// The Default row's own label, never the pinned profile's: that one
+    /// has its row below, so the menu doesn't list it twice.
     private var orchestratorSelectionLabel: String {
-        if !orchestratorProfile.isEmpty { return orchestratorProfile }
         return KanbanOrchestrationDisplay.defaultOptionLabel(
             configured: "",
             resolved: store.orchestration?.resolvedOrchestratorProfile ?? ""
@@ -65,7 +66,6 @@ struct KanbanOrchestrationSettingsSheet: View {
     }
 
     private var assigneeSelectionLabel: String {
-        if !defaultAssignee.isEmpty { return defaultAssignee }
         return KanbanOrchestrationDisplay.defaultOptionLabel(
             configured: "",
             resolved: store.orchestration?.resolvedDefaultAssignee ?? ""
@@ -93,29 +93,29 @@ struct KanbanOrchestrationSettingsSheet: View {
                         }
 
                         ConduitSettingsSection(title: AppLocalization.string("Orchestrator Profile"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
-                            SettingsPickerField(title: Text("Orchestrator Profile"), selection: $orchestratorProfile) {
-                                Text(orchestratorSelectionLabel).tag("")
-                                ForEach(store.profiles) { profile in
-                                    Text(profile.name).tag(profile.name)
-                                }
+                            ConduitMenuPicker(
+                                value: orchestratorProfile,
+                                choices: [(id: "", title: orchestratorSelectionLabel)]
+                                    + store.profiles.map { (id: $0.name, title: $0.name) },
+                                onSelect: { orchestratorProfile = $0 }
+                            ) {
+                                Text("Profile").foregroundStyle(.secondary)
                             }
-                            .pickerStyle(.menu)
                             Text(footnote(configured: orchestratorProfile, resolved: store.orchestration?.resolvedOrchestratorProfile ?? ""))
-                                .scaledFont(.caption)
-                                .foregroundStyle(.secondary)
+                                .settingsCaption()
                         }
 
                         ConduitSettingsSection(title: AppLocalization.string("Default Assignee"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
-                            SettingsPickerField(title: Text("Default Assignee"), selection: $defaultAssignee) {
-                                Text(assigneeSelectionLabel).tag("")
-                                ForEach(store.profiles) { profile in
-                                    Text(profile.name).tag(profile.name)
-                                }
+                            ConduitMenuPicker(
+                                value: defaultAssignee,
+                                choices: [(id: "", title: assigneeSelectionLabel)]
+                                    + store.profiles.map { (id: $0.name, title: $0.name) },
+                                onSelect: { defaultAssignee = $0 }
+                            ) {
+                                Text("Assignee").foregroundStyle(.secondary)
                             }
-                            .pickerStyle(.menu)
                             Text(footnote(configured: defaultAssignee, resolved: store.orchestration?.resolvedDefaultAssignee ?? ""))
-                                .scaledFont(.caption)
-                                .foregroundStyle(.secondary)
+                                .settingsCaption()
                         }
 
                         if let errorMessage {

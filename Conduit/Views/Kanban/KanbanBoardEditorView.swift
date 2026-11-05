@@ -234,13 +234,14 @@ struct KanbanBoardEditorView: View {
 
     private var projectSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Project"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
-            SettingsPickerField(title: Text("Project"), selection: projectBinding) {
-                Text("No Project").tag(String?.none)
-                ForEach(store.projects) { project in
-                    Text(project.name).tag(String?.some(project.id))
-                }
+            ConduitMenuPicker(
+                value: projectBinding.wrappedValue,
+                choices: [(id: String?.none, title: AppLocalization.string("No Project"))]
+                    + store.projects.map { (id: String?.some($0.id), title: $0.name) },
+                onSelect: { projectBinding.wrappedValue = $0 }
+            ) {
+                Text("Project").foregroundStyle(.secondary)
             }
-            .pickerStyle(.menu)
             .accessibilityLabel("Project scope")
             if store.projects.isEmpty {
                 Text("No projects on this server yet — the board stays unscoped (scratch workspaces).")
@@ -272,20 +273,23 @@ struct KanbanBoardEditorView: View {
 
     private var workspaceSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Default Workspace"), symbol: "folder", tint: .conduitAccent) {
-            SettingsPickerField(title: Text("Default Workspace"), selection: $workspaceRow) {
-                if projectID != nil {
-                    // With a project selected, "None/Scratch" is not
-                    // representable upstream: the server mirrors the project's
-                    // primary repo whenever a project is set without an
-                    // explicit workdir (review B-1). The row is hidden so the
-                    // editor can never submit that phantom combination.
-                    Text("Project Default").tag(WorkspaceRow.projectDefault)
-                } else {
-                    Text("None / Scratch").tag(WorkspaceRow.none)
-                }
-                Text("Custom Directory…").tag(WorkspaceRow.custom)
+            ConduitMenuPicker(
+                value: workspaceRow,
+                // With a project selected, "None/Scratch" is not
+                // representable upstream: the server mirrors the project's
+                // primary repo whenever a project is set without an
+                // explicit workdir (review B-1). The row is hidden so the
+                // editor can never submit that phantom combination.
+                choices: [
+                    projectID != nil
+                        ? (id: WorkspaceRow.projectDefault, title: AppLocalization.string("Project Default"))
+                        : (id: WorkspaceRow.none, title: AppLocalization.string("None / Scratch")),
+                    (id: WorkspaceRow.custom, title: AppLocalization.string("Custom Directory…")),
+                ],
+                onSelect: { workspaceRow = $0 }
+            ) {
+                Text("Default Workspace").foregroundStyle(.secondary)
             }
-            .pickerStyle(.menu)
             .accessibilityLabel("Default workspace")
             if workspaceRow == .custom {
                 TextField("Absolute directory path", text: $customPath)

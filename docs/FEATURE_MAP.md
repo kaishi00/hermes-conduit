@@ -3250,7 +3250,7 @@ caption describes the lists)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-05, #1793 (the Model page draws on Settings' backdrop and cards, its grouping unchanged, see Sheets in Settings' look); 2026-11-05, #1788 (a pick under a provider's alias is its listed row); 2026-11-05, #1787 (entry added)
+**Checked:** 2026-11-05, #1805 (ConduitMenuPicker's value goes under its name on one line when both don't fit, instead of wrapping; see Sheets in Settings' look); 2026-11-05, #1793 (the Model page draws on Settings' backdrop and cards, its grouping unchanged, see Sheets in Settings' look); 2026-11-05, #1788 (a pick under a provider's alias is its listed row); 2026-11-05, #1787 (entry added)
 
 ## The + that makes something new
 
@@ -3303,12 +3303,12 @@ lists that already draw their own backdrop, such as Chats, Tasks, Needs you
 and Bots Home (not needed: already in V2's look)
 
 **Code**
-- The pieces: `Conduit/Views/AuxiliaryViews.swift` (SettingsDetailContainer, ConduitSettingsSection, SettingsCard, SettingsLinkRow, SettingsChevron, SettingsPickerField, settingsCaption, settingsEditorBox, SettingsNames, ConduitMenuPicker, SettingsButtonStyle's `.settings` and `.settingsPrimary`, ConduitList, ConduitFormRowFill, conduitFormBackdrop)
+- The pieces: `Conduit/Views/AuxiliaryViews.swift` (SettingsDetailContainer, ConduitSettingsSection, SettingsCard, SettingsLinkRow, SettingsChevron, settingsCaption, settingsEditorBox, SettingsNames, ConduitMenuPicker, SettingsButtonStyle's `.settings` and `.settingsPrimary`, ConduitList, ConduitFormRowFill, conduitFormBackdrop)
 - Used by: `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotWorkSettingsView.swift`, `Conduit/Views/BotCapabilitiesView.swift`, `Conduit/Views/SidebarView.swift` (ProjectCreateSheet, RenameSheet), `Conduit/Views/V2/CronJobEditorSheet.swift`, `Conduit/Views/GeneratePictureSheet.swift`, `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/CustomHeadersEditor.swift`, `Conduit/Views/KanbanViews.swift` (bulk sheets), `Conduit/Views/Kanban/KanbanTaskComposerView.swift`, `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (KanbanReassignSheet), `Conduit/Views/Kanban/KanbanBoardEditorView.swift`, `Conduit/Views/Kanban/KanbanBoardFilterSheet.swift`, `Conduit/Views/Kanban/KanbanOrchestrationSettingsSheet.swift`, `Conduit/Views/Kanban/KanbanProfileRoutingScreen.swift`, `Conduit/Views/Components/ChatCards.swift` (PlanSheet), `Conduit/Views/GroupChatView.swift` (GroupCreateSheet), `Conduit/Views/V2/V2PulsePage.swift` (PulseLearnedSheet, PulseLeftOutSheet), `Conduit/Views/V2/V2WorkspaceViews.swift` (WorkspaceMoveSheet), `Conduit/Views/V2/V2BotsHome.swift` (BotOverviewSheet)
 - Lists kept for move and swipe (ConduitList): `Conduit/Views/PinnedChatsOrderSheet.swift`, `Conduit/Views/SidebarView.swift` (SessionFilterOrderSheet), `Conduit/Views/V2/V2BotsHome.swift` (BotReorderSheet), `Conduit/Views/PulseSettingsViews.swift` (PulseMemoryList)
 
 **Rulings**
-- A sheet is built from Settings' pieces, never a Form: SettingsDetailContainer, a ConduitSettingsSection (or a SettingsCard for a group whose first row names it) per group, its caption inside the card, ConduitMenuPicker or SettingsPickerField for a choice, a segmented picker for two or three short ones, `.settings` and `.settingsPrimary` buttons and rounded-border text fields. Eric first chose skinning the Forms (ConduitForm), then saw it still looked like a second app; the rebuild from Settings' pieces is the look he approved ("this is it", 2026-11-05, #1793).
+- A sheet is built from Settings' pieces, never a Form: SettingsDetailContainer, a ConduitSettingsSection (or a SettingsCard for a group whose first row names it) per group, its caption inside the card, ConduitMenuPicker for a choice (the whole field opens the menu, and a value too long to sit beside the name goes under it on one line), a segmented picker for two or three short ones, `.settings` and `.settingsPrimary` buttons and rounded-border text fields. Eric first chose skinning the Forms (ConduitForm), then saw it still looked like a second app; the rebuild from Settings' pieces is the look he approved ("this is it", 2026-11-05, #1793).
 - Only a list you reorder or swipe stays a List, as ConduitList with Settings' backdrop and card fill, since move and swipe need one; its card fill lands behind its section footers too, a faint band accepted over styling each footer. New Project's folders take a remove button instead of a swipe.
 - A row that opens something (a model, Work, Skills, a blueprint) is a plain button with SettingsChevron, its title in the primary color rather than the accent; a choice row shows a checkmark in the accent.
 - A section title is a catalog key through AppLocalization, or a SettingsNames constant for a name that isn't translated (MCP, JSON).
@@ -3316,7 +3316,7 @@ and Bots Home (not needed: already in V2's look)
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-05, #1793 (sheets rebuilt from Settings' pieces)
+**Checked:** 2026-11-05, #1805 (rows that open something, the routing rows included, tap across 44 pt, and New task's skill and dependency remove buttons take a 44 pt target; Kanban orchestration's Default row reads Default; SettingsPickerField's 11 choices moved to ConduitMenuPicker, so the whole field opens the menu, and its value no longer wraps, in Settings too); 2026-11-05, #1793 (sheets rebuilt from Settings' pieces)
 
 ## Sharing into Conduit
 
