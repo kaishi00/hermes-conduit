@@ -153,7 +153,9 @@ enum MapsVoiceTool {
             guard allowsLocation(mode: mode, controller: controller) else { return ["error": notShared] }
             if controller.settings.talkingPrecision == .places { hint = nil }
         }
-        let outcome = await MapsNavigator.open(place, mode: travel, places: places, near: hint)
+        let outcome = await MapsNavigator.open(place, mode: travel, places: places, near: hint) {
+            !locationAllowed || allowsLocation(mode: mode, controller: controller)
+        }
         HealthVoiceReadLog.record(mode: mode, action: "maps navigate", key: HealthVoiceReadLog.locationStorageKey)
         switch outcome {
         case .openedInCar(let name):
