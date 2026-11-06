@@ -4930,6 +4930,8 @@ final class AppState: ObservableObject {
             finishHermesCallbacks(engine: .localLive)
             if localLiveControllerCreated { localLiveTurns.reset() }
             localLiveOwnChat = nil
+            // Personal text goes with the call it was fetched for.
+            localLivePersonality = nil
             if voiceCallRecorder?.engine == .localLive { finishVoiceCallRecording() }
             // A minimised call that failed has nothing left to show.
             if minimisedLiveVoice == .localLive { minimisedLiveVoice = nil }
