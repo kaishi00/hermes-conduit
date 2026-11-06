@@ -188,6 +188,9 @@ struct GroupRoomPortrait: View {
     @State private var dropTarget = false
     /// Held over it a moment, the tile in hand takes its place.
     @State private var slide: Task<Void, Never>?
+    /// The tile in hand already took this one's place: let go here, it
+    /// stays where it went rather than moving again.
+    @State private var placed = false
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.v2Shell) private var shell
@@ -233,15 +236,18 @@ struct GroupRoomPortrait: View {
         .onChange(of: dropTarget) { _, over in
             slide?.cancel()
             slide = nil
+            placed = false
             guard over, let dragged = RoomDragPayload.lifted else { return }
             slide = Task { @MainActor in
                 try? await Task.sleep(for: BotDragPayload.slideDwell)
                 guard !Task.isCancelled, dropTarget, RoomDragPayload.lifted == dragged else { return }
+                placed = true
                 actions?.onDrop(dragged)
             }
         }
         .onDrop(of: [UTType.text], delegate: RoomTileDrop(target: actions == nil ? nil : room.roomID,
                                                           targeted: $dropTarget) { dragged in
+            guard !placed else { return }
             actions?.onDrop(dragged)
         })
         .accessibilityLabel(Text(room.name))
@@ -972,6 +978,9 @@ struct BotPortraitCell<MenuContent: View>: View {
     @State private var mergeReady = false
     /// The wait before the bot in hand takes this one's place.
     @State private var slide: Task<Void, Never>?
+    /// The bot in hand already took this one's place: let go here, it
+    /// stays where it went rather than moving again.
+    @State private var placed = false
     /// When a merge-ready hover ended. A drop ends the hover before it
     /// lands, so the drop reads this rather than `mergeReady`, which has
     /// already gone (Eric 2026-11-04: dropping a bot on another never
@@ -1066,6 +1075,11 @@ struct BotPortraitCell<MenuContent: View>: View {
             guard let onDrop else { return false }
             // Back on its own place: taken here and left where it was.
             guard dragged.caseInsensitiveCompare(bot.name) != .orderedSame else { return true }
+            // It already slid into this one's place: it stays there.
+            if placed {
+                endTargeting()
+                return true
+            }
             let merge = BotDragPayload.dropMerges(mergeReady: mergeReady, endedAt: mergeReadyEndedAt)
             endTargeting()
             // After endTargeting, which stamps it when the hover hadn't
@@ -1167,6 +1181,7 @@ struct BotPortraitCell<MenuContent: View>: View {
         guard let lifted = BotDragPayload.lifted,
               lifted.caseInsensitiveCompare(bot.name) != .orderedSame else { return }
         isTargeted = true
+        placed = false
         mergeReady = false
         mergeReadyEndedAt = nil
         dwell?.cancel()
@@ -1224,6 +1239,7 @@ struct BotPortraitCell<MenuContent: View>: View {
             try? await Task.sleep(for: BotDragPayload.slideDwell)
             guard !Task.isCancelled, isTargeted, BotDragPayload.lifted == lifted else { return }
             slide = nil
+            placed = true
             onSlide(lifted)
         }
     }
