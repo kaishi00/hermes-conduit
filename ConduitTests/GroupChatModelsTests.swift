@@ -1379,6 +1379,30 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(older["zhongli"], .responding)
     }
 
+    func testAnIdleDriverOrAStatusThisAppPredatesShowsNoLiveTurn() {
+        let members = roomMembers()
+        let rows = [GroupMemberActivity(memberID: "furina", status: "running"),
+                    GroupMemberActivity(memberID: "zhongli", status: "queued")]
+        // Idle: rows it still lists are stale, and the log's responder too.
+        let idle = GroupRoomTurns.memberStatuses(
+            events: [userMessage(seq: 1, text: "hi")], activity: rows, working: false,
+            responder: members[0], approvals: [], members: members
+        )
+        XCTAssertTrue(idle.isEmpty)
+        let working = GroupRoomTurns.memberStatuses(
+            events: [userMessage(seq: 1, text: "hi")], activity: rows, working: true,
+            responder: nil, approvals: [], members: members
+        )
+        XCTAssertEqual(working["furina"], .responding)
+        XCTAssertEqual(working["zhongli"], .waiting)
+        let future = GroupRoomTurns.memberStatuses(
+            events: [userMessage(seq: 1, text: "hi")],
+            activity: [GroupMemberActivity(memberID: "furina", status: "warming")], working: true,
+            responder: nil, approvals: [], members: members
+        )
+        XCTAssertNil(future["furina"])
+    }
+
     func testTheTitleSaysSettledUntilTheNextMessageOrAContinue() {
         func event(_ seq: Int, _ kind: String, _ payload: [String: Any]) -> GroupEvent {
             turnEvent(eventJSON(seq: seq, kind: kind, actor: ["kind": "gateway", "id": "gw-a"], payload: payload))
@@ -1387,6 +1411,8 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertFalse(GroupRoomTurns.latestDiscussionSettled(log))
         log.append(event(2, "room.activity", ["status": "settled", "discussion_event_id": "user:d1"]))
         XCTAssertTrue(GroupRoomTurns.latestDiscussionSettled(log))
+        // A message on its way, before the log has it.
+        XCTAssertFalse(GroupRoomTurns.latestDiscussionSettled(log, sending: true))
         XCTAssertFalse(GroupRoomTurns.latestDiscussionSettled(
             log + [event(3, "room.continued", ["discussion_event_id": "user:d1"])]
         ))

@@ -1219,10 +1219,14 @@ enum GroupRoomTurns {
     /// that thread supersedes the outcome; a message in another thread
     /// doesn't, so a failure stays shown while another thread runs. A host
     /// without `member_activity` (before 0.22.5) names its one responder
-    /// from the log (`responder`). A member with nothing to show is absent.
+    /// from the log (`responder`). A driver that reports idle (`working`
+    /// false) has no live turns, whatever rows it still lists. Only the
+    /// statuses `activeResponder` knows are live; one this client predates
+    /// shows nothing. A member with nothing to show is absent.
     static func memberStatuses(
         events: [GroupEvent],
         activity: [GroupMemberActivity]?,
+        working: Bool? = nil,
         responder: GroupMember?,
         approvals: [GroupPendingApproval],
         members: [GroupMember]
@@ -1249,11 +1253,13 @@ enum GroupRoomTurns {
             }
             if let outcome { statuses[member.identityKey] = outcome }
         }
-        if let activity {
+        if working == false {
+            // Idle: outcomes and approvals only.
+        } else if let activity {
             for row in activity where row.status == "queued" {
                 if let member = member(withID: row.memberID, in: members) { statuses[member.identityKey] = .waiting }
             }
-            for row in activity where row.status != "queued" {
+            for row in activity where row.status == "running" || row.status == "stopping" {
                 if let member = member(withID: row.memberID, in: members) { statuses[member.identityKey] = .responding }
             }
         } else if let responder {
@@ -1268,9 +1274,10 @@ enum GroupRoomTurns {
     /// Whether the newest message's discussion settled, nobody having more
     /// to say (its last `room.activity` is `settled`, with no Continue or
     /// Stop after it): the room's title says so while it is idle, where
-    /// the transcript had "The room settled.".
-    static func latestDiscussionSettled(_ events: [GroupEvent]) -> Bool {
-        guard let index = events.lastIndex(where: \.isUserMessage) else { return false }
+    /// the transcript had "The room settled.". A message being sent
+    /// (`sending`, not in the log yet) starts the next one.
+    static func latestDiscussionSettled(_ events: [GroupEvent], sending: Bool = false) -> Bool {
+        guard !sending, let index = events.lastIndex(where: \.isUserMessage) else { return false }
         let discussion = events[index].eventID
         var settled = false
         for event in events[(index + 1)...] {

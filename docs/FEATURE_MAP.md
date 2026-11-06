@@ -5470,19 +5470,19 @@ Linked Rooms: its rooms use this view, so the branch takes it with main
 - Statuses: `Conduit/Services/GroupChatModels.swift` (GroupMemberStatus; GroupRoomTurns.memberStatuses, latestDiscussionSettled, isVisible)
 - App: `Conduit/Services/AppState.swift` (activeRoomMemberStatuses, activeRoomSettled)
 - Screen: `Conduit/Views/GroupChatView.swift` (GroupRoomStatusStrip, GroupRoomStatusPill, statusStrip, memberSummary, GroupSystemEventCaption)
-- Tests: `ConduitTests/GroupChatModelsTests.swift` (testSettledTurnsAndASettledRoomLeaveTheTranscriptToThePills, testEachPillShowsTheMembersLastTurnInItsThreadsDiscussion, testAFailureInAnotherThreadStaysOnItsPill, testAnApprovalOutranksTheTurnAndAnOlderHostNamesItsResponder, testTheTitleSaysSettledUntilTheNextMessageOrAContinue)
+- Tests: `ConduitTests/GroupChatModelsTests.swift` (testSettledTurnsAndASettledRoomLeaveTheTranscriptToThePills, testEachPillShowsTheMembersLastTurnInItsThreadsDiscussion, testAFailureInAnotherThreadStaysOnItsPill, testAnApprovalOutranksTheTurnAndAnOlderHostNamesItsResponder, testAnIdleDriverOrAStatusThisAppPredatesShowsNoLiveTurn, testTheTitleSaysSettledUntilTheNextMessageOrAContinue)
 
 **Rulings**
 - Statuses sit in pills under the title, not in the transcript (Eric, 2026-11-06, from Desktop's new group screen: "seems elegant"; he picked the pills over a summary in the title capsule or statuses on the composer's To row).
-- A member's status reads as Desktop's (`group-room-status.ts` memberStatus): a pending approval, then a live turn from the host's `member_activity` (running or stopping before queued), else its last outcome in its thread's current discussion, later turns winning. A newer message in that thread clears it; one in another thread doesn't, so a failure stays shown while another thread runs. A host before `member_activity` (0.22.5) names its one responder from the log. A member with nothing to show has a pill with no word.
+- A member's status reads as Desktop's (`group-room-status.ts` memberStatus): a pending approval, then a live turn from the host's `member_activity` (running or stopping before queued), else its last outcome in its thread's current discussion, later turns winning. A newer message in that thread clears it; one in another thread doesn't, so a failure stays shown while another thread runs. A host before `member_activity` (0.22.5) names its one responder from the log. A driver reporting idle shows no live turn, and a live status this app predates shows nothing, as the "Responding…" row reads them. A member with nothing to show has a pill with no word.
 - The transcript keeps what says where something went wrong or needs a tap: failed and stopped turns, the turn limit with Continue, the routing's captions, Stop and member changes, as Desktop keeps them. Passed and replied turns and "settled" leave it.
-- The subtitle says "Settled, nobody had more to say" while the room is idle and the newest message's discussion settled, until a new message, a Continue or a Stop. Approvals, choosing who answers, who is responding and working come first, as before.
+- The subtitle says "Settled, nobody had more to say" while the room is idle and the newest message's discussion settled, until a new message (from the moment it is sent), a Continue or a Stop. Approvals, choosing who answers, who is responding and working come first, as before.
 - Tapping a pill picks the bot in the "To" row, as its picture does; nothing new goes in the reply row.
 
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-06, #1895 (pills under the title; the entry added).
+**Checked:** 2026-11-06, #1895 (pills under the title, review follow-ups: idle driver, unknown live statuses, a message being sent; the entry added).
 
 ## Linked Rooms
 
