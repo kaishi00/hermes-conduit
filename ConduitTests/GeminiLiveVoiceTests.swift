@@ -2549,8 +2549,8 @@ extension HermesVoiceGatewayTimeoutTests {
         let modes: [(String, String)] = [
             ("Gemini and Qwen", GeminiLiveConversationController.instructions(search: .hermes)),
             ("Watch", GeminiLiveConversationController.instructions(search: .hermes, onWatch: true)),
-            ("Grok", GeminiLiveConversationController.instructions(search: .grok, acknowledgesOnceStarted: true) + GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)),
-            ("Local Live agent", GeminiLiveConversationController.instructions(search: .none, acknowledgesOnceStarted: true) + LocalLiveProtocol.agentInstructions),
+            ("Grok", GeminiLiveConversationController.instructions(search: .grok, acknowledgesOnceStarted: true, followedBy: GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current))),
+            ("Local Live agent", GeminiLiveConversationController.instructions(search: .none, acknowledgesOnceStarted: true, followedBy: LocalLiveProtocol.agentInstructions)),
             ("GPT-Live", GPTLiveConversationController.briefing()),
             ("GPT-Live on the Watch", GPTLiveConversationController.briefing(onWatch: true)),
         ]
@@ -2733,6 +2733,9 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(french.contains("Language: speak French, the user's language"))
         let watch = GeminiLiveConversationController.instructions(search: .none, onWatch: true, language: "ja")
         XCTAssertTrue(watch.contains("Language: speak Japanese"))
+        // Issue 1868: a call's own blocks go before it, never after.
+        let call = GeminiLiveConversationController.instructions(search: .google, language: "fr", followedBy: "\nThe call's style.")
+        XCTAssertTrue(call.hasSuffix("\nThe call's style." + LiveVoiceLanguage.rule(language: "fr")))
     }
 
     func testGeminiLiveMemoryShapesTheInstructionsAndTools() {

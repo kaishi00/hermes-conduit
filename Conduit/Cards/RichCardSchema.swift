@@ -231,10 +231,19 @@ struct RichCardSchema {
         cleaned(text, hidden: "\u{FFFD}")
     }
 
-    private static func cleaned(_ text: String, hidden: Unicode.Scalar?) -> String {
+    /// A board's Markdown fallback (issue 1867): a hidden character becomes
+    /// U+FFFD, as in a line, and control characters other than line breaks
+    /// and tabs become spaces, so the Markdown keeps its lines.
+    static func cleanMarkdown(_ text: String) -> String {
+        cleaned(text, hidden: "\u{FFFD}", keeping: ["\n", "\r", "\t"])
+    }
+
+    private static func cleaned(_ text: String, hidden: Unicode.Scalar?, keeping: Set<Unicode.Scalar> = []) -> String {
         var scalars = String.UnicodeScalarView()
         for scalar in text.unicodeScalars {
-            if scalar.properties.generalCategory == .control {
+            if keeping.contains(scalar) {
+                scalars.append(scalar)
+            } else if scalar.properties.generalCategory == .control {
                 scalars.append(" ")
             } else if isHidden(scalar) {
                 if let hidden { scalars.append(hidden) }

@@ -3945,6 +3945,42 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    /// Issue 1870: in the background nothing watches the screen, so a read
+    /// that finds it running (the bot's own `display.status` does the same)
+    /// opens no stream, and the stream waits, idle, for the foreground.
+    func testABackgroundedBotScreenOpensNoStreamUntilItsBack() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let model = BotScreenModel(profile: "furina", client: client)
+        let page = SilentBotScreenPage()
+        model.page = page
+        let running: [String: Any] = ["supported": true, "installed": true, "running": true, "profile_key": "furina-key"]
+        func answerStatus(after sent: Int) async throws {
+            await waitForSends(sent + 1, on: socket)
+            let status = try sentFrame(socket)
+            XCTAssertEqual(status["method"] as? String, "display.status")
+            try await deliverFrame(["jsonrpc": "2.0", "id": try XCTUnwrap(status["id"] as? Int), "result": running], to: socket)
+        }
+
+        model.backgrounded()
+        var base = socket.sentTexts.count
+        let away = Task { await model.load() }
+        try await answerStatus(after: base)
+        await away.value
+        XCTAssertEqual(socket.sentTexts.count, base + 1, "no display.observe while backgrounded")
+        XCTAssertEqual(model.stream, .idle, "nothing to lose: the foreground opens it")
+        XCTAssertTrue(page.started.isEmpty)
+
+        model.foregrounded()
+        base = socket.sentTexts.count
+        let back = Task { await model.load() }
+        try await answerStatus(after: base)
+        await waitForSends(base + 2, on: socket)
+        XCTAssertEqual(try sentFrame(socket)["method"] as? String, "display.observe", "back in the foreground, it's watched again")
+        client.disconnect()
+        await back.value
+        model.detach()
+    }
+
     func testABotScreenStoppedStreamsMessagesAreStale() {
         let model = BotScreenModel(profile: "furina", client: nil)
         let old = model.currentStreamTag
@@ -5203,4 +5239,17 @@ extension HermesClientTests {
         outgoing.disconnect()
         XCTAssertTrue(socket.cancelled)
     }
+}
+
+/// A page that draws nothing, for the model's stream tests.
+@MainActor
+private final class SilentBotScreenPage: BotScreenPage {
+    var started: [Int] = []
+    func startStream(viewOnly: Bool, tag: Int) { started.append(tag) }
+    func streamOpened() {}
+    func streamData(_ data: Data) {}
+    func streamClosed(code: Int) {}
+    func stopStream() {}
+    func setViewOnly(_ viewOnly: Bool) {}
+    func sendKeysyms(_ keysyms: [Int]) {}
 }

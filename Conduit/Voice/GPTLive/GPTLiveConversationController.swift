@@ -127,18 +127,20 @@ final class GPTLiveConversationController: ObservableObject {
     static let maxBriefingCharacters = 32 * 1024 - 64
 
     /// Conduit's briefing for a call, with `followedBy` (the call's own
-    /// blocks: its chat, the rules for Hermes' tools, the style) after it.
-    /// Kept under `maxBriefingCharacters`: what Hermes remembers is cut
-    /// first, then the persona, so the rules always go out whole.
+    /// blocks: its chat, the rules for Hermes' tools, the style) after it,
+    /// then the call's language, last of all. Kept under
+    /// `maxBriefingCharacters`: what Hermes remembers is cut first, then the
+    /// persona, so the rules always go out whole.
     static func briefing(memory: GeminiLiveMemoryContext? = nil, personality: String? = nil, answerLength: LiveVoiceAnswerLength = .standard, onWatch: Bool = false, watchChats: Bool = false, language: String? = LiveVoiceLanguage.current, followedBy tail: String = "") -> String {
         let rules = briefingRules(answerLength: answerLength, onWatch: onWatch, watchChats: watchChats)
         // Escaped before counting, so the count is what goes out.
         var persona = (personality ?? "").replacingOccurrences(of: "</hermes_persona>", with: "</ hermes_persona>", options: .caseInsensitive)
         var memoryText = (memory?.text ?? "").replacingOccurrences(of: "</hermes_memory>", with: "</ hermes_memory>", options: .caseInsensitive)
         func assembled() -> String {
-            // The language after the persona and memory, which may be in
-            // another one: a rule stated only before them loses.
-            rules + personaBlock(persona) + memoryBlock(memoryText) + LiveVoiceLanguage.rule(language: language) + tail
+            // The language last, after the persona, the memory and the
+            // call's own blocks, which may be in another one: a rule stated
+            // only before them loses (issue 1868).
+            rules + personaBlock(persona) + memoryBlock(memoryText) + tail + LiveVoiceLanguage.rule(language: language)
         }
         var text = assembled()
         var excess = text.unicodeScalars.count - maxBriefingCharacters
@@ -1118,7 +1120,7 @@ final class GPTLiveConversationController: ObservableObject {
     }
 
     /// A clause that is only "no problem" or "don't worry", whose no is a yes.
-    private static let reassuranceOpener = #"^\s*(?:no problem|no worries|kein problem|keine sorge|no hay problema|no pasa nada|no te preocupes|pas de problème|pas de souci|aucun problème|ne t'inquiète pas|ne vous inquiétez pas|non c'è problema|nessun problema|non preoccuparti|não tem problema|sem problema|não se preocupe|não te preocupes|nie ma problemu|nie martw się|без проблем|нет проблем|не волнуйся|не переживай|sorun değil|sorun yok|merak etme|tidak masalah|tidak apa-apa|jangan khawatir|問題ありません|問題ない|心配しないで|문제없어요|문제없습니다|걱정 마세요|没问题|沒問題|别担心|別擔心)\s*$"#
+    private static let reassuranceOpener = #"^\s*(?:no problem|no worries|kein problem|keine sorge|ohne problem|no hay problema|sin problemas?|no pasa nada|no te preocupes|pas de problème|pas de souci|aucun problème|sans problèmes?|sans souci|ne t'inquiète pas|ne vous inquiétez pas|non c'è problema|nessun problema|senza problemi|non preoccuparti|não tem problema|sem problemas?|não se preocupe|não te preocupes|nie ma problemu|bez problemu|nie martw się|без проблем|нет проблем|не волнуйся|не переживай|sorun değil|sorun yok|merak etme|tidak masalah|tanpa masalah|tidak apa-apa|jangan khawatir|問題ありません|問題ない|心配しないで|문제없어요|문제없습니다|걱정 마세요|没问题|沒問題|别担心|別擔心)\s*$"#
 
     /// What reads as a send to Hermes in each language Conduit ships, by
     /// language code: `claim`, a send, pass-on, ask or tell verb aimed at
@@ -1149,57 +1151,57 @@ final class GPTLiveConversationController: ObservableObject {
         // "Ich schicke das an Hermes.", "Ich frage Hermes."
         "de": SendClaimWords(
             verbsBefore: #"\b(?:schick\w*|sende|gebe|gib|leite|weiterleit\w*|frage|sage|reiche|übergeb\w*|übermittl\w*)\b"#,
-            hedge: #"\b(?:soll|sollte|kann|könnte|würde|möchtest|willst|darf|nicht|kein|keine|nie|niemals)\b"#,
+            hedge: #"\b(?:soll|sollte|kann|könnte|würde|möchtest|willst|darf|nicht|kein|keine|nichts|nie|niemals|ohne)\b"#,
             condition: #"\b(?:wenn|falls|sobald|bevor|nachdem)\b"#),
         // "Se lo envío a Hermes.", "Le pregunto a Hermes."
         "es": SendClaimWords(
             verbsBefore: #"\b(?:env[ií]o|enviar\w*|envi[ée]|mando|mandar\w*|mand[ée]|paso|pasar\w*|pas[ée]|pregunto|preguntar\w*|pregunt[ée]|digo|decir\w*|dir[ée]|aviso|avisar\w*|avis[ée]|reenv[ií]o|reenviar\w*|consulto|consultar\w*|traslado|trasladar\w*)\b"#,
-            hedge: #"\b(?:puedo|podr[ií]a|deber[ií]a|quieres|quiere|no|nunca)\b"#,
+            hedge: #"\b(?:puedo|podr[ií]a|deber[ií]a|quieres|quiere|no|nunca|sin)\b"#,
             condition: #"\b(?:si|cuando|antes)\b"#),
         // "J'envoie ça à Hermes.", "Je demande à Hermes."
         "fr": SendClaimWords(
             verbsBefore: #"(?:\b|')(?:envoie|envoyer\w*|envoie\w*|transmets|transmettre\w*|transmettrai\w*|passe|passer\w*|passerai\w*|demande|demander\w*|demanderai\w*|dis|dire|dirai\w*|préviens|prévenir|préviendrai\w*|transfère|transférer\w*)\b"#,
-            hedge: #"\b(?:peux|pourrais|pourrait|devrais|veux|voulez|voudrais|ne|pas|jamais)\b|n'"#,
+            hedge: #"\b(?:peux|pourrais|pourrait|devrais|veux|voulez|voudrais|ne|pas|jamais|rien|sans)\b|n'"#,
             condition: #"\b(?:si|quand|avant)\b"#),
         // "Lo mando a Hermes.", "Chiedo a Hermes."
         "it": SendClaimWords(
             verbsBefore: #"\b(?:invio|inviare|invierò|inviarl\w*|mando|mandare|manderò|mandarl\w*|passo|passare|passerò|passarl\w*|chiedo|chiedere|chiederò|dico|dire|dirò|giro|girare|girerò|girarl\w*|inoltro|inoltrare|inoltrerò|inoltrarl\w*|avviso|avvisare|avviserò)\b"#,
-            hedge: #"\b(?:posso|puoi|potrei|dovrei|vuoi|vuole|non|mai)\b"#,
+            hedge: #"\b(?:posso|puoi|potrei|dovrei|vuoi|vuole|non|mai|senza)\b"#,
             condition: #"\bse\b(?!\s+(?:lo|la|li|le|ne)\b)|\b(?:quando|prima)\b"#),
         // "Vou enviar isso ao Hermes.", "Pergunto ao Hermes."
         "pt": SendClaimWords(
             verbsBefore: #"\b(?:envio|enviar\w*|enviei|mando|mandar\w*|mandei|passo|passar\w*|passei|pergunto|perguntar\w*|perguntei|digo|dizer|direi|aviso|avisar\w*|avisei|encaminho|encaminhar\w*|encaminhei|repasso|repassar\w*|repassei)\b"#,
-            hedge: #"\b(?:posso|poderia|deveria|quer|queres|quiser|não|nunca)\b"#,
+            hedge: #"\b(?:posso|poderia|deveria|quer|queres|quiser|não|nunca|sem)\b"#,
             condition: #"\b(?:se|quando|antes)\b"#),
         // "Przekażę to Hermesowi.", "Zapytam Hermesa."
         "pl": SendClaimWords(
             verbsBefore: #"\b(?:wyśl|wysył|przekaż|przekazuj|zapyt|pyta|powiem|mówię|dam znać|daję znać)\w*"#,
-            hedge: #"\b(?:mogę|mógłbym|mogłabym|czy|chcesz|nie|nigdy)\b"#,
+            hedge: #"\b(?:mogę|mógłbym|mogłabym|czy|chcesz|nie|nigdy|nic|bez)\b"#,
             condition: #"\b(?:jeśli|jeżeli|gdy|kiedy|zanim)\b"#),
         // "Передам это Гермесу.", "Спрошу у Гермеса."
         "ru": SendClaimWords(
             verbsBefore: #"\b(?:отправ|переда|перешл|спрош|спрашива|скаж|сообщ)\w*"#,
-            hedge: #"\b(?:могу|мог|могла|хочешь|хотите|не|никогда)\b"#,
+            hedge: #"\b(?:могу|мог|могла|хочешь|хотите|не|ничего|никогда|без)\b"#,
             condition: #"\b(?:если|когда|прежде)\b"#),
         // "Saya kirim ke Hermes.", "Saya tanyakan ke Hermes."
         "id": SendClaimWords(
             verbsBefore: #"\b(?:kirim|mengirim|terus|meneruskan|tanya|menanya|bilang|sampaikan|menyampaikan|kasih tahu|beri tahu|memberi tahu)\w*"#,
-            hedge: #"\b(?:bisa|boleh|mau|ingin|apakah|tidak|nggak|enggak|jangan|belum)\b"#,
+            hedge: #"\b(?:bisa|boleh|mau|ingin|apakah|tidak|nggak|enggak|jangan|belum|tanpa)\b"#,
             condition: #"\b(?:kalau|jika|setelah|sebelum)\b"#),
         // "Bunu Hermes'e gönderiyorum.", "Hermes'e soracağım."
         "tr": SendClaimWords(
             claim: #"hermes'?(?:e|a|ye|ya)\b[^,;.!?]{0,60}?\b(?:gönderiyor|göndereceğ|gönderdim|iletiyor|ileteceğ|soruyor|soracağ|söylüyor|söyleyeceğ|aktarıyor|aktaracağ|haber veriyor|haber vereceğ)"#,
-            hedge: #"\b(?:istersen|ister misin|yapabilirim|gönderebilirim|iletebilirim|sorabilirim)\b"#,
+            hedge: #"\b(?:istersen|ister misin|yapabilirim|gönderebilirim|iletebilirim|sorabilirim)\b|(?:madan|meden)\b"#,
             condition: #"\beğer\b"#),
         // 「ヘルメスに送ります。」「ヘルメスに聞いてみます。」
         "ja": SendClaimWords(
             claim: #"(?:ヘルメス|hermes)(?:さん)?に[^,;。]{0,30}?(?:送|伝え|聞|訊|頼|渡|回し|転送|確認|問い合わせ)"#,
-            hedge: #"ましょうか|ませんか|でしょうか|ません|ない|できます"#,
+            hedge: #"ましょうか|ませんか|でしょうか|ません|ない|なし|ずに|できます"#,
             condition: #"たら|れば|なら|前に"#),
         // "헤르메스에게 보낼게요.", "헤르메스에게 물어볼게요."
         "ko": SendClaimWords(
             claim: #"(?:헤르메스|hermes)(?:에게|한테|께|에)[^,;.]{0,30}?(?:보내|보낼|보냈|전달|물어|알려|넘길|넘겨|확인)"#,
-            hedge: #"까요|할까|않|못|안 |수 있"#,
+            hedge: #"까요|할까|않|못|안 |없이|수 있"#,
             condition: #"면 |전에"#),
         // "我把这个发给赫尔墨斯。", "我问一下 Hermes。"
         "zh": SendClaimWords(
@@ -1218,7 +1220,7 @@ final class GPTLiveConversationController: ObservableObject {
     private static let acknowledgementOnly = "^(?:\(acknowledgementFiller)[, ]*)*(?:\(acknowledgementWork)(?:[, ]*(?:\(acknowledgementWork)|\(acknowledgementFiller)))*)?$"
     private static let workUnderway = #"\b(?:(?:let me|i'll|i will) (?:do|check|look|find|get|pull up|send|set up|book|add|put in|sort out)|on it|on that|right away|check|checking|look|looking|find out|finding out|work|working|take care|taking care|handle|handling|sort|sorting|dig|digging|sec|second|moment|hang on|hold on|bear with me)\b"#
     /// An offer, a condition or a no: nothing is being sent yet.
-    private static let sendClaimHedge = #"\b(can|could|should|shall|would|might|may|want me|do you|if you|once you|when you|after you|before|not|never|won't|didn't|don't|can't|couldn't|haven't|hasn't|wasn't)\b|n't\b"#
+    private static let sendClaimHedge = #"\b(can|could|should|shall|would|might|may|want me|do you|if you|once you|when you|after you|before|not|never|nothing|without|won't|didn't|don't|can't|couldn't|haven't|hasn't|wasn't)\b|n't\b"#
 
     /// The user finished an utterance: an end phrase ends the call, and the
     /// spoken job commands ("job status", "cancel background jobs") are

@@ -82,7 +82,10 @@ private struct BotScreenContent: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { model.backgrounded() }
             // Read again: the screen may have started or stopped meanwhile.
-            if phase == .active { Task { await model.load() } }
+            if phase == .active {
+                model.foregrounded()
+                Task { await model.load() }
+            }
         }
         // A new or cancelled ask never takes the password typed for another.
         .onChange(of: model.sudoRequestID) { _, _ in sudoPassword = "" }

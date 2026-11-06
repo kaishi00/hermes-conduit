@@ -425,6 +425,18 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(LiveVoiceLanguage.name(of: "pt"), "Portuguese")
     }
 
+    /// Issue 1868: the language goes last in the briefing a call sends,
+    /// after the call's own English blocks (its tools, approvals, style),
+    /// not only after the persona.
+    func testTheBuiltGPTLiveBriefingEndsWithTheUsersLanguage() {
+        let appState = AppState(defaults: makeScratchDefaults("GPTLiveBriefingLanguage"), loadSavedConnection: false)
+        let briefing = appState.gptLiveBriefing()
+        let rule = LiveVoiceLanguage.rule(language: LiveVoiceLanguage.current)
+        XCTAssertTrue(briefing.hasSuffix(rule))
+        let approvals = briefing.range(of: GPTLiveConversationController.jobApprovalRule)!
+        XCTAssertLessThan(approvals.upperBound, briefing.range(of: rule, options: .backwards)!.lowerBound)
+    }
+
     /// The notifier plugin refuses a briefing over 32 KB ("briefing is too
     /// long"), which ended every GPT-Live call for a user with a long memory.
     func testALongMemoryIsCutSoTheBriefingFitsAndTheRulesStayWhole() {
@@ -440,7 +452,8 @@ extension HermesVoiceGatewayTimeoutTests {
 
         XCTAssertLessThanOrEqual(briefing.unicodeScalars.count, limit)
         XCTAssertTrue(briefing.hasPrefix("[Conduit voice app rules."))
-        XCTAssertTrue(briefing.hasSuffix(tail), "the call's own rules go out whole")
+        XCTAssertTrue(briefing.hasSuffix(tail + LiveVoiceLanguage.rule(language: LiveVoiceLanguage.current)),
+                      "the call's own rules go out whole, then its language")
         XCTAssertTrue(briefing.contains("<hermes_persona>\nA calm judge\n</hermes_persona>"), "the persona is kept while memory can give way")
         XCTAssertTrue(briefing.contains("Memory line 1 ✓"), "memory is cut from the end")
         XCTAssertFalse(briefing.contains("Memory line 4000 ✓"))
@@ -474,10 +487,10 @@ extension HermesVoiceGatewayTimeoutTests {
     func testABriefingUnderTheLimitIsUnchanged() {
         let memory = GeminiLiveMemoryContext(text: "Likes tea", canRecall: false)
         let briefing = GPTLiveConversationController.briefing(memory: memory, personality: "A judge", followedBy: "\nTail")
-        XCTAssertEqual(
-            briefing,
-            GPTLiveConversationController.briefing(memory: memory, personality: "A judge") + "\nTail"
-        )
+        let rule = LiveVoiceLanguage.rule(language: LiveVoiceLanguage.current)
+        let without = GPTLiveConversationController.briefing(memory: memory, personality: "A judge")
+        XCTAssertTrue(without.hasSuffix(rule))
+        XCTAssertEqual(briefing, String(without.dropLast(rule.count)) + "\nTail" + rule)
     }
 
     func testGPTLiveSessionExchangesTheOfferThroughHermesAndIsReadyOnSessionStarted() async throws {
@@ -1570,6 +1583,10 @@ extension VoiceConversationControllerTests {
             ("No hay problema, se lo envío a Hermes.", "es"),
             // Italian's pronoun "se lo" isn't its "if".
             ("Va bene, se lo mando a Hermes.", "it"),
+            // "Without a problem" opens a yes too (issue 1869).
+            ("Sin problema, se lo envío a Hermes.", "es"),
+            ("Sans problème, je transmets ça à Hermes.", "fr"),
+            ("Senza problemi, lo mando a Hermes.", "it"),
         ]
         for (claim, language) in claims {
             XCTAssertTrue(GPTLiveConversationController.claimsToSendToHermes(claim, callLanguage: language), claim)
@@ -1595,6 +1612,18 @@ extension VoiceConversationControllerTests {
             ("ヘルメスに送りましょうか。", "ja"),
             ("헤르메스에게 보낼까요.", "ko"),
             ("要不要发给赫尔墨斯。", "zh-CN"),
+            // A refusal in "without" or "nothing" sends nothing (issue 1869).
+            ("Ich schicke das ohne deine Erlaubnis an Hermes.", "de"),
+            ("Ich schicke nichts an Hermes.", "de"),
+            ("Lo mando a Hermes sin tu permiso.", "es"),
+            ("J'envoie ça à Hermes sans ton accord.", "fr"),
+            ("Lo mando a Hermes senza il tuo permesso.", "it"),
+            ("Envio isso ao Hermes sem sua autorização.", "pt"),
+            ("Передам это Гермесу без твоего разрешения.", "ru"),
+            ("Przekażę to Hermesowi bez twojej zgody.", "pl"),
+            ("Saya kirim ke Hermes tanpa izinmu.", "id"),
+            ("I'll send nothing to Hermes.", "en"),
+            ("I'll send that to Hermes without your OK.", "en"),
             // English narration on a German call is read as English.
             ("Hermes passed it along.", "de"),
             ("Hermes passed it along.", "en"),

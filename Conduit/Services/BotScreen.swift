@@ -213,6 +213,11 @@ final class BotScreenModel: ObservableObject {
     /// Bumped when the sheet closes or the app goes to the background: a
     /// takeover answered after that is handed straight back.
     private var leaveGeneration = 0
+    /// In the background since `backgrounded()`: nothing watches the screen
+    /// (WebKit pauses the page), so no stream opens until `foregrounded()`
+    /// (issue 1870). A bot's own `display.status` would otherwise dial one
+    /// whose handshake never runs and leave the sheet on a lost stream.
+    private(set) var isAway = false
     private var rapidEvictions = 0
     private var dialedAt = Date.distantPast
     private let logger = Logger(subsystem: "com.milim.relay", category: "BotScreen")
@@ -634,7 +639,7 @@ final class BotScreenModel: ObservableObject {
     /// Watches the screen: a ticket from `display.observe`, then the RFB
     /// stream on the app's own connection, handed to the page.
     func attach() async {
-        guard let client, status?.isRunning == true, page != nil else { return }
+        guard let client, !isAway, status?.isRunning == true, page != nil else { return }
         detach()
         attachGeneration += 1
         let generation = attachGeneration
@@ -728,6 +733,7 @@ final class BotScreenModel: ObservableObject {
     /// bot isn't kept off its screen while nobody watches, and the stream
     /// closes until it's watched again.
     func backgrounded() {
+        isAway = true
         leaveGeneration += 1
         if iHold, let client, let viewerID,
            !(Self.releaseInFlight(profile) && Self.owedReleases[profile] == viewerID) {
@@ -737,6 +743,12 @@ final class BotScreenModel: ObservableObject {
             }
         }
         detach()
+    }
+
+    /// Back from the background: the read that follows (`load()`) watches
+    /// the screen again.
+    func foregrounded() {
+        isAway = false
     }
 
     private func opened(_ socket: any HermesWebSocket, generation: Int) {

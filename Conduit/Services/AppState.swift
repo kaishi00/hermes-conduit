@@ -3467,13 +3467,14 @@ final class AppState: ObservableObject {
                         search: search,
                         memory: memory,
                         personality: qwen ? self?.qwenLivePersonality : self?.geminiLivePersonality,
-                        answerLength: self?.liveVoiceStyle.answerLength ?? .standard
-                    ) + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
-                        + (self?.liveHermesCallInstructions(delegation: false) ?? "")
-                        + (self.map { $0.liveVoiceThreadInstructions(delegation: false) + $0.phoneVoiceSettingHint(for: mode) } ?? "")
-                        + VoiceHostTool.functionToolsFirst(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
-                        + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
-                        + (self?.liveVoiceStyle.instructions ?? ""),
+                        answerLength: self?.liveVoiceStyle.answerLength ?? .standard,
+                        followedBy: (self?.liveVoiceResumeContext?.instructionBlock ?? "")
+                            + (self?.liveHermesCallInstructions(delegation: false) ?? "")
+                            + (self.map { $0.liveVoiceThreadInstructions(delegation: false) + $0.phoneVoiceSettingHint(for: mode) } ?? "")
+                            + VoiceHostTool.functionToolsFirst(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
+                            + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
+                            + (self?.liveVoiceStyle.instructions ?? "")
+                    ),
                     functions: GeminiLiveToolBridge.declarations(
                         webSearch: search == .hermes,
                         memoryRecall: memory?.canRecall == true,
@@ -4304,21 +4305,22 @@ final class AppState: ObservableObject {
                 let memory = self?.grokLiveMemoryContext
                 // Built a step at a time: one long `+` chain of optionals is
                 // slow for the type checker.
-                var instructions: String = GeminiLiveConversationController.instructions(
+                var tail: String = GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
+                tail += self?.liveVoiceResumeContext?.instructionBlock ?? ""
+                tail += self?.liveHermesCallInstructions(delegation: false) ?? ""
+                tail += self?.liveVoiceThreadInstructions(delegation: false) ?? ""
+                tail += self?.phoneVoiceSettingHint(for: .grokLive) ?? ""
+                tail += VoiceHostTool.functionToolsFirst(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
+                tail += LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
+                tail += self?.liveVoiceStyle.instructions ?? ""
+                let instructions = GeminiLiveConversationController.instructions(
                     search: search,
                     memory: memory,
                     personality: self?.grokLivePersonality,
                     answerLength: self?.liveVoiceStyle.answerLength ?? .standard,
-                    acknowledgesOnceStarted: true
+                    acknowledgesOnceStarted: true,
+                    followedBy: tail
                 )
-                instructions += GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
-                instructions += self?.liveVoiceResumeContext?.instructionBlock ?? ""
-                instructions += self?.liveHermesCallInstructions(delegation: false) ?? ""
-                instructions += self?.liveVoiceThreadInstructions(delegation: false) ?? ""
-                instructions += self?.phoneVoiceSettingHint(for: .grokLive) ?? ""
-                instructions += VoiceHostTool.functionToolsFirst(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
-                instructions += LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
-                instructions += self?.liveVoiceStyle.instructions ?? ""
                 let session = GrokLiveSession(
                     client: client,
                     instructions: instructions,
@@ -4542,20 +4544,21 @@ final class AppState: ObservableObject {
     func localLiveAgentSetup() -> LocalLiveProtocol.AgentSetup? {
         guard isLocalLiveAgent else { return nil }
         let supervisor = voiceBackgroundJobSupervisor
-        var instructions: String = GeminiLiveConversationController.instructions(
+        var tail: String = LocalLiveProtocol.agentInstructions
+        tail += GrokLiveProtocol.clockInstructions(now: Date(), timeZone: .current)
+        tail += liveVoiceResumeContext?.instructionBlock ?? ""
+        tail += liveHermesCallInstructions(delegation: false)
+        tail += liveVoiceThreadInstructions(delegation: false)
+        tail += phoneVoiceSettingHint(for: .localLive)
+        tail += VoiceHostTool.functionToolsFirst(supervisor.hostTools)
+        tail += LiveVoiceStyle.askFirstInstructions(on: supervisor.asksBeforeSending)
+        tail += liveVoiceStyle.instructions
+        let instructions = GeminiLiveConversationController.instructions(
             search: localLiveWebLookUps ? .hermes : .none,
             answerLength: liveVoiceStyle.answerLength,
-            acknowledgesOnceStarted: true
+            acknowledgesOnceStarted: true,
+            followedBy: tail
         )
-        instructions += LocalLiveProtocol.agentInstructions
-        instructions += GrokLiveProtocol.clockInstructions(now: Date(), timeZone: .current)
-        instructions += liveVoiceResumeContext?.instructionBlock ?? ""
-        instructions += liveHermesCallInstructions(delegation: false)
-        instructions += liveVoiceThreadInstructions(delegation: false)
-        instructions += phoneVoiceSettingHint(for: .localLive)
-        instructions += VoiceHostTool.functionToolsFirst(supervisor.hostTools)
-        instructions += LiveVoiceStyle.askFirstInstructions(on: supervisor.asksBeforeSending)
-        instructions += liveVoiceStyle.instructions
         let functions = GeminiLiveToolBridge.declarations(
             webSearch: localLiveWebLookUps,
             thread: supervisor.liveThread != nil,
@@ -8452,8 +8455,9 @@ final class AppState: ObservableObject {
                 memory: grokLiveMemoryEnabled ? placeholderMemory : nil,
                 personality: grokLivePersonalityEnabled ? placeholderPersona : nil,
                 answerLength: style.answerLength,
-                acknowledgesOnceStarted: true
-            ) + GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
+                acknowledgesOnceStarted: true,
+                followedBy: GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
+            )
         } else if isQwenLiveEnabled {
             mode = "Qwen Live"
             text = GeminiLiveConversationController.instructions(
@@ -40001,10 +40005,11 @@ final class AppState: ObservableObject {
         let endPhrases: [String]
         /// The names the call's jobs may give the user's profiles.
         let jobProfiles: [WatchVoiceWire.JobProfileName]
-        /// The phone's own tools the call may use, and the lines that brief
-        /// the model on them; left out when the setup doesn't fit the Watch.
+        /// The phone's own tools the call may use, and the instructions with
+        /// the lines that brief the model on them (before the call's
+        /// language, issue 1868); left out when the setup doesn't fit the Watch.
         var hostTools: [VoiceHostTool] = []
-        var hostToolsBriefing = ""
+        var systemInstructionWithHostTools = ""
         /// The chat of the call from Hermes the Watch may answer (the
         /// grant's answer_call), or none.
         var answerSessions: [String] = []
@@ -40066,15 +40071,20 @@ final class AppState: ObservableObject {
         guard watchConnectionIsCurrent(connection) else {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
         }
-        return WatchDirectPlan(
-            systemInstruction: GeminiLiveConversationController.instructions(
+        func instruction(_ hostToolsBriefing: String) -> String {
+            GeminiLiveConversationController.instructions(
                 search: search,
                 memory: memory,
                 personality: personality,
                 answerLength: style.answerLength,
                 asksFirst: false,
-                onWatch: true
-            ) + (hermesCall?.instructionBlock(delegation: false, canAnswer: waiting != nil, waiting: waiting?.waiting) ?? "") + style.instructions,
+                onWatch: true,
+                followedBy: (hermesCall?.instructionBlock(delegation: false, canAnswer: waiting != nil, waiting: waiting?.waiting) ?? "")
+                    + style.instructions + hostToolsBriefing
+            )
+        }
+        return WatchDirectPlan(
+            systemInstruction: instruction(""),
             functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: search == .hermes,
                 memoryRecall: memory?.canRecall == true,
@@ -40093,7 +40103,7 @@ final class AppState: ObservableObject {
             endPhrases: preferences.resolvedSpokenEndConversationPhrases,
             jobProfiles: watchJobProfileNames(callProfile: profile),
             hostTools: hostTools.tools,
-            hostToolsBriefing: hostTools.briefing,
+            systemInstructionWithHostTools: hostTools.tools.isEmpty ? "" : instruction(hostTools.briefing),
             answerSessions: waiting?.sessionIDs ?? []
         )
     }
@@ -40208,7 +40218,7 @@ final class AppState: ObservableObject {
         let endPhrases: [String]
         let jobProfiles: [WatchVoiceWire.JobProfileName]
         var hostTools: [VoiceHostTool] = []
-        var hostToolsBriefing = ""
+        var systemInstructionWithHostTools = ""
         /// The chat of the call from Hermes the Watch may answer (the
         /// grant's answer_call), or none.
         var answerSessions: [String] = []
@@ -40262,17 +40272,22 @@ final class AppState: ObservableObject {
         guard watchConnectionIsCurrent(connection) else {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
         }
-        return WatchGrokPlan(
-            systemInstruction: GeminiLiveConversationController.instructions(
+        func instruction(_ hostToolsBriefing: String) -> String {
+            GeminiLiveConversationController.instructions(
                 search: search,
                 memory: memory,
                 personality: personality,
                 answerLength: style.answerLength,
                 asksFirst: false,
                 onWatch: true,
-                acknowledgesOnceStarted: true
-            ) + GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
-                + (hermesCall?.instructionBlock(delegation: false, canAnswer: waiting != nil, waiting: waiting?.waiting) ?? "") + style.instructions,
+                acknowledgesOnceStarted: true,
+                followedBy: GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
+                    + (hermesCall?.instructionBlock(delegation: false, canAnswer: waiting != nil, waiting: waiting?.waiting) ?? "")
+                    + style.instructions + hostToolsBriefing
+            )
+        }
+        return WatchGrokPlan(
+            systemInstruction: instruction(""),
             functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: false,
                 memoryRecall: memory?.canRecall == true,
@@ -40289,7 +40304,7 @@ final class AppState: ObservableObject {
             endPhrases: preferences.resolvedSpokenEndConversationPhrases,
             jobProfiles: watchJobProfileNames(callProfile: profile),
             hostTools: hostTools.tools,
-            hostToolsBriefing: hostTools.briefing,
+            systemInstructionWithHostTools: hostTools.tools.isEmpty ? "" : instruction(hostTools.briefing),
             answerSessions: waiting?.sessionIDs ?? []
         )
     }
