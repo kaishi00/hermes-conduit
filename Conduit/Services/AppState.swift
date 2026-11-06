@@ -32797,6 +32797,7 @@ final class AppState: ObservableObject {
                 return false
             }
             var didPrepend = false
+            var foldedPageStart: (heldIDs: Set<String>, callCardID: String)?
             let startBeforePage = messages.first.map {
                 PersistedTranscriptWindowState.LoadedPageStart(
                     firstRowID: $0.id,
@@ -32820,6 +32821,12 @@ final class AppState: ObservableObject {
                 )
                 let merged: [ChatMessage]?
                 if foldedFromHeld > 0 {
+                    // The folded result rows go; a page start on one moves
+                    // to the call card that took it in (issue 1828).
+                    foldedPageStart = PersistedTranscriptWindow.foldedPageStart(
+                        olderPage: olderPage,
+                        foldedHeld: messages.prefix(foldedFromHeld)
+                    )
                     let remainingHeld = messages.dropFirst(foldedFromHeld)
                     if remainingHeld.isEmpty {
                         // Every held row folded into the adjusted page (the
@@ -32866,6 +32873,13 @@ final class AppState: ObservableObject {
             if didPrepend, let first = messages.first {
                 if current.loadedPageStarts.isEmpty, let startBeforePage {
                     current.loadedPageStarts.append(startBeforePage)
+                }
+                if let foldedPageStart {
+                    current.loadedPageStarts = PersistedTranscriptWindow.movingPageStarts(
+                        current.loadedPageStarts,
+                        off: foldedPageStart.heldIDs,
+                        onto: foldedPageStart.callCardID
+                    )
                 }
                 current.loadedPageStarts.append(.init(
                     firstRowID: first.id,
