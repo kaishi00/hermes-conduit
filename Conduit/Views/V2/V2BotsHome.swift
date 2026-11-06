@@ -384,8 +384,8 @@ enum RoomDragPayload {
     }
 
     /// A drop target saw the tile in hand: it still counts for a while.
-    static func seen() {
-        if lifted != nil { liftedSeenAt = Date() }
+    static func seen(at now: Date = Date()) {
+        if lifted(at: now) != nil { liftedSeenAt = now }
     }
 
     /// Whether the drag that set `lifted` still holds its item. Only then
@@ -893,8 +893,8 @@ enum BotDragPayload {
     }
 
     /// A drop target saw the drag in hand: it still counts for a while.
-    static func seen() {
-        if lifted != nil { liftedSeenAt = Date() }
+    static func seen(at now: Date = Date()) {
+        if lifted(at: now) != nil { liftedSeenAt = now }
     }
 
     /// Whether the drag that set `lifted` still holds its item. Only then

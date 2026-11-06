@@ -1108,9 +1108,10 @@ extension BotModeTests {
         XCTAssertFalse(RoomDragPayload.isLive)
         XCTAssertNil(RoomDragPayload.lifted(at: Date().addingTimeInterval(BotDragPayload.liftedGrace + 1)),
                      "a drag that's gone leaves no room in hand")
-        let roomSeen = Date()
-        RoomDragPayload.seen()
-        XCTAssertEqual(RoomDragPayload.lifted(at: roomSeen.addingTimeInterval(BotDragPayload.liftedGrace - 0.5)), "r")
+        // Seen 2 s on, it's still in hand a second past its first expiry.
+        let roomLifted = Date()
+        RoomDragPayload.seen(at: roomLifted.addingTimeInterval(2))
+        XCTAssertEqual(RoomDragPayload.lifted(at: roomLifted.addingTimeInterval(BotDragPayload.liftedGrace + 1)), "r")
         RoomDragPayload.lifted = nil
         autoreleasepool {
             let provider = BotDragPayload.lift("Ayaka")
@@ -1120,9 +1121,9 @@ extension BotModeTests {
         XCTAssertFalse(BotDragPayload.isLive)
         XCTAssertNil(BotDragPayload.lifted(at: Date().addingTimeInterval(BotDragPayload.liftedGrace + 1)))
         // A drop target seeing it in hand keeps it there past the grace.
-        let before = Date()
-        BotDragPayload.seen()
-        XCTAssertEqual(BotDragPayload.lifted(at: before.addingTimeInterval(BotDragPayload.liftedGrace - 0.5)), "Ayaka")
+        let botLifted = Date()
+        BotDragPayload.seen(at: botLifted.addingTimeInterval(2))
+        XCTAssertEqual(BotDragPayload.lifted(at: botLifted.addingTimeInterval(BotDragPayload.liftedGrace + 1)), "Ayaka")
         BotDragPayload.lifted = nil
     }
 
