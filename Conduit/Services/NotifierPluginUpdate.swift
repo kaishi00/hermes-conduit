@@ -389,12 +389,22 @@ struct NotifierPluginUpdater {
     private func restartForUpdatedHermes(request: Request, progress: (NotifierPluginUpdateState) -> Void,
                                          detail: String?) async -> NotifierPluginUpdateState? {
         let failed = NotifierPluginUpdateState.failed(detail: Self.explainingMixedHermes(detail))
-        guard let json = try? await request(NotifierPluginStatus.path, "GET", nil),
-              let runtime = NotifierPluginStatus.runtime(from: json),
+        let json: [String: Any]
+        do {
+            json = try await request(NotifierPluginStatus.path, "GET", nil)
+        } catch DashboardTicketBridgeError.signInRequired {
+            // Signing in again didn't work: that, not the restart, is what to fix.
+            return Self.outcome(forRequestError: DashboardTicketBridgeError.signInRequired)
+        } catch {
+            return Task.isCancelled ? .idle : failed
+        }
+        guard let runtime = NotifierPluginStatus.runtime(from: json),
               (json["capabilities"] as? [String] ?? []).contains(Self.selfRestartCapability) else { return failed }
         switch await restartDashboard(from: runtime, request: request, progress: progress) {
         case .ended(.idle):
             return .idle
+        case .ended(let outcome) where outcome == Self.outcome(forRequestError: DashboardTicketBridgeError.signInRequired):
+            return outcome
         case .ended:
             return failed
         case .back:

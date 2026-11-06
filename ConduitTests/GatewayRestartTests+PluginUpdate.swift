@@ -975,7 +975,12 @@ extension GatewayRestartTests {
 
     func testMixedHermesAfterTheRestartFailsOnceAndSaysWhatToDo() async {
         let host = PluginHost()
-        host.selfUpdateJobs = [["id": "j1", "step": "failed", "failed_step": "downloading", "detail": Self.mixedHermesDetail]]
+        let retryDetail = Self.mixedHermesDetail + " (retry)"
+        host.selfUpdateJobs = [
+            ["id": "j1", "step": "failed", "failed_step": "downloading", "detail": Self.mixedHermesDetail],
+            ["id": "j2", "step": "downloading"],
+            ["id": "j2", "step": "failed", "failed_step": "downloading", "detail": retryDetail],
+        ]
         host.capabilities = [
             Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "old"),
             Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "fresh"),
@@ -983,8 +988,21 @@ extension GatewayRestartTests {
         var updater = host.updater()
         updater.onHost = true
         let outcome = await updater.run { _ in }
-        XCTAssertEqual(outcome, .failed(detail: NotifierPluginUpdater.explainingMixedHermes(Self.mixedHermesDetail)))
+        XCTAssertEqual(outcome, .failed(detail: NotifierPluginUpdater.explainingMixedHermes(retryDetail)))
         XCTAssertEqual(host.calls.filter { $0 == "POST \(NotifierPluginUpdater.selfRestartPath)" }.count, 1)
+        XCTAssertEqual(host.calls.filter { $0 == "POST \(NotifierPluginUpdater.selfUpdatePath)" }.count, 2)
+    }
+
+    func testASignInThatCantBeRenewedBeforeTheRestartSaysToSignIn() async {
+        let host = PluginHost()
+        host.selfUpdateJobs = [["id": "j1", "step": "failed", "failed_step": "downloading", "detail": Self.mixedHermesDetail]]
+        host.capabilities = [Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "old")]
+        host.restartSignsOut = true
+        host.signInAgainWorks = false
+        var updater = host.updater()
+        updater.onHost = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, NotifierPluginUpdater.outcome(forRequestError: DashboardTicketBridgeError.signInRequired))
     }
 
     func testMixedHermesWithoutTheRestartRouteSaysToRestartTheDashboard() async {
