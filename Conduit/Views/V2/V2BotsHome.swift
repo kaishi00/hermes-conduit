@@ -11,6 +11,7 @@
 //
 
 import SwiftUI
+import TipKit
 
 /// A named shortcut under Bots Home's title: Pulse, Artifacts.
 struct V2ShortcutPill: View {
@@ -417,6 +418,35 @@ enum BotPortraitRoom: Equatable {
     case notMember
 }
 
+/// Bots Home's one tip (Eric, 2026-11-06, #1850): touch and hold a bot for
+/// its menu, drag it to move it, hold it over another to start a room.
+/// Shown once, under the bots, when there are two or more; it goes for good
+/// when it's closed, a bot is dragged, Reorder Bots opens or a room is begun.
+struct BotsHomeGesturesTip: Tip {
+    /// Bots Home shows two or more bots, so there's something to arrange.
+    @Parameter static var hasBotsToArrange: Bool = false
+
+    var title: Text { Text(AppLocalization.string("Arrange your bots")) }
+
+    var message: Text? {
+        // A Mac has no touch and hold: its menu is a right-click.
+        Text(ProcessInfo.processInfo.isiOSAppOnMac
+             ? AppLocalization.string("Right-click a bot for its menu. Drag it to move it, or hold it over another bot to start a room.")
+             : AppLocalization.string("Touch and hold a bot for its menu. Drag it to move it, or hold it over another bot to start a room."))
+    }
+
+    var image: Image? { Image(systemName: "hand.draw") }
+
+    var rules: [Rule] {
+        [#Rule(Self.$hasBotsToArrange) { $0 == true }]
+    }
+
+    /// The person has used what the tip shows.
+    static func learned() {
+        BotsHomeGesturesTip().invalidate(reason: .actionPerformed)
+    }
+}
+
 /// A portrait picked up by a touch and hold that moves: dropped on another
 /// it moves before it, past the last one to the end, and held over one's
 /// face it starts a room with it. The payload names the bot, marked, so text dragged in from another
@@ -431,7 +461,8 @@ struct BotPortraitDrag<Preview: View>: ViewModifier {
             // onDrag, not draggable: its closure runs as the drag starts,
             // so the portraits can tell which bot is lifted.
             content.onDrag {
-                BotDragPayload.lift(name)
+                BotsHomeGesturesTip.learned()
+                return BotDragPayload.lift(name)
             } preview: {
                 preview()
             }

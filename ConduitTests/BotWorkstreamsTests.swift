@@ -957,8 +957,8 @@ extension BotModeTests {
         XCTAssertNil(appState.botChatOpening)
     }
 
-    /// A portrait's Overview pill: what needs the user first, then what's
-    /// working, else just Overview, and Overview while work is off.
+    /// A portrait's status: what needs the user first, then what's
+    /// working, else nothing, and nothing while work is off.
     func testThePortraitPillSaysWhatNeedsYouFirst() throws {
         let both = try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina"))
         XCTAssertEqual(BotPortraitStatus.of(both), .needsYou(1))

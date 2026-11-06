@@ -27,6 +27,8 @@ final class AppStoreScreenshotTests: XCTestCase {
         }
         app = XCUIApplication()
         app.launchEnvironment["TZ"] = Self.timeZoneNearStatusBarTime()
+        // No tips over the screens (BotsHomeGesturesTip).
+        app.launchEnvironment["CONDUIT_HIDE_TIPS"] = "1"
         app.launch()
     }
 
