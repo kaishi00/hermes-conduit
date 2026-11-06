@@ -1156,6 +1156,13 @@ extension BotModeTests {
         XCTAssertTrue(zone.contains(CGPoint(x: 50, y: -10)), "or just above it")
         XCTAssertFalse(zone.contains(CGPoint(x: -10, y: 40)), "the gap to the next cell moves")
         XCTAssertFalse(zone.contains(CGPoint(x: 50, y: 85)), "the name under it moves")
+
+        // A drop's location reads in the cell's space whichever space it
+        // comes in.
+        let cell = CGRect(x: 200, y: 300, width: 110, height: 150)
+        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 50, y: 40), cellInWindow: cell), CGPoint(x: 50, y: 40))
+        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 250, y: 340), cellInWindow: cell), CGPoint(x: 50, y: 40))
+        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 50, y: 40), cellInWindow: .zero), CGPoint(x: 50, y: 40))
         XCTAssertTrue(BotDragPayload.staysStill(CGPoint(x: 55, y: 45), from: CGPoint(x: 50, y: 40)))
         XCTAssertFalse(BotDragPayload.staysStill(CGPoint(x: 70, y: 40), from: CGPoint(x: 50, y: 40)))
     }

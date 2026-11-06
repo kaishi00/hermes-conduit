@@ -759,9 +759,8 @@ struct BotPortraitDrag<Preview: View>: ViewModifier {
 struct LiftedBotDrop: DropDelegate {
     var entered: () -> Void = {}
     var exited: () -> Void = {}
-    /// Where the bot in hand is, in the drop target's own space, as it moves
-    /// (`DropInfo.location` is in the drop view's coordinate space, the
-    /// cell's, where `faceFrame` is measured).
+    /// Where the bot in hand is as it moves: documented to be in the drop
+    /// target's own space; a portrait cell checks (BotDragPayload.cellPoint).
     var updated: (CGPoint) -> Void = { _ in }
     let perform: (String) -> Bool
 
@@ -844,6 +843,19 @@ enum BotDragPayload {
     static func mergeZone(face: CGRect) -> CGRect {
         CGRect(x: face.minX - mergeMargin, y: face.minY - mergeMargin,
                width: face.width + mergeMargin * 2, height: face.height + mergeMargin)
+    }
+
+    /// A drop's location in the cell's own space. `DropInfo.location` is
+    /// documented to be in the drop view's space, but holding a bot over a
+    /// face never swelled it on a phone (Eric, 2026-11-06, TestFlight), which
+    /// is what a location in the window's space would do. So a point outside
+    /// the cell's own bounds that lies in its frame in the window is read as
+    /// a window point; one inside them is taken as documented.
+    static func cellPoint(_ location: CGPoint, cellInWindow: CGRect) -> CGPoint {
+        guard cellInWindow.size != .zero else { return location }
+        if CGRect(origin: .zero, size: cellInWindow.size).contains(location) { return location }
+        guard cellInWindow.contains(location) else { return location }
+        return CGPoint(x: location.x - cellInWindow.minX, y: location.y - cellInWindow.minY)
     }
 
     /// Whether the hover at `location` keeps the dwell that began at
@@ -1073,6 +1085,9 @@ struct BotPortraitCell<MenuContent: View>: View {
     @State private var dwellAnchor: CGPoint?
     /// The face, in the cell's own space (where a drop's location is).
     @State private var faceFrame: CGRect = .zero
+    /// The cell's frame in the window, to read a drop's location in
+    /// (BotDragPayload.cellPoint).
+    @State private var cellInWindow: CGRect = .zero
     @Environment(\.scenePhase) private var scenePhase
     /// Low Power Mode as it changes, so the motion stops when it turns on.
     @ObservedObject private var devicePower = DevicePowerState.shared
@@ -1149,6 +1164,7 @@ struct BotPortraitCell<MenuContent: View>: View {
         // A move, not a copy, so the bot in hand shows no +; the face it's
         // over swells for a merge instead (LiftedBotDrop).
         .coordinateSpace(name: BotPortraitCellSpace.name)
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { cellInWindow = $0 }
         .onDrop(of: [UTType.text], delegate: LiftedBotDrop(
             entered: { if onDrop != nil { beginTargeting() } },
             exited: { if onDrop != nil { endTargeting() } },
@@ -1279,8 +1295,9 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// swollen face lets go. Off the face and the ring around it, or when the two
     /// can't make a room, it takes this one's place after `slideDwell` and
     /// the others slide aside, while it's still in hand.
-    private func hover(at location: CGPoint) {
+    private func hover(at reported: CGPoint) {
         guard isTargeted, let lifted = BotDragPayload.lifted else { return }
+        let location = BotDragPayload.cellPoint(reported, cellInWindow: cellInWindow)
         guard canMerge?(lifted) == true, BotDragPayload.mergeZone(face: faceFrame).contains(location) else {
             dwell?.cancel()
             dwell = nil
