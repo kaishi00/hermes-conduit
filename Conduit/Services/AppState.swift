@@ -12687,7 +12687,8 @@ final class AppState: ObservableObject {
             working: activeRoomDriverStatus?.working,
             responder: activeRoomResponder,
             approvals: activeRoomPendingApprovals,
-            members: activeRoomSurface?.room.members ?? []
+            members: activeRoomSurface?.room.members ?? [],
+            context: activeRoomContext
         )
     }
 

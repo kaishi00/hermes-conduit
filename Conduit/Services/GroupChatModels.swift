@@ -1229,29 +1229,36 @@ enum GroupRoomTurns {
         working: Bool? = nil,
         responder: GroupMember?,
         approvals: [GroupPendingApproval],
-        members: [GroupMember]
+        members: [GroupMember],
+        context: GroupRoomContext? = nil
     ) -> [String: GroupMemberStatus] {
         var statuses: [String: GroupMemberStatus] = [:]
         let discussions = currentDiscussions(events)
         // A lead's routing turn picks who answers; it isn't a reply or a
         // pass. It is the task a `room.assignment` names, or (one that
-        // ended without a pick) a round-0 receipt that read the room only
-        // up to just before the message, as `route(of:)` reads it: an
-        // answer reads the message itself.
+        // ended without a pick) the lead's round-0 receipt in a
+        // discussion routed through it that read the room only up to just
+        // before the message, as `route(of:)` reads it: an answer reads the
+        // message itself. Only the lead's: another member's bounded batch
+        // can stop at the same place.
         let routingTasks = Set(events.compactMap { event -> String? in
             event.kind == "room.assignment" ? event.payload["task_id"]?.stringValue : nil
         })
-        var messageSeqs: [String: Int] = [:]
+        var messages: [String: GroupEvent] = [:]
         for event in events where event.isUserMessage && !event.eventID.isEmpty {
-            messageSeqs[event.eventID] = event.seq
+            messages[event.eventID] = event
         }
         func isRoutingTurn(_ event: GroupEvent) -> Bool {
             if let task = event.payload["task_id"]?.stringValue, routingTasks.contains(task) { return true }
             guard let discussion = event.payload["discussion_event_id"]?.stringValue,
-                  let messageSeq = messageSeqs[discussion],
+                  let message = messages[discussion],
                   HermesClient.exactIntValue(event.payload["round_index"]) == 0,
-                  let seen = HermesClient.exactIntValue(event.payload["seen_through_seq"]) else { return false }
-            return seen == messageSeq - 1
+                  HermesClient.exactIntValue(event.payload["seen_through_seq"]) == message.seq - 1,
+                  let inForce = contextInForce(at: message.seq, in: events, current: context),
+                  inForce.routing == .lead,
+                  let lead = member(withID: inForce.leadMemberID, in: members),
+                  let memberID = event.payload["member_id"]?.stringValue else { return false }
+            return memberID.lowercased() == routingID(of: lead)
         }
         for event in events {
             if event.kind.hasPrefix("turn."), isRoutingTurn(event) { continue }
