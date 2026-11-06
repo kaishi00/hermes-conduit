@@ -1106,6 +1106,9 @@ extension AppStateVoiceCapabilityTests {
         let names = setup?.functions.map(\.name) ?? []
         XCTAssertTrue(names.contains("start_job") && names.contains("list_jobs") && names.contains("cancel_job"), "\(names)")
         XCTAssertTrue(setup?.instructions.contains("call start_job") == true)
+        XCTAssertTrue(setup?.instructions.contains(LocalLiveProtocol.agentInstructions) == true)
+        XCTAssertTrue(setup?.instructions.hasSuffix(LiveVoiceLanguage.rule(language: LiveVoiceLanguage.current)) == true,
+                      "the language goes after the call's own blocks (issue 1868)")
         XCTAssertEqual(appState.configuredLiveVoiceEngine(profile: appState.activeProfile), .localLive)
     }
 

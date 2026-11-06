@@ -434,7 +434,7 @@ final class WatchDirectBroker {
             var chosen: (session: WatchVoiceWire.DirectSession, packed: (data: Data, bytes: Int))?
             for tools in Self.hostToolChoices(plan.hostTools) {
                 let declared = functions + VoiceHostTool.declarations(tools)
-                let instruction = tools.isEmpty ? plan.systemInstruction : plan.systemInstruction + plan.hostToolsBriefing
+                let instruction = tools.isEmpty ? plan.systemInstruction : plan.systemInstructionWithHostTools
                 let setup = WatchVoiceWire.DirectSetup(systemInstruction: instruction, functions: declared)
                 guard setup.functions.count == declared.count, let attempt = setup.compressed() else { continue }
                 let built = WatchVoiceWire.DirectSession(
@@ -678,7 +678,7 @@ final class WatchDirectBroker {
             var chosen: (reply: WatchVoiceWire.Message, packed: (data: Data, bytes: Int), replyBytes: Int)?
             for tools in Self.hostToolChoices(plan.hostTools) {
                 let declared = functions + VoiceHostTool.declarations(tools)
-                let instruction = tools.isEmpty ? plan.systemInstruction : plan.systemInstruction + plan.hostToolsBriefing
+                let instruction = tools.isEmpty ? plan.systemInstruction : plan.systemInstructionWithHostTools
                 let setup = WatchVoiceWire.DirectSetup(systemInstruction: instruction, functions: declared)
                 guard setup.functions.count == declared.count, let packed = setup.compressed() else {
                     if tools.isEmpty { throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch.")) }

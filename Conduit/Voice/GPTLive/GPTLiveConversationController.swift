@@ -127,18 +127,20 @@ final class GPTLiveConversationController: ObservableObject {
     static let maxBriefingCharacters = 32 * 1024 - 64
 
     /// Conduit's briefing for a call, with `followedBy` (the call's own
-    /// blocks: its chat, the rules for Hermes' tools, the style) after it.
-    /// Kept under `maxBriefingCharacters`: what Hermes remembers is cut
-    /// first, then the persona, so the rules always go out whole.
+    /// blocks: its chat, the rules for Hermes' tools, the style) after it,
+    /// then the call's language, last of all. Kept under
+    /// `maxBriefingCharacters`: what Hermes remembers is cut first, then the
+    /// persona, so the rules always go out whole.
     static func briefing(memory: GeminiLiveMemoryContext? = nil, personality: String? = nil, answerLength: LiveVoiceAnswerLength = .standard, onWatch: Bool = false, watchChats: Bool = false, language: String? = LiveVoiceLanguage.current, followedBy tail: String = "") -> String {
         let rules = briefingRules(answerLength: answerLength, onWatch: onWatch, watchChats: watchChats)
         // Escaped before counting, so the count is what goes out.
         var persona = (personality ?? "").replacingOccurrences(of: "</hermes_persona>", with: "</ hermes_persona>", options: .caseInsensitive)
         var memoryText = (memory?.text ?? "").replacingOccurrences(of: "</hermes_memory>", with: "</ hermes_memory>", options: .caseInsensitive)
         func assembled() -> String {
-            // The language after the persona and memory, which may be in
-            // another one: a rule stated only before them loses.
-            rules + personaBlock(persona) + memoryBlock(memoryText) + LiveVoiceLanguage.rule(language: language) + tail
+            // The language last, after the persona, the memory and the
+            // call's own blocks, which may be in another one: a rule stated
+            // only before them loses (issue 1868).
+            rules + personaBlock(persona) + memoryBlock(memoryText) + tail + LiveVoiceLanguage.rule(language: language)
         }
         var text = assembled()
         var excess = text.unicodeScalars.count - maxBriefingCharacters
@@ -1066,6 +1068,9 @@ final class GPTLiveConversationController: ObservableObject {
         let acknowledgements = sentences.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         if !acknowledgements.isEmpty, acknowledgements.count <= 3,
            acknowledgements.allSatisfy({ $0.range(of: Self.acknowledgementOnly, options: .regularExpression) != nil }),
+           // "I'll send nothing." reads like "I'll send it." to the
+           // acknowledgement's words: a refusal is no acknowledgement.
+           normalized.range(of: Self.sendsNothing, options: .regularExpression) == nil,
            acknowledgements.contains(where: { $0.range(of: Self.workUnderway, options: .regularExpression) != nil }) {
             return true
         }
@@ -1075,7 +1080,14 @@ final class GPTLiveConversationController: ObservableObject {
             let line = String(sentence)
             guard line.contains("hermes") else { continue }
             if line.range(of: Self.sendClaimHedge, options: .regularExpression) != nil { continue }
-            if line.range(of: Self.sendClaimPattern, options: .regularExpression) != nil { return true }
+            guard line.range(of: Self.sendClaimPattern, options: .regularExpression) != nil else { continue }
+            // A "nothing" holds only the clause that sends ("I'll send
+            // nothing to Hermes."), not another one ("I'll send that to
+            // Hermes; there's nothing to check.").
+            let clauses = line.split(omittingEmptySubsequences: true) { ",;".contains($0) }.map(String.init)
+            let sending = clauses.first { $0.range(of: Self.sendClaimPattern, options: .regularExpression) != nil } ?? line
+            if sending.range(of: Self.sendsNothing, options: .regularExpression) != nil { continue }
+            return true
         }
         // Another language's stems ("pas", "send") also start English
         // words: an English turn, or one too short to tell on an English
@@ -1111,7 +1123,14 @@ final class GPTLiveConversationController: ObservableObject {
                 if holds(clause, \.hedge) { break }
                 // The send has to go to Hermes: "Hermes sagt, …" only
                 // reports what Hermes said.
-                if holds(clause, \.claim) { return true }
+                if holds(clause, \.claim) {
+                    // "Ich schicke nichts an Hermes." refuses in the send's
+                    // own clause (issue 1869); "Nichts weiter, …" doesn't.
+                    if candidates.contains(where: { words in
+                        words.refusal.map { clause.range(of: $0, options: .regularExpression) != nil } ?? false
+                    }) { break }
+                    return true
+                }
             }
         }
         return false
@@ -1125,23 +1144,28 @@ final class GPTLiveConversationController: ObservableObject {
     /// Hermes (before the name in most, after it with the dative in
     /// Turkish, Japanese and Korean); `hedge`, an offer or a no, which holds
     /// a send in its clause or after it; `condition`, which holds it
-    /// anywhere in the sentence. Lowercased, like the text.
+    /// anywhere in the sentence; `refusal`, a "nothing" that refuses
+    /// without a negation, which holds only the send's own clause.
+    /// Lowercased, like the text.
     private struct SendClaimWords {
         let claim: String
         let hedge: String
         let condition: String
+        let refusal: String?
 
         /// A verb from `verbs` before Hermes' name in the same clause.
-        init(verbsBefore verbs: String, hedge: String, condition: String) {
+        init(verbsBefore verbs: String, hedge: String, condition: String, refusal: String? = nil) {
             claim = verbs + #"[^,;.!?]{0,60}?(?:hermes|гермес|赫尔墨斯|赫爾墨斯)"#
             self.hedge = hedge
             self.condition = condition
+            self.refusal = refusal
         }
 
         init(claim: String, hedge: String, condition: String) {
             self.claim = claim
             self.hedge = hedge
             self.condition = condition
+            refusal = nil
         }
     }
 
@@ -1150,7 +1174,10 @@ final class GPTLiveConversationController: ObservableObject {
         "de": SendClaimWords(
             verbsBefore: #"\b(?:schick\w*|sende|gebe|gib|leite|weiterleit\w*|frage|sage|reiche|übergeb\w*|übermittl\w*)\b"#,
             hedge: #"\b(?:soll|sollte|kann|könnte|würde|möchtest|willst|darf|nicht|kein|keine|nie|niemals)\b"#,
-            condition: #"\b(?:wenn|falls|sobald|bevor|nachdem)\b"#),
+            condition: #"\b(?:wenn|falls|sobald|bevor|nachdem)\b"#,
+            // Other shipped languages put a negation before their "nothing"
+            // (no, ne, non, não, не, nie), which already holds it.
+            refusal: #"\bnichts\b(?![^.!?,;]{0,40}\b(?:außer|ausser|bis auf|mit ausnahme)\b)"#),
         // "Se lo envío a Hermes.", "Le pregunto a Hermes."
         "es": SendClaimWords(
             verbsBefore: #"\b(?:env[ií]o|enviar\w*|envi[ée]|mando|mandar\w*|mand[ée]|paso|pasar\w*|pas[ée]|pregunto|preguntar\w*|pregunt[ée]|digo|decir\w*|dir[ée]|aviso|avisar\w*|avis[ée]|reenv[ií]o|reenviar\w*|consulto|consultar\w*|traslado|trasladar\w*)\b"#,
@@ -1219,6 +1246,12 @@ final class GPTLiveConversationController: ObservableObject {
     private static let workUnderway = #"\b(?:(?:let me|i'll|i will) (?:do|check|look|find|get|pull up|send|set up|book|add|put in|sort out)|on it|on that|right away|check|checking|look|looking|find out|finding out|work|working|take care|taking care|handle|handling|sort|sorting|dig|digging|sec|second|moment|hang on|hold on|bear with me)\b"#
     /// An offer, a condition or a no: nothing is being sent yet.
     private static let sendClaimHedge = #"\b(can|could|should|shall|would|might|may|want me|do you|if you|once you|when you|after you|before|not|never|won't|didn't|don't|can't|couldn't|haven't|hasn't|wasn't)\b|n't\b"#
+    /// A refusal in "nothing" (issue 1869): "I'll send nothing to Hermes.",
+    /// "I'll tell Hermes nothing.", "I'll send absolutely nothing to Hermes.",
+    /// "There's nothing to send." "Nothing but …" and an "except …"
+    /// later in the clause are still a send; a "but" further on starts a
+    /// clause of its own ("… nothing to Hermes but look it up myself").
+    private static let sendsNothing = #"\b(?:send|sending|pass|passing|forward|forwarding|hand|handing|relay|relaying|give|giving|get|getting|take|taking|put|putting|tell|telling|ask|asking|ping|pinging|update|updating)(?: (?:hermes|her|him|them|you|us|me))?(?: (?:absolutely|simply|just|really))? nothing\b(?! but\b)(?![^.!?,;]{0,40}\b(?:except|other than|besides|apart from|beyond)\b)|\bnothing (?:at all )?(?:else |more )?(?:for (?:me|us|you) )?to (?:send|pass|forward|hand|relay|give|tell|ask|check|ping|update)\b(?! but\b)(?![^.!?,;]{0,40}\b(?:except|other than|besides|apart from|beyond)\b)|\blet(?:ting)? hermes know nothing\b(?! but\b)(?![^.!?,;]{0,40}\b(?:except|other than|besides|apart from|beyond)\b)"#
 
     /// The user finished an utterance: an end phrase ends the call, and the
     /// spoken job commands ("job status", "cancel background jobs") are

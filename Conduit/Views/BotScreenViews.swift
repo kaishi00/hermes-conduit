@@ -74,6 +74,9 @@ private struct BotScreenContent: View {
                 ConduitSheetHeader(title: AppLocalization.string("\(target.botName)'s Screen"), close: { dismiss() })
             }
         }
+        // Made while Conduit is already in the background (a reconnect
+        // rebuilt the sheet there): it starts away, so nothing attaches.
+        .onAppear { if scenePhase == .background { model.backgrounded() } }
         .task { await model.load() }
         // Who drives the screen now, read again while the sheet is open.
         .refreshesBotWork(profile: target.profile)
@@ -82,7 +85,10 @@ private struct BotScreenContent: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { model.backgrounded() }
             // Read again: the screen may have started or stopped meanwhile.
-            if phase == .active { Task { await model.load() } }
+            if phase == .active {
+                model.foregrounded()
+                Task { await model.load() }
+            }
         }
         // A new or cancelled ask never takes the password typed for another.
         .onChange(of: model.sudoRequestID) { _, _ in sudoPassword = "" }

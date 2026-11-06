@@ -425,6 +425,19 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(LiveVoiceLanguage.name(of: "pt"), "Portuguese")
     }
 
+    /// Issue 1868: the language goes last in the briefing a call sends,
+    /// after the call's own English blocks (its tools, approvals, style),
+    /// not only after the persona.
+    func testTheBuiltGPTLiveBriefingEndsWithTheUsersLanguage() throws {
+        let appState = AppState(defaults: makeScratchDefaults("GPTLiveBriefingLanguage"), loadSavedConnection: false)
+        let briefing = appState.gptLiveBriefing()
+        let rule = LiveVoiceLanguage.rule(language: LiveVoiceLanguage.current)
+        XCTAssertTrue(briefing.hasSuffix(rule))
+        let approvals = try XCTUnwrap(briefing.range(of: GPTLiveConversationController.jobApprovalRule))
+        let language = try XCTUnwrap(briefing.range(of: rule, options: .backwards))
+        XCTAssertLessThan(approvals.upperBound, language.lowerBound)
+    }
+
     /// The notifier plugin refuses a briefing over 32 KB ("briefing is too
     /// long"), which ended every GPT-Live call for a user with a long memory.
     func testALongMemoryIsCutSoTheBriefingFitsAndTheRulesStayWhole() {
@@ -440,7 +453,8 @@ extension HermesVoiceGatewayTimeoutTests {
 
         XCTAssertLessThanOrEqual(briefing.unicodeScalars.count, limit)
         XCTAssertTrue(briefing.hasPrefix("[Conduit voice app rules."))
-        XCTAssertTrue(briefing.hasSuffix(tail), "the call's own rules go out whole")
+        XCTAssertTrue(briefing.hasSuffix(tail + LiveVoiceLanguage.rule(language: LiveVoiceLanguage.current)),
+                      "the call's own rules go out whole, then its language")
         XCTAssertTrue(briefing.contains("<hermes_persona>\nA calm judge\n</hermes_persona>"), "the persona is kept while memory can give way")
         XCTAssertTrue(briefing.contains("Memory line 1 ✓"), "memory is cut from the end")
         XCTAssertFalse(briefing.contains("Memory line 4000 ✓"))
@@ -474,10 +488,10 @@ extension HermesVoiceGatewayTimeoutTests {
     func testABriefingUnderTheLimitIsUnchanged() {
         let memory = GeminiLiveMemoryContext(text: "Likes tea", canRecall: false)
         let briefing = GPTLiveConversationController.briefing(memory: memory, personality: "A judge", followedBy: "\nTail")
-        XCTAssertEqual(
-            briefing,
-            GPTLiveConversationController.briefing(memory: memory, personality: "A judge") + "\nTail"
-        )
+        let rule = LiveVoiceLanguage.rule(language: LiveVoiceLanguage.current)
+        let without = GPTLiveConversationController.briefing(memory: memory, personality: "A judge")
+        XCTAssertTrue(without.hasSuffix(rule))
+        XCTAssertEqual(briefing, String(without.dropLast(rule.count)) + "\nTail" + rule)
     }
 
     func testGPTLiveSessionExchangesTheOfferThroughHermesAndIsReadyOnSessionStarted() async throws {
@@ -1497,6 +1511,15 @@ extension VoiceConversationControllerTests {
             "Got it, passing that on to Hermes.",
             "Sure, I'll ask Hermes.",
             "Let me check with Hermes. Hang on.",
+            // A "nothing" or "without" outside a refusal still sends (issue 1869).
+            "Nothing else needed; I'll send that to Hermes now.",
+            "I'll send that to Hermes without delay.",
+            "I'll ask Hermes nothing but whether the build passed.",
+            "There's nothing to send but the summary to Hermes.",
+            "I'll send that to Hermes; there's nothing to check.",
+            "I'll send nothing to Hermes except the summary.",
+            "There's nothing to send to Hermes except the summary.",
+            "I'll send that to Hermes without your OK.",
             // Acknowledgements without Hermes' name (#1251).
             "On it.",
             "Sure, one moment.",
@@ -1570,6 +1593,12 @@ extension VoiceConversationControllerTests {
             ("No hay problema, se lo envío a Hermes.", "es"),
             // Italian's pronoun "se lo" isn't its "if".
             ("Va bene, se lo mando a Hermes.", "it"),
+            // A "without" or a "nothing" outside the send isn't a no (issue 1869).
+            ("Sin demora, se lo envío a Hermes.", "es"),
+            ("Sans attendre, je transmets ça à Hermes.", "fr"),
+            ("Nichts weiter, ich schicke das jetzt an Hermes.", "de"),
+            ("Ich schicke nichts außer der Zusammenfassung an Hermes.", "de"),
+            ("Ich schicke nichts an Hermes außer der Zusammenfassung.", "de"),
         ]
         for (claim, language) in claims {
             XCTAssertTrue(GPTLiveConversationController.claimsToSendToHermes(claim, callLanguage: language), claim)
@@ -1595,6 +1624,27 @@ extension VoiceConversationControllerTests {
             ("ヘルメスに送りましょうか。", "ja"),
             ("헤르메스에게 보낼까요.", "ko"),
             ("要不要发给赫尔墨斯。", "zh-CN"),
+            // A "nothing" that refuses the send itself (issue 1869).
+            ("Ich schicke nichts an Hermes.", "de"),
+            ("I'll send nothing to Hermes.", "en"),
+            ("I'll tell Hermes nothing.", "en"),
+            ("I'll ask Hermes nothing.", "en"),
+            ("I'll send absolutely nothing to Hermes.", "en"),
+            ("I'll send nothing.", "en"),
+            ("There's nothing to send to Hermes.", "en"),
+            ("There's nothing to check with Hermes about.", "en"),
+            ("I'll let Hermes know nothing.", "en"),
+            ("I'll take nothing to Hermes.", "en"),
+            ("I'll put nothing to Hermes.", "en"),
+            ("There's nothing for me to send to Hermes.", "en"),
+            ("There's nothing else to send to Hermes.", "en"),
+            ("I have nothing more to tell Hermes.", "en"),
+            ("I'll send her nothing.", "en"),
+            // A "nothing" elsewhere in the sending clause holds: the safe side.
+            ("I'll put nothing sensitive in the report and send it to Hermes.", "en"),
+            ("I'll send nothing to Hermes but look it up myself.", "en"),
+            // An exception after a comma is held: the safe side.
+            ("I'll send nothing to Hermes, except the summary.", "en"),
             // English narration on a German call is read as English.
             ("Hermes passed it along.", "de"),
             ("Hermes passed it along.", "en"),

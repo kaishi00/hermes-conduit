@@ -266,7 +266,10 @@ struct RichBoard: Equatable {
     static func board(for tool: ToolActivity, schema: RichCardSchema?) -> RichBoard? {
         guard tool.name.lowercased() == RichCard.toolName, tool.status == .complete else { return nil }
         let answer = RichBoard.jsonObject(tool.output)
-        let markdown = (answer?["markdown"] as? String).flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        // The fallback is card text too (issue 1867): what it draws and
+        // copies is the cleaned string.
+        let markdown = (answer?["markdown"] as? String).map(RichCardSchema.cleanMarkdown)
+            .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
         let cards = RichCard.cards(for: tool, schema: schema)
         let given = (answer?["cards"] as? [Any])?.count
             ?? (((answer?["ok"] as? Bool) == true) ? (RichBoard.jsonObject(tool.input)?["cards"] as? [Any])?.count : nil)
