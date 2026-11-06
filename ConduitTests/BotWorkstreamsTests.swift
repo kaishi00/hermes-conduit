@@ -816,6 +816,26 @@ extension BotModeTests {
         XCTAssertNil(arm.source(open: "atlas", now: now))
     }
 
+    /// A room's portrait arms the zoom by its own key, apart from any bot's
+    /// name: its screen grows out of the room, also over a Bot Chat still
+    /// named open under it, and the bot's chat after it zooms no more.
+    func testARoomsPortraitZoomsItsOwnScreen() {
+        let now = Date()
+        let room = BotZoomArm.roomKey("trip")
+        XCTAssertNotEqual(room, "trip", "never a bot's name")
+        var arm = BotZoomArm()
+        arm.tap(room, now: now)
+        // The room shows before its push, so it has landed by then.
+        arm.pushed(open: room, now: now.addingTimeInterval(0.2))
+        XCTAssertEqual(arm.source(open: room, now: now.addingTimeInterval(60)), room, "Back shrinks it home")
+        XCTAssertNil(arm.source(open: "furina", now: now.addingTimeInterval(60)), "the Bot Chat under it")
+        arm.left()
+        // A room whose open failed zooms nothing.
+        arm.tap(room, now: now)
+        arm.openFailed(room)
+        XCTAssertNil(arm.source(open: room, now: now))
+    }
+
     /// A ring takes the bot's glow color (picked or drawn from its photo),
     /// else its Hermes color, else its name's hue (build 248).
     @MainActor
@@ -1039,6 +1059,14 @@ extension BotModeTests {
         appState.botChatOpeningPlaced()
         XCTAssertFalse(appState.placesConversationAsBotChat)
         appState.endOpeningBotChat("chef")
+        XCTAssertNil(appState.botChatOpening)
+
+        // So does a room Bots Home opens, with no Bot Chat under it.
+        let room = BotZoomArm.roomKey("trip")
+        appState.beginOpeningBotChat(room)
+        XCTAssertEqual(V2Tab.conversationTab(selected: .bots, isBotsChat: appState.placesConversationAsBotChat), .bots)
+        appState.botChatOpeningPlaced()
+        appState.endOpeningBotChat(room)
         XCTAssertNil(appState.botChatOpening)
     }
 

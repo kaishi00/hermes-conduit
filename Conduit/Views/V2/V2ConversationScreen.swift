@@ -413,9 +413,10 @@ struct V2ConversationScreen: View {
     }
 
     /// The bot whose Bot Chat a workstream's Back returns to; nil for any
-    /// other chat, or beside the list on a wide window, which has no Back.
+    /// other chat, a room shown over the workstream (its Back leaves the
+    /// room), or beside the list on a wide window, which has no Back.
     private var workstreamGoesBack: String? {
-        guard !shell.isSplit else { return nil }
+        guard !shell.isSplit, appState.activeRoomSurface == nil else { return nil }
         return appState.activeWorkstream?.profile
     }
 
@@ -425,7 +426,7 @@ struct V2ConversationScreen: View {
         appState.openCoordinator(profile: profile)
     }
 
-    /// A Bot Chat grown from its portrait goes home by a swipe from
+    /// A Bot Chat or a room grown from its portrait goes home by a swipe from
     /// anywhere, as a session's chat does: the zoom's own swipe starts only
     /// where the transcript has no text. A workstream's chat goes to its Bot
     /// Chat by this swipe alone, slow or quick: `SystemBackSwipeGate` holds
@@ -434,7 +435,8 @@ struct V2ConversationScreen: View {
     /// along a line) or a held voice message slides to cancel.
     private var swipesBack: Bool {
         guard !composerExpanded, !composerTyping, !voiceMessages.isActive else { return false }
-        return workstreamGoesBack != nil || (botChatZoomed && !shell.isSplit && appState.activeBotChatProfile != nil)
+        return workstreamGoesBack != nil || (botChatZoomed && !shell.isSplit
+            && (appState.activeBotChatProfile != nil || appState.activeRoomSurface != nil))
     }
 
     private var backSwipe: some Gesture {
