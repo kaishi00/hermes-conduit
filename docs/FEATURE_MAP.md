@@ -3223,10 +3223,12 @@ and its commentary between tool calls (`message.interim`).
 **Siblings:** the compaction spinner's release · the Live Activity's writing
 state · a call's background jobs (follow-up, status, session) · Local Live's
 writing-again · the writing haptic · Classic speech (phone, CarPlay and calls
-from Hermes: commentary is said, see Acknowledging work handed to Hermes)
+from Hermes: commentary is said, see Acknowledging work handed to Hermes) ·
+saved chat history (the shared message normalizer)
 
 **Code**
 - Events: `Conduit/Services/StreamEventParser.swift`, `Conduit/Services/AppState.swift` (handleStreamEvent, the compaction release)
+- Saved chat history: `Conduit/Services/HermesClient.swift` (MessageNormalizer.normalizeMessages: explicit display_reasoning, even empty, wins over raw reasoning; approved display_commentary strings become ordered assistant rows without changing canonical answers or tool IDs). Regression tests: `ConduitTests/MessageNormalizerTests.swift`. This does not replay live events or voice notifications.
 - Live Activity: `Conduit/Services/LiveTurnActivities.swift`
 - Calls: `Conduit/Voice/VoiceBackgroundJobs.swift`, `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift`
 - Haptics: `Conduit/Services/Haptics.swift` (signal)
@@ -3238,7 +3240,7 @@ from Hermes: commentary is said, see Acknowledging work handed to Hermes)
 **Open gaps**
 - `Haptics.signal` still plays the writing haptic only for `message.delta`.
 
-**Checked:** 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files, even beside a card); 2026-10-28, #1430 (Local Live's spoken stream passes the action filter; its writing state is unchanged); 2026-10-27, #1390 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
+**Checked:** 2026-11-06, #1897 (saved history consumes the server's commentary/reasoning display projections; Apple tests not run locally); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files, even beside a card); 2026-10-28, #1430 (Local Live's spoken stream passes the action filter; its writing state is unchanged); 2026-10-27, #1390 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
 
 ## Live Activity for a running turn
 
