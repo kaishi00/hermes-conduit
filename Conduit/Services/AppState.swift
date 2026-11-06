@@ -16245,6 +16245,9 @@ final class AppState: ObservableObject {
         guard let removed = savedDashboardRegistry.dashboard(with: id) else { return }
         let wasActive = id == activeDashboardID
         if wasActive {
+            // A switch to it still signing in loses the flow: its answer
+            // must not add the dashboard back and select it.
+            dashboardSwitchGeneration &+= 1
             // Full scoped teardown of the active dashboard's auth and live
             // session (including its origin's cookies).
             disconnect()

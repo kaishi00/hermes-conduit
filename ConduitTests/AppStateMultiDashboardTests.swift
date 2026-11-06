@@ -908,6 +908,28 @@ extension AppStateMultiDashboardTests {
         XCTAssertNotNil(appState.pendingLoginFailure, "The sign-in ran to its answer")
     }
 
+    /// Removing a dashboard while a switch to it is still signing in ends
+    /// that switch: its answer never adds the dashboard back or selects it.
+    func testRemovingADashboardMidSwitchEndsTheSwitch() async {
+        let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let vps = dashboard("VPS", "https://hermes.example.com")
+        var appState: AppState!
+        appState = makeAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps]),
+            mintTicket: { _ in
+                appState.removeDashboard(vps.id)
+                return "ticket"
+            }
+        )
+        KeychainHelper.saveNativeOAuthTokens(grant(), dashboardID: track(vps.id))
+
+        await appState.switchDashboard(to: vps.id)
+
+        XCTAssertNil(appState.savedDashboardRegistry.dashboard(with: vps.id), "The removed dashboard stays removed")
+        XCTAssertNil(appState.activeDashboardID)
+        XCTAssertNil(appState.connection, "Nothing connects to it")
+    }
+
     /// The sign-in screen's row for that dashboard: a tap reaches the grant
     /// and, when it is refused, shows why. It never does nothing.
     func testTappingAGrantOnlyDashboardRowIsNeverADeadTap() async {
