@@ -61,11 +61,15 @@ struct GroupChatView: View {
         Group {
             if isV2 {
                 transcript
+                    .v2EdgeBar(.top) {
+                        statusStrip
+                    }
                     .v2EdgeBar(.bottom) {
                         bottomBar
                     }
             } else {
                 VStack(spacing: 0) {
+                    statusStrip
                     transcript
                     bottomBar
                 }
@@ -120,6 +124,13 @@ struct GroupChatView: View {
             }
             .alignmentGuide(.top) { $0[.bottom] + 10 }
         }
+    }
+
+    /// A pill per member under the title, with how its turn went: the
+    /// room's statuses, which the transcript no longer lists (Desktop's
+    /// layout, Eric 2026-11-06).
+    private var statusStrip: some View {
+        GroupRoomStatusStrip(members: members, statuses: appState.activeRoomMemberStatuses)
     }
 
     private var surface: AppState.GroupRoomSurface? { appState.activeRoomSurface }
@@ -380,6 +391,10 @@ struct GroupChatView: View {
         }
         if let driver = appState.activeRoomDriverStatus, driver.working {
             return AppLocalization.string("\(count) members · working…")
+        }
+        if appState.activeRoomSettled {
+            // Where the transcript said "The room settled.".
+            return AppLocalization.string("Settled, nobody had more to say")
         }
         return AppLocalization.string("\(count) members")
     }
@@ -894,6 +909,97 @@ struct GroupMemberBubble: View {
     }
 }
 
+/// The room's members under its title, each a pill with its picture, its
+/// name in its bot's color and how its turn went ("passed", "replied",
+/// "responding…"), as Desktop's group header shows them. Tapping one picks
+/// the bot in the "To" row, as tapping its picture does.
+struct GroupRoomStatusStrip: View {
+    let members: [GroupMember]
+    let statuses: [String: GroupMemberStatus]
+    @Environment(\.groupMemberTints) private var tints
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        if !members.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(members, id: \.identityKey) { member in
+                        pill(member)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 2)
+            }
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: statuses)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(AppLocalization.string("Members"))
+        }
+    }
+
+    @ViewBuilder
+    private func pill(_ member: GroupMember) -> some View {
+        let name = GroupRoomTurns.displayName(of: member)
+        let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let status = statuses[member.identityKey]
+        let label = GroupRoomStatusPill(member: member, name: name, status: status, tint: tints[member.identityKey])
+        if handle.isEmpty {
+            label
+        } else {
+            GroupMemberMentionButton(handle: handle, name: name) { label }
+                .accessibilityLabel(Text(name))
+                .accessibilityValue(Text(status?.spoken ?? ""))
+                .accessibilityHint(Text(AppLocalization.string("Picks this bot in the To row")))
+        }
+    }
+}
+
+/// One member's pill: picture, name, and the word for its status.
+struct GroupRoomStatusPill: View {
+    let member: GroupMember
+    let name: String
+    let status: GroupMemberStatus?
+    let tint: CustomAccentColor?
+
+    var body: some View {
+        let color = tint.map { Color(uiColor: $0.readableColor) } ?? Color.primary
+        HStack(spacing: 5) {
+            GroupMemberAvatar(member: member, name: name, size: 20)
+            Text(name)
+                .scaledFont(.caption.weight(.semibold))
+                .foregroundStyle(color)
+                .lineLimit(1)
+            if let status {
+                Text(verbatim: status.label)
+                    .scaledFont(.caption)
+                    .foregroundStyle(statusColor(status))
+                    .lineLimit(1)
+                    .contentTransition(.opacity)
+            }
+        }
+        .padding(.leading, 3)
+        .padding(.trailing, 10)
+        .padding(.vertical, 3)
+        .conduitGlassSurface(cornerRadius: 14, tint: .conduitAccent.opacity(0.06))
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+        // The bar doesn't grow past the title's sizes.
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(name))
+        .accessibilityValue(Text(status?.spoken ?? ""))
+    }
+
+    private func statusColor(_ status: GroupMemberStatus) -> Color {
+        switch status {
+        case .failed, .unavailable: return .red
+        case .needsApproval: return .orange
+        case .responding: return tint.map { Color(uiColor: $0.readableColor) } ?? .conduitAccent
+        default: return .secondary
+        }
+    }
+}
+
 /// A member's picture beside its name. Where the room can be addressed to
 /// it, tapping it picks the bot in the "To" row, through a 44 pt target
 /// around the drawn 24 pt picture.
@@ -981,14 +1087,10 @@ struct GroupSystemEventCaption: View {
             return AppLocalization.string("Assigned to \(names(picked)).")
         case "room.activity":
             switch GroupRoomTurns.roomActivityOutcome(event) {
-            case .settled: return AppLocalization.string("The room settled.")
+            // Settled is the title's ("Settled, nobody had more to say").
+            case .settled, .other: return AppLocalization.string("Room updated.")
             case .bounded: return AppLocalization.string("The conversation reached its turn limit.")
-            case .other: return AppLocalization.string("Room updated.")
             }
-        case "turn.settled":
-            return name.isEmpty
-                ? AppLocalization.string("A member passed.")
-                : AppLocalization.string("\(name) passed.")
         case "turn.failed":
             return name.isEmpty
                 ? AppLocalization.string("A member's turn failed.")

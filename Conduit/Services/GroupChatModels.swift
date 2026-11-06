@@ -252,6 +252,39 @@ struct GroupMemberActivity: Equatable {
     }
 }
 
+/// One member's status on its pill under a room's title
+/// (`GroupRoomTurns.memberStatuses`).
+enum GroupMemberStatus: Equatable {
+    case needsApproval
+    case responding
+    case waiting
+    case replied
+    case passed
+    case failed
+    case stopped
+    case unavailable
+
+    /// The words after the member's name, with the dot between them
+    /// (keys apart from the plain words, which mean other things elsewhere).
+    var label: String {
+        switch self {
+        case .needsApproval: return AppLocalization.string("· needs approval")
+        case .responding: return AppLocalization.string("· responding…")
+        case .waiting: return AppLocalization.string("· waiting")
+        case .replied: return AppLocalization.string("· replied")
+        case .passed: return AppLocalization.string("· passed")
+        case .failed: return AppLocalization.string("· failed")
+        case .stopped: return AppLocalization.string("· stopped")
+        case .unavailable: return AppLocalization.string("· unavailable")
+        }
+    }
+
+    /// For VoiceOver, without the dot.
+    var spoken: String {
+        label.trimmingCharacters(in: CharacterSet(charactersIn: "· ").union(.whitespaces))
+    }
+}
+
 /// Who takes a message that names nobody (`room.context_set` `routing`,
 /// `gateway/hosted_room_context.py`). An @mention, @all/@everyone, a reply
 /// in a thread and a scheduled post go where they always did.
@@ -987,14 +1020,20 @@ enum GroupRoomTurns {
     )
 
     /// Whether a log event deserves its own transcript row. A member turn
-    /// that posted a message settles silently — the bubble already says it —
-    /// and a deferred turn is re-run by the driver, so neither is news.
+    /// that settled, replied or passed, is on its pill under the title
+    /// (`memberStatuses`), as on Desktop, and a deferred turn is re-run by
+    /// the driver, so neither is news. A failed or stopped turn keeps its
+    /// row: it says what went wrong where it happened.
     static func isVisible(_ event: GroupEvent) -> Bool {
         switch event.kind {
         case "turn.settled":
-            return event.payload["passed"]?.boolValue == true
+            // Passed or replied: the member's pill under the title says so.
+            return false
         case "turn.failed", "turn.cancelled":
             return true
+        case "room.activity":
+            // Settled is the title's; a turn limit keeps its row (Continue).
+            return roomActivityOutcome(event) != .settled
         default:
             // Every other per-member turn kind, including ones this client
             // predates, is bookkeeping: the placeholder bubble covers it.
@@ -1170,6 +1209,79 @@ enum GroupRoomTurns {
             }
         }
         return nil
+    }
+
+    /// Each member's status for the pills under the room's title, by
+    /// `identityKey`, as Desktop reads it (`group-room-status.ts`
+    /// `memberStatus`): a pending approval, then a live turn (running or
+    /// stopping before queued), else the member's last outcome in its
+    /// thread's current discussion (later turns win). A newer message in
+    /// that thread supersedes the outcome; a message in another thread
+    /// doesn't, so a failure stays shown while another thread runs. A host
+    /// without `member_activity` (before 0.22.5) names its one responder
+    /// from the log (`responder`). A member with nothing to show is absent.
+    static func memberStatuses(
+        events: [GroupEvent],
+        activity: [GroupMemberActivity]?,
+        responder: GroupMember?,
+        approvals: [GroupPendingApproval],
+        members: [GroupMember]
+    ) -> [String: GroupMemberStatus] {
+        var statuses: [String: GroupMemberStatus] = [:]
+        var discussions: [String: String] = [:]
+        for event in events where event.isUserMessage && !event.eventID.isEmpty {
+            discussions[event.threadID ?? ""] = event.eventID
+        }
+        for event in events {
+            guard let memberID = event.payload["member_id"]?.stringValue,
+                  let discussion = event.payload["discussion_event_id"]?.stringValue,
+                  discussion == discussions[event.threadID ?? ""],
+                  let member = member(withID: memberID, in: members) else { continue }
+            let outcome: GroupMemberStatus?
+            switch event.kind {
+            case "turn.settled": outcome = event.payload["passed"]?.boolValue == true ? .passed : .replied
+            case "turn.failed": outcome = .failed
+            case "turn.cancelled": outcome = .stopped
+            case "turn.deferred":
+                // The driver parks a member it can't reach; it runs again later.
+                outcome = event.payload["reason"]?.stringValue == "member_unavailable" ? .unavailable : nil
+            default: outcome = nil
+            }
+            if let outcome { statuses[member.identityKey] = outcome }
+        }
+        if let activity {
+            for row in activity where row.status == "queued" {
+                if let member = member(withID: row.memberID, in: members) { statuses[member.identityKey] = .waiting }
+            }
+            for row in activity where row.status != "queued" {
+                if let member = member(withID: row.memberID, in: members) { statuses[member.identityKey] = .responding }
+            }
+        } else if let responder {
+            statuses[responder.identityKey] = .responding
+        }
+        for approval in approvals {
+            if let member = member(withID: approval.memberID, in: members) { statuses[member.identityKey] = .needsApproval }
+        }
+        return statuses
+    }
+
+    /// Whether the newest message's discussion settled, nobody having more
+    /// to say (its last `room.activity` is `settled`, with no Continue or
+    /// Stop after it): the room's title says so while it is idle, where
+    /// the transcript had "The room settled.".
+    static func latestDiscussionSettled(_ events: [GroupEvent]) -> Bool {
+        guard let index = events.lastIndex(where: \.isUserMessage) else { return false }
+        let discussion = events[index].eventID
+        var settled = false
+        for event in events[(index + 1)...] {
+            let ofIt = event.payload["discussion_event_id"]?.stringValue == discussion
+            switch event.kind {
+            case "room.activity" where ofIt: settled = roomActivityOutcome(event) == .settled
+            case "room.continued" where ofIt, "room.stop_requested": settled = false
+            default: break
+            }
+        }
+        return settled
     }
 
     /// Whether `events` reach back to the room's first event (seq 1), so
