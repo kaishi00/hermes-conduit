@@ -283,7 +283,7 @@ final class PhoneSyncEngine: ObservableObject {
         }
         let missing = Set(people.filter { $0.contactID == nil }.map(\.id))
         let found = missing.isEmpty ? [:] : await contactsSource.identifiers(for: missing)
-        let identifiers = people.compactMap { $0.contactID ?? found[$0.id] }
+        let identifiers = people.compactMap { $0.contactID ?? found?[$0.id] }
         let reads = await contactsSource.read(identifiers)
         // People changed while Contacts was read are matched by id, so an
         // edit or removal made meanwhile stands.

@@ -169,7 +169,8 @@ protocol PhoneContactsSource: Sendable {
     func read(_ identifiers: [String]) async -> [String: PhoneContactRead]
     /// For people picked before Conduit kept their contact's identifier:
     /// the identifier whose hash is each person's id. Reads identifiers only.
-    func identifiers(for ids: Set<String>) async -> [String: String]
+    /// Nil when Contacts couldn't be searched.
+    func identifiers(for ids: Set<String>) async -> [String: String]?
 }
 
 struct SystemContactsSource: PhoneContactsSource {
@@ -217,17 +218,21 @@ struct SystemContactsSource: PhoneContactsSource {
         }.value
     }
 
-    func identifiers(for ids: Set<String>) async -> [String: String] {
-        await Task.detached(priority: .utility) {
+    func identifiers(for ids: Set<String>) async -> [String: String]? {
+        await Task.detached(priority: .utility) { () -> [String: String]? in
             let request = CNContactFetchRequest(keysToFetch: [CNContactIdentifierKey as CNKeyDescriptor])
             // Each card on its own: the picker may have handed back any of a
             // linked contact's cards.
             request.unifyResults = false
             var found: [String: String] = [:]
-            try? CNContactStore().enumerateContacts(with: request) { contact, stop in
-                let id = PhonePerson.id(forContact: contact.identifier)
-                if ids.contains(id), found[id] == nil { found[id] = contact.identifier }
-                if found.count == ids.count { stop.pointee = true }
+            do {
+                try CNContactStore().enumerateContacts(with: request) { contact, stop in
+                    let id = PhonePerson.id(forContact: contact.identifier)
+                    if ids.contains(id), found[id] == nil { found[id] = contact.identifier }
+                    if found.count == ids.count { stop.pointee = true }
+                }
+            } catch {
+                return nil
             }
             return found
         }.value
@@ -270,14 +275,15 @@ enum PhonePeopleStore {
     /// `people` with what Contacts says now, each keeping their id and
     /// relation; someone not read keeps what Conduit last read, with why
     /// in `problems`. `found`: identifiers found for people picked before
-    /// Conduit kept them.
-    static func refreshed(_ people: [PhonePerson], reads: [String: PhoneContactRead], found: [String: String],
+    /// Conduit kept them, nil when Contacts couldn't be searched for them.
+    static func refreshed(_ people: [PhonePerson], reads: [String: PhoneContactRead], found: [String: String]?,
                           access: PhoneContactsAccess) -> (people: [PhonePerson], problems: [String: PhonePersonProblem]) {
         var problems: [String: PhonePersonProblem] = [:]
         let refreshed = people.map { person -> PhonePerson in
-            guard let identifier = person.contactID ?? found[person.id] else {
-                // Picked before Conduit kept the identifier, and not found.
-                problems[person.id] = access == .limited ? .notShared : .notFound
+            guard let identifier = person.contactID ?? found?[person.id] else {
+                // Picked before Conduit kept the identifier, and not found
+                // (or the search failed).
+                problems[person.id] = found == nil ? .unreadable : access == .limited ? .notShared : .notFound
                 return person
             }
             var kept = person

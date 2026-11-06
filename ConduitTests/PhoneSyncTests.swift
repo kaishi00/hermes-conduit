@@ -1101,6 +1101,11 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(engine.peopleProblems, [alexID: .notFound])
         XCTAssertEqual(contacts.searchedIDs, [samID, alexID])
 
+        // A search that fails says so, never that Alex left Contacts.
+        contacts.searchFails = true
+        await engine.refreshPeople()
+        XCTAssertEqual(engine.peopleProblems, [alexID: .unreadable])
+
         // A person picked while Contacts was read keeps the picker's copy.
         let (people, problems) = PhonePeopleStore.refreshed(
             [PhonePerson(id: "p_new", name: "Kim", contactID: "C-kim")], reads: [:], found: [:], access: .full)
@@ -1479,9 +1484,10 @@ private final class FakePhoneContactsSource: PhoneContactsSource, @unchecked Sen
         readIdentifiers += identifiers
         return people.filter { identifiers.contains($0.key) }
     }
-    func identifiers(for ids: Set<String>) async -> [String: String] {
+    var searchFails = false
+    func identifiers(for ids: Set<String>) async -> [String: String]? {
         searchedIDs.formUnion(ids)
-        return found.filter { ids.contains($0.key) }
+        return searchFails ? nil : found.filter { ids.contains($0.key) }
     }
 }
 

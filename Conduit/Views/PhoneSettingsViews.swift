@@ -296,7 +296,7 @@ struct PhoneSettingsPage: View {
                 Label("Share the people you pick", systemImage: "person.2")
             }
             .accessibilityIdentifier("settings.phone.contacts")
-            Text("Pick the people Hermes should know, and say who they are to you, such as wife or boss, so \"text my wife\" or \"Mum's birthday\" just works. Hermes gets their name, phone numbers, email addresses and birthday. Conduit doesn't read your contacts: only the people you pick here.")
+            Text("Pick the people Hermes should know, and say who they are to you, such as wife or boss, so \"text my wife\" or \"Mum's birthday\" just works. Hermes gets their name, phone numbers, email addresses and birthday. Conduit reads only the people you pick here, nothing else in your contacts.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             Text("Their nickname and company go too, when the contact has them.")
@@ -339,6 +339,11 @@ struct PhoneSettingsPage: View {
         }
         .task(id: choices.contacts) {
             if choices.contacts { await engine.refreshPeople() }
+        }
+        // Back from the Settings app, where access may have changed.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            guard choices.contacts else { return }
+            Task { await engine.refreshPeople() }
         }
         .modifier(PhoneContactAccessPicker(isPresented: $showsContactAccess) {
             Task {
