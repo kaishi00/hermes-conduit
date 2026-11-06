@@ -759,7 +759,9 @@ struct BotPortraitDrag<Preview: View>: ViewModifier {
 struct LiftedBotDrop: DropDelegate {
     var entered: () -> Void = {}
     var exited: () -> Void = {}
-    /// Where the bot in hand is, in the drop target's own space, as it moves.
+    /// Where the bot in hand is, in the drop target's own space, as it moves
+    /// (`DropInfo.location` is in the drop view's coordinate space, the
+    /// cell's, where `faceFrame` is measured).
     var updated: (CGPoint) -> Void = { _ in }
     let perform: (String) -> Bool
 
@@ -1037,8 +1039,8 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// with itself, nor when either is hidden or rooms can't start here.
     /// Without it the face never swells, and a drop only moves.
     var canMerge: ((_ dragged: String) -> Bool)?
-    /// A bot held over this one a moment, off the middle of its face (or
-    /// anywhere, when they can't make a room): it takes this one's place
+    /// A bot held over this one a moment, off its face and the ring around
+    /// it (or anywhere, when they can't make a room): it takes this one's place
     /// while still in hand.
     var onSlide: ((_ dragged: String) -> Void)?
     var onToggleRoom: (() -> Void)?

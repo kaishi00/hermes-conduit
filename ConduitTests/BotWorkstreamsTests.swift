@@ -1128,8 +1128,9 @@ extension BotModeTests {
     }
 
     /// A bot dropped on another takes its place, as a room does (bots match
-    /// in any case), and a merge needs the bot held still over the middle of
-    /// the face: carried across it, or beside it, the drop only moves.
+    /// in any case), and a merge needs the bot held still over the face or
+    /// just above or beside it: carried across it, or in the gap to the next
+    /// cell or on its name, the drop only moves.
     @MainActor
     func testABotDroppedOnAnotherTakesItsPlaceAndMergesOnlyHeldStill() throws {
         let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
