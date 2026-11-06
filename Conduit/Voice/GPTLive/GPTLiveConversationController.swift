@@ -1092,6 +1092,8 @@ final class GPTLiveConversationController: ObservableObject {
             // ("pas" is Spanish's send and French's no).
             for clause in sentence.split(omittingEmptySubsequences: true, whereSeparator: { ",;，、；".contains($0) }) {
                 let line = String(clause)
+                // "Kein Problem," opens a yes, not a no.
+                if line.range(of: Self.noProblemOpener, options: .regularExpression) != nil { continue }
                 if line.range(of: Self.sendClaimHedge, options: .regularExpression) != nil
                     || line.range(of: Self.otherLanguageHedge, options: .regularExpression) != nil { break }
                 if Self.otherLanguageSendClaims.contains(where: { line.range(of: $0.send, options: .regularExpression) != nil }) { return true }
@@ -1100,6 +1102,8 @@ final class GPTLiveConversationController: ObservableObject {
         return false
     }
 
+    /// A clause that is only "no problem", whose no is a yes.
+    private static let noProblemOpener = #"^\s*(?:no problem|kein problem|no hay problema|no pasa nada|pas de problème|pas de souci|aucun problème|non c'è problema|nessun problema|não tem problema|sem problema|nie ma problemu|без проблем|нет проблем|sorun değil|sorun yok|tidak masalah|tidak apa-apa|問題ありません|問題ない|문제없어요|문제없습니다|没问题|沒問題)\s*$"#
     /// The conditions among those hedges: one after the send holds it too.
     private static let otherLanguageCondition = #"\b(wenn|falls|sobald|bevor|nachdem|si|cuando|quand|quando|jeśli|jeżeli|gdy|kiedy|zanim|если|когда|прежде|eğer|kalau|jika|setelah|sebelum|once|if|when|before)\b|たら|れば|なら|면 |如果|的话|的話|之前|전에"#
     private static let otherLanguageHedge = otherLanguageSendClaims.map { "(?:\($0.hedge))" }.joined(separator: "|")

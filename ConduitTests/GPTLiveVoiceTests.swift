@@ -1559,6 +1559,10 @@ extension VoiceConversationControllerTests {
             "好的，我把这个发给赫尔墨斯。",
             // A reassurance after the send doesn't hold it.
             "Vale, se lo envío a Hermes ahora mismo, no te preocupes.",
+            // "No problem" opens a yes.
+            "Kein Problem, ich schicke das jetzt an Hermes.",
+            "Pas de problème, je transmets ça à Hermes.",
+            "No hay problema, se lo envío a Hermes.",
         ]
         for claim in claims {
             XCTAssertTrue(GPTLiveConversationController.claimsToSendToHermes(claim, callLanguage: "de"), claim)
