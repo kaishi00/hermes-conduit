@@ -715,7 +715,7 @@ struct V2Shell: View {
                 // A marker for the device trace: the tap's frame, or the
                 // screen that asked for the tab, so an Animation Hitches
                 // track can be lined up with what the person saw.
-                ResponsivenessSignposts.signposter.emitEvent("Tab selected")
+                ResponsivenessSignposts.signposter.emitEvent("Tab selected", "\(tab.rawValue, privacy: .public)")
                 visitedTabs.insert(tab)
                 giveUpRoomIfLeft()
                 // Only a tab the user picked clicks; a chat or link that

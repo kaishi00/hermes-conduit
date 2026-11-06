@@ -2718,6 +2718,7 @@ final class V2NestExpansionCache {
 /// and profile those tags are read for,
 /// the person's pinned order and whether profiles are grouped. An equal
 /// key is the same tree, so nothing outlives the state it was read from.
+@MainActor
 final class V2SessionsNestingCache {
     struct Key: Equatable {
         var rows: [SessionSummary]

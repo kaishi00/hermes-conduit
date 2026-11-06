@@ -20185,26 +20185,32 @@ final class AppState: ObservableObject {
             sessionIDs: sessionIDsForOverride
         )
         let globalYoloFloor = runtime.approvalsMode?.lowercased() == "off"
+        let resolved: Bool?
         if globalYoloFloor {
             // Hermes auto-approves globally when approvals.mode == "off"; a
             // per-session toggle cannot require approvals. Reflect the server's
             // effective state so the indicator does not claim otherwise.
-            runtime.yolo = true
+            resolved = true
         } else if let storedOverride {
             // The per-session choice is authoritative. The gateway holds the
             // flag in memory only and forgets it on restart, so AppState
             // re-asserts it after resume (see reassertSessionYolo).
-            runtime.yolo = storedOverride
+            resolved = storedOverride
         } else if let yolo = snapshotYolo {
-            runtime.yolo = yolo
+            resolved = yolo
         } else if let mode = snapshotReportedApprovalsMode, mode.lowercased() != "off" {
             // Only the snapshot's own non-off mode report resolves to "approvals
             // apply" — a last-known mode with the signal omitted entirely is
             // unknown, not a disagreement, and must not flicker the indicator.
-            runtime.yolo = false
+            resolved = false
+        } else {
+            // Otherwise keep the last-known indicator value; a partial
+            // projection omitting the approval fields must not flicker it.
+            resolved = nil
         }
-        // Otherwise keep the last-known indicator value; a partial projection
-        // omitting the approval fields must not flicker it.
+        // Written only when it changes: every resume snapshot lands here, and
+        // a same-value write still publishes AppState mid-slide-in.
+        if let resolved, runtime.yolo != resolved { runtime.yolo = resolved }
     }
 
     /// The context breakdown RPC is the gateway's complete accounting source.
