@@ -12,6 +12,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 import TipKit
 
 /// A named shortcut under Bots Home's title: Pulse, Artifacts.
@@ -103,11 +104,9 @@ struct BotRoomGrid<Content: View>: View {
             content()
         }
         // A drop between or after the rooms, not on one: the end.
-        .dropDestination(for: String.self) { items, _ in
-            guard let onDropAtEnd, let dragged = items.first.flatMap(RoomDragPayload.roomID(from:)) else { return false }
-            onDropAtEnd(dragged)
-            return true
-        }
+        .onDrop(of: [UTType.text], delegate: RoomTileDrop(target: nil, targeted: .constant(false)) { dragged in
+            onDropAtEnd?(dragged)
+        })
     }
 }
 
@@ -175,7 +174,8 @@ struct GroupRoomTileActions {
     let reorder: () -> Void
     /// Asks first (the dialog is Bots Home's, not the menu's).
     var disband: (() -> Void)?
-    /// Another room's tile dropped on this one: it moves before it.
+    /// Another room's tile held over this one, or dropped on it: it takes
+    /// this one's place.
     let onDrop: (String) -> Void
 }
 
@@ -184,6 +184,13 @@ struct GroupRoomTileActions {
 struct GroupRoomPortrait: View {
     let room: GroupRoom
     var actions: GroupRoomTileActions?
+    /// Another room's tile is over this one.
+    @State private var dropTarget = false
+    /// Held over it a moment, the tile in hand takes its place.
+    @State private var slide: Task<Void, Never>?
+    /// The tile in hand already took this one's place: let go here, it
+    /// stays where it went rather than moving again.
+    @State private var placed = false
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.v2Shell) private var shell
@@ -220,13 +227,29 @@ struct GroupRoomPortrait: View {
             GroupRoomIcon(picture: appState.groupRoomPicture(roomID: room.roomID), members: room.members, size: 56)
                 .environmentObject(appState)
         })
-        .dropDestination(for: String.self) { items, _ in
-            guard let actions, let dragged = items.first.flatMap(RoomDragPayload.roomID(from:)) else { return false }
-            // Dropped back on its own tile: taken here and left where it
-            // was, so the grid around it never reads it as a drop at the end.
-            if dragged != room.roomID { actions.onDrop(dragged) }
-            return true
+        // A move, not a copy, so the tile in hand shows no + over it. Held
+        // over this tile a moment, it takes its place while still in hand
+        // and the others slide aside, as apps do on the Home Screen
+        // (Eric, 2026-11-06); then it's over its own tile.
+        // Dropped back on its own tile, it's taken here and left where it
+        // was, so the grid around it never reads it as a drop at the end.
+        .onChange(of: dropTarget) { _, over in
+            slide?.cancel()
+            slide = nil
+            placed = false
+            guard over, let dragged = RoomDragPayload.lifted else { return }
+            slide = Task { @MainActor in
+                try? await Task.sleep(for: BotDragPayload.slideDwell)
+                guard !Task.isCancelled, dropTarget, RoomDragPayload.lifted == dragged else { return }
+                placed = true
+                actions?.onDrop(dragged)
+            }
         }
+        .onDrop(of: [UTType.text], delegate: RoomTileDrop(target: actions == nil ? nil : room.roomID,
+                                                          targeted: $dropTarget) { dragged in
+            guard !placed else { return }
+            actions?.onDrop(dragged)
+        })
         .accessibilityLabel(Text(room.name))
         .accessibilityValue(Text(accessibilityValue))
         .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
@@ -328,8 +351,24 @@ enum RoomDragPayload {
     static func lift(_ roomID: String) -> NSItemProvider {
         // A room in hand isn't a bot: no face swells for it.
         BotDragPayload.lifted = nil
-        return NSItemProvider(object: payload(for: roomID) as NSString)
+        let provider = NSItemProvider(object: payload(for: roomID) as NSString)
+        liftedID = roomID
+        liftedProvider = provider
+        return provider
     }
+
+    /// The room whose tile is being dragged, set as its drag starts. It
+    /// counts only while the drag's item lives, as a bot's does, so a
+    /// cancelled drag leaves nothing for a later drop to borrow.
+    static var lifted: String? {
+        get { liftedProvider == nil ? nil : liftedID }
+        set {
+            liftedID = newValue
+            if newValue == nil { liftedProvider = nil }
+        }
+    }
+    private static var liftedID: String?
+    private static weak var liftedProvider: NSItemProvider?
 
     static func payload(for roomID: String) -> String { prefix + roomID }
 
@@ -337,6 +376,57 @@ enum RoomDragPayload {
         guard payload.hasPrefix(prefix) else { return nil }
         let id = String(payload.dropFirst(prefix.count))
         return id.isEmpty ? nil : id
+    }
+}
+
+/// Where a room's tile can land: on another tile (`target`) or the grid
+/// around them (nil, the end). It proposes a move, where a plain drop
+/// destination proposes a copy and so a + badge, as if the room were being
+/// added somewhere. A dragged bot passes by, and text only moves a room
+/// when it carries a room tile's mark.
+struct RoomTileDrop: DropDelegate {
+    let target: String?
+    @Binding var targeted: Bool
+    let onDrop: (String) -> Void
+
+    /// A tile in hand, or, should the drag have let go of the room it set
+    /// as it began, any text, read for a room's mark as it lands. Never a
+    /// bot's portrait.
+    func validateDrop(info: DropInfo) -> Bool {
+        guard BotDragPayload.lifted == nil else { return false }
+        return RoomDragPayload.lifted != nil || info.hasItemsConforming(to: [UTType.text])
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let dragged = RoomDragPayload.lifted, let target else { return }
+        targeted = dragged != target
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard validateDrop(info: info) else { return DropProposal(operation: .forbidden) }
+        // A move only for our own tile: text from elsewhere is a copy, so
+        // its source never deletes what this may not take.
+        return DropProposal(operation: RoomDragPayload.lifted != nil ? .move : .copy)
+    }
+
+    func dropExited(info: DropInfo) { targeted = false }
+
+    func performDrop(info: DropInfo) -> Bool {
+        targeted = false
+        let target = target
+        let onDrop = onDrop
+        if let dragged = RoomDragPayload.lifted {
+            RoomDragPayload.lifted = nil
+            if dragged != target { onDrop(dragged) }
+            return true
+        }
+        guard let provider = info.itemProviders(for: [UTType.text]).first else { return false }
+        _ = provider.loadObject(ofClass: NSString.self) { object, _ in
+            guard let text = object as? String, let dragged = RoomDragPayload.roomID(from: text),
+                  dragged != target else { return }
+            DispatchQueue.main.async { onDrop(dragged) }
+        }
+        return true
     }
 }
 
@@ -419,14 +509,16 @@ struct NewRoomPortrait: View {
             }
         }
         .buttonStyle(PressableButtonStyle())
-        .dropDestination(for: String.self) { items, _ in
-            guard let dragged = items.first.flatMap(BotDragPayload.botName(from:)) else { return false }
-            BotDragPayload.lifted = nil
-            return onDrop(dragged)
-        } isTargeted: { targeted in
-            let joins = targeted && BotDragPayload.lifted.map(canJoin) == true
-            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { isTargeted = joins }
-        }
+        .onDrop(of: [UTType.text], delegate: LiftedBotDrop(
+            entered: {
+                let joins = BotDragPayload.lifted.map(canJoin) == true
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { isTargeted = joins }
+            },
+            exited: {
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { isTargeted = false }
+            },
+            perform: onDrop
+        ))
         .accessibilityLabel(Text(verbatim: name))
         .accessibilityValue(Text(verbatim: members))
         .accessibilityHint(Text(AppLocalization.string("Names the room in the bar below.")))
@@ -547,13 +639,14 @@ struct BotPortraitGrid<Cell: View>: View {
         }
         .padding(.top, 14)
         .padding(.bottom, 4)
-        // A drop between or after the portraits, not on one: the end.
-        .dropDestination(for: String.self) { items, _ in
-            guard let onDropAtEnd, let dragged = items.first.flatMap(BotDragPayload.botName(from:)) else { return false }
-            BotDragPayload.lifted = nil
+        // A drop between or after the portraits, not on one: the end. A
+        // grid with no end to drop at (the hidden bots) takes no drop, so
+        // it never offers a move it would refuse.
+        .onDrop(of: onDropAtEnd == nil ? [] : [UTType.text], delegate: LiftedBotDrop { dragged in
+            guard let onDropAtEnd else { return false }
             onDropAtEnd(dragged)
             return true
-        }
+        })
     }
 }
 
@@ -628,12 +721,91 @@ struct BotPortraitDrag<Preview: View>: ViewModifier {
     }
 }
 
+/// Where a bot's portrait can land: on another bot, the grid's end, or the
+/// room being started. It proposes a move, where a plain drop destination
+/// proposes a copy, so the bot in hand showed a + from the moment it was
+/// lifted (Eric, 2026-11-06). A dragged room passes by, and text only lands
+/// when it carries a portrait's mark.
+struct LiftedBotDrop: DropDelegate {
+    var entered: () -> Void = {}
+    var exited: () -> Void = {}
+    /// Where the bot in hand is, in the drop target's own space, as it moves.
+    var updated: (CGPoint) -> Void = { _ in }
+    let perform: (String) -> Bool
+
+    /// A portrait in hand, or, should the drag have let go of the name it
+    /// set as it began, any text, read for a portrait's mark as it lands.
+    /// Never a room's tile.
+    func validateDrop(info: DropInfo) -> Bool {
+        guard RoomDragPayload.lifted == nil else { return false }
+        return BotDragPayload.lifted != nil || info.hasItemsConforming(to: [UTType.text])
+    }
+
+    func dropEntered(info: DropInfo) { entered() }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard validateDrop(info: info) else { return DropProposal(operation: .forbidden) }
+        updated(info.location)
+        // A move only for our own portrait: text from elsewhere is a copy,
+        // so its source never deletes what this may not take.
+        return DropProposal(operation: BotDragPayload.lifted != nil ? .move : .copy)
+    }
+
+    func dropExited(info: DropInfo) { exited() }
+
+    func performDrop(info: DropInfo) -> Bool {
+        if let dragged = BotDragPayload.lifted {
+            BotDragPayload.lifted = nil
+            // The target reads its own hover state first (a merge), then
+            // ends it.
+            let landed = perform(dragged)
+            exited()
+            return landed
+        }
+        exited()
+        guard let provider = info.itemProviders(for: [UTType.text]).first else { return false }
+        let perform = perform
+        _ = provider.loadObject(ofClass: NSString.self) { object, _ in
+            guard let text = object as? String, let dragged = BotDragPayload.botName(from: text) else { return }
+            DispatchQueue.main.async { _ = perform(dragged) }
+        }
+        return true
+    }
+}
+
+/// A bot's cell on Bots Home, the space its drop reports locations in.
+enum BotPortraitCellSpace {
+    static let name = "botPortraitCell"
+}
+
 /// What a dragged portrait carries.
 enum BotDragPayload {
     /// How long a dragged bot stays over another's face before letting go
     /// starts a room instead of moving it (as making a folder on the Home
     /// Screen).
     static var mergeDwell: Duration { .milliseconds(500) }
+    /// How long a portrait or room tile in hand waits over another before
+    /// taking its place, so one carried past on the way elsewhere moves
+    /// nothing (the Home Screen's pause); shorter than `mergeDwell`.
+    static var slideDwell: Duration { .milliseconds(250) }
+
+    /// How far the bot in hand may drift and still count as held still over
+    /// a face: a move further starts the dwell again, so a bot carried
+    /// across faces to reorder never swells one (Eric, 2026-11-06: reordering
+    /// kept starting rooms instead).
+    static let mergeStillness: CGFloat = 12
+
+    /// The part of a face a merge needs the bot held over: its middle, not
+    /// the cell around it, so a drop beside a face or on its name moves.
+    static func mergeZone(face: CGRect) -> CGRect {
+        face.insetBy(dx: face.width * 0.2, dy: face.height * 0.2)
+    }
+
+    /// Whether the hover at `location` keeps the dwell that began at
+    /// `anchor` going.
+    static func staysStill(_ location: CGPoint, from anchor: CGPoint) -> Bool {
+        hypot(location.x - anchor.x, location.y - anchor.y) <= mergeStillness
+    }
 
     /// How long after a merge-ready hover ends its drop still merges: the
     /// hover ends as the drop begins, before the drop is handed over.
@@ -665,6 +837,8 @@ enum BotDragPayload {
 
     /// Starts a portrait's drag: its item, and the name the portraits read.
     static func lift(_ name: String) -> NSItemProvider {
+        // A bot in hand isn't a room, whatever an earlier room drag left.
+        RoomDragPayload.lifted = nil
         let provider = NSItemProvider(object: payload(for: name) as NSString)
         liftedName = name
         liftedProvider = provider
@@ -780,28 +954,43 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// of opening its chat.
     var room: BotPortraitRoom = .off
     /// Another bot dropped on this one: `merge` when it was held over the
-    /// face long enough to start (or join) a room, else moved before it.
+    /// face long enough to start (or join) a room, else it takes this
+    /// one's place.
     var onDrop: ((_ dragged: String, _ merge: Bool) -> Void)?
     /// Whether the bot being dragged can start a room with this one: never
     /// with itself, nor when either is hidden or rooms can't start here.
     /// Without it the face never swells, and a drop only moves.
     var canMerge: ((_ dragged: String) -> Bool)?
+    /// A bot held over this one a moment, off the middle of its face (or
+    /// anywhere, when they can't make a room): it takes this one's place
+    /// while still in hand.
+    var onSlide: ((_ dragged: String) -> Void)?
     var onToggleRoom: (() -> Void)?
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
-    /// A dragged bot is over this one; `mergeReady` once it has stayed
-    /// over the face for half a second (BotDragPayload.mergeDwell).
+    /// A dragged bot is over this one; `mergeReady` once it has been held
+    /// still over the middle of the face for half a second
+    /// (BotDragPayload.mergeDwell, mergeStillness, mergeZone).
     @State private var isTargeted = false
     @State private var mergeReady = false
+    /// The wait before the bot in hand takes this one's place.
+    @State private var slide: Task<Void, Never>?
+    /// The bot in hand already took this one's place: let go here, it
+    /// stays where it went rather than moving again.
+    @State private var placed = false
     /// When a merge-ready hover ended. A drop ends the hover before it
     /// lands, so the drop reads this rather than `mergeReady`, which has
     /// already gone (Eric 2026-11-04: dropping a bot on another never
     /// started a room).
     @State private var mergeReadyEndedAt: Date?
     @State private var dwell: Task<Void, Never>?
+    /// Where the dwell over the face began; a move away starts it again.
+    @State private var dwellAnchor: CGPoint?
+    /// The face, in the cell's own space (where a drop's location is).
+    @State private var faceFrame: CGRect = .zero
     @Environment(\.scenePhase) private var scenePhase
     /// Low Power Mode as it changes, so the motion stops when it turns on.
     @ObservedObject private var devicePower = DevicePowerState.shared
@@ -875,21 +1064,30 @@ struct BotPortraitCell<MenuContent: View>: View {
         }
         // The whole cell, pill included, takes a dropped bot, so a drop
         // under a face lands there rather than at the end.
-        .dropDestination(for: String.self) { items, _ in
-            guard let onDrop, let dragged = items.first.flatMap(BotDragPayload.botName(from:)),
-                  dragged.caseInsensitiveCompare(bot.name) != .orderedSame else { return false }
+        // A move, not a copy, so the bot in hand shows no +; the face it's
+        // over swells for a merge instead (LiftedBotDrop).
+        .coordinateSpace(name: BotPortraitCellSpace.name)
+        .onDrop(of: [UTType.text], delegate: LiftedBotDrop(
+            entered: { if onDrop != nil { beginTargeting() } },
+            exited: { if onDrop != nil { endTargeting() } },
+            updated: { location in if onDrop != nil { hover(at: location) } }
+        ) { dragged in
+            guard let onDrop else { return false }
+            // Back on its own place: taken here and left where it was.
+            guard dragged.caseInsensitiveCompare(bot.name) != .orderedSame else { return true }
+            // It already slid into this one's place: it stays there.
+            if placed {
+                endTargeting()
+                return true
+            }
             let merge = BotDragPayload.dropMerges(mergeReady: mergeReady, endedAt: mergeReadyEndedAt)
-            BotDragPayload.lifted = nil
             endTargeting()
             // After endTargeting, which stamps it when the hover hadn't
             // ended yet: this drop has used it.
             mergeReadyEndedAt = nil
             onDrop(dragged, merge)
             return true
-        } isTargeted: { targeted in
-            guard onDrop != nil else { return }
-            targeted ? beginTargeting() : endTargeting()
-        }
+        })
         // The pill's words: read once each time Bots Home shows or
         // connects, not polled (the Bot Chat and its overview poll).
         // The shell keeps a visited tab mounted, so the tab showing again is
@@ -983,14 +1181,67 @@ struct BotPortraitCell<MenuContent: View>: View {
         guard let lifted = BotDragPayload.lifted,
               lifted.caseInsensitiveCompare(bot.name) != .orderedSame else { return }
         isTargeted = true
+        placed = false
+        mergeReady = false
         mergeReadyEndedAt = nil
         dwell?.cancel()
-        guard canMerge?(lifted) == true else { return }
+        dwellAnchor = nil
+    }
+
+    /// The bot in hand moved over this cell, as on the Home Screen: held
+    /// still over the middle of the face for `mergeDwell`, it swells for a
+    /// room (a folder there); carried on, the dwell starts again and a
+    /// swollen face lets go. Off the middle of the face, or when the two
+    /// can't make a room, it takes this one's place after `slideDwell` and
+    /// the others slide aside, while it's still in hand.
+    private func hover(at location: CGPoint) {
+        guard isTargeted, let lifted = BotDragPayload.lifted else { return }
+        guard canMerge?(lifted) == true, BotDragPayload.mergeZone(face: faceFrame).contains(location) else {
+            dwell?.cancel()
+            dwell = nil
+            dwellAnchor = nil
+            if mergeReady {
+                // Moved off the face: this drop moves, it doesn't merge.
+                mergeReadyEndedAt = nil
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { mergeReady = false }
+            }
+            beginSlide(lifted)
+            return
+        }
+        // Over the middle of the face: a room, not a move, unless it's
+        // carried off again.
+        slide?.cancel()
+        slide = nil
+        if let anchor = dwellAnchor, BotDragPayload.staysStill(location, from: anchor) { return }
+        if mergeReady {
+            // Carried on across a swollen face: it lets go, and a drop now
+            // moves until the bot is held still again.
+            mergeReadyEndedAt = nil
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { mergeReady = false }
+        }
+        dwellAnchor = location
+        dwell?.cancel()
         dwell = Task { @MainActor in
             try? await Task.sleep(for: BotDragPayload.mergeDwell)
-            guard !Task.isCancelled, isTargeted else { return }
+            // The same bot still in hand: a drag that ended unseen never
+            // swells a face for a later drop.
+            guard !Task.isCancelled, isTargeted, BotDragPayload.lifted == lifted else { return }
             Haptics.medium()
             withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { mergeReady = true }
+        }
+    }
+
+    /// Starts the wait before `lifted` takes this one's place, unless it's
+    /// already running: passing over on the way somewhere moves nothing.
+    private func beginSlide(_ lifted: String) {
+        // Once it has slid here, staying over this one moves nothing more.
+        guard !placed, slide == nil, let onSlide else { return }
+        slide = Task { @MainActor in
+            try? await Task.sleep(for: BotDragPayload.slideDwell)
+            guard !Task.isCancelled, isTargeted, BotDragPayload.lifted == lifted else { return }
+            slide = nil
+            placed = true
+            onSlide(lifted)
         }
     }
 
@@ -998,6 +1249,9 @@ struct BotPortraitCell<MenuContent: View>: View {
         if mergeReady { mergeReadyEndedAt = Date() }
         dwell?.cancel()
         dwell = nil
+        slide?.cancel()
+        slide = nil
+        dwellAnchor = nil
         isTargeted = false
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { mergeReady = false }
     }
@@ -1010,6 +1264,8 @@ struct BotPortraitCell<MenuContent: View>: View {
             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             // Where its face flies from when it joins a room being started.
             .anchorPreference(key: BotsHomeAnchorKey.self, value: .bounds) { [BotsHomeAnchorKey.bot(bot.name): $0] }
+            // Where a merge's hold counts (BotDragPayload.mergeZone).
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(BotPortraitCellSpace.name)) } action: { faceFrame = $0 }
             .padding(4)
             .modifier(BotZoomSource(name: bot.name))
             .modifier(BotPortraitMotion(
@@ -1021,18 +1277,6 @@ struct BotPortraitCell<MenuContent: View>: View {
                 askerColor: askerColor(status)
             ))
             .scaleEffect(mergeReady ? 1.1 : 1)
-            // Held over, not yet merging: a bar where the dragged bot will
-            // land, before this one.
-            .overlay(alignment: .leading) {
-                if isTargeted && !mergeReady {
-                    Capsule()
-                        .fill(Color.conduitAccent)
-                        .frame(width: 4)
-                        .padding(.vertical, 8)
-                        .offset(x: -9)
-                        .accessibilityHidden(true)
-                }
-            }
             .overlay(alignment: .topLeading) {
                 // Pinned: first among the bots, as in Hermes Desktop.
                 if bot.isPinned {

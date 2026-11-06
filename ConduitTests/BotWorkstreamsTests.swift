@@ -1052,6 +1052,66 @@ extension BotModeTests {
         XCTAssertNil(defaults.stringArray(forKey: BotOrder.roomStorageKey))
     }
 
+    /// A room's tile dropped on another takes its place: carried on, it goes
+    /// after the one it lands on (two rooms swap); carried back, before it.
+    /// The room in hand clears with its drag.
+    @MainActor
+    func testARoomDroppedOnAnotherTakesItsPlace() throws {
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let rooms = ["a", "b", "c", "d"]
+        func drop(_ moved: String, onto target: String?) {
+            appState.dropGroupRoom(moved, onto: target, shown: appState.groupRoomOrder.arrange(rooms, name: { $0 }))
+        }
+        drop("a", onto: "b")
+        XCTAssertEqual(appState.groupRoomOrder.names, ["b", "a", "c", "d"], "onto its right neighbour: they swap")
+        drop("b", onto: "a")
+        XCTAssertEqual(appState.groupRoomOrder.names, ["a", "b", "c", "d"])
+        drop("a", onto: "c")
+        XCTAssertEqual(appState.groupRoomOrder.names, ["b", "c", "a", "d"])
+        drop("d", onto: "b")
+        XCTAssertEqual(appState.groupRoomOrder.names, ["d", "b", "c", "a"])
+        drop("d", onto: nil)
+        XCTAssertEqual(appState.groupRoomOrder.names, ["b", "c", "a", "d"])
+        drop("a", onto: "a")
+        XCTAssertEqual(appState.groupRoomOrder.names, ["b", "c", "a", "d"])
+
+        RoomDragPayload.lifted = nil
+        XCTAssertNil(RoomDragPayload.lifted)
+        autoreleasepool {
+            let provider = RoomDragPayload.lift("r")
+            XCTAssertEqual(RoomDragPayload.lifted, "r")
+            withExtendedLifetime(provider) {}
+        }
+        XCTAssertNil(RoomDragPayload.lifted, "a drag that's gone leaves no room in hand")
+    }
+
+    /// A bot dropped on another takes its place, as a room does (bots match
+    /// in any case), and a merge needs the bot held still over the middle of
+    /// the face: carried across it, or beside it, the drop only moves.
+    @MainActor
+    func testABotDroppedOnAnotherTakesItsPlaceAndMergesOnlyHeldStill() throws {
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.dropBot("Ayaka", onto: "furina", shown: ["ayaka", "Furina", "Yelan"])
+        XCTAssertEqual(appState.botOrder.names, ["Furina", "Ayaka", "Yelan"], "onto its right neighbour: they swap")
+        XCTAssertLessThan(BotDragPayload.slideDwell, BotDragPayload.mergeDwell, "a bot slides into place before it could swell for a room")
+        appState.dropBot("Yelan", onto: "Furina", shown: ["Furina", "Ayaka", "Yelan"])
+        XCTAssertEqual(appState.botOrder.names, ["Yelan", "Furina", "Ayaka"])
+
+        let face = CGRect(x: 10, y: 0, width: 80, height: 80)
+        let zone = BotDragPayload.mergeZone(face: face)
+        XCTAssertTrue(zone.contains(CGPoint(x: 50, y: 40)))
+        XCTAssertFalse(zone.contains(CGPoint(x: 14, y: 40)), "the face's rim moves")
+        XCTAssertFalse(zone.contains(CGPoint(x: 50, y: 100)), "the name under it moves")
+        XCTAssertTrue(BotDragPayload.staysStill(CGPoint(x: 55, y: 45), from: CGPoint(x: 50, y: 40)))
+        XCTAssertFalse(BotDragPayload.staysStill(CGPoint(x: 70, y: 40), from: CGPoint(x: 50, y: 40)))
+    }
+
     /// Group Settings from a room's tile shows once that room is open and
     /// its settings are read, and not for another room or long after.
     func testGroupSettingsFromATileWaitsForItsRoomBriefly() {

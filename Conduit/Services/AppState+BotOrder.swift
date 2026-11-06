@@ -26,6 +26,12 @@ extension AppState {
         setBotOrder(botOrder.moving(moved, before: target, shown: shown))
     }
 
+    /// A portrait dropped on `target`'s (nil: past the last one), whose
+    /// place it takes (BotOrder.dropping).
+    func dropBot(_ moved: String, onto target: String?, shown: [String]) {
+        setBotOrder(botOrder.dropping(moved, onto: target, shown: shown))
+    }
+
     /// Reorder Bots' list moved a row.
     func moveBots(fromOffsets source: IndexSet, toOffset destination: Int, shown: [String]) {
         setBotOrder(botOrder.moving(fromOffsets: source, toOffset: destination, shown: shown))
@@ -50,6 +56,15 @@ extension AppState {
     /// A room's tile dropped before `target` (nil: at the end), among `shown`.
     func moveGroupRoom(_ moved: String, before target: String?, shown: [String]) {
         setGroupRoomOrder(groupRoomOrder.moving(moved, before: target, shown: shown))
+    }
+
+    /// A room's tile dropped on `target`'s (nil: past the last one): it takes
+    /// that tile's place, as an app does on the Home Screen, so a tile
+    /// carried further on goes after the one it lands on, and one carried
+    /// back goes before it. Before, it always went before, so a tile
+    /// dropped on its neighbour on the right stayed put.
+    func dropGroupRoom(_ moved: String, onto target: String?, shown: [String]) {
+        setGroupRoomOrder(groupRoomOrder.dropping(moved, onto: target, shown: shown))
     }
 
     /// Reorder Group Chats' list moved a row.

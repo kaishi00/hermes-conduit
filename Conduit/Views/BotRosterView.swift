@@ -398,6 +398,7 @@ struct BotRosterView: View {
             room: newRoom.isEmpty || bot.isHiddenByMeta ? .off : (isInNewRoom(bot.name) ? .member : .notMember),
             onDrop: { dragged, merge in handleDrop(dragged, on: bot, merge: merge) },
             canMerge: { dragged in canMerge(dragged, with: bot) },
+            onSlide: { dragged in slideBot(dragged, onto: bot) },
             onToggleRoom: { toggleNewRoom(bot) }
         )
     }
@@ -425,9 +426,18 @@ struct BotRosterView: View {
         return !draggedBot.isHiddenByMeta && newRoom.fits([target.name, draggedBot.name])
     }
 
+    /// A bot held over `target` takes its place while still in hand, and
+    /// the others slide aside, as on the Home Screen.
+    private func slideBot(_ dragged: String, onto target: BotProfile) {
+        Haptics.selection()
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            appState.dropBot(dragged, onto: target.name, shown: appState.shownBotRoster.map(\.name))
+        }
+    }
+
     /// A portrait dropped on another: held over its face, the two start a
     /// room (or the dropped one joins the room being started); else it
-    /// moves before it.
+    /// takes its place.
     private func handleDrop(_ dragged: String, on target: BotProfile, merge: Bool) {
         if merge, canMerge(dragged, with: target),
            let draggedBot = appState.shownBotRoster.first(where: { $0.name.caseInsensitiveCompare(dragged) == .orderedSame }) {
@@ -438,7 +448,7 @@ struct BotRosterView: View {
         }
         Haptics.selection()
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
-            appState.moveBot(dragged, before: target.name, shown: appState.shownBotRoster.map(\.name))
+            appState.dropBot(dragged, onto: target.name, shown: appState.shownBotRoster.map(\.name))
         }
     }
 
@@ -1004,7 +1014,7 @@ struct BotRosterView: View {
                     .padding(.top, 2)
                     .padding(.bottom, 16)
             } else {
-                BotRoomGrid(onDropAtEnd: { dropRoom($0, before: nil) }) { homeRoomTiles }
+                BotRoomGrid(onDropAtEnd: { dropRoom($0, onto: nil) }) { homeRoomTiles }
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
                     .padding(.bottom, 16)
@@ -1081,15 +1091,16 @@ struct BotRosterView: View {
             } : nil,
             reorder: { showingRoomReorder = true },
             disband: capabilities?.supports("groups.disband") == true ? { pendingDisbandRoom = room } : nil,
-            onDrop: { dropRoom($0, before: room.roomID) }
+            onDrop: { dropRoom($0, onto: room.roomID) }
         )
     }
 
-    /// A room's tile dropped before `target` (nil: at the end).
-    private func dropRoom(_ dragged: String, before target: String?) {
+    /// A room's tile dropped on `target`'s (nil: at the end), whose place it
+    /// takes.
+    private func dropRoom(_ dragged: String, onto target: String?) {
         Haptics.selection()
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
-            appState.moveGroupRoom(dragged, before: target, shown: appState.shownGroupRooms.map(\.roomID))
+            appState.dropGroupRoom(dragged, onto: target, shown: appState.shownGroupRooms.map(\.roomID))
         }
     }
 

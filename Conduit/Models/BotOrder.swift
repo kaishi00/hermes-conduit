@@ -102,6 +102,28 @@ struct BotOrder: Equatable {
         return BotOrder(names: full, kind: kind)
     }
 
+    /// The order after `moved` is dropped on `target` (nil: past the last
+    /// one), whose place it takes, as an app does on the Home Screen:
+    /// carried on, it goes after the one it lands on; carried back, before
+    /// it. So two neighbours swap, where "before" left a drop on the next
+    /// one where it was.
+    func dropping(_ moved: String, onto target: String?, shown: [String]) -> BotOrder {
+        guard let target, let from = shown.firstIndex(where: { same($0, moved) }),
+              let to = shown.firstIndex(where: { same($0, target) }), from < to else {
+            return moving(moved, before: target, shown: shown)
+        }
+        // Carried on: right after the target in the order itself, not before
+        // whatever shows next, which (pinned bots show first) may sit
+        // before the target in the order.
+        var full = filled(with: shown)
+        full.removeAll { same($0, moved) }
+        guard let index = full.firstIndex(where: { same($0, target) }) else {
+            return moving(moved, before: nil, shown: shown)
+        }
+        full.insert(moved, at: index + 1)
+        return BotOrder(names: full, kind: kind)
+    }
+
     /// The order after a List's `onMove` among `shown`.
     func moving(fromOffsets source: IndexSet, toOffset destination: Int, shown: [String]) -> BotOrder {
         var reordered = shown
