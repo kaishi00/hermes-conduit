@@ -1517,6 +1517,8 @@ extension VoiceConversationControllerTests {
             "I'll ask Hermes nothing but whether the build passed.",
             "There's nothing to send but the summary to Hermes.",
             "I'll send that to Hermes; there's nothing to check.",
+            "I'll send nothing to Hermes except the summary.",
+            "There's nothing to send to Hermes except the summary.",
             "I'll send that to Hermes without your OK.",
             // Acknowledgements without Hermes' name (#1251).
             "On it.",
@@ -1596,6 +1598,7 @@ extension VoiceConversationControllerTests {
             ("Sans attendre, je transmets ça à Hermes.", "fr"),
             ("Nichts weiter, ich schicke das jetzt an Hermes.", "de"),
             ("Ich schicke nichts außer der Zusammenfassung an Hermes.", "de"),
+            ("Ich schicke nichts an Hermes außer der Zusammenfassung.", "de"),
         ]
         for (claim, language) in claims {
             XCTAssertTrue(GPTLiveConversationController.claimsToSendToHermes(claim, callLanguage: language), claim)
