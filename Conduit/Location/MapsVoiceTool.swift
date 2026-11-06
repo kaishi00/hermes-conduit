@@ -157,6 +157,9 @@ enum MapsVoiceTool {
             !locationAllowed || allowsLocation(mode: mode, controller: controller)
         }
         HealthVoiceReadLog.record(mode: mode, action: "maps navigate", key: HealthVoiceReadLog.locationStorageKey)
+        // The place's name is the model's only once more: after the car
+        // screen's or the notification's wait too.
+        if locationAllowed, !allowsLocation(mode: mode, controller: controller) { return ["error": notShared] }
         switch outcome {
         case .openedInCar(let name):
             return ["result": "Apple Maps is open on the car screen with directions to \(name). The call keeps going."]
