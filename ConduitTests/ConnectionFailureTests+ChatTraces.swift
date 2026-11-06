@@ -41,6 +41,27 @@ extension ConnectionFailureTests {
         line.range(of: #"^[A-Za-z0-9 ()._,:;+=<>/#%\[\]-]{0,160}$"#, options: .regularExpression) != nil
     }
 
+    /// Diagnostics & logs opens with no dashboard connected (signed out, or
+    /// a launch that never reached the server): its gateway part says it
+    /// isn't connected rather than "still loading", and asks nothing.
+    @MainActor
+    func testGatewayDiagnosticsWithNoDashboardSayNotConnected() async {
+        let suite = "GatewayDiagnosticsOffline.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        XCTAssertNil(appState.connection)
+        await appState.refreshGatewayDiagnostics()
+        XCTAssertEqual(appState.gatewayDiagnostics?.gatewayRunning, false)
+        XCTAssertEqual(appState.gatewayDiagnostics?.error, "Not connected. The gateway's status, connectors and logs show once Conduit reconnects.")
+        XCTAssertFalse(appState.gatewayDiagnosticsLoading)
+    }
+
     func testChatTraceRingKeepsTheNewestLinesInTheRelaysCharacters() {
         let trace = ChatViewportTrace()
         for index in 0..<2_050 { trace.log("line \(index)") }

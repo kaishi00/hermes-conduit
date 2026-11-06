@@ -1087,6 +1087,74 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
     }
 
+    /// The V2 shell keeps a hidden tab's room mounted: its poll stops while
+    /// no room screen shows, and catches up once when one shows again
+    /// (#1827).
+    func testRoomPollStopsWhileHiddenAndCatchesUpWhenShown() async throws {
+        final class RoomBox {
+            var latestSeq = 1
+            var logCalls: [Int] = []
+        }
+        let box = RoomBox()
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (self.roomWithLatest(box.latestSeq), nil) },
+            log: { _, roomID, sinceSeq, _ in
+                box.logCalls.append(sinceSeq)
+                let first = sinceSeq + 1
+                let events: [GroupEvent] = box.latestSeq >= first
+                    ? (first...box.latestSeq).map { self.memberEvent(roomID: roomID, seq: $0) }
+                    : []
+                return GroupLogPage(events: events, cursor: box.latestSeq,
+                                    latestSeq: box.latestSeq, hasMore: false,
+                                    authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            stop: { _, _ in 0 }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        let screen = UUID()
+        appState.noteRoomView(screen, shows: true)
+        XCTAssertTrue(appState.roomSurfaceShows)
+
+        box.logCalls.removeAll()
+        await appState.stopActiveRoomWork()
+        XCTAssertEqual(box.logCalls, [1])
+
+        // Hidden: no reads.
+        appState.noteRoomView(screen, shows: false)
+        XCTAssertFalse(appState.roomSurfaceShows)
+        box.latestSeq = 3
+        box.logCalls.removeAll()
+        await appState.stopActiveRoomWork()
+        XCTAssertEqual(box.logCalls, [], "no groups.log while the room is hidden")
+
+        // Shown again: one read at once, with what came meanwhile.
+        appState.noteRoomView(screen, shows: true)
+        for _ in 0..<200 where box.logCalls.isEmpty {
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertEqual(box.logCalls, [1])
+        XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1, 2, 3])
+
+        // Its screen gone while the room stays open (a page pushed over it):
+        // hidden, until a screen shows it again.
+        appState.noteRoomView(screen, shows: nil)
+        XCTAssertFalse(appState.roomSurfaceShows)
+        let next = UUID()
+        appState.noteRoomView(next, shows: true)
+        XCTAssertTrue(appState.roomSurfaceShows)
+        appState.noteRoomView(next, shows: nil)
+
+        // Another room opened before its screen appears counts as showing.
+        appState.closeGroupRoom()
+        XCTAssertTrue(appState.roomSurfaceShows)
+    }
+
     /// `groups.create` REQUIRES a client-minted `room_id` (it is the room's
     /// identity and its create idempotency key). Assert the outgoing params
     /// carry a non-empty, validator-legal one — the injected seam sees the

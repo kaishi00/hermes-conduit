@@ -68,6 +68,8 @@ struct LiveVoiceCallSheet: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.openURL) private var openURL
+    /// Speaker, during a call from Hermes.
+    @ObservedObject private var callSpeaker = VoiceAudioSessionCoordinator.shared.nativeCallSpeaker
     @State private var showsTranscript = false
     /// V2 draws the call as level bars and large captions instead of the orb.
     @AppStorage(V2ShellPreference.key) private var usesV2 = V2ShellPreference.defaultValue
@@ -474,8 +476,11 @@ struct LiveVoiceCallSheet: View {
                     action: onToggleMute
                 )
                 .disabled(!canMute)
+                if callSpeaker.isShown {
+                    NativeCallSpeakerButton(speaker: callSpeaker)
+                }
                 LiveVoiceCallButton(
-                    symbol: isSpeakerMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                    symbol: isSpeakerMuted ? LiveVoiceCallButton.silencedSymbol : LiveVoiceCallButton.silenceSymbol,
                     title: isSpeakerMuted ? AppLocalization.string("Sound on") : AppLocalization.string("Silence"),
                     style: isSpeakerMuted ? .selected : .normal,
                     voiceOverLabel: isSpeakerMuted
@@ -516,9 +521,17 @@ struct LiveVoiceCallSheet: View {
             )
         }
         .frame(maxWidth: .infinity)
+        .modifier(LiveVoiceCallButtonRowFit(slots: controlSlots))
         .padding(.horizontal, 12)
         .padding(.top, 14)
         .padding(.bottom, 12)
+    }
+
+    /// How many buttons `controls` shows.
+    private var controlSlots: Int {
+        let shared = 2 // Transcript, End
+        if phase == .failed { return shared + 1 + (modeSwitch == nil ? 0 : 1) }
+        return shared + 2 + (onInterrupt == nil ? 0 : 1) + (callSpeaker.isShown ? 1 : 0)
     }
 }
 
@@ -688,6 +701,11 @@ struct LiveVoiceCallButton: View {
         case destructive
     }
 
+    /// Silence's glyph (#487): the assistant's voice, not a speaker, so it
+    /// isn't taken for the Speaker button beside it in a call from Hermes.
+    static let silenceSymbol = "waveform"
+    static let silencedSymbol = "waveform.slash"
+
     let symbol: String
     let title: String
     var style: Style = .normal
@@ -776,9 +794,14 @@ struct LiveVoiceCallButtonIcon: View {
     var style: LiveVoiceCallButton.Style = .normal
 
     @ScaledMetric(relativeTo: .title3) private var scaledDiameter: CGFloat = 62
+    @Environment(\.liveVoiceCallButtonSlotWidth) private var slotWidth
     /// Capped so five buttons still fit across a phone at the largest
-    /// text sizes; the glyph inside keeps scaling.
-    private var diameter: CGFloat { min(scaledDiameter, 66) }
+    /// text sizes, and narrower when a row holds six (Speaker in a call
+    /// from Hermes); the glyph inside keeps scaling.
+    private var diameter: CGFloat {
+        let fits = slotWidth.map { max(44, $0 - 6) } ?? .infinity
+        return min(scaledDiameter, 66, fits)
+    }
 
     var body: some View {
         let glyph = Image(systemName: symbol)
@@ -1156,5 +1179,51 @@ struct V2CallLevelBars: View {
         }
         let ripple = 0.6 * sin(time * motion.speed * 2 + position * 9) + 0.4 * sin(time * motion.speed * 3.1 + position * 23)
         return CGFloat(max(0.06, min(1, arch + ripple * swing * arch)))
+    }
+}
+
+/// The call screen's Speaker button, during a call from Hermes on an
+/// iPhone: Conduit's screen covers CallKit's, whose own Speaker button iOS
+/// only shows on the lock screen or away from the app. Lit while the call
+/// plays from the loudspeaker, whichever control put it there; off goes
+/// back to the earpiece, or the headset that is on.
+struct NativeCallSpeakerButton: View {
+    @ObservedObject var speaker: NativeCallSpeakerState
+
+    var body: some View {
+        LiveVoiceCallButton(
+            symbol: "speaker.wave.3.fill",
+            title: AppLocalization.string("Speaker"),
+            style: speaker.isOn ? .selected : .normal,
+            voiceOverHint: AppLocalization.string("Plays the call on the loudspeaker"),
+            action: { VoiceAudioSessionCoordinator.shared.setNativeCallSpeaker(!speaker.isOn) }
+        )
+        .accessibilityValue(speaker.isOn ? Text("On") : Text("Off"))
+        .accessibilityAddTraits(speaker.isOn ? .isSelected : [])
+    }
+}
+
+private struct LiveVoiceCallButtonSlotWidthKey: EnvironmentKey {
+    static let defaultValue: CGFloat? = nil
+}
+
+extension EnvironmentValues {
+    /// The width each button of a call's control row has, so a row of six
+    /// shrinks its circles to fit instead of running off the screen.
+    var liveVoiceCallButtonSlotWidth: CGFloat? {
+        get { self[LiveVoiceCallButtonSlotWidthKey.self] }
+        set { self[LiveVoiceCallButtonSlotWidthKey.self] = newValue }
+    }
+}
+
+/// Measures a call's control row and hands each button its share.
+struct LiveVoiceCallButtonRowFit: ViewModifier {
+    let slots: Int
+    @State private var width: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+            .environment(\.liveVoiceCallButtonSlotWidth, width > 0 && slots > 0 ? width / CGFloat(slots) : nil)
     }
 }

@@ -1434,6 +1434,72 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
 
     // MARK: - Round 6: cross-surface transcript freshness
 
+    /// A foreground advance keeps the page starts Load earlier noted, each
+    /// claiming no more coverage than the page it read, so a long chat can
+    /// still cut back once the reader is at the newest row (issue 1828).
+    func testAForegroundAdvanceKeepsTheLoadedPageStartsForALongChat() async {
+        let active = session("stored-a")
+        var transcriptReads = 0
+        func rows(_ range: Range<Int>) -> [[String: Any]] {
+            range.map { index in
+                ["id": "\(index)", "role": index.isMultiple(of: 2) ? "user" : "assistant", "content": "Row \(index)", "timestamp": "\(index)"]
+            }
+        }
+        func page(_ range: Range<Int>, offset: Int) -> PersistedTranscriptFetchOutcome {
+            .payload([
+                "messages": rows(range),
+                "pagination": ["limit": 120, "offset": offset, "order": "latest", "returned": range.count]
+            ])
+        }
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _, _ in
+                    transcriptReads += 1
+                    // Then another surface added two rows while Conduit was away.
+                    return transcriptReads == 1 ? page(1880..<2000, offset: 0) : page(1882..<2002, offset: 0)
+                },
+                loadEarlierTranscriptPage: { _, _, offset in
+                    page((1880 - offset)..<(2000 - offset), offset: offset)
+                },
+                refreshContext: { _, _ in },
+                verifyTransportHealth: { _ in },
+                probeActiveSessions: { _ in
+                    [LiveSessionStatus(runtimeSessionId: "runtime-a", storedSessionId: "stored-a", status: "idle")]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        for _ in 0..<9 { await harness.appState.loadEarlierMessages() }
+        XCTAssertEqual(harness.appState.messages.count, 1_200)
+
+        harness.appState.handleScenePhase(.background)
+        await runSceneActivation(harness)
+        XCTAssertEqual(transcriptReads, 2)
+        XCTAssertEqual(harness.appState.messages.count, 1_202, "The newer rows merged onto the loaded ones")
+        let starts = harness.appState.persistedTranscriptWindow?.loadedPageStarts ?? []
+        XCTAssertEqual(starts.count, 10, "The advance kept every page start")
+        XCTAssertTrue(starts.allSatisfy { $0.nextOffset <= 120 }, "None claims more than the page the advance read")
+
+        harness.appState.trimLoadedHistoryIfLong()
+        XCTAssertEqual(harness.appState.messages.count, 1_082)
+        XCTAssertEqual(harness.appState.messages.first?.content, "Row 920")
+        XCTAssertEqual(harness.appState.messages.last?.content, "Row 2001")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 120)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
+        box.client.disconnect()
+    }
+
     /// A turn another surface completed while Conduit was backgrounded is
     /// invisible to the liveness probe (the runtime is idle). One bounded
     /// persisted-tail read must merge the missed rows into the local

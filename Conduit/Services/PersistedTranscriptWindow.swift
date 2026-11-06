@@ -114,6 +114,34 @@ struct PersistedTranscriptWindowState: Equatable {
     /// backfill prepends; kept by a reconcile that grafts onto the prefix;
     /// cleared when a refreshed tail is authoritative (no safe anchor).
     var hasBackfilledPrefix = false
+    /// Where the chat's rows started before each Load earlier page and
+    /// after it, oldest page last, with the window as it stood then. A long
+    /// chat lets go of its oldest pages by going back to one of these, so
+    /// the next Load earlier reads on from that page exactly (issue 1828).
+    /// A window a reconcile builds starts without any.
+    var loadedPageStarts: [LoadedPageStart] = []
+
+    struct LoadedPageStart: Equatable {
+        let firstRowID: String
+        let nextOffset: Int
+        let hasBackfilledPrefix: Bool
+    }
+
+    /// The page starts a refreshed window keeps when its older rows stay
+    /// (a reconcile's graft, a foreground advance). Their rows are still
+    /// there, but Hermes' newer side may have grown or shrunk (an /undo,
+    /// another device), so none claims more coverage than the refreshed
+    /// window does: undercounting only reads back over held rows, which
+    /// dedup drops, while overcounting would skip rows.
+    func pageStartsCarried(into refreshedCoverage: Int) -> [LoadedPageStart] {
+        loadedPageStarts.map {
+            LoadedPageStart(
+                firstRowID: $0.firstRowID,
+                nextOffset: min($0.nextOffset, refreshedCoverage),
+                hasBackfilledPrefix: $0.hasBackfilledPrefix
+            )
+        }
+    }
 
     /// Every session identity the accepted hydration/resume transaction
     /// vouched for together: the requested ID, the persisted stored ID, and
@@ -228,6 +256,58 @@ enum PersistedTranscriptWindow {
         }
         guard !fresh.isEmpty else { return nil }
         return fresh + existing
+    }
+
+    /// The held result rows a tool-boundary fold took into the older page's
+    /// call cards, and the earliest of those cards: a page start on a folded
+    /// row moves there, so the cut still keeps the whole tool run.
+    static func foldedPageStart(
+        olderPage: [ChatMessage],
+        foldedHeld: ArraySlice<ChatMessage>
+    ) -> (heldIDs: Set<String>, callCardID: String)? {
+        let toolIDs = Set(foldedHeld.compactMap { $0.tool?.id })
+        guard let card = olderPage.first(where: { message in
+            message.role == .tool && message.tool?.id.map { toolIDs.contains($0) } == true
+        }) else { return nil }
+        return (Set(foldedHeld.map(\.id)), card.id)
+    }
+
+    /// Page starts on rows a fold removed, moved onto the call card that
+    /// took them in. Their offsets stay: the card sits above the row they
+    /// named, so they only undercount, which dedup absorbs.
+    static func movingPageStarts(
+        _ starts: [PersistedTranscriptWindowState.LoadedPageStart],
+        off foldedIDs: Set<String>,
+        onto callCardID: String
+    ) -> [PersistedTranscriptWindowState.LoadedPageStart] {
+        starts.map { start in
+            guard foldedIDs.contains(start.firstRowID) else { return start }
+            return .init(firstRowID: callCardID, nextOffset: start.nextOffset, hasBackfilledPrefix: true)
+        }
+    }
+
+    /// A long chat's rows cut back to the newest of its page starts that
+    /// still keeps `limit` rows, with the window as it stood at that start,
+    /// so Load earlier brings the older pages back from Hermes. Nil when the
+    /// chat is within the limit or no page start would drop a row.
+    static func trimmingLoadedHistory(
+        _ messages: [ChatMessage],
+        window: PersistedTranscriptWindowState,
+        keeping limit: Int
+    ) -> (messages: [ChatMessage], window: PersistedTranscriptWindowState)? {
+        guard messages.count > limit, !window.isLoadingEarlier else { return nil }
+        for (position, start) in window.loadedPageStarts.enumerated() {
+            guard let index = messages.firstIndex(where: { $0.id == start.firstRowID }) else { continue }
+            guard messages.count - index >= limit else { continue }
+            guard index > 0 else { return nil }
+            var trimmed = window
+            trimmed.nextOffset = start.nextOffset
+            trimmed.canLoadEarlier = true
+            trimmed.hasBackfilledPrefix = start.hasBackfilledPrefix
+            trimmed.loadedPageStarts = Array(window.loadedPageStarts[...position])
+            return (Array(messages[index...]), trimmed)
+        }
+        return nil
     }
 
     /// Re-anchors a refreshed tail onto a transcript with backfilled older
