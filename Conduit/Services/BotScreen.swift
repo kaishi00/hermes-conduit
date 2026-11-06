@@ -255,6 +255,9 @@ final class BotScreenModel: ObservableObject {
     /// JSON-RPC's internal error: Hermes failed, not refused, so a hand back is tried again.
     static let internalErrorCode = -32603
 
+    /// Whether this model talks over `client` (a reconnect replaces it).
+    func uses(_ client: HermesClient?) -> Bool { self.client === client }
+
     init(profile: String, client: HermesClient?) {
         self.profile = profile
         self.client = client
@@ -447,6 +450,8 @@ final class BotScreenModel: ObservableObject {
         // now leaves it on its way. Counted in flight until then.
         if owes, let viewerID, let client, Self.owedReleases[profile] == viewerID {
             Self.spawnOwedRelease(profile: profile, client: client) { [weak self] answer in
+                // It went through after all: the earlier failure no longer stands.
+                self?.errorText = nil
                 self?.applyLease(BotScreenLease(answer["lease"]?.objectValue))
             }
         }
@@ -455,8 +460,11 @@ final class BotScreenModel: ObservableObject {
 
     /// The view is going: the person's hold goes with it (as closing the
     /// pane does on Hermes Desktop), then the stream.
-    func close() {
+    /// A reconnect rebuilds the sheet on the new client: the stream goes,
+    /// the hold stays the user's (the same viewer id is still theirs).
+    func close(reconnecting: Bool = false) {
         leaveGeneration += 1
+        if reconnecting { detach(); return }
         // A hand back already on its way isn't sent twice; one whose
         // retries gave up is sent again.
         if iHold, let client, let viewerID, !Self.releaseInFlight(profile) {

@@ -3922,6 +3922,26 @@ final class HermesClientTests: XCTestCase {
         let release = try sentFrame(socket)
         XCTAssertEqual(release["method"] as? String, "display.lease.release")
         XCTAssertEqual((release["params"] as? [String: Any])?["viewer_id"] as? String, "viewer-1")
+        // Answered, so its retry task ends here and not in a later test.
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(release["id"] as? Int),
+            "result": ["lease": NSNull()]
+        ], to: socket)
+        for _ in 0..<200 where BotScreenModel.releaseInFlight("furina") { await Task.yield() }
+        XCTAssertFalse(BotScreenModel.releaseInFlight("furina"))
+        client.disconnect()
+    }
+
+    func testABotScreenRebuiltByAReconnectKeepsTheHold() async throws {
+        let (client, _) = try await connectedClientForServerRequests()
+        BotScreenModel.viewerIDs["furina"] = "viewer-1"
+        defer { BotScreenModel.viewerIDs["furina"] = nil }
+        let model = BotScreenModel(profile: "furina", client: client)
+        XCTAssertTrue(model.uses(client))
+        XCTAssertFalse(model.uses(nil), "A new client (or none) is a reconnect")
+        model.close(reconnecting: true)
+        XCTAssertNil(BotScreenModel.owedReleases["furina"], "No hand back is owed for a reconnect")
+        XCTAssertFalse(BotScreenModel.releaseInFlight("furina"))
         client.disconnect()
     }
 

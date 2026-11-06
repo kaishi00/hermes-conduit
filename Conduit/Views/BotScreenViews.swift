@@ -77,7 +77,8 @@ private struct BotScreenContent: View {
         .task { await model.load() }
         // Who drives the screen now, read again while the sheet is open.
         .refreshesBotWork(profile: target.profile)
-        .onDisappear { model.close() }
+        // Gone because a reconnect rebuilt it on a new client: the hold stays.
+        .onDisappear { model.close(reconnecting: !model.uses(appState.client)) }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { model.backgrounded() }
             // Read again: the screen may have started or stopped meanwhile.
