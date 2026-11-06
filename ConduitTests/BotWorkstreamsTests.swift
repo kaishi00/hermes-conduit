@@ -1138,6 +1138,10 @@ extension BotModeTests {
         XCTAssertFalse(BotDragPayload.dropMerges(mergeReady: false, endedAt: now.addingTimeInterval(-2), now: now),
                        "a hover that ended a while ago moves")
         XCTAssertFalse(BotDragPayload.dropMerges(mergeReady: false, endedAt: nil, now: now), "never swollen: moves")
+        // After a slide into its place, a drop only acts to start a room.
+        XCTAssertFalse(BotDragPayload.dropActs(placed: true, merges: false), "slid here: a plain drop doesn't move it back")
+        XCTAssertTrue(BotDragPayload.dropActs(placed: true, merges: true), "slid here, then held still: the room starts")
+        XCTAssertTrue(BotDragPayload.dropActs(placed: false, merges: false))
     }
 
     /// Pinned bots come first, each group in the person's order, so Pin
