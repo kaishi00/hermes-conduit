@@ -83,6 +83,182 @@
         }
       }
     },
+    "Arrange your bots": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bots anordnen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arrange your bots"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Organiza tus bots"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Organisez vos bots"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atur bot Anda"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Organizza i tuoi bot"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ボットを並べ替える"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "봇 정리하기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uporządkuj boty"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Organize seus bots"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Расставьте ботов"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Botlarınızı düzenleyin"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "整理你的机器人"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "整理你的機器人"
+          }
+        }
+      }
+    },
+    "Hold one bot over another to start a room.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Halte einen Bot über einen anderen, um einen Raum zu starten."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hold one bot over another to start a room."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantén un bot sobre otro para iniciar una sala."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maintenez un bot sur un autre pour lancer un salon."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tahan satu bot di atas bot lain untuk memulai ruang."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tieni un bot sopra un altro per avviare una stanza."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ボットを別のボットの上で止めるとルームを始めます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "봇을 다른 봇 위에 잠시 두면 방을 시작합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Przytrzymaj jednego bota nad drugim, aby założyć pokój."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Segure um bot sobre outro para iniciar uma sala."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Задержите одного бота над другим, чтобы создать комнату."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oda başlatmak için bir botu başka birinin üzerinde tutun."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将一个机器人停在另一个上即可开始一个房间。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "將一個機器人停在另一個上即可開始一個房間。"
+          }
+        }
+      }
+    },
     "Refresh models": {
       "localizations": {
         "de": {
@@ -161,6 +337,94 @@
           "stringUnit": {
             "state": "translated",
             "value": "重新整理模型"
+          }
+        }
+      }
+    },
+    "Right-click a bot for its menu. Drag it to move it, or hold it over another bot to start a room.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klicke mit der rechten Maustaste auf einen Bot, um sein Menü zu öffnen. Zieh ihn, um ihn zu verschieben, oder halte ihn über einen anderen Bot, um einen Raum zu starten."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Right-click a bot for its menu. Drag it to move it, or hold it over another bot to start a room."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Haz clic derecho en un bot para ver su menú. Arrástralo para moverlo o mantenlo sobre otro bot para iniciar una sala."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Faites un clic droit sur un bot pour son menu. Faites-le glisser pour le déplacer, ou maintenez-le sur un autre bot pour lancer un salon."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klik kanan bot untuk menunya. Seret untuk memindahkannya, atau tahan di atas bot lain untuk memulai ruang."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fai clic destro su un bot per il suo menu. Trascinalo per spostarlo, o tienilo sopra un altro bot per avviare una stanza."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ボットを右クリックするとメニューが開きます。ドラッグで移動、別のボットの上で止めるとルームを始めます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "봇을 오른쪽 클릭하면 메뉴가 열립니다. 드래그해서 옮기거나, 다른 봇 위에 잠시 두면 방을 시작합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kliknij bota prawym przyciskiem, aby otworzyć jego menu. Przeciągnij, aby go przenieść, lub przytrzymaj nad innym botem, aby założyć pokój."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clique com o botão direito em um bot para ver o menu. Arraste para movê-lo ou segure sobre outro bot para iniciar uma sala."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Щёлкните бота правой кнопкой, чтобы открыть меню. Перетащите, чтобы переместить, или задержите над другим ботом, чтобы создать комнату."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menüsü için bir bota sağ tıklayın. Taşımak için sürükleyin veya oda başlatmak için başka bir botun üzerinde tutun."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "右键点按机器人可打开菜单。拖动可移动它，停在另一个机器人上可开始一个房间。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "右鍵點按機器人可打開選單。拖移可移動它，停在另一個機器人上可開始一個房間。"
           }
         }
       }
@@ -319244,6 +319508,94 @@
           "stringUnit": {
             "state": "translated",
             "value": "系統通知"
+          }
+        }
+      }
+    },
+    "Touch and hold a bot for its menu. Drag it to move it, or hold it over another bot to start a room.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Halte einen Bot gedrückt, um sein Menü zu öffnen. Zieh ihn, um ihn zu verschieben, oder halte ihn über einen anderen Bot, um einen Raum zu starten."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Touch and hold a bot for its menu. Drag it to move it, or hold it over another bot to start a room."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantén pulsado un bot para ver su menú. Arrástralo para moverlo o mantenlo sobre otro bot para iniciar una sala."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maintenez le doigt sur un bot pour son menu. Faites-le glisser pour le déplacer, ou maintenez-le sur un autre bot pour lancer un salon."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sentuh dan tahan bot untuk menunya. Seret untuk memindahkannya, atau tahan di atas bot lain untuk memulai ruang."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tieni premuto un bot per il suo menu. Trascinalo per spostarlo, o tienilo sopra un altro bot per avviare una stanza."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ボットを長押しするとメニューが開きます。ドラッグで移動、別のボットの上で止めるとルームを始めます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "봇을 길게 누르면 메뉴가 열립니다. 드래그해서 옮기거나, 다른 봇 위에 잠시 두면 방을 시작합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Przytrzymaj bota, aby otworzyć jego menu. Przeciągnij, aby go przenieść, lub przytrzymaj nad innym botem, aby założyć pokój."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toque e segure um bot para ver o menu. Arraste para movê-lo ou segure sobre outro bot para iniciar uma sala."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нажмите и удерживайте бота, чтобы открыть меню. Перетащите, чтобы переместить, или задержите над другим ботом, чтобы создать комнату."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menüsü için bir bota dokunup basılı tutun. Taşımak için sürükleyin veya oda başlatmak için başka bir botun üzerinde tutun."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按住机器人可打开菜单。拖动可移动它，停在另一个机器人上可开始一个房间。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按住機器人可打開選單。拖移可移動它，停在另一個機器人上可開始一個房間。"
           }
         }
       }
