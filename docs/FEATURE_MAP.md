@@ -5345,7 +5345,7 @@ Rooms, whose posts from a linked person still go in one `main` thread
 - A "Replying to" quote is text in a new thread, not a reply in the quoted message's thread: in a lead or automatic room it is routed like any message that names nobody.
 - A routing mode newer than this client reads as Everyone in Group Settings. Its real mode survives any save that leaves Who answers there, so such a room can't be switched to Everyone from Conduit; only picking a lead (or Automatically, where offered) sends routing.
 
-**Checked:** 2026-11-06, #1845 (added; from review, each message its own thread, routing goes in a save only when it changes, a save checks its room and compares with the settings it opened with, Continue rechecked at send, and six gaps recorded).
+**Checked:** 2026-11-06, #1845 (added; from review, each message its own thread, routing goes in a save only when it changes, a save checks its room and compares with the settings it opened with, Continue rechecked at send, and the Open gaps above).
 
 ## Linked Rooms
 

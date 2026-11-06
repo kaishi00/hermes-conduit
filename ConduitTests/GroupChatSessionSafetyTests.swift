@@ -1074,6 +1074,11 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         await appState.openGroupRoom(room)
 
         XCTAssertEqual(appState.activeRoomContinuablePauses["cap-1"]?.discussionEventID, "user:d1")
+        // A cap of one still offers the first Continue.
+        box.maxContinues = 1
+        appState.closeGroupRoom()
+        await appState.openGroupRoom(room)
+        XCTAssertEqual(appState.activeRoomContinuablePauses["cap-1"]?.grant, 1)
         // The host's cap decides: a pause whose next grant is past it offers nothing.
         box.maxContinues = 0
         appState.closeGroupRoom()

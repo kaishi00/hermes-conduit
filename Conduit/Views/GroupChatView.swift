@@ -1756,6 +1756,7 @@ struct GroupRoomSettingsSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(AppLocalization.string("Cancel")) { dismiss() }
+                        .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if isSaving {
@@ -1767,6 +1768,9 @@ struct GroupRoomSettingsSheet: View {
                 }
             }
         }
+        // A save in flight finishes in the sheet, so its failure is seen
+        // and a retry keeps its event id.
+        .interactiveDismissDisabled(isSaving)
         .onAppear {
             guard !loaded, let context = appState.activeRoomContext else { return }
             draft = context
