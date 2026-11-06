@@ -116,6 +116,17 @@ class BinaryTests(unittest.TestCase):
         self.assertIn("ActivityKit strongly", problems[0])
         self.assertIn("1877", problems[0])
 
+    def test_a_strong_imageplayground_link_is_reported(self):
+        out = textwrap.dedent("""\
+            Load command 12
+                      cmd LC_LOAD_DYLIB
+                  cmdsize 96
+                     name /System/Library/Frameworks/ImagePlayground.framework/ImagePlayground (offset 24)
+            """)
+        problems = check_weak_imports.strong_link_problems("x", out)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("ImagePlayground strongly", problems[0])
+
     def test_weak_links_and_other_frameworks_pass(self):
         out = textwrap.dedent("""\
             Load command 12
