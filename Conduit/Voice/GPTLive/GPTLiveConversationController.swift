@@ -1078,7 +1078,7 @@ final class GPTLiveConversationController: ObservableObject {
         // Another language's stems ("pas", "send") also start English
         // words: an English turn, or one too short to tell on an English
         // call, is read by the English rules alone. Otherwise the turn is
-        // read in its own language, then the call's, never in all at once:
+        // read in its own language and the call's, never in all at once:
         // "se" is Italian's "if" and Spanish's pronoun.
         let detected = OnDeviceSpeechStream.language(of: text)
         guard detected?.hasPrefix("en") != true else { return false }
@@ -1087,23 +1087,29 @@ final class GPTLiveConversationController: ObservableObject {
             let code = String(tag.prefix { $0 != "-" && $0 != "_" })
             if code != "en", !codes.contains(code) { codes.append(code) }
         }
-        for words in codes.compactMap({ Self.sendClaimWords[$0] }) {
-            for sentence in sentences {
-                if let next = normalized[sentence.endIndex...].first, next == "?" || next == "？" { continue }
-                // A condition anywhere holds it ("…, sobald du ja sagst").
-                guard sentence.range(of: words.condition, options: .regularExpression) == nil else { continue }
-                // Then clause by clause: an offer or a no before the send
-                // holds it, a reassurance after it doesn't ("… se lo envío
-                // a Hermes, no te preocupes").
-                for clause in sentence.split(omittingEmptySubsequences: true, whereSeparator: { ",;，、；".contains($0) }) {
-                    let line = String(clause)
-                    // "Kein Problem," and "Keine Sorge," open a yes, not a no.
-                    if line.range(of: Self.reassuranceOpener, options: .regularExpression) != nil { continue }
-                    if line.range(of: words.hedge, options: .regularExpression) != nil { break }
-                    // The send has to go to Hermes: "Hermes sagt, …" only
-                    // reports what Hermes said.
-                    if line.range(of: words.claim, options: .regularExpression) != nil { return true }
-                }
+        // Every candidate's offers, noes and conditions hold a send: a
+        // detector that takes "Lo mando a Hermes se serve." for Spanish
+        // mustn't lose Italian's "se". A missed send is the old behavior; a
+        // wrong one sends words the user didn't mean to send.
+        let candidates = codes.compactMap { Self.sendClaimWords[$0] }
+        guard !candidates.isEmpty else { return false }
+        func holds(_ text: Substring, _ pattern: KeyPath<SendClaimWords, String>) -> Bool {
+            candidates.contains { text.range(of: $0[keyPath: pattern], options: .regularExpression) != nil }
+        }
+        for sentence in sentences {
+            if let next = normalized[sentence.endIndex...].first, next == "?" || next == "？" { continue }
+            // A condition anywhere holds it ("…, sobald du ja sagst").
+            guard !holds(sentence, \.condition) else { continue }
+            // Then clause by clause: an offer or a no before the send holds
+            // it, a reassurance after it doesn't ("… se lo envío a Hermes,
+            // no te preocupes").
+            for clause in sentence.split(omittingEmptySubsequences: true, whereSeparator: { ",;，、；".contains($0) }) {
+                // "Kein Problem," and "Keine Sorge," open a yes, not a no.
+                if clause.range(of: Self.reassuranceOpener, options: .regularExpression) != nil { continue }
+                if holds(clause, \.hedge) { break }
+                // The send has to go to Hermes: "Hermes sagt, …" only
+                // reports what Hermes said.
+                if holds(clause, \.claim) { return true }
             }
         }
         return false

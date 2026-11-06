@@ -1542,7 +1542,7 @@ extension VoiceConversationControllerTests {
 
     /// A call speaks the user's language now (LiveVoiceLanguage), so the
     /// send-claim fallback (#945) reads a sentence sending something to
-    /// Hermes in each shipped language: the turn's own, then the call's.
+    /// Hermes in each shipped language: the turn's own and the call's.
     /// Its offers, conditions and noes still send nothing, and neither does
     /// a sentence that only reports what Hermes said.
     func testGPTLiveSendClaimIsReadInTheCallsLanguage() {
@@ -1567,8 +1567,6 @@ extension VoiceConversationControllerTests {
             ("Kein Problem, ich schicke das jetzt an Hermes.", "de"),
             ("Pas de problème, je transmets ça à Hermes.", "fr"),
             ("No hay problema, se lo envío a Hermes.", "es"),
-            // Spanish on an Italian call: its "se" is a pronoun.
-            ("Vale, se lo mando a Hermes ahora mismo.", "it"),
         ]
         for (claim, language) in claims {
             XCTAssertTrue(GPTLiveConversationController.claimsToSendToHermes(claim, callLanguage: language), claim)
