@@ -1028,11 +1028,18 @@ extension BotModeTests {
         poll(50)
         wait(for: [shown], timeout: 2)
 
+        // iOS 27: the zoom leaves the bar faded out rather than hidden.
+        navigation.navigationBar.alpha = 0
+        keeper.restoreBar()
+        XCTAssertEqual(navigation.navigationBar.alpha, 1)
+
         // Another screen on top: its bar is its own.
         navigation.pushViewController(UIViewController(), animated: false)
         navigation.setNavigationBarHidden(true, animated: false)
+        navigation.navigationBar.alpha = 0
         keeper.restoreBar()
         XCTAssertTrue(navigation.isNavigationBarHidden, "another screen's bar is its own")
+        XCTAssertEqual(navigation.navigationBar.alpha, 0)
         keeper.removeFromSuperview()
     }
 
