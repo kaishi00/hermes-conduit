@@ -81,15 +81,24 @@ struct NavigationBarKeeper: UIViewRepresentable {
             watched.removeAllObjects()
         }
 
+        /// Whether the keeper hears this swipe end.
+        func watches(_ recognizer: UIGestureRecognizer) -> Bool {
+            watched.contains(recognizer)
+        }
+
         @objc private func swipeChanged(_ recognizer: UIGestureRecognizer) {
             switch recognizer.state {
             case .ended, .cancelled, .failed:
-                // The transition a swipe drives finishes or cancels after
-                // the finger lifts: look once it has.
-                DispatchQueue.main.async { [weak self] in self?.afterSwipe() }
+                swipeEnded()
             default:
                 break
             }
+        }
+
+        /// The transition a swipe drives finishes or cancels after the
+        /// finger lifts: look once it has.
+        func swipeEnded() {
+            DispatchQueue.main.async { [weak self] in self?.afterSwipe() }
         }
 
         private func afterSwipe() {

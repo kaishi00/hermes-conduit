@@ -1,5 +1,4 @@
 import UIKit
-import UIKit.UIGestureRecognizerSubclass
 import XCTest
 
 @testable import Conduit
@@ -1009,16 +1008,17 @@ extension BotModeTests {
         defer { window.isHidden = true }
         window.layoutIfNeeded()
 
-        let swipeDown = LetGoSwipe()
+        let swipeDown = UIPanGestureRecognizer()
         swipeDown.name = SystemBackSwipeGate.zoomDismissalPrefix + "SwipeDown"
         page.view.addGestureRecognizer(swipeDown)
         let keeper = NavigationBarKeeper.KeeperView()
         page.view.addSubview(keeper)
         XCTAssertTrue(keeper.page === page)
+        XCTAssertTrue(keeper.watches(swipeDown), "the zoom's swipe down, by its name")
 
         // The swipe let go, the list's hidden bar left over the chat.
         navigation.setNavigationBarHidden(true, animated: false)
-        swipeDown.letGo()
+        keeper.swipeEnded()
         let shown = expectation(description: "the chat's bar is back")
         func poll(_ triesLeft: Int) {
             if !navigation.isNavigationBarHidden { return shown.fulfill() }
@@ -1486,14 +1486,5 @@ extension BotModeTests {
         let doneAsking = try XCTUnwrap(BotWorkItem(row: done))
         XCTAssertTrue(doneAsking.isActive)
         XCTAssertTrue(doneAsking.needsYou)
-    }
-}
-
-/// A swipe that a test lets go of: its end reaches its targets as a real
-/// one's does.
-private final class LetGoSwipe: UIPanGestureRecognizer {
-    func letGo() {
-        state = .began
-        state = .cancelled
     }
 }
