@@ -902,9 +902,10 @@ struct BotRosterView: View {
     }
 
     /// Group Chats has nothing to show yet, rooms can start here and there
-    /// are two bots to drop one on the other.
+    /// are two bots to drop one on the other; not in UI tests or the App
+    /// Store screenshots, like the tip.
     private var showsRoomHint: Bool {
-        canStartGroups && groupProbeFailure == nil && homeRooms.isEmpty
+        !BotsHomeGesturesTip.hiddenForTesting && canStartGroups && groupProbeFailure == nil && homeRooms.isEmpty
             && appState.shownDesktopGroupChats.isEmpty && newRoom.isEmpty && visibleBots.count >= 2
     }
 

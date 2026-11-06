@@ -23,10 +23,9 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         // A "Hermes wants to talk" notification's Talk button (#449), and a
         // Pulse push's Quiet for today.
         NotificationCategories.register()
-        // Bots Home's tip (BotsHomeGesturesTip). UI tests and the App Store
-        // screenshots run without tips, so what they find stays put.
-        let environment = ProcessInfo.processInfo.environment
-        if environment["CONDUIT_UITEST"] == "1" || environment["CONDUIT_HIDE_TIPS"] == "1" {
+        // Bots Home's tip (BotsHomeGesturesTip), hidden in UI tests and
+        // the App Store screenshots.
+        if BotsHomeGesturesTip.hiddenForTesting {
             Tips.hideAllTipsForTesting()
         }
         try? Tips.configure()

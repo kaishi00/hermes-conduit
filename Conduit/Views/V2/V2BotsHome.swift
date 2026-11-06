@@ -4,9 +4,10 @@
 //
 //  Bots Home, Conduit's first tab: every bot as a portrait, three across on
 //  a phone, with Pulse and Artifacts as small shortcuts under the title.
-//  A portrait opens the bot's Bot Chat; the pill under its name opens its
-//  Bot Overview (its chat, its work and its artifacts) and says what its
-//  work is doing. Group Chats follow the bots
+//  A portrait and its name open the bot's Bot Chat; the ⓘ beside the name
+//  opens its Bot Overview (its chat, its work and its artifacts), and so
+//  does the status pill under it when its work is doing something. Group
+//  Chats follow the bots
 //  (designs/bot-mode-coordinator/bots-home-ui.md, layout A).
 //
 
@@ -441,6 +442,14 @@ struct BotsHomeGesturesTip: Tip {
         [#Rule(Self.$hasBotsToArrange) { $0 == true }]
     }
 
+    /// UI tests and the App Store screenshots run without tips, and without
+    /// the inline hints that do a tip's job (the empty Group Chats' line),
+    /// so what they find stays put.
+    static var hiddenForTesting: Bool {
+        let environment = ProcessInfo.processInfo.environment
+        return environment["CONDUIT_UITEST"] == "1" || environment["CONDUIT_HIDE_TIPS"] == "1"
+    }
+
     /// The person has used what the tip shows.
     static func learned() {
         BotsHomeGesturesTip().invalidate(reason: .actionPerformed)
@@ -778,11 +787,14 @@ struct BotPortraitCell<MenuContent: View>: View {
             Image(systemName: "info.circle")
                 .scaledFont(.footnote.weight(.medium))
                 .foregroundStyle(.secondary)
-                .frame(width: 30, height: 44)
+                // A 44-point square target that takes 30 points of the row:
+                // drawn over the name's button, it wins the overlap.
+                .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
         .fixedSize()
+        .padding(.horizontal, -7)
         .help(AppLocalization.string("Overview"))
         .accessibilityLabel(Text(AppLocalization.string("\(bot.displayLabel)’s overview")))
         .accessibilityIdentifier("bots.overview.\(bot.name)")
@@ -807,7 +819,6 @@ struct BotPortraitCell<MenuContent: View>: View {
             }
             .buttonStyle(PressableButtonStyle())
             .accessibilityHidden(true)
-            .accessibilityIdentifier("bots.status.\(bot.name)")
         }
     }
 
