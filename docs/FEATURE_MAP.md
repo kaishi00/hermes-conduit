@@ -6093,7 +6093,7 @@ don't ship; `@testable import Conduit` resolves to Foundation's)
 - The binaries check passes without testing anything while the hosted runner's Xcode predates the 27.2 SDK; the targets check holds until then, and each TestFlight archive is checked on the Mac (`conduit-save-dsyms`, docs/RELEASE_WORKFLOW.md step 4). A failed check there renames the archive to `*.xcarchive.blocked-weak-imports`, so the upload step can't find it whatever the per-build scripts do with the exit code.
 - The smoke build has no Watch app, so only the targets check covers the Watch's binaries.
 
-**Checked:** 2026-11-06, #1850 (a failed archive check blocks the upload; Open gaps); 2026-11-06, #1848.
+**Checked:** 2026-11-06, #1856 (a failed archive check blocks the upload; Open gaps); 2026-11-06, #1848.
 
 ## Feature map rules
 
