@@ -15557,6 +15557,11 @@ final class AppState: ObservableObject {
     }
 
     func disconnect() {
+        // A switch to it still signing in loses the flow: its answer must
+        // not connect it again (Disconnect, Sign Out) or add it back and
+        // select it (removal). A switch runs to its end whatever cancels
+        // its caller, so the generation is what stops it.
+        dashboardSwitchGeneration &+= 1
         // Its waits belong to the signed-out user (issue 1705).
         needsYou.reset(dashboardID: nil)
         // The next sign-in to it asks for Face ID again.
@@ -15983,7 +15988,22 @@ final class AppState: ObservableObject {
     /// server streaming behind the new target's sign-in surface. The target
     /// becomes the selected dashboard BEFORE connecting, so a failed switch
     /// leaves it selected; no other dashboard is auto-connected.
+    ///
+    /// A switch runs to its end even when the task that asked for it is
+    /// cancelled: by the time it signs in to the target it has already
+    /// retired the outgoing connection, so stopping there leaves neither
+    /// dashboard connected. A newer switch supersedes it by generation,
+    /// never by cancellation. A notification's tap is the case in point:
+    /// its route restarts when `isConnected` flips, which the retirement
+    /// does, and that cancelled the target's sign-in halfway, leaving
+    /// Conduit on the login screen "connecting" to it (issue 1888).
     func switchDashboard(to id: UUID, widgetLease: WidgetLaunchLease? = nil) async {
+        await Task { @MainActor in
+            await self.runDashboardSwitch(to: id, widgetLease: widgetLease)
+        }.value
+    }
+
+    private func runDashboardSwitch(to id: UUID, widgetLease: WidgetLaunchLease?) async {
         if widgetLease == nil { widgetLaunchCoordinator.supersede() }
         guard widgetLease?.isCurrent != false else { return }
         widgetAwaitingInteractiveAuthenticationDashboardID = nil
@@ -26195,6 +26215,10 @@ final class AppState: ObservableObject {
                 return callOutcome
             }
             await switchDashboard(to: dashboardID)
+            // The switch flipped `isConnected`, which restarts this route's
+            // task; the run it restarted opens the tap once the dashboard is
+            // connected, so this one stops (issue 1888).
+            if Task.isCancelled { return .retry }
             guard isConnected, activeDashboardID == dashboardID, client != nil else {
                 // The switch failed: the target stays selected with its
                 // sign-in/repair surface, and the notification routes
