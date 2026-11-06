@@ -251,7 +251,19 @@ struct RichBoard: Equatable {
     /// isn't one. A board whose cards can't all be drawn comes back with
     /// no cards and its Markdown, so the row never shows part of it or
     /// nothing at all.
-    static func board(for tool: ToolActivity, schema: RichCardSchema? = .bundled) -> RichBoard? {
+    ///
+    /// A row's body asks on every publish while it's on screen, so each
+    /// finished answer is read once and kept (issue 1851): an answer can
+    /// be megabytes of JSON.
+    static func board(for tool: ToolActivity) -> RichBoard? {
+        guard tool.name.lowercased() == RichCard.toolName, tool.status == .complete else { return nil }
+        return boards.value(for: tool) { board(for: tool, schema: .bundled) }
+    }
+
+    private static let boards = FinishedToolMemo<RichBoard?>()
+
+    /// `board(for:)` read against `schema`, not kept.
+    static func board(for tool: ToolActivity, schema: RichCardSchema?) -> RichBoard? {
         guard tool.name.lowercased() == RichCard.toolName, tool.status == .complete else { return nil }
         let answer = RichBoard.jsonObject(tool.output)
         let markdown = (answer?["markdown"] as? String).flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
@@ -291,5 +303,59 @@ struct RichBoard: Equatable {
     private static func jsonObject(_ text: String?) -> [String: Any]? {
         guard let text, let data = text.data(using: .utf8) else { return nil }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+}
+
+/// What Conduit read from finished tool rows, kept so a row drawn again
+/// isn't read again. A finished call's input and output don't change, but a
+/// row can be replaced (history read again, an id reused), so an entry is
+/// used only while the call's name, input and output are still the same.
+/// Comparing a string the row still holds with the one kept is a pointer
+/// check; an equal copy read again is compared once, then kept in its place.
+final class FinishedToolMemo<Value>: @unchecked Sendable {
+    private struct Key: Hashable {
+        let id: String
+        // Counts only: hashing a megabyte answer on every look-up costs
+        // what the memo saves.
+        let input: Int
+        let output: Int
+    }
+
+    private struct Entry {
+        var name: String
+        var input: String?
+        var output: String?
+        let value: Value
+    }
+
+    private let limit: Int
+    private let lock = NSLock()
+    private var entries: [Key: Entry] = [:]
+
+    init(limit: Int = 200) {
+        self.limit = limit
+    }
+
+    /// The value kept for `tool` under `id` (the tool call's id when nil),
+    /// or `make()`'s, kept for next time.
+    func value(for tool: ToolActivity, id: String? = nil, make: () -> Value) -> Value {
+        let key = Key(id: id ?? tool.id ?? "", input: tool.input?.utf8.count ?? -1,
+                      output: tool.output?.utf8.count ?? -1)
+        lock.lock()
+        if var entry = entries[key], entry.name == tool.name, entry.input == tool.input, entry.output == tool.output {
+            // Keep the row's own strings, so the next check is a pointer's.
+            entry.input = tool.input
+            entry.output = tool.output
+            entries[key] = entry
+            lock.unlock()
+            return entry.value
+        }
+        lock.unlock()
+        let value = make()
+        lock.lock()
+        if entries.count >= limit { entries.removeAll(keepingCapacity: true) }
+        entries[key] = Entry(name: tool.name, input: tool.input, output: tool.output, value: value)
+        lock.unlock()
+        return value
     }
 }
