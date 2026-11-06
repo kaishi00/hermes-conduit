@@ -113,6 +113,8 @@ struct V2ConversationScreen: View {
     @State private var artifactSessionIDs: ArtifactSheetIDs?
     /// Edit Bot from a Bot Chat's ⋯ menu (Eric 2026-11-03).
     @State private var editedBot: BotEditorSheet.Mode?
+    /// The bot's screen, opened from the menu (Bot Screen).
+    @State private var screenTarget: BotScreenTarget?
     /// What a save from there couldn't do, said as the Bots list says it.
     @State private var editBotWarning: String?
     @State private var pendingEditBotWarning: String?
@@ -266,7 +268,7 @@ struct V2ConversationScreen: View {
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
         // The bot's overview and Edit Bot cover the chat too.
-        .onChange(of: artifactSessionIDs != nil || chatTitlePendingRename != nil
+        .onChange(of: screenTarget != nil || artifactSessionIDs != nil || chatTitlePendingRename != nil
                   || chatTitlePendingDeletion != nil || editedBot != nil
                   || (workPanelOpen && !fitsSidePanel && workProfile != nil)) { _, covered in
             appState.chatCoveredBySheet = covered
@@ -299,6 +301,10 @@ struct V2ConversationScreen: View {
                 )
                 .environmentObject(appState)
             }
+        }
+        .sheet(item: $screenTarget) { target in
+            BotScreenSheet(target: target)
+                .environmentObject(appState)
         }
         .sheet(item: $artifactSessionIDs) { sheet in
             ChatArtifactsSheet(sessionIDs: sheet.ids, tab: sheet.tab) { artifactSessionIDs?.tab = $0 }
@@ -565,7 +571,9 @@ struct V2ConversationScreen: View {
                 onDisbandRoom: { confirmsRoomDisband = true },
                 onChooseRoomPicture: { choosesRoomPicture = $0 },
                 onArtifacts: { openArtifacts(tab: .made) },
-                onEditBot: { editedBot = .edit($0) }
+                onEditBot: { editedBot = .edit($0) },
+                onScreen: { screenTarget = $0 },
+                screens: appState.botScreens
             )
         }
         // Artifacts beside the chat, on a window with room for both.
@@ -732,6 +740,16 @@ private struct V2ConversationMenu: View {
     let onChooseRoomPicture: (GroupRoomPictureRequest) -> Void
     let onArtifacts: () -> Void
     let onEditBot: (BotProfile) -> Void
+    let onScreen: (BotScreenTarget) -> Void
+    @ObservedObject var screens: BotScreenSupport
+
+    /// The bot whose screen this chat can open: a Bot Chat's or a
+    /// workstream's, once its host said it can have one.
+    private var screenProfile: String? {
+        guard appState.activeRoomSurface == nil,
+              let profile = appState.activeBotChatProfile ?? appState.activeWorkstream?.profile else { return nil }
+        return profile
+    }
 
     /// The bot whose chat this is, once the roster has it.
     private var chatBot: BotProfile? {
@@ -777,6 +795,16 @@ private struct V2ConversationMenu: View {
                     }
                     // As the Bots list's Edit Bot: Hermes answers its reads and saves.
                     .disabled(appState.botModePhase != .available || !appState.isConnected)
+                }
+                if let profile = screenProfile, screens.isSupported(profile) {
+                    Button {
+                        onScreen(BotScreenTarget(profile: profile,
+                                                 botName: appState.botWork.snapshot(profile)?.botName
+                                                     ?? appState.profileDisplayName(profile)))
+                    } label: {
+                        Label(AppLocalization.string("Bot's Screen"), systemImage: "display")
+                    }
+                    .disabled(!appState.isConnected)
                 }
                 if let session = appState.activeChatSessionSummary {
                     Section {
@@ -826,6 +854,13 @@ private struct V2ConversationMenu: View {
         .accessibilityLabel(AppLocalization.string("Conversation options"))
         .accessibilityValue(statusWord)
         .accessibilityIdentifier("conversation.menu")
+        // Asks the bot's host once whether it can have a screen, so the
+        // entry shows only where it can (never on Windows or macOS hosts).
+        .task(id: "\(screenProfile ?? "")\u{1F}\(appState.isConnected)") {
+            if let profile = screenProfile, appState.isConnected {
+                screens.check(profile, client: appState.client)
+            }
+        }
     }
 }
 
