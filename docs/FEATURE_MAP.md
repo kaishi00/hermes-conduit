@@ -4719,19 +4719,19 @@ setup page (setup/index.html in hermes-conduit-website)
 
 **Code**
 - Rows and page: `Conduit/Views/AuxiliaryViews.swift` (v2Sections, SettingsHome, GatewaySettingsDetail and its title)
-- Chat's sheet and Diagnostics & logs: `Conduit/Views/ChatSupportSheets.swift` (GatewayDiagnosticsSheet and its Placement), `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Services/AppState.swift` (refreshGatewayDiagnostics)
+- Chat's sheet and Diagnostics & logs: `Conduit/Views/ChatSupportSheets.swift` (GatewayDiagnosticsSheet and its Placement), `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Services/AppState.swift` (refreshGatewayDiagnostics), `Conduit/Services/AppState+GatewayRestart.swift`
 - Sign-in screen's link: `Conduit/Views/Login/LoginScreens.swift` (LoginDiagnosticsLink, LoginFlowPresentations), `Conduit/Views/Login/LoginFlowModel.swift` (showsDiagnostics)
 - Docs: `README.md`, `notifier/docs/support/index.html`
 - Tests: `ConduitTests/ConnectionFailureTests+ChatTraces.swift` (testGatewayDiagnosticsWithNoDashboardSayNotConnected)
 
 **Rulings**
 - The page takes its row's name: Connection in V2's Settings, Gateway in the legacy sheet. Docs and support text say Settings > Connection (2026-10-26, #1298).
-- Diagnostics & logs opens whatever the connection: signed out, never connected or reconnecting, it still shows and shares what the device keeps (the last connection, device reports, chat traces). With no dashboard to ask, its gateway part says it isn't connected, and the connectors and gateway logs are left out until there's something to show; from the sign-in screen it has no gateway part or gateway buttons at all. Connecting or dropping while it's open reads the gateway again. Its sheets have Done, for the iPad app on a Mac (Eric, 2026-11-05: Diagnostics & logs couldn't be opened while disconnected; #1840).
+- Diagnostics & logs opens whatever the connection: signed out, never connected or reconnecting, it still shows and shares what the device keeps (the last connection, device reports, chat traces). With no dashboard to ask, its gateway part says it isn't connected, and the connectors and gateway logs are left out until there's something to show; from the sign-in screen it has no gateway part or gateway buttons at all. Connecting or dropping while it's open reads the gateway again, and so does a restart ending, wherever the page is open (#1841). Its sheets have Done, for the iPad app on a Mac (Eric, 2026-11-05: Diagnostics & logs couldn't be opened while disconnected; #1840).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-05, #1840 (Diagnostics & logs opens while disconnected and from the sign-in screen; Siblings, Code, Rulings); 2026-10-26, at #1298.
+**Checked:** 2026-11-06, #1841 (Diagnostics & logs reads the gateway again when a restart ends, Settings' page included; Rulings, Code); 2026-11-05, #1840 (Diagnostics & logs opens while disconnected and from the sign-in screen; Siblings, Code, Rulings); 2026-10-26, at #1298.
 
 ## Another saved dashboard's address
 
