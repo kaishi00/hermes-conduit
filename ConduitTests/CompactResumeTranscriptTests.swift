@@ -2050,6 +2050,13 @@ final class CompactResumeTranscriptTests: XCTestCase {
         )
         XCTAssertEqual(messages.last?.content, "Row 1999", "The loaded tail stays intact")
         XCTAssertTrue(harness.appState.persistedTranscriptWindow?.hasBackfilledPrefix ?? false)
+        // The page start on the folded result moved to its call card, so a
+        // long chat's cut can still go back to it, keeping the run whole.
+        let starts = harness.appState.persistedTranscriptWindow?.loadedPageStarts ?? []
+        XCTAssertEqual(starts.map(\.firstRowID), ["1879.0-tool-0", "1760.0"])
+        XCTAssertTrue(starts.allSatisfy { start in messages.contains { $0.id == start.firstRowID } })
+        XCTAssertEqual(starts.first?.nextOffset, 120)
+        XCTAssertEqual(starts.first?.hasBackfilledPrefix, true)
     }
 
     /// A single assistant turn can carry any number of tool calls. A page
