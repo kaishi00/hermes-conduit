@@ -1304,6 +1304,7 @@ struct V2ChatsView: View, Equatable {
             pinnedIDs: pinnedIDs,
             tags: appState.voiceSessionTagsByKey,
             linksRevision: appState.voiceCallChatLinksRevision,
+            dashboard: appState.activeDashboardID,
             profile: appState.activeProfile,
             profiles: appState.profiles,
             order: appState.pinnedChatOrder,
@@ -2713,7 +2714,8 @@ final class V2NestExpansionCache {
 /// The Sessions nest tree, kept between renders while the things it is
 /// built from stand still. Its key is every input the tree reads: the rows
 /// the list shows, the search and filter, which of those rows are pinned,
-/// the voice tags and call links that decide a row's parent, the profile,
+/// the voice tags and call links that decide a row's parent, the dashboard
+/// and profile those tags are read for,
 /// the person's pinned order and whether profiles are grouped. An equal
 /// key is the same tree, so nothing outlives the state it was read from.
 final class V2SessionsNestingCache {
@@ -2724,6 +2726,9 @@ final class V2SessionsNestingCache {
         var pinnedIDs: Set<String>
         var tags: [String: [String: VoiceSessionTag]]
         var linksRevision: Int
+        /// Voice tags are read by dashboard and profile, and profile names
+        /// repeat across Hermes servers.
+        var dashboard: UUID?
         var profile: String
         var profiles: [String]
         var order: PinnedChatOrder
