@@ -3,6 +3,56 @@ import XCTest
 
 @MainActor
 final class MessageNormalizerTests: XCTestCase {
+    func testHistoryCommentaryProjectionPreservesOrderToolsAndFinal() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .string("a"), "role": .string("assistant"), "content": .string("Final answer"),
+                "reasoning": .string("private\nChecking\nReading"),
+                "display_reasoning": .string("private"),
+                "display_commentary": .array([.string("Checking"), .string("Reading")]),
+                "codex_message_items": .array([.object(["text": .string("secret sidecar")])]),
+                "tool_calls": .array([.object(["id": .string("call-1"), "name": .string("search")])])
+            ]),
+            .object(["role": .string("tool"), "tool_call_id": .string("call-1"), "content": .string("result")])
+        ])
+        XCTAssertEqual(messages.map(\.role), [.reasoning, .assistant, .assistant, .assistant, .tool])
+        XCTAssertEqual(messages.map(\.content), ["private", "Checking", "Reading", "Final answer", ""])
+        XCTAssertEqual(messages.map(\.id), ["a-reasoning", "a-commentary-0", "a-commentary-1", "a", "a-tool-0"])
+        XCTAssertEqual(messages.last?.tool?.id, "call-1")
+        XCTAssertEqual(messages.last?.tool?.output, "result")
+    }
+
+    func testHistoryEmptyAndMalformedProjectionsNeverFallBackOrPromoteSidecars() {
+        for projection in [AnyCodable.string(""), .null, .object(["text": .string("bad")])] {
+            let messages = MessageNormalizer.normalizeMessages([
+                .object([
+                    "role": .string("assistant"), "content": .string("Answer"),
+                    "reasoning": .string("private and withheld commentary"),
+                    "display_reasoning": projection, "display_commentary": .array([]),
+                    "codex_message_items": .array([.object(["text": .string("withheld")])])
+                ])
+            ])
+            XCTAssertEqual(messages.map(\.content), ["Answer"])
+            XCTAssertEqual(messages.map(\.role), [.assistant])
+        }
+    }
+
+    func testHistoryProjectionAcceptsOnlyAssistantStringCommentaryAndLegacyReasoning() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object(["role": .string("user"), "content": .string("Question"),
+                     "display_commentary": .array([.string("not assistant")])]),
+            .object(["role": .string("assistant"), "content": .string(""),
+                     "reasoning_content": .string("legacy thought"),
+                     "display_commentary": .array([.string("Progress"), .null, .object(["text": .string("unsafe")]), .string(" ")])]),
+            .object(["role": .string("assistant"), "content": .string("Already included"),
+                     "display_commentary": .array([])]),
+            .object(["role": .string("assistant"), "display_kind": .string("hidden"),
+                     "content": .string("hidden"), "display_commentary": .array([.string("hidden progress")])])
+        ])
+        XCTAssertEqual(messages.map(\.role), [.user, .reasoning, .assistant, .assistant])
+        XCTAssertEqual(messages.map(\.content), ["Question", "legacy thought", "Progress", "Already included"])
+    }
+
     func testRuntimeSnapshotReadsLiveAssistantProjection() {
         let snapshot = SessionRuntimeSnapshot(
             object: [:],
