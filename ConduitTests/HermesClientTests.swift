@@ -3818,7 +3818,7 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual(second["method"] as? String, "display.lease.release")
         try await deliverFrame([
             "jsonrpc": "2.0", "id": try XCTUnwrap(second["id"] as? Int),
-            "result": ["lease": ["epoch": 3, "owner": "agent"]]
+            "result": ["lease": ["epoch": 3, "holder": "agent"]]
         ], to: socket)
         let answer = await send.value
         XCTAssertNotNil(answer, "The second try went through")
@@ -3840,7 +3840,7 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual(release["method"] as? String, "display.lease.release")
         try await deliverFrame([
             "jsonrpc": "2.0", "id": try XCTUnwrap(release["id"] as? Int),
-            "result": ["lease": ["epoch": 2, "owner": "agent"]]
+            "result": ["lease": ["epoch": 2, "holder": "agent"]]
         ], to: socket)
         await waitForSends(base + 2, on: socket)
         let status = try sentFrame(socket)
@@ -3891,7 +3891,7 @@ final class HermesClientTests: XCTestCase {
         XCTAssertNil(BotScreenModel.owedReleases["furina"], "Taking over cancels the hand back still owed")
         try await deliverFrame([
             "jsonrpc": "2.0", "id": try XCTUnwrap(acquire["id"] as? Int),
-            "result": ["lease": ["epoch": 4, "owner": "human"]]
+            "result": ["lease": ["epoch": 4, "holder": "human"]]
         ], to: socket)
         await take.value
         XCTAssertEqual(socket.sentTexts.count, base + 1, "No release follows the takeover")
@@ -3914,7 +3914,7 @@ final class HermesClientTests: XCTestCase {
         model.close()
         try await deliverFrame([
             "jsonrpc": "2.0", "id": try XCTUnwrap(acquire["id"] as? Int),
-            "result": ["lease": ["epoch": 4, "owner": "human"]]
+            "result": ["lease": ["epoch": 4, "holder": "human"]]
         ], to: socket)
         await take.value
         XCTAssertEqual(BotScreenModel.owedReleases["furina"], "viewer-1", "Owed until it goes through")

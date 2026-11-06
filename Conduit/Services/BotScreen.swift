@@ -408,7 +408,16 @@ final class BotScreenModel: ObservableObject {
             var params: [String: Any] = [:]
             if let viewerID = self.viewerID, !force { params["viewer_id"] = viewerID }
             if force { params["force"] = true }
-            let answer = try await client.display("display.lease.release", profile: self.profile, params: params)
+            let answer: [String: AnyCodable]
+            do {
+                answer = try await client.display("display.lease.release", profile: self.profile, params: params)
+            } catch let error as RpcError where error.code != Self.internalErrorCode {
+                // Refused (the hold isn't this viewer's any more): not owed.
+                if let viewerID = self.viewerID, Self.owedReleases[self.profile] == viewerID {
+                    Self.owedReleases[self.profile] = nil
+                }
+                throw error
+            }
             if let viewerID = self.viewerID, Self.owedReleases[self.profile] == viewerID {
                 Self.owedReleases[self.profile] = nil
             }
