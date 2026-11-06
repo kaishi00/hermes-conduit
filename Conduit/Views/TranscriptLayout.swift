@@ -471,14 +471,24 @@ final class TranscriptLayout: UICollectionViewLayout {
     /// split off, and no taller for a script of several bytes a character.
     private static func textHeight(_ text: String, width: CGFloat) -> CGFloat {
         let charactersPerLine = max(20, width / 8)
+        // The height is capped at 6,000 points, and lines only ever add up:
+        // once the counted lines reach the cap, the rest of the text cannot
+        // change the answer, so a long paste costs no more than about 270
+        // lines' worth of bytes, even when it is one paragraph.
+        let capLines = (6_000 - 24) / CGFloat(22)
         var lines: CGFloat = 0
         var paragraphCharacters = 0
+        var paragraphBudget = capLines * charactersPerLine
         for byte in text.utf8 {
             if byte == UInt8(ascii: "\n") {
                 lines += max(1, (CGFloat(paragraphCharacters) / charactersPerLine).rounded(.up))
                 paragraphCharacters = 0
+                if lines >= capLines { return 6_000 }
+                paragraphBudget = (capLines - lines) * charactersPerLine
             } else if (byte & 0xC0) != 0x80 {
                 paragraphCharacters += 1
+                // This paragraph alone takes the lines past the cap.
+                if CGFloat(paragraphCharacters) > paragraphBudget { return 6_000 }
             }
         }
         lines += max(1, (CGFloat(paragraphCharacters) / charactersPerLine).rounded(.up))
