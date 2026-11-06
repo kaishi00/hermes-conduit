@@ -53,6 +53,8 @@ struct AnimatedAvatarFrames: View {
         .onChange(of: playback) { _, playback in
             if plays { player.play(playback) } else { player.stop() }
         }
+        // Decorative over the still: taps go to whatever holds the face.
+        .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
 }
