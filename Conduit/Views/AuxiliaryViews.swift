@@ -613,10 +613,14 @@ struct SettingsView: View {
                 // V2's Settings tab: each screen stops above the floating
                 // tab bar and fades under it. Nothing in the sheet.
                 .v2TabBarClearance()
+                // The tab's side margins are the window's as the shell
+                // reads them, not the stack's (#1900). Nothing in the sheet.
+                .windowSideContent()
                 .navigationDestination(for: SettingsDestination.self) { destination in
                     destinationView(destination)
                         .readableSettingsColumn()
                         .v2TabBarClearance()
+                        .windowSideContent()
                 }
         }
         .preferredColorScheme(appState.themePreference.colorScheme)

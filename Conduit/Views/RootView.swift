@@ -122,6 +122,10 @@ struct MainView: View {
     @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var availableWindowWidth: CGFloat = 0
+    /// The window's side safe area, read here outside every navigation
+    /// stack: the drawer shell's screens take it in place of what UIKit
+    /// hands their stack (`windowSideContent`, #1900). V2 reads its own.
+    @State private var windowSideInsets: WindowSideInsets?
     @State private var settingsPresentation: SettingsSnapshot?
     @State private var shouldPresentSettingsAfterSidebarDismissal = false
     /// The page Settings opens at next, for an in-app settings link.
@@ -510,6 +514,8 @@ struct MainView: View {
                     presentation: .persistent
                 )
                 .frame(width: persistentSidebarWidth)
+                // The leading column's share of the window's side insets.
+                .environment(\.windowSideInsets, windowSideInsets?.reaching(.leading))
 
                 // Drags the sidebar's width, as V2's list (#1487).
                 ColumnDivider(
@@ -523,9 +529,11 @@ struct MainView: View {
                 )
 
                 chatNavigationContent
+                    .environment(\.windowSideInsets, windowSideInsets?.reaching(.trailing))
             }
         } else {
             chatNavigationContent
+                .environment(\.windowSideInsets, windowSideInsets)
         }
     }
 
@@ -556,6 +564,7 @@ struct MainView: View {
                 // the backdrop still fills it.
                 .readableChatColumn()
             }
+            .windowSideContent()
             .overlay(alignment: .leading) {
                 if !isPersistentSidebarActive {
                     EdgePanGesture { appState.showSidebar = true }
@@ -744,6 +753,9 @@ struct MainView: View {
     private var windowWidthReader: some View {
         GeometryReader { proxy in
             Color.clear.preference(key: MainViewWindowWidthKey.self, value: proxy.size.width)
+                .onGeometryChange(for: WindowSideInsets.self) { WindowSideInsets($0.safeAreaInsets) } action: { insets in
+                    if windowSideInsets != insets { windowSideInsets = insets }
+                }
         }
     }
 

@@ -209,6 +209,19 @@ extension SidebarLayoutTests {
         XCTAssertEqual(V2SplitLayout.tabRoutes(listing: [.artifacts], keepsConversation: false), [.artifacts])
     }
 
+    func testColumnsTakeTheWindowSideInsetsOnlyOnTheSidesTheyReach() {
+        // An iPhone Duo's inner screen in landscape: its side status bar.
+        let window = WindowSideInsets(EdgeInsets(top: 24, leading: 0, bottom: 20, trailing: 84))
+        XCTAssertEqual(window, WindowSideInsets(leading: 0, trailing: 84))
+        // The list beside a chat never reaches the trailing edge (#1765).
+        XCTAssertEqual(window.reaching(.leading), WindowSideInsets(leading: 0, trailing: 0))
+        XCTAssertEqual(window.reaching(.trailing), WindowSideInsets(leading: 0, trailing: 84))
+        // One column reaches both; a landscape iPhone keeps its sensor's side.
+        let phone = WindowSideInsets(leading: 62, trailing: 62)
+        XCTAssertEqual(phone.reaching([.leading, .trailing]), phone)
+        XCTAssertEqual(phone.reaching(.leading), WindowSideInsets(leading: 62, trailing: 0))
+    }
+
     func testReadableWidthMarginCentersAndNeverGoesNegative() {
         XCTAssertEqual(ReadableWidth.margin(available: 400, maxWidth: ReadableWidth.chat), 0)
         XCTAssertEqual(ReadableWidth.margin(available: 760, maxWidth: 760), 0)

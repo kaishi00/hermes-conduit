@@ -5844,23 +5844,28 @@ does.
 (a chat, its side panel, the empty column, Settings beside the list) · the
 drawer shell's persistent sidebar beside its chat (Appearance, V2 off), never
 clipped · the one-column screens they match (Tasks, a list shown alone, a
-phone)
+phone) · every tab's screens in one column (Chats, Bots and the pages they
+push, a chat, Tasks, Settings and its pages) and the drawer shell's chat: the
+side safe area they take (#1900)
 
 **Code**
 - `Conduit/Views/V2/V2Shell.swift` (splitColumns, v2ClippedToColumn, leadingColumnContent)
 - Drawer shell: `Conduit/Views/RootView.swift` (sidebarLayoutContent), `Conduit/Views/SidebarView.swift` (PersistentColumnContent)
 - The line between them: `Conduit/Views/Components/ColumnDivider.swift` (ColumnDivider, which drags a column's width: Resizable columns on a split window)
 - The backdrop: `Conduit/Theme.swift` (ConduitBackdrop ignores the safe area)
+- The side safe area a stack's screens take: `Conduit/Views/Components/WindowSideInsets.swift` (WindowSideInsets, windowSideContent), read outside every stack by `Conduit/Views/V2/V2Shell.swift` (sizedTabs) and `Conduit/Views/RootView.swift` (windowWidthReader); Settings' stack in `Conduit/Views/AuxiliaryViews.swift` (SettingsView)
+- Tests: `ConduitTests/V2SplitLayoutTests.swift` (testColumnsTakeTheWindowSideInsetsOnlyOnTheSidesTheyReach)
 
 **Rulings**
 - Each column's backdrop stays clipped at the divider, so the glows don't cross it, and runs under the window's safe areas at the top, the bottom and its own outer side: the home indicator, and a landscape status bar or sensor. Clipped at the safe area, every split tab showed black bars along the bottom and the right of an iPhone Duo's inner screen while Tasks filled it (2026-10-29, #1472, a tester's report).
 - The list column's screens (the Chats or Bots list and every page it pushes, and the drawer shell's persistent sidebar) take no trailing safe area and keep to the column's leading edge (`leadingColumnContent`). The column never reaches the window's trailing edge, but UIKit can hand its navigation stack the window's trailing inset: on an iPhone Duo's inner screen the list got the 84 pt side status bar, its two-row bar no longer fit in the 291 pt left, and centering the overflow cut the profile pill, section headers and row icons off on the left (2026-11-05, #1798, #1765). Reproduced on the Duo simulator by giving the list's stack that inset; the trigger on the reporter's phone wasn't reproduced. Constraining the row of columns (#1767) didn't change it: the row was never wider than the window.
+- Every screen in a navigation stack takes the window's side safe area as the shell reads it outside every stack, the column's share of it (a list beside a chat the leading side's, the chat's column the trailing side's), never what UIKit hands the stack (`windowSideContent`). On an iPhone Duo's inner screen with Conduit in the left half of a split screen, every tab's stack got an 84 pt leading inset (the side status bar's width) the window didn't have: the rows, the transcript and the composer started 84 pt in while the floating tab bar and the chat's Back sat at the window's edge (2026-11-06, #PRNUM, issue 1900, a tester's screenshots). The drawer shell's chat and persistent sidebar take it the same way; a sheet (Settings in the drawer shell) keeps its own.
 
 **Open gaps**
-- Not seen on a device yet: a Duo or a split iPad from TestFlight confirms both rulings.
+- Not seen on a device yet: a Duo or a split iPad from TestFlight confirms the rulings, the split screen's leading inset (issue 1900) included. The simulator never produced the stale insets itself.
 - A page pushed over the split list keeps its navigation bar's share of the stale trailing inset: with the 84 pt inset, Pulse's trailing filter button sat about 22 pt in, still fully visible (#1798's simulator check). Covering the bar takes setting the list's navigation controller's safe area from UIKit, which the simulator can't verify, since it never produces the stale inset itself. The Duo simulator (iOS 27.2 Duo runtime) needs unfolding by hand in Device Hub.
 
-**Checked:** 2026-11-05, #1798 (the list column's screens drop the trailing safe area; #1765). Earlier 2026-10-29, #1498 (ColumnDivider's store rules and drag direction are ColumnWidth functions; the layout is unchanged); 2026-10-29, #1492 (the 1 pt line between the columns is a draggable ColumnDivider above them; the drawer shell's sidebar threshold counts it); 2026-10-29, #1472.
+**Checked:** 2026-11-06, #PRNUM (every stack's screens take the window's side safe area as the shell reads it; issue 1900). Earlier 2026-11-05, #1798 (the list column's screens drop the trailing safe area; #1765). Earlier 2026-10-29, #1498 (ColumnDivider's store rules and drag direction are ColumnWidth functions; the layout is unchanged); 2026-10-29, #1492 (the 1 pt line between the columns is a draggable ColumnDivider above them; the drawer shell's sidebar threshold counts it); 2026-10-29, #1472.
 
 ## Resizable columns on a split window
 

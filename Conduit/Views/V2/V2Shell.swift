@@ -632,6 +632,11 @@ struct V2Shell: View {
             let split = V2SplitLayout.isSplit(width: proxy.size.width, showsList: chatListBeside)
             let list = V2SplitLayout.ListColumn(window: proxy.size.width, stored: storedListWidth, dragged: draggedListWidth)
             tabs(split: split, canSplit: canSplit, list: list)
+                // The window's side safe area as the shell has it, outside
+                // every stack: each tab's screens take it, or their
+                // column's share of it, in place of what UIKit hands their
+                // stack (`windowSideContent`, #1900).
+                .environment(\.windowSideInsets, WindowSideInsets(proxy.safeAreaInsets))
                 .environment(\.v2Shell, V2ShellContext(pickProfile: { pickProfile($0) }, dropQueuedProfilePick: { queuedProfilePick = V2QueuedProfilePick() }, showScheduledRuns: showScheduledRuns, values: .init(contentFaded: contentFaded, contentShift: contentShift, isSplit: split, canSplit: canSplit, isPickingProfile: isPickingProfile)))
         }
     }
@@ -942,22 +947,26 @@ struct V2Shell: View {
                 // Only the list's own changes redraw it, not the shell's
                 // (`V2ShownUpdates`).
                 listRoot(tabBarClearance(V2ChatsView(appState: appState).equatable()), alone: canSplit)
-                    .navigationDestination(for: V2Route.self) { destination($0, alone: canSplit) }
+                    .windowSideContent()
+                    .navigationDestination(for: V2Route.self) { destination($0, alone: canSplit).windowSideContent() }
             }
         case .tasks:
             // Inside the stack, as on Chats and Bots: the lists in it stop
             // above the bar and fade under it.
             NavigationStack {
                 tabBarClearance(V2TasksView())
+                    .windowSideContent()
             }
         case .bots:
             NavigationStack(path: $botsPath) {
                 // A Bot Chat or a room grows out of its portrait
                 // (BotZoomDestination).
                 listRoot(tabBarClearance(V2BotsView()), alone: canSplit)
+                    .windowSideContent()
                     .environment(\.botZoomNamespace, botZoom)
                     .navigationDestination(for: V2Route.self) { route in
                         destination(route, alone: canSplit)
+                            .windowSideContent()
                             // Only straight from Bots Home: under Pulse or
                             // Artifacts the portrait isn't on screen.
                             .modifier(BotZoomDestination(route: route, namespace: botZoom,
@@ -1032,6 +1041,9 @@ struct V2Shell: View {
                     }
             }
             .frame(width: column.width)
+            // The list's screens take the window's leading inset, never
+            // its trailing one (`leadingColumnContent`).
+            .transformEnvironment(\.windowSideInsets) { $0 = $0?.reaching(.leading) }
             // Each column's backdrop stays in its own column.
             .v2ClippedToColumn(outerEdge: .leading)
             ColumnDivider(
@@ -1048,6 +1060,7 @@ struct V2Shell: View {
                     if path.wrappedValue.contains(.conversation) {
                         NavigationStack {
                             V2ConversationScreen()
+                                .windowSideContent()
                         }
                         // Pushed or popped on a phone, VoiceOver follows; beside
                         // the list the column says so itself, opening or closing.
@@ -1079,6 +1092,9 @@ struct V2Shell: View {
                 }
             }
             .animation(nil, value: selectedTab)
+            // The chat's column (and Settings in it) takes the window's
+            // trailing inset, never its leading one.
+            .transformEnvironment(\.windowSideInsets) { $0 = $0?.reaching(.trailing) }
             .v2ClippedToColumn(outerEdge: .trailing)
         }
     }
@@ -1342,10 +1358,23 @@ extension View {
     /// 375 pt list its 84 pt side status bar, the list's bar no longer fit
     /// in what was left, and centering the overflow cut the profile pill,
     /// section headers and row icons off on the left (#1765). The screen
-    /// ignores that inset and keeps to the column's leading edge.
+    /// takes the column's share of the window's safe area, the leading
+    /// side's only (`windowSideContent`), and keeps to the column's
+    /// leading edge. Where no shell read the window's (nil), it still
+    /// drops the trailing inset.
     func leadingColumnContent() -> some View {
-        frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-            .ignoresSafeArea(.container, edges: .trailing)
+        modifier(LeadingColumnContent())
+    }
+}
+
+private struct LeadingColumnContent: ViewModifier {
+    @Environment(\.windowSideInsets) private var insets
+
+    func body(content: Content) -> some View {
+        content
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            .ignoresSafeArea(.container, edges: insets == nil ? Edge.Set.trailing : Edge.Set())
+            .windowSideContent()
     }
 }
 
