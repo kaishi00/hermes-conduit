@@ -109,6 +109,7 @@ struct V2ConversationScreen: View {
     @State private var chatTitlePendingDeletion: SessionSummary?
     @State private var confirmsRoomDisband = false
     @State private var choosesRoomPicture: GroupRoomPictureRequest?
+    @State private var showsRoomSettings = false
     /// The open chat's ids while its Artifacts sheet shows.
     @State private var artifactSessionIDs: ArtifactSheetIDs?
     /// Edit Bot from a Bot Chat's ⋯ menu (Eric 2026-11-03).
@@ -330,7 +331,8 @@ struct V2ConversationScreen: View {
             chatTitlePendingRename: $chatTitlePendingRename,
             chatTitlePendingDeletion: $chatTitlePendingDeletion,
             confirmsRoomDisband: $confirmsRoomDisband,
-            choosesRoomPicture: $choosesRoomPicture
+            choosesRoomPicture: $choosesRoomPicture,
+            showsRoomSettings: $showsRoomSettings
         ))
     }
 
@@ -570,6 +572,7 @@ struct V2ConversationScreen: View {
                 onDelete: { chatTitlePendingDeletion = $0 },
                 onDisbandRoom: { confirmsRoomDisband = true },
                 onChooseRoomPicture: { choosesRoomPicture = $0 },
+                onRoomSettings: { showsRoomSettings = true },
                 onArtifacts: { openArtifacts(tab: .made) },
                 onEditBot: { editedBot = .edit($0) },
                 onScreen: { screenTarget = $0 },
@@ -602,17 +605,22 @@ struct V2ConversationScreen: View {
     }
 }
 
-/// The conversation's rename sheet, delete alert, room picture picker and
-/// disband confirmation.
+/// The conversation's rename sheet, delete alert, room picture picker, room
+/// settings and disband confirmation.
 private struct ConversationDialogs: ViewModifier {
     @EnvironmentObject private var appState: AppState
     @Binding var chatTitlePendingRename: SessionSummary?
     @Binding var chatTitlePendingDeletion: SessionSummary?
     @Binding var confirmsRoomDisband: Bool
     @Binding var choosesRoomPicture: GroupRoomPictureRequest?
+    @Binding var showsRoomSettings: Bool
 
     func body(content: Content) -> some View {
         content
+            .sheet(isPresented: $showsRoomSettings) {
+                GroupRoomSettingsSheet()
+                    .environmentObject(appState)
+            }
             .sheet(item: $chatTitlePendingRename) { session in
                 RenameSheet.conversation(session) { title in
                     Task { await appState.renameSession(session, to: title) }
@@ -738,6 +746,7 @@ private struct V2ConversationMenu: View {
     let onDelete: (SessionSummary) -> Void
     let onDisbandRoom: () -> Void
     let onChooseRoomPicture: (GroupRoomPictureRequest) -> Void
+    let onRoomSettings: () -> Void
     let onArtifacts: () -> Void
     let onEditBot: (BotProfile) -> Void
     let onScreen: (BotScreenTarget) -> Void
@@ -775,7 +784,9 @@ private struct V2ConversationMenu: View {
     var body: some View {
         Menu {
             if appState.activeRoomSurface != nil {
-                GroupRoomActionItems(onDisband: onDisbandRoom, onChoosePicture: onChooseRoomPicture)
+                GroupRoomActionItems(
+                    onDisband: onDisbandRoom, onChoosePicture: onChooseRoomPicture, onOpenSettings: onRoomSettings
+                )
             } else {
                 Button {
                     Task { await appState.refreshActiveSession() }

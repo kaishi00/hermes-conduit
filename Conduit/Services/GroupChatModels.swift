@@ -25,7 +25,9 @@ enum GroupWire {
     ]
 
     /// Methods this slice degrades without (stop surfaces only when present).
-    static let optionalMethods: Set<String> = ["groups.stop", "groups.rename", "groups.approve", "groups.retry"]
+    static let optionalMethods: Set<String> = [
+        "groups.stop", "groups.rename", "groups.approve", "groups.retry", "groups.context", "groups.continue",
+    ]
 }
 
 /// The `groups.capabilities` result, reduced to what the client consumes.
@@ -196,6 +198,70 @@ struct GroupDriverStatus: Equatable {
     var pendingApprovals: [GroupPendingApproval] {
         pendingActions.compactMap(GroupPendingApproval.init(action:))
     }
+
+    /// How many times one discussion paused at its cap may be continued
+    /// (`max_continues`, Hermes 0.23); nil on a host without Continue.
+    var maxContinues: Int? = nil
+    /// Who-answers modes the host offers (`routing_modes`: `everyone`,
+    /// `lead`, `auto`); nil on a host that routes every message to everyone.
+    var routingModes: [String]? = nil
+    /// The room's settings, which `groups.state` answers beside the driver
+    /// status (`context`); nil when the host didn't send them.
+    var roomContext: GroupRoomContext? = nil
+
+    /// The same status with the driver's own fields changed, keeping what
+    /// the host said about the room.
+    func with(running: Bool, working: Bool) -> GroupDriverStatus {
+        var status = GroupDriverStatus(
+            running: running, working: working, blocked: blocked, counts: counts, pendingActions: pendingActions
+        )
+        status.maxContinues = maxContinues
+        status.routingModes = routingModes
+        status.roomContext = roomContext
+        return status
+    }
+}
+
+/// Who takes a message that names nobody (`room.context_set` `routing`,
+/// `gateway/hosted_room_context.py`). An @mention, @all/@everyone, a reply
+/// in a thread and a scheduled post go where they always did.
+enum GroupRouting: String, CaseIterable, Equatable {
+    /// Every member gets a turn (the default).
+    case everyone
+    /// The lead picks who takes it (`gateway/hosted_room_lead.py`).
+    case lead
+    /// One quick model call picks who it is for (`gateway/hosted_room_router.py`).
+    case auto
+}
+
+/// One room's settings: purpose, shared notes and who answers. They live in
+/// the room log as `room.context_set` events, and `groups.state` answers
+/// the latest.
+struct GroupRoomContext: Equatable {
+    static let maxPurposeCharacters = 500
+    static let maxNotesBytes = 4 * 1024
+
+    var purpose: String = ""
+    var notes: String = ""
+    var routing: GroupRouting = .everyone
+    /// The lead's member id; empty unless `routing` is `lead`.
+    var leadMemberID: String = ""
+
+    /// From `groups.state`'s `context` or a `room.context_set` payload. A
+    /// routing this client predates reads as `everyone`, the host's default.
+    init(object: [String: AnyCodable]) {
+        purpose = object["purpose"]?.stringValue ?? ""
+        notes = object["notes"]?.stringValue ?? ""
+        routing = object["routing"]?.stringValue.flatMap(GroupRouting.init(rawValue:)) ?? .everyone
+        leadMemberID = routing == .lead ? (object["lead_member_id"]?.stringValue ?? "") : ""
+    }
+
+    init(purpose: String = "", notes: String = "", routing: GroupRouting = .everyone, leadMemberID: String = "") {
+        self.purpose = purpose
+        self.notes = notes
+        self.routing = routing
+        self.leadMemberID = routing == .lead ? leadMemberID : ""
+    }
 }
 
 /// One `kind: "approval"` row of `pending_actions`: a member's tool call the
@@ -334,20 +400,25 @@ enum GroupDecoders {
         )
     }
 
-    static func driverStatus(_ value: AnyCodable?) -> GroupDriverStatus? {
+    /// `context` is `groups.state`'s room settings, kept with the status.
+    static func driverStatus(_ value: AnyCodable?, context: AnyCodable? = nil) -> GroupDriverStatus? {
         guard let object = value?.objectValue else { return nil }
         var counts: [String: Int] = [:]
         for (key, count) in object["counts"]?.objectValue ?? [:] {
             if let number = HermesClient.exactIntValue(count) { counts[key] = number }
         }
         let pending = (object["pending_actions"]?.arrayValue ?? []).compactMap { $0.objectValue }
-        return GroupDriverStatus(
+        var status = GroupDriverStatus(
             running: object["running"]?.boolValue ?? false,
             working: object["working"]?.boolValue ?? false,
             blocked: object["blocked"]?.boolValue ?? false,
             counts: counts,
             pendingActions: pending
         )
+        status.maxContinues = HermesClient.exactIntValue(object["max_continues"])
+        status.routingModes = object["routing_modes"]?.arrayValue?.compactMap(\.stringValue)
+        status.roomContext = context?.objectValue.map(GroupRoomContext.init(object:))
+        return status
     }
 
     static func logPage(_ result: AnyCodable?) -> GroupLogPage? {
@@ -961,9 +1032,28 @@ enum GroupRoomTurns {
     /// idle. Mirrors `plan_next_task` except the per-member watermark skip,
     /// which never changes the pick for a live Discussion: a round-0
     /// responder always has the new user message unseen, and a later-round
-    /// responder was cited after it last spoke.
-    static func pendingResponder(events: [GroupEvent], members: [GroupMember]) -> GroupMember? {
+    /// responder was cited after it last spoke. `context` is the room's
+    /// settings as the host last gave them, for a discussion whose own
+    /// `room.context_set` is older than the events kept.
+    static func pendingResponder(
+        events: [GroupEvent], members: [GroupMember], context: GroupRoomContext? = nil
+    ) -> GroupMember? {
         guard !members.isEmpty, let discussion = pendingDiscussion(events) else { return nil }
+        let route = Self.route(of: discussion, events: events, members: members, context: context)
+        let firstRound: [GroupMember]
+        switch route {
+        case .leadChoosing(let lead):
+            // The lead's routing turn runs before anyone answers.
+            return lead
+        case .routerChoosing:
+            return nil
+        case .routed(let picked, _):
+            firstRound = picked
+        case .unrouted:
+            firstRound = resolveMentions(
+                in: [discussion.payload["text"]?.stringValue ?? ""], members: members, defaultAll: true
+            )
+        }
         let threadID = discussion.threadID ?? ""
         let committed = Set(events.compactMap { event -> String? in
             guard event.kind == "turn.settled" else { return nil }
@@ -977,21 +1067,34 @@ enum GroupRoomTurns {
         let memberMessages = threadMessages.filter {
             $0.isMemberMessage && $0.payload["discussion_event_id"]?.stringValue == discussion.eventID
         }
-        guard memberMessages.count < maxMessages else { return nil }
+        // Each Continue grants the discussion another full budget.
+        let continues = continuedEvents(of: discussion.eventID, in: events)
+        let budgets = continues.count + 1
+        guard memberMessages.count < maxMessages * budgets else { return nil }
 
+        // The lead's routing turn is not its round-0 answer.
+        let routingTaskID = route.routingTaskID
         var terminals = Set<String>()
         for event in events where terminalKinds.contains(event.kind)
-            && event.payload["discussion_event_id"]?.stringValue == discussion.eventID {
+            && event.payload["discussion_event_id"]?.stringValue == discussion.eventID
+            && (routingTaskID == nil || event.payload["task_id"]?.stringValue != routingTaskID) {
             if let round = HermesClient.exactIntValue(event.payload["round_index"]),
                let memberID = event.payload["member_id"]?.stringValue {
                 terminals.insert("\(round)|\(memberID.lowercased())")
             }
         }
+        // `resume_round`: the round after the last reply before the latest
+        // Continue, where the whole room picks the discussion back up when
+        // nobody was cited.
+        let resumeRound = continues.last.map { latest in
+            1 + (memberMessages.filter { $0.seq < latest.seq }
+                .compactMap { HermesClient.exactIntValue($0.payload["round_index"]) }
+                .max() ?? -1)
+        }
 
-        for round in 0..<maxRounds {
-            let responders = round == 0
-                ? resolveMentions(in: [discussion.payload["text"]?.stringValue ?? ""], members: members, defaultAll: true)
-                : unaddressedMentions(discussionMessages, members: members)
+        for round in 0..<(maxRounds * budgets) {
+            var responders = round == 0 ? firstRound : unaddressedMentions(discussionMessages, members: members)
+            if responders.isEmpty, round == resumeRound { responders = members }
             for member in rotate(responders, by: round)
             where !terminals.contains("\(round)|\(routingID(of: member))") {
                 return member
@@ -1004,15 +1107,154 @@ enum GroupRoomTurns {
         return nil
     }
 
+    /// How the pending discussion's first round is chosen, for the room's
+    /// subtitle ("Ada is choosing who answers…"); nil when the room is idle.
+    static func pendingRoute(
+        events: [GroupEvent], members: [GroupMember], context: GroupRoomContext? = nil
+    ) -> DiscussionRoute? {
+        guard !members.isEmpty, let discussion = pendingDiscussion(events) else { return nil }
+        return route(of: discussion, events: events, members: members, context: context)
+    }
+
+    /// Who takes a discussion's first round, as the host's routing decides.
+    enum DiscussionRoute: Equatable {
+        /// The room's normal rules: mentions, or everyone.
+        case unrouted
+        /// A lead room's lead is still picking who takes it.
+        case leadChoosing(GroupMember)
+        /// An automatic room's router hasn't answered yet.
+        case routerChoosing
+        /// The lead's `room.assignment` (with its routing turn's task id) or
+        /// the router's `room.routed`.
+        case routed([GroupMember], routingTaskID: String?)
+
+        var routingTaskID: String? {
+            if case .routed(_, let taskID) = self { return taskID }
+            return nil
+        }
+    }
+
+    /// `routes_through_lead` and the planner's routing pick for one
+    /// discussion. A lead whose `room.assignment` names nobody seated, or a
+    /// router answer naming nobody seated, falls back as the host does.
+    static func route(
+        of discussion: GroupEvent, events: [GroupEvent], members: [GroupMember], context fallback: GroupRoomContext?
+    ) -> DiscussionRoute {
+        let context = self.context(before: discussion.seq, in: events) ?? fallback ?? GroupRoomContext()
+        guard context.routing != .everyone, routesItself(discussion, events: events, members: members) else {
+            return .unrouted
+        }
+        let discussionID = discussion.eventID
+        switch context.routing {
+        case .everyone:
+            return .unrouted
+        case .lead:
+            guard let lead = member(withID: context.leadMemberID, in: members) else { return .unrouted }
+            guard let assignment = events.first(where: {
+                $0.kind == "room.assignment" && $0.payload["discussion_event_id"]?.stringValue == discussionID
+            }) else { return .leadChoosing(lead) }
+            let picked = memberIDs(assignment.payload["member_ids"], in: members)
+            return .routed(picked.isEmpty ? [lead] : picked, routingTaskID: assignment.payload["task_id"]?.stringValue)
+        case .auto:
+            guard let routed = events.first(where: {
+                $0.kind == "room.routed" && $0.payload["discussion_event_id"]?.stringValue == discussionID
+            }) else { return .routerChoosing }
+            let picked = memberIDs(routed.payload["member_ids"], in: members)
+            let everyone = routed.payload["everyone"]?.boolValue == true || picked.isEmpty
+            return .routed(everyone ? members : picked, routingTaskID: nil)
+        }
+    }
+
+    /// A human message that opens a new thread and names nobody: no member
+    /// handle, no @all/@everyone, not a scheduled job's post.
+    private static func routesItself(_ discussion: GroupEvent, events: [GroupEvent], members: [GroupMember]) -> Bool {
+        if discussion.actor.kind == "user",
+           discussion.actor.id.hasPrefix("cron:") || discussion.actor.id.hasPrefix("cron-notice:") {
+            return false
+        }
+        let text = discussion.payload["text"]?.stringValue ?? ""
+        if mentionsAnyone(text, members: members) { return false }
+        let threadID = discussion.threadID ?? ""
+        return !events.contains { event in
+            event.seq < discussion.seq && event.isChatMessage && (event.threadID ?? "") == threadID
+        }
+    }
+
+    private static func mentionsAnyone(_ text: String, members: [GroupMember]) -> Bool {
+        guard let regex = routingMentionRegex else { return false }
+        let handles = Set(members.compactMap { $0.handle?.lowercased() }).union(["all", "everyone"])
+        let range = NSRange(text.startIndex..., in: text)
+        return regex.matches(in: text, range: range).contains { match in
+            guard let tokenRange = Range(match.range(at: 1), in: text) else { return false }
+            return handles.contains(text[tokenRange].lowercased())
+        }
+    }
+
+    /// The seated members a payload's `member_ids` names, in roster order.
+    static func memberIDs(_ value: AnyCodable?, in members: [GroupMember]) -> [GroupMember] {
+        let ids = Set((value?.arrayValue ?? []).compactMap { $0.stringValue?.lowercased() })
+        return members.filter { ids.contains(routingID(of: $0)) }
+    }
+
+    /// The room's settings in force before `seq` (the latest
+    /// `room.context_set` under it), or nil when the kept events hold none.
+    static func context(before seq: Int, in events: [GroupEvent]) -> GroupRoomContext? {
+        events.last { $0.kind == "room.context_set" && $0.seq < seq }.map { GroupRoomContext(object: $0.payload) }
+    }
+
+    /// A discussion's `room.continued` events, oldest first.
+    private static func continuedEvents(of discussionID: String, in events: [GroupEvent]) -> [GroupEvent] {
+        events.filter {
+            $0.kind == "room.continued" && $0.payload["discussion_event_id"]?.stringValue == discussionID
+        }
+    }
+
+    /// The `room.activity` events (`bounded`) whose discussion is paused at
+    /// its cap and may be continued, by event id, with the discussion each
+    /// continues and the grant the next Continue takes (`paused_discussion`).
+    /// A Stop after the discussion's message, a newer message in its thread
+    /// after the cap, or a Continue after it ends the pause.
+    static func continuablePauses(events: [GroupEvent]) -> [String: (discussionEventID: String, grant: Int)] {
+        var latestOutcome: [String: GroupEvent] = [:]
+        var grants: [String: Int] = [:]
+        for event in events {
+            guard let discussionID = event.payload["discussion_event_id"]?.stringValue else { continue }
+            if event.kind == "room.continued" {
+                grants[discussionID, default: 0] += 1
+                latestOutcome.removeValue(forKey: discussionID)
+            } else if event.kind == "room.activity" {
+                latestOutcome[discussionID] = event
+            }
+        }
+        var pauses: [String: (discussionEventID: String, grant: Int)] = [:]
+        for (discussionID, bounded) in latestOutcome where roomActivityOutcome(bounded) == .bounded {
+            let sourceSeq = events.first { $0.eventID == discussionID }?.seq ?? bounded.seq
+            let threadID = bounded.threadID
+            let ended = events.contains { event in
+                (event.kind == "room.stop_requested" && event.seq > sourceSeq)
+                    || (event.seq > bounded.seq && event.isUserMessage && event.threadID == threadID)
+            }
+            if !ended { pauses[bounded.id] = (discussionID, (grants[discussionID] ?? 0) + 1) }
+        }
+        return pauses
+    }
+
     /// Oldest latest-per-thread user message not stopped and not yet
-    /// settled or bounded (`_pending_discussion`).
+    /// settled or bounded (`_pending_discussion`). A `room.continued`
+    /// reopens a discussion its earlier activity completed.
     private static func pendingDiscussion(_ events: [GroupEvent]) -> GroupEvent? {
         let stoppedThrough = events.filter { $0.kind == "room.stop_requested" }.map(\.seq).max() ?? 0
+        var continuedAt: [String: Int] = [:]
+        for event in events where event.kind == "room.continued" {
+            if let id = event.payload["discussion_event_id"]?.stringValue { continuedAt[id] = event.seq }
+        }
         let completed = Set(events.compactMap { event -> String? in
             guard event.kind == "room.activity",
                   let status = event.payload["status"]?.stringValue,
-                  status == "settled" || status == "bounded" else { return nil }
-            return event.payload["discussion_event_id"]?.stringValue
+                  status == "settled" || status == "bounded",
+                  let id = event.payload["discussion_event_id"]?.stringValue,
+                  event.seq > continuedAt[id, default: 0] else { return nil }
+            return id
         })
         var latestByThread: [String: GroupEvent] = [:]
         for event in events where event.isUserMessage {

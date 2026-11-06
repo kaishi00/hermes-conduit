@@ -1021,6 +1021,164 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertNil(GroupRoomTurns.pendingResponder(events: stopped, members: members))
     }
 
+    // MARK: - Routing and Continue (Hermes 0.23)
+
+    private let gateway: [String: Any] = ["kind": "gateway", "id": "gw-a"]
+
+    private func contextSet(seq: Int, routing: String, lead: String = "") -> GroupEvent {
+        turnEvent(eventJSON(
+            seq: seq, kind: "room.context_set", actor: ["kind": "system", "id": "room-control"],
+            payload: ["purpose": "", "notes": "", "routing": routing, "lead_member_id": lead]
+        ))
+    }
+
+    private func roomEvent(seq: Int, kind: String, _ payload: [String: Any]) -> GroupEvent {
+        turnEvent(eventJSON(seq: seq, kind: kind, actor: gateway, payload: payload))
+    }
+
+    func testALeadRoomWaitsOnTheLeadThenItsPick() {
+        let members = roomMembers()
+        var log = [contextSet(seq: 1, routing: "lead", lead: "zhongli"), userMessage(seq: 2, text: "Plan the trip")]
+        XCTAssertEqual(GroupRoomTurns.pendingResponder(events: log, members: members)?.memberID, "zhongli")
+        XCTAssertEqual(GroupRoomTurns.pendingRoute(events: log, members: members), .leadChoosing(members[1]))
+
+        // The routing turn ends and the lead gave it to Furina alone.
+        log += [
+            roomEvent(seq: 3, kind: "room.assignment", [
+                "discussion_event_id": "user:d1", "thread_id": "main", "task_id": "route-task",
+                "lead_member_id": "zhongli", "member_ids": ["furina"], "fallback": false,
+            ]),
+            roomEvent(seq: 4, kind: "turn.settled", [
+                "thread_id": "main", "discussion_event_id": "user:d1", "member_id": "zhongli",
+                "round_index": 0, "passed": true, "task_id": "route-task",
+            ]),
+        ]
+        XCTAssertEqual(GroupRoomTurns.pendingResponder(events: log, members: members)?.memberID, "furina")
+        XCTAssertEqual(GroupRoomTurns.pendingRoute(events: log, members: members), .routed([members[0]], routingTaskID: "route-task"))
+
+        // A message that names someone skips the lead.
+        let named = [contextSet(seq: 1, routing: "lead", lead: "zhongli"), userMessage(seq: 2, text: "@furina hi")]
+        XCTAssertEqual(GroupRoomTurns.pendingResponder(events: named, members: members)?.memberID, "furina")
+        XCTAssertEqual(GroupRoomTurns.pendingRoute(events: named, members: members), .unrouted)
+    }
+
+    func testEachNewThreadIsRoutedAndAReplyInItsThreadIsNot() {
+        let members = roomMembers()
+        func message(_ seq: Int, _ text: String, thread: String) -> GroupEvent {
+            turnEvent(eventJSON(seq: seq, kind: "message.user", payload: ["text": text, "thread_id": thread],
+                                eventID: "user:\(thread)-\(seq)"))
+        }
+        let settled = roomEvent(seq: 3, kind: "room.activity", [
+            "status": "settled", "thread_id": "t1", "discussion_event_id": "user:t1-2",
+        ])
+        // A second message in a thread of its own goes to the lead again.
+        let second = [contextSet(seq: 1, routing: "lead", lead: "zhongli"), message(2, "First", thread: "t1"),
+                      settled, message(4, "Second", thread: "t2")]
+        XCTAssertEqual(GroupRoomTurns.pendingRoute(events: second, members: members), .leadChoosing(members[1]))
+        // One in the first message's thread is a reply, which goes to everyone.
+        let reply = [contextSet(seq: 1, routing: "lead", lead: "zhongli"), message(2, "First", thread: "t1"),
+                     settled, message(4, "More", thread: "t1")]
+        XCTAssertEqual(GroupRoomTurns.pendingRoute(events: reply, members: members), .unrouted)
+    }
+
+    func testTheLeadsRoutingTurnIsNotItsAnswer() {
+        let members = roomMembers()
+        let log = [
+            contextSet(seq: 1, routing: "lead", lead: "zhongli"),
+            userMessage(seq: 2, text: "Who should take this?"),
+            roomEvent(seq: 3, kind: "room.assignment", [
+                "discussion_event_id": "user:d1", "thread_id": "main", "task_id": "route-task",
+                "lead_member_id": "zhongli", "member_ids": ["zhongli"], "fallback": false,
+            ]),
+            roomEvent(seq: 4, kind: "turn.settled", [
+                "thread_id": "main", "discussion_event_id": "user:d1", "member_id": "zhongli",
+                "round_index": 0, "passed": true, "task_id": "route-task",
+            ]),
+        ]
+        XCTAssertEqual(GroupRoomTurns.pendingResponder(events: log, members: members)?.memberID, "zhongli",
+                       "a lead that gave the message to itself still answers it")
+    }
+
+    func testAnAutomaticRoomWaitsOnTheRouter() {
+        let members = roomMembers()
+        var log = [userMessage(seq: 1, text: "What's the weather?")]
+        let auto = GroupRoomContext(routing: .auto)
+        // The host's settings stand in for a context event older than the kept tail.
+        XCTAssertNil(GroupRoomTurns.pendingResponder(events: log, members: members, context: auto))
+        XCTAssertEqual(GroupRoomTurns.pendingRoute(events: log, members: members, context: auto), .routerChoosing)
+
+        log.append(roomEvent(seq: 2, kind: "room.routed", [
+            "discussion_event_id": "user:d1", "thread_id": "main", "member_ids": ["zhongli"],
+            "everyone": false, "fallback": false,
+        ]))
+        XCTAssertEqual(GroupRoomTurns.pendingResponder(events: log, members: members, context: auto)?.memberID, "zhongli")
+
+        let fallback = [userMessage(seq: 1, text: "Hi"), roomEvent(seq: 2, kind: "room.routed", [
+            "discussion_event_id": "user:d1", "thread_id": "main", "member_ids": [String](),
+            "everyone": true, "fallback": true,
+        ])]
+        XCTAssertEqual(GroupRoomTurns.pendingResponder(events: fallback, members: members, context: auto)?.memberID, "furina")
+
+        // A context event in the log wins over the host's current settings.
+        let everyone = [contextSet(seq: 1, routing: "everyone"), userMessage(seq: 2, text: "Hi")]
+        XCTAssertEqual(GroupRoomTurns.pendingResponder(events: everyone, members: members, context: auto)?.memberID, "furina")
+    }
+
+    func testContinueReopensADiscussionPausedAtItsCap() {
+        let members = roomMembers()
+        var log = [
+            userMessage(seq: 1, text: "Debate it"),
+            memberMessage(seq: 2, member: "furina", round: 0, text: "No."),
+            settled(seq: 3, member: "furina", round: 0, messageSeq: 2),
+            memberMessage(seq: 4, member: "zhongli", round: 0, text: "Yes."),
+            settled(seq: 5, member: "zhongli", round: 0, messageSeq: 4),
+            roomEvent(seq: 6, kind: "room.activity", [
+                "status": "bounded", "reason_code": "max_rounds", "thread_id": "main", "discussion_event_id": "user:d1",
+            ]),
+        ]
+        XCTAssertNil(GroupRoomTurns.pendingResponder(events: log, members: members))
+        XCTAssertEqual(GroupRoomTurns.continuablePauses(events: log)["e6"]?.discussionEventID, "user:d1")
+        XCTAssertEqual(GroupRoomTurns.continuablePauses(events: log)["e6"]?.grant, 1)
+
+        // Continue: the whole room picks it back up in the next round.
+        log.append(roomEvent(seq: 7, kind: "room.continued", [
+            "discussion_event_id": "user:d1", "thread_id": "main", "grant": 1,
+        ]))
+        XCTAssertTrue(GroupRoomTurns.continuablePauses(events: log).isEmpty)
+        XCTAssertEqual(GroupRoomTurns.pendingResponder(events: log, members: members)?.memberID, "zhongli",
+                       "round 1 rotates the roster")
+
+        // A Stop after the discussion's message ends the pause.
+        let stopped = Array(log.prefix(6)) + [roomEvent(seq: 7, kind: "room.stop_requested", ["cancel_id": "c1"])]
+        XCTAssertTrue(GroupRoomTurns.continuablePauses(events: stopped).isEmpty)
+
+        // Paused again after its first Continue: the next one is the second grant.
+        let again = log + [roomEvent(seq: 8, kind: "room.activity", [
+            "status": "bounded", "reason_code": "max_rounds", "thread_id": "main", "discussion_event_id": "user:d1",
+        ])]
+        XCTAssertEqual(GroupRoomTurns.continuablePauses(events: again)["e8"]?.grant, 2)
+
+        // A newer message in the thread ends a pause.
+        let moved = Array(log.prefix(6)) + [userMessage(seq: 7, text: "Next topic", id: "user:d2")]
+        XCTAssertTrue(GroupRoomTurns.continuablePauses(events: moved).isEmpty)
+    }
+
+    func testStateCarriesTheRoomsSettingsAndRouting() {
+        let status = GroupDecoders.driverStatus(
+            any(["running": true, "working": false, "max_continues": 5, "routing_modes": ["everyone", "lead", "auto"]]),
+            context: any(["purpose": "Trips", "notes": "Budget 2k", "routing": "lead", "lead_member_id": "zhongli"])
+        )
+        XCTAssertEqual(status?.maxContinues, 5)
+        XCTAssertEqual(status?.routingModes, ["everyone", "lead", "auto"])
+        XCTAssertEqual(status?.roomContext, GroupRoomContext(purpose: "Trips", notes: "Budget 2k", routing: .lead, leadMemberID: "zhongli"))
+        // A host before routing: no modes, and a routing this client predates reads as everyone.
+        let older = GroupDecoders.driverStatus(any(["running": true]), context: any(["purpose": "x", "routing": "vote"]))
+        XCTAssertNil(older?.routingModes)
+        XCTAssertNil(older?.maxContinues)
+        XCTAssertEqual(older?.roomContext?.routing, .everyone)
+        XCTAssertEqual(status?.with(running: true, working: true).roomContext?.leadMemberID, "zhongli")
+    }
+
     func testOnlyPassedTurnsEarnATranscriptRow() {
         let members = roomMembers()
         let spoke = settled(seq: 3, member: "furina", round: 0, messageSeq: 2)
