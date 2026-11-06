@@ -19,6 +19,9 @@ struct LocalLiveSettingsModel {
     /// Agent mode (Live > Local) rather than Classic's hands-free option.
     var agent: Bool = false
     var setAgent: (Bool) -> Void = { _ in }
+    /// Whether agent mode's fast model speaks as the profile's SOUL.md.
+    var personality: Bool = false
+    var setPersonality: (Bool) -> Void = { _ in }
 }
 
 /// The speech server Hermes connects to, and the model address the server
@@ -27,6 +30,8 @@ struct LocalLiveSettingsSection: View {
     @ObservedObject var service: HermesVoiceConfigurationService
     /// Live > Local's section; Classic's hands-free option otherwise.
     var agent = false
+    /// Agent mode's own choices (the fast model's personality).
+    var model: LocalLiveSettingsModel? = nil
 
     var body: some View {
         ConduitSettingsSection(
@@ -50,8 +55,37 @@ struct LocalLiveSettingsSection: View {
                 Text(AppLocalization.string("3. Your fast model"))
                     .scaledFont(.subheadline.weight(.semibold))
                 LocalLiveFrontModelSettingsView(service: service)
+                if let model {
+                    LocalLivePersonalityToggle(model: model)
+                }
             }
         }
+    }
+}
+
+/// Agent mode's fast model speaking as the profile's SOUL.md, like the
+/// other live modes' "Use Hermes personality" (issue 583).
+struct LocalLivePersonalityToggle: View {
+    let model: LocalLiveSettingsModel
+    @State private var personality: Bool
+
+    init(model: LocalLiveSettingsModel) {
+        self.model = model
+        _personality = State(initialValue: model.personality)
+    }
+
+    var body: some View {
+        Toggle("Use Hermes personality", isOn: Binding(
+            get: { personality },
+            set: { requested in
+                personality = requested
+                model.setPersonality(requested)
+            }
+        ))
+        Text(AppLocalization.string("Your fast model talks with the personality in this profile's SOUL.md, without reading out actions or emoji. SOUL.md is sent to your fast model's server with the conversation, and a long one can slow a small model's first words. Applies to the next call."))
+            .scaledFont(.caption)
+            .foregroundStyle(.secondary)
+            .onChange(of: model.personality) { _, newValue in personality = newValue }
     }
 }
 

@@ -171,6 +171,88 @@
         }
       }
     },
+    "Hermes was updated on the host while its dashboard kept running. Restart the Hermes dashboard on the host, then update again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes wurde auf dem Host aktualisiert, während sein Dashboard weiterlief. Starte das Hermes-Dashboard auf dem Host neu und aktualisiere dann erneut."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes se actualizó en el host mientras su panel seguía en marcha. Reinicia el panel de Hermes en el host y vuelve a actualizar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes a été mis à jour sur l'hôte pendant que son tableau de bord tournait. Redémarre le tableau de bord Hermes sur l'hôte, puis relance la mise à jour."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes diperbarui di host saat dasbornya tetap berjalan. Mulai ulang dasbor Hermes di host, lalu perbarui lagi."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes è stato aggiornato sull'host mentre la sua dashboard era in esecuzione. Riavvia la dashboard di Hermes sull'host, poi aggiorna di nuovo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ダッシュボードの実行中にホストの Hermes が更新されました。ホストで Hermes ダッシュボードを再起動してから、もう一度アップデートしてください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "대시보드가 실행 중인 동안 호스트의 Hermes가 업데이트되었습니다. 호스트에서 Hermes 대시보드를 다시 시작한 다음 다시 업데이트하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes został zaktualizowany na hoście, gdy jego panel nadal działał. Uruchom ponownie panel Hermes na hoście, a potem zaktualizuj jeszcze raz."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Hermes foi atualizado no host enquanto o painel continuava em execução. Reinicie o painel do Hermes no host e atualize de novo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes обновился на хосте, пока его панель продолжала работать. Перезапустите панель Hermes на хосте и обновите ещё раз."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Panosu çalışmaya devam ederken Hermes ana makinede güncellendi. Ana makinede Hermes panosunu yeniden başlatın, ardından tekrar güncelleyin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主机上的 Hermes 在其仪表板运行期间已更新。请在主机上重启 Hermes 仪表板，然后再次更新。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主機上的 Hermes 在其儀表板執行期間已更新。請在主機上重新啟動 Hermes 儀表板，然後再次更新。"
+          }
+        }
+      }
+    },
     "Hold one bot over another to start a room.": {
       "localizations": {
         "de": {
@@ -441008,6 +441090,446 @@
           "stringUnit": {
             "state": "translated",
             "value": "暫時無法讀取聯絡人。Hermes 保留 Conduit 上次讀取的內容。"
+          }
+        }
+      }
+    },
+    "Your instructions": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deine Anweisungen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your instructions"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus instrucciones"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vos instructions"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instruksi Anda"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le tue istruzioni"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "あなたの指示"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 지시사항"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Twoje instrukcje"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suas instruções"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ваши инструкции"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Talimatlarınız"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的指令"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的指示"
+          }
+        }
+      }
+    },
+    "Your instructions for the voice model": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deine Anweisungen für das Sprachmodell"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your instructions for the voice model"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus instrucciones para el modelo de voz"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vos instructions pour le modèle vocal"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instruksi Anda untuk model suara"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le tue istruzioni per il modello vocale"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音声モデルへのあなたの指示"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "음성 모델에 줄 내 지시사항"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Twoje instrukcje dla modelu głosowego"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suas instruções para o modelo de voz"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ваши инструкции для голосовой модели"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ses modeli için talimatlarınız"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "给语音模型的指令"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "給語音模型的指示"
+          }
+        }
+      }
+    },
+    "Added to every live call after Conduit's own instructions: its personality, how it words things, or anything it should know about you. Conduit's instructions can't be shortened or replaced, because jobs, approvals and the call's tools depend on them, so where yours disagree, Conduit's come first. Applies to the next call.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wird jedem Live-Anruf nach Conduits eigenen Anweisungen hinzugefügt: seine Persönlichkeit, wie es Dinge formuliert oder alles, was es über dich wissen sollte. Conduits Anweisungen lassen sich nicht kürzen oder ersetzen, weil Aufträge, Freigaben und die Werkzeuge des Anrufs davon abhängen. Wo deine davon abweichen, haben Conduits Vorrang. Gilt ab dem nächsten Anruf."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Added to every live call after Conduit's own instructions: its personality, how it words things, or anything it should know about you. Conduit's instructions can't be shortened or replaced, because jobs, approvals and the call's tools depend on them, so where yours disagree, Conduit's come first. Applies to the next call."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se añaden a cada llamada en vivo después de las instrucciones propias de Conduit: su personalidad, cómo dice las cosas o cualquier cosa que deba saber de ti. Las instrucciones de Conduit no se pueden acortar ni reemplazar, porque las tareas, las aprobaciones y las herramientas de la llamada dependen de ellas; donde las tuyas no coincidan, mandan las de Conduit. Se aplica a la próxima llamada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajoutées à chaque appel en direct après les instructions de Conduit : sa personnalité, sa façon de formuler les choses ou tout ce qu'il doit savoir sur vous. Les instructions de Conduit ne peuvent être ni raccourcies ni remplacées, car les tâches, les approbations et les outils de l'appel en dépendent ; en cas de désaccord, celles de Conduit l'emportent. S'applique au prochain appel."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ditambahkan ke setiap panggilan langsung setelah instruksi Conduit sendiri: kepribadiannya, cara ia mengungkapkan sesuatu, atau apa pun yang perlu ia ketahui tentang Anda. Instruksi Conduit tidak bisa dipersingkat atau diganti karena tugas, persetujuan, dan alat panggilan bergantung padanya, jadi jika instruksi Anda bertentangan, instruksi Conduit yang didahulukan. Berlaku mulai panggilan berikutnya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiunte a ogni chiamata live dopo le istruzioni di Conduit: la sua personalità, come formula le cose o qualsiasi cosa debba sapere su di te. Le istruzioni di Conduit non si possono accorciare né sostituire, perché attività, approvazioni e strumenti della chiamata dipendono da esse; dove le tue non coincidono, prevalgono quelle di Conduit. Vale dalla prossima chiamata."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit自身の指示のあとに、すべてのライブ通話へ追加されます。話し方の個性や言い回し、あなたについて知っておいてほしいことなどを書けます。ジョブ、承認、通話のツールはConduitの指示に依存しているため、Conduitの指示を短くしたり置き換えたりすることはできません。食い違う場合はConduitの指示が優先されます。次の通話から適用されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모든 라이브 통화에서 Conduit 자체 지시사항 뒤에 추가돼요. 성격, 말하는 방식, 나에 대해 알아야 할 것 등을 적을 수 있어요. 작업, 승인, 통화 도구가 Conduit의 지시사항에 의존하기 때문에 이를 줄이거나 바꿀 수는 없어요. 서로 다를 때는 Conduit의 지시사항이 우선해요. 다음 통화부터 적용돼요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dodawane do każdego połączenia Live po własnych instrukcjach Conduit: jego osobowość, sposób wyrażania się albo cokolwiek, co powinien o tobie wiedzieć. Instrukcji Conduit nie można skrócić ani zastąpić, bo zależą od nich zadania, zatwierdzenia i narzędzia połączenia, więc gdy twoje się z nimi kłócą, pierwszeństwo mają instrukcje Conduit. Obowiązuje od następnego połączenia."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adicionadas a toda chamada ao vivo depois das instruções do próprio Conduit: a personalidade dele, como ele diz as coisas ou qualquer coisa que ele deva saber sobre você. As instruções do Conduit não podem ser encurtadas nem substituídas, porque as tarefas, as aprovações e as ferramentas da chamada dependem delas; quando as suas discordarem, as do Conduit vêm primeiro. Vale a partir da próxima chamada."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавляются в каждый Live-звонок после собственных инструкций Conduit: её характер, манера речи или всё, что ей стоит знать о вас. Инструкции Conduit нельзя сократить или заменить, потому что от них зависят задачи, подтверждения и инструменты звонка, поэтому там, где ваши расходятся с ними, приоритет у инструкций Conduit. Действует со следующего звонка."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her canlı aramada Conduit'in kendi talimatlarından sonra eklenir: kişiliği, bir şeyi nasıl ifade ettiği veya sizinle ilgili bilmesi gereken her şey. İşler, onaylar ve aramanın araçları Conduit'in talimatlarına bağlı olduğundan bunlar kısaltılamaz veya değiştirilemez; sizinkiler onlarla çeliştiğinde Conduit'inkiler önce gelir. Sonraki aramada geçerli olur."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会在每次实时通话中加在 Conduit 自己的指令之后：它的性格、说话方式，或任何它应该了解的关于你的信息。Conduit 的指令不能缩短或替换，因为任务、批准和通话工具都依赖它们；两者冲突时以 Conduit 的指令为准。下次通话生效。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "會在每次即時通話中加在 Conduit 本身的指示之後：它的個性、說話方式，或任何它應該知道的關於你的事。Conduit 的指示無法縮短或取代，因為工作、核准和通話工具都依賴它們；兩者衝突時以 Conduit 的指示為準。下次通話起生效。"
+          }
+        }
+      }
+    },
+    "Your fast model talks with the personality in this profile's SOUL.md, without reading out actions or emoji. SOUL.md is sent to your fast model's server with the conversation, and a long one can slow a small model's first words. Applies to the next call.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein schnelles Modell spricht mit der Persönlichkeit aus der SOUL.md dieses Profils, ohne Aktionen oder Emoji vorzulesen. SOUL.md wird mit der Unterhaltung an den Server deines schnellen Modells gesendet, und eine lange SOUL.md kann die ersten Worte eines kleinen Modells verzögern. Gilt ab dem nächsten Anruf."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your fast model talks with the personality in this profile's SOUL.md, without reading out actions or emoji. SOUL.md is sent to your fast model's server with the conversation, and a long one can slow a small model's first words. Applies to the next call."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu modelo rápido habla con la personalidad del SOUL.md de este perfil, sin leer en voz alta acciones ni emojis. SOUL.md se envía al servidor de tu modelo rápido con la conversación, y uno largo puede retrasar las primeras palabras de un modelo pequeño. Se aplica a la próxima llamada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre modèle rapide parle avec la personnalité du SOUL.md de ce profil, sans lire à voix haute les actions ni les emoji. SOUL.md est envoyé au serveur de votre modèle rapide avec la conversation, et un fichier long peut retarder les premiers mots d'un petit modèle. S'applique au prochain appel."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model cepat Anda berbicara dengan kepribadian di SOUL.md profil ini, tanpa membacakan tindakan atau emoji. SOUL.md dikirim ke server model cepat Anda bersama percakapan, dan SOUL.md yang panjang dapat memperlambat kata-kata pertama model kecil. Berlaku mulai panggilan berikutnya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo modello veloce parla con la personalità del SOUL.md di questo profilo, senza leggere ad alta voce azioni o emoji. SOUL.md viene inviato al server del tuo modello veloce con la conversazione, e uno lungo può rallentare le prime parole di un modello piccolo. Vale dalla prossima chiamata."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "高速モデルは、このプロファイルのSOUL.mdにあるパーソナリティで話します。動作の描写や絵文字は読み上げません。SOUL.mdは会話とともに高速モデルのサーバーに送信されます。長いSOUL.mdは小さなモデルの話し始めを遅らせることがあります。次の通話から適用されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "빠른 모델이 이 프로필의 SOUL.md에 있는 성격으로 말하며, 행동 묘사나 이모지는 읽지 않아요. SOUL.md는 대화와 함께 빠른 모델의 서버로 전송되며, 길면 작은 모델이 말을 시작하는 데 시간이 더 걸릴 수 있어요. 다음 통화부터 적용돼요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Twój szybki model mówi z osobowością z pliku SOUL.md tego profilu, bez odczytywania opisów działań ani emoji. SOUL.md jest wysyłany razem z rozmową na serwer twojego szybkiego modelu, a długi plik może opóźnić pierwsze słowa małego modelu. Obowiązuje od następnego połączenia."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu modelo rápido fala com a personalidade do SOUL.md deste perfil, sem ler em voz alta ações ou emojis. O SOUL.md é enviado ao servidor do seu modelo rápido com a conversa, e um SOUL.md longo pode atrasar as primeiras palavras de um modelo pequeno. Vale a partir da próxima chamada."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ваша быстрая модель говорит с личностью из SOUL.md этого профиля, не зачитывая действия и эмодзи. SOUL.md отправляется на сервер быстрой модели вместе с разговором, а длинный файл может задержать первые слова небольшой модели. Действует со следующего звонка."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hızlı modeliniz, eylemleri veya emojileri sesli okumadan bu profilin SOUL.md dosyasındaki kişilikle konuşur. SOUL.md konuşmayla birlikte hızlı modelinizin sunucusuna gönderilir ve uzun bir dosya küçük bir modelin ilk sözlerini geciktirebilir. Sonraki aramada geçerli olur."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的快速模型会以此配置文件 SOUL.md 中的性格说话，但不会读出动作描写或表情符号。SOUL.md 会随对话发送到快速模型的服务器，较长的 SOUL.md 可能让小模型开口更慢。下次通话生效。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的快速模型會以此設定檔 SOUL.md 中的個性說話，但不會唸出動作描述或表情符號。SOUL.md 會隨對話傳送到快速模型的伺服器，較長的 SOUL.md 可能讓小模型較慢開口。下次通話起生效。"
+          }
+        }
+      }
+    },
+    "Conduit sends this to your fast model as its instructions for every call; nothing else is added before it. Personality is read when a call starts.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit sendet das bei jedem Anruf als Anweisungen an dein schnelles Modell; davor wird nichts weiter hinzugefügt. Die Persönlichkeit wird beim Start eines Anrufs gelesen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit sends this to your fast model as its instructions for every call; nothing else is added before it. Personality is read when a call starts."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit envía esto a tu modelo rápido como sus instrucciones en cada llamada; no se añade nada antes. La personalidad se lee al empezar una llamada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit envoie ceci à votre modèle rapide comme instructions à chaque appel ; rien d'autre n'est ajouté avant. La personnalité est lue au début de l'appel."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit mengirim ini ke model cepat Anda sebagai instruksinya di setiap panggilan; tidak ada lagi yang ditambahkan sebelumnya. Kepribadian dibaca saat panggilan dimulai."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit invia questo al tuo modello veloce come istruzioni a ogni chiamata; prima non viene aggiunto nient'altro. La personalità viene letta all'inizio della chiamata."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduitは通話のたびに、これを高速モデルへの指示として送信します。その前には何も追加されません。パーソナリティは通話の開始時に読み込まれます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit는 통화할 때마다 이 내용을 빠른 모델의 지시사항으로 보내요. 그 앞에는 아무것도 추가되지 않아요. 성격은 통화가 시작될 때 읽어요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit wysyła to do twojego szybkiego modelu jako jego instrukcje przy każdym połączeniu; nic więcej nie jest dodawane przed nimi. Osobowość jest odczytywana na początku połączenia."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Conduit envia isto ao seu modelo rápido como instruções em toda chamada; nada mais é adicionado antes. A personalidade é lida quando a chamada começa."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit отправляет это быстрой модели как её инструкции в каждом звонке; перед ними больше ничего не добавляется. Личность считывается в начале звонка."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit bunu her aramada hızlı modelinize talimatları olarak gönderir; öncesine başka bir şey eklenmez. Kişilik arama başlarken okunur."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 会在每次通话时把这些作为指令发送给你的快速模型，前面不会再添加其他内容。性格会在通话开始时读取。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 會在每次通話時把這些作為指示傳送給你的快速模型，前面不會再加入其他內容。個性會在通話開始時讀取。"
           }
         }
       }

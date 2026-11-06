@@ -43,6 +43,32 @@ struct SystemBackSwipeGate: UIViewRepresentable {
         name?.hasPrefix(zoomDismissalPrefix) ?? false
     }
 
+    /// The controller a view's screen was pushed as: the one whose parent
+    /// is the navigation stack.
+    static func pushedPage(of view: UIView) -> UIViewController? {
+        var responder: UIResponder? = view
+        while let next = responder?.next {
+            if let controller = next as? UIViewController, controller.parent is UINavigationController {
+                return controller
+            }
+            responder = next
+        }
+        return nil
+    }
+
+    /// The page's system back swipes: the zoom's dismissals on its view and,
+    /// while it's on top, the stack's edge and content swipes.
+    static func systemBackSwipes(of page: UIViewController) -> [UIGestureRecognizer] {
+        var found = (page.view.gestureRecognizers ?? []).filter { isZoomDismissal($0.name) }
+        if let navigation = page.navigationController, navigation.topViewController === page {
+            if let edge = navigation.interactivePopGestureRecognizer { found.append(edge) }
+            if #available(iOS 26.0, *), let content = navigation.interactiveContentPopGestureRecognizer {
+                found.append(content)
+            }
+        }
+        return found
+    }
+
     final class GateView: UIView {
         var blocked = false {
             didSet { if blocked != oldValue || blocked { apply() } }
@@ -73,7 +99,7 @@ struct SystemBackSwipeGate: UIViewRepresentable {
         private func apply(retriesLeft: Int = GateView.retries) {
             guard blocked else { return release() }
             guard window != nil else { return }
-            guard let page = pushedPage() else {
+            guard let page = SystemBackSwipeGate.pushedPage(of: self) else {
                 // Opened with its push (a workstream straight from the
                 // bot's overview): the stack may not hold the page yet.
                 if retriesLeft > 0 {
@@ -83,7 +109,7 @@ struct SystemBackSwipeGate: UIViewRepresentable {
                 }
                 return
             }
-            holdOff(Self.systemBackSwipes(of: page))
+            holdOff(SystemBackSwipeGate.systemBackSwipes(of: page))
             // The push may still be running, and the zoom's gestures and the
             // stack's top settle as it ends: look again then.
             page.transitionCoordinator?.animate(alongsideTransition: nil) { [weak self] _ in
@@ -101,30 +127,6 @@ struct SystemBackSwipeGate: UIViewRepresentable {
         private func release() {
             for recognizer in heldOff.allObjects { recognizer.isEnabled = true }
             heldOff.removeAllObjects()
-        }
-
-        /// The controller this view's screen was pushed as: the one whose
-        /// parent is the navigation stack.
-        private func pushedPage() -> UIViewController? {
-            var responder: UIResponder? = self
-            while let next = responder?.next {
-                if let controller = next as? UIViewController, controller.parent is UINavigationController {
-                    return controller
-                }
-                responder = next
-            }
-            return nil
-        }
-
-        private static func systemBackSwipes(of page: UIViewController) -> [UIGestureRecognizer] {
-            var found = (page.view.gestureRecognizers ?? []).filter { isZoomDismissal($0.name) }
-            if let navigation = page.navigationController, navigation.topViewController === page {
-                if let edge = navigation.interactivePopGestureRecognizer { found.append(edge) }
-                if #available(iOS 26.0, *), let content = navigation.interactiveContentPopGestureRecognizer {
-                    found.append(content)
-                }
-            }
-            return found
         }
     }
 }

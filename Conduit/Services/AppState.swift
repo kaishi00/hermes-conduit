@@ -3948,6 +3948,7 @@ final class AppState: ObservableObject {
             gptLivePersonality != nil ? "gptPersona" : nil,
             grokLiveMemoryContext != nil ? "grokMemory" : nil,
             grokLivePersonality != nil ? "grokPersona" : nil,
+            localLivePersonality != nil ? "localPersona" : nil,
         ].compactMap { $0 }
     }
 
@@ -3960,6 +3961,11 @@ final class AppState: ObservableObject {
         gptLivePersonality = "persona"
         grokLiveMemoryContext = memory
         grokLivePersonality = "persona"
+    }
+
+    /// Local Live's SOUL.md, as an agent-mode call's start would read it.
+    func installLocalLivePersonaForTesting(_ persona: String = "persona") {
+        localLivePersonality = persona
     }
 
     /// GPT-Live calls start on the Hermes host (the conduit_push plugin),
@@ -4540,6 +4546,42 @@ final class AppState: ObservableObject {
     /// Whether the host's web lookups were available when the agent-mode
     /// call last checked.
     private var localLiveWebLookUps = false
+    /// The profile's SOUL.md for the next agent-mode call, read when it
+    /// starts and dropped when it closes, as the other live modes' are.
+    private var localLivePersonality: String?
+    /// Counts persona lookups and teardowns, so a lookup that finishes
+    /// after its call ended or a newer one started stores nothing.
+    private var localLivePersonaLookup = 0
+
+    /// A starting call's claim on the persona; any earlier claim goes stale.
+    private func claimLocalLivePersonaLookup() -> Int {
+        localLivePersonaLookup &+= 1
+        return localLivePersonaLookup
+    }
+
+    /// Personal text goes, and any lookup still running is dropped.
+    private func dropLocalLivePersonality() {
+        localLivePersonality = nil
+        localLivePersonaLookup &+= 1
+    }
+
+    /// Whether Local Live's fast model speaks as the profile's SOUL.md
+    /// persona (issue 583). Off until the user turns it on: it sends
+    /// SOUL.md to the fast model's server, and a long one slows a small
+    /// model's first words.
+    var localLivePersonalityEnabled: Bool {
+        loadVoiceProfilePreferences(profile: activeProfile).localLivePersonality ?? false
+    }
+
+    /// Applies from the next Local Live call.
+    func setLocalLivePersonalityEnabled(_ enabled: Bool) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored: Bool? = enabled ? true : nil
+        guard preferences.localLivePersonality != stored else { return }
+        objectWillChange.send()
+        preferences.localLivePersonality = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
 
     /// What an agent-mode call gives the host's fast model: the live
     /// instructions and Grok Live's tools, run here, with the phone's own
@@ -4558,6 +4600,7 @@ final class AppState: ObservableObject {
         tail += liveVoiceStyle.instructions
         let instructions = GeminiLiveConversationController.instructions(
             search: localLiveWebLookUps ? .hermes : .none,
+            personality: localLivePersonality,
             answerLength: liveVoiceStyle.answerLength,
             acknowledgesOnceStarted: true,
             followedBy: tail
@@ -4779,6 +4822,13 @@ final class AppState: ObservableObject {
                 return session
             },
             availability: { [weak self] in
+                // The call's claim on the persona, taken before any wait:
+                // a newer call's start or any teardown bumps the count, and
+                // a stale claim then stores and clears nothing. A lookup
+                // that outlives a profile switch is dropped too, so another
+                // profile's SOUL.md never reaches this call.
+                let lookup = self?.claimLocalLivePersonaLookup()
+                let profile = self?.activeProfile
                 let status = try await client.status()
                 if let reason = LocalLiveClient.unavailableReason(status) {
                     throw LocalLiveClientError.unavailable(reason)
@@ -4787,13 +4837,20 @@ final class AppState: ObservableObject {
                     // The phone's own tools (calendar, reminders, alarms,
                     // maps, health, location) the user lets Local Live use.
                     async let hostTools: Void = self.prepareVoiceHostTools(for: .localLive)
+                    async let personality = self.localLivePersonalityEnabled ? hostContext.personality() : nil
                     // Off only when the user turned web lookups off.
                     if self.geminiLiveSearchMode != .off {
                         self.localLiveWebLookUps = await hostContext.webSearchAvailable()
                     } else {
                         self.localLiveWebLookUps = false
                     }
+                    let persona = await personality
+                    if self.localLivePersonaLookup == lookup {
+                        self.localLivePersonality = self.activeProfile == profile ? persona : nil
+                    }
                     await hostTools
+                } else if let self, self.localLivePersonaLookup == lookup {
+                    self.localLivePersonality = nil
                 }
                 return .available(model: status.modelName)
             },
@@ -4894,6 +4951,8 @@ final class AppState: ObservableObject {
             finishHermesCallbacks(engine: .localLive)
             if localLiveControllerCreated { localLiveTurns.reset() }
             localLiveOwnChat = nil
+            // Personal text goes with the call it was fetched for.
+            dropLocalLivePersonality()
             if voiceCallRecorder?.engine == .localLive { finishVoiceCallRecording() }
             // A minimised call that failed has nothing left to show.
             if minimisedLiveVoice == .localLive { minimisedLiveVoice = nil }
@@ -4909,6 +4968,7 @@ final class AppState: ObservableObject {
             localLiveTurns.reset()
         }
         localLiveOwnChat = nil
+        dropLocalLivePersonality()
         showLocalLiveSheet = false
         if minimisedLiveVoice == .localLive { minimisedLiveVoice = nil }
         voiceBackgroundJobSupervisor.detachLiveThread()
@@ -4919,6 +4979,8 @@ final class AppState: ObservableObject {
     /// another voice mode taking over).
     private func stopLocalLiveConversation() {
         guard showLocalLiveSheet || minimisedLiveVoice == .localLive || isLocalLiveActive else {
+            // Personal text goes at the boundary even with no call up.
+            dropLocalLivePersonality()
             // Its recording still closes, so the call is saved.
             if voiceCallRecorder?.engine == .localLive { finishVoiceCallRecording() }
             finishHermesCallbacks(engine: .localLive)
@@ -8418,25 +8480,28 @@ final class AppState: ObservableObject {
         let backchannels: Bool? = style.backchannels ? nil : false
         let answerLength: LiveVoiceAnswerLength? = style.answerLength == .standard ? nil : style.answerLength
         let asksBeforeSending: Bool? = style.asksBeforeSending ? true : nil
+        let extraInstructions = LiveVoiceStyle.cleanedExtraInstructions(style.extraInstructions)
         guard preferences.liveVoiceTone != style.tone
             || preferences.liveVoiceBackchannels != backchannels
             || preferences.liveVoiceGreeting != greeting
             || preferences.liveVoiceAnswerLength != answerLength
-            || preferences.liveVoiceAskBeforeSending != asksBeforeSending else { return }
+            || preferences.liveVoiceAskBeforeSending != asksBeforeSending
+            || preferences.liveVoiceExtraInstructions != extraInstructions else { return }
         objectWillChange.send()
         preferences.liveVoiceTone = style.tone
         preferences.liveVoiceBackchannels = backchannels
         preferences.liveVoiceGreeting = greeting
         preferences.liveVoiceAnswerLength = answerLength
         preferences.liveVoiceAskBeforeSending = asksBeforeSending
+        preferences.liveVoiceExtraInstructions = extraInstructions
         saveVoiceProfilePreferences(preferences, profile: profile)
     }
 
     /// What Conduit tells the live voice mode in use, for Voice settings:
     /// the text as the next call would send it, with the host's memory and
     /// persona shown as placeholders (they are read when a call starts).
-    /// Nil when no live mode is on, and for Local Live, which sends none
-    /// (the speech server's model is Hermes).
+    /// Nil when no live mode is on, and for Local Live outside agent mode,
+    /// which sends none (the speech server's model is Hermes).
     func liveVoiceInstructionsPreview(profile: String? = nil) -> LiveVoiceInstructionsPreviewContent? {
         let placeholderMemory = GeminiLiveMemoryContext(text: AppLocalization.string("(What your Hermes agent remembers about you, read when the call starts.)"), canRecall: false)
         let placeholderPersona = AppLocalization.string("(This profile's SOUL.md, read when the call starts.)")
@@ -8481,6 +8546,17 @@ final class AppState: ObservableObject {
                 personality: geminiLivePersonalityEnabled ? placeholderPersona : nil,
                 answerLength: style.answerLength,
                 followedBy: callBlocks
+            )
+        } else if isLocalLiveEnabled, isLocalLiveAgent {
+            // Agent mode: what the host's fast model gets (localLiveAgentSetup).
+            mode = "Local Live"
+            text = GeminiLiveConversationController.instructions(
+                search: geminiLiveSearchMode != .off ? .hermes : .none,
+                personality: localLivePersonalityEnabled ? placeholderPersona : nil,
+                answerLength: style.answerLength,
+                acknowledgesOnceStarted: true,
+                followedBy: LocalLiveProtocol.agentInstructions
+                    + GrokLiveProtocol.clockInstructions(now: Date(), timeZone: .current) + callBlocks
             )
         } else {
             return nil
