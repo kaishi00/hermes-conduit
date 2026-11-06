@@ -257,6 +257,11 @@ jobs:
         # sizes while the text around it grows (#830).
         run: python3 scripts/check-fixed-text-sizes.py --repo-root .
 
+      - name: Every shipped target keeps Date's comparisons
+        # Foundation's back-deployed Date <= and >= crash on early iOS 27.2
+        # betas; each app and extension compiles Shared/DateOrder instead.
+        run: python3 scripts/check-weak-imports.py targets --repo-root .
+
       - name: Transcript rows get the chat's environment
         # Each transcript row draws in a hosting controller of its own, so
         # it inherits nothing from ChatView: every Conduit environment key
@@ -419,6 +424,12 @@ jobs:
           # Named in the build's timing notice, to explain a clean build.
           BUILD_CACHE: ${{ steps.cache.outputs.cache-matched-key || format('none saved under {0}', steps.cache-key.outputs.prefix) }}
         run: bash scripts/ci-hosted-build.sh
+
+      - name: No back-deployed Date comparisons in the build
+        # The smoke build's app, its .debug.dylib and its extensions: none may
+        # weak-import Foundation's Date <= or >=, which early iOS 27.2 betas
+        # lack (TestFlight 251, 2026-11-05; Shared/DateOrder/DateOrder.swift).
+        run: python3 scripts/check-weak-imports.py binaries --products "${DERIVED_DATA_PATH:-$PWD/ci-derived-data}/Build/Products/Debug-iphonesimulator"
 
       - name: Run the curated unit smoke classes
         # A few pinned tests per risk area (scripts/smoke-suite.json, capped),
