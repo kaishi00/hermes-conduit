@@ -1151,6 +1151,7 @@ extension BotModeTests {
         let zone = BotDragPayload.mergeZone(face: face)
         XCTAssertTrue(zone.contains(CGPoint(x: 50, y: 40)))
         XCTAssertFalse(zone.contains(CGPoint(x: 14, y: 40)), "the face's rim moves")
+        XCTAssertTrue(zone.contains(CGPoint(x: 20, y: 40)), "all but the outer tenth starts a room")
         XCTAssertFalse(zone.contains(CGPoint(x: 50, y: 100)), "the name under it moves")
         XCTAssertTrue(BotDragPayload.staysStill(CGPoint(x: 55, y: 45), from: CGPoint(x: 50, y: 40)))
         XCTAssertFalse(BotDragPayload.staysStill(CGPoint(x: 70, y: 40), from: CGPoint(x: 50, y: 40)))
