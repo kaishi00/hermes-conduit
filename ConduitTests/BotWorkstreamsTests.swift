@@ -1,4 +1,5 @@
 import UIKit
+import UIKit.UIGestureRecognizerSubclass
 import XCTest
 
 @testable import Conduit
@@ -992,12 +993,12 @@ extension BotModeTests {
         XCTAssertTrue(zoom.isEnabled)
     }
 
-    /// A swipe back let go that left the list's hidden bar over a chat
-    /// brings the chat's bar back; once another screen is on top, the
-    /// keeper leaves the bar alone (Eric 2026-11-06: a room lost its top
-    /// menus).
+    /// A zoom dismissal let go that left the list's hidden bar over a chat
+    /// brings the chat's bar back once the swipe ends; once another screen
+    /// is on top, the keeper leaves the bar alone (Eric 2026-11-06: a room
+    /// lost its top menus).
     @MainActor
-    func testTheBarKeeperShowsTheChatsBarAgainOnlyWhileItsOnTop() {
+    func testTheBarKeeperShowsTheChatsBarAgainAfterALetGoSwipeOnlyWhileItsOnTop() {
         let root = UIViewController()
         let page = UIViewController()
         let navigation = UINavigationController()
@@ -1008,13 +1009,26 @@ extension BotModeTests {
         defer { window.isHidden = true }
         window.layoutIfNeeded()
 
+        let swipeDown = LetGoSwipe()
+        swipeDown.name = SystemBackSwipeGate.zoomDismissalPrefix + "SwipeDown"
+        page.view.addGestureRecognizer(swipeDown)
         let keeper = NavigationBarKeeper.KeeperView()
         page.view.addSubview(keeper)
         XCTAssertTrue(keeper.page === page)
-        navigation.setNavigationBarHidden(true, animated: false)
-        keeper.restoreBar()
-        XCTAssertFalse(navigation.isNavigationBarHidden)
 
+        // The swipe let go, the list's hidden bar left over the chat.
+        navigation.setNavigationBarHidden(true, animated: false)
+        swipeDown.letGo()
+        let shown = expectation(description: "the chat's bar is back")
+        func poll(_ triesLeft: Int) {
+            if !navigation.isNavigationBarHidden { return shown.fulfill() }
+            guard triesLeft > 0 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { poll(triesLeft - 1) }
+        }
+        poll(50)
+        wait(for: [shown], timeout: 2)
+
+        // Another screen on top: its bar is its own.
         navigation.pushViewController(UIViewController(), animated: false)
         navigation.setNavigationBarHidden(true, animated: false)
         keeper.restoreBar()
@@ -1465,5 +1479,14 @@ extension BotModeTests {
         let doneAsking = try XCTUnwrap(BotWorkItem(row: done))
         XCTAssertTrue(doneAsking.isActive)
         XCTAssertTrue(doneAsking.needsYou)
+    }
+}
+
+/// A swipe that a test lets go of: its end reaches its targets as a real
+/// one's does.
+private final class LetGoSwipe: UIPanGestureRecognizer {
+    func letGo() {
+        state = .began
+        state = .cancelled
     }
 }

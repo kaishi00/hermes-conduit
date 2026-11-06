@@ -105,7 +105,7 @@ struct NavigationBarKeeper: UIViewRepresentable {
         /// The page still on top of its stack with its bar hidden: the bar
         /// comes back.
         func restoreBar() {
-            guard window != nil, let page, let navigation = page.navigationController,
+            guard let page, let navigation = page.navigationController,
                   navigation.topViewController === page, navigation.isNavigationBarHidden else { return }
             ChatViewportTrace.shared.log("navigation bar hidden after a back swipe, shown again")
             navigation.setNavigationBarHidden(false, animated: false)
