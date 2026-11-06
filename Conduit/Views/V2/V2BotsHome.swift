@@ -819,6 +819,13 @@ enum BotDragPayload {
         return now.timeIntervalSince(endedAt) < mergeDropGrace
     }
 
+    /// Whether a drop on a portrait does anything: a bot that already slid
+    /// into its place stays there (dropped again it would move back), but
+    /// one held still for a room since still starts it.
+    static func dropActs(placed: Bool, merges: Bool) -> Bool {
+        !placed || merges
+    }
+
     static let prefix = "conduit-bot:"
 
     /// The bot whose portrait is being dragged, set as its drag starts.
@@ -1075,12 +1082,15 @@ struct BotPortraitCell<MenuContent: View>: View {
             guard let onDrop else { return false }
             // Back on its own place: taken here and left where it was.
             guard dragged.caseInsensitiveCompare(bot.name) != .orderedSame else { return true }
-            // It already slid into this one's place: it stays there.
-            if placed {
+            let merge = BotDragPayload.dropMerges(mergeReady: mergeReady, endedAt: mergeReadyEndedAt)
+            // It already slid into this one's place: as a move it stays
+            // there, but held still since for a room, the room still starts
+            // (a slide across pinned bots may have moved nothing).
+            if !BotDragPayload.dropActs(placed: placed, merges: merge) {
                 endTargeting()
+                mergeReadyEndedAt = nil
                 return true
             }
-            let merge = BotDragPayload.dropMerges(mergeReady: mergeReady, endedAt: mergeReadyEndedAt)
             endTargeting()
             // After endTargeting, which stamps it when the hover hadn't
             // ended yet: this drop has used it.
@@ -1251,6 +1261,8 @@ struct BotPortraitCell<MenuContent: View>: View {
         dwell = nil
         slide?.cancel()
         slide = nil
+        // `placed` outlives the hover on purpose: a drop ends the hover
+        // before it lands, and the drop reads it (beginTargeting clears it).
         dwellAnchor = nil
         isTargeted = false
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { mergeReady = false }

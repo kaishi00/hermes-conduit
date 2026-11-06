@@ -1100,6 +1100,11 @@ extension BotModeTests {
         appState.dropBot("Ayaka", onto: "furina", shown: ["ayaka", "Furina", "Yelan"])
         XCTAssertEqual(appState.botOrder.names, ["Furina", "Ayaka", "Yelan"], "onto its right neighbour: they swap")
         XCTAssertLessThan(BotDragPayload.slideDwell, BotDragPayload.mergeDwell, "a bot slides into place before it could swell for a room")
+        // Pinned bots show first: carried on, a bot goes after its target in
+        // the order itself, so two pinned neighbours still swap.
+        let pinnedFirst = BotOrder(names: ["Tighnari", "Ayaka", "Bennett"], kind: .bots)
+            .dropping("Ayaka", onto: "Bennett", shown: ["Ayaka", "Bennett", "Tighnari"])
+        XCTAssertEqual(pinnedFirst.names, ["Tighnari", "Bennett", "Ayaka"])
         appState.dropBot("Yelan", onto: "Furina", shown: ["Furina", "Ayaka", "Yelan"])
         XCTAssertEqual(appState.botOrder.names, ["Yelan", "Furina", "Ayaka"])
 
@@ -1133,6 +1138,10 @@ extension BotModeTests {
         XCTAssertFalse(BotDragPayload.dropMerges(mergeReady: false, endedAt: now.addingTimeInterval(-2), now: now),
                        "a hover that ended a while ago moves")
         XCTAssertFalse(BotDragPayload.dropMerges(mergeReady: false, endedAt: nil, now: now), "never swollen: moves")
+        // After a slide into its place, a drop only acts to start a room.
+        XCTAssertFalse(BotDragPayload.dropActs(placed: true, merges: false), "slid here: a plain drop doesn't move it back")
+        XCTAssertTrue(BotDragPayload.dropActs(placed: true, merges: true), "slid here, then held still: the room starts")
+        XCTAssertTrue(BotDragPayload.dropActs(placed: false, merges: false))
     }
 
     /// Pinned bots come first, each group in the person's order, so Pin
