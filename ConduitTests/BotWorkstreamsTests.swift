@@ -1054,7 +1054,7 @@ extension BotModeTests {
 
     /// A room's tile dropped on another takes its place: carried on, it goes
     /// after the one it lands on (two rooms swap); carried back, before it.
-    /// A room's drag is a move, and only a tile lifted here lands.
+    /// The room in hand clears with its drag.
     @MainActor
     func testARoomDroppedOnAnotherTakesItsPlace() throws {
         let suite = "BotWorkstreamsTests.\(UUID().uuidString)"

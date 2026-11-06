@@ -363,15 +363,20 @@ enum RoomDragPayload {
 /// Where a room's tile can land: on another tile (`target`) or the grid
 /// around them (nil, the end). It proposes a move, where a plain drop
 /// destination proposes a copy and so a + badge, as if the room were being
-/// added somewhere. Only a tile lifted in Conduit lands: the room comes from
-/// the drag in hand, not the item's text, so another app's text never moves
-/// one, and a dragged bot passes by.
+/// added somewhere. A dragged bot passes by, and text only moves a room
+/// when it carries a room tile's mark.
 struct RoomTileDrop: DropDelegate {
     let target: String?
     @Binding var targeted: Bool
     let onDrop: (String) -> Void
 
-    func validateDrop(info: DropInfo) -> Bool { RoomDragPayload.lifted != nil }
+    /// A tile in hand, or, should the drag have let go of the room it set
+    /// as it began, any text, read for a room's mark as it lands. Never a
+    /// bot's portrait.
+    func validateDrop(info: DropInfo) -> Bool {
+        guard BotDragPayload.lifted == nil else { return false }
+        return RoomDragPayload.lifted != nil || info.hasItemsConforming(to: [UTType.text])
+    }
 
     func dropEntered(info: DropInfo) {
         guard let dragged = RoomDragPayload.lifted, let target else { return }
@@ -379,16 +384,26 @@ struct RoomTileDrop: DropDelegate {
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        RoomDragPayload.lifted == nil ? DropProposal(operation: .forbidden) : DropProposal(operation: .move)
+        DropProposal(operation: validateDrop(info: info) ? .move : .forbidden)
     }
 
     func dropExited(info: DropInfo) { targeted = false }
 
     func performDrop(info: DropInfo) -> Bool {
         targeted = false
-        guard let dragged = RoomDragPayload.lifted else { return false }
-        RoomDragPayload.lifted = nil
-        if dragged != target { onDrop(dragged) }
+        let target = target
+        let onDrop = onDrop
+        if let dragged = RoomDragPayload.lifted {
+            RoomDragPayload.lifted = nil
+            if dragged != target { onDrop(dragged) }
+            return true
+        }
+        guard let provider = info.itemProviders(for: [UTType.text]).first else { return false }
+        _ = provider.loadObject(ofClass: NSString.self) { object, _ in
+            guard let text = object as? String, let dragged = RoomDragPayload.roomID(from: text),
+                  dragged != target else { return }
+            DispatchQueue.main.async { onDrop(dragged) }
+        }
         return true
     }
 }
@@ -472,14 +487,16 @@ struct NewRoomPortrait: View {
             }
         }
         .buttonStyle(PressableButtonStyle())
-        .dropDestination(for: String.self) { items, _ in
-            guard let dragged = items.first.flatMap(BotDragPayload.botName(from:)) else { return false }
-            BotDragPayload.lifted = nil
-            return onDrop(dragged)
-        } isTargeted: { targeted in
-            let joins = targeted && BotDragPayload.lifted.map(canJoin) == true
-            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { isTargeted = joins }
-        }
+        .onDrop(of: [UTType.text], delegate: LiftedBotDrop(
+            entered: {
+                let joins = BotDragPayload.lifted.map(canJoin) == true
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { isTargeted = joins }
+            },
+            exited: {
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { isTargeted = false }
+            },
+            perform: onDrop
+        ))
         .accessibilityLabel(Text(verbatim: name))
         .accessibilityValue(Text(verbatim: members))
         .accessibilityHint(Text(AppLocalization.string("Names the room in the bar below.")))
@@ -601,12 +618,11 @@ struct BotPortraitGrid<Cell: View>: View {
         .padding(.top, 14)
         .padding(.bottom, 4)
         // A drop between or after the portraits, not on one: the end.
-        .dropDestination(for: String.self) { items, _ in
-            guard let onDropAtEnd, let dragged = items.first.flatMap(BotDragPayload.botName(from:)) else { return false }
-            BotDragPayload.lifted = nil
+        .onDrop(of: [UTType.text], delegate: LiftedBotDrop { dragged in
+            guard let onDropAtEnd else { return false }
             onDropAtEnd(dragged)
             return true
-        }
+        })
     }
 }
 
@@ -678,6 +694,52 @@ struct BotPortraitDrag<Preview: View>: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+/// Where a bot's portrait can land: on another bot, the grid's end, or the
+/// room being started. It proposes a move, where a plain drop destination
+/// proposes a copy, so the bot in hand showed a + from the moment it was
+/// lifted (Eric, 2026-11-06). A dragged room passes by, and text only lands
+/// when it carries a portrait's mark.
+struct LiftedBotDrop: DropDelegate {
+    var entered: () -> Void = {}
+    var exited: () -> Void = {}
+    let perform: (String) -> Bool
+
+    /// A portrait in hand, or, should the drag have let go of the name it
+    /// set as it began, any text, read for a portrait's mark as it lands.
+    /// Never a room's tile.
+    func validateDrop(info: DropInfo) -> Bool {
+        guard RoomDragPayload.lifted == nil else { return false }
+        return BotDragPayload.lifted != nil || info.hasItemsConforming(to: [UTType.text])
+    }
+
+    func dropEntered(info: DropInfo) { entered() }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: validateDrop(info: info) ? .move : .forbidden)
+    }
+
+    func dropExited(info: DropInfo) { exited() }
+
+    func performDrop(info: DropInfo) -> Bool {
+        if let dragged = BotDragPayload.lifted {
+            BotDragPayload.lifted = nil
+            // The target reads its own hover state first (a merge), then
+            // ends it.
+            let landed = perform(dragged)
+            exited()
+            return landed
+        }
+        exited()
+        guard let provider = info.itemProviders(for: [UTType.text]).first else { return false }
+        let perform = perform
+        _ = provider.loadObject(ofClass: NSString.self) { object, _ in
+            guard let text = object as? String, let dragged = BotDragPayload.botName(from: text) else { return }
+            DispatchQueue.main.async { _ = perform(dragged) }
+        }
+        return true
     }
 }
 
@@ -928,21 +990,21 @@ struct BotPortraitCell<MenuContent: View>: View {
         }
         // The whole cell, pill included, takes a dropped bot, so a drop
         // under a face lands there rather than at the end.
-        .dropDestination(for: String.self) { items, _ in
-            guard let onDrop, let dragged = items.first.flatMap(BotDragPayload.botName(from:)),
-                  dragged.caseInsensitiveCompare(bot.name) != .orderedSame else { return false }
+        // A move, not a copy, so the bot in hand shows no +; the face it's
+        // over swells for a merge instead (LiftedBotDrop).
+        .onDrop(of: [UTType.text], delegate: LiftedBotDrop(
+            entered: { if onDrop != nil { beginTargeting() } },
+            exited: { if onDrop != nil { endTargeting() } }
+        ) { dragged in
+            guard let onDrop, dragged.caseInsensitiveCompare(bot.name) != .orderedSame else { return false }
             let merge = BotDragPayload.dropMerges(mergeReady: mergeReady, endedAt: mergeReadyEndedAt)
-            BotDragPayload.lifted = nil
             endTargeting()
             // After endTargeting, which stamps it when the hover hadn't
             // ended yet: this drop has used it.
             mergeReadyEndedAt = nil
             onDrop(dragged, merge)
             return true
-        } isTargeted: { targeted in
-            guard onDrop != nil else { return }
-            targeted ? beginTargeting() : endTargeting()
-        }
+        })
         // The pill's words: read once each time Bots Home shows or
         // connects, not polled (the Bot Chat and its overview poll).
         // The shell keeps a visited tab mounted, so the tab showing again is
