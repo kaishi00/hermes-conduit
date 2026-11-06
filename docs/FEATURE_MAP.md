@@ -1559,21 +1559,25 @@ pulse where`, `pulse spots` and `pulse status` commands (`pulse status` shows Wh
 
 The files, pages and links Hermes made, listed for every chat (the Chats
 bar's Artifacts page) or for one chat (its … menu), opened in the chat's own
-viewers, with Show in Chat. Beside the list, the Folder tab (Workspace files).
+viewers, with Show in Chat. A Markdown file opens in the Markdown reader the
+Folder draws it with, formatted, with Show Source and a system Open In and
+Share handoff; every other file keeps Quick Look, a page its full-screen
+view, and a link Safari. Beside the list, the Folder tab (Workspace files).
 
 **Siblings:** the Artifacts page (from the Sessions bar and Bots Home's shortcut) · a bot's Bot Overview (its whole profile, #1678; see Bots Home) · a chat's own Artifacts sheet · the panel
 beside the chat on a wide window · Bot Chats
 (kept in the bot's own profile) · All (every included profile's chats) ·
 group rooms (no Artifacts list) · a Bot Chat's Work panel (done: it shares the column beside
-the chat, one at a time; see Bot workstreams) · the notifier's artifacts route · README.md
+the chat, one at a time; see Bot workstreams) · the Folder's Markdown reader (Workspace files) ·
+the chat's `MEDIA:` file cards (see Files Hermes attaches) · the notifier's artifacts route · README.md
 
 **Code**
 - List model and merge: `Conduit/Services/Artifacts.swift` (ArtifactItem, ArtifactSource, ArtifactFeed, ArtifactsClient, its keptRoute, keptPage and answer(_:withoutRowsOf:))
 - Which stores a list reads (a bot's overview: `ArtifactScope.bot`), a chat's ids, Show in Chat: `Conduit/Services/AppState+Artifacts.swift` (artifactSources, activeChatArtifactSessionIDs, botChatIDs, showArtifactInChat)
-- Screens: `Conduit/Views/V2/V2ArtifactsViews.swift`; the column beside the chat and its toggle: `Conduit/Views/V2/V2ConversationScreen.swift` (openArtifacts, showsSidePanel)
+- Screens: `Conduit/Views/V2/V2ArtifactsViews.swift`; a Markdown artifact's sheet: `Conduit/Views/Components/MarkdownDocumentSheet.swift`; the system Open In handoff: `Conduit/Views/Components/MediaPreviewPresenter.swift` (presentOpenIn); the column beside the chat and its toggle: `Conduit/Views/V2/V2ConversationScreen.swift` (openArtifacts, showsSidePanel)
 - A chat's store: `Conduit/Services/AppState.swift` (botStoreProfile, openLinkedBotChat, openOtherProfileChat; removeSavedCopies takes a deleted chat's rows from the profile's kept list)
 - Host: `notifier/artifacts_index.py`, `notifier/dashboard/api/workspace.py` (GET /artifacts, one profile per request)
-- Tests: `ConduitTests/GatewayRestartTests+Artifacts.swift`, `ConduitTests/AppStateMultiDashboardTests.swift` (testADeleteAnsweredAfterASwitchSaysNothingOnTheNewDashboard)
+- Tests: `ConduitTests/GatewayRestartTests+Artifacts.swift`, `ConduitTests/MarkdownDocumentSheetTests.swift`, `ConduitTests/AppStateMultiDashboardTests.swift` (testADeleteAnsweredAfterASwitchSaysNothingOnTheNewDashboard)
 
 **Rulings**
 - A list reads each store the chats it covers are kept in: a Bot Chat's sheet reads the bot's profile, and the Artifacts page reads the profile in use, each other profile All shows while it's on, and every other bot's Bot Chat, merged newest first (2026-10-24, #1203, Eric's report).
@@ -1588,12 +1592,13 @@ the chat, one at a time; see Bot workstreams) · the notifier's artifacts route 
 - The panel beside the chat drags wider or narrower by the line beside it, kept per device; it shows at its standard width's window as before (Eric, 2026-10-29, #1492, see Resizable columns on a split window).
 - One host path is one artifact across stores: profiles share the host's files, so a file two stores list shows once, at its newest mention.
 - A file still opening is dropped when the list moves to another server or profile, and only the latest open clears the spinner. Every reload, including one on a dashboard without artifacts, outdates the request before it (2026-10-24, from #895's review, #1191).
+- A Markdown artifact opens in the Markdown reader, not Quick Look: the same `MarkdownText` the Folder draws a `.md` with, read-only, with Show Source and a system Open In/Share handoff to another reader (MDReader on the user's iPad). A file that isn't UTF-8 or is over 16 MB falls back to Quick Look (2026-11-06, #1879).
 - A list opens on what it listed last time, kept as it opens (every kind, unsearched, its first page) for each store's profile, a chat's own for the chats read last, which a deleted chat takes with it, as it takes its rows from the profile's; a bot's store that fails shows its kept rows, which don't page on, and kept rows wait for the plugin to say it serves artifacts or rule them out. The update notice shows only once it rules them out: with nothing kept, the list shows its loader until then, or offline, that Conduit isn't connected. Connected with no word from the plugin (its read failed as Conduit connected), the list asks it again as it opens and on a refresh, and with nothing kept says it couldn't reach the dashboard's notifier, with Try Again, if it still doesn't answer. A list kept or loaded empty says so at once, offline too (2026-10-31, #1582 and #1584, issue #1533; see Screens that open on their last answer).
 
 **Open gaps**
 - Group rooms' messages aren't listed: a room has no Artifacts list, and its members' replies stay out of the Artifacts page.
 
-**Checked:** 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1679 (on `bot-workstreams`, a chat opened from Artifacts pushed in Bots stays in Bots, under the page; from Sessions unchanged); 2026-11-03, #1678 (on `bot-workstreams`, Bots Home's Artifacts shortcut opens the page, and a bot's overview lists its whole profile's, Show in Chat closing the overview first); 2026-11-01, #1619 (Artifacts and the Work panel share the column beside the chat); 2026-10-31, #1584 (from #1582's review, a deleted chat's rows leave the profile's kept list, and offline a list kept empty says so); 2026-10-31, #1582 (a list opens on what it listed last time, and a deleted chat takes its own; the update notice waits for the plugin to rule artifacts out, kept rows or none, and a list whose plugin never answered asks it again); 2026-10-29, #1491 (a picture opens in the picture viewer and pages through the list's pictures); 2026-10-29, #1492 (the panel's width drags); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1399 (the panel and the Folder tab); #1272 with notifier #376; the sheet's ids at #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
+**Checked:** 2026-11-06, #1879 (a Markdown artifact opens in the Markdown reader, with Show Source and the Open In/Share handoff; Windows and Mac names, the 16 MB ceiling and the Quick Look fallback; code, tests and map); 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1679 (on `bot-workstreams`, a chat opened from Artifacts pushed in Bots stays in Bots, under the page; from Sessions unchanged); 2026-11-03, #1678 (on `bot-workstreams`, Bots Home's Artifacts shortcut opens the page, and a bot's overview lists its whole profile's, Show in Chat closing the overview first); 2026-11-01, #1619 (Artifacts and the Work panel share the column beside the chat); 2026-10-31, #1584 (from #1582's review, a deleted chat's rows leave the profile's kept list, and offline a list kept empty says so); 2026-10-31, #1582 (a list opens on what it listed last time, and a deleted chat takes its own; the update notice waits for the plugin to rule artifacts out, kept rows or none, and a list whose plugin never answered asks it again); 2026-10-29, #1491 (a picture opens in the picture viewer and pages through the list's pictures); 2026-10-29, #1492 (the panel's width drags); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1399 (the panel and the Folder tab); #1272 with notifier #376; the sheet's ids at #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
 
 ## Workspace files
 
