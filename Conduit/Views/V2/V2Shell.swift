@@ -1884,8 +1884,12 @@ extension View {
     /// Room under the V2 floating tab bar, set inside a tab's own
     /// NavigationStack on each screen it shows, as the shell's
     /// `tabBarClearance` does for the other tabs. Nothing outside V2.
+    /// Each such screen also takes the window's side safe area
+    /// (`windowSideContent`, #1900): Settings' pages pushed by a link
+    /// (Diagnostics, a provider, a skill) come only through here.
     func v2TabBarClearance() -> some View {
         modifier(V2TabBarClearance())
+            .windowSideContent()
     }
 }
 

@@ -5853,7 +5853,7 @@ side safe area they take (#1900)
 - Drawer shell: `Conduit/Views/RootView.swift` (sidebarLayoutContent), `Conduit/Views/SidebarView.swift` (PersistentColumnContent)
 - The line between them: `Conduit/Views/Components/ColumnDivider.swift` (ColumnDivider, which drags a column's width: Resizable columns on a split window)
 - The backdrop: `Conduit/Theme.swift` (ConduitBackdrop ignores the safe area)
-- The side safe area a stack's screens take: `Conduit/Views/Components/WindowSideInsets.swift` (WindowSideInsets, windowSideContent), read outside every stack by `Conduit/Views/V2/V2Shell.swift` (sizedTabs) and `Conduit/Views/RootView.swift` (windowWidthReader); Settings' stack in `Conduit/Views/AuxiliaryViews.swift` (SettingsView)
+- The side safe area a stack's screens take: `Conduit/Views/Components/WindowSideInsets.swift` (WindowSideInsets, windowSideContent), read outside every stack by `Conduit/Views/V2/V2Shell.swift` (sizedTabs) and `Conduit/Views/RootView.swift` (windowWidthReader); Settings' pages through `v2TabBarClearance()` (V2Shell.swift), every page its stack pushes, by a link too
 - Tests: `ConduitTests/V2SplitLayoutTests.swift` (testColumnsTakeTheWindowSideInsetsOnlyOnTheSidesTheyReach)
 
 **Rulings**
