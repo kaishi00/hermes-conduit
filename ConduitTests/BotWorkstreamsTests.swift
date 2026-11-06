@@ -992,6 +992,97 @@ extension BotModeTests {
         XCTAssertTrue(zoom.isEnabled)
     }
 
+    /// A zoom dismissal let go that left the list's hidden bar over a chat
+    /// brings the chat's bar back once the swipe ends; once another screen
+    /// is on top, the keeper leaves the bar alone (Eric 2026-11-06: a room
+    /// lost its top menus).
+    @MainActor
+    func testTheBarKeeperShowsTheChatsBarAgainAfterALetGoSwipeOnlyWhileItsOnTop() {
+        let root = UIViewController()
+        let page = UIViewController()
+        let navigation = UINavigationController()
+        navigation.setViewControllers([root, page], animated: false)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = navigation
+        window.isHidden = false
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+
+        let swipeDown = UIPanGestureRecognizer()
+        swipeDown.name = SystemBackSwipeGate.zoomDismissalPrefix + "SwipeDown"
+        page.view.addGestureRecognizer(swipeDown)
+        let keeper = NavigationBarKeeper.KeeperView()
+        page.view.addSubview(keeper)
+        XCTAssertTrue(keeper.page === page)
+        XCTAssertTrue(keeper.watches(swipeDown), "the zoom's swipe down, by its name")
+
+        // The swipe let go, the list's hidden bar left over the chat.
+        navigation.setNavigationBarHidden(true, animated: false)
+        keeper.swipeEnded()
+        let shown = expectation(description: "the chat's bar is back")
+        func poll(_ triesLeft: Int) {
+            if !navigation.isNavigationBarHidden { return shown.fulfill() }
+            guard triesLeft > 0 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { poll(triesLeft - 1) }
+        }
+        poll(50)
+        wait(for: [shown], timeout: 2)
+
+        // iOS 27: the zoom leaves the bar faded out rather than hidden.
+        navigation.navigationBar.alpha = 0
+        keeper.restoreBar()
+        XCTAssertEqual(navigation.navigationBar.alpha, 1)
+
+        // Another screen on top: its bar is its own.
+        navigation.pushViewController(UIViewController(), animated: false)
+        navigation.setNavigationBarHidden(true, animated: false)
+        navigation.navigationBar.alpha = 0
+        keeper.restoreBar()
+        XCTAssertTrue(navigation.isNavigationBarHidden, "another screen's bar is its own")
+        XCTAssertEqual(navigation.navigationBar.alpha, 0)
+        keeper.removeFromSuperview()
+    }
+
+    /// A zoom's dismissal takes the page out of its stack while it runs, so
+    /// the page has no stack when the finger lifts; the keeper still finds
+    /// it, waits for the page to be put back and shows its faded bar again
+    /// (iOS 27.2 simulator: the bar stayed at alpha 0 after every let-go
+    /// swipe until the keeper kept the stack).
+    @MainActor
+    func testTheBarKeeperWaitsForAPageTheZoomTookOutOfTheStack() {
+        let root = UIViewController()
+        let page = UIViewController()
+        let navigation = UINavigationController()
+        navigation.setViewControllers([root, page], animated: false)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = navigation
+        window.isHidden = false
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+        let keeper = NavigationBarKeeper.KeeperView()
+        page.view.addSubview(keeper)
+
+        // The finger lifts while the page is out of the stack.
+        navigation.setViewControllers([root], animated: false)
+        XCTAssertNil(page.navigationController)
+        navigation.navigationBar.alpha = 0
+        keeper.swipeEnded()
+        // The let-go dismissal puts it back, its bar still faded out.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            navigation.setViewControllers([root, page], animated: false)
+            navigation.navigationBar.alpha = 0
+        }
+        let shown = expectation(description: "the chat's bar is back")
+        func poll(_ triesLeft: Int) {
+            if navigation.topViewController === page, navigation.navigationBar.alpha == 1 { return shown.fulfill() }
+            guard triesLeft > 0 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { poll(triesLeft - 1) }
+        }
+        poll(75)
+        wait(for: [shown], timeout: 3)
+        keeper.removeFromSuperview()
+    }
+
     /// Bots Home's voice button lists the shown bots to call, the one that
     /// talked last first, ties in roster order (Eric 2026-11-03).
     func testBotsHomesVoiceButtonListsTheBotUsedLastFirst() {
