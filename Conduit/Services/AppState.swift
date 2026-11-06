@@ -4815,6 +4815,9 @@ final class AppState: ObservableObject {
                     // The phone's own tools (calendar, reminders, alarms,
                     // maps, health, location) the user lets Local Live use.
                     async let hostTools: Void = self.prepareVoiceHostTools(for: .localLive)
+                    // A lookup that outlives a profile switch is dropped:
+                    // another profile's SOUL.md never reaches this call.
+                    let profile = self.activeProfile
                     async let personality = self.localLivePersonalityEnabled ? hostContext.personality() : nil
                     // Off only when the user turned web lookups off.
                     if self.geminiLiveSearchMode != .off {
@@ -4822,7 +4825,8 @@ final class AppState: ObservableObject {
                     } else {
                         self.localLiveWebLookUps = false
                     }
-                    self.localLivePersonality = await personality
+                    let persona = await personality
+                    self.localLivePersonality = self.activeProfile == profile ? persona : nil
                     await hostTools
                 } else {
                     self?.localLivePersonality = nil
