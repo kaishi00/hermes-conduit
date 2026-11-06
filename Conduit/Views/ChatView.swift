@@ -587,6 +587,9 @@ struct ChatView: View {
             .onAppear {
                 appState.refreshChatCards()
                 installScrollerCallbacks()
+                // A new chat view's scroller says where the reader is from
+                // here; the last one's word went with it (a room, a sheet).
+                appState.chatReaderIsUpInOlderRows = scroller.mode == .browsing
                 scroller.setPaused(scenePhase == .background)
                 scroller.renderedSessionChanged(
                     to: drawnScrollSessionKey,
