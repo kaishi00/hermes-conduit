@@ -5479,7 +5479,12 @@ enum MessageNormalizer {
                 } ?? systemNotice ?? userContent.content
             }
 
-            let reasoning = role == .assistant ? extractContent(obj["reasoning"] ?? obj["reasoning_content"] ?? .null) : nil
+            // Presence, including null or an empty value, is authoritative:
+            // raw reasoning can contain commentary intentionally removed by Hermes.
+            let reasoning: String? = role == .assistant
+                ? (obj["display_reasoning"].map { $0.stringValue ?? "" }
+                    ?? extractContent(obj["reasoning"] ?? obj["reasoning_content"] ?? .null))
+                : nil
             // This deliberately follows Desktop's persisted-transcript parser:
             // only an assistant row with an actual array of tool calls creates
             // call cards. Treating an object-shaped `tool_calls` field as an
@@ -5558,6 +5563,20 @@ enum MessageNormalizer {
                     timestamp: extractTimestamp(obj),
                     author: extractAuthor(obj)
                 ))
+            }
+
+            // Only the server-approved projection is public. Never infer it
+            // from provider sidecars or raw reasoning, even if this list is empty.
+            if rawRole == "assistant", role == .assistant, displayKind == nil,
+               let commentary = obj["display_commentary"]?.arrayValue {
+                for (commentaryIndex, value) in commentary.enumerated() {
+                    guard let text = value.stringValue,
+                          !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+                    messages.append(ChatMessage(
+                        id: "\(id)-commentary-\(commentaryIndex)", role: .assistant,
+                        content: text, timestamp: extractTimestamp(obj), author: extractAuthor(obj)
+                    ))
+                }
             }
 
             // Timeline-projected rows are never self-improvement reviews, and
