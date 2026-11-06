@@ -6715,6 +6715,33 @@ final class AppState: ObservableObject {
 
     static let maxLeftBackfilledTranscripts = 3
 
+    /// How many rows a chat holds before it lets go of the oldest pages
+    /// Load earlier brought in: twice the saved copy's 500 (issue 1828).
+    static let loadedHistoryRowLimit = 1_000
+
+    /// The reader has scrolled up off the chat's newest row (the scroller
+    /// says so as it starts and stops following it): a long chat's oldest
+    /// pages stay while they may be reading them.
+    var chatReaderIsUpInOlderRows = false
+
+    /// The reader is back at the newest row: a chat past the limit lets go
+    /// of its oldest loaded pages, out of sight above them, and Load earlier
+    /// brings them back from Hermes (Eric, 2026-11-05, issue 1828). Only
+    /// between turns and on Hermes' own rows.
+    func trimLoadedHistoryIfLong() {
+        guard turnState == .idle,
+              !chatReaderIsUpInOlderRows,
+              offlineChatPresentation == nil,
+              reconciliation == nil,
+              let window = persistedTranscriptWindow,
+              persistedTranscriptWindowOwnershipIsCurrent(window),
+              let trimmed = PersistedTranscriptWindow.trimmingLoadedHistory(
+                messages, window: window, keeping: Self.loadedHistoryRowLimit
+              ) else { return }
+        messages = trimmed.messages
+        persistedTranscriptWindow = trimmed.window
+    }
+
     /// Keeps the chat on screen as it's left, when Load earlier brought in
     /// its older rows: Hermes' rows only, never saved rows standing in.
     private func keepLeftBackfilledTranscript() {
@@ -6729,11 +6756,24 @@ final class AppState: ObservableObject {
         leftBackfilledTranscripts.removeAll {
             $0.dashboardID == dashboardID && !$0.sessionIDs.isDisjoint(with: sessionIDs)
         }
+        // A long chat lets go of its oldest pages as it's left between
+        // turns from its newest row (issue 1828). A reader up in the older
+        // rows keeps them, so their place there comes back with the chat.
+        // A Load earlier still in flight is dropped by the open.
+        var leftWindow = window
+        leftWindow.isLoadingEarlier = false
+        let trimmed = turnState == .idle && !chatReaderIsUpInOlderRows
+            ? PersistedTranscriptWindow.trimmingLoadedHistory(
+                messages, window: leftWindow, keeping: Self.loadedHistoryRowLimit
+            )
+            : nil
+        let kept = trimmed ?? (messages: messages, window: leftWindow)
+        guard kept.window.hasBackfilledPrefix else { return }
         leftBackfilledTranscripts.append(LeftBackfilledTranscript(
             dashboardID: dashboardID,
             sessionIDs: sessionIDs,
-            messages: messages,
-            window: window
+            messages: kept.messages,
+            window: kept.window
         ))
         if leftBackfilledTranscripts.count > Self.maxLeftBackfilledTranscripts {
             leftBackfilledTranscripts.removeFirst(leftBackfilledTranscripts.count - Self.maxLeftBackfilledTranscripts)
@@ -7694,6 +7734,7 @@ final class AppState: ObservableObject {
             }
         // After init's own defaults reads, so they don't queue behind it.
         sessionPresentationCache.prewarm()
+        installRichDiffReader()
     }
 
     func deviceConditionsChanged(_ conditions: DeviceConditions) {
@@ -18390,7 +18431,13 @@ final class AppState: ObservableObject {
                     runtimeSessionID: result.sessionId,
                     nextOffset: page.rawReturned,
                     canLoadEarlier: page.mayHaveOlderRows(fetchedRowCount: page.rawReturned),
-                    hasBackfilledPrefix: graftedBackfilledPrefix
+                    hasBackfilledPrefix: graftedBackfilledPrefix,
+                    // The grafted prefix keeps its rows, so the page starts
+                    // noted on it still mark where a long chat can cut back
+                    // to (issue 1828), covering no more than this page.
+                    loadedPageStarts: graftedBackfilledPrefix
+                        ? (priorWindowForGraft?.pageStartsCarried(into: page.rawReturned) ?? [])
+                        : []
                 )
             } else {
                 persistedTranscriptWindow = nil
@@ -22277,7 +22324,8 @@ final class AppState: ObservableObject {
                 runtimeSessionID: runtimeSessionID,
                 nextOffset: page.rawReturned,
                 canLoadEarlier: page.mayHaveOlderRows(fetchedRowCount: page.rawReturned),
-                hasBackfilledPrefix: priorOwned?.hasBackfilledPrefix ?? false
+                hasBackfilledPrefix: priorOwned?.hasBackfilledPrefix ?? false,
+                loadedPageStarts: priorOwned?.pageStartsCarried(into: page.rawReturned) ?? []
             )
         }
     }
@@ -32749,6 +32797,13 @@ final class AppState: ObservableObject {
                 return false
             }
             var didPrepend = false
+            let startBeforePage = messages.first.map {
+                PersistedTranscriptWindowState.LoadedPageStart(
+                    firstRowID: $0.id,
+                    nextOffset: offset,
+                    hasBackfilledPrefix: current.hasBackfilledPrefix
+                )
+            }
             if fetchedRowCount > 0 {
                 let normalizedPage = MessageNormalizer.normalizeMessages(
                     rawRows.map(AnyCodable.from),
@@ -32808,6 +32863,16 @@ final class AppState: ObservableObject {
             current.nextOffset = offset + fetchedRowCount
             current.canLoadEarlier = fetchedRowCount > 0
                 && page.mayHaveOlderRows(fetchedRowCount: fetchedRowCount)
+            if didPrepend, let first = messages.first {
+                if current.loadedPageStarts.isEmpty, let startBeforePage {
+                    current.loadedPageStarts.append(startBeforePage)
+                }
+                current.loadedPageStarts.append(.init(
+                    firstRowID: first.id,
+                    nextOffset: current.nextOffset,
+                    hasBackfilledPrefix: true
+                ))
+            }
             return didPrepend
         case .unavailable:
             // The history source went away mid-conversation; there is no
@@ -38227,7 +38292,12 @@ final class AppState: ObservableObject {
         gatewayDiagnosticsLoading = true
         defer { gatewayDiagnosticsLoading = false }
         guard let dashboardTicketBridge else {
-            gatewayDiagnostics = GatewayDiagnostics(gatewayRunning: isConnected, gatewayState: nil, version: nil, pid: nil, connectors: [], logs: [], error: AppLocalization.string("Dashboard diagnostics are still loading."))
+            // Signed out or never connected, there's no dashboard to ask; what
+            // the page keeps on this device still shows under this.
+            let error = connection == nil && !isConnecting
+                ? AppLocalization.string("Not connected. The gateway's status, connectors and logs show once Conduit reconnects.")
+                : AppLocalization.string("Dashboard diagnostics are still loading.")
+            gatewayDiagnostics = GatewayDiagnostics(gatewayRunning: isConnected, gatewayState: nil, version: nil, pid: nil, connectors: [], logs: [], error: error)
             return
         }
         async let statusResult = dashboardTicketBridge.requestJSON(path: "/api/status")

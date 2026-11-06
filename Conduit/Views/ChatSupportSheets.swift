@@ -12,14 +12,26 @@ import SwiftUI
 struct GatewayDiagnosticsSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
     /// The report copied last, so "Copied" clears once a newer step lands.
     @State private var copiedTimelineReport: String?
     @State private var confirmingRestart = false
-    /// Pushed inside Settings > Connection rather than shown as its own sheet.
-    var embedded = false
+    var placement: Placement = .chat
+
+    /// Where the page opens. What this device keeps (the last connection,
+    /// device reports, chat traces) shows in each, connected or not: that is
+    /// when they're needed most.
+    enum Placement {
+        /// The chat's Gateway sheet (the header's menu or status dot).
+        case chat
+        /// Pushed inside Settings > Connection.
+        case settings
+        /// A sheet from the sign-in screen, which has no gateway to read.
+        case signIn
+    }
 
     var body: some View {
-        if embedded {
+        if placement == .settings {
             page
         } else {
             NavigationStack { page }
@@ -31,47 +43,79 @@ struct GatewayDiagnosticsSheet: View {
             ConduitBackdrop()
             ScrollView {
                 VStack(spacing: 22) {
-                    summary
+                    if placement != .signIn { summary }
                     lastConnection
                     DeviceReportsSection()
                     ChatTracesSection()
-                    connectors
-                    logs
+                    if showsGatewayReports {
+                        connectors
+                        logs
+                    }
                 }
                 .padding(16)
             }
         }
-        .navigationTitle(embedded ? AppLocalization.string("Diagnostics & logs") : AppLocalization.string("Gateway"))
+        .navigationTitle(placement == .chat ? AppLocalization.string("Gateway") : AppLocalization.string("Diagnostics & logs"))
         .navigationBarTitleDisplayMode(.inline)
         // Pushed, it keeps the Settings pages' bar.
-        .toolbarBackground(embedded ? .automatic : .hidden, for: .navigationBar)
+        .toolbarBackground(placement == .settings ? .automatic : .hidden, for: .navigationBar)
         .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button { confirmingRestart = true } label: {
-                    Image(systemName: "restart")
+            if placement != .settings {
+                // A sheet on a Mac has no swipe to close it.
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(AppLocalization.string("Done")) { dismiss() }
+                        .accessibilityIdentifier("diagnostics.done")
                 }
-                .disabled(!appState.canRestartGateway)
-                .accessibilityLabel(AppLocalization.string("Restart Gateway"))
-                .accessibilityIdentifier("gateway.restart")
-                Button { Task { await appState.refreshGatewayDiagnostics() } } label: {
-                    if appState.gatewayDiagnosticsLoading {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
+            }
+            if placement != .signIn {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button { confirmingRestart = true } label: {
+                        Image(systemName: "restart")
                     }
+                    .disabled(!appState.canRestartGateway)
+                    .accessibilityLabel(AppLocalization.string("Restart Gateway"))
+                    .accessibilityIdentifier("gateway.restart")
+                    Button { Task { await appState.refreshGatewayDiagnostics() } } label: {
+                        if appState.gatewayDiagnosticsLoading {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                    }
+                    .accessibilityLabel(AppLocalization.string("Refresh gateway diagnostics"))
                 }
-                .accessibilityLabel(AppLocalization.string("Refresh gateway diagnostics"))
             }
         }
         .gatewayRestartConfirmation(isPresented: $confirmingRestart)
-        // Pushed from Settings it only reloads; loading also raises the sheet.
+        // Opening only reloads: the chat's sheet is already up, and the
+        // sign-in screen has no gateway to ask.
         .task {
-            if embedded {
-                await appState.refreshGatewayDiagnostics()
-            } else {
-                await appState.loadGatewayDiagnostics()
-            }
+            guard placement != .signIn else { return }
+            await appState.refreshGatewayDiagnostics()
         }
+        // A reconnect (Retry, or a gateway restart coming back) or a drop
+        // while the page is open reads the gateway again, so the summary
+        // and the sections under it agree.
+        .onChange(of: appState.isConnected) { _, _ in
+            guard placement != .signIn else { return }
+            Task { await appState.refreshGatewayDiagnostics() }
+        }
+        // A restart that ends while the page is open, from here or from
+        // Settings > Connection, reads what the gateway did: the socket goes
+        // through the dashboard and usually stays up, so the line above
+        // rarely fires for one.
+        .onChange(of: appState.activeGatewayRestart.isInProgress) { _, inProgress in
+            guard placement != .signIn, !inProgress else { return }
+            Task { await appState.refreshGatewayDiagnostics() }
+        }
+    }
+
+    /// Connectors and gateway logs come from the gateway: shown while
+    /// connected, or while an answer from before still has some.
+    private var showsGatewayReports: Bool {
+        guard placement != .signIn else { return false }
+        let diagnostics = appState.gatewayDiagnostics
+        return appState.isConnected || !(diagnostics?.connectors.isEmpty ?? true) || !(diagnostics?.logs.isEmpty ?? true)
     }
 
     private var summary: some View {

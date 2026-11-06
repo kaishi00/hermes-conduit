@@ -589,6 +589,9 @@ struct ChatView: View {
             .onAppear {
                 appState.refreshChatCards()
                 installScrollerCallbacks()
+                // A new chat view's scroller says where the reader is from
+                // here; the last one's word went with it (a room, a sheet).
+                appState.chatReaderIsUpInOlderRows = scroller.mode == .browsing
                 scroller.setPaused(scenePhase == .background)
                 scroller.renderedSessionChanged(
                     to: drawnScrollSessionKey,
@@ -1001,6 +1004,11 @@ private final class ChatScrollEventRouter {
             appState.completeChatResumeRestoration(generation: generation)
         case .abandonRestoration(let generation):
             appState.abandonChatResumeRestoration(generation: generation)
+        case .browsingOlderRows(let isUp):
+            appState.chatReaderIsUpInOlderRows = isUp
+        case .reachedLatest:
+            // After the scroller has finished coming back down.
+            DispatchQueue.main.async { [weak appState] in appState?.trimLoadedHistoryIfLong() }
         }
     }
 

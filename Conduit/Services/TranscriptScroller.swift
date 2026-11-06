@@ -74,6 +74,11 @@ enum TranscriptScrollerEvent: Equatable {
     case cancelAutomaticRestoration
     case completeRestoration(generation: UInt64)
     case abandonRestoration(generation: UInt64)
+    /// The reader scrolled back down to the newest row.
+    case reachedLatest
+    /// The reader is up in the older rows (true) or follows the newest
+    /// again (false).
+    case browsingOlderRows(Bool)
 }
 
 /// The viewport values ChatView renders from. Published only when one of
@@ -1411,7 +1416,12 @@ final class TranscriptScroller: ObservableObject {
     /// pin owed to following.
     private func setMode(_ newMode: Mode, anchoringOn choice: AnchorChoice? = .firstOnScreen) {
         guard mode != newMode else { return }
+        let cameBackDown = mode == .browsing && newMode == .following
         mode = newMode
+        if newMode == .browsing || newMode == .following {
+            emit(.browsingOlderRows(newMode == .browsing))
+        }
+        if cameBackDown { emit(.reachedLatest) }
         if newMode == .browsing {
             pinOwed = false
             if let surface, let choice { captureAnchor(on: surface, choosing: choice) }

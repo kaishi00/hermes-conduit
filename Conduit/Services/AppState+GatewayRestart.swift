@@ -52,8 +52,9 @@ extension AppState {
             // outcome (or a step) for a dashboard no longer shown.
             self.gatewayRestart.finish(outcome, restart: restartID, activeDashboardID: self.activeDashboardID)
             guard self.activeDashboardID == dashboardID else { return }
-            // The sheet's state and logs show what the gateway did.
-            if self.showGatewaySheet { await self.refreshGatewayDiagnostics() }
+            // Diagnostics & logs, if open, reads what the gateway did itself
+            // (GatewayDiagnosticsSheet's restart onChange), in the chat's
+            // sheet and in Settings alike.
             // The chat connection goes through the dashboard, not the
             // gateway, so it normally stays up; reconnect only if it dropped.
             if case .restarted = outcome, !self.isConnected { await self.reconnect() }
