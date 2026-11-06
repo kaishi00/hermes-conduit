@@ -1099,6 +1099,7 @@ extension BotModeTests {
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         appState.dropBot("Ayaka", onto: "furina", shown: ["ayaka", "Furina", "Yelan"])
         XCTAssertEqual(appState.botOrder.names, ["Furina", "Ayaka", "Yelan"], "onto its right neighbour: they swap")
+        XCTAssertLessThan(BotDragPayload.slideDwell, BotDragPayload.mergeDwell, "a bot slides into place before it could swell for a room")
         appState.dropBot("Yelan", onto: "Furina", shown: ["Furina", "Ayaka", "Yelan"])
         XCTAssertEqual(appState.botOrder.names, ["Yelan", "Furina", "Ayaka"])
 

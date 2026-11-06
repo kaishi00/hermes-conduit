@@ -398,7 +398,7 @@ struct BotRosterView: View {
             room: newRoom.isEmpty || bot.isHiddenByMeta ? .off : (isInNewRoom(bot.name) ? .member : .notMember),
             onDrop: { dragged, merge in handleDrop(dragged, on: bot, merge: merge) },
             canMerge: { dragged in canMerge(dragged, with: bot) },
-            landsAfter: { dragged in landsAfter(dragged, on: bot) },
+            onSlide: { dragged in slideBot(dragged, onto: bot) },
             onToggleRoom: { toggleNewRoom(bot) }
         )
     }
@@ -426,14 +426,13 @@ struct BotRosterView: View {
         return !draggedBot.isHiddenByMeta && newRoom.fits([target.name, draggedBot.name])
     }
 
-    /// Whether `dragged`, dropped on `target` to move, lands after it: it
-    /// shows before it, so it takes its place by going after it.
-    private func landsAfter(_ dragged: String, on target: BotProfile) -> Bool {
-        let shown = appState.shownBotRoster
-        guard let from = shown.firstIndex(where: { $0.name.caseInsensitiveCompare(dragged) == .orderedSame }),
-              let to = shown.firstIndex(where: { $0.name.caseInsensitiveCompare(target.name) == .orderedSame })
-        else { return false }
-        return from < to
+    /// A bot held over `target` takes its place while still in hand, and
+    /// the others slide aside, as on the Home Screen.
+    private func slideBot(_ dragged: String, onto target: BotProfile) {
+        Haptics.selection()
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            appState.dropBot(dragged, onto: target.name, shown: appState.shownBotRoster.map(\.name))
+        }
     }
 
     /// A portrait dropped on another: held over its face, the two start a
