@@ -233365,94 +233365,6 @@
         }
       }
     },
-    "Opens New Group Chat with these bots.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Öffnet „Neuer Gruppenchat“ mit diesen Bots."
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Opens New Group Chat with these bots."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Abre Nuevo chat de grupo con estos bots."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ouvre Nouvelle discussion de groupe avec ces bots."
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Membuka Obrolan Grup Baru dengan bot ini."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Apre Nuova chat di gruppo con questi bot."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "これらのボットで新しいグループチャットを開きます。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "이 봇들로 새 그룹 채팅을 엽니다."
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Otwiera Nowy czat grupowy z tymi botami."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Abre Novo chat em grupo com estes bots."
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Открывает «Новый групповой чат» с этими ботами."
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bu botlarla Yeni Grup Sohbeti'ni açar."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "用这些机器人打开“新建群聊”。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "用這些機器人開啟「新增群組聊天」。"
-          }
-        }
-      }
-    },
     "Opens this group chat.": {
       "localizations": {
         "de": {
@@ -440510,6 +440422,182 @@
           "stringUnit": {
             "state": "translated",
             "value": "此聊天室依較新的 App 中設定的方式回答。除非你選擇其他方式，否則維持不變。"
+          }
+        }
+      }
+    },
+    "Empty, the room is named after its bots.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leer bleibt der Raum nach seinen Bots benannt."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Empty, the room is named after its bots."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si está vacío, la sala lleva el nombre de sus bots."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vide, le salon prend le nom de ses bots."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jika kosong, ruang diberi nama sesuai botnya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se vuoto, la stanza prende il nome dai suoi bot."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "空欄のままだと、ルーム名はボットの名前になります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "비워 두면 봇 이름으로 방 이름이 정해집니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puste: pokój nazywa się od swoich botów."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vazio, a sala recebe o nome dos seus bots."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Если пусто, комната называется по именам ботов."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Boş bırakılırsa oda botlarının adını alır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "留空时，房间以其机器人的名字命名。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "留空時，房間以其機器人的名字命名。"
+          }
+        }
+      }
+    },
+    "Names the room in the bar below.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Benennt den Raum in der Leiste unten."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Names the room in the bar below."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pon nombre a la sala en la barra de abajo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nommez le salon dans la barre ci-dessous."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beri nama ruang di bilah bawah."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dai un nome alla stanza nella barra qui sotto."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下のバーでルームに名前を付けます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아래 막대에서 방 이름을 정합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nazwij pokój na pasku poniżej."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dê um nome à sala na barra abaixo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Назовите комнату на панели ниже."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odayı aşağıdaki çubukta adlandırın."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在下方栏中为房间命名。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在下方列中為房間命名。"
           }
         }
       }
