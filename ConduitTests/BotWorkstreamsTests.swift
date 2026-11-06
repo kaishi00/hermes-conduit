@@ -1043,6 +1043,46 @@ extension BotModeTests {
         keeper.removeFromSuperview()
     }
 
+    /// A zoom's dismissal takes the page out of its stack while it runs, so
+    /// the page has no stack when the finger lifts; the keeper still finds
+    /// it, waits for the page to be put back and shows its faded bar again
+    /// (iOS 27.2 simulator: the bar stayed at alpha 0 after every let-go
+    /// swipe until the keeper kept the stack).
+    @MainActor
+    func testTheBarKeeperWaitsForAPageTheZoomTookOutOfTheStack() {
+        let root = UIViewController()
+        let page = UIViewController()
+        let navigation = UINavigationController()
+        navigation.setViewControllers([root, page], animated: false)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = navigation
+        window.isHidden = false
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+        let keeper = NavigationBarKeeper.KeeperView()
+        page.view.addSubview(keeper)
+
+        // The finger lifts while the page is out of the stack.
+        navigation.setViewControllers([root], animated: false)
+        XCTAssertNil(page.navigationController)
+        navigation.navigationBar.alpha = 0
+        keeper.swipeEnded()
+        // The let-go dismissal puts it back, its bar still faded out.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            navigation.setViewControllers([root, page], animated: false)
+            navigation.navigationBar.alpha = 0
+        }
+        let shown = expectation(description: "the chat's bar is back")
+        func poll(_ triesLeft: Int) {
+            if navigation.topViewController === page, navigation.navigationBar.alpha == 1 { return shown.fulfill() }
+            guard triesLeft > 0 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { poll(triesLeft - 1) }
+        }
+        poll(75)
+        wait(for: [shown], timeout: 3)
+        keeper.removeFromSuperview()
+    }
+
     /// Bots Home's voice button lists the shown bots to call, the one that
     /// talked last first, ties in roster order (Eric 2026-11-03).
     func testBotsHomesVoiceButtonListsTheBotUsedLastFirst() {
