@@ -264,6 +264,11 @@ struct V2ConversationScreen: View {
         // A workstream's chat goes back to the Bot Chat that started it,
         // by Back and by the edge swipe, not to the list under both.
         .navigationBarBackButtonHidden(workstreamGoesBack != nil)
+        // Hiding Back doesn't stop the system's own swipes off the screen:
+        // a Bot Chat's zoom from its portrait (a slow swipe went to Bots
+        // Home, a quick one to the Bot Chat), and iOS 26's swipe from
+        // anywhere. Only `backSwipe` goes back from a workstream.
+        .background { SystemBackSwipeGate(blocked: workstreamGoesBack != nil) }
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
@@ -420,8 +425,9 @@ struct V2ConversationScreen: View {
 
     /// A Bot Chat grown from its portrait goes home by a swipe from
     /// anywhere, as a session's chat does: the zoom's own swipe starts only
-    /// where the transcript has no text. A workstream's chat, whose hidden
-    /// Back button takes the system's swipe with it, goes to its Bot Chat.
+    /// where the transcript has no text. A workstream's chat goes to its Bot
+    /// Chat by this swipe alone, slow or quick: `SystemBackSwipeGate` holds
+    /// the system's and the zoom's swipes back there.
     /// Not while the composer is in use (a caret or selection dragged
     /// along a line) or a held voice message slides to cancel.
     private var swipesBack: Bool {

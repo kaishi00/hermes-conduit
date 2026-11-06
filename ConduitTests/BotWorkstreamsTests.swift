@@ -850,6 +850,16 @@ extension BotModeTests {
         XCTAssertFalse(BotChatSwap.isBackSwipe(CGSize(width: -120, height: 0)), "the other way")
     }
 
+    /// A workstream's screen holds back the zoom's own dismissals by their
+    /// UIKit names, so a slow swipe can't pop past its Bot Chat to Bots Home.
+    func testTheBackSwipeGateKnowsTheZoomsDismissals() {
+        for name in ["LeadingEdgePan", "SwipeDown", "Pinch"] {
+            XCTAssertTrue(SystemBackSwipeGate.isZoomDismissal("com.apple.UIKit.ZoomInteractiveDismiss" + name), name)
+        }
+        XCTAssertFalse(SystemBackSwipeGate.isZoomDismissal(nil))
+        XCTAssertFalse(SystemBackSwipeGate.isZoomDismissal("UINavigationController.edgeSwipe"))
+    }
+
     /// Bots Home's voice button lists the shown bots to call, the one that
     /// talked last first, ties in roster order (Eric 2026-11-03).
     func testBotsHomesVoiceButtonListsTheBotUsedLastFirst() {
