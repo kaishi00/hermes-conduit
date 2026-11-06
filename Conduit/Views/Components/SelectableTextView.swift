@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UIKit.UIGestureRecognizerSubclass
 
 /// A non-editable UIKit text surface gives chat text true character-range
 /// selection on the iOS versions Conduit supports. SwiftUI's native text
@@ -1240,7 +1241,11 @@ final class MarkdownSelectionObserverGestureRecognizer: UIGestureRecognizer, UIG
     /// Fails once every finger has lifted, which resets it, and every
     /// gesture the touch went through, for the next touch.
     private func failIfLastTouch(_ touches: Set<UITouch>, event: UIEvent) {
-        guard !UIGestureRecognizer.fingerStillDown(besides: touches, among: event.touches(for: self) ?? []) else { return }
+        failIfNoFingerRemains(besides: touches, among: event.touches(for: self) ?? [])
+    }
+
+    func failIfNoFingerRemains(besides lifted: Set<UITouch>, among touches: Set<UITouch>) {
+        guard !UIGestureRecognizer.fingerStillDown(besides: lifted, among: touches) else { return }
         state = .failed
     }
 

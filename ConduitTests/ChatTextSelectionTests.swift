@@ -444,6 +444,28 @@ final class ChatTextSelectionTests: XCTestCase {
     }
 
     @MainActor
+    func testSelectionObserverFailsOnlyOnceTheLastFingerLifts() throws {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptor = MarkdownSelectionSegmentDescriptor(id: "code", order: 0, separatorBefore: "")
+        selectionCoordinator.replaceSegments([descriptor], revision: "observer-last-lift-v1")
+        let view = SelectableTextView(
+            text: "let x = 1",
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: descriptor
+        )
+        let hostView = view.makeUIViewForTests(coordinator: view.makeCoordinator())
+        let observer = try XCTUnwrap(hostView.selectionObserverForTesting)
+        let lifted = UITouch()
+        let other = UITouch()
+
+        observer.failIfNoFingerRemains(besides: [lifted], among: [lifted, other])
+        XCTAssertEqual(observer.state, .possible, "a finger is still down: the observer keeps watching")
+
+        observer.failIfNoFingerRemains(besides: [lifted], among: [lifted])
+        XCTAssertEqual(observer.state, .failed, "the last finger lifted: the observer lets UIKit reset the touch's gestures")
+    }
+
+    @MainActor
     func testObserverMoveExtendsActiveSelectionAcrossSegmentsAndTouchEndPreservesIt() throws {
         let selectionCoordinator = MarkdownSelectionCoordinator()
         let descriptors = [
