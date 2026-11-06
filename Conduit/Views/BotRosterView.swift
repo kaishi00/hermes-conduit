@@ -30,9 +30,14 @@ struct BotRosterView: View {
     /// Repair Connection opened from Bots Home's top.
     @State private var repairContext: ConnectionRepairContext?
     /// A room being started on Bots Home, its bots in the order they came
-    /// (empty: none). Nothing reaches the host until Create.
+    /// (empty: none), and the name typed for it. Nothing reaches the host
+    /// until Create.
     @State private var newRoom = BotRoomBuild()
-    @State private var showingNewRoomSheet = false
+    /// Create was tapped and Hermes hasn't answered yet.
+    @State private var creatingNewRoom = false
+    /// Why Hermes didn't make the room, under its name in the bar.
+    @State private var newRoomError: String?
+    @FocusState private var newRoomNameFocused: Bool
     /// Faces flying from their portraits into the room being started.
     @State private var roomFlights: [BotRoomFlight] = []
     /// The rooms there were as Create was tapped: one Hermes lists after it
@@ -97,14 +102,9 @@ struct BotRosterView: View {
             let kept = newRoom.pruned(visible: visibleBotNames)
             if kept != newRoom { newRoom = kept }
         }
-        .sheet(isPresented: $showingNewRoomSheet, onDismiss: { roomsBeforeCreate = nil }) {
-            GroupCreateSheet(
-                preselected: Set(newRoomBots.map(\.name)),
-                suggestedName: joinedNames(newRoomBots),
-                onCreated: newRoomCreated
-            )
-            .environmentObject(appState)
-        }
+        // A new bot or name is a new try: the last one's error goes.
+        .onChange(of: newRoom.names) { _, _ in newRoomError = nil }
+        .onChange(of: newRoom.name) { _, _ in newRoomError = nil }
         .sheet(isPresented: $showingReorder) {
             BotReorderSheet()
                 .environmentObject(appState)
@@ -506,9 +506,33 @@ struct BotRosterView: View {
         return true
     }
 
-    private func openNewRoomSheet() {
+    /// Create in the bar: Hermes makes the room from its bots and name
+    /// (the bots' names when none was typed), with no sheet between (Eric,
+    /// 2026-11-06). A failure says why in the bar and keeps the room as it
+    /// was; a retry with the same bots and name sends the same id.
+    private func createNewRoom() {
+        let bots = newRoomBots
+        guard !creatingNewRoom, bots.count >= 2 else { return }
+        let name = newRoom.roomName(suggested: joinedNames(bots))
+        let roomID = newRoom.attempt(GroupCreateAttempt.Inputs(name: name, members: Set(bots.map(\.name))))
+        Haptics.light()
+        newRoomNameFocused = false
+        newRoomError = nil
+        creatingNewRoom = true
         roomsBeforeCreate = Set(appState.shownGroupRooms.map(\.roomID))
-        showingNewRoomSheet = true
+        Task {
+            let created = await appState.createGroupRoom(name: name, bots: bots, roomID: roomID)
+            creatingNewRoom = false
+            if created {
+                newRoomCreated(roomID)
+            } else {
+                roomsBeforeCreate = nil
+                Haptics.warning()
+                // Said here, in the bar, not on another screen later.
+                newRoomError = appState.errorMessage
+                appState.errorMessage = nil
+            }
+        }
     }
 
     /// Hermes made the room: it takes the new room's place, sliding to
@@ -543,6 +567,8 @@ struct BotRosterView: View {
     }
 
     private func cancelNewRoom() {
+        newRoomNameFocused = false
+        newRoomError = nil
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
             roomFlights = []
             newRoom.clear()
@@ -568,10 +594,13 @@ struct BotRosterView: View {
     }
 
     /// The bar a room being started shows at the bottom: its bots (a tap
-    /// takes one out), Cancel, and Create, which opens New Group Chat with
-    /// them picked and a name suggested: the confirmation.
+    /// takes one out), its name, typed in place (empty: the bots' names,
+    /// shown as the prompt), Cancel, and Create, which makes the room
+    /// (Eric, 2026-11-06: the sheet made dragging bots together extra
+    /// steps). Purpose and who answers are in Group Settings once it's made.
     private var newRoomBar: some View {
         let bots = newRoomBots
+        let suggested = bots.count < 2 ? AppLocalization.string("New room") : joinedNames(bots)
         return HStack(spacing: 12) {
             HStack(spacing: -22) {
                 ForEach(bots) { bot in
@@ -586,30 +615,55 @@ struct BotRosterView: View {
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
+                    .disabled(creatingNewRoom)
                     .accessibilityLabel(Text(AppLocalization.string("Take \(bot.displayLabel) out")))
                 }
             }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(AppLocalization.string("New room"))
-                    .scaledFont(.subheadline.weight(.semibold))
-                Text(verbatim: bots.count < 2
-                     ? AppLocalization.string("Drag or tap bots to add them.")
-                     : joinedNames(bots))
-                    .scaledFont(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+            VStack(alignment: .leading, spacing: 4) {
+                TextField(
+                    AppLocalization.string("Group name"),
+                    text: $newRoom.name,
+                    prompt: Text(verbatim: suggested)
+                )
+                .scaledFont(.subheadline.weight(.semibold))
+                .focused($newRoomNameFocused)
+                .submitLabel(.done)
+                .onSubmit(createNewRoom)
+                .disabled(creatingNewRoom)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .accessibilityLabel(Text(AppLocalization.string("Group name")))
+                .accessibilityHint(Text(AppLocalization.string("Empty, the room is named after its bots.")))
+                .accessibilityIdentifier("bots.newRoom.name")
+                if let error = newRoomError {
+                    Text(verbatim: error)
+                        .scaledFont(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(3)
+                } else if bots.count < 2 {
+                    Text(AppLocalization.string("Drag or tap bots to add them."))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Button(AppLocalization.string("Cancel"), action: cancelNewRoom)
                 .buttonStyle(.bordered)
+                .disabled(creatingNewRoom)
                 .accessibilityIdentifier("bots.newRoom.cancel")
-            Button(AppLocalization.string("Create")) {
-                Haptics.light()
-                openNewRoomSheet()
+            Button(action: createNewRoom) {
+                if creatingNewRoom {
+                    ProgressView()
+                } else {
+                    Text(AppLocalization.string("Create"))
+                }
             }
             .buttonStyle(.borderedProminent)
             .tint(.conduitAccent)
-            .disabled(bots.count < 2)
+            .disabled(bots.count < 2 || creatingNewRoom)
+            .accessibilityLabel(Text(AppLocalization.string("Create")))
             .accessibilityIdentifier("bots.newRoom.create")
         }
         .padding(12)
@@ -680,7 +734,7 @@ struct BotRosterView: View {
 
     /// One of this screen's sheets is up over the grid.
     private var coveredBySheet: Bool {
-        overviewBot != nil || showingNewRoomSheet || showingReorder || presentedDesktopGroup != nil
+        overviewBot != nil || showingReorder || presentedDesktopGroup != nil
             || repairContext != nil || editorMode != nil || showingGroupCreateSheet || groupSheetBot != nil
     }
 
@@ -927,8 +981,9 @@ struct BotRosterView: View {
             NewRoomPortrait(
                 bots: newRoomBots,
                 flying: Set(roomFlights.map(\.name)),
-                title: joinedNames(newRoomBots),
-                onCreate: openNewRoomSheet,
+                name: newRoom.roomName(suggested: AppLocalization.string("New room")),
+                members: joinedNames(newRoomBots),
+                onTap: { newRoomNameFocused = true },
                 canJoin: canJoinNewRoom,
                 onDrop: dropOnNewRoom
             )

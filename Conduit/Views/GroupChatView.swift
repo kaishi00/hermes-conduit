@@ -1513,16 +1513,10 @@ struct GroupCreateSheet: View {
     @State private var attemptedInputs: GroupCreateAttempt.Inputs?
     @State private var isCreating = false
 
-    /// Runs once the room is made, with its id (Bots Home drops the room it
-    /// was starting, and the made room takes its place).
-    private let onCreated: ((String) -> Void)?
-
-    /// `preselected`: bots already picked, as from a bot's Groups menu or
-    /// the bots dropped together on Bots Home, with `suggestedName`.
-    init(preselected: Set<String> = [], suggestedName: String = "", onCreated: ((String) -> Void)? = nil) {
+    /// `preselected`: bots already picked, as from a bot's Groups menu.
+    /// (A room started on Bots Home is named and made from its bar.)
+    init(preselected: Set<String> = []) {
         _selected = State(initialValue: preselected)
-        _name = State(initialValue: suggestedName)
-        self.onCreated = onCreated
     }
 
     private var visibleBots: [BotProfile] {
@@ -1596,7 +1590,6 @@ struct GroupCreateSheet: View {
                             )
                             isCreating = false
                             if created {
-                                onCreated?(pendingRoomID)
                                 dismiss()
                             }
                         }

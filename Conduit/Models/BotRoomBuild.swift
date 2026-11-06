@@ -4,14 +4,23 @@
 //
 //  A room being started on Bots Home, before anything goes to Hermes: the
 //  bots dropped together or tapped in, in the order they came, up to a
-//  room's limit. Create opens New Group Chat with them; until then it's
-//  only this list.
+//  room's limit, and the name typed for it in the bar. Create makes the
+//  room from the bar; until then it's only this.
 //
 
 import Foundation
 
 struct BotRoomBuild: Equatable {
     private(set) var names: [String] = []
+    /// The name typed in the bar, as typed; empty uses the bots' names.
+    var name = ""
+    /// The id Create sends, minted once per room so a retry of an
+    /// ambiguous create reuses it and the gateway dedups instead of making
+    /// a twin (as New Group Chat does, GroupCreateAttempt).
+    private(set) var roomID = GroupCreateAttempt.mintRoomID()
+    /// What `roomID` was first sent with: a retry with another name or
+    /// other bots is another room, with an id of its own.
+    private var attempted: GroupCreateAttempt.Inputs?
 
     var isEmpty: Bool { names.isEmpty }
     var isFull: Bool { names.count >= GroupRoomLimits.maxMembers }
@@ -44,7 +53,23 @@ struct BotRoomBuild: Equatable {
         names.removeAll { $0.caseInsensitiveCompare(name) == .orderedSame }
     }
 
-    mutating func clear() { names = [] }
+    /// Drops the bots and the name; the next room gets a fresh id.
+    mutating func clear() { self = BotRoomBuild() }
+
+    /// The room's name: what was typed, trimmed, or `suggested` (the bots'
+    /// names) when nothing was.
+    func roomName(suggested: String) -> String {
+        let typed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return typed.isEmpty ? suggested.trimmingCharacters(in: .whitespacesAndNewlines) : typed
+    }
+
+    /// The id to send for a create with `inputs`: the same one again for
+    /// the same inputs, a fresh one once they changed.
+    mutating func attempt(_ inputs: GroupCreateAttempt.Inputs) -> String {
+        roomID = GroupCreateAttempt.roomID(for: inputs, current: roomID, attempted: attempted)
+        attempted = inputs
+        return roomID
+    }
 
     /// Only the bots still `visible`: one hidden or deleted meanwhile
     /// leaves the room.

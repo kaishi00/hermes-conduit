@@ -739,6 +739,29 @@ extension BotModeTests {
         XCTAssertTrue(build.isEmpty)
     }
 
+    /// The room being started is named in its bar: what was typed, trimmed,
+    /// or the bots' names when nothing was. A retry with the same name and
+    /// bots sends the same id (the gateway dedups it); a change, or a room
+    /// started over, gets a fresh one. Pruning keeps the name.
+    func testARoomBeingStartedIsNamedInItsBarAndRetriesWithItsID() {
+        var build = BotRoomBuild()
+        build.add(["hermes", "furina"])
+        XCTAssertEqual(build.roomName(suggested: "Hermes and Furina"), "Hermes and Furina")
+        build.name = "   "
+        XCTAssertEqual(build.roomName(suggested: " Hermes and Furina "), "Hermes and Furina")
+        build.name = "  Trip planning "
+        XCTAssertEqual(build.roomName(suggested: "Hermes and Furina"), "Trip planning")
+        let inputs = GroupCreateAttempt.Inputs(name: "Trip planning", members: ["hermes", "furina"])
+        let first = build.attempt(inputs)
+        XCTAssertEqual(build.attempt(inputs), first)
+        let renamed = build.attempt(GroupCreateAttempt.Inputs(name: "Trips", members: ["hermes", "furina"]))
+        XCTAssertNotEqual(renamed, first)
+        XCTAssertEqual(build.pruned(visible: ["hermes", "furina"]).name, "  Trip planning ")
+        build.clear()
+        XCTAssertTrue(build.name.isEmpty)
+        XCTAssertNotEqual(build.roomID, renamed)
+    }
+
     /// A face flying into the room being started lands where the room's
     /// icon draws it: the first two side by side, three in a triangle, and
     /// a fourth or later sinking into the middle, as the icon shows three.

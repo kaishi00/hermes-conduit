@@ -242,15 +242,18 @@ struct BotsHomeAnchorKey: PreferenceKey {
 }
 
 /// The room being started, among the rooms: its bots' faces overlapping as
-/// a room's icon does, in a dashed gold ring. A bot dropped on it joins; a
-/// tap is Create. Faces still flying in from their portraits aren't drawn
+/// a room's icon does, in a dashed gold ring, under the name typed for it.
+/// A bot dropped on it joins; a tap goes to its name in the bar. Faces still flying in from their portraits aren't drawn
 /// yet, so each arrives.
 struct NewRoomPortrait: View {
     let bots: [BotProfile]
     /// Bots whose faces are still on their way.
     let flying: Set<String>
-    let title: String
-    let onCreate: () -> Void
+    /// The name typed in the bar, or "New room".
+    let name: String
+    /// Its bots' names, for VoiceOver.
+    let members: String
+    let onTap: () -> Void
     /// Whether the dragged bot can join: never a hidden bot, one already
     /// in, or one past the room's limit. Without it the tile never swells.
     let canJoin: (String) -> Bool
@@ -261,11 +264,9 @@ struct NewRoomPortrait: View {
 
     var body: some View {
         Button {
-            guard bots.count >= 2 else { return }
-            Haptics.light()
-            onCreate()
+            onTap()
         } label: {
-            BotRoomPortraitLabel(title: AppLocalization.string("New room"), highlighted: true, dashed: true) { size in
+            BotRoomPortraitLabel(title: name, highlighted: true, dashed: true) { size in
                 faces(size)
                     .anchorPreference(key: BotsHomeAnchorKey.self, value: .bounds) { [BotsHomeAnchorKey.newRoom: $0] }
                     .scaleEffect(isTargeted && !reduceMotion ? 1.12 : 1)
@@ -280,9 +281,9 @@ struct NewRoomPortrait: View {
             let joins = targeted && BotDragPayload.lifted.map(canJoin) == true
             withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { isTargeted = joins }
         }
-        .accessibilityLabel(Text(AppLocalization.string("New room")))
-        .accessibilityValue(Text(verbatim: title))
-        .accessibilityHint(bots.count >= 2 ? Text(AppLocalization.string("Opens New Group Chat with these bots.")) : Text(verbatim: ""))
+        .accessibilityLabel(Text(verbatim: name))
+        .accessibilityValue(Text(verbatim: members))
+        .accessibilityHint(Text(AppLocalization.string("Names the room in the bar below.")))
         .accessibilityIdentifier("bots.newRoom.tile")
     }
 
