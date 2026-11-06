@@ -1621,6 +1621,8 @@ extension VoiceConversationControllerTests {
             ("Ich schicke nichts an Hermes.", "de"),
             ("I'll send nothing to Hermes.", "en"),
             ("I'll tell Hermes nothing.", "en"),
+            ("I'll ask Hermes nothing.", "en"),
+            ("I'll send absolutely nothing to Hermes.", "en"),
             ("I'll send nothing.", "en"),
             ("There's nothing to send to Hermes.", "en"),
             // English narration on a German call is read as English.

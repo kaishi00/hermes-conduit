@@ -1240,8 +1240,9 @@ final class GPTLiveConversationController: ObservableObject {
     /// An offer, a condition or a no: nothing is being sent yet.
     private static let sendClaimHedge = #"\b(can|could|should|shall|would|might|may|want me|do you|if you|once you|when you|after you|before|not|never|won't|didn't|don't|can't|couldn't|haven't|hasn't|wasn't)\b|n't\b|"# + sendsNothing
     /// A refusal in "nothing" (issue 1869): "I'll send nothing to Hermes.",
-    /// "I'll tell Hermes nothing.", "There's nothing to send."
-    private static let sendsNothing = #"\b(?:send|sending|pass|passing|forward|forwarding|hand|handing|give|giving|tell|telling)(?: hermes)? nothing\b|\bnothing to (?:send|pass|forward|hand|give|tell)\b"#
+    /// "I'll tell Hermes nothing.", "I'll send absolutely nothing to Hermes.",
+    /// "There's nothing to send."
+    private static let sendsNothing = #"\b(?:send|sending|pass|passing|forward|forwarding|hand|handing|relay|relaying|give|giving|tell|telling|ask|asking|ping|pinging|update|updating)(?: hermes)?(?: (?:absolutely|simply|just|really))? nothing\b|\bnothing (?:at all )?to (?:send|pass|forward|hand|relay|give|tell|ask)\b"#
 
     /// The user finished an utterance: an end phrase ends the call, and the
     /// spoken job commands ("job status", "cancel background jobs") are
