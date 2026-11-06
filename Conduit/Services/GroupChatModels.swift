@@ -1239,8 +1239,9 @@ enum GroupRoomTurns {
         // ended without a pick) the lead's round-0 receipt in a
         // discussion routed through it that read the room only up to just
         // before the message, as `route(of:)` reads it: an answer reads the
-        // message itself. Only the lead's: another member's bounded batch
-        // can stop at the same place.
+        // message itself. Only the lead's, and only where the message went
+        // through it (not one that names someone, or a reply): an ordinary
+        // bounded batch can stop at the same place.
         let routingTasks = Set(events.compactMap { event -> String? in
             event.kind == "room.assignment" ? event.payload["task_id"]?.stringValue : nil
         })
@@ -1256,6 +1257,7 @@ enum GroupRoomTurns {
                   HermesClient.exactIntValue(event.payload["seen_through_seq"]) == message.seq - 1,
                   let inForce = contextInForce(at: message.seq, in: events, current: context),
                   inForce.routing == .lead,
+                  routesItself(message, events: events, members: members),
                   let lead = member(withID: inForce.leadMemberID, in: members),
                   let memberID = event.payload["member_id"]?.stringValue else { return false }
             return memberID.lowercased() == routingID(of: lead)

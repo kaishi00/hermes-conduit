@@ -1225,6 +1225,15 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(GroupRoomTurns.memberStatuses(
             events: [log[1], batched], activity: [], responder: nil, approvals: [], members: members
         )["furina"], .passed)
+        // A message that names the lead skips routing, so the lead's own
+        // batch that stopped short of it is its answer.
+        let addressed = [log[0], userMessage(seq: 2, text: "@zhongli plan the trip"), roomEvent(seq: 3, kind: "turn.settled", [
+            "thread_id": "main", "discussion_event_id": "user:d1", "member_id": "zhongli",
+            "round_index": 0, "seen_through_seq": 1, "task_id": "batch-task", "passed": true,
+        ])]
+        XCTAssertEqual(GroupRoomTurns.memberStatuses(
+            events: addressed, activity: [], responder: nil, approvals: [], members: members
+        )["zhongli"], .passed)
     }
 
     func testTheKeptEventsDecideOnlyWhatTheyCanKnow() {
