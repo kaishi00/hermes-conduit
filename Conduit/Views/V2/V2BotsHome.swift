@@ -397,7 +397,10 @@ struct RoomTileDrop: DropDelegate {
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: validateDrop(info: info) ? .move : .forbidden)
+        guard validateDrop(info: info) else { return DropProposal(operation: .forbidden) }
+        // A move only for our own tile: text from elsewhere is a copy, so
+        // its source never deletes what this may not take.
+        return DropProposal(operation: RoomDragPayload.lifted != nil ? .move : .copy)
     }
 
     func dropExited(info: DropInfo) { targeted = false }
@@ -630,8 +633,10 @@ struct BotPortraitGrid<Cell: View>: View {
         }
         .padding(.top, 14)
         .padding(.bottom, 4)
-        // A drop between or after the portraits, not on one: the end.
-        .onDrop(of: [UTType.text], delegate: LiftedBotDrop { dragged in
+        // A drop between or after the portraits, not on one: the end. A
+        // grid with no end to drop at (the hidden bots) takes no drop, so
+        // it never offers a move it would refuse.
+        .onDrop(of: onDropAtEnd == nil ? [] : [UTType.text], delegate: LiftedBotDrop { dragged in
             guard let onDropAtEnd else { return false }
             onDropAtEnd(dragged)
             return true
@@ -733,9 +738,11 @@ struct LiftedBotDrop: DropDelegate {
     func dropEntered(info: DropInfo) { entered() }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        let valid = validateDrop(info: info)
-        if valid { updated(info.location) }
-        return DropProposal(operation: valid ? .move : .forbidden)
+        guard validateDrop(info: info) else { return DropProposal(operation: .forbidden) }
+        updated(info.location)
+        // A move only for our own portrait: text from elsewhere is a copy,
+        // so its source never deletes what this may not take.
+        return DropProposal(operation: BotDragPayload.lifted != nil ? .move : .copy)
     }
 
     func dropExited(info: DropInfo) { exited() }
@@ -1160,6 +1167,7 @@ struct BotPortraitCell<MenuContent: View>: View {
         guard let lifted = BotDragPayload.lifted,
               lifted.caseInsensitiveCompare(bot.name) != .orderedSame else { return }
         isTargeted = true
+        mergeReady = false
         mergeReadyEndedAt = nil
         dwell?.cancel()
         dwellAnchor = nil
@@ -1200,7 +1208,9 @@ struct BotPortraitCell<MenuContent: View>: View {
         dwell?.cancel()
         dwell = Task { @MainActor in
             try? await Task.sleep(for: BotDragPayload.mergeDwell)
-            guard !Task.isCancelled, isTargeted else { return }
+            // The same bot still in hand: a drag that ended unseen never
+            // swells a face for a later drop.
+            guard !Task.isCancelled, isTargeted, BotDragPayload.lifted == lifted else { return }
             Haptics.medium()
             withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { mergeReady = true }
         }

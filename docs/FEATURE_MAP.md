@@ -1722,7 +1722,7 @@ bar's name field and the new room's tile, a live room's "Talking now") · the tr
 - On a phone, Hermes' new room opens over Bots Home as it's made, so its slide into its place plays out of sight; beside the list on a split window it shows.
 - Not yet tried on a device: the faces' flight and the new room's slide (#1830); the bar's name field, Return on a keyboard, and a create that fails and is retried (#1863).
 - Not yet tried on a device: a room's zoom from its portrait and back, and its swipes (#1864).
-- Not yet tried on a device: a room's long-press menu and its drag among the rooms (#1865), and whether a room's lift and menu share the hold as a bot's do.
+- Not yet tried on a device: a room's long-press menu (#1865), and whether a room's lift and menu share the hold as a bot's do. Its drag was (build 254, so #1871 changed where a drop lands and the +); the slide while in hand and its quarter second's feel, for rooms and bots, are not yet (#1871).
 - A room dragged onto the room being started, or a bot onto a room, does nothing and says nothing.
 - A picture chosen, made or removed from a room's tile that fails says so only in the chat's error, which Bots Home doesn't show (#1865).
 - A portrait or a room's tile dragged out of Conduit (an iPad split, Stage Manager) carries its marked name or room id as plain text, which another app's text field accepts; a private drag type would need one declared in the app's Info.plist.
