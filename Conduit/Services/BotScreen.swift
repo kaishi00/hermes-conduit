@@ -463,8 +463,9 @@ final class BotScreenModel: ObservableObject {
     /// A reconnect rebuilds the sheet on the new client: the stream goes,
     /// the hold stays the user's (the same viewer id is still theirs).
     func close(reconnecting: Bool = false) {
-        leaveGeneration += 1
+        // Not a leave: a takeover answered meanwhile stays the user's.
         if reconnecting { detach(); return }
+        leaveGeneration += 1
         // A hand back already on its way isn't sent twice; one whose
         // retries gave up is sent again.
         if iHold, let client, let viewerID, !Self.releaseInFlight(profile) {
