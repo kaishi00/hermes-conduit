@@ -446,6 +446,33 @@ Conduit sends" preview, docs/VOICE_SETTINGS.md, the notifier README
 
 **Checked:** 2026-11-04, #1769 (added: GPT-Live's opening is Conduit's turn everywhere, notifier #548).
 
+## The language a live call speaks
+
+Which language a live model talks in: the user's, from its first words,
+until the user speaks or asks for another.
+
+**Siblings:** each live mode (Gemini, Qwen, Grok, GPT-Live, Local Live's
+agent mode) · where a call runs: the phone's call screen, CarPlay, a call
+from Hermes (its opening turn and its job's reply), the Apple Watch (its
+direct calls' setup and GPT-Live's briefing through the host's audio bridge,
+both built on the phone) · Classic voice and Local Live's Hermes turns (not
+needed: Hermes answers the user's words, and a Classic call from Hermes
+speaks its brief in the App Language) · the notifier's GPT-Live session route
+(not needed: it adds Conduit's briefing after Hermes' persona as sent) · text
+that describes it: "What Conduit sends" (shows the rule), docs/VOICE_SETTINGS.md
+
+**Code**
+- The rule and the language: `Conduit/Voice/LiveVoiceLanguage.swift` (rule, name; the language from `Conduit/Voice/OnDeviceSpeech.swift` appLanguage)
+- Where it goes: `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (briefing, after the persona and memory), `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (instructions, last; Gemini, Qwen, Grok, Local Live's agent mode, and the Watch's setups)
+
+**Rulings**
+- The user's language is the App Language they picked, else the iPhone's first language, whether Conduit ships it or not. The model is told to speak it from its first words, a call's opening and a call from Hermes included, and to put English instructions, Hermes' replies, job results and Conduit's notes into it. When the user speaks another language or asks to switch, that one holds for the rest of the call. The rule comes after the persona and memory, so a persona in another language doesn't win (2026-11-06, tester report: GPT-Live answered a German user in English, #PRNUM).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-06, #PRNUM (added: every live mode names the user's language).
+
 ## Switching voice mode in a call
 
 The voice mode menu on a call screen: it ends the call and starts again in the

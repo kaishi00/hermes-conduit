@@ -130,13 +130,15 @@ final class GPTLiveConversationController: ObservableObject {
     /// blocks: its chat, the rules for Hermes' tools, the style) after it.
     /// Kept under `maxBriefingCharacters`: what Hermes remembers is cut
     /// first, then the persona, so the rules always go out whole.
-    static func briefing(memory: GeminiLiveMemoryContext? = nil, personality: String? = nil, answerLength: LiveVoiceAnswerLength = .standard, onWatch: Bool = false, watchChats: Bool = false, followedBy tail: String = "") -> String {
+    static func briefing(memory: GeminiLiveMemoryContext? = nil, personality: String? = nil, answerLength: LiveVoiceAnswerLength = .standard, onWatch: Bool = false, watchChats: Bool = false, language: String? = LiveVoiceLanguage.current, followedBy tail: String = "") -> String {
         let rules = briefingRules(answerLength: answerLength, onWatch: onWatch, watchChats: watchChats)
         // Escaped before counting, so the count is what goes out.
         var persona = (personality ?? "").replacingOccurrences(of: "</hermes_persona>", with: "</ hermes_persona>", options: .caseInsensitive)
         var memoryText = (memory?.text ?? "").replacingOccurrences(of: "</hermes_memory>", with: "</ hermes_memory>", options: .caseInsensitive)
         func assembled() -> String {
-            rules + personaBlock(persona) + memoryBlock(memoryText) + tail
+            // The language after the persona and memory, which may be in
+            // another one: a rule stated only before them loses.
+            rules + personaBlock(persona) + memoryBlock(memoryText) + LiveVoiceLanguage.rule(language: language) + tail
         }
         var text = assembled()
         var excess = text.unicodeScalars.count - maxBriefingCharacters

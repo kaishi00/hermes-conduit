@@ -405,6 +405,25 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(full.components(separatedBy: "</hermes_memory>").count, 2)
     }
 
+    /// A tester with German set got every GPT-Live call in English: all the
+    /// model read was English. The briefing names the user's language, after
+    /// the persona and memory so an English persona doesn't win.
+    func testGPTLiveBriefingNamesTheUsersLanguageAfterThePersona() {
+        let german = GPTLiveConversationController.briefing(personality: "A calm judge", language: "de")
+        XCTAssertTrue(german.contains("Language: speak German, the user's language, from your first words"))
+        XCTAssertTrue(german.contains("asks you to switch, use theirs from then on"))
+        let persona = german.range(of: "</hermes_persona>")!
+        let language = german.range(of: "Language: speak German")!
+        XCTAssertLessThan(persona.lowerBound, language.lowerBound)
+
+        let unknown = GPTLiveConversationController.briefing(language: nil)
+        XCTAssertTrue(unknown.contains("Language: answer in the language the user speaks to you."))
+
+        XCTAssertEqual(LiveVoiceLanguage.name(of: "zh-TW"), "Chinese (Traditional characters)")
+        XCTAssertEqual(LiveVoiceLanguage.name(of: "zh-CN"), "Chinese (Simplified characters)")
+        XCTAssertEqual(LiveVoiceLanguage.name(of: "pt"), "Portuguese")
+    }
+
     /// The notifier plugin refuses a briefing over 32 KB ("briefing is too
     /// long"), which ended every GPT-Live call for a user with a long memory.
     func testALongMemoryIsCutSoTheBriefingFitsAndTheRulesStayWhole() {
