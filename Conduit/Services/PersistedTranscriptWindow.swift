@@ -258,6 +258,34 @@ enum PersistedTranscriptWindow {
         return fresh + existing
     }
 
+    /// The held result rows a tool-boundary fold took into the older page's
+    /// call cards, and the earliest of those cards: a page start on a folded
+    /// row moves there, so the cut still keeps the whole tool run.
+    static func foldedPageStart(
+        olderPage: [ChatMessage],
+        foldedHeld: ArraySlice<ChatMessage>
+    ) -> (heldIDs: Set<String>, callCardID: String)? {
+        let toolIDs = Set(foldedHeld.compactMap { $0.tool?.id })
+        guard let card = olderPage.first(where: { message in
+            message.role == .tool && message.tool?.id.map { toolIDs.contains($0) } == true
+        }) else { return nil }
+        return (Set(foldedHeld.map(\.id)), card.id)
+    }
+
+    /// Page starts on rows a fold removed, moved onto the call card that
+    /// took them in. Their offsets stay: the card sits above the row they
+    /// named, so they only undercount, which dedup absorbs.
+    static func movingPageStarts(
+        _ starts: [PersistedTranscriptWindowState.LoadedPageStart],
+        off foldedIDs: Set<String>,
+        onto callCardID: String
+    ) -> [PersistedTranscriptWindowState.LoadedPageStart] {
+        starts.map { start in
+            guard foldedIDs.contains(start.firstRowID) else { return start }
+            return .init(firstRowID: callCardID, nextOffset: start.nextOffset, hasBackfilledPrefix: true)
+        }
+    }
+
     /// A long chat's rows cut back to the newest of its page starts that
     /// still keeps `limit` rows, with the window as it stood at that start,
     /// so Load earlier brings the older pages back from Hermes. Nil when the

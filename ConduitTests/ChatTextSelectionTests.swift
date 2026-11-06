@@ -429,6 +429,24 @@ final class ChatTextSelectionTests: XCTestCase {
         )
     }
 
+    /// Issue 1687: the observer stayed `.possible` after the finger lifted,
+    /// which kept the chat's scroll and the swipe back from resetting, so a
+    /// flick from the left edge over a code box or a table left the chat
+    /// unable to scroll. The passive recognizers fail once no finger is left.
+    /// Outside a touch UIKit sends, a recognizer set to `.failed` is reset to
+    /// `.possible` at once, and a bare `UITouch`'s phase can't be set, so the
+    /// transition itself and the finished-phase clause were checked on a
+    /// phone (failing the stuck observer in the debugger unfroze the chat).
+    @MainActor
+    func testPassiveRecognizersSeeTheirLastFingerLift() {
+        let lifted = UITouch()
+        let other = UITouch()
+        XCTAssertFalse(UIGestureRecognizer.fingerStillDown(besides: [lifted], among: [lifted]))
+        XCTAssertFalse(UIGestureRecognizer.fingerStillDown(besides: [lifted], among: []))
+        XCTAssertTrue(UIGestureRecognizer.fingerStillDown(besides: [lifted], among: [lifted, other]))
+        XCTAssertFalse(UIGestureRecognizer.fingerStillDown(besides: [lifted, other], among: [lifted, other]))
+    }
+
     @MainActor
     func testObserverMoveExtendsActiveSelectionAcrossSegmentsAndTouchEndPreservesIt() throws {
         let selectionCoordinator = MarkdownSelectionCoordinator()

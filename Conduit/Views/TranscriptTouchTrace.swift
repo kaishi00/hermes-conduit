@@ -203,9 +203,6 @@ final class TranscriptTouchProbe: UIGestureRecognizer, UIGestureRecognizerDelega
 
     /// Fails once every finger has lifted, which resets it for the next touch.
     private func failIfLastTouch(_ touches: Set<UITouch>, event: UIEvent) {
-        let stillDown = (event.touches(for: self) ?? []).contains { touch in
-            !touches.contains(touch) && touch.phase != .ended && touch.phase != .cancelled
-        }
-        if !stillDown { state = .failed }
+        if !Self.fingerStillDown(besides: touches, among: event.touches(for: self) ?? []) { state = .failed }
     }
 }

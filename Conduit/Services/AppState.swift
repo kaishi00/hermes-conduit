@@ -1275,6 +1275,15 @@ final class AppState: ObservableObject {
     private var chatPickedFromSavedList: SavedChatListPick?
     /// The Bot Chats left this run, by dashboard and bot (`keepBotChatCopy`).
     private var keptBotChatCopies: [String: KeptBotChatCopy] = [:]
+    static let maxKeptBotChatCopies = 8
+
+    /// The copy to drop before keeping one under `key`: the least recently
+    /// kept, once the count is reached and `key` isn't one of them.
+    static func keptBotChatCopyToDrop(keptAt: [String: Date], adding key: String) -> String? {
+        guard keptAt[key] == nil, keptAt.count >= maxKeptBotChatCopies else { return nil }
+        return keptAt.min { $0.value < $1.value }?.key
+    }
+
     /// The last chats left after Load earlier brought in older rows, newest
     /// last (`keepLeftBackfilledTranscript`).
     private var leftBackfilledTranscripts: [LeftBackfilledTranscript] = []
@@ -6830,7 +6839,13 @@ final class AppState: ObservableObject {
         let rows = messages.compactMap(OfflineCachedMessage.init)
             .suffix(OfflineChatCacheStore.maxMessagesPerTranscript)
         guard !rows.isEmpty else { return }
-        keptBotChatCopies[Self.keptBotChatCopyKey(dashboardID: dashboardID, bot: bot)] = KeptBotChatCopy(
+        let key = Self.keptBotChatCopyKey(dashboardID: dashboardID, bot: bot)
+        // Up to 500 rows each, so the copies kept in memory are bounded by
+        // count too: the least recently kept goes (#1831).
+        if let oldest = Self.keptBotChatCopyToDrop(keptAt: keptBotChatCopies.mapValues(\.transcript.savedAt), adding: key) {
+            keptBotChatCopies[oldest] = nil
+        }
+        keptBotChatCopies[key] = KeptBotChatCopy(
             sessionIDs: identities.union([sessionID]),
             transcript: OfflineCachedTranscript(
                 sessionID: sessionID,
@@ -12562,7 +12577,11 @@ final class AppState: ObservableObject {
 
     @Published private(set) var activeRoomSurface: GroupRoomSurface? {
         // A room takes the chat's place without changing the open chat.
-        didSet { if (oldValue == nil) != (activeRoomSurface == nil) { updateChatOnScreen() } }
+        didSet {
+            if (oldValue == nil) != (activeRoomSurface == nil) { updateChatOnScreen() }
+            // Another room (or none): no screen of it has left yet.
+            if oldValue?.room.roomID != activeRoomSurface?.room.roomID { roomScreenLeft = false }
+        }
     }
     @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "") {
         // An agent's new message may have a board kept for it (RoomBoards).
@@ -13367,11 +13386,35 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// The room screens mounted, and whether each shows: the V2 shell
+    /// keeps a hidden tab's screens mounted (#1827). Set by GroupChatView.
+    private var roomViewsShowing: [UUID: Bool] = [:]
+    /// The open room's last screen went away while the room stayed open
+    /// (a page pushed over it on one column).
+    private var roomScreenLeft = false
+
+    /// Whether a room screen shows. None mounted yet (the room just opened)
+    /// counts as showing; none left after one went away doesn't.
+    var roomSurfaceShows: Bool {
+        roomViewsShowing.values.contains(true) || (roomViewsShowing.isEmpty && !roomScreenLeft)
+    }
+
+    /// A room screen showing, hidden (`shows` false), or gone (nil). Shown
+    /// again after the polls stopped, the room catches up at once.
+    func noteRoomView(_ id: UUID, shows: Bool?) {
+        let before = roomSurfaceShows
+        roomViewsShowing[id] = shows
+        if shows != nil { roomScreenLeft = false } else if roomViewsShowing.isEmpty { roomScreenLeft = true }
+        guard !before, roomSurfaceShows, activeRoomSurface != nil else { return }
+        let epoch = groupRoomEpoch
+        Task { @MainActor [weak self] in await self?.pollActiveRoomOnce(epoch: epoch) }
+    }
+
     private func pollActiveRoomOnce(epoch: Int) async {
-        // Backgrounded: skip the tick (no RPCs while the app is not
-        // visible); the loop resumes polling on the first tick after the
-        // scene is active again.
-        guard isSceneActive else { return }
+        // Backgrounded, or the room's tab hidden: skip the tick (no RPCs
+        // while nobody sees the room); the loop resumes polling on the
+        // first tick after it shows again.
+        guard isSceneActive, roomSurfaceShows else { return }
         guard let client, isConnected,
               let surface = activeRoomSurface,
               groupRoomEpoch == epoch,
@@ -13412,7 +13455,9 @@ final class AppState: ObservableObject {
                     await refreshGroupRooms()
                     return
                 }
-                activeRoomDriverStatus = driver
+                // Most ticks bring the same status: publishing it anyway
+                // redrew everything watching AppState every 3 s (#1827).
+                if activeRoomDriverStatus != driver { activeRoomDriverStatus = driver }
                 sweepRoomApprovalAnswers()
             }
         } catch is CancellationError {
@@ -23912,6 +23957,7 @@ final class AppState: ObservableObject {
         }
         do {
             let data = try await client.botAvatar(name: name)
+            let image = await Self.botAvatarThumbnail(data)
             guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return true }
             // An older generation's fetch landing late never replaces a newer
             // one, nor a picture this app wrote meanwhile.
@@ -23919,7 +23965,7 @@ final class AppState: ObservableObject {
             guard profileAvatarLastWrite[name] == writeMark else { return true }
             // A read with no usable bytes keeps the last picture and is not
             // pinned to the generation, so a retry can still land it.
-            guard let data, let image = UIImage(data: data) else { return false }
+            guard let data, let image else { return false }
             botAvatarFetchedGeneration[name] = generation
             botAvatarImages[name] = image
             mirrorHermesPicture(data, for: name, dashboardID: dashboardID)
@@ -24790,21 +24836,44 @@ final class AppState: ObservableObject {
         persistPinnedReplies()
     }
 
+    /// The largest bot face is 72 pt (Bots Home), and Dynamic Type grows
+    /// it; 512 px covers that at 3x. Hermes takes pictures up to 2 MB, and
+    /// a 3000 px one decoded whole is 36 MB per bot (#1829).
+    nonisolated static let botAvatarMaxPixelSize: CGFloat = 512
+
+    /// A bot's picture decoded once, downsampled and off the main actor, as
+    /// the profile photos and room pictures are. Nil for bytes ImageIO
+    /// can't read (or that claim more pixels than memory holds).
+    nonisolated static func botAvatarThumbnail(_ data: Data?) async -> UIImage? {
+        guard let data, !data.isEmpty else { return nil }
+        return await Task.detached(priority: .userInitiated) { () -> UIImage? in
+            guard case .image(let image) = BoundedRemoteImage.decode(data, maxPixelSize: botAvatarMaxPixelSize)
+            else { return nil }
+            return image
+        }.value
+    }
+
     private func storeBotAvatar(_ png: Data, for name: String, client: HermesClient, epoch: Int) async -> Bool {
+        // Decoded before the upload, so nothing waits between the upload
+        // landing and the picture taking its place.
+        let image = await Self.botAvatarThumbnail(png)
         // The generation the write belongs to: a reload that starts while it
         // is in flight must still refetch, in case it read the older asset.
         let generation = botAvatarGeneration
         let dashboardID = activeDashboardID
-        noteProfileAvatarWrite(name)
+        // The decode waited: a write mark is by name, so it goes on only
+        // while this dashboard is still the one open.
+        if botOpenFenceIsCurrent(epoch: epoch, client: client) { noteProfileAvatarWrite(name) }
         do {
             try await client.setBotAvatar(name: name, png: png)
         } catch {
             return false
         }
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return true }
         // Again after it landed: a fetch that started during the upload may
         // have read the older picture.
         noteProfileAvatarWrite(name)
-        if botOpenFenceIsCurrent(epoch: epoch, client: client), let image = UIImage(data: png) {
+        if let image {
             // The upload is the newest picture, but the recorded generation
             // never moves backwards past a newer fetch.
             botAvatarImages[name] = image
@@ -32830,6 +32899,7 @@ final class AppState: ObservableObject {
                 return false
             }
             var didPrepend = false
+            var foldedPageStart: (heldIDs: Set<String>, callCardID: String)?
             let startBeforePage = messages.first.map {
                 PersistedTranscriptWindowState.LoadedPageStart(
                     firstRowID: $0.id,
@@ -32853,6 +32923,12 @@ final class AppState: ObservableObject {
                 )
                 let merged: [ChatMessage]?
                 if foldedFromHeld > 0 {
+                    // The folded result rows go; a page start on one moves
+                    // to the call card that took it in (issue 1828).
+                    foldedPageStart = PersistedTranscriptWindow.foldedPageStart(
+                        olderPage: olderPage,
+                        foldedHeld: messages.prefix(foldedFromHeld)
+                    )
                     let remainingHeld = messages.dropFirst(foldedFromHeld)
                     if remainingHeld.isEmpty {
                         // Every held row folded into the adjusted page (the
@@ -32899,6 +32975,13 @@ final class AppState: ObservableObject {
             if didPrepend, let first = messages.first {
                 if current.loadedPageStarts.isEmpty, let startBeforePage {
                     current.loadedPageStarts.append(startBeforePage)
+                }
+                if let foldedPageStart {
+                    current.loadedPageStarts = PersistedTranscriptWindow.movingPageStarts(
+                        current.loadedPageStarts,
+                        off: foldedPageStart.heldIDs,
+                        onto: foldedPageStart.callCardID
+                    )
                 }
                 current.loadedPageStarts.append(.init(
                     firstRowID: first.id,

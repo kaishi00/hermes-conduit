@@ -1160,6 +1160,8 @@ final class HermesNativeCalls: NSObject {
                 HermesCallTrace.shared.note(
                     "Audio route: \(HermesCallAudioRoute.describe(.sharedInstance())) (\(HermesCallAudioRoute.describe(reason)))"
                 )
+                // The call screen's Speaker button follows the route.
+                VoiceAudioSessionCoordinator.shared.nativeCallRouteChanged()
             }
         }
     }

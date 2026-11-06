@@ -54,6 +54,8 @@ struct ChatView: View {
     /// the scroller never retains this view.
     @State private var scrollEventRouter = ChatScrollEventRouter()
     @Environment(\.scenePhase) private var scenePhase
+    /// The V2 shell keeps a tab's screens mounted while another tab shows.
+    @Environment(\.v2Shell) private var shell
     /// Load earlier's fetch, cancelled when the view disappears. (The
     /// session/profile staleness of the response itself is AppState's
     /// concern — this is view-lifetime only.)
@@ -587,6 +589,9 @@ struct ChatView: View {
             .onAppear {
                 appState.refreshChatCards()
                 installScrollerCallbacks()
+                // A new chat view's scroller says where the reader is from
+                // here; the last one's word went with it (a room, a sheet).
+                appState.chatReaderIsUpInOlderRows = scroller.mode == .browsing
                 scroller.setPaused(scenePhase == .background)
                 scroller.renderedSessionChanged(
                     to: drawnScrollSessionKey,
@@ -634,9 +639,11 @@ struct ChatView: View {
             // The same chat open on another device: a turn that went quiet
             // here, or one the other device ran, is checked against the
             // live registry while this chat shows. Each turn edge checks at
-            // once.
-            .task(id: "\(appState.activeSessionId ?? "")|\(appState.isBusy)|\(scenePhase == .active)|\(appState.showSidebar)") {
-                guard scenePhase == .active, !appState.showSidebar else { return }
+            // once. A tab hiding it stops the check (#1827), and showing
+            // it again checks at once.
+            .task(id: "\(appState.activeSessionId ?? "")|\(appState.isBusy)|\(scenePhase == .active)|\(appState.showSidebar && !shell.hasChatBeside)|\(shell.isTabActive)") {
+                // Split, a page in the list column (Pulse) leaves it showing.
+                guard scenePhase == .active, !appState.showSidebar || shell.hasChatBeside, shell.isTabActive else { return }
                 appState.openChatSyncBecameVisible()
                 while !Task.isCancelled {
                     await appState.openChatSyncTick()
