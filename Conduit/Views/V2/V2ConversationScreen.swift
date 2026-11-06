@@ -340,7 +340,7 @@ struct V2ConversationScreen: View {
     }
 
     private var roomSettingsKey: String {
-        "\(appState.activeRoomSurface?.room.roomID ?? "")|\(appState.canEditActiveRoomSettings)|\(appState.groupSettingsOnOpen?.roomID ?? "")|\(shell.isTabActive)"
+        "\(appState.activeRoomSurface?.room.roomID ?? "")|\(appState.canEditActiveRoomSettings)|\(appState.groupSettingsOnOpen.map { "\($0.roomID)@\($0.at.timeIntervalSinceReferenceDate)" } ?? "")|\(shell.isTabActive)"
     }
 
     private func showRequestedRoomSettings() {
