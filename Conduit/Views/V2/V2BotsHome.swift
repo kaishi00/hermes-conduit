@@ -1234,7 +1234,8 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// Starts the wait before `lifted` takes this one's place, unless it's
     /// already running: passing over on the way somewhere moves nothing.
     private func beginSlide(_ lifted: String) {
-        guard slide == nil, let onSlide else { return }
+        // Once it has slid here, staying over this one moves nothing more.
+        guard !placed, slide == nil, let onSlide else { return }
         slide = Task { @MainActor in
             try? await Task.sleep(for: BotDragPayload.slideDwell)
             guard !Task.isCancelled, isTargeted, BotDragPayload.lifted == lifted else { return }
