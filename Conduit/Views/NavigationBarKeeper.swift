@@ -36,6 +36,10 @@ struct NavigationBarKeeper: UIViewRepresentable {
         /// page, the stack's outlive it.
         private let watched = NSHashTable<UIGestureRecognizer>.weakObjects()
         private(set) weak var page: UIViewController?
+        /// The page's stack, kept: while a zoom's dismissal runs, the page is
+        /// out of it, so it has no navigationController when the finger
+        /// lifts (iOS 27.2 simulator).
+        private weak var navigation: UINavigationController?
 
         override init(frame: CGRect) {
             super.init(frame: frame)
@@ -63,6 +67,7 @@ struct NavigationBarKeeper: UIViewRepresentable {
                 return
             }
             self.page = page
+            if let navigation = page.navigationController { self.navigation = navigation }
             for recognizer in SystemBackSwipeGate.systemBackSwipes(of: page) where !watched.contains(recognizer) {
                 watched.add(recognizer)
                 recognizer.addTarget(self, action: #selector(swipeChanged(_:)))
@@ -101,12 +106,19 @@ struct NavigationBarKeeper: UIViewRepresentable {
             DispatchQueue.main.async { [weak self] in self?.afterSwipe() }
         }
 
-        private func afterSwipe() {
-            guard let navigation = page?.navigationController else { return }
+        private func afterSwipe(retriesLeft: Int = 20) {
+            guard let navigation else { return }
             if let coordinator = navigation.transitionCoordinator {
                 coordinator.animate(alongsideTransition: nil) { [weak self] _ in
                     // SwiftUI sets the bar as the transition ends too.
                     DispatchQueue.main.async { self?.restoreBar() }
+                }
+            } else if navigation.topViewController !== page, retriesLeft > 0 {
+                // A zoom's dismissal takes the page out of the stack while
+                // it runs and puts it back as it's let go: look again, for
+                // about a second, before taking it for a finished pop.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                    self?.afterSwipe(retriesLeft: retriesLeft - 1)
                 }
             } else {
                 restoreBar()
@@ -116,7 +128,7 @@ struct NavigationBarKeeper: UIViewRepresentable {
         /// The page still on top of its stack with its bar hidden or faded
         /// out: the bar comes back.
         func restoreBar() {
-            guard let page, let navigation = page.navigationController,
+            guard let page, let navigation = page.navigationController ?? navigation,
                   navigation.topViewController === page else { return }
             let bar = navigation.navigationBar
             let hidden = navigation.isNavigationBarHidden
