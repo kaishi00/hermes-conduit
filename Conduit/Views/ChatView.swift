@@ -505,7 +505,8 @@ struct ChatView: View {
             transcriptTopBar
                 .animation(.easeInOut(duration: 0.2), value: showsOfflineBanner)
         }
-        .overlay(alignment: .bottomTrailing) {
+        // Centered over the composer, so either thumb reaches it.
+        .overlay(alignment: .bottom) {
             ChatJumpControls(
                 chrome: scroller.chrome,
                 pendingClarifyMessageID: appState.pendingClarifyMessageID,
@@ -1070,7 +1071,7 @@ private struct ChatJumpControls: View {
         let hasPendingClarify = pendingClarifyMessageID != nil
             && inputs.visibilityTrackedMessageID == pendingClarifyMessageID
             && inputs.isVisibilityTrackedMessageOffscreen
-        ZStack(alignment: .bottomTrailing) {
+        ZStack(alignment: .bottom) {
             // Keeps the onChange below in place while no button shows.
             Color.clear.frame(width: 0, height: 0)
             // Both actions share this overlay slot; the offscreen pending
@@ -1119,7 +1120,7 @@ private struct ChatJumpControls: View {
                         ? AppLocalization.string("Scrolls to the pending question in the conversation")
                         : nil
                 ))
-                .padding(.trailing, 18)
+                .padding(.horizontal, 18)
                 .padding(.bottom, 14)
             }
         }

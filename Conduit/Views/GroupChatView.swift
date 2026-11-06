@@ -112,8 +112,8 @@ struct GroupChatView: View {
             MinimisedLiveVoiceBar()
             GroupRoomComposer(members: members)
         }
-        .overlay(alignment: .topTrailing) {
-            // Shown while browsing, as on the chat screen.
+        .overlay(alignment: .top) {
+            // Shown while browsing, centered as on the chat screen.
             GroupRoomJumpButton(chrome: scroller.chrome) {
                 ChatViewportWatch.shared.command("room latest (button)")
                 scroller.explicitLatestRequested(animated: true)
@@ -403,7 +403,6 @@ private struct GroupRoomJumpButton: View {
             }
             .conduitGlassControl(cornerRadius: 22, tint: Color.conduitAccent.opacity(0.14))
             .accessibilityLabel(AppLocalization.string("Scroll to latest message"))
-            .padding(.trailing, 18)
         }
     }
 }
