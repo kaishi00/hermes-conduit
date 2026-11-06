@@ -20,6 +20,15 @@ class TargetTests(unittest.TestCase):
         self.assertTrue({"Conduit", "ConduitWatch", "ConduitWidgets"} <= names, names)
         self.assertNotIn("ConduitTests", names)
 
+    def test_no_targets_found_fails(self):
+        self.assertEqual(len(check_weak_imports.target_problems("name: X\n")), 1)
+
+    def test_targets_key_with_a_comment_is_read(self):
+        project = "targets: # the products\n  App:\n    type: application\n    sources:\n      - path: App\n"
+        problems = check_weak_imports.target_problems(project)
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("target App", problems[0])
+
     def test_a_target_without_it_is_reported(self):
         project = textwrap.dedent("""
         targets:
@@ -89,16 +98,19 @@ class BinaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as products:
             for rel in ("Conduit.app/Conduit", "Conduit.app/Conduit.debug.dylib",
                         "Conduit.app/PlugIns/ConduitWidgets.appex/ConduitWidgets",
+                        "Conduit.app/Frameworks/Fat64.framework/Fat64",
                         "Conduit.app/PlugIns/ConduitTests.xctest/ConduitTests",
                         "ConduitUITests-Runner.app/ConduitUITests-Runner",
                         "Conduit.app/Info.plist"):
                 path = os.path.join(products, rel)
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 with open(path, "wb") as handle:
-                    handle.write(b"<?xml" if rel.endswith(".plist") else b"\xcf\xfa\xed\xfe....")
+                    magic = b"\xca\xfe\xba\xbf" if "Fat64" in rel else b"\xcf\xfa\xed\xfe"
+                    handle.write(b"<?xml" if rel.endswith(".plist") else magic + b"....")
             found = sorted(os.path.relpath(p, products)
                            for p in check_weak_imports.binaries_under(products))
         self.assertEqual(found, ["Conduit.app/Conduit", "Conduit.app/Conduit.debug.dylib",
+                                 "Conduit.app/Frameworks/Fat64.framework/Fat64",
                                  "Conduit.app/PlugIns/ConduitWidgets.appex/ConduitWidgets"])
 
 

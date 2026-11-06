@@ -46,6 +46,7 @@ MACHO_MAGICS = {
     b"\xfe\xed\xfa\xce", b"\xce\xfa\xed\xfe",  # 32-bit
     b"\xfe\xed\xfa\xcf", b"\xcf\xfa\xed\xfe",  # 64-bit
     b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca",  # universal
+    b"\xca\xfe\xba\xbf", b"\xbf\xba\xfe\xca",  # universal, 64-bit offsets
 }
 
 
@@ -62,7 +63,7 @@ def shipped_targets(project_yml):
             continue
         indent = len(line) - len(line.lstrip(" "))
         if indent == 0:
-            in_targets = line.rstrip() == "targets:"
+            in_targets = re.match(r"^targets:\s*(#.*)?$", line) is not None
             name = None
             continue
         if not in_targets:
@@ -108,8 +109,11 @@ def compiles_date_order(sources):
 
 
 def target_problems(project_yml):
+    targets = shipped_targets(project_yml)
+    if not targets:
+        return ["project.yml: no application or app extension targets found; the check can't read it"]
     problems = []
-    for name, sources in sorted(shipped_targets(project_yml).items()):
+    for name, sources in sorted(targets.items()):
         if not compiles_date_order(sources):
             problems.append(
                 f"project.yml: target {name} doesn't compile {DATE_ORDER_FILE}: "
@@ -167,6 +171,11 @@ def main():
         for path in binaries_under(args.products):
             count += 1
             nm = subprocess.run(["xcrun", "nm", "-m", path], capture_output=True, text=True)
+            if nm.returncode != 0:
+                # A binary nm can't read is one the check didn't look at.
+                problems.append(f"{os.path.relpath(path, args.products)}: nm failed "
+                                f"(exit {nm.returncode}): {nm.stderr.strip()}")
+                continue
             problems += weak_import_problems(os.path.relpath(path, args.products), nm.stdout)
         if count == 0:
             print(f"::error::no Mach-O files under {args.products}")
