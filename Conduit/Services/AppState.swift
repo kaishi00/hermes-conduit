@@ -4549,6 +4549,15 @@ final class AppState: ObservableObject {
     /// The profile's SOUL.md for the next agent-mode call, read when it
     /// starts and dropped when it closes, as the other live modes' are.
     private var localLivePersonality: String?
+    /// Counts persona lookups and teardowns, so a lookup that finishes
+    /// after its call ended or a newer one started stores nothing.
+    private var localLivePersonaLookup = 0
+
+    /// Personal text goes, and any lookup still running is dropped.
+    private func dropLocalLivePersonality() {
+        localLivePersonality = nil
+        localLivePersonaLookup &+= 1
+    }
 
     /// Whether Local Live's fast model speaks as the profile's SOUL.md
     /// persona (issue 583). Off until the user turns it on: it sends
@@ -4817,6 +4826,10 @@ final class AppState: ObservableObject {
                     async let hostTools: Void = self.prepareVoiceHostTools(for: .localLive)
                     // A lookup that outlives a profile switch is dropped:
                     // another profile's SOUL.md never reaches this call.
+                    // So does one an ended or newer call took over: each
+                    // lookup and each teardown bumps the count.
+                    self.localLivePersonaLookup &+= 1
+                    let lookup = self.localLivePersonaLookup
                     let profile = self.activeProfile
                     async let personality = self.localLivePersonalityEnabled ? hostContext.personality() : nil
                     // Off only when the user turned web lookups off.
@@ -4826,10 +4839,12 @@ final class AppState: ObservableObject {
                         self.localLiveWebLookUps = false
                     }
                     let persona = await personality
-                    self.localLivePersonality = self.activeProfile == profile ? persona : nil
+                    if self.localLivePersonaLookup == lookup {
+                        self.localLivePersonality = self.activeProfile == profile ? persona : nil
+                    }
                     await hostTools
                 } else {
-                    self?.localLivePersonality = nil
+                    self?.dropLocalLivePersonality()
                 }
                 return .available(model: status.modelName)
             },
@@ -4931,7 +4946,7 @@ final class AppState: ObservableObject {
             if localLiveControllerCreated { localLiveTurns.reset() }
             localLiveOwnChat = nil
             // Personal text goes with the call it was fetched for.
-            localLivePersonality = nil
+            dropLocalLivePersonality()
             if voiceCallRecorder?.engine == .localLive { finishVoiceCallRecording() }
             // A minimised call that failed has nothing left to show.
             if minimisedLiveVoice == .localLive { minimisedLiveVoice = nil }
@@ -4947,7 +4962,7 @@ final class AppState: ObservableObject {
             localLiveTurns.reset()
         }
         localLiveOwnChat = nil
-        localLivePersonality = nil
+        dropLocalLivePersonality()
         showLocalLiveSheet = false
         if minimisedLiveVoice == .localLive { minimisedLiveVoice = nil }
         voiceBackgroundJobSupervisor.detachLiveThread()
@@ -4959,7 +4974,7 @@ final class AppState: ObservableObject {
     private func stopLocalLiveConversation() {
         guard showLocalLiveSheet || minimisedLiveVoice == .localLive || isLocalLiveActive else {
             // Personal text goes at the boundary even with no call up.
-            localLivePersonality = nil
+            dropLocalLivePersonality()
             // Its recording still closes, so the call is saved.
             if voiceCallRecorder?.engine == .localLive { finishVoiceCallRecording() }
             finishHermesCallbacks(engine: .localLive)
