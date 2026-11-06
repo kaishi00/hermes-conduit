@@ -1,4 +1,5 @@
 import SwiftUI
+import TipKit
 
 /// The Bots roster. Every row is a Hermes profile; selecting one resolves
 /// (or, only when genuinely missing, creates) the profile's ONE canonical
@@ -21,7 +22,7 @@ struct BotRosterView: View {
     @State private var showsHiddenBots = false
     /// New Group Chat from a bot's Groups menu starts with that bot picked.
     @State private var groupSheetBot: BotProfile?
-    /// The bot whose Bot Overview shows (Bots Home's Overview pill).
+    /// The bot whose Bot Overview shows (Bots Home's ⓘ or status pill).
     @State private var overviewBot: BotProfile?
     /// Edit Bot tapped in the overview: the editor opens once it's gone,
     /// since a sheet can't open over it from here.
@@ -42,6 +43,8 @@ struct BotRosterView: View {
     @State private var landingRoomID: String?
     @Namespace private var roomTiles
     @State private var showingReorder = false
+    /// Bots Home's one tip on its gestures (BotsHomeGesturesTip).
+    private let gesturesTip = BotsHomeGesturesTip()
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// V2's Bots tab: its title bar's "+" asks for a new bot here, and the
@@ -730,6 +733,11 @@ struct BotRosterView: View {
                     portraitGrid
                         .padding(.bottom, 8)
                 }
+                // Once, under the bots, until it's closed or a gesture is
+                // used (BotsHomeGesturesTip).
+                TipView(gesturesTip)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
                 homeGroupSection
             }
             .overlayPreferenceValue(BotsHomeAnchorKey.self) { anchors in
@@ -738,6 +746,12 @@ struct BotRosterView: View {
             .environment(\.rosterRowsInScroll, true)
         }
         .scrollContentBackground(.hidden)
+        .onAppear { BotsHomeGesturesTip.hasBotsToArrange = visibleBots.count >= 2 }
+        .onChange(of: visibleBots.count) { _, count in BotsHomeGesturesTip.hasBotsToArrange = count >= 2 }
+        // Reorder Bots, or a room begun from a menu or a drop: the person
+        // has found the gestures' menu, so the tip goes.
+        .onChange(of: showingReorder) { _, showing in if showing { BotsHomeGesturesTip.learned() } }
+        .onChange(of: newRoom.isEmpty) { _, empty in if !empty { BotsHomeGesturesTip.learned() } }
     }
 
     private func botModeFailure(_ message: String) -> some View {
@@ -869,11 +883,30 @@ struct BotRosterView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 3)
             }
-            BotRoomGrid { homeRoomTiles }
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
-                .padding(.bottom, 16)
+            if showsRoomHint {
+                // No rooms yet: how to start one, gone with the first.
+                Text(AppLocalization.string("Hold one bot over another to start a room."))
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 2)
+                    .padding(.bottom, 16)
+            } else {
+                BotRoomGrid { homeRoomTiles }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 4)
+                    .padding(.bottom, 16)
+            }
         }
+    }
+
+    /// Group Chats has nothing to show yet, rooms can start here and there
+    /// are two bots to drop one on the other; not in UI tests or the App
+    /// Store screenshots, like the tip.
+    private var showsRoomHint: Bool {
+        !BotsHomeGesturesTip.hiddenForTesting && canStartGroups && groupProbeFailure == nil && homeRooms.isEmpty
+            && appState.shownDesktopGroupChats.isEmpty && newRoom.isEmpty && visibleBots.count >= 2
     }
 
     /// Bots Home's rooms as small portraits: the hosted rooms, Desktop's,
