@@ -139,8 +139,9 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         batch.places = config.places
         batch.fix = LocationFixRecord(source: .locate, raw: LocationRawFix(location), area: area)
         batch.locateID = request.id
-        // Paused or turned off while the fix was on its way: nothing goes.
-        guard Self.stillAnswers(request) else { return }
+        // Paused, turned off or its detail lowered while the fix was on its
+        // way: nothing goes.
+        guard Self.stillAnswers(request, detail: precision) else { return }
         guard let body = try? LocationIngest.body(batch, key: key), !Task.isCancelled else { return }
         do {
             _ = try await LocationHostClient.requestJSON(
@@ -212,7 +213,7 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
             let found = await run(maps, config: config)
             // Paused or turned off while the fix or the lookup was on its
             // way: the host hears "paused", not what was found.
-            answer = Self.stillAnswers(request) ? found : .failure(.paused)
+            answer = Self.stillAnswers(request, detail: config.settings.backgroundPrecision) ? found : .failure(.paused)
         }
         guard !Task.isCancelled,
               let envelope = try? LocationCrypto.mapsAnswer(plaintext: answer.plaintext(id: request.id), key: key, id: request.id)
@@ -258,12 +259,13 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         return await MapsEngine.answer(request, context: context, deadline: Self.mapsLookupDeadline)
     }
 
-    /// Whether sharing still answers `request`, read again from the config
-    /// the app writes when the user pauses or turns it off: checked after
-    /// the waits, not only before them (issue 1881).
-    private static func stillAnswers(_ request: LocationLocateRequest) -> Bool {
+    /// Whether sharing still answers `request` at `detail`, read again from
+    /// the config the app writes when the user pauses, turns it off or
+    /// lowers its detail: checked after the waits, not only before them
+    /// (issue 1881).
+    private static func stillAnswers(_ request: LocationLocateRequest, detail: LocationPrecision) -> Bool {
         guard case .value(let config) = LocationSharedStore.readConfig() else { return false }
-        return request.isAnswered(by: config, at: Date())
+        return request.isAnswered(by: config, at: Date()) && config.settings.backgroundPrecision.capped(at: detail) == detail
     }
 
     /// A value for the query string: ids are `[A-Za-z0-9_-]` already.

@@ -1101,6 +1101,7 @@ extension NotificationE2ETests {
         // a pause that starts meanwhile is seen (issue 1881).
         var config = LocationFixtures.config(background: false, talking: true, pausedUntil: LocationFixtures.at.addingTimeInterval(60))
         config.setVoiceRead(LiveVoiceModeName.geminiLive.storageID, allowed: true)
+        config.settings.talkingPrecision = .area
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: folder) }
         let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")),
@@ -1110,6 +1111,12 @@ extension NotificationE2ETests {
         controller.now = { now }
         XCTAssertTrue(MapsVoiceTool.allowsLocation(mode: .geminiLive, controller: controller))
         XCTAssertFalse(MapsVoiceTool.allowsLocation(mode: .gptLive, controller: controller), "each mode is its own yes")
+        // The detail is Area now: a lookup begun at Area or Places only goes on,
+        // one begun at Precise doesn't.
+        XCTAssertTrue(MapsVoiceTool.allowsLocation(mode: .geminiLive, controller: controller, detail: .area))
+        XCTAssertTrue(MapsVoiceTool.allowsLocation(mode: .geminiLive, controller: controller, detail: .places))
+        XCTAssertFalse(MapsVoiceTool.allowsLocation(mode: .geminiLive, controller: controller, detail: .precise),
+                       "detail lowered since the lookup began")
         now = LocationFixtures.at
         XCTAssertFalse(MapsVoiceTool.allowsLocation(mode: .geminiLive, controller: controller), "paused")
     }

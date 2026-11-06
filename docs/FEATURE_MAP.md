@@ -4499,7 +4499,7 @@ reach `conduit_maps` through Hermes)
 **Rulings**
 - "Me" is never coordinates: "Current location" at Precise, the area's name at Area, refused at Places only or inside a private place. Distances from "me" are rounded to 10 m at Precise and 100 m at Area, and a route from or to "me" at Area has no steps.
 - A saved place goes to the host and the voice model by name only. A distance to or from one is rounded to 100 m at every detail, and a route that starts or ends at one has no steps, so an answer can't pin it to the metre or the street. A search near one still shows roughly where it is, which is what the search is for (2026-11-06, #1901, issue 1880).
-- Consent and pause are read again after each wait, not only when a lookup starts. The voice tool checks after the fix and after the lookup and says the location isn't shared. The push extension reads the config again before it seals an answer and answers `paused`, and a locate drops its fix (2026-11-06, #1901, issue 1881).
+- Consent, pause and the detail level are read again after each wait, not only when a lookup starts (a detail lowered meanwhile counts as turned off). The voice tool checks after the fix and after the lookup and says the location isn't shared. The push extension reads the config again before it seals an answer and answers `paused`, and a locate drops its fix (2026-11-06, #1901, issue 1881).
 - A completion-based call under a deadline resumes exactly once, by its answer or by the deadline, and nothing is left waiting when it never answers: MapsKit.call for MapKit, MapsDeadline.first for CarPlay's open (2026-11-06, #1901, issue 1882).
 
 **Open gaps**

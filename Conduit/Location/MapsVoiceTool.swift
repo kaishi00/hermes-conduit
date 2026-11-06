@@ -95,9 +95,10 @@ enum MapsVoiceTool {
         }
         if !locationAllowed, usesLocation(request) { return ["error": notShared] }
 
+        let detail = controller.settings.talkingPrecision
         var me: MapsMe?
         if request.usesMe {
-            var precision = controller.settings.talkingPrecision
+            var precision = detail
             if controller.approximate || controller.fixes.isApproximate { precision = precision.capped(at: .area) }
             if precision == .places {
                 me = .unavailable(.noLocation("Location detail is Places only, so nothing can be worked out from where the user is."))
@@ -108,14 +109,15 @@ enum MapsVoiceTool {
                 me = .unavailable(.noLocation())
             }
         }
-        // And again after each wait: turned off while the fix or the lookup
-        // was on its way, nothing from it reaches the model (issue 1881).
+        // And again after each wait: turned off, or its detail lowered, while
+        // the fix or the lookup was on its way, nothing from it reaches the
+        // model (issue 1881).
         let readsLocation = usesLocation(request)
-        if readsLocation, !allowsLocation(mode: mode, controller: controller) { return ["error": notShared] }
+        if readsLocation, !allowsLocation(mode: mode, controller: controller, detail: detail) { return ["error": notShared] }
         let answer = await MapsEngine.answer(request, context: MapsContext(me: me, places: places), deadline: lookupDeadline)
         // Listed whatever the outcome: a lookup was attempted.
         HealthVoiceReadLog.record(mode: mode, action: "maps \(action.rawValue)", key: HealthVoiceReadLog.locationStorageKey)
-        if readsLocation, !allowsLocation(mode: mode, controller: controller) { return ["error": notShared] }
+        if readsLocation, !allowsLocation(mode: mode, controller: controller, detail: detail) { return ["error": notShared] }
         switch answer {
         case .failure(let failure):
             return ["error": "\(failure.code): \(failure.note)"]
@@ -166,9 +168,13 @@ enum MapsVoiceTool {
     }
 
     /// Whether `mode` may use the user's position and saved places now: its
-    /// location voice consent and the "while I'm talking" layer, not paused.
-    static func allowsLocation(mode: LiveVoiceModeName, controller: LocationSharingController) -> Bool {
-        controller.letsVoiceRead(mode) && controller.settings.talking
+    /// location voice consent and the "while I'm talking" layer, not paused,
+    /// and, with `detail`, at that detail still (not lowered since).
+    static func allowsLocation(mode: LiveVoiceModeName, controller: LocationSharingController,
+                               detail: LocationPrecision? = nil) -> Bool {
+        guard controller.letsVoiceRead(mode), controller.settings.talking else { return false }
+        guard let detail else { return true }
+        return controller.settings.talkingPrecision.capped(at: detail) == detail
     }
 
     /// Whether a request reads the user's position or saved places.
