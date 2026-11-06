@@ -794,7 +794,7 @@ notifier's README
 - A Bot Chat's calls are kept in the bot's profile, so another device doesn't adopt them (#1445).
 - Desktop doesn't group voice rows under their call; archiving is how they stay out of its list (would need Hermes).
 
-**Checked:** 2026-11-06, #1884 (a Markdown file card opens the Markdown reader, as Artifacts does since #1879); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1445.
+**Checked:** 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1445.
 
 ## The user's words in a call's transcript
 
@@ -2895,7 +2895,7 @@ calls reading a job's chat · the Watch's answer to a call from Hermes
 **Open gaps**
 - The same message sent twice and answered in the same words, read once from saved history and once from the open chat, still can't be told apart.
 
-**Checked:** 2026-11-06, #1884 (a Markdown file card opens the Markdown reader, as Artifacts does since #1879); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-24, at #1185; a Shortcut send's failed try counted even when its text repeats the banner at #1191 (#1056 review).
+**Checked:** 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-24, at #1185; a Shortcut send's failed try counted even when its text repeats the banner at #1191 (#1056 review).
 
 ## Following the latest message
 
@@ -3238,7 +3238,7 @@ from Hermes: commentary is said, see Acknowledging work handed to Hermes)
 **Open gaps**
 - `Haptics.signal` still plays the writing haptic only for `message.delta`.
 
-**Checked:** 2026-11-06, #1884 (a Markdown file card opens the Markdown reader, as Artifacts does since #1879); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files, even beside a card); 2026-10-28, #1430 (Local Live's spoken stream passes the action filter; its writing state is unchanged); 2026-10-27, #1390 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
+**Checked:** 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files, even beside a card); 2026-10-28, #1430 (Local Live's spoken stream passes the action filter; its writing state is unchanged); 2026-10-27, #1390 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
 
 ## Live Activity for a running turn
 
@@ -3735,7 +3735,7 @@ transcript (never filtered)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-06, #1884 (a Markdown file card opens the Markdown reader, as Artifacts does since #1879); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1449 (Hermes' file tags are left out too, with their own entry, Files Hermes attaches); #1429, carried in #1430.
+**Checked:** 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1449 (Hermes' file tags are left out too, with their own entry, Files Hermes attaches); #1429, carried in #1430.
 
 ## Speech stream failures
 
@@ -4618,7 +4618,7 @@ split · Read Aloud and live read-back · chat list previews and quotes
 - Previews and quotes only drop fence lines and track no block, so they need no closing rule (not a gap, noted so nobody adds one).
 - A ```` block holding a ``` line in a Bot Chat can route a mention after that line, as Hermes does; changing it starts in Hermes.
 
-**Checked:** 2026-11-06, #1884 (a Markdown file card opens the Markdown reader, as Artifacts does since #1879); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-30, #1524 (a Desktop card or preview directive in a code block stays as written: read-back, previews, quotes and the streaming speech filter); 2026-10-28, #1449 (Local Live's split leaves file tags unsaid and shows their files); 2026-10-28, #1430 (read-back's action filter runs only on lines outside a code block); 2026-10-24, at #1220.
+**Checked:** 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-30, #1524 (a Desktop card or preview directive in a code block stays as written: read-back, previews, quotes and the streaming speech filter); 2026-10-28, #1449 (Local Live's split leaves file tags unsaid and shows their files); 2026-10-28, #1430 (read-back's action filter runs only on lines outside a code block); 2026-10-24, at #1220.
 
 ## Files prepared for preview and Save to Files
 
