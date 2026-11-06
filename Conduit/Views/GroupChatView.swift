@@ -1043,7 +1043,8 @@ struct GroupRespondingRow: View {
         let name = GroupRoomTurns.displayName(of: member)
         let tint = tints[member.identityKey]
         // As on its bubble, the picture picks the bot in the "To" row.
-        let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines).flatMap { $0.isEmpty ? nil : $0 }
+        let trimmed = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let handle: String? = trimmed.isEmpty ? nil : trimmed
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 7) {
