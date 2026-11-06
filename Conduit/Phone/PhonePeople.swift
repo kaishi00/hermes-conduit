@@ -206,7 +206,9 @@ struct SystemContactsSource: PhoneContactsSource {
                 do {
                     // The unified contact, so a card linked to another one still reads.
                     let contact = try store.unifiedContact(withIdentifier: identifier, keysToFetch: keys)
-                    reads[identifier] = PhonePerson(contact: contact).map { .person($0) } ?? .problem(.unreadable)
+                    // A card left with no name and no company has nothing to
+                    // show: the last copy stays, with nothing wrong to say.
+                    if let person = PhonePerson(contact: contact) { reads[identifier] = .person(person) }
                 } catch let error as CNError where error.code == .recordDoesNotExist {
                     // Limited access answers the same for a contact it leaves out.
                     reads[identifier] = .problem(limited ? .notShared : .notFound)
