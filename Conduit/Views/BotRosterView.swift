@@ -379,7 +379,8 @@ struct BotRosterView: View {
     /// Whether `dragged`, held over `target`'s face, starts a room with it
     /// (the same test the drop makes).
     private func canMerge(_ dragged: String, with target: BotProfile) -> Bool {
-        guard canStartRoomHere, !target.isHiddenByMeta,
+        // While Hermes makes the room, its bots stay as sent.
+        guard canStartRoomHere, !creatingNewRoom, !target.isHiddenByMeta,
               dragged.caseInsensitiveCompare(target.name) != .orderedSame,
               let draggedBot = appState.shownBotRoster.first(where: {
                   $0.name.caseInsensitiveCompare(dragged) == .orderedSame
@@ -413,6 +414,8 @@ struct BotRosterView: View {
     }
 
     private func addToNewRoom(_ names: [String]) {
+        // The room Hermes is making has the bots it was sent with.
+        guard !creatingNewRoom else { return }
         var seen = Set<String>()
         let joining = names.filter { !newRoom.contains($0) && seen.insert($0.lowercased()).inserted }
         // A room just made still sliding into its place gives up the new
@@ -491,13 +494,13 @@ struct BotRosterView: View {
     /// Whether `dragged` can join the room being started: shown, not hidden,
     /// not in it yet, and with room for it.
     private func canJoinNewRoom(_ dragged: String) -> Bool {
-        canStartRoomHere && !newRoom.contains(dragged) && newRoom.fits([dragged])
+        canStartRoomHere && !creatingNewRoom && !newRoom.contains(dragged) && newRoom.fits([dragged])
             && visibleBots.contains { $0.name.caseInsensitiveCompare(dragged) == .orderedSame }
     }
 
     /// A bot dropped on the room being started joins it, as on a member.
     private func dropOnNewRoom(_ dragged: String) -> Bool {
-        guard canStartRoomHere,
+        guard canStartRoomHere, !creatingNewRoom,
               let bot = visibleBots.first(where: { $0.name.caseInsensitiveCompare(dragged) == .orderedSame })
         else { return false }
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
@@ -528,8 +531,13 @@ struct BotRosterView: View {
             } else {
                 roomsBeforeCreate = nil
                 Haptics.warning()
-                // Said here, in the bar, not on another screen later.
-                newRoomError = appState.errorMessage
+                // Said in the bar; if the bar went meanwhile (Bots left,
+                // rooms no longer possible), over the grid instead.
+                if newRoom.isEmpty {
+                    managementNotice = appState.errorMessage
+                } else {
+                    newRoomError = appState.errorMessage
+                }
                 appState.errorMessage = nil
             }
         }
@@ -557,6 +565,7 @@ struct BotRosterView: View {
 
     /// Taking a bot out always works; adding one only while it's shown.
     private func toggleNewRoom(_ bot: BotProfile) {
+        guard !creatingNewRoom else { return }
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
             if isInNewRoom(bot.name) {
                 newRoom.remove(bot.name)
@@ -983,7 +992,7 @@ struct BotRosterView: View {
                 flying: Set(roomFlights.map(\.name)),
                 name: newRoom.roomName(suggested: AppLocalization.string("New room")),
                 members: joinedNames(newRoomBots),
-                onTap: { newRoomNameFocused = true },
+                onTap: { if !creatingNewRoom { newRoomNameFocused = true } },
                 canJoin: canJoinNewRoom,
                 onDrop: dropOnNewRoom
             )
