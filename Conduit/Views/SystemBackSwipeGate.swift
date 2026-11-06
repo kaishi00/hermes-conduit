@@ -65,20 +65,29 @@ struct SystemBackSwipeGate: UIViewRepresentable {
             if window == nil { release() } else { apply() }
         }
 
-        private func apply(retry: Bool = true) {
+        /// How many times, `retryDelay` apart, the gate looks again for a
+        /// page the stack doesn't hold yet: about 2 s, past any push.
+        static let retries = 40
+        static let retryDelay: TimeInterval = 0.05
+
+        private func apply(retriesLeft: Int = GateView.retries) {
             guard blocked else { return release() }
             guard window != nil else { return }
             guard let page = pushedPage() else {
                 // Opened with its push (a workstream straight from the
                 // bot's overview): the stack may not hold the page yet.
-                if retry { DispatchQueue.main.async { [weak self] in self?.apply(retry: false) } }
+                if retriesLeft > 0 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + Self.retryDelay) { [weak self] in
+                        self?.apply(retriesLeft: retriesLeft - 1)
+                    }
+                }
                 return
             }
             holdOff(Self.systemBackSwipes(of: page))
             // The push may still be running, and the zoom's gestures and the
             // stack's top settle as it ends: look again then.
             page.transitionCoordinator?.animate(alongsideTransition: nil) { [weak self] _ in
-                self?.apply(retry: false)
+                self?.apply(retriesLeft: 0)
             }
         }
 

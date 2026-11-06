@@ -902,6 +902,39 @@ extension BotModeTests {
         XCTAssertTrue(zoom.isEnabled, "a gate that leaves the screen lets go")
     }
 
+    /// A gate that comes on before its page is in the stack (a workstream
+    /// opened with its push) keeps looking, and holds the swipes once it is.
+    @MainActor
+    func testTheBackSwipeGateWaitsForItsPageToBePushed() {
+        let navigation = UINavigationController(rootViewController: UIViewController())
+        let page = UIViewController()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = navigation
+        window.isHidden = false
+        defer { window.isHidden = true }
+        // On screen, but not yet the stack's.
+        window.addSubview(page.view)
+
+        let zoom = UIPanGestureRecognizer()
+        zoom.name = SystemBackSwipeGate.zoomDismissalPrefix + "SwipeDown"
+        page.view.addGestureRecognizer(zoom)
+        let gate = SystemBackSwipeGate.GateView()
+        page.view.addSubview(gate)
+        gate.blocked = true
+        XCTAssertTrue(zoom.isEnabled, "no page in a stack yet")
+
+        let held = expectation(description: "held once it's the stack's")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            navigation.addChild(page)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                if !zoom.isEnabled { held.fulfill() }
+            }
+        }
+        wait(for: [held], timeout: 2)
+        gate.blocked = false
+        XCTAssertTrue(zoom.isEnabled)
+    }
+
     /// Bots Home's voice button lists the shown bots to call, the one that
     /// talked last first, ties in roster order (Eric 2026-11-03).
     func testBotsHomesVoiceButtonListsTheBotUsedLastFirst() {
