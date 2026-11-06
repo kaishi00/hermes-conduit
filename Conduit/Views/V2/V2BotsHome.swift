@@ -931,6 +931,9 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// with itself, nor when either is hidden or rooms can't start here.
     /// Without it the face never swells, and a drop only moves.
     var canMerge: ((_ dragged: String) -> Bool)?
+    /// Whether `dragged`, dropped here to move, lands after this bot (it's
+    /// carried on from before it), so the bar shows on that side.
+    var landsAfter: ((_ dragged: String) -> Bool)?
     var onToggleRoom: (() -> Void)?
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2OpenBeside) private var openBeside
@@ -942,6 +945,8 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// (BotDragPayload.mergeDwell, mergeStillness, mergeZone).
     @State private var isTargeted = false
     @State private var mergeReady = false
+    /// The bar where the bot in hand will land shows after this one.
+    @State private var barTrailing = false
     /// When a merge-ready hover ended. A drop ends the hover before it
     /// lands, so the drop reads this rather than `mergeReady`, which has
     /// already gone (Eric 2026-11-04: dropping a bot on another never
@@ -1136,6 +1141,7 @@ struct BotPortraitCell<MenuContent: View>: View {
         // from another app, or a bot over itself, shows nothing.
         guard let lifted = BotDragPayload.lifted,
               lifted.caseInsensitiveCompare(bot.name) != .orderedSame else { return }
+        barTrailing = landsAfter?(lifted) ?? false
         isTargeted = true
         mergeReadyEndedAt = nil
         dwell?.cancel()
@@ -1208,14 +1214,15 @@ struct BotPortraitCell<MenuContent: View>: View {
             ))
             .scaleEffect(mergeReady ? 1.1 : 1)
             // Held over, not yet merging: a bar where the dragged bot will
-            // land, before this one.
-            .overlay(alignment: .leading) {
+            // land, before this one, or after it when carried on from
+            // before it (BotOrder.dropping).
+            .overlay(alignment: barTrailing ? .trailing : .leading) {
                 if isTargeted && !mergeReady {
                     Capsule()
                         .fill(Color.conduitAccent)
                         .frame(width: 4)
                         .padding(.vertical, 8)
-                        .offset(x: -9)
+                        .offset(x: barTrailing ? 9 : -9)
                         .accessibilityHidden(true)
                 }
             }
