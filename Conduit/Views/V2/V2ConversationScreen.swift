@@ -10,6 +10,7 @@
 //
 
 import SwiftUI
+import os
 
 private struct V2ComposerRestsKey: EnvironmentKey {
     static let defaultValue = false
@@ -237,6 +238,10 @@ struct V2ConversationScreen: View {
             openArtifacts(tab: .folder)
         }
         .onAppear {
+            // The other end of the shell's "Chat pushed" marker. It is the
+            // screen being on screen, not its first painted frame; the
+            // Animation Hitches track says whether that frame came late.
+            ResponsivenessSignposts.signposter.emitEvent("Conversation appeared")
             sidePanelIDs = appState.activeChatArtifactSessionIDs
             shownChat = currentShownChat
         }
