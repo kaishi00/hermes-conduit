@@ -1585,6 +1585,11 @@ extension VoiceConversationControllerTests {
         for text in notClaims {
             XCTAssertFalse(GPTLiveConversationController.claimsToSendToHermes(text, callLanguage: "de"), text)
         }
+        // Italian and Portuguese "se" is a condition on their calls, and
+        // Spanish's pronoun everywhere else.
+        XCTAssertFalse(GPTLiveConversationController.claimsToSendToHermes("Lo mando a Hermes se serve.", callLanguage: "it"))
+        XCTAssertFalse(GPTLiveConversationController.claimsToSendToHermes("Mando isso ao Hermes se precisar.", callLanguage: "pt"))
+        XCTAssertTrue(GPTLiveConversationController.claimsToSendToHermes("Vale, se lo mando a Hermes.", callLanguage: "es"))
         // English words that start another language's stems ("passed"):
         // an English call reads them by the English rules alone.
         XCTAssertFalse(GPTLiveConversationController.claimsToSendToHermes("Hermes passed it along.", callLanguage: "en"))

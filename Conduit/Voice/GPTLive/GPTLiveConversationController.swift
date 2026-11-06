@@ -1082,9 +1082,12 @@ final class GPTLiveConversationController: ObservableObject {
               !language.hasPrefix("en") else { return false }
         for sentence in sentences {
             if let next = normalized[sentence.endIndex...].first, next == "?" || next == "？" { continue }
-            // A condition anywhere holds it ("…, sobald du ja sagst").
+            // A condition anywhere holds it ("…, sobald du ja sagst"), and
+            // on an Italian or Portuguese call their "se" ("… se serve"),
+            // which is Spanish's pronoun ("se lo envío"), so only there.
             guard Self.hermesNames.contains(where: { sentence.contains($0) }),
-                  sentence.range(of: Self.otherLanguageCondition, options: .regularExpression) == nil else { continue }
+                  sentence.range(of: Self.otherLanguageCondition, options: .regularExpression) == nil,
+                  !([language, callLanguage ?? ""].contains { ["it", "pt"].contains(String($0.prefix(2))) } && sentence.range(of: #"\bse\b"#, options: .regularExpression) != nil) else { continue }
             // Then clause by clause: an offer or a no before the send holds
             // it, a reassurance after it doesn't ("… se lo envío a Hermes,
             // no te preocupes"). Any
@@ -1127,7 +1130,7 @@ final class GPTLiveConversationController: ObservableObject {
          #"\b(peux|pourrais|pourrait|devrais|veux|voulez|voudrais|si|quand|avant|ne|pas|jamais)\b|n'"#),
         // Italian: "Lo mando a Hermes.", "Chiedo a Hermes."
         (#"\b(invi|mand|pass|chied|chiede|dic|dir|gir|inoltr|avvis)\w*"#,
-         #"\b(posso|potrei|dovrei|vuoi|vuole|quando|prima|non|mai)\b"#),
+         #"\b(posso|puoi|potrei|dovrei|vuoi|vuole|quando|prima|non|mai)\b"#),
         // Portuguese: "Vou enviar isso ao Hermes.", "Pergunto ao Hermes."
         (#"\b(envi|mand|pass|pergunt|dig|diz|avis|encaminh|repass)\w*"#,
          #"\b(posso|poderia|deveria|quer|queres|quiser|quando|antes|não|nunca)\b"#),
