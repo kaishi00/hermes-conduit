@@ -139,6 +139,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(jobs, ["plan", "self-test", "smoke", "ci-gate"], jobs)
         self.assertEqual(self._workflow_text().count("runs-on: macos-"), 1)
         self.assertIn("runs-on: macos-26", self._job_text("smoke"))
+        self.assertIn("check-weak-imports.py binaries", self._job_text("smoke"))
         self.assertNotIn("matrix", self._job_text("smoke"),
                          "the smoke job must not fan out into several macOS jobs")
         self.assertNotIn("unit-shards", self._workflow_text(),
@@ -256,6 +257,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("plan-tests.py validate", checks)
         self.assertIn("check-l10n-coverage.py", checks)
         self.assertIn("check-fixed-text-sizes.py", checks)
+        self.assertIn("check-weak-imports.py targets", checks)
         self.assertIn("check-transcript-environment.py", checks)
         self.assertIn("check-plugin-version.py", checks)
         self.assertIn("check-card-schema.py", checks)

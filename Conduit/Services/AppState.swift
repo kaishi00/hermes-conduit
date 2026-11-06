@@ -12421,6 +12421,8 @@ final class AppState: ObservableObject {
         botRosterEpoch += 1
         botRosterRetry.succeeded()
         botWork.clear()
+        // Another server's hosts may or may not have a Bot Screen.
+        botScreens.reset()
         botRosterVerifiedForCurrentConnection = false
         botChatOpenFlights.values.forEach { $0.task?.cancel() }
         botChatSessionProfiles.removeAll()
@@ -12566,6 +12568,9 @@ final class AppState: ObservableObject {
     /// Delete) covers it, so reading it doesn't clear its notifications yet
     /// (#1579). Set by V2ConversationScreen and RootView; nothing redraws on it.
     var chatCoveredBySheet = false
+    /// Bot Screen sheets open now, from any surface: one covers the open
+    /// chat like `chatCoveredBySheet` (#1832). Nothing redraws on it.
+    var botScreenSheetsOpen = 0
 
     @Published private(set) var activeRoomSurface: GroupRoomSurface? {
         // A room takes the chat's place without changing the open chat.
@@ -28013,6 +28018,9 @@ final class AppState: ObservableObject {
 
     /// Each bot's work, for the Bot Chat's Work strip and panel
     /// (AppState+BotWorkstreams.swift).
+    /// Which bots' hosts can have a Bot Screen, as read (BotScreen.swift).
+    let botScreens = BotScreenSupport()
+
     lazy var botWork: BotWorkStore = {
         let store = BotWorkStore()
         store.onWorkstreamsChanged = { [weak self] in self?.workstreamsChanged() }
@@ -32797,6 +32805,7 @@ final class AppState: ObservableObject {
                 return false
             }
             var didPrepend = false
+            var foldedPageStart: (heldIDs: Set<String>, callCardID: String)?
             let startBeforePage = messages.first.map {
                 PersistedTranscriptWindowState.LoadedPageStart(
                     firstRowID: $0.id,
@@ -32820,6 +32829,12 @@ final class AppState: ObservableObject {
                 )
                 let merged: [ChatMessage]?
                 if foldedFromHeld > 0 {
+                    // The folded result rows go; a page start on one moves
+                    // to the call card that took it in (issue 1828).
+                    foldedPageStart = PersistedTranscriptWindow.foldedPageStart(
+                        olderPage: olderPage,
+                        foldedHeld: messages.prefix(foldedFromHeld)
+                    )
                     let remainingHeld = messages.dropFirst(foldedFromHeld)
                     if remainingHeld.isEmpty {
                         // Every held row folded into the adjusted page (the
@@ -32866,6 +32881,13 @@ final class AppState: ObservableObject {
             if didPrepend, let first = messages.first {
                 if current.loadedPageStarts.isEmpty, let startBeforePage {
                     current.loadedPageStarts.append(startBeforePage)
+                }
+                if let foldedPageStart {
+                    current.loadedPageStarts = PersistedTranscriptWindow.movingPageStarts(
+                        current.loadedPageStarts,
+                        off: foldedPageStart.heldIDs,
+                        onto: foldedPageStart.callCardID
+                    )
                 }
                 current.loadedPageStarts.append(.init(
                     firstRowID: first.id,

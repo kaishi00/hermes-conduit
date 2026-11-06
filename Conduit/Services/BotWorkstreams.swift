@@ -89,6 +89,14 @@ struct BotWorkItem: Identifiable, Equatable {
     let startedInCall: String
     /// The call that started it, either way: the card's "From a voice call".
     var call: String { fromCall.isEmpty ? startedInCall : fromCall }
+    /// The bot's screen (Bot Screen): "controlling" while it drives it now,
+    /// "waiting" while it waits for it, else empty. Apart from when it used
+    /// it last, which says nothing about now (Eric 2026-11-05).
+    let screen: String
+    let screenUsedAt: Date?
+    /// What it waits on the user to do on the bot's screen ("Sign in to
+    /// GitHub"); empty when nothing.
+    let screenAsk: String
 
     var id: String { ref }
 
@@ -121,6 +129,10 @@ struct BotWorkItem: Identifiable, Equatable {
         fromCall = ["phone", "watch"].contains(row["from_call"] as? String ?? "") ? row["from_call"] as? String ?? "" : ""
         startedInCall = fromCall.isEmpty && ["phone", "watch"].contains(row["call"] as? String ?? "")
             ? row["call"] as? String ?? "" : ""
+        screen = ["controlling", "waiting"].contains(row["screen"] as? String ?? "") ? row["screen"] as? String ?? "" : ""
+        let used = (row["screen_used_at"] as? NSNumber)?.doubleValue ?? 0
+        screenUsedAt = used > 0 ? Date(timeIntervalSince1970: used) : nil
+        screenAsk = (row["screen_ask"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         actions = (row["actions"] as? [String] ?? []).compactMap(Action.init(rawValue:))
         manage = (row["manage"] as? [String] ?? []).compactMap(Action.init(rawValue:))
         if let asked = row["approval"] as? [String: Any], let requestID = asked["request_id"] as? String,
@@ -138,14 +150,18 @@ struct BotWorkItem: Identifiable, Equatable {
     /// Still the bot's or the user's to finish: a restart's cut-off waits
     /// on the user, so it stays with the active work.
     var isActive: Bool {
-        !isClosed && ["starting", "running", "needs_you", "waiting", "ready", "interrupted"].contains(status)
+        // A screen ask keeps a done row in Active until it's answered.
+        !isClosed && (["starting", "running", "needs_you", "waiting", "ready", "interrupted"].contains(status)
+                      || !screenAsk.isEmpty)
     }
 
     var isWorking: Bool { status == "starting" || status == "running" }
 
     /// Waiting on the user: an approval or a question in its chat, or a
     /// restart that left it for them to decide.
-    var needsYou: Bool { kind == .workstream && !isClosed && (status == "needs_you" || status == "interrupted") }
+    var needsYou: Bool {
+        kind == .workstream && !isClosed && (status == "needs_you" || status == "interrupted" || !screenAsk.isEmpty)
+    }
 
     /// What it's doing now: its checklist's step in progress, else the tool
     /// step it's on.
@@ -187,6 +203,7 @@ struct BotWorkItem: Identifiable, Equatable {
 
     var statusText: String {
         if isResolvedUnfinished { return AppLocalization.string("Resolved") }
+        if kind == .workstream, !isClosed, !screenAsk.isEmpty { return AppLocalization.string("Needs you") }
         switch kind {
         case .askOut:
             switch status {
@@ -231,6 +248,9 @@ struct BotWorkSnapshot: Equatable {
     private(set) var resolvedCount: Int
     /// Every workstream's chat the plugin knows, resolved ones too.
     let knownSessionIDs: Set<String>
+    /// Who drives the bot's screen now and who used it last; nil from a
+    /// plugin before Bot Screen.
+    let screen: BotScreenUse?
 
     init?(response: [String: Any], profile: String) {
         guard response["ok"] as? Bool == true, let rows = response["work"] as? [[String: Any]] else { return nil }
@@ -244,6 +264,7 @@ struct BotWorkSnapshot: Equatable {
         readyCount = (counts["ready"] as? NSNumber)?.intValue ?? 0
         resolvedCount = (response["resolved_count"] as? NSNumber)?.intValue ?? 0
         knownSessionIDs = Set((response["workstream_sessions"] as? [String] ?? []).filter { !$0.isEmpty })
+        screen = BotScreenUse(response["screen"] as? [String: Any])
     }
 
     var isOn: Bool { policy != "off" }
@@ -290,8 +311,8 @@ struct BotWorkSnapshot: Equatable {
         guard item.kind == .workstream, !item.isClosed else { return 0 }
         switch count {
         case "working": return ["starting", "running"].contains(item.status) ? 1 : 0
-        case "needs_you": return ["needs_you", "interrupted"].contains(item.status) ? 1 : 0
-        default: return item.status == "ready" ? 1 : 0
+        case "needs_you": return item.needsYou ? 1 : 0
+        default: return item.status == "ready" && !item.needsYou ? 1 : 0
         }
     }
 

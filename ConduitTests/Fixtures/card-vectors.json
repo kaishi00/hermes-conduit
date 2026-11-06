@@ -3559,6 +3559,69 @@
       ]
     },
     {
+      "name": "Hidden bidi and zero-width characters are dropped from text and shown as � in a line; ZWJ, ZWNJ and RLM stay",
+      "input": [
+        {
+          "type": "diff",
+          "title": "\ufeffFix the \u202eadmin\u202c check 👨\u200d👩\u200d👧",
+          "diff": {
+            "files": [
+              {
+                "path": "src/auth\u200b.py",
+                "status": "modified",
+                "added": 1,
+                "removed": 1,
+                "hunks": [
+                  {
+                    "old_start": 3,
+                    "new_start": 3,
+                    "context": "def is\u2060_admin(user):",
+                    "lines": [
+                      "-    if user.role != \"admin\":",
+                      "+    if user.role != \"user\u202e \u2066// admin\u2069 \u2066\":",
+                      "     return \u200fTrue"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "added": 1,
+            "removed": 1
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "diff",
+          "title": "Fix the admin check 👨\u200d👩\u200d👧",
+          "diff": {
+            "files": [
+              {
+                "path": "src/auth.py",
+                "status": "modified",
+                "added": 1,
+                "removed": 1,
+                "hunks": [
+                  {
+                    "old_start": 3,
+                    "new_start": 3,
+                    "context": "def is_admin(user):",
+                    "lines": [
+                      "-    if user.role != \"admin\":",
+                      "+    if user.role != \"user� �// admin� �\":",
+                      "     return \u200fTrue"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "added": 1,
+            "removed": 1
+          }
+        }
+      ]
+    },
+    {
       "name": "A diff with no file left is dropped",
       "input": [
         {
