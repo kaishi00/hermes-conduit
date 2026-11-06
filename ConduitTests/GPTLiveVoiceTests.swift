@@ -1539,6 +1539,47 @@ extension VoiceConversationControllerTests {
         }
     }
 
+    /// A call speaks the user's language now (LiveVoiceLanguage), so the
+    /// send-claim fallback (#945) reads a sentence naming Hermes in each
+    /// shipped language, and its offers and noes still send nothing.
+    func testGPTLiveSendClaimIsReadInTheCallsLanguage() {
+        let claims = [
+            "Alles klar, ich schicke das jetzt an Hermes.",
+            "Ich frage Hermes danach.",
+            "Vale, se lo envío a Hermes ahora mismo.",
+            "D'accord, je transmets ça à Hermes.",
+            "Va bene, lo mando a Hermes.",
+            "Certo, vou enviar isso ao Hermes agora.",
+            "Dobrze, przekażę to Hermesowi.",
+            "Хорошо, передам это Гермесу.",
+            "Tamam, bunu Hermes'e gönderiyorum.",
+            "Oke, saya kirim ke Hermes sekarang.",
+            "わかりました。ヘルメスに送ります。",
+            "알겠어요. 헤르메스에게 보낼게요.",
+            "好的，我把这个发给赫尔墨斯。",
+        ]
+        for claim in claims {
+            XCTAssertTrue(GPTLiveConversationController.claimsToSendToHermes(claim), claim)
+        }
+        let notClaims = [
+            "Soll ich das an Hermes schicken?",
+            "Ich schicke das nicht an Hermes.",
+            "Ich schicke es an Hermes, sobald du ja sagst.",
+            "¿Se lo envío a Hermes?",
+            "No se lo envío a Hermes.",
+            "Je ne transmets pas ça à Hermes.",
+            "Posso mandarlo a Hermes se vuoi.",
+            "Могу передать это Гермесу, если хочешь.",
+            "ヘルメスに送りましょうか。",
+            "헤르메스에게 보낼까요.",
+            "要不要发给赫尔墨斯。",
+            "Hermes passed the whole message along to the team yesterday afternoon.",
+        ]
+        for text in notClaims {
+            XCTAssertFalse(GPTLiveConversationController.claimsToSendToHermes(text), text)
+        }
+    }
+
     func testGPTLiveDelegationResultWaitsForTheUserToFinishAndTheirWordsComeFirst() async {
         var current = Date(timeIntervalSince1970: 1_000)
         let (controller, session, supervisor, _) = makeGPTController(clock: { current })

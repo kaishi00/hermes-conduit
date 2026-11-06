@@ -17,7 +17,7 @@ import Foundation
 /// model, so not localized.
 enum LiveVoiceLanguage {
     /// The user's language as a speech tag ("de", "zh-TW"), or nil.
-    static var current: String? { OnDeviceSpeech.appLanguage }
+    static var current: String? { OnDeviceSpeechStream.appLanguage }
 
     /// The rule for a call in `language` (a speech tag); without one, only
     /// the part about following the user.
@@ -30,7 +30,7 @@ enum LiveVoiceLanguage {
         return "\nLanguage: speak \(name), the user's language, from your first words, the call's opening included. \(follow) \(hold)"
     }
 
-    /// The language's English name ("German", "Chinese, Traditional"), so
+    /// The language's English name ("German", "Chinese (Traditional characters)"), so
     /// the model reads it whatever language it was trained on most.
     static func name(of language: String) -> String? {
         let english = Locale(identifier: "en")

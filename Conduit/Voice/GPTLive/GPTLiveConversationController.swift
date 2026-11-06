@@ -1050,14 +1050,16 @@ final class GPTLiveConversationController: ObservableObject {
     /// Hermes you're set."), rather than asking, offering or saying it
     /// won't. A turn that is only an acknowledgement ("On it.", "One
     /// moment, checking.") counts too: the briefing asks for one before
-    /// each delegation without naming Hermes every time. English only: the
-    /// phrases GPT-Live uses.
+    /// each delegation without naming Hermes every time. A call speaks the
+    /// user's language (LiveVoiceLanguage), so a sentence naming Hermes is
+    /// read in each language Conduit ships too ("Ich schicke das an
+    /// Hermes."); an acknowledgement alone is read in English only.
     static func claimsToSendToHermes(_ text: String) -> Bool {
         let normalized = text.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         // A turn that ends asking ("… Send it?") waits for the user.
-        guard !normalized.hasSuffix("?") else { return false }
-        let sentences = normalized.split(omittingEmptySubsequences: true) { ".!?\n".contains($0) }
+        guard !normalized.hasSuffix("?"), !normalized.hasSuffix("？") else { return false }
+        let sentences = normalized.split(omittingEmptySubsequences: true) { ".!?\n。！？".contains($0) }
         let acknowledgements = sentences.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         if !acknowledgements.isEmpty, acknowledgements.count <= 3,
            acknowledgements.allSatisfy({ $0.range(of: Self.acknowledgementOnly, options: .regularExpression) != nil }),
@@ -1072,8 +1074,69 @@ final class GPTLiveConversationController: ObservableObject {
             if line.range(of: Self.sendClaimHedge, options: .regularExpression) != nil { continue }
             if line.range(of: Self.sendClaimPattern, options: .regularExpression) != nil { return true }
         }
+        // Another language's stems ("pas", "send") also start English
+        // words: an English turn is read by the English rules alone.
+        guard OnDeviceSpeechStream.language(of: text) != "en" else { return false }
+        for sentence in sentences {
+            if let next = normalized[sentence.endIndex...].first, next == "?" || next == "？" { continue }
+            let line = String(sentence)
+            guard Self.hermesNames.contains(where: { line.contains($0) }),
+                  line.range(of: Self.sendClaimHedge, options: .regularExpression) == nil else { continue }
+            // Any language's hedge holds it: stems are shared across
+            // languages ("pas" is Spanish's send and French's no).
+            guard line.range(of: Self.otherLanguageHedge, options: .regularExpression) == nil else { continue }
+            if Self.otherLanguageSendClaims.contains(where: { line.range(of: $0.send, options: .regularExpression) != nil }) { return true }
+        }
         return false
     }
+
+    private static let otherLanguageHedge = otherLanguageSendClaims.map { "(?:\($0.hedge))" }.joined(separator: "|")
+
+    /// Hermes as the model may write it in another script.
+    private static let hermesNames = ["hermes", "гермес", "ヘルメス", "헤르메스", "赫尔墨斯", "赫爾墨斯"]
+
+    /// Each shipped language's words for sending, passing on, asking or
+    /// telling, and its offers, conditions and noes, which send nothing yet
+    /// (in any of them, so none may be a common word elsewhere: Polish
+    /// "tak" is yes, Spanish "mi" is my). Lowercased, like the text.
+    private static let otherLanguageSendClaims: [(send: String, hedge: String)] = [
+        // German: "Ich schicke das an Hermes.", "Ich frage Hermes."
+        (#"\b(schick|send|geb|gib|leit|weiterleit|frag|sag|reich|übergeb|übermittl)\w*"#,
+         #"\b(soll|sollte|kann|könnte|würde|möchtest|willst|darf|nicht|kein|keine|nie|niemals|wenn|falls|sobald|bevor|nachdem)\b"#),
+        // Spanish: "Se lo envío a Hermes.", "Le pregunto a Hermes."
+        (#"\b(env[ií]|mand|pas|pregunt|dig|dec|avis|reenv|consult|traslad)\w*"#,
+         #"\b(puedo|podr[ií]a|deber[ií]a|quieres|quiere|si|cuando|antes|no|nunca)\b"#),
+        // French: "J'envoie ça à Hermes.", "Je demande à Hermes."
+        (#"(\b|')(envoi|envoy|transm|pass|demand|dis|dit|préviens|prévien|transf)\w*"#,
+         #"\b(peux|pourrais|pourrait|devrais|veux|voulez|voudrais|si|quand|avant|ne|pas|jamais)\b|n'"#),
+        // Italian: "Lo mando a Hermes.", "Chiedo a Hermes."
+        (#"\b(invi|mand|pass|chied|chiede|dic|dir|gir|inoltr|avvis)\w*"#,
+         #"\b(posso|potrei|dovrei|vuoi|vuole|quando|prima|non|mai)\b"#),
+        // Portuguese: "Vou enviar isso ao Hermes.", "Pergunto ao Hermes."
+        (#"\b(envi|mand|pass|pergunt|dig|diz|avis|encaminh|repass)\w*"#,
+         #"\b(posso|poderia|deveria|quer|queres|quiser|quando|antes|não|nunca)\b"#),
+        // Polish: "Przekażę to Hermesowi.", "Zapytam Hermesa."
+        (#"\b(wyśl|wysył|przekaż|przekazuj|zapyt|pyta|powiem|mówię|dam znać|daję znać)\w*"#,
+         #"\b(mogę|mógłbym|mogłabym|czy|chcesz|jeśli|jeżeli|gdy|kiedy|zanim|nie|nigdy)\b"#),
+        // Russian: "Передам это Гермесу.", "Спрошу у Гермеса."
+        (#"\b(отправ|переда|перешл|спрош|спрашива|скаж|сообщ)\w*"#,
+         #"\b(могу|мог|могла|хочешь|хотите|если|когда|прежде|не|никогда)\b"#),
+        // Turkish: "Bunu Hermes'e gönderiyorum.", "Hermes'e soracağım."
+        (#"\b(gönderiyor|göndereceğ|gönderdim|iletiyor|ileteceğ|soruyor|soracağ|söylüyor|söyleyeceğ|aktarıyor|aktaracağ|haber veriyor|haber vereceğ)\w*"#,
+         #"\b(istersen|ister misin|eğer|yapabilirim|gönderebilirim|iletebilirim|sorabilirim)\b"#),
+        // Indonesian: "Saya kirim ke Hermes.", "Saya tanyakan ke Hermes."
+        (#"\b(kirim|mengirim|terus|meneruskan|tanya|menanya|bilang|sampaikan|menyampaikan|kasih tahu|beri tahu|memberi tahu)\w*"#,
+         #"\b(bisa|boleh|mau|ingin|apakah|kalau|jika|setelah|sebelum|tidak|nggak|enggak|jangan|belum)\b"#),
+        // Japanese: 「ヘルメスに送ります。」「ヘルメスに聞いてみます。」
+        (#"(送|伝え|聞|訊|頼|渡|回し|転送|確認|問い合わせ)"#,
+         #"(ましょうか|ませんか|でしょうか|ません|ない|たら|れば|なら|できます)"#),
+        // Korean: "헤르메스에게 보낼게요.", "헤르메스에게 물어볼게요."
+        (#"(보내|보낼|보냈|전달|물어|알려|넘길|넘겨|확인)"#,
+         #"(까요|할까|않|못|안 |면 |수 있|전에)"#),
+        // Chinese: "我把这个发给赫尔墨斯。", "我问一下 Hermes。"
+        (#"(发|發|传|傳|转|轉|告诉|告訴|问|問|交给|交給|让|讓)"#,
+         #"(吗|嗎|要不要|可以|能|不|没|沒|如果|的话|的話|之前)"#),
+    ]
 
     private static let sendClaimPattern = #"\b(send|sending|pass|passing|forward|forwarding|hand|handing|relay|relaying|give|giving|get|getting|take|taking|put|putting)\b[^.!?]{0,40}?\bto hermes\b|\b(tell|telling|ask|asking|let|letting|ping|pinging|update|updating)\s+hermes\b|\b(check|checking) with hermes\b"#
     /// A sentence that is nothing but an acknowledgement ("Okay, I'm on
