@@ -1004,7 +1004,7 @@ struct BotRosterView: View {
                     .padding(.top, 2)
                     .padding(.bottom, 16)
             } else {
-                BotRoomGrid(onDropAtEnd: { dropRoom($0, before: nil) }) { homeRoomTiles }
+                BotRoomGrid(onDropAtEnd: { dropRoom($0, onto: nil) }) { homeRoomTiles }
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
                     .padding(.bottom, 16)
@@ -1081,15 +1081,16 @@ struct BotRosterView: View {
             } : nil,
             reorder: { showingRoomReorder = true },
             disband: capabilities?.supports("groups.disband") == true ? { pendingDisbandRoom = room } : nil,
-            onDrop: { dropRoom($0, before: room.roomID) }
+            onDrop: { dropRoom($0, onto: room.roomID) }
         )
     }
 
-    /// A room's tile dropped before `target` (nil: at the end).
-    private func dropRoom(_ dragged: String, before target: String?) {
+    /// A room's tile dropped on `target`'s (nil: at the end), whose place it
+    /// takes.
+    private func dropRoom(_ dragged: String, onto target: String?) {
         Haptics.selection()
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
-            appState.moveGroupRoom(dragged, before: target, shown: appState.shownGroupRooms.map(\.roomID))
+            appState.dropGroupRoom(dragged, onto: target, shown: appState.shownGroupRooms.map(\.roomID))
         }
     }
 

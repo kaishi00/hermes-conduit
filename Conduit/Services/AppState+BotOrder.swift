@@ -52,6 +52,19 @@ extension AppState {
         setGroupRoomOrder(groupRoomOrder.moving(moved, before: target, shown: shown))
     }
 
+    /// A room's tile dropped on `target`'s (nil: past the last one): it takes
+    /// that tile's place, as an app does on the Home Screen, so a tile
+    /// carried further on goes after the one it lands on, and one carried
+    /// back goes before it. Before, it always went before, so a tile
+    /// dropped on its neighbour on the right stayed put.
+    func dropGroupRoom(_ moved: String, onto target: String?, shown: [String]) {
+        var before = target
+        if let target, let from = shown.firstIndex(of: moved), let to = shown.firstIndex(of: target), from < to {
+            before = to + 1 < shown.count ? shown[to + 1] : nil
+        }
+        moveGroupRoom(moved, before: before, shown: shown)
+    }
+
     /// Reorder Group Chats' list moved a row.
     func moveGroupRooms(fromOffsets source: IndexSet, toOffset destination: Int, shown: [String]) {
         setGroupRoomOrder(groupRoomOrder.moving(fromOffsets: source, toOffset: destination, shown: shown))

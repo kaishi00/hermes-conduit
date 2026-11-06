@@ -1052,6 +1052,42 @@ extension BotModeTests {
         XCTAssertNil(defaults.stringArray(forKey: BotOrder.roomStorageKey))
     }
 
+    /// A room's tile dropped on another takes its place: carried on, it goes
+    /// after the one it lands on (two rooms swap); carried back, before it.
+    /// A room's drag is a move, and only a tile lifted here lands.
+    @MainActor
+    func testARoomDroppedOnAnotherTakesItsPlace() throws {
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let rooms = ["a", "b", "c", "d"]
+        func drop(_ moved: String, onto target: String?) {
+            appState.dropGroupRoom(moved, onto: target, shown: appState.groupRoomOrder.arrange(rooms, name: { $0 }))
+        }
+        drop("a", onto: "b")
+        XCTAssertEqual(appState.groupRoomOrder.names, ["b", "a", "c", "d"], "onto its right neighbour: they swap")
+        drop("b", onto: "a")
+        XCTAssertEqual(appState.groupRoomOrder.names, ["a", "b", "c", "d"])
+        drop("a", onto: "c")
+        XCTAssertEqual(appState.groupRoomOrder.names, ["b", "c", "a", "d"])
+        drop("d", onto: "b")
+        XCTAssertEqual(appState.groupRoomOrder.names, ["d", "b", "c", "a"])
+        drop("d", onto: nil)
+        XCTAssertEqual(appState.groupRoomOrder.names, ["b", "c", "a", "d"])
+        drop("a", onto: "a")
+        XCTAssertEqual(appState.groupRoomOrder.names, ["b", "c", "a", "d"])
+
+        RoomDragPayload.lifted = nil
+        XCTAssertNil(RoomDragPayload.lifted)
+        autoreleasepool {
+            let provider = RoomDragPayload.lift("r")
+            XCTAssertEqual(RoomDragPayload.lifted, "r")
+            withExtendedLifetime(provider) {}
+        }
+        XCTAssertNil(RoomDragPayload.lifted, "a drag that's gone leaves no room in hand")
+    }
+
     /// Group Settings from a room's tile shows once that room is open and
     /// its settings are read, and not for another room or long after.
     func testGroupSettingsFromATileWaitsForItsRoomBriefly() {

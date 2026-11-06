@@ -12,6 +12,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 import TipKit
 
 /// A named shortcut under Bots Home's title: Pulse, Artifacts.
@@ -103,11 +104,9 @@ struct BotRoomGrid<Content: View>: View {
             content()
         }
         // A drop between or after the rooms, not on one: the end.
-        .dropDestination(for: String.self) { items, _ in
-            guard let onDropAtEnd, let dragged = items.first.flatMap(RoomDragPayload.roomID(from:)) else { return false }
-            onDropAtEnd(dragged)
-            return true
-        }
+        .onDrop(of: [UTType.text], delegate: RoomTileDrop(target: nil, targeted: .constant(false)) { dragged in
+            onDropAtEnd?(dragged)
+        })
     }
 }
 
@@ -184,6 +183,8 @@ struct GroupRoomTileActions {
 struct GroupRoomPortrait: View {
     let room: GroupRoom
     var actions: GroupRoomTileActions?
+    /// Another room's tile is over this one.
+    @State private var dropTarget = false
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.v2Shell) private var shell
@@ -220,13 +221,16 @@ struct GroupRoomPortrait: View {
             GroupRoomIcon(picture: appState.groupRoomPicture(roomID: room.roomID), members: room.members, size: 56)
                 .environmentObject(appState)
         })
-        .dropDestination(for: String.self) { items, _ in
-            guard let actions, let dragged = items.first.flatMap(RoomDragPayload.roomID(from:)) else { return false }
-            // Dropped back on its own tile: taken here and left where it
-            // was, so the grid around it never reads it as a drop at the end.
-            if dragged != room.roomID { actions.onDrop(dragged) }
-            return true
-        }
+        // A move, not a copy, so the tile in hand shows no + over it; it
+        // swells a little over the tile whose place it would take.
+        // Dropped back on its own tile, it's taken here and left where it
+        // was, so the grid around it never reads it as a drop at the end.
+        .scaleEffect(dropTarget && !reduceMotion ? 1.08 : 1)
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: dropTarget)
+        .onDrop(of: [UTType.text], delegate: RoomTileDrop(target: actions == nil ? nil : room.roomID,
+                                                          targeted: $dropTarget) { dragged in
+            actions?.onDrop(dragged)
+        })
         .accessibilityLabel(Text(room.name))
         .accessibilityValue(Text(accessibilityValue))
         .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
@@ -328,8 +332,24 @@ enum RoomDragPayload {
     static func lift(_ roomID: String) -> NSItemProvider {
         // A room in hand isn't a bot: no face swells for it.
         BotDragPayload.lifted = nil
-        return NSItemProvider(object: payload(for: roomID) as NSString)
+        let provider = NSItemProvider(object: payload(for: roomID) as NSString)
+        liftedID = roomID
+        liftedProvider = provider
+        return provider
     }
+
+    /// The room whose tile is being dragged, set as its drag starts. It
+    /// counts only while the drag's item lives, as a bot's does, so a
+    /// cancelled drag leaves nothing for a later drop to borrow.
+    static var lifted: String? {
+        get { liftedProvider == nil ? nil : liftedID }
+        set {
+            liftedID = newValue
+            if newValue == nil { liftedProvider = nil }
+        }
+    }
+    private static var liftedID: String?
+    private static weak var liftedProvider: NSItemProvider?
 
     static func payload(for roomID: String) -> String { prefix + roomID }
 
@@ -337,6 +357,39 @@ enum RoomDragPayload {
         guard payload.hasPrefix(prefix) else { return nil }
         let id = String(payload.dropFirst(prefix.count))
         return id.isEmpty ? nil : id
+    }
+}
+
+/// Where a room's tile can land: on another tile (`target`) or the grid
+/// around them (nil, the end). It proposes a move, where a plain drop
+/// destination proposes a copy and so a + badge, as if the room were being
+/// added somewhere. Only a tile lifted in Conduit lands: the room comes from
+/// the drag in hand, not the item's text, so another app's text never moves
+/// one, and a dragged bot passes by.
+struct RoomTileDrop: DropDelegate {
+    let target: String?
+    @Binding var targeted: Bool
+    let onDrop: (String) -> Void
+
+    func validateDrop(info: DropInfo) -> Bool { RoomDragPayload.lifted != nil }
+
+    func dropEntered(info: DropInfo) {
+        guard let dragged = RoomDragPayload.lifted, let target else { return }
+        targeted = dragged != target
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        RoomDragPayload.lifted == nil ? DropProposal(operation: .forbidden) : DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) { targeted = false }
+
+    func performDrop(info: DropInfo) -> Bool {
+        targeted = false
+        guard let dragged = RoomDragPayload.lifted else { return false }
+        RoomDragPayload.lifted = nil
+        if dragged != target { onDrop(dragged) }
+        return true
     }
 }
 
