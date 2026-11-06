@@ -986,15 +986,17 @@ struct BotRosterView: View {
             settings: capabilities?.supports("groups.context") == true ? {
                 // The settings are the open room's: open it, and its
                 // screen shows them once Hermes has read them.
-                appState.groupSettingsOnOpen = GroupSettingsRequest(roomID: room.roomID)
+                let request = GroupSettingsRequest(roomID: room.roomID)
+                appState.groupSettingsOnOpen = request
                 Haptics.light()
                 appState.dismissSidebarDrawer()
                 Task {
                     await appState.openGroupRoom(room)
                     // An open that failed leaves no request behind for a
-                    // later open of the room from elsewhere.
+                    // later open of the room from elsewhere; a newer
+                    // request stays.
                     if appState.activeRoomSurface?.room.roomID != room.roomID,
-                       appState.groupSettingsOnOpen?.roomID == room.roomID {
+                       appState.groupSettingsOnOpen == request {
                         appState.groupSettingsOnOpen = nil
                     }
                 }
