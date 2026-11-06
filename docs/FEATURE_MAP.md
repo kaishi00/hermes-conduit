@@ -5275,15 +5275,15 @@ rooms are the notifier's mailbox, with their own choices, see Linked Rooms)
 
 **Rulings**
 - Routing is the host's: Conduit never picks who answers. It mirrors the host's planner from the room log only to name who is working, as it did before routing (Eric 2026-11-06, asked in the thread "do we support it, or is it completely host side", then "go ahead").
-- Group Settings shows only where the host takes `groups.context`. Who answers shows only where `groups.state` lists `routing_modes`, and Automatically only where that list has `auto`; a host before routing gets purpose and notes, and the save leaves its routing alone. A save keeps its event id while its settings are unchanged, so a retry returns the first save (2026-11-06, PR_NUMBER).
-- The routing's decisions are captions in the transcript, in Desktop's words: "Zhongli gave this to Furina.", "Assigned to Furina and Zhongli.", "Couldn't choose who answers, so everyone will." While the lead or the router is still choosing, the title line says so (2026-11-06, PR_NUMBER).
-- Continue sits under the "reached its turn limit" caption while the host can still reopen that discussion (`paused_discussion`: no Stop after its message, no newer message in its thread, fewer Continues than `max_continues`) (2026-11-06, PR_NUMBER).
+- Group Settings shows only where the host takes `groups.context`. Who answers shows only where `groups.state` lists `routing_modes`, and Automatically only where that list has `auto`; a host before routing gets purpose and notes, and the save leaves its routing alone. A save keeps its event id while its settings are unchanged, so a retry returns the first save (2026-11-06, #1845).
+- The routing's decisions are captions in the transcript, in Desktop's words: "Zhongli gave this to Furina.", "Assigned to Furina and Zhongli.", "Couldn't choose who answers, so everyone will." While the lead or the router is still choosing, the title line says so (2026-11-06, #1845).
+- Continue sits under the "reached its turn limit" caption while the host can still reopen that discussion (`paused_discussion`: no Stop after its message, no newer message in its thread, fewer Continues than `max_continues`) (2026-11-06, #1845).
 
 **Open gaps**
 - The "is responding" line still mirrors the planner with the default limits (3 rounds, 10 messages). A host whose config changes them (`max_rounds` in its status) can show a member past the limit, or none before it; the status's `member_activity` would say who is working without the mirror.
 - A lead's routing turn that ends without an assignment (discarded or superseded) leaves the line on the lead until the room's next event.
 
-**Checked:** 2026-11-06, PR_NUMBER (added).
+**Checked:** 2026-11-06, #1845 (added).
 
 ## Linked Rooms
 
