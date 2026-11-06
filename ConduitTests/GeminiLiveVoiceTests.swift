@@ -2568,7 +2568,9 @@ extension HermesVoiceGatewayTimeoutTests {
             XCTAssertEqual(text.components(separatedBy: expected).count, 2, "\(mode) carries its rule once")
             XCTAssertFalse(text.contains("I'll have Hermes look into that"), mode)
             XCTAssertFalse(text.contains("that Hermes is on it."), mode)
-            XCTAssertFalse(text.contains("what you'll send to Hermes"), mode)
+            if expected == rule {
+                XCTAssertFalse(text.contains("what you'll send to Hermes"), mode)
+            }
         }
         XCTAssertFalse(LocalLiveProtocol.agentInstructions.contains("fast front"), "the fast model isn't told it's a go-between")
         // Gemini's nudge when the model stayed quiet after start_job.

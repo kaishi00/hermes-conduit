@@ -3961,7 +3961,11 @@ final class AppState: ObservableObject {
         gptLivePersonality = "persona"
         grokLiveMemoryContext = memory
         grokLivePersonality = "persona"
-        localLivePersonality = "persona"
+    }
+
+    /// Local Live's SOUL.md, as an agent-mode call's start would read it.
+    func installLocalLivePersonaForTesting(_ persona: String = "persona") {
+        localLivePersonality = persona
     }
 
     /// GPT-Live calls start on the Hermes host (the conduit_push plugin),

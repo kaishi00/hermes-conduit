@@ -1130,7 +1130,7 @@ extension AppStateVoiceCapabilityTests {
         let setup = appState.localLiveAgentSetup()
         XCTAssertTrue(setup?.instructions.contains("<user_instructions>\nAnswer like a ship's captain.") == true)
         XCTAssertFalse(setup?.instructions.contains("<hermes_persona>") == true, "SOUL.md is read when the call starts")
-        appState.installLiveVoiceHostContextForTesting()
+        appState.installLocalLivePersonaForTesting()
         XCTAssertTrue(appState.liveVoiceHostContextForTesting.contains("localPersona"))
         XCTAssertTrue(appState.localLiveAgentSetup()?.instructions.contains("<hermes_persona>\npersona") == true)
         appState.closeLocalLiveConversation()
