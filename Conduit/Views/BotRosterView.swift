@@ -998,6 +998,8 @@ struct BotRosterView: View {
                     if appState.activeRoomSurface?.room.roomID != room.roomID,
                        appState.groupSettingsOnOpen == request {
                         appState.groupSettingsOnOpen = nil
+                        // Bots Home shows no chat error: say it in its notice.
+                        if let failure = appState.errorMessage { managementNotice = failure }
                     }
                 }
             } : nil,

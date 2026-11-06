@@ -1720,7 +1720,8 @@ live room's "Talking now") · the transcript's environment copy
 - Not yet tried on a device: the faces' flight and the new room's slide (#1830).
 - Not yet tried on a device: a room's long-press menu and its drag among the rooms (#1865), and whether a room's lift and menu share the hold as a bot's do.
 - A room dragged onto the room being started, or a bot onto a room, does nothing and says nothing.
-- A portrait dragged out of Conduit (an iPad split, Stage Manager) carries its marked name as plain text, which another app's text field accepts; a private drag type would need one declared in the app's Info.plist.
+- A picture chosen, made or removed from a room's tile that fails says so only in the chat's error, which Bots Home doesn't show (#1865).
+- A portrait or a room's tile dragged out of Conduit (an iPad split, Stage Manager) carries its marked name or room id as plain text, which another app's text field accepts; a private drag type would need one declared in the app's Info.plist.
 - The bots' order is by profile name, so a renamed profile goes to the end; Hermes Desktop keeps no order of its own to match.
 - The thread with a spark there and back between two portraits that hand work off isn't drawn: each portrait shows its side. Nor does the waiting badge open the other bot, being inside the portrait's button.
 - The other bot is found by the name it had when it asked, so after a rename its color and face don't show (the words still do).

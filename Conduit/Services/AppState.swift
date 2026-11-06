@@ -13801,8 +13801,11 @@ final class AppState: ObservableObject {
     /// Returns what went wrong, also set as `errorMessage`, else nil.
     @discardableResult
     func disbandGroupRoom(_ roomID: String, opened: Bool = false) async -> String? {
-        guard let client, isConnected,
-              groupCapabilities?.supports("groups.disband") == true else { return nil }
+        guard groupCapabilities?.supports("groups.disband") == true else { return nil }
+        guard let client, isConnected else {
+            // Asked for and confirmed: say why nothing happened.
+            return AppLocalization.string("Connect to Hermes to open group chats.")
+        }
         let epoch = groupRoomEpoch
         do {
             try await groupsDisband(client, roomID: roomID)
