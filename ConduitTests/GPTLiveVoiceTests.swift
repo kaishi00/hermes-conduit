@@ -1514,6 +1514,7 @@ extension VoiceConversationControllerTests {
             // A "nothing" or "without" outside a refusal still sends (issue 1869).
             "Nothing else needed; I'll send that to Hermes now.",
             "I'll send that to Hermes without delay.",
+            "I'll send that to Hermes without your OK.",
             // Acknowledgements without Hermes' name (#1251).
             "On it.",
             "Sure, one moment.",
