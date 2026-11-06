@@ -860,8 +860,8 @@ struct VoiceSettingsView: View {
                 liveModeKey(Self.xAIKeys, note: AppLocalization.string("Not needed when your Hermes server is signed in with SuperGrok."))
             }
         case .local:
-            if localLive != nil {
-                LocalLiveSettingsSection(service: service, agent: true)
+            if let localLive {
+                LocalLiveSettingsSection(service: service, agent: true, model: localLive)
             }
         }
     }

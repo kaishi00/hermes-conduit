@@ -1112,6 +1112,40 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(appState.configuredLiveVoiceEngine(profile: appState.activeProfile), .localLive)
     }
 
+    func testLocalLiveAgentModeTakesThePersonalityAndTheUsersInstructions() {
+        // Issue 583: the fast model can speak as SOUL.md and follow the
+        // user's own instructions, after Conduit's rules.
+        let defaults = makeScratchDefaults("LocalLiveAgentPersona")
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.setLocalLiveEnabled(true)
+        appState.setLocalLiveAgent(true)
+        XCTAssertFalse(appState.localLivePersonalityEnabled, "off until the user turns it on")
+        appState.setLocalLivePersonalityEnabled(true)
+        XCTAssertTrue(appState.localLivePersonalityEnabled)
+        var style = appState.liveVoiceStyle
+        style.extraInstructions = "Answer like a ship's captain."
+        appState.setLiveVoiceStyle(style)
+        XCTAssertEqual(appState.liveVoiceStyle.extraInstructions, "Answer like a ship's captain.")
+
+        let setup = appState.localLiveAgentSetup()
+        XCTAssertTrue(setup?.instructions.contains("<user_instructions>\nAnswer like a ship's captain.") == true)
+        XCTAssertFalse(setup?.instructions.contains("<hermes_persona>") == true, "SOUL.md is read when the call starts")
+        appState.installLocalLivePersonaForTesting()
+        XCTAssertTrue(appState.liveVoiceHostContextForTesting.contains("localPersona"))
+        XCTAssertTrue(appState.localLiveAgentSetup()?.instructions.contains("<hermes_persona>\npersona") == true)
+        appState.closeLocalLiveConversation()
+        XCTAssertFalse(appState.liveVoiceHostContextForTesting.contains("localPersona"), "dropped when the call closes")
+
+        let preview = appState.liveVoiceInstructionsPreview()
+        XCTAssertEqual(preview?.mode, "Local Live")
+        XCTAssertEqual(preview?.instructions.contains("SOUL.md"), true)
+        XCTAssertEqual(preview?.instructions.contains(LocalLiveProtocol.agentInstructions), true)
+        XCTAssertEqual(preview?.instructions.contains("Answer like a ship's captain."), true)
+
+        appState.setLocalLiveAgent(false)
+        XCTAssertNil(appState.liveVoiceInstructionsPreview(), "Hermes answers each turn: nothing is sent")
+    }
+
     func testHermesSettingLocalVoiceModeMeansAgentModeAndClassicKeepsHandsFree() throws {
         let defaults = makeScratchDefaults("LocalLiveVoiceMode")
         let appState = AppState(defaults: defaults, loadSavedConnection: false)

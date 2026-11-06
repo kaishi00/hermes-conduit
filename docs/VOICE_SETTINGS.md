@@ -142,12 +142,15 @@ In the car, a phone call, Siri or another app that takes the audio ends a Classi
 
 ## Live call style
 
-"Live call style" in Voice settings (shown once a live mode is on, shared by Gemini Live, Grok Live and GPT-Live) sets how calls sound, per profile, from the next call:
+"Live call style" in Voice settings (shown once a live mode is on, shared by Gemini Live, Qwen Live, Grok Live, GPT-Live and Local Live's agent mode) sets how calls sound, per profile, from the next call:
 
 - **Greet me when a call connects**: the model greets you as soon as the call is live, in one short sentence, then waits. Leave the greeting text empty for one in its own words, or type your own (one line, up to 200 characters). Off by default: the call stays silent until you speak. Every live mode gets it as the first turn of the call, never again on a reconnect, on the iPhone and the Apple Watch alike. GPT-Live needs it: it doesn't speak first from its instructions, so the notifier plugin (0.130.4 and later) leaves the opening to that turn.
 - **Tone**: Model default, Relaxed, Neutral or Professional. Model default leaves the model's tone and your Hermes server's voice persona alone; the others add a short style block after the persona that replaces its tone and pace guidance.
 - **Backchannels**: on by default. Off tells the model not to say "mm-hmm", "right" and the like while you talk.
+- **Your instructions**: your own text for the voice model (its personality, how it words things, what it should know about you), up to 2,000 characters. It is added after Conduit's own instructions in every live mode. Conduit's instructions can't be shortened or replaced, because jobs, approvals and the call's tools depend on them, so where yours disagree, Conduit's come first.
 - **What Conduit sends** shows the text Conduit adds to the current live mode's instructions, with the style applied. Memory and personality are shown as placeholders, since they are read when a call starts.
+
+Live calls talk as one assistant with Hermes: Gemini, Qwen, Grok and Local Live say "I'm checking on that" rather than "I'll ask Hermes", and name Hermes only when you ask who's doing the work. GPT-Live still mentions Hermes at most once a call. Each live mode's "Use Hermes personality" makes it talk with this profile's SOUL.md; for Local Live it's under Local > 3. Your fast model, and SOUL.md goes to your fast model's server.
 
 Live calls speak your language: the App Language you picked in Settings, or else your iPhone's first language. Every live mode (Gemini, Qwen, Grok, GPT-Live and Local Live's agent mode, on the iPhone, CarPlay, the Apple Watch and calls from Hermes) is told to use it from its first words, a call from Hermes' opening and job results included. Speak another language to it, or ask it to switch, and it keeps to that one for the rest of the call.
 
