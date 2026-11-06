@@ -224,7 +224,7 @@ final class BotScreenModel: ObservableObject {
     /// The viewer id each bot's screen was last watched with, kept past the
     /// sheet: a reconnect starts the sheet over, and the user's own hold is
     /// still theirs on the new connection.
-    private static var viewerIDs: [String: String] = [:]
+    static var viewerIDs: [String: String] = [:]
 
     /// A hand back owed per bot (its viewer id): the sheet closed or the
     /// app went to the background while the user held the screen, and the
@@ -233,6 +233,8 @@ final class BotScreenModel: ObservableObject {
     /// its idle expiry.
     static var owedReleases: [String: String] = [:]
     static let releaseRetryDelays: [Duration] = [.seconds(1), .seconds(3), .seconds(9)]
+    /// JSON-RPC's internal error: Hermes failed, not refused, so a hand back is tried again.
+    static let internalErrorCode = -32603
 
     init(profile: String, client: HermesClient?) {
         self.profile = profile
@@ -399,11 +401,17 @@ final class BotScreenModel: ObservableObject {
 
     /// Hand back: the bot has control again.
     func handBack(force: Bool = false) async {
+        // One that fails is owed, as the sheet's close owes it, so the sheet
+        // closing while it's in flight sends no second one.
+        if !force, let viewerID { Self.owedReleases[profile] = viewerID }
         await perform { client in
             var params: [String: Any] = [:]
             if let viewerID = self.viewerID, !force { params["viewer_id"] = viewerID }
             if force { params["force"] = true }
             let answer = try await client.display("display.lease.release", profile: self.profile, params: params)
+            if let viewerID = self.viewerID, Self.owedReleases[self.profile] == viewerID {
+                Self.owedReleases[self.profile] = nil
+            }
             self.applyLease(BotScreenLease(answer["lease"]?.objectValue))
         }
     }
@@ -412,7 +420,8 @@ final class BotScreenModel: ObservableObject {
     /// pane does on Hermes Desktop), then the stream.
     func close() {
         leaveGeneration += 1
-        if iHold, let client, let viewerID {
+        // A hand back already on its way (owed until it's answered) isn't sent twice.
+        if iHold, let client, let viewerID, Self.owedReleases[profile] != viewerID {
             let profile = profile
             Self.owedReleases[profile] = viewerID
             Task { _ = await Self.sendOwedRelease(profile: profile, client: client) }
@@ -422,7 +431,9 @@ final class BotScreenModel: ObservableObject {
 
     /// Sends the hand back owed for a bot, trying again after each of
     /// `delays`; the answer once it went through, nil if it's still owed.
-    /// A later takeover of the screen cancels it.
+    /// A later takeover of the screen cancels it, and so does Hermes
+    /// refusing it (a hold that's no longer this viewer's): only a failed
+    /// send or Hermes' internal error is tried again.
     @discardableResult
     static func sendOwedRelease(profile: String, client: HermesClient,
                                 delays: [Duration] = releaseRetryDelays) async -> [String: AnyCodable]? {
@@ -433,6 +444,9 @@ final class BotScreenModel: ObservableObject {
                                                       params: ["viewer_id": viewerID])
                 if owedReleases[profile] == viewerID { owedReleases[profile] = nil }
                 return answer
+            } catch let error as RpcError where error.code != internalErrorCode {
+                if owedReleases[profile] == viewerID { owedReleases[profile] = nil }
+                return nil
             } catch {
                 guard let wait = waits.popFirst() else { return nil }
                 try? await Task.sleep(for: wait)
@@ -663,7 +677,7 @@ final class BotScreenModel: ObservableObject {
     /// closes until it's watched again.
     func backgrounded() {
         leaveGeneration += 1
-        if iHold, let client, let viewerID {
+        if iHold, let client, let viewerID, Self.owedReleases[profile] != viewerID {
             let profile = profile
             Self.owedReleases[profile] = viewerID
             Task { [weak self] in

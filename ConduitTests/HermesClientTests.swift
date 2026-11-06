@@ -3853,6 +3853,50 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testABotScreenHandBackHermesRefusesIsNoLongerOwed() async throws {
+        // Hermes refusing it (the hold is no longer this viewer's) isn't
+        // tried again on every later read.
+        let (client, socket) = try await connectedClientForServerRequests()
+        let base = socket.sentTexts.count
+        BotScreenModel.owedReleases["furina"] = "viewer-1"
+        defer { BotScreenModel.owedReleases["furina"] = nil }
+        let send = Task { await BotScreenModel.sendOwedRelease(profile: "furina", client: client,
+                                                               delays: [.milliseconds(10)]) }
+        await waitForSends(base + 1, on: socket)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(try sentFrame(socket)["id"] as? Int),
+            "error": ["code": 4003, "message": "not the lease holder"]
+        ], to: socket)
+        let answer = await send.value
+        XCTAssertNil(answer)
+        XCTAssertNil(BotScreenModel.owedReleases["furina"])
+        XCTAssertEqual(socket.sentTexts.count, base + 1, "A refusal isn't sent again")
+        client.disconnect()
+    }
+
+    func testABotScreenTakeoverCancelsAnOwedHandBack() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let base = socket.sentTexts.count
+        BotScreenModel.viewerIDs["furina"] = "viewer-1"
+        BotScreenModel.owedReleases["furina"] = "viewer-1"
+        defer {
+            BotScreenModel.viewerIDs["furina"] = nil
+            BotScreenModel.owedReleases["furina"] = nil
+        }
+        let model = BotScreenModel(profile: "furina", client: client)
+        let take = Task { await model.takeOver() }
+        await waitForSends(base + 1, on: socket)
+        let acquire = try sentFrame(socket)
+        XCTAssertEqual(acquire["method"] as? String, "display.lease.acquire")
+        XCTAssertNil(BotScreenModel.owedReleases["furina"], "Taking over cancels the hand back still owed")
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(acquire["id"] as? Int),
+            "result": ["lease": ["epoch": 4, "owner": "human"]]
+        ], to: socket)
+        await take.value
+        client.disconnect()
+    }
+
     func testResumeKeepsAnOpenClarifyWhenPendingClarifyIsAlsoPresent() async throws {
         let (client, socket) = try await connectedClientForServerRequests()
         let sent = Gate()
