@@ -1080,7 +1080,14 @@ final class GPTLiveConversationController: ObservableObject {
             let line = String(sentence)
             guard line.contains("hermes") else { continue }
             if line.range(of: Self.sendClaimHedge, options: .regularExpression) != nil { continue }
-            if line.range(of: Self.sendClaimPattern, options: .regularExpression) != nil { return true }
+            guard line.range(of: Self.sendClaimPattern, options: .regularExpression) != nil else { continue }
+            // A "nothing" holds only the clause that sends ("I'll send
+            // nothing to Hermes."), not another one ("I'll send that to
+            // Hermes; there's nothing to check.").
+            let clauses = line.split(omittingEmptySubsequences: true) { ",;".contains($0) }.map(String.init)
+            let sending = clauses.first { $0.range(of: Self.sendClaimPattern, options: .regularExpression) != nil } ?? line
+            if sending.range(of: Self.sendsNothing, options: .regularExpression) != nil { continue }
+            return true
         }
         // Another language's stems ("pas", "send") also start English
         // words: an English turn, or one too short to tell on an English
@@ -1170,7 +1177,7 @@ final class GPTLiveConversationController: ObservableObject {
             condition: #"\b(?:wenn|falls|sobald|bevor|nachdem)\b"#,
             // Other shipped languages put a negation before their "nothing"
             // (no, ne, non, não, не, nie), which already holds it.
-            refusal: #"\bnichts\b"#),
+            refusal: #"\bnichts\b(?!\s+(?:außer|ausser|als|bis auf|mit ausnahme)\b)"#),
         // "Se lo envío a Hermes.", "Le pregunto a Hermes."
         "es": SendClaimWords(
             verbsBefore: #"\b(?:env[ií]o|enviar\w*|envi[ée]|mando|mandar\w*|mand[ée]|paso|pasar\w*|pas[ée]|pregunto|preguntar\w*|pregunt[ée]|digo|decir\w*|dir[ée]|aviso|avisar\w*|avis[ée]|reenv[ií]o|reenviar\w*|consulto|consultar\w*|traslado|trasladar\w*)\b"#,
@@ -1238,11 +1245,11 @@ final class GPTLiveConversationController: ObservableObject {
     private static let acknowledgementOnly = "^(?:\(acknowledgementFiller)[, ]*)*(?:\(acknowledgementWork)(?:[, ]*(?:\(acknowledgementWork)|\(acknowledgementFiller)))*)?$"
     private static let workUnderway = #"\b(?:(?:let me|i'll|i will) (?:do|check|look|find|get|pull up|send|set up|book|add|put in|sort out)|on it|on that|right away|check|checking|look|looking|find out|finding out|work|working|take care|taking care|handle|handling|sort|sorting|dig|digging|sec|second|moment|hang on|hold on|bear with me)\b"#
     /// An offer, a condition or a no: nothing is being sent yet.
-    private static let sendClaimHedge = #"\b(can|could|should|shall|would|might|may|want me|do you|if you|once you|when you|after you|before|not|never|won't|didn't|don't|can't|couldn't|haven't|hasn't|wasn't)\b|n't\b|"# + sendsNothing
+    private static let sendClaimHedge = #"\b(can|could|should|shall|would|might|may|want me|do you|if you|once you|when you|after you|before|not|never|won't|didn't|don't|can't|couldn't|haven't|hasn't|wasn't)\b|n't\b"#
     /// A refusal in "nothing" (issue 1869): "I'll send nothing to Hermes.",
     /// "I'll tell Hermes nothing.", "I'll send absolutely nothing to Hermes.",
     /// "There's nothing to send." "Nothing but …" is still a send.
-    private static let sendsNothing = #"\b(?:send|sending|pass|passing|forward|forwarding|hand|handing|relay|relaying|give|giving|tell|telling|ask|asking|ping|pinging|update|updating)(?: hermes)?(?: (?:absolutely|simply|just|really))? nothing\b(?! (?:but|except|other than|besides|apart from|beyond)\b)|\bnothing (?:at all )?to (?:send|pass|forward|hand|relay|give|tell|ask|check|ping|update)\b|\blet(?:ting)? hermes know nothing\b(?! (?:but|except|other than|besides|apart from|beyond)\b)"#
+    private static let sendsNothing = #"\b(?:send|sending|pass|passing|forward|forwarding|hand|handing|relay|relaying|give|giving|tell|telling|ask|asking|ping|pinging|update|updating)(?: hermes)?(?: (?:absolutely|simply|just|really))? nothing\b(?! (?:but|except|other than|besides|apart from|beyond)\b)|\bnothing (?:at all )?to (?:send|pass|forward|hand|relay|give|tell|ask|check|ping|update)\b(?! (?:but|except|other than|besides|apart from|beyond)\b)|\blet(?:ting)? hermes know nothing\b(?! (?:but|except|other than|besides|apart from|beyond)\b)"#
 
     /// The user finished an utterance: an end phrase ends the call, and the
     /// spoken job commands ("job status", "cancel background jobs") are

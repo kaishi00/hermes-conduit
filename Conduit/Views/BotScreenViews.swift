@@ -74,6 +74,9 @@ private struct BotScreenContent: View {
                 ConduitSheetHeader(title: AppLocalization.string("\(target.botName)'s Screen"), close: { dismiss() })
             }
         }
+        // Made while Conduit is already in the background (a reconnect
+        // rebuilt the sheet there): it starts away, so nothing attaches.
+        .onAppear { if scenePhase == .background { model.backgrounded() } }
         .task { await model.load() }
         // Who drives the screen now, read again while the sheet is open.
         .refreshesBotWork(profile: target.profile)
