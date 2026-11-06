@@ -610,30 +610,52 @@ struct BotRosterView: View {
     }
 
     /// The bar a room being started shows at the bottom: its bots (a tap
-    /// takes one out), its name, typed in place (empty: the bots' names,
+    /// takes one out), Cancel and Create, and under them its name, typed in place (empty: the bots' names,
     /// shown as the prompt), Cancel, and Create, which makes the room
     /// (Eric, 2026-11-06: the sheet made dragging bots together extra
     /// steps). Purpose and who answers are in Group Settings once it's made.
     private var newRoomBar: some View {
         let bots = newRoomBots
         let suggested = bots.count < 2 ? AppLocalization.string("New room") : joinedNames(bots)
-        return HStack(spacing: 12) {
-            HStack(spacing: -22) {
-                ForEach(bots) { bot in
-                    Button {
-                        toggleNewRoom(bot)
-                    } label: {
-                        BotMonogramView(bot: bot, size: 30)
-                            .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2))
-                            // A 44 pt target; the next face's sits on top
-                            // where they overlap, as the faces do.
-                            .frame(width: 44, height: 44)
-                            .contentShape(Circle())
+        // Faces and buttons on top, the name under them at full width:
+        // six faces and both buttons leave a phone no room for it beside
+        // them.
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                HStack(spacing: -22) {
+                    ForEach(bots) { bot in
+                        Button {
+                            toggleNewRoom(bot)
+                        } label: {
+                            BotMonogramView(bot: bot, size: 30)
+                                .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2))
+                                // A 44 pt target; the next face's sits on top
+                                // where they overlap, as the faces do.
+                                .frame(width: 44, height: 44)
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(creatingNewRoom)
+                        .accessibilityLabel(Text(AppLocalization.string("Take \(bot.displayLabel) out")))
                     }
-                    .buttonStyle(.plain)
-                    .disabled(creatingNewRoom)
-                    .accessibilityLabel(Text(AppLocalization.string("Take \(bot.displayLabel) out")))
                 }
+                Spacer(minLength: 0)
+                Button(AppLocalization.string("Cancel"), action: cancelNewRoom)
+                    .buttonStyle(.bordered)
+                    .disabled(creatingNewRoom)
+                    .accessibilityIdentifier("bots.newRoom.cancel")
+                Button(action: createNewRoom) {
+                    if creatingNewRoom {
+                        ProgressView()
+                    } else {
+                        Text(AppLocalization.string("Create"))
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.conduitAccent)
+                .disabled(bots.count < 2 || creatingNewRoom)
+                .accessibilityLabel(Text(AppLocalization.string("Create")))
+                .accessibilityIdentifier("bots.newRoom.create")
             }
             VStack(alignment: .leading, spacing: 4) {
                 TextField(
@@ -665,22 +687,6 @@ struct BotRosterView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Button(AppLocalization.string("Cancel"), action: cancelNewRoom)
-                .buttonStyle(.bordered)
-                .disabled(creatingNewRoom)
-                .accessibilityIdentifier("bots.newRoom.cancel")
-            Button(action: createNewRoom) {
-                if creatingNewRoom {
-                    ProgressView()
-                } else {
-                    Text(AppLocalization.string("Create"))
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.conduitAccent)
-            .disabled(bots.count < 2 || creatingNewRoom)
-            .accessibilityLabel(Text(AppLocalization.string("Create")))
-            .accessibilityIdentifier("bots.newRoom.create")
         }
         .padding(12)
         .conduitGlassSurface(cornerRadius: 22)
