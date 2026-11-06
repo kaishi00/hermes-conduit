@@ -226,6 +226,14 @@ final class BotScreenModel: ObservableObject {
     /// still theirs on the new connection.
     private static var viewerIDs: [String: String] = [:]
 
+    /// A hand back owed per bot (its viewer id): the sheet closed or the
+    /// app went to the background while the user held the screen, and the
+    /// release hasn't gone through yet. Tried again a few times, then on
+    /// the bot's next status read, so Hermes doesn't keep the hold until
+    /// its idle expiry.
+    static var owedReleases: [String: String] = [:]
+    static let releaseRetryDelays: [Duration] = [.seconds(1), .seconds(3), .seconds(9)]
+
     init(profile: String, client: HermesClient?) {
         self.profile = profile
         self.client = client
@@ -272,6 +280,13 @@ final class BotScreenModel: ObservableObject {
         guard let client else {
             availability = .failed(AppLocalization.string("Not connected to Hermes."))
             return
+        }
+        // A hand back that didn't go through when the sheet last closed goes
+        // first, so the sheet doesn't open on the user still in control.
+        if Self.owedReleases[profile] != nil {
+            if let answer = await Self.sendOwedRelease(profile: profile, client: client, delays: []) {
+                applyLease(BotScreenLease(answer["lease"]?.objectValue))
+            }
         }
         do {
             let answer = try await client.display("display.status", profile: profile)
@@ -364,6 +379,8 @@ final class BotScreenModel: ObservableObject {
     /// bot's screen tools are refused until they hand back.
     func takeOver() async {
         guard let viewerID else { return }
+        // Taking over again cancels a hand back still owed from before.
+        Self.owedReleases[profile] = nil
         let leave = leaveGeneration
         await perform { client in
             let answer = try await client.display("display.lease.acquire", profile: self.profile,
@@ -395,10 +412,31 @@ final class BotScreenModel: ObservableObject {
         leaveGeneration += 1
         if iHold, let client, let viewerID {
             let profile = profile
-            Task { _ = try? await client.display("display.lease.release", profile: profile,
-                                                 params: ["viewer_id": viewerID]) }
+            Self.owedReleases[profile] = viewerID
+            Task { _ = await Self.sendOwedRelease(profile: profile, client: client) }
         }
         detach()
+    }
+
+    /// Sends the hand back owed for a bot, trying again after each of
+    /// `delays`; the answer once it went through, nil if it's still owed.
+    /// A later takeover of the screen cancels it.
+    @discardableResult
+    static func sendOwedRelease(profile: String, client: HermesClient,
+                                delays: [Duration] = releaseRetryDelays) async -> [String: AnyCodable]? {
+        var waits = delays[...]
+        while let viewerID = owedReleases[profile] {
+            do {
+                let answer = try await client.display("display.lease.release", profile: profile,
+                                                      params: ["viewer_id": viewerID])
+                if owedReleases[profile] == viewerID { owedReleases[profile] = nil }
+                return answer
+            } catch {
+                guard let wait = waits.popFirst() else { return nil }
+                try? await Task.sleep(for: wait)
+            }
+        }
+        return nil
     }
 
     func type(_ text: String) {
@@ -553,7 +591,7 @@ final class BotScreenModel: ObservableObject {
             let request = try await client.displayStreamRequest(path: observed["path"]?.stringValue ?? "/api/display/ws",
                                                                 ticket: ticket)
             guard generation == attachGeneration else { return }
-            page?.startStream(viewOnly: !iHold)
+            page?.startStream(viewOnly: !iHold, tag: generation)
             dialedAt = Date()
             let transport = URLSessionWebSocketTransport()
             self.transport = transport
@@ -586,28 +624,34 @@ final class BotScreenModel: ObservableObject {
         stream = .idle
     }
 
+    /// Whether a page message is about the stream now open: each attach
+    /// tags the page's stream with its generation, so a stopped stream's
+    /// late close or failure never ends the one that replaced it.
+    private func isCurrent(_ tag: Int?) -> Bool { tag == attachGeneration }
+
     /// Bytes the page sends (input, when this view holds the screen).
-    func pageSent(_ data: Data) {
+    func pageSent(_ data: Data, tag: Int?) {
+        guard isCurrent(tag) else { return }
         socket?.send(.data(data)) { _ in }
     }
 
-    func pageConnected() {
+    func pageConnected(tag: Int?) {
+        guard isCurrent(tag), stream == .connecting else { return }
         stream = .live
         // rapidEvictions isn't reset here: an attach that's evicted at once
         // still completes its handshake first. A close after ten quiet
         // seconds starts the count over.
     }
 
-    /// The page closed its end: only a live stream's, since a detach's own
-    /// stop reports a close after the next stream may have started dialling.
-    func pageClosedStream() {
-        guard stream == .live else { return }
+    /// The page closed its end of the stream now open.
+    func pageClosedStream(tag: Int?) {
+        guard isCurrent(tag) else { return }
         socket?.cancel(with: .normalClosure, reason: nil)
     }
 
     /// The page's RFB handshake failed (the server refused it).
-    func pageFailed(_ reason: String) {
-        guard stream == .connecting || stream == .live else { return }
+    func pageFailed(_ reason: String, tag: Int?) {
+        guard isCurrent(tag), stream == .connecting || stream == .live else { return }
         detach()
         stream = .lost(reason.isEmpty ? AppLocalization.string("The screen's stream was lost.") : reason)
     }
@@ -617,7 +661,15 @@ final class BotScreenModel: ObservableObject {
     /// closes until it's watched again.
     func backgrounded() {
         leaveGeneration += 1
-        if iHold { Task { await handBack(force: false) } }
+        if iHold, let client, let viewerID {
+            let profile = profile
+            Self.owedReleases[profile] = viewerID
+            Task { [weak self] in
+                if let answer = await Self.sendOwedRelease(profile: profile, client: client) {
+                    self?.applyLease(BotScreenLease(answer["lease"]?.objectValue))
+                }
+            }
+        }
         detach()
     }
 
@@ -671,7 +723,8 @@ final class BotScreenModel: ObservableObject {
 /// The page that draws a screen (BotScreenWebView), as the model drives it.
 @MainActor
 protocol BotScreenPage: AnyObject {
-    func startStream(viewOnly: Bool)
+    /// Starts a stream the page tags its messages with (`tag`).
+    func startStream(viewOnly: Bool, tag: Int)
     func streamOpened()
     func streamData(_ data: Data)
     func streamClosed(code: Int)

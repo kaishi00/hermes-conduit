@@ -23,9 +23,12 @@ function fromBase64(text) {
   return bytes.buffer;
 }
 
-// A WebSocket as noVNC's Websock reads one; the app is the other end.
+// A WebSocket as noVNC's Websock reads one; the app is the other end. Its
+// messages carry the stream tag the app started it with, so a stopped
+// stream's late close never ends the one that replaced it.
 class AppChannel {
-  constructor() {
+  constructor(tag) {
+    this.tag = tag;
     this.binaryType = 'arraybuffer';
     this.protocol = '';
     this.readyState = 0;
@@ -37,12 +40,12 @@ class AppChannel {
   send(data) {
     if (this.readyState !== 1) return;
     const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    post({ type: 'send', data: toBase64(bytes) });
+    post({ type: 'send', stream: this.tag, data: toBase64(bytes) });
   }
   close() {
     if (this.readyState >= 2) return;
     this.readyState = 2;
-    post({ type: 'close' });
+    post({ type: 'close', stream: this.tag });
   }
 }
 
@@ -53,7 +56,8 @@ let viewOnly = true;
 window.conduitScreen = {
   start(options) {
     window.conduitScreen.stop();
-    channel = new AppChannel();
+    const tag = options && typeof options.stream === 'number' ? options.stream : null;
+    channel = new AppChannel(tag);
     viewOnly = options && options.viewOnly !== undefined ? !!options.viewOnly : true;
     const target = document.getElementById('screen');
     rfb = new RFB(target, channel, { shared: true });
@@ -63,12 +67,12 @@ window.conduitScreen = {
     rfb.background = 'transparent';
     rfb.qualityLevel = 7;
     rfb.viewOnly = viewOnly;
-    rfb.addEventListener('connect', () => post({ type: 'connected' }));
+    rfb.addEventListener('connect', () => post({ type: 'connected', stream: tag }));
     rfb.addEventListener('disconnect', (event) => {
-      post({ type: 'disconnected', clean: !!(event.detail && event.detail.clean) });
+      post({ type: 'disconnected', stream: tag, clean: !!(event.detail && event.detail.clean) });
     });
     rfb.addEventListener('securityfailure', (event) => {
-      post({ type: 'failed', reason: String((event.detail && event.detail.reason) || '') });
+      post({ type: 'failed', stream: tag, reason: String((event.detail && event.detail.reason) || '') });
     });
   },
   opened() {

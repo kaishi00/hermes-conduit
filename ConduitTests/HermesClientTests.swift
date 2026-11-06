@@ -3795,6 +3795,37 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testAFailedBotScreenHandBackIsSentAgain() async throws {
+        // The sheet closed while the user held the screen and the release
+        // failed: it's tried again, so Hermes doesn't keep the hold until
+        // its idle expiry.
+        let (client, socket) = try await connectedClientForServerRequests()
+        let base = socket.sentTexts.count
+        BotScreenModel.owedReleases["furina"] = "viewer-1"
+        defer { BotScreenModel.owedReleases["furina"] = nil }
+        let send = Task { await BotScreenModel.sendOwedRelease(profile: "furina", client: client,
+                                                               delays: [.milliseconds(10)]) }
+        await waitForSends(base + 1, on: socket)
+        let first = try sentFrame(socket)
+        XCTAssertEqual(first["method"] as? String, "display.lease.release")
+        XCTAssertEqual((first["params"] as? [String: Any])?["viewer_id"] as? String, "viewer-1")
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(first["id"] as? Int),
+            "error": ["code": -32603, "message": "transient"]
+        ], to: socket)
+        await waitForSends(base + 2, on: socket)
+        let second = try sentFrame(socket)
+        XCTAssertEqual(second["method"] as? String, "display.lease.release")
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(second["id"] as? Int),
+            "result": ["lease": ["epoch": 3, "owner": "agent"]]
+        ], to: socket)
+        let answer = await send.value
+        XCTAssertNotNil(answer, "The second try went through")
+        XCTAssertNil(BotScreenModel.owedReleases["furina"], "Nothing is owed once it went through")
+        client.disconnect()
+    }
+
     func testResumeKeepsAnOpenClarifyWhenPendingClarifyIsAlsoPresent() async throws {
         let (client, socket) = try await connectedClientForServerRequests()
         let sent = Gate()
