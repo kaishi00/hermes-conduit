@@ -147,6 +147,8 @@ enum MapsVoiceTool {
         if locationAllowed, controller.settings.talkingPrecision != .places {
             hint = await controller.fixes.currentFix(accuracy: LocationFixProvider.desiredAccuracy(for: .area),
                                                      maxAge: 300, timeout: .seconds(2))?.coordinate
+            // Turned off during the wait: nothing found near the user (issue 1881).
+            guard allowsLocation(mode: mode, controller: controller) else { return ["error": notShared] }
         }
         let outcome = await MapsNavigator.open(place, mode: travel, places: places, near: hint)
         HealthVoiceReadLog.record(mode: mode, action: "maps navigate", key: HealthVoiceReadLog.locationStorageKey)
