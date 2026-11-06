@@ -236,8 +236,11 @@ struct GroupRoomPortrait: View {
         .onChange(of: dropTarget) { _, over in
             slide?.cancel()
             slide = nil
+            // The drop ends the hover before it lands, so `placed` outlives
+            // it, as a bot's does, and starts over only on the next hover.
+            guard over else { return }
             placed = false
-            guard over, let dragged = RoomDragPayload.lifted else { return }
+            guard let dragged = RoomDragPayload.lifted else { return }
             slide = Task { @MainActor in
                 try? await Task.sleep(for: BotDragPayload.slideDwell)
                 guard !Task.isCancelled, dropTarget, RoomDragPayload.lifted == dragged else { return }
@@ -858,12 +861,12 @@ enum BotDragPayload {
     static let prefix = "conduit-bot:"
 
     /// The bot whose portrait is being dragged, set as its drag starts.
-    /// The drag session holds its item provider until it ends, dropped or
-    /// not, so the name counts only while that provider lives: a cancelled
-    /// drag leaves no name for a later drag from another app to borrow.
-    /// The system can let go of the provider before the drag ends (Eric,
-    /// 2026-11-06: a + came back now and then), so one a drop target saw
-    /// within `liftedGrace` still counts (`seen()`).
+    /// It counts while the drag's item provider lives, or a drop target saw
+    /// it within `liftedGrace` (`seen()`): the system can let go of the
+    /// provider before the drag ends (Eric, 2026-11-06: a + came back now
+    /// and then). A drop trusts it only while the provider lives
+    /// (`isLive`), so a cancelled drag leaves no name for a later drag from
+    /// another app to borrow.
     static var lifted: String? {
         get { lifted(at: Date()) }
         set {
