@@ -1097,11 +1097,15 @@ extension BotModeTests {
         autoreleasepool {
             let provider = RoomDragPayload.lift("r")
             XCTAssertEqual(RoomDragPayload.lifted, "r")
+            XCTAssertTrue(RoomDragPayload.isLive)
             withExtendedLifetime(provider) {}
         }
         // The system may let go of the item mid-drag: the room stays in
         // hand a while, so the drag keeps showing a move, not a +.
         XCTAssertEqual(RoomDragPayload.lifted, "r")
+        // ...but a drop reads its own text then, so a foreign one never
+        // borrows the room.
+        XCTAssertFalse(RoomDragPayload.isLive)
         XCTAssertNil(RoomDragPayload.lifted(at: Date().addingTimeInterval(BotDragPayload.liftedGrace + 1)),
                      "a drag that's gone leaves no room in hand")
         RoomDragPayload.lifted = nil
@@ -1110,7 +1114,12 @@ extension BotModeTests {
             withExtendedLifetime(provider) {}
         }
         XCTAssertEqual(BotDragPayload.lifted, "Ayaka")
+        XCTAssertFalse(BotDragPayload.isLive)
         XCTAssertNil(BotDragPayload.lifted(at: Date().addingTimeInterval(BotDragPayload.liftedGrace + 1)))
+        // A drop target seeing it in hand keeps it there past the grace.
+        let before = Date()
+        BotDragPayload.seen()
+        XCTAssertEqual(BotDragPayload.lifted(at: before.addingTimeInterval(BotDragPayload.liftedGrace - 0.5)), "Ayaka")
         BotDragPayload.lifted = nil
     }
 

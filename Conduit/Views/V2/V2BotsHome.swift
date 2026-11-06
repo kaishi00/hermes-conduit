@@ -385,6 +385,11 @@ enum RoomDragPayload {
         if lifted != nil { liftedSeenAt = Date() }
     }
 
+    /// Whether the drag that set `lifted` still holds its item. Only then
+    /// is a drop surely that tile; a drop within the grace alone is read
+    /// from its own text, so a foreign drop never borrows the room.
+    static var isLive: Bool { liftedID != nil && liftedProvider != nil }
+
     static func payload(for roomID: String) -> String { prefix + roomID }
 
     static func roomID(from payload: String) -> String? {
@@ -431,11 +436,14 @@ struct RoomTileDrop: DropDelegate {
         targeted = false
         let target = target
         let onDrop = onDrop
-        if let dragged = RoomDragPayload.lifted {
+        if RoomDragPayload.isLive, let dragged = RoomDragPayload.lifted {
             RoomDragPayload.lifted = nil
             if dragged != target { onDrop(dragged) }
             return true
         }
+        // Past its item, the tile in hand is only a guess: read the drop's
+        // own text (a tile's carries its mark).
+        RoomDragPayload.lifted = nil
         guard let provider = info.itemProviders(for: [UTType.text]).first else { return false }
         _ = provider.loadObject(ofClass: NSString.self) { object, _ in
             guard let text = object as? String, let dragged = RoomDragPayload.roomID(from: text),
@@ -772,7 +780,7 @@ struct LiftedBotDrop: DropDelegate {
     func dropExited(info: DropInfo) { exited() }
 
     func performDrop(info: DropInfo) -> Bool {
-        if let dragged = BotDragPayload.lifted {
+        if BotDragPayload.isLive, let dragged = BotDragPayload.lifted {
             BotDragPayload.lifted = nil
             // The target reads its own hover state first (a merge), then
             // ends it.
@@ -780,6 +788,9 @@ struct LiftedBotDrop: DropDelegate {
             exited()
             return landed
         }
+        // Past its item, the portrait in hand is only a guess: read the
+        // drop's own text (a portrait's carries its mark).
+        BotDragPayload.lifted = nil
         exited()
         guard let provider = info.itemProviders(for: [UTType.text]).first else { return false }
         let perform = perform
@@ -879,6 +890,11 @@ enum BotDragPayload {
     static func seen() {
         if lifted != nil { liftedSeenAt = Date() }
     }
+
+    /// Whether the drag that set `lifted` still holds its item. Only then
+    /// is a drop surely that portrait; a drop within the grace alone is
+    /// read from its own text, so a foreign drop never borrows the name.
+    static var isLive: Bool { liftedName != nil && liftedProvider != nil }
 
     /// Starts a portrait's drag: its item, and the name the portraits read.
     static func lift(_ name: String) -> NSItemProvider {
