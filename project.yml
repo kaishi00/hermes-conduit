@@ -130,6 +130,9 @@ targets:
       # Hermes' approval texts in the user's language (#1589), for the
       # Watch's approval card.
       - path: Shared/Approvals
+      # Date's <= and >= without Foundation's back-deployed ones
+      # (Shared/DateOrder/DateOrder.swift); in every shipped target.
+      - path: Shared/DateOrder
       # GPT-Live's events, which the Watch reads and answers through the
       # host's audio bridge (designs/apple-watch-gpt-live.md).
       - path: Conduit/Voice/GPTLive/GPTLiveProtocol.swift
@@ -173,6 +176,7 @@ targets:
           - "Info.plist"
       # The control's intent runs in the app, so both build it.
       - path: ConduitWatch/TalkToHermesIntent.swift
+      - path: Shared/DateOrder
       - path: ConduitWatch/Localizable.xcstrings
         buildPhase: resources
     settings:
@@ -280,6 +284,7 @@ targets:
       - path: ConduitWidgets/Resources/Assets.xcassets
         buildPhase: resources
       - path: Shared/Widgets
+      - path: Shared/DateOrder
       - path: Conduit/Localizable.xcstrings
         buildPhase: resources
     settings:
@@ -318,6 +323,7 @@ targets:
           - "Info.plist"
           - "ConduitShareExtension.entitlements"
       - path: Shared/ShareDraft
+      - path: Shared/DateOrder
       # The widgets' chat index, read only.
       - path: Shared/Widgets/WidgetSnapshot.swift
       - path: Shared/Widgets/WidgetSnapshotStore.swift
