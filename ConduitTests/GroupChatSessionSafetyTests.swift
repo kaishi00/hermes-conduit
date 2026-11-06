@@ -228,6 +228,44 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
     }
 
+    /// A reply goes in the thread of the message it answers, as Desktop's
+    /// do, and its retry keeps that thread.
+    func testAReplyIsSentInTheThreadItAnswers() async {
+        final class SendRecorder {
+            var threads: [String] = []
+            var failFirst = true
+        }
+        let recorder = SendRecorder()
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, roomID in (room, nil) },
+            log: { _, roomID, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            send: { _, roomID, _, _, threadID in
+                recorder.threads.append(threadID)
+                if recorder.failFirst {
+                    recorder.failFirst = false
+                    throw TestError()
+                }
+                return self.sendResult(roomID: roomID, seq: 1)
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+
+        await appState.sendGroupRoomMessage("> quoted\n\nagreed", threadID: "conduit-first")
+        // The retry, from the room's row, names no thread: the pending one keeps it.
+        await appState.sendGroupRoomMessage("> quoted\n\nagreed")
+        XCTAssertEqual(recorder.threads, ["conduit-first", "conduit-first"])
+        appState.closeGroupRoom()
+    }
+
     /// An ambiguous send that DID land settles when the next poll brings its
     /// server-side twin: no stale "Not delivered" row beside the real one.
     func testAmbiguousSendThatLandedSettlesFromThePoll() async {

@@ -440179,6 +440179,170 @@
           }
         }
       }
+    },
+    "As set elsewhere (%@)": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wie anderswo festgelegt (%@)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Como se configuró en otro lugar (%@)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comme défini ailleurs (%@)"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seperti diatur di tempat lain (%@)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Come impostato altrove (%@)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "他の場所での設定のまま（%@）"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다른 곳에서 설정한 대로 (%@)"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jak ustawiono gdzie indziej (%@)"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Como definido em outro lugar (%@)"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Как задано в другом месте (%@)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başka yerde ayarlandığı gibi (%@)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "沿用其他地方的设置（%@）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "沿用其他地方的設定（%@）"
+          }
+        }
+      }
+    },
+    "This room answers in a way set in a newer app. It stays that way unless you pick another.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Raum antwortet auf eine Weise, die in einer neueren App festgelegt wurde. Das bleibt so, bis du etwas anderes wählst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta sala responde de una forma configurada en una app más reciente. Seguirá así a menos que elijas otra."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce salon répond d’une façon définie dans une app plus récente. Il reste ainsi tant que vous n’en choisissez pas une autre."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ruang ini menjawab dengan cara yang diatur di app yang lebih baru. Akan tetap begitu kecuali kamu memilih yang lain."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questa stanza risponde in un modo impostato in un’app più recente. Resta così finché non ne scegli un altro."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このルームは新しいアプリで設定された方法で応答します。別の方法を選ぶまでそのままです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 방은 더 새로운 앱에서 설정한 방식으로 답합니다. 다른 방식을 고르기 전까지 그대로 유지됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ten pokój odpowiada w sposób ustawiony w nowszej aplikacji. Tak zostanie, dopóki nie wybierzesz innego."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta sala responde de um jeito definido em um app mais novo. Continua assim, a menos que você escolha outro."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Эта комната отвечает так, как задано в более новом приложении. Так и останется, пока вы не выберете другой вариант."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu oda daha yeni bir uygulamada ayarlanan şekilde yanıt veriyor. Başka birini seçmediğin sürece böyle kalır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此聊天室按较新的 App 中设置的方式回答。除非你选择其他方式，否则保持不变。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此聊天室依較新的 App 中設定的方式回答。除非你選擇其他方式，否則維持不變。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

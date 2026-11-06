@@ -5351,35 +5351,35 @@ Mac), each from its own ⋯ menu · the room's transcript captions and its
 title line · README.md's group chats line · not needed: Bots Home (its
 talking rooms read the driver, which routing doesn't change), Watch and
 CarPlay (no group rooms there), the voice modes (they don't post in rooms),
-the notifier for rooms hosted here (Conduit posts them itself) · gap: Linked
-Rooms, whose posts from a linked person still go in one `main` thread
-(`notifier/room_posts.py` THREAD), so the host routes none after their first
+the notifier for rooms hosted here (Conduit posts them itself) · Linked
+Rooms: a linked person's post opens a thread of its own on the home
+(the notifier's room posts, its post key as the thread), so a routed room
+routes each (notifier NOTIFIER_PR) · a reply from the room's Reply button,
+sent in the thread it answers
 
 **Code**
-- Wire: `Conduit/Services/HermesClient.swift` (groupsState's context, groupsContext, groupsContinue), `Conduit/Services/GroupChatModels.swift` (GroupRoomContext, GroupRouting, GroupDriverStatus maxContinues, routingModes, roomContext)
-- The log mirror: `Conduit/Services/GroupChatModels.swift` (GroupRoomTurns.pendingResponder, pendingRoute, route(of:), continuablePauses, context(before:))
+- Wire: `Conduit/Services/HermesClient.swift` (groupsState's context, groupsContext, groupsContinue), `Conduit/Services/GroupChatModels.swift` (GroupRoomContext with newerRouting, GroupRouting, GroupDriverStatus maxContinues, routingModes, roomContext, memberActivity, maxRounds, GroupMemberActivity)
+- Who is answering: `Conduit/Services/GroupChatModels.swift` (GroupRoomTurns.activeResponder from the host's live turns; the log mirror pendingResponder, pendingRoute, route(of:), contextInForce, reachesRoomStart, continuablePauses)
+- Linked Rooms posts: notifier `notifier/room_posts.py` (Posts' post key, the thread a post opens)
+- Replies: `Conduit/Views/Components/ChatQuote.swift` (ComposerReplyReference threadID), `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Services/GroupChatModels.swift` (GroupRoomOutbox.Pending threadID), AppState's sendGroupRoomMessage(_:threadID:) and replyInRoomComposer
 - App: `Conduit/Services/AppState.swift` (activeRoomContext, canEditActiveRoomSettings, activeRoomRoutingModes, activeRoomPendingRoute, activeRoomContinuablePauses, continueActiveRoomDiscussion, saveActiveRoomSettings)
 - Screens: `Conduit/Views/GroupChatView.swift` (GroupRoomSettingsSheet, GroupRoomActionItems, GroupSystemEventCaption, GroupRoomContinueButton, memberSummary), `Conduit/Views/V2/V2ConversationScreen.swift` (ConversationDialogs)
-- Tests: `ConduitTests/GroupChatModelsTests.swift` (testALeadRoomWaitsOnTheLeadThenItsPick, testAnAutomaticRoomWaitsOnTheRouter, testContinueReopensADiscussionPausedAtItsCap), `ConduitTests/GroupChatSessionSafetyTests.swift` (testRoomSettingsSaveSendsRoutingOnlyWhereTheHostRoutes, testContinueIsOfferedUnderAPauseAndSendsItsDiscussion)
+- Tests: `ConduitTests/GroupChatModelsTests.swift` (testALeadRoomWaitsOnTheLeadThenItsPick, testAnAutomaticRoomWaitsOnTheRouter, testContinueReopensADiscussionPausedAtItsCap, testALeadWhoseRoutingTurnEndsWithoutAPickAnswersItself, testTheKeptEventsDecideOnlyWhatTheyCanKnow, testContinueIsOfferedOnlyWhereItsCountIsKnown, testTheHostsLiveTurnsNameWhoIsAnswering), `ConduitTests/GroupChatSessionSafetyTests.swift` (testRoomSettingsSaveSendsRoutingOnlyWhereTheHostRoutes, testContinueIsOfferedUnderAPauseAndSendsItsDiscussion, testAReplyIsSentInTheThreadItAnswers)
 
 **Rulings**
 - Each composer message opens a thread of its own (its client event id, kept by a retry), as Desktop's do: the host routes only a message that opens a thread, so the one shared thread Conduit used before made every message after the first a reply no routing saw. Each thread is its own discussion, capped and continued on its own, and a newer message no longer cuts a running one short (2026-11-06, #1845, from review).
-- Routing is the host's: Conduit never picks who answers. It mirrors the host's planner from the room log only to name who is working, as it did before routing (Eric 2026-11-06, asked in the thread "do we support it, or is it completely host side", then "go ahead").
-- Group Settings shows only where the host takes `groups.context`. Who answers shows only where `groups.state` lists `routing_modes`, and Automatically only where that list has `auto`; a host before routing gets purpose and notes. A save sends routing only when it changes who answers from the settings the sheet opened with, so otherwise the room's routing stays as it is, a change another client made meanwhile included; Save lights only for an edit made in the sheet. A save keeps its event id while its settings are unchanged, so a retry returns the first save (2026-11-06, #1845).
+- Routing is the host's: Conduit never picks who answers (Eric 2026-11-06, asked in the thread "do we support it, or is it completely host side", then "go ahead"). The "is responding" line reads the host's live turns (`member_activity`, Hermes 0.22.5 and later, so every host that routes or changes its limits): a running turn, else the next queued one. Only a host before it gets the log mirror of its planner, with its `max_rounds` where it says (2026-11-06, PR_NUMBER).
+- The host works one discussion at a time, the oldest still open, and so does the mirror: a newer message waits its turn (`_pending_discussion`) (2026-11-06, PR_NUMBER).
+- The title line's "choosing who answers" claims only what the kept events show (the last 200). A message opened its thread when the thread is its own client event id (Conduit's, Desktop's, a Linked Rooms post's); another is a reply unless the kept events reach the room's start with nothing earlier in its thread. The settings a discussion opened under are the latest change before it, the defaults from the room's start, or the room's current ones when no change came after it; where a change came after and the one before left, nothing is claimed. A lead whose routing turn ended without a pick (discarded or superseded) takes the message alone, as the host does (2026-11-06, PR_NUMBER).
+- A Reply from a message's button goes in that message's thread, as Desktop's does: the host reads it as part of that conversation, not as a new message to route. A message typed fresh opens its own (2026-11-06, PR_NUMBER).
+- Group Settings shows only where the host takes `groups.context`. Who answers shows only where `groups.state` lists `routing_modes`, and Automatically only where that list has `auto`; a host before routing gets purpose and notes. A routing mode newer than this app shows as "As set elsewhere", selected, and stays until another is picked; picking Everyone sends it (2026-11-06, PR_NUMBER). A save sends routing only when it changes who answers from the settings the sheet opened with, so otherwise the room's routing stays as it is, a change another client made meanwhile included; Save lights only for an edit made in the sheet. A save keeps its event id while its settings are unchanged, so a retry returns the first save (2026-11-06, #1845).
 - The routing's decisions are captions in the transcript, in Desktop's words: "Zhongli gave this to Furina.", "Assigned to Furina and Zhongli.", "Couldn't choose who answers, so everyone will." While the lead or the router is still choosing, the title line says so (2026-11-06, #1845).
-- Continue sits under the "reached its turn limit" caption while the host can still reopen that discussion (`paused_discussion`: no Stop after its message, no newer message in its thread, fewer Continues than `max_continues`), checked again when the tap is sent (2026-11-06, #1845).
+- Continue sits under the "reached its turn limit" caption while the host can still reopen that discussion (`paused_discussion`: no Stop after its message, no newer message in its thread, fewer Continues than `max_continues`), checked again when the tap is sent (2026-11-06, #1845). It is offered only while the discussion's message is in the kept events (every Continue after it is then counted), or they reach the room's start (2026-11-06, PR_NUMBER).
 
 **Open gaps**
-- The "is responding" line still mirrors the planner with the default limits (3 rounds, 10 messages). A host whose config changes them (`max_rounds` in its status) can show a member past the limit, or none before it; the status's `member_activity` would say who is working without the mirror.
-- A lead's routing turn that ends without an assignment (discarded or superseded) leaves the line on the lead until the room's next event.
-- The mirror tells a new thread from the kept events (the last 200): a reply that names nobody in a thread whose earlier messages fell out of them reads as routed, so a lead or automatic room's title line says it's choosing while the members answer.
-- When a discussion's own `room.context_set` has left the kept events, the mirror reads its routing from the room's current settings, so a routing changed since that discussion started can name the wrong member as working until it ends.
-- The mirror names only the oldest discussion still open: while it runs, a newer message's discussion has nobody named, and one that ended without a settled or capped activity holds the line until the room's next event that ends it.
-- Continue counts the `room.continued` it finds in the kept events: a discussion whose earlier Continues left them can show Continue past the host's cap, and the host refuses the tap.
-- A "Replying to" quote is text in a new thread, not a reply in the quoted message's thread: in a lead or automatic room it is routed like any message that names nobody.
-- A routing mode newer than this client reads as Everyone in Group Settings. Its real mode survives any save that leaves Who answers there, so such a room can't be switched to Everyone from Conduit; only picking a lead (or Automatically, where offered) sends routing.
+- None known.
 
-**Checked:** 2026-11-06, #1845 (added; from review, each message its own thread, routing goes in a save only when it changes, a save checks its room and compares with the settings it opened with, Continue rechecked at send, and the Open gaps above).
+**Checked:** 2026-11-06, PR_NUMBER (the gaps #1845 left closed: who answers from the host's live turns, what the kept events can't tell, a discarded routing turn, Continue's count, newer modes, replies in their thread, Linked Rooms posts in threads of their own; #1845 added the entry).
 
 ## Linked Rooms
 

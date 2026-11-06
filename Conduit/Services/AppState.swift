@@ -12626,16 +12626,22 @@ final class AppState: ObservableObject {
     private var roomResponderCache: (key: String, context: GroupRoomContext?, member: GroupMember?)?
 
     /// The member whose turn the open room is running. A driver that reports
-    /// idle or blocked names nobody; with no driver status yet (first load,
-    /// or a gateway without one) the log alone decides.
+    /// idle or blocked names nobody. A host that lists its live turns
+    /// (`member_activity`) says who outright; otherwise, and with no driver
+    /// status yet (first load, or a gateway without one), the log decides.
     var activeRoomResponder: GroupMember? {
         if let driver = activeRoomDriverStatus, !driver.working || driver.blocked { return nil }
         let room = activeRoomSurface?.room
+        if let activity = activeRoomDriverStatus?.memberActivity {
+            return GroupRoomTurns.activeResponder(activity: activity, members: room?.members ?? [])
+        }
         let key = "\(activeRoomReplay.roomID)|\(activeRoomReplay.cursor)|\(room?.revision ?? -1)"
+            + "|\(activeRoomDriverStatus?.maxRounds ?? 0)"
         let context = activeRoomContext
         if let cached = roomResponderCache, cached.key == key, cached.context == context { return cached.member }
         let member = GroupRoomTurns.pendingResponder(
-            events: activeRoomReplay.events, members: room?.members ?? [], context: context
+            events: activeRoomReplay.events, members: room?.members ?? [], context: context,
+            roundLimit: activeRoomDriverStatus?.maxRounds
         )
         roomResponderCache = (key, context, member)
         return member
@@ -12910,10 +12916,13 @@ final class AppState: ObservableObject {
     /// A room message's Reply button: the whole message rides along with
     /// the next one, shown in the room composer as a "Replying to…" chip,
     /// and the bot that wrote it is picked in the "To" row.
-    func replyInRoomComposer(text: String, authorName: String, authorHandle: String? = nil) {
+    func replyInRoomComposer(text: String, authorName: String, authorHandle: String? = nil, threadID: String? = nil) {
         guard canQuoteIntoRoom(), text.contains(where: { !$0.isWhitespace }) else { return }
+        let thread = threadID?.trimmingCharacters(in: .whitespacesAndNewlines)
         roomQuoteRequest = ComposerQuoteRequest(
-            content: .reply(ComposerReplyReference(authorName: authorName, text: text))
+            content: .reply(ComposerReplyReference(
+                authorName: authorName, text: text, threadID: thread?.isEmpty == false ? thread : nil
+            ))
         )
         if let authorHandle { mentionInRoomComposer(handle: authorHandle) }
     }
@@ -13490,8 +13499,10 @@ final class AppState: ObservableObject {
     /// Returns whether the send was REGISTERED — the pending row (and its
     /// retry key) now owns the text. `false` means the guards declined it
     /// and nothing holds the text, so the composer must keep its draft.
+    /// `threadID` is a reply's: the message goes in the thread it answers.
+    /// Otherwise it opens a thread of its own, so the host can route it.
     @discardableResult
-    func sendGroupRoomMessage(_ rawText: String) async -> Bool {
+    func sendGroupRoomMessage(_ rawText: String, threadID: String? = nil) async -> Bool {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return false }
         guard let surface = activeRoomSurface, let client, isConnected,
@@ -13508,7 +13519,7 @@ final class AppState: ObservableObject {
             return false
         }
         let epoch = groupRoomEpoch
-        let logical = groupRoomOutbox.beginSend(text: text) {
+        let logical = groupRoomOutbox.beginSend(text: text, threadID: threadID) {
             "conduit-\(UUID().uuidString.lowercased())"
         }
         pendingRoomMessage = groupRoomOutbox.pending
@@ -13535,7 +13546,7 @@ final class AppState: ObservableObject {
                 roomID: surface.room.roomID,
                 eventID: logical.eventID,
                 text: logical.text,
-                threadID: GroupRoomSurface.threadID(forEventID: logical.eventID)
+                threadID: logical.threadID ?? GroupRoomSurface.threadID(forEventID: logical.eventID)
             )
             // A non-throwing groups.send is a delivered event: upstream
             // `methods_groups.py` answers `accepted: true` for a fresh or an
@@ -13702,6 +13713,7 @@ final class AppState: ObservableObject {
         let epoch = groupRoomEpoch
         let includesRouting = !activeRoomRoutingModes.isEmpty && (original ?? activeRoomContext).map {
             $0.routing != context.routing || $0.leadMemberID != context.leadMemberID
+                || $0.newerRouting != context.newerRouting
         } ?? true
         do {
             let saved: GroupRoomContext

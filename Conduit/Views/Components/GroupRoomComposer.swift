@@ -625,7 +625,7 @@ struct GroupRoomComposer: View {
                 // The pending row owns the text only once AppState REGISTERS
                 // the send. A declined send (connection or room changed
                 // before the guards ran) hands the text back.
-                let registered = await appState.sendGroupRoomMessage(text)
+                let registered = await appState.sendGroupRoomMessage(text, threadID: sendsReply ? reply?.threadID : nil)
                 if !registered {
                     // Anything typed since goes after the text handed back.
                     draft = draft.isEmpty ? typed : typed + "\n" + draft
@@ -662,7 +662,7 @@ struct GroupRoomComposer: View {
                 draft = String(draft.dropFirst(typed.count)).trimmingCharacters(in: .whitespacesAndNewlines)
             }
             attachments.removeAll { file in files.contains { $0.id == file.id } }
-            let registered = await appState.sendGroupRoomMessage(message)
+            let registered = await appState.sendGroupRoomMessage(message, threadID: sendsReply ? reply?.threadID : nil)
             if registered {
                 files.forEach(ComposerBar.discardStagedFile)
             } else {

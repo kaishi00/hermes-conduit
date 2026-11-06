@@ -208,6 +208,13 @@ struct GroupDriverStatus: Equatable {
     /// The room's settings, which `groups.state` answers beside the driver
     /// status (`context`); nil when the host didn't send them.
     var roomContext: GroupRoomContext? = nil
+    /// Who is answering right now (`member_activity`, Hermes 0.22.5): the
+    /// room's live turns, the lead's routing turn included. Nil on a host
+    /// before it, whose "is responding" line mirrors the planner instead.
+    var memberActivity: [GroupMemberActivity]? = nil
+    /// The room's round limit (`max_rounds`), where the host's config can
+    /// change it; nil means the default.
+    var maxRounds: Int? = nil
 
     /// The same status with the driver's own fields changed, keeping what
     /// the host said about the room.
@@ -218,7 +225,30 @@ struct GroupDriverStatus: Equatable {
         status.maxContinues = maxContinues
         status.routingModes = routingModes
         status.roomContext = roomContext
+        status.memberActivity = memberActivity
+        status.maxRounds = maxRounds
         return status
+    }
+}
+
+/// One live turn in `member_activity`: whose it is, where it stands
+/// (`queued`, `running`, `stopping`) and the thread it answers in.
+struct GroupMemberActivity: Equatable {
+    let memberID: String
+    let status: String
+    let threadID: String?
+
+    init?(object: [String: AnyCodable]) {
+        guard let memberID = object["member_id"]?.stringValue, !memberID.isEmpty else { return nil }
+        self.memberID = memberID
+        status = object["status"]?.stringValue ?? ""
+        threadID = object["thread_id"]?.stringValue
+    }
+
+    init(memberID: String, status: String, threadID: String? = nil) {
+        self.memberID = memberID
+        self.status = status
+        self.threadID = threadID
     }
 }
 
@@ -246,13 +276,18 @@ struct GroupRoomContext: Equatable {
     var routing: GroupRouting = .everyone
     /// The lead's member id; empty unless `routing` is `lead`.
     var leadMemberID: String = ""
+    /// A routing mode this client predates, as the host named it; empty for
+    /// the modes above. `routing` reads `everyone` meanwhile, and nothing
+    /// here mirrors it.
+    var newerRouting: String = ""
 
-    /// From `groups.state`'s `context` or a `room.context_set` payload. A
-    /// routing this client predates reads as `everyone`, the host's default.
+    /// From `groups.state`'s `context` or a `room.context_set` payload.
     init(object: [String: AnyCodable]) {
         purpose = object["purpose"]?.stringValue ?? ""
         notes = object["notes"]?.stringValue ?? ""
-        routing = object["routing"]?.stringValue.flatMap(GroupRouting.init(rawValue:)) ?? .everyone
+        let raw = object["routing"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        routing = GroupRouting(rawValue: raw) ?? .everyone
+        newerRouting = raw.isEmpty || GroupRouting(rawValue: raw) != nil ? "" : raw
         leadMemberID = routing == .lead ? (object["lead_member_id"]?.stringValue ?? "") : ""
     }
 
@@ -418,6 +453,10 @@ enum GroupDecoders {
         status.maxContinues = HermesClient.exactIntValue(object["max_continues"])
         status.routingModes = object["routing_modes"]?.arrayValue?.compactMap(\.stringValue)
         status.roomContext = context?.objectValue.map(GroupRoomContext.init(object:))
+        status.memberActivity = object["member_activity"]?.arrayValue.map {
+            $0.compactMap { $0.objectValue.flatMap(GroupMemberActivity.init(object:)) }
+        }
+        status.maxRounds = HermesClient.exactIntValue(object["max_rounds"]).flatMap { $0 > 0 ? $0 : nil }
         return status
     }
 
@@ -561,6 +600,8 @@ struct GroupRoomOutbox: Equatable {
     struct Pending: Equatable {
         let text: String
         let eventID: String
+        /// A reply's thread, kept for its retry; nil opens its own.
+        var threadID: String? = nil
     }
 
     private(set) var pending: Pending?
@@ -576,12 +617,12 @@ struct GroupRoomOutbox: Equatable {
     /// message returns the SAME pending row untouched; the caller MUST have
     /// consulted `accepts(text:)` first — a different text is a new logical
     /// message and is refused there, never silently replaced here.
-    mutating func beginSend(text: String, mintEventID: () -> String) -> Pending {
+    mutating func beginSend(text: String, threadID: String? = nil, mintEventID: () -> String) -> Pending {
         if let pending {
             assert(pending.text == text, "Different text while a send is pending — refuse via accepts(text:), never replace")
             return pending
         }
-        let created = Pending(text: text, eventID: mintEventID())
+        let created = Pending(text: text, eventID: mintEventID(), threadID: threadID)
         pending = created
         return created
     }
@@ -1034,9 +1075,10 @@ enum GroupRoomTurns {
     /// responder always has the new user message unseen, and a later-round
     /// responder was cited after it last spoke. `context` is the room's
     /// settings as the host last gave them, for a discussion whose own
-    /// `room.context_set` is older than the events kept.
+    /// `room.context_set` is older than the events kept. `roundLimit` is
+    /// the host's `max_rounds` where it says (else the default).
     static func pendingResponder(
-        events: [GroupEvent], members: [GroupMember], context: GroupRoomContext? = nil
+        events: [GroupEvent], members: [GroupMember], context: GroupRoomContext? = nil, roundLimit: Int? = nil
     ) -> GroupMember? {
         guard !members.isEmpty, let discussion = pendingDiscussion(events) else { return nil }
         let route = Self.route(of: discussion, events: events, members: members, context: context)
@@ -1092,7 +1134,7 @@ enum GroupRoomTurns {
                 .max() ?? -1)
         }
 
-        for round in 0..<(maxRounds * budgets) {
+        for round in 0..<((roundLimit ?? maxRounds) * budgets) {
             var responders = round == 0 ? firstRound : unaddressedMentions(discussionMessages, members: members)
             if responders.isEmpty, round == resumeRound { responders = members }
             for member in rotate(responders, by: round)
@@ -1105,6 +1147,24 @@ enum GroupRoomTurns {
             if !spokeThisRound { return nil }
         }
         return nil
+    }
+
+    /// The member answering now, from the host's own `member_activity`: a
+    /// running turn first, else the next queued one. The host runs one
+    /// discussion at a time, so this is that discussion's.
+    static func activeResponder(activity: [GroupMemberActivity], members: [GroupMember]) -> GroupMember? {
+        for status in ["running", "queued"] {
+            for row in activity where row.status == status {
+                if let member = member(withID: row.memberID, in: members) { return member }
+            }
+        }
+        return nil
+    }
+
+    /// Whether `events` reach back to the room's first event (seq 1), so
+    /// what they don't hold never happened.
+    static func reachesRoomStart(_ events: [GroupEvent]) -> Bool {
+        (events.first?.seq ?? 1) <= 1
     }
 
     /// How the pending discussion's first round is chosen, for the room's
@@ -1136,12 +1196,16 @@ enum GroupRoomTurns {
 
     /// `routes_through_lead` and the planner's routing pick for one
     /// discussion. A lead whose `room.assignment` names nobody seated, or a
-    /// router answer naming nobody seated, falls back as the host does.
+    /// router answer naming nobody seated, falls back as the host does, and
+    /// so does a lead whose routing turn ended without one (discarded or
+    /// superseded: `first_round_members`). Where the kept events can't say
+    /// which settings were in force, it reads as unrouted: nothing claims a
+    /// choice is being made.
     static func route(
         of discussion: GroupEvent, events: [GroupEvent], members: [GroupMember], context fallback: GroupRoomContext?
     ) -> DiscussionRoute {
-        let context = self.context(before: discussion.seq, in: events) ?? fallback ?? GroupRoomContext()
-        guard context.routing != .everyone, routesItself(discussion, events: events, members: members) else {
+        guard let context = contextInForce(at: discussion.seq, in: events, current: fallback),
+              context.routing != .everyone, routesItself(discussion, events: events, members: members) else {
             return .unrouted
         }
         let discussionID = discussion.eventID
@@ -1152,7 +1216,22 @@ enum GroupRoomTurns {
             guard let lead = member(withID: context.leadMemberID, in: members) else { return .unrouted }
             guard let assignment = events.first(where: {
                 $0.kind == "room.assignment" && $0.payload["discussion_event_id"]?.stringValue == discussionID
-            }) else { return .leadChoosing(lead) }
+            }) else {
+                // The routing turn reads the room up to just before the
+                // message (`seen_through_seq` one under it); the lead's own
+                // answers read the message itself.
+                let leadID = routingID(of: lead)
+                if let ended = events.first(where: { event in
+                    terminalKinds.contains(event.kind)
+                        && event.payload["discussion_event_id"]?.stringValue == discussionID
+                        && event.payload["member_id"]?.stringValue?.lowercased() == leadID
+                        && HermesClient.exactIntValue(event.payload["round_index"]) == 0
+                        && HermesClient.exactIntValue(event.payload["seen_through_seq"]) == discussion.seq - 1
+                }) {
+                    return .routed([lead], routingTaskID: ended.payload["task_id"]?.stringValue)
+                }
+                return .leadChoosing(lead)
+            }
             let picked = memberIDs(assignment.payload["member_ids"], in: members)
             return .routed(picked.isEmpty ? [lead] : picked, routingTaskID: assignment.payload["task_id"]?.stringValue)
         case .auto:
@@ -1166,7 +1245,10 @@ enum GroupRoomTurns {
     }
 
     /// A human message that opens a new thread and names nobody: no member
-    /// handle, no @all/@everyone, not a scheduled job's post.
+    /// handle, no @all/@everyone, not a scheduled job's post. A message
+    /// whose thread is its own client event id (as Conduit's and Desktop's
+    /// new messages are) opened it; any other is a reply unless the kept
+    /// events reach the room's start and hold nothing earlier in its thread.
     private static func routesItself(_ discussion: GroupEvent, events: [GroupEvent], members: [GroupMember]) -> Bool {
         if discussion.actor.kind == "user",
            discussion.actor.id.hasPrefix("cron:") || discussion.actor.id.hasPrefix("cron-notice:") {
@@ -1175,9 +1257,13 @@ enum GroupRoomTurns {
         let text = discussion.payload["text"]?.stringValue ?? ""
         if mentionsAnyone(text, members: members) { return false }
         let threadID = discussion.threadID ?? ""
-        return !events.contains { event in
+        if !threadID.isEmpty, GroupRoomOutbox.serverEventID(forClientEventID: threadID) == discussion.eventID {
+            return true
+        }
+        let earlier = events.contains { event in
             event.seq < discussion.seq && event.isChatMessage && (event.threadID ?? "") == threadID
         }
+        return !earlier && reachesRoomStart(events)
     }
 
     private static func mentionsAnyone(_ text: String, members: [GroupMember]) -> Bool {
@@ -1200,6 +1286,19 @@ enum GroupRoomTurns {
     /// `room.context_set` under it), or nil when the kept events hold none.
     static func context(before seq: Int, in events: [GroupEvent]) -> GroupRoomContext? {
         events.last { $0.kind == "room.context_set" && $0.seq < seq }.map { GroupRoomContext(object: $0.payload) }
+    }
+
+    /// The settings a discussion opened under, as the host reads them
+    /// (`room_context(before_seq)`): the latest `room.context_set` under its
+    /// seq; the defaults when the kept events reach the room's start; the
+    /// room's current settings when no change came after it either (any
+    /// would be kept, since the discussion is). Nil when one came after it
+    /// and the one before has left the kept events: unknown.
+    static func contextInForce(at seq: Int, in events: [GroupEvent], current: GroupRoomContext?) -> GroupRoomContext? {
+        if let before = context(before: seq, in: events) { return before }
+        if reachesRoomStart(events) { return GroupRoomContext() }
+        if events.contains(where: { $0.kind == "room.context_set" && $0.seq > seq }) { return nil }
+        return current ?? GroupRoomContext()
     }
 
     /// A discussion's `room.continued` events, oldest first.
@@ -1227,8 +1326,12 @@ enum GroupRoomTurns {
             }
         }
         var pauses: [String: (discussionEventID: String, grant: Int)] = [:]
+        let complete = reachesRoomStart(events)
         for (discussionID, bounded) in latestOutcome where roomActivityOutcome(bounded) == .bounded {
-            let sourceSeq = events.first { $0.eventID == discussionID }?.seq ?? bounded.seq
+            // Its Continues all follow its message: with the message kept,
+            // they're all counted. Without it, the count is unknown.
+            guard let sourceSeq = events.first(where: { $0.eventID == discussionID })?.seq
+                ?? (complete ? bounded.seq : nil) else { continue }
             let threadID = bounded.threadID
             let ended = events.contains { event in
                 (event.kind == "room.stop_requested" && event.seq > sourceSeq)
