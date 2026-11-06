@@ -21,7 +21,7 @@ struct BotRosterView: View {
     @State private var showsHiddenBots = false
     /// New Group Chat from a bot's Groups menu starts with that bot picked.
     @State private var groupSheetBot: BotProfile?
-    /// The bot whose Bot Overview shows (Bots Home's Overview pill).
+    /// The bot whose Bot Overview shows (Bots Home's ⓘ or status pill).
     @State private var overviewBot: BotProfile?
     /// Edit Bot tapped in the overview: the editor opens once it's gone,
     /// since a sheet can't open over it from here.

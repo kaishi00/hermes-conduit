@@ -493,8 +493,8 @@ enum BotDragPayload {
     }
 }
 
-/// What a bot's Overview pill says: what needs the user first, then what's
-/// working, else just "Overview". It never names the policy: that's a
+/// What a bot's status line on Bots Home says: what needs the user first,
+/// then what's working, else "Idle". It never names the policy: that's a
 /// setting, in Edit Bot.
 enum BotPortraitStatus: Equatable {
     case needsYou(Int)
@@ -553,7 +553,7 @@ enum BotPortraitStatus: Equatable {
         case .inRooms(let rooms) where rooms.count == 1: return AppLocalization.string("In \(rooms[0])")
         case .inRooms(let rooms): return AppLocalization.string("In \(rooms.count) rooms")
         case .waitingOn(let name): return AppLocalization.string("Waiting on \(name)")
-        case .idle: return AppLocalization.string("Overview")
+        case .idle: return AppLocalization.string("Idle")
         }
     }
 
@@ -577,9 +577,11 @@ enum BotPortraitStatus: Equatable {
     }
 }
 
-/// One bot on Bots Home: its portrait in its own color, its name, and its
-/// Overview pill. The portrait and name open the Bot Chat; the pill opens
-/// the overview. A long press has the Bots list's row menu.
+/// One bot on Bots Home: its portrait in its own color, its name with an ⓘ,
+/// and its status. The portrait and name open the Bot Chat; the ⓘ opens the
+/// overview, and so does the status pill when it says something (a tap on
+/// "Needs you" goes to what needs the user). Idle is plain faint text. A
+/// long press has the Bots list's row menu.
 struct BotPortraitCell<MenuContent: View>: View {
     let bot: BotProfile
     @ObservedObject var work: BotWorkStore
@@ -601,6 +603,7 @@ struct BotPortraitCell<MenuContent: View>: View {
     @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
     /// A dragged bot is over this one; `mergeReady` once it has stayed
     /// over the face for half a second (BotDragPayload.mergeDwell).
     @State private var isTargeted = false
@@ -636,32 +639,11 @@ struct BotPortraitCell<MenuContent: View>: View {
 
     var body: some View {
         let status = status
-        VStack(spacing: 6) {
-            Button {
-                Haptics.light()
-                if room != .off, let onToggleRoom {
-                    onToggleRoom()
-                    return
-                }
-                appState.beginOpeningBotChat(bot.name)
-                // This chat grows out of this portrait (BotZoomDestination),
-                // unless it opens beside the list, or doesn't open.
-                if openBeside == nil { appState.botZoom.tap(bot.name) }
-                Task {
-                    if await !appState.openBotChat(for: bot) { appState.botZoom.openFailed(bot.name) }
-                    appState.endOpeningBotChat(bot.name)
-                }
-            } label: {
-                VStack(spacing: 8) {
-                    portrait(status)
-                    Text(bot.displayLabel)
-                        .scaledFont(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                }
-                .frame(maxWidth: .infinity)
-                .contentShape(Rectangle())
+        VStack(spacing: 2) {
+            Button(action: tapped) {
+                portrait(status)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(PressableButtonStyle())
             .contextMenu { menu }
@@ -675,18 +657,33 @@ struct BotPortraitCell<MenuContent: View>: View {
             .accessibilityLabel(Text(bot.displayLabel))
             .accessibilityValue(Text(accessibilityValue(status)))
             .accessibilityHint(Text(portraitHint))
+            .accessibilityAction(named: Text(AppLocalization.string("Overview"))) { onOverview() }
             .v2SelectedTrait(selection)
 
-            Button {
-                Haptics.light()
-                onOverview()
-            } label: {
-                pill(status)
+            // The name, and the ⓘ beside it; at accessibility sizes the ⓘ
+            // goes to the status line so the name keeps the cell's width.
+            HStack(spacing: 0) {
+                Button(action: tapped) {
+                    Text(bot.displayLabel)
+                        .scaledFont(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .frame(minHeight: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PressableButtonStyle())
+                .contextMenu { menu }
+                // The portrait says it, name and all.
+                .accessibilityHidden(true)
+                if !typeSize.isAccessibilitySize { infoButton }
             }
-            .buttonStyle(PressableButtonStyle())
-            .accessibilityLabel(Text(AppLocalization.string("\(bot.displayLabel)’s overview")))
-            .accessibilityValue(Text(verbatim: status == .idle ? "" : status.title))
-            .accessibilityIdentifier("bots.overview.\(bot.name)")
+            .frame(maxWidth: .infinity)
+
+            HStack(spacing: 0) {
+                statusLine(status)
+                if typeSize.isAccessibilitySize { infoButton }
+            }
         }
         // The whole cell, pill included, takes a dropped bot, so a drop
         // under a face lands there rather than at the end.
@@ -718,6 +715,69 @@ struct BotPortraitCell<MenuContent: View>: View {
         }
         .onChange(of: isShown) { _, shown in
             if shown && finishPending { noteFinished() }
+        }
+    }
+
+    /// The portrait's and the name's tap: the Bot Chat, or, while a room is
+    /// being started, in or out of it.
+    private func tapped() {
+        Haptics.light()
+        if room != .off, let onToggleRoom {
+            onToggleRoom()
+            return
+        }
+        appState.beginOpeningBotChat(bot.name)
+        // This chat grows out of this portrait (BotZoomDestination),
+        // unless it opens beside the list, or doesn't open.
+        if openBeside == nil { appState.botZoom.tap(bot.name) }
+        Task {
+            if await !appState.openBotChat(for: bot) { appState.botZoom.openFailed(bot.name) }
+            appState.endOpeningBotChat(bot.name)
+        }
+    }
+
+    /// The ⓘ: the bot's overview, always. A small glyph with a 44-point-tall
+    /// target that stops at the name.
+    private var infoButton: some View {
+        Button {
+            Haptics.light()
+            onOverview()
+        } label: {
+            Image(systemName: "info.circle")
+                .scaledFont(.footnote.weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 30, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle())
+        .fixedSize()
+        .help(AppLocalization.string("Overview"))
+        .accessibilityLabel(Text(AppLocalization.string("\(bot.displayLabel)’s overview")))
+        .accessibilityIdentifier("bots.overview.\(bot.name)")
+    }
+
+    /// What the bot is doing: idle is faint text; anything else a pill that
+    /// opens the overview, where its work is. VoiceOver hears it as the
+    /// portrait's value, and the ⓘ opens the overview.
+    @ViewBuilder
+    private func statusLine(_ status: BotPortraitStatus) -> some View {
+        if status == .idle {
+            Text(verbatim: status.title)
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(minHeight: 44)
+                .accessibilityHidden(true)
+        } else {
+            Button {
+                Haptics.light()
+                onOverview()
+            } label: {
+                pill(status)
+            }
+            .buttonStyle(PressableButtonStyle())
+            .accessibilityHidden(true)
+            .accessibilityIdentifier("bots.status.\(bot.name)")
         }
     }
 
@@ -905,9 +965,8 @@ struct BotPortraitCell<MenuContent: View>: View {
         .foregroundStyle(status.tint)
         .padding(.horizontal, 11)
         .frame(minHeight: 28)
-        .background(Capsule().fill(status == .idle ? Color.primary.opacity(0.07) : status.tint.opacity(0.14)))
-        .overlay(Capsule().strokeBorder(status == .idle ? Color.primary.opacity(0.10) : status.tint.opacity(0.35),
-                                        lineWidth: 1))
+        .background(Capsule().fill(status.tint.opacity(0.14)))
+        .overlay(Capsule().strokeBorder(status.tint.opacity(0.35), lineWidth: 1))
         // A 44-point target round the smaller pill.
         .frame(minHeight: 44)
         .contentShape(Rectangle())
