@@ -438,7 +438,7 @@ struct BotRosterView: View {
         }
         Haptics.selection()
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
-            appState.moveBot(dragged, before: target.name, shown: appState.shownBotRoster.map(\.name))
+            appState.dropBot(dragged, onto: target.name, shown: appState.shownBotRoster.map(\.name))
         }
     }
 

@@ -705,6 +705,8 @@ struct BotPortraitDrag<Preview: View>: ViewModifier {
 struct LiftedBotDrop: DropDelegate {
     var entered: () -> Void = {}
     var exited: () -> Void = {}
+    /// Where the bot in hand is, in the drop target's own space, as it moves.
+    var updated: (CGPoint) -> Void = { _ in }
     let perform: (String) -> Bool
 
     /// A portrait in hand, or, should the drag have let go of the name it
@@ -718,7 +720,9 @@ struct LiftedBotDrop: DropDelegate {
     func dropEntered(info: DropInfo) { entered() }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: validateDrop(info: info) ? .move : .forbidden)
+        let valid = validateDrop(info: info)
+        if valid { updated(info.location) }
+        return DropProposal(operation: valid ? .move : .forbidden)
     }
 
     func dropExited(info: DropInfo) { exited() }
@@ -743,12 +747,35 @@ struct LiftedBotDrop: DropDelegate {
     }
 }
 
+/// A bot's cell on Bots Home, the space its drop reports locations in.
+enum BotPortraitCellSpace {
+    static let name = "botPortraitCell"
+}
+
 /// What a dragged portrait carries.
 enum BotDragPayload {
     /// How long a dragged bot stays over another's face before letting go
     /// starts a room instead of moving it (as making a folder on the Home
     /// Screen).
     static var mergeDwell: Duration { .milliseconds(500) }
+
+    /// How far the bot in hand may drift and still count as held still over
+    /// a face: a move further starts the dwell again, so a bot carried
+    /// across faces to reorder never swells one (Eric, 2026-11-06: reordering
+    /// kept starting rooms instead).
+    static let mergeStillness: CGFloat = 12
+
+    /// The part of a face a merge needs the bot held over: its middle, not
+    /// the cell around it, so a drop beside a face or on its name moves.
+    static func mergeZone(face: CGRect) -> CGRect {
+        face.insetBy(dx: face.width * 0.2, dy: face.height * 0.2)
+    }
+
+    /// Whether the hover at `location` keeps the dwell that began at
+    /// `anchor` going.
+    static func staysStill(_ location: CGPoint, from anchor: CGPoint) -> Bool {
+        hypot(location.x - anchor.x, location.y - anchor.y) <= mergeStillness
+    }
 
     /// How long after a merge-ready hover ends its drop still merges: the
     /// hover ends as the drop begins, before the drop is handed over.
@@ -895,7 +922,8 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// of opening its chat.
     var room: BotPortraitRoom = .off
     /// Another bot dropped on this one: `merge` when it was held over the
-    /// face long enough to start (or join) a room, else moved before it.
+    /// face long enough to start (or join) a room, else it takes this
+    /// one's place.
     var onDrop: ((_ dragged: String, _ merge: Bool) -> Void)?
     /// Whether the bot being dragged can start a room with this one: never
     /// with itself, nor when either is hidden or rooms can't start here.
@@ -907,8 +935,9 @@ struct BotPortraitCell<MenuContent: View>: View {
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
-    /// A dragged bot is over this one; `mergeReady` once it has stayed
-    /// over the face for half a second (BotDragPayload.mergeDwell).
+    /// A dragged bot is over this one; `mergeReady` once it has been held
+    /// still over the middle of the face for half a second
+    /// (BotDragPayload.mergeDwell, mergeStillness, mergeZone).
     @State private var isTargeted = false
     @State private var mergeReady = false
     /// When a merge-ready hover ended. A drop ends the hover before it
@@ -917,6 +946,10 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// started a room).
     @State private var mergeReadyEndedAt: Date?
     @State private var dwell: Task<Void, Never>?
+    /// Where the dwell over the face began; a move away starts it again.
+    @State private var dwellAnchor: CGPoint?
+    /// The face, in the cell's own space (where a drop's location is).
+    @State private var faceFrame: CGRect = .zero
     @Environment(\.scenePhase) private var scenePhase
     /// Low Power Mode as it changes, so the motion stops when it turns on.
     @ObservedObject private var devicePower = DevicePowerState.shared
@@ -992,9 +1025,11 @@ struct BotPortraitCell<MenuContent: View>: View {
         // under a face lands there rather than at the end.
         // A move, not a copy, so the bot in hand shows no +; the face it's
         // over swells for a merge instead (LiftedBotDrop).
+        .coordinateSpace(name: BotPortraitCellSpace.name)
         .onDrop(of: [UTType.text], delegate: LiftedBotDrop(
             entered: { if onDrop != nil { beginTargeting() } },
-            exited: { if onDrop != nil { endTargeting() } }
+            exited: { if onDrop != nil { endTargeting() } },
+            updated: { location in if onDrop != nil { hover(at: location) } }
         ) { dragged in
             guard let onDrop, dragged.caseInsensitiveCompare(bot.name) != .orderedSame else { return false }
             let merge = BotDragPayload.dropMerges(mergeReady: mergeReady, endedAt: mergeReadyEndedAt)
@@ -1100,7 +1135,31 @@ struct BotPortraitCell<MenuContent: View>: View {
         isTargeted = true
         mergeReadyEndedAt = nil
         dwell?.cancel()
-        guard canMerge?(lifted) == true else { return }
+        dwellAnchor = nil
+    }
+
+    /// The bot in hand moved over this cell. Held still over the middle of
+    /// the face for `mergeDwell`, it swells for a room; carried on, or off
+    /// the face, the dwell starts again and a swollen face lets go, so the
+    /// drop moves the bot (as an app on the Home Screen only makes a folder
+    /// when held over another).
+    private func hover(at location: CGPoint) {
+        guard isTargeted, let lifted = BotDragPayload.lifted, canMerge?(lifted) == true else { return }
+        guard BotDragPayload.mergeZone(face: faceFrame).contains(location) else {
+            dwell?.cancel()
+            dwell = nil
+            dwellAnchor = nil
+            if mergeReady {
+                // Moved off the face: this drop moves, it doesn't merge.
+                mergeReadyEndedAt = nil
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { mergeReady = false }
+            }
+            return
+        }
+        if mergeReady { return }
+        if let anchor = dwellAnchor, BotDragPayload.staysStill(location, from: anchor) { return }
+        dwellAnchor = location
+        dwell?.cancel()
         dwell = Task { @MainActor in
             try? await Task.sleep(for: BotDragPayload.mergeDwell)
             guard !Task.isCancelled, isTargeted else { return }
@@ -1113,6 +1172,7 @@ struct BotPortraitCell<MenuContent: View>: View {
         if mergeReady { mergeReadyEndedAt = Date() }
         dwell?.cancel()
         dwell = nil
+        dwellAnchor = nil
         isTargeted = false
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { mergeReady = false }
     }
@@ -1125,6 +1185,8 @@ struct BotPortraitCell<MenuContent: View>: View {
             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             // Where its face flies from when it joins a room being started.
             .anchorPreference(key: BotsHomeAnchorKey.self, value: .bounds) { [BotsHomeAnchorKey.bot(bot.name): $0] }
+            // Where a merge's hold counts (BotDragPayload.mergeZone).
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(BotPortraitCellSpace.name)) } action: { faceFrame = $0 }
             .padding(4)
             .modifier(BotZoomSource(name: bot.name))
             .modifier(BotPortraitMotion(
