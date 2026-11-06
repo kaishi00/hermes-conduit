@@ -338,22 +338,23 @@ of Hermes' own acknowledgements while its turn runs.
 Watch calls · CarPlay · calls from Hermes · the web lookup heads-up · the
 instructions preview in Voice settings · Classic (Hermes speaks for itself:
 its `message.interim` notes are said as they arrive) · Local Live, Hermes turns (not needed: Hermes' reply is the
-turn) · the notifier (no acknowledgement text there; it already sends `message.interim`) · Settings captions and
+turn) · the notifier (its one spoken line, when Local Live's fast model can't be reached, is first person too: notifier #586) · Settings captions and
 README (none: nothing describes the wording) · docs/VOICE_SETTINGS.md (Classic's acknowledgement and cutting it short)
 
 **Code**
-- The shared rule: `Shared/GeminiLive/LiveVoiceAcknowledgement.swift`; Grok and Local Live's job-claim rule (no acknowledgement text): `Shared/GrokLive/GrokLiveProtocol.swift` (jobClaimInstructions)
+- The shared rule: `Shared/GeminiLive/LiveVoiceAcknowledgement.swift` (rule and firstPerson; GPT-Live's delegationRule); Grok and Local Live's job-claim rule (no acknowledgement text): `Shared/GrokLive/GrokLiveProtocol.swift` (jobClaimInstructions)
 - Gemini, Qwen and the Watch: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (instructions, acknowledgementPrompt for a quiet start_job); Grok and Local Live build the same instructions with acknowledgesOnceStarted
 - The Voice settings preview shows the instructions as sent: `Conduit/Services/AppState.swift` (liveVoiceInstructionsPreview)
 - Where each call builds them, phone, CarPlay and Watch: `Conduit/Services/AppState.swift` (localLiveAgentSetup, prepareWatchDirectCall, prepareWatchGrokCall)
 - GPT-Live, phone and Watch: `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (briefingRules; claimsToSendToHermes, which takes an acknowledgement-only turn with no delegation as a send)
-- Local Live agent: `Shared/LocalLive/LocalLiveProtocol.swift` (agentInstructions)
+- Local Live agent: `Shared/LocalLive/LocalLiveProtocol.swift` (agentInstructions); the plugin's line when the fast model can't be reached: `notifier/dashboard/api/local_live_agent.py` (LOCAL_LIVE_FRONT_UNREACHABLE_REPLY)
 - Conduit's own tools need none: `Conduit/Voice/VoiceHostTools.swift`
 - Web lookups: `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (lookupAnswerNote)
 - Classic, phone and CarPlay: `Conduit/Services/AppState.swift` (notifyVoiceAssistant), `Conduit/Voice/VoiceTypes.swift` (VoiceAssistantEvent), `Conduit/Voice/VoiceConversationController.swift` (receiveAssistantEvent, drainSpeechQueue, isAcknowledgementSteerable); tests in `ConduitTests/AppStateReasoningStreamTests.swift` and `ConduitTests/VoiceConversationControllerTests.swift`
 
 **Rulings**
-- Each handoff gets a word or a few, in the model's own words and different each time; Hermes is named at most once on a call, or when the user asks who's doing it; telling the user what it's about to do counts as the acknowledgement (2026-10-25, #1251).
+- Each handoff gets a word or a few, in the model's own words and different each time; telling the user what it's about to do counts as the acknowledgement (2026-10-25, #1251).
+- To the user the voice and Hermes are one assistant: Gemini, Qwen, Grok and Local Live speak of the work in the first person ("I'm checking now"), never as something they send or pass to Hermes, and name Hermes only when the user asks who's doing it or how it works; ask-first says what it will do, a result what it found or did. GPT-Live keeps naming Hermes at most once a call, since its send-claim fallback finds an undelegated send by that name in every shipped language and by a bare acknowledgement only in English (Eric 2026-11-06, notifier issue 583, #1896; replaces "Hermes at most once" for the other modes).
 - Gemini and Qwen (phone and Watch) say it before start_job; Grok and Local Live (phone and Watch) only once start_job returns started; GPT-Live before the delegation (2026-10-25, #1251).
 - GPT-Live's send-claim fallback reads a sentence sending something to Hermes in every shipped language, since calls speak the user's language: in the turn's detected language and the call's, never all at once (Italian's "se" is Spanish's pronoun, and Italian's own in "se lo …"); verbs are whole send forms, not stems, so "passé", "pasó" or "discussion" only narrate, with either one's offer, no or condition holding it, since the detector can take one for the other. The verb has to be aimed at Hermes (before the name, or after it with the dative in Turkish, Japanese and Korean), so "Hermes sagt, …" only reports. A condition anywhere in the sentence holds it; an offer or a no holds it in its clause and after, while a "no problem" or "don't worry" opener and a reassurance after the send don't. An English turn, or one too short to tell on an English call, is read by the English rules alone (2026-11-06, #1846).
 - A "nothing" that refuses the send itself holds it like a no ("I'll send nothing to Hermes", "I'll send absolutely nothing to Hermes", "I'll tell Hermes nothing", "I'll ask Hermes nothing", "There's nothing to send to Hermes", "There's nothing to check with Hermes about", "I'll let Hermes know nothing", "Ich schicke nichts an Hermes."); one outside the send ("Nothing else needed; I'll send that to Hermes") or with an exception ("I'll ask Hermes nothing but whether the build passed", "Ich schicke nichts außer der Zusammenfassung an Hermes", also after Hermes: "I'll send nothing to Hermes except the summary") doesn't; a later "but" starts a clause of its own and still holds ("I'll send nothing to Hermes but look it up myself"), and so does an exception after a comma, on the safe side. English, like the other languages, reads it only in the clause that sends ("I'll send that to Hermes; there's nothing to check" sends). The other shipped languages put a negation before their "nothing", which already holds. "Without" is no refusal ("… sin tu permiso" sends; "sans attendre" is a yes), so it holds nothing (2026-11-06, issue 1869, #1872).
@@ -365,7 +366,41 @@ README (none: nothing describes the wording) · docs/VOICE_SETTINGS.md (Classic'
 **Open gaps**
 - GPT-Live's send-claim fallback reads a sentence naming Hermes in English and the shipped languages only, so a call in another language (Dutch, Swedish, …) isn't caught; outside English the send verb and Hermes must share a clause, so a send split by an embedded clause ("Ich schicke das, was du gesagt hast, an Hermes.") isn't caught either (kept: crossing commas brings back sends a "Si quieres, …" holds); and it reads an acknowledgement alone in English only: one in other words or another language that doesn't name Hermes, with no delegation, can still go unsent until the user asks again; and a short reply made only of acknowledgement words ("Let me look.") counts as a send even when the model meant to answer itself (#1251).
 
-**Checked:** 2026-11-06, #1872 (a "nothing" refusing the send holds it, in English and German, issue 1869; Rulings); 2026-11-06, #1846 (the send-claim fallback reads a sentence naming Hermes in each shipped language, now that calls speak the user's language; the language rule ends `instructions`); 2026-10-27, #1390 (Classic says Hermes' acknowledgements, carried from #1384); 2026-10-25, at #1251.
+**Checked:** 2026-11-06, #1896 (first person for Gemini, Qwen, Grok and Local Live, GPT-Live keeps naming Hermes; notifier #586, issue 583); 2026-11-06, #1872 (a "nothing" refusing the send holds it, in English and German, issue 1869; Rulings); 2026-11-06, #1846 (the send-claim fallback reads a sentence naming Hermes in each shipped language, now that calls speak the user's language; the language rule ends `instructions`); 2026-10-27, #1390 (Classic says Hermes' acknowledgements, carried from #1384); 2026-10-25, at #1251.
+
+## A live call's personality and your instructions
+
+What a live model is told about who it is beyond Conduit's rules: the Hermes
+profile's persona (SOUL.md, "Use Hermes personality" in each live mode) and
+the user's own text (Live call style, "Your instructions").
+
+**Siblings:** Gemini Live · Qwen Live · Grok Live · GPT-Live · Local Live
+agent (its personality switch is under Local > 3. Your fast model) · the
+Apple Watch's calls (the phone's switches and style, read when the Watch
+call is prepared) · CarPlay (the phone's call) · Local Live, Hermes turns
+(not needed: Hermes answers as itself, no voice model is briefed) · What
+Conduit sends · Hermes changing settings (the personality switches; Your
+instructions isn't offered, agent settings take only switches and choices) ·
+the notifier (not needed: Local Live's plugin passes the phone's
+instructions as sent) · Settings captions · docs/VOICE_SETTINGS.md
+
+**Code**
+- The user's instructions: `Conduit/Voice/LiveVoiceStyle.swift` (extraInstructions, cleanedExtraInstructions, instructions), stored in `Conduit/Voice/VoiceTypes.swift` (liveVoiceExtraInstructions), saved by `Conduit/Services/AppState.swift` (setLiveVoiceStyle)
+- The field: `Conduit/Views/LiveVoiceStyleViews.swift`; the section shown for Local Live's agent mode: `Conduit/Views/AuxiliaryViews.swift` (liveStyle)
+- Personas: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (personalityInstructions; Gemini, Qwen, Grok, Local Live), `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (briefing)
+- Local Live's switch: `Conduit/Views/LocalLiveViews.swift` (LocalLivePersonalityToggle), `Conduit/Services/AppState.swift` (localLivePersonalityEnabled, localLiveAgentSetup, the controller's availability reads SOUL.md, closeLocalLiveConversation drops it)
+- Hermes changing it: `Conduit/Services/AppState+AgentSettings.swift` (voice.local.personality)
+- Tests: `ConduitTests/GeminiLiveVoiceTests.swift` (testLiveCallStyleAddsTheUsersOwnInstructionsAfterConduitsRules), `ConduitTests/HermesVoiceGatewayTimeoutTests+LocalLive.swift` (testLocalLiveAgentModeTakesThePersonalityAndTheUsersInstructions)
+
+**Rulings**
+- The user adds to Conduit's instructions and never shortens or replaces them: jobs, approvals and the call's tools depend on them. The user's text goes after Conduit's rules and the style, before the language rule, in every live mode, and the model is told Conduit's rules win where the two differ (Eric 2026-11-06, notifier issue 583, #1896).
+- Your instructions are one text per profile for every live mode, at most 2,000 characters, trimmed; empty adds nothing (#1896).
+- Each mode's persona switch is off until the user turns it on, Local Live's too: it sends SOUL.md to that mode's server, and a long one slows a small model's first words (#1896).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-06, #1896 (added: Local Live's personality and Your instructions, issue 583).
 
 ## Starting a call
 
@@ -3715,7 +3750,7 @@ have their own entry, Files Hermes attaches, in what voices say.
 Now Playing title · live read-back of a reply ("read me the last reply", in
 Gemini, Qwen, Grok and GPT-Live) and the result a Hermes call reads out ·
 Local Live (Hermes' words, streamed) · Gemini Live, Qwen Live, Grok Live and
-GPT-Live with the Hermes personality (told not to say actions) · the chat
+GPT-Live, and Local Live's agent mode, with the Hermes personality (told not to say actions) · the chat
 transcript (never filtered)
 
 **Code**
@@ -3735,7 +3770,7 @@ transcript (never filtered)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1449 (Hermes' file tags are left out too, with their own entry, Files Hermes attaches); #1429, carried in #1430.
+**Checked:** 2026-11-06, #1896 (Local Live's agent mode can take the persona too, told the same); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1449 (Hermes' file tags are left out too, with their own entry, Files Hermes attaches); #1429, carried in #1430.
 
 ## Speech stream failures
 
