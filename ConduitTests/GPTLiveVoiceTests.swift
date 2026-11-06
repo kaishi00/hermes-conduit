@@ -405,6 +405,26 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(full.components(separatedBy: "</hermes_memory>").count, 2)
     }
 
+    /// A tester with German set got every GPT-Live call in English: all the
+    /// model read was English. The briefing names the user's language, after
+    /// the persona and memory so an English persona doesn't win.
+    func testGPTLiveBriefingNamesTheUsersLanguageAfterThePersona() {
+        let german = GPTLiveConversationController.briefing(personality: "A calm judge", language: "de")
+        XCTAssertTrue(german.contains("read back word for word because the user asked to hear it: read it as written"), "a read-back keeps Hermes' words (#451)")
+        XCTAssertTrue(german.contains("Language: speak German, the user's language, from your first words"))
+        XCTAssertTrue(german.contains("asks you to switch, use theirs from then on"))
+        let persona = german.range(of: "</hermes_persona>")!
+        let language = german.range(of: "Language: speak German")!
+        XCTAssertLessThan(persona.lowerBound, language.lowerBound)
+
+        let unknown = GPTLiveConversationController.briefing(language: nil)
+        XCTAssertTrue(unknown.contains("Language: answer in the language the user speaks to you."))
+
+        XCTAssertEqual(LiveVoiceLanguage.name(of: "zh-TW"), "Chinese (Traditional characters)")
+        XCTAssertEqual(LiveVoiceLanguage.name(of: "zh-CN"), "Chinese (Simplified characters)")
+        XCTAssertEqual(LiveVoiceLanguage.name(of: "pt"), "Portuguese")
+    }
+
     /// The notifier plugin refuses a briefing over 32 KB ("briefing is too
     /// long"), which ended every GPT-Live call for a user with a long memory.
     func testALongMemoryIsCutSoTheBriefingFitsAndTheRulesStayWhole() {
@@ -1514,9 +1534,73 @@ extension VoiceConversationControllerTests {
             "I'm doing well, how about you.",
             "I'll check your calendar. You're free at three.",
             "I'll tell you a joke.",
+            "Shall I send that to Hermes？I'll check now.",
         ]
         for text in notClaims {
             XCTAssertFalse(GPTLiveConversationController.claimsToSendToHermes(text), text)
+        }
+    }
+
+    /// A call speaks the user's language now (LiveVoiceLanguage), so the
+    /// send-claim fallback (#945) reads a sentence sending something to
+    /// Hermes in each shipped language: the turn's own and the call's.
+    /// Its offers, conditions and noes still send nothing, and neither does
+    /// a sentence that only reports what Hermes said.
+    func testGPTLiveSendClaimIsReadInTheCallsLanguage() {
+        let claims: [(String, String)] = [
+            ("Alles klar, ich schicke das jetzt an Hermes.", "de"),
+            ("Ich frage Hermes danach.", "de"),
+            ("Vale, se lo envío a Hermes ahora mismo.", "es"),
+            ("D'accord, je transmets ça à Hermes.", "fr"),
+            ("Va bene, lo mando a Hermes.", "it"),
+            ("Certo, vou enviar isso ao Hermes agora.", "pt"),
+            ("Dobrze, przekażę to Hermesowi.", "pl"),
+            ("Хорошо, передам это Гермесу.", "ru"),
+            ("Tamam, bunu Hermes'e gönderiyorum.", "tr"),
+            ("Oke, saya kirim ke Hermes sekarang.", "id"),
+            ("わかりました。ヘルメスに送ります。", "ja"),
+            ("알겠어요. 헤르메스에게 보낼게요.", "ko"),
+            ("好的，我把这个发给赫尔墨斯。", "zh-CN"),
+            // A reassurance after the send doesn't hold it, nor one before.
+            ("Vale, se lo envío a Hermes ahora mismo, no te preocupes.", "es"),
+            ("No te preocupes, se lo envío a Hermes ahora mismo.", "es"),
+            ("Keine Sorge, ich schicke das an Hermes.", "de"),
+            ("Kein Problem, ich schicke das jetzt an Hermes.", "de"),
+            ("Pas de problème, je transmets ça à Hermes.", "fr"),
+            ("No hay problema, se lo envío a Hermes.", "es"),
+            // Italian's pronoun "se lo" isn't its "if".
+            ("Va bene, se lo mando a Hermes.", "it"),
+        ]
+        for (claim, language) in claims {
+            XCTAssertTrue(GPTLiveConversationController.claimsToSendToHermes(claim, callLanguage: language), claim)
+        }
+        let notClaims: [(String, String)] = [
+            ("Soll ich das an Hermes schicken?", "de"),
+            ("Ich schicke das nicht an Hermes.", "de"),
+            ("Ich schicke es an Hermes, sobald du ja sagst.", "de"),
+            ("Hermes sagt, dass dein Kalender heute leer ist.", "de"),
+            ("¿Se lo envío a Hermes?", "es"),
+            ("No se lo envío a Hermes.", "es"),
+            ("Si quieres, se lo envío a Hermes.", "es"),
+            ("Hermes dice que mañana va a llover.", "es"),
+            ("Te cuento lo que pasó con Hermes.", "es"),
+            ("Je vais vous raconter ce qui s'est passé avec Hermes.", "fr"),
+            ("La discussion avec Hermes était utile.", "fr"),
+            ("Lo que pasó con Hermes fue interesante.", "es"),
+            ("Je ne transmets pas ça à Hermes.", "fr"),
+            ("Posso mandarlo a Hermes se vuoi.", "it"),
+            ("Lo mando a Hermes se serve.", "it"),
+            ("Mando isso ao Hermes se precisar.", "pt"),
+            ("Могу передать это Гермесу, если хочешь.", "ru"),
+            ("ヘルメスに送りましょうか。", "ja"),
+            ("헤르메스에게 보낼까요.", "ko"),
+            ("要不要发给赫尔墨斯。", "zh-CN"),
+            // English narration on a German call is read as English.
+            ("Hermes passed it along.", "de"),
+            ("Hermes passed it along.", "en"),
+        ]
+        for (text, language) in notClaims {
+            XCTAssertFalse(GPTLiveConversationController.claimsToSendToHermes(text, callLanguage: language), text)
         }
     }
 

@@ -355,15 +355,16 @@ README (none: nothing describes the wording) · docs/VOICE_SETTINGS.md (Classic'
 **Rulings**
 - Each handoff gets a word or a few, in the model's own words and different each time; Hermes is named at most once on a call, or when the user asks who's doing it; telling the user what it's about to do counts as the acknowledgement (2026-10-25, #1251).
 - Gemini and Qwen (phone and Watch) say it before start_job; Grok and Local Live (phone and Watch) only once start_job returns started; GPT-Live before the delegation (2026-10-25, #1251).
+- GPT-Live's send-claim fallback reads a sentence sending something to Hermes in every shipped language, since calls speak the user's language: in the turn's detected language and the call's, never all at once (Italian's "se" is Spanish's pronoun, and Italian's own in "se lo …"); verbs are whole send forms, not stems, so "passé", "pasó" or "discussion" only narrate, with either one's offer, no or condition holding it, since the detector can take one for the other. The verb has to be aimed at Hermes (before the name, or after it with the dative in Turkish, Japanese and Korean), so "Hermes sagt, …" only reports. A condition anywhere in the sentence holds it; an offer or a no holds it in its clause and after, while a "no problem" or "don't worry" opener and a reassurance after the send don't. An English turn, or one too short to tell on an English call, is read by the English rules alone (2026-11-06, #1846).
 - GPT-Live's send-claim fallback counts a turn that is only an acknowledgement ("On it.", "One moment, checking.") as well as one naming Hermes, so fewer mentions don't let an undelegated request drop; "Sure." or "Okay." alone never counts. A bare "On it." with no delegation is taken as a send on purpose: the model only says it for work (2026-10-25, #1251).
 - A web lookup's heads-up is said once, varied, and the answer opens without it (2026-10-05, #404).
 - Conduit's own tools answer fast and need no acknowledgement (on main by 2026-10-22, b41f56c).
 - Classic says Hermes' own acknowledgement (`message.interim`) as it arrives, then goes back to thinking: it is not the end of the turn and opens no listening window. Commentary already streamed is said once, and a final reply that only repeats the acknowledgement isn't said again. Cutting the acknowledgement short (talking over it, Interrupt, CarPlay's Stop, a push to talk press) steers the turn instead of cancelling it (Eric 2026-10-27, from #1384, carried in #1390).
 
 **Open gaps**
-- GPT-Live's send-claim fallback reads English phrases only: an acknowledgement in other words or another language, with no delegation, can still go unsent until the user asks again; and a short reply made only of acknowledgement words ("Let me look.") counts as a send even when the model meant to answer itself (#1251).
+- GPT-Live's send-claim fallback reads a sentence naming Hermes in English and the shipped languages only, so a call in another language (Dutch, Swedish, …) isn't caught; outside English the send verb and Hermes must share a clause, so a send split by an embedded clause ("Ich schicke das, was du gesagt hast, an Hermes.") isn't caught either (kept: crossing commas brings back sends a "Si quieres, …" holds); and it reads an acknowledgement alone in English only: one in other words or another language that doesn't name Hermes, with no delegation, can still go unsent until the user asks again; and a short reply made only of acknowledgement words ("Let me look.") counts as a send even when the model meant to answer itself (#1251).
 
-**Checked:** 2026-10-27, #1390 (Classic says Hermes' acknowledgements, carried from #1384); 2026-10-25, at #1251.
+**Checked:** 2026-11-06, #1846 (the send-claim fallback reads a sentence naming Hermes in each shipped language, now that calls speak the user's language; the language rule ends `instructions`); 2026-10-27, #1390 (Classic says Hermes' acknowledgements, carried from #1384); 2026-10-25, at #1251.
 
 ## Starting a call
 
@@ -445,6 +446,35 @@ Conduit sends" preview, docs/VOICE_SETTINGS.md, the notifier README
 - An older plugin still reports `greeting_applied: true` for a greeting or a call from Hermes, so a GPT-Live call there waits about 4 seconds for the phone's second ask; the Watch has no second ask and stays silent until the user speaks. Updating the plugin fixes both.
 
 **Checked:** 2026-11-04, #1769 (added: GPT-Live's opening is Conduit's turn everywhere, notifier #548).
+
+## The language a live call speaks
+
+Which language a live model talks in: the user's, from its first words,
+until the user speaks or asks for another.
+
+**Siblings:** each live mode (Gemini, Qwen, Grok, GPT-Live, Local Live's
+agent mode) · where a call runs: the phone's call screen, CarPlay, a call
+from Hermes (its opening turn and its job's reply), the Apple Watch (its
+direct calls' setup and GPT-Live's briefing through the host's audio bridge,
+both built on the phone) · Classic voice and Local Live's Hermes turns (not
+needed: Hermes answers the user's words, and a Classic call from Hermes
+speaks its brief in the App Language) · the notifier's GPT-Live session route
+(not needed: it adds Conduit's briefing after Hermes' persona as sent) · text
+that describes it: "What Conduit sends" (shows the rule), docs/VOICE_SETTINGS.md ·
+what Conduit reads from the model's words: GPT-Live's send-claim fallback
+(see Acknowledging work handed to Hermes)
+
+**Code**
+- The rule and the language: `Conduit/Voice/LiveVoiceLanguage.swift` (rule, name; the language from `Conduit/Voice/OnDeviceSpeech.swift` appLanguage)
+- Where it goes: `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (briefing, after the persona and memory; claimsToSendToHermes reads the call's language), `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (last in instructions, before the blocks each call adds; Gemini, Qwen, Grok, Local Live's agent mode, and the Watch's setups)
+
+**Rulings**
+- The user's language is the App Language they picked, else the iPhone's first language, whether Conduit ships it or not. The model is told to speak it from its first words, a call's opening and a call from Hermes included, and to put English instructions, Hermes' replies, job results and Conduit's notes into it. When the user speaks another language or asks to switch, that one holds for the rest of the call. A reply read back word for word because the user asked for it (#451) is read as written, not translated. The rule comes after the persona and memory, so a persona in another language doesn't win (2026-11-06, tester report: GPT-Live answered a German user in English, #1846).
+
+**Open gaps**
+- Conduit's readings of the model's words: GPT-Live's send-claim fallback reads English and the languages Conduit ships, so on a call in another language (Dutch, Swedish, …) a claim naming Hermes with no delegation isn't caught; an acknowledgement alone is read in English only (see Acknowledging work handed to Hermes); and in a shipped language other than English the send verb and Hermes must share a clause, so "Ich schicke das, was du gesagt hast, an Hermes." isn't caught (kept: crossing commas brings back sends held by "Si quieres, …").
+
+**Checked:** 2026-11-06, #1846 (added: every live mode names the user's language; GPT-Live's send-claim fallback reads it).
 
 ## Switching voice mode in a call
 
