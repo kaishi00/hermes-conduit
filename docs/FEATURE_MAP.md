@@ -5338,6 +5338,30 @@ follow-ups (the same chip, see Cards Hermes shows)
 
 **Checked:** 2026-11-03, #1713 (a board's follow-ups reuse the reply chip and its tap and long-press, see Cards Hermes shows; Siblings); 2026-11-02, #1674 with notifier #515 (draft and reply limits counted the plugin's way, issue 1670); 2026-11-02, #1672 (a follow-up check the host was too busy for, too slow for or couldn't reach is asked again within the 4 checks, issue #1669; the plugin's `/predict`, its README, the captions and guesses needed no change); 2026-11-01, #1631 with notifier #504 (on the gateway's own listener the route forks the authority's chat, see Two Hermes servers); 2026-11-01, #1631 (the hidden turn is taken on the gateway's own listener, probed on the canary; `/predict` there came with notifier #504); 2026-11-01, #1632 (the captions point at Helper models once Hermes lists Conduit predictions, and ask for a plugin update before then; with no slots kept the caption waits for Hermes, and stays off if it never answers); 2026-11-01, #1625 (the fast model is a helper model Conduit sets, notifier 0.124.0; the Model section's captions point there; a gap closed); 2026-10-30, #1527 (a guess sent from the row keeps whatever focus the field had, see Composer focus after a send); 2026-10-29, #1495, carrying #1489 (a guess's fork sends no push, notifier #464); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1455 (carrying #1431; a chip that sends wraps instead of truncating; Rulings); 2026-10-26, #1290 (a follow-up's tag skips replies to other messages); at #1281 (carrying #1242).
 
+## Bot messages in group rooms
+
+How a bot's message sits in a group room's transcript: its picture, name and
+time, then its words in a bubble tinted with the bot's color.
+
+**Siblings:** the bot's message bubble · the "Responding…" placeholder that
+holds its place · the boards under a message · the user's own bubble · a chat
+reply (no bubble, the column's width) · the room on a wide window (the chat's
+readable column, see Readable width on wide windows) · not needed: Watch and
+CarPlay (no group rooms there), Linked Rooms (its rooms use this view, so the
+branch takes it with main) · text: no caption or doc gives the width
+
+**Code**
+- `Conduit/Views/GroupChatView.swift` (GroupMemberBubble: avatarSize, trailingRoom, groupMemberBubbleSurface; GroupRespondingRow; GroupUserBubble)
+
+**Rulings**
+- A bot's bubble runs to 8 pt from the column's edge (`GroupMemberBubble.trailingRoom`), and the "Responding…" placeholder keeps the same margin. Its replies are long, like a chat's, and the avatar and tinted bubble already say who is talking. The bubble still hugs its text, so a short reply stays short (Eric, 2026-11-06, #1859: the old 32 pt margin made room replies about a quarter narrower than a chat's, kept from the first room screen without a reason; he picked this over dropping the bubble).
+- The user's own bubble keeps 48 pt on its leading side: the gap marks it as theirs. Boards under a message keep their own 560 pt cap.
+
+**Open gaps**
+- None.
+
+**Checked:** 2026-11-06, #1859 (new entry: bot bubbles widened).
+
 ## Who answers in a group chat
 
 A hosted room's settings (purpose, shared notes, and who answers a message
