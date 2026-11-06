@@ -4627,23 +4627,25 @@ copy goes and when it is removed.
 
 **Siblings:** a chat's media and file previews · the picture viewer · the
 Artifacts page's opener · the gateway media resolver · the Folder's Quick Look
-and Share or Save
+and Share or Save · the Markdown reader's Open In and Share copy
 
 **Code**
 - Media previews: `Conduit/Views/Components/MediaPreviewPresenter.swift` (stage, stagingRoot, removeDirectory), `Conduit/Views/Components/MarkdownText.swift`, `Conduit/Views/Components/GatewayMediaDataURLResolver.swift`, `Conduit/Views/V2/V2ArtifactsViews.swift`
 - Folder: `Conduit/Views/V2/V2WorkspaceViews.swift` (quickLook), through the media preview presenter
+- The Markdown reader's handoff copy: `Conduit/Views/Components/MarkdownDocumentSheet.swift` (stageForSharing, removeShareDirectory), `Conduit/Views/Components/MediaPreviewPresenter.swift` (stage(text:filename:), presentOpenIn and its OpenInDelegate, presentShare)
 - Picture viewer: `Conduit/Views/Components/ImageGalleryViewer.swift` (ImageGalleryFile, ImageGalleryViewController.finish)
 - Tests: `ConduitTests/MarkdownLargeDocumentTests+MediaPreview.swift`
 
 **Rulings**
 - Each download goes in a folder of its own, removed when the preview or share sheet that asked for it closes, or when it is dismissed or switched to another file while still downloading; a previous run's leftovers are swept at launch (2026-10-24, #1220, from #1002).
 - The Folder opens files through the media preview presenter, so its copies follow the same rule; the workspace browser's own download folder is gone (2026-10-27, #1399).
+- The Markdown reader writes the file's text to a folder of its own for Open In and Share as it opens, and removes it when the reader closes, or at once when it closes before the copy is written; the Open In menu's controller is kept only while the menu is up (2026-11-06, #1884, carrying #1879).
 - The picture viewer fetches each picture into a folder of its own the same way, removes one once the reader is two pages past it (paging back fetches it again), and removes the rest when it closes, including one still arriving then; a photo on the device or a copy kept on the phone is shown in place and stays (2026-10-29, #1491).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-30, #1524 (the resolver gains the connected dashboard's bridge and a plugin route read for Desktop cards; previews unchanged); 2026-10-29, #1491 (the picture viewer's copies); 2026-10-27, #1399; #1220.
+**Checked:** 2026-11-06, #1884 (the Markdown reader's Open In and Share copy, carried from #1879); 2026-10-30, #1524 (the resolver gains the connected dashboard's bridge and a plugin route read for Desktop cards; previews unchanged); 2026-10-29, #1491 (the picture viewer's copies); 2026-10-27, #1399; #1220.
 
 ## Review labels
 
@@ -4988,7 +4990,7 @@ shared or saved from its Share button.
 **Siblings:** chats, project chats and Bot Chat (attachments, reply pictures,
 tool pictures) · the saved-chat copy · call job result sheets and the cards a
 voice model shows · group rooms · the Artifacts page, a chat's Artifacts sheet
-and the panel beside the chat · the Folder tab · iPhone, iPad and Mac (the
+and the panel beside the chat · the Markdown reader (a Markdown artifact or file card) · the Folder tab · iPhone, iPad and Mac (the
 same viewer; keys and a trackpad on an iPad or Mac) · Quick Look, which still
 opens videos, audio and documents · README.md · text that describes it (the
 pictures' VoiceOver hint "Opens full screen with save and share")
@@ -4997,12 +4999,12 @@ pictures' VoiceOver hint "Opens full screen with save and share")
 - Viewer and presenting it: `Conduit/Views/Components/ImageGalleryViewer.swift` (ImageGalleryViewController, ImageGalleryPageController, ImageGalleryDecoder, ImageGalleryItem, ImageGallery, ImageGallerySource, the `imageGallery` environment value), `Conduit/Views/Components/MediaPreviewPresenter.swift` (presentGallery)
 - What a chat lists: `Conduit/Views/Components/ImageGalleryItems.swift` (ChatImageGallery, the item makers), set in `Conduit/Services/AppState.swift` (chatImageGallery, from chatRowsOnScreen: the saved copy's pictures while it stands in) and `Conduit/Views/ChatView.swift`
 - Taps: `Conduit/Views/ChatView.swift` (UserImageAttachmentPreview, whole or as a tile), `Conduit/Views/Components/MarkdownText.swift` (RemoteMarkdownImage.openImage, whole or as a tile of MarkdownPictureGrid)
-- Other lists: `Conduit/Views/GroupChatView.swift` (GroupRoomImageGallery), `Conduit/Views/LiveVoiceCallJobs.swift` (both sheets), `Conduit/Views/V2/V2ArtifactsViews.swift` (openImage), `Conduit/Views/V2/V2WorkspaceViews.swift` (openImage)
+- Other lists: `Conduit/Views/GroupChatView.swift` (GroupRoomImageGallery), `Conduit/Views/LiveVoiceCallJobs.swift` (both sheets), `Conduit/Views/V2/V2ArtifactsViews.swift` (openImage), `Conduit/Views/V2/V2WorkspaceViews.swift` (openImage), `Conduit/Views/Components/MarkdownDocumentSheet.swift` (the reader's own source)
 - Tests: `ConduitTests/MarkdownLargeDocumentTests+ImageGallery.swift`
 
 **Rulings**
 - Pictures page in Conduit's own viewer, not Quick Look: Quick Look shows one file and has no swipe down. Videos, audio and documents still open in Quick Look; a picture never pages to one (2026-10-29, #1491, Eric asked for both gestures).
-- A picture pages through the pictures of what it was tapped in, in the order they show: a chat's (each message's pictures in its text, then the ones it attaches, then a tool's), the saved copy's, a room's, a job result's or card's, the Artifacts list's as filtered, or the Folder's (the search's names, else the file's folder, else Recently Changed); one in a Markdown file the Folder previews pages through that file's pictures. Each picture is listed once, where it first shows. One its list doesn't have (a reply still streaming) opens alone (2026-10-29, #1491).
+- A picture pages through the pictures of what it was tapped in, in the order they show: a chat's (each message's pictures in its text, then the ones it attaches, then a tool's), the saved copy's, a room's, a job result's or card's, the Artifacts list's as filtered, or the Folder's (the search's names, else the file's folder, else Recently Changed); one in a Markdown file the Folder previews, or the Markdown reader shows (from Artifacts or a file card), pages through that file's pictures. Each picture is listed once, where it first shows. One its list doesn't have (a reply still streaming) opens alone (2026-10-29, #1491).
 - The list is read when a picture is tapped, never while scrolling: each screen holds one source, so no row redraws for it. Each picture fetches its original only as its page comes near (its own, then its neighbours once it is in, so a tap never starts three large downloads at once), the way its row opened it alone: the photo on this device, the copy kept on the phone, then Hermes; a picture in a list fetches as Artifacts and the Folder open a file. The row's own copy shows until the original is in, and stays if the original can't be had (2026-10-29, #1491).
 - A swipe down (or up) of a picture that isn't zoomed in drags it, fading the backdrop; past a fifth of the screen or flung it closes, short of that it springs back. A zoomed picture pans instead, and its edge hands a sideways swipe on to the next. One finger only: two are a pinch. A trackpad's two-finger swipe does the same; on a keyboard the arrows page and Escape closes; VoiceOver pages with a three-finger swipe and closes with the escape gesture (2026-10-29, #1491).
 - A single tap shows or hides the bar (Done, the name, "3 / 12", Share); Share opens once the picture's original is in. The Folder's Share or Save opens a picture in the viewer too, since its Share saves and copies (2026-10-29, #1491).
@@ -5015,7 +5017,7 @@ pictures' VoiceOver hint "Opens full screen with save and share")
 - An animated GIF plays at up to 120 frames, drawn small enough that its frames stay within 32 MB (the pager holds three pages); Quick Look played every frame at full size.
 - The Folder pages through its listed files only: a folder not opened in the tree isn't listed.
 
-**Checked:** 2026-11-05, #1803 (a tile of a message's picture grid opens the viewer as its picture did, the "+N" tile on its own picture, the rest paged to; Code); 2026-10-30, #1550 (a saved copy's pictures page through the chat's own list, from the rows drawn); 2026-10-29, #1491.
+**Checked:** 2026-11-06, #1884 (the Markdown reader's pictures page through the file's own, not the chat's it opened over); 2026-11-05, #1803 (a tile of a message's picture grid opens the viewer as its picture did, the "+N" tile on its own picture, the rest paged to; Code); 2026-10-30, #1550 (a saved copy's pictures page through the chat's own list, from the rows drawn); 2026-10-29, #1491.
 
 ## Cards Hermes shows
 

@@ -10,6 +10,19 @@
 import XCTest
 @testable import Conduit
 
+/// Counts the host reads a load makes.
+private actor MarkdownLoadProbe {
+    private(set) var calls = 0
+    let response: String?
+
+    init(response: String?) { self.response = response }
+
+    func fetch() -> String? {
+        calls += 1
+        return response
+    }
+}
+
 final class MarkdownDocumentSheetTests: XCTestCase {
     func testMarkdownNamesFromWindowsAndMacPaths() {
         XCTAssertTrue(MarkdownArtifact.isMarkdown("C:\\Hermes\\work\\PLAN.md"))
@@ -42,11 +55,14 @@ final class MarkdownDocumentSheetTests: XCTestCase {
         // The host would answer, so a nil says the reader never asked: the
         // fallback downloads the file once instead.
         let dataURL = "data:text/markdown;base64," + Data("# Big".utf8).base64EncodedString()
+        let probe = MarkdownLoadProbe(response: dataURL)
         let text = await MarkdownArtifact.load(
             path: "/tmp/BIG.md", knownSize: Int64(DataURLLimits.maxDecodedBytes) + 1,
-            dataURL: { _ in dataURL }
+            dataURL: { _ in await probe.fetch() }
         )
         XCTAssertNil(text)
+        let calls = await probe.calls
+        XCTAssertEqual(calls, 0)
     }
 
     func testLoadReadsTheTextAndFallsBackWhenTheHostHasNone() async {
