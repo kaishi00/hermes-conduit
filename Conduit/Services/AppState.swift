@@ -12421,6 +12421,8 @@ final class AppState: ObservableObject {
         botRosterEpoch += 1
         botRosterRetry.succeeded()
         botWork.clear()
+        // Another server's hosts may or may not have a Bot Screen.
+        botScreens.reset()
         botRosterVerifiedForCurrentConnection = false
         botChatOpenFlights.values.forEach { $0.task?.cancel() }
         botChatSessionProfiles.removeAll()
@@ -12566,6 +12568,9 @@ final class AppState: ObservableObject {
     /// Delete) covers it, so reading it doesn't clear its notifications yet
     /// (#1579). Set by V2ConversationScreen and RootView; nothing redraws on it.
     var chatCoveredBySheet = false
+    /// Bot Screen sheets open now, from any surface: one covers the open
+    /// chat like `chatCoveredBySheet` (#1832). Nothing redraws on it.
+    var botScreenSheetsOpen = 0
 
     @Published private(set) var activeRoomSurface: GroupRoomSurface? {
         // A room takes the chat's place without changing the open chat.
@@ -28013,6 +28018,9 @@ final class AppState: ObservableObject {
 
     /// Each bot's work, for the Bot Chat's Work strip and panel
     /// (AppState+BotWorkstreams.swift).
+    /// Which bots' hosts can have a Bot Screen, as read (BotScreen.swift).
+    let botScreens = BotScreenSupport()
+
     lazy var botWork: BotWorkStore = {
         let store = BotWorkStore()
         store.onWorkstreamsChanged = { [weak self] in self?.workstreamsChanged() }

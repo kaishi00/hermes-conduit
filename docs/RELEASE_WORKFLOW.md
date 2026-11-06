@@ -104,6 +104,18 @@ When the release candidate passes final QA:
    ```
 
 4. Archive and upload the app to App Store Connect from that exact tagged commit.
+   Before uploading, check the archive: no shipped binary may weak-import a
+   back-deployed Foundation symbol an early beta lacks (build 251 crashed at
+   launch on iOS 27.2 betas that way; see "Back-deployed Foundation API in
+   shipped targets" in FEATURE_MAP.md). Upload only when this passes:
+
+   ```bash
+   python3 scripts/check-weak-imports.py binaries --products <archive>.xcarchive/Products
+   ```
+
+   On the Mac, `conduit-save-dsyms` runs it after shelving the dSYMs and exits
+   non-zero when it fails; a build script stops on that exit rather than going
+   on to the upload.
 5. Record the tag, commit SHA, marketing version, and build number in the release PR or release notes.
 6. After the candidate has been uploaded and accepted for release, mark the release PR ready and merge it into `main`.
 

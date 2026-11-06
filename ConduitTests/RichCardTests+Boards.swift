@@ -75,6 +75,39 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNil(RichBoard.board(for: try boardTool(textOnly)))
     }
 
+    func testAFinishedRowIsReadOnceUntilItsAnswerChanges() throws {
+        // Issue 1851: a row's body asks for its board on every publish.
+        let memo = FinishedToolMemo<Int>(limit: 2)
+        var reads = 0
+        let read = { () -> Int in reads += 1; return reads }
+        let tool = try boardTool(["ok": true, "cards": [["type": "callout", "callout": ["text": "Done."]]]])
+        XCTAssertEqual(memo.value(for: tool, make: read), 1)
+        XCTAssertEqual(memo.value(for: tool, make: read), 1, "drawn again, not read again")
+        var copy = tool
+        copy.output = String(decoding: Array(tool.output!.utf8), as: UTF8.self)
+        XCTAssertEqual(memo.value(for: copy, make: read), 1, "the same answer read again from history")
+        var changed = tool
+        changed.output = tool.output!.replacingOccurrences(of: "Done.", with: "Gone.")
+        XCTAssertEqual(changed.output?.utf8.count, tool.output?.utf8.count)
+        XCTAssertEqual(memo.value(for: changed, make: read), 2, "same id and size, another answer")
+        XCTAssertEqual(memo.value(for: tool, id: "row", make: read), 3, "kept by the row's id when given")
+        XCTAssertEqual(memo.value(for: tool, make: read), 4, "its slot held the other answer")
+        XCTAssertEqual(memo.value(for: tool, id: "row", make: read), 5, "past the limit the memo starts over")
+
+        let bytes = (tool.input?.utf8.count ?? 0) + (tool.output?.utf8.count ?? 0)
+        let small = FinishedToolMemo<Int>(limit: 10, byteBudget: bytes * 2)
+        XCTAssertEqual(small.value(for: tool, id: "a") { 1 }, 1)
+        XCTAssertEqual(small.value(for: tool, id: "b") { 2 }, 2)
+        XCTAssertEqual(small.value(for: tool, id: "a") { 3 }, 1, "within its budget")
+        XCTAssertEqual(small.value(for: tool, id: "c") { 4 }, 4)
+        XCTAssertEqual(small.value(for: tool, id: "a") { 5 }, 5, "past its budget the memo starts over")
+
+        let first = try XCTUnwrap(RichBoard.board(for: tool))
+        let second = try XCTUnwrap(RichBoard.board(for: changed))
+        XCTAssertEqual(first.cards.first?.callout?.text, "Done.")
+        XCTAssertEqual(second.cards.first?.callout?.text, "Gone.", "a reused id never draws the old board")
+    }
+
     func testFollowUpsAreOfferedOnlyUnderTheLastTurnsBoard() throws {
         let answer: [String: Any] = ["ok": true, "next": ["Add Google"],
                                      "cards": [["type": "callout", "callout": ["text": "Prices from Yahoo Finance."]]]]

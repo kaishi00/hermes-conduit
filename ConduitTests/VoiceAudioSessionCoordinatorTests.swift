@@ -499,6 +499,92 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertTrue(session.isOutputOnBuiltInReceiver)
     }
 
+    // MARK: The call screen's Speaker button
+
+    /// Conduit's call screen covers CallKit's, so an answered call needs
+    /// a Speaker button of its own.
+    func testCallScreenSpeakerShowsForTheCallOnAnIPhone() {
+        coordinator = VoiceAudioSessionCoordinator(session: session, hasEarpiece: true)
+        XCTAssertFalse(coordinator.nativeCallSpeaker.isShown)
+
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+
+        XCTAssertTrue(coordinator.nativeCallSpeaker.isShown)
+        XCTAssertFalse(coordinator.nativeCallSpeaker.isOn, "the call starts on the earpiece")
+
+        coordinator.nativeCallEnded()
+
+        XCTAssertFalse(coordinator.nativeCallSpeaker.isShown)
+        XCTAssertFalse(coordinator.nativeCallSpeaker.isOn)
+    }
+
+    func testCallScreenSpeakerStaysHiddenWithoutAnEarpiece() {
+        coordinator = VoiceAudioSessionCoordinator(session: session, hasEarpiece: false)
+        coordinator.configureForIncomingCall()
+
+        XCTAssertFalse(coordinator.nativeCallSpeaker.isShown)
+    }
+
+    func testCallScreenSpeakerMovesTheCallAndBackWithoutTouchingCallKitsSession() throws {
+        coordinator = VoiceAudioSessionCoordinator(session: session, hasEarpiece: true)
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+        _ = try coordinator.acquire(.conversationCapture)
+        session.resetRecordings()
+
+        coordinator.setNativeCallSpeaker(true)
+
+        XCTAssertEqual(session.speakerOverrides, 1)
+        XCTAssertTrue(session.isOutputOnBuiltInSpeaker)
+        XCTAssertTrue(coordinator.nativeCallSpeaker.isOn)
+
+        coordinator.setNativeCallSpeaker(false)
+
+        XCTAssertEqual(session.overrideClears, 1)
+        XCTAssertTrue(session.isOutputOnBuiltInReceiver)
+        XCTAssertFalse(coordinator.nativeCallSpeaker.isOn)
+        XCTAssertEqual(session.activationCount, 0, "the session is CallKit's to keep active")
+        XCTAssertTrue(session.categoryCalls.isEmpty)
+    }
+
+    /// Classic holds nothing between turns, and a reapply may set the
+    /// category: the speaker the user picked stays.
+    func testCallScreenSpeakerSurvivesTheNextTurn() throws {
+        coordinator = VoiceAudioSessionCoordinator(session: session, hasEarpiece: true)
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+        let lease = try coordinator.acquire(.conversationCapture)
+        coordinator.setNativeCallSpeaker(true)
+        coordinator.release(lease)
+
+        _ = try coordinator.acquire(.conversationCapture)
+        try coordinator.reassert()
+
+        XCTAssertTrue(session.isOutputOnBuiltInSpeaker)
+        XCTAssertEqual(session.deactivationCount, 0)
+    }
+
+    /// CallKit's own button, or the Control Center route picker.
+    func testCallScreenSpeakerFollowsARouteChangeMadeElsewhere() {
+        coordinator = VoiceAudioSessionCoordinator(session: session, hasEarpiece: true)
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+
+        session.speakerButtonTurnedOn()
+        coordinator.nativeCallRouteChanged()
+
+        XCTAssertTrue(coordinator.nativeCallSpeaker.isOn)
+    }
+
+    func testCallScreenSpeakerDoesNothingOutsideACall() {
+        coordinator = VoiceAudioSessionCoordinator(session: session, hasEarpiece: true)
+        coordinator.setNativeCallSpeaker(true)
+
+        XCTAssertEqual(session.speakerOverrides, 0)
+        XCTAssertFalse(coordinator.nativeCallSpeaker.isOn)
+    }
+
     func testReactivatedCallAudioLeavesTheEarpieceTheUserChose() {
         coordinator.configureForIncomingCall()
         coordinator.nativeCallAudioActivated()
@@ -840,6 +926,7 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
     /// A call answered with nothing connected starts on the earpiece.
     var isOutputOnBuiltInReceiver = true
     private(set) var speakerOverrides = 0
+    private(set) var overrideClears = 0
     struct CategoryCall: Equatable {
         let category: AVAudioSession.Category
         let mode: AVAudioSession.Mode
@@ -875,6 +962,7 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
         categoryCalls.removeAll()
         activationCalls.removeAll()
         speakerOverrides = 0
+        overrideClears = 0
     }
 
     var overrideError: Error?
@@ -908,6 +996,14 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
         speakerOverridden = true
         isOutputOnBuiltInSpeaker = true
         isOutputOnBuiltInReceiver = false
+    }
+
+    func clearOutputOverride() throws {
+        if let overrideError { throw overrideError }
+        overrideClears += 1
+        speakerOverridden = false
+        isOutputOnBuiltInSpeaker = false
+        isOutputOnBuiltInReceiver = true
     }
 
     func setCategory(
