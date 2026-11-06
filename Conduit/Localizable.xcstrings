@@ -435872,90 +435872,90 @@
         }
       }
     },
-    "Tap the screen to click. What you type goes to the screen as a US keyboard types it.": {
+    "Tap the screen to click. What you type lands on the screen as you typed it, whatever your keyboard's layout.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tippe auf den Bildschirm, um zu klicken. Was du eingibst, kommt so an, wie eine US-Tastatur es tippt."
+            "value": "Tippe auf den Bildschirm, um zu klicken. Was du eingibst, kommt genau so auf dem Bildschirm an, egal welches Tastaturlayout du nutzt."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tap the screen to click. What you type goes to the screen as a US keyboard types it."
+            "value": "Tap the screen to click. What you type lands on the screen as you typed it, whatever your keyboard's layout."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Toca la pantalla para hacer clic. Lo que escribas llega como lo teclearía un teclado de EE. UU."
+            "value": "Toca la pantalla para hacer clic. Lo que escribas llega a la pantalla tal cual, sea cual sea la distribución de tu teclado."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Touchez l’écran pour cliquer. Ce que vous tapez arrive comme le taperait un clavier américain."
+            "value": "Touchez l’écran pour cliquer. Ce que vous tapez arrive à l’écran tel quel, quelle que soit la disposition de votre clavier."
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ketuk layar untuk mengeklik. Yang Anda ketik dikirim seperti diketik keyboard AS."
+            "value": "Ketuk layar untuk mengeklik. Yang Anda ketik sampai di layar persis seperti yang Anda ketik, apa pun tata letak keyboard Anda."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tocca lo schermo per fare clic. Ciò che scrivi arriva come lo digiterebbe una tastiera USA."
+            "value": "Tocca lo schermo per fare clic. Ciò che scrivi arriva sullo schermo così com’è, qualunque sia il layout della tua tastiera."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "画面をタップするとクリックします。入力した文字は米国キーボードで打ったように送られます。"
+            "value": "画面をタップするとクリックします。入力した文字は、キーボードの配列に関係なく、そのまま画面に送られます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "화면을 탭하면 클릭합니다. 입력한 내용은 미국 키보드로 친 것처럼 전송됩니다."
+            "value": "화면을 탭하면 클릭합니다. 입력한 내용은 키보드 배열과 상관없이 입력한 그대로 화면에 전송됩니다."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dotknij ekranu, aby kliknąć. To, co wpiszesz, trafi tak, jak wpisałaby to klawiatura amerykańska."
+            "value": "Dotknij ekranu, aby kliknąć. To, co wpiszesz, trafi na ekran dokładnie tak, jak to wpisałeś, niezależnie od układu klawiatury."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Toque na tela para clicar. O que você digita chega como um teclado americano digitaria."
+            "value": "Toque na tela para clicar. O que você digita chega à tela exatamente como foi digitado, seja qual for o layout do seu teclado."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Коснитесь экрана, чтобы нажать. Ввод передаётся так, как его набрала бы американская клавиатура."
+            "value": "Коснитесь экрана, чтобы нажать. Ввод попадает на экран точно так, как вы его набрали, с любой раскладкой клавиатуры."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tıklamak için ekrana dokunun. Yazdıklarınız ekrana ABD klavyesiyle yazılmış gibi gider."
+            "value": "Tıklamak için ekrana dokunun. Yazdıklarınız, klavye düzeniniz ne olursa olsun ekrana yazdığınız gibi gider."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "轻点屏幕即可点击。你输入的内容会按美式键盘的方式发送到屏幕。"
+            "value": "轻点屏幕即可点击。无论你的键盘布局如何，你输入的内容都会原样发送到屏幕。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "點一下螢幕即可按一下。你輸入的內容會依美式鍵盤的方式傳送到螢幕。"
+            "value": "點一下螢幕即可按一下。無論你的鍵盤配置為何，你輸入的內容都會原樣傳送到螢幕。"
           }
         }
       }

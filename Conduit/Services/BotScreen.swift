@@ -386,9 +386,11 @@ final class BotScreenModel: ObservableObject {
             let answer = try await client.display("display.lease.acquire", profile: self.profile,
                                                   params: ["viewer_id": viewerID, "reason": "Conduit"])
             guard leave == self.leaveGeneration else {
-                // Nobody watches any more: the bot isn't kept off its screen.
-                _ = try? await client.display("display.lease.release", profile: self.profile,
-                                              params: ["viewer_id": viewerID])
+                // Nobody watches any more: the bot isn't kept off its screen,
+                // and a release that fails is owed like the sheet's own.
+                let profile = self.profile
+                Self.owedReleases[profile] = viewerID
+                Task { await Self.sendOwedRelease(profile: profile, client: client) }
                 return
             }
             self.applyLease(BotScreenLease(answer["lease"]?.objectValue))

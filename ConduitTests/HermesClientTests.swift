@@ -3826,6 +3826,33 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testABotScreenReadSendsAnOwedHandBackFirst() async throws {
+        // A reopened sheet sends the hand back still owed before it reads
+        // the status, so it doesn't open on the user still in control.
+        let (client, socket) = try await connectedClientForServerRequests()
+        let base = socket.sentTexts.count
+        BotScreenModel.owedReleases["furina"] = "viewer-1"
+        defer { BotScreenModel.owedReleases["furina"] = nil }
+        let model = BotScreenModel(profile: "furina", client: client)
+        let load = Task { await model.load() }
+        await waitForSends(base + 1, on: socket)
+        let release = try sentFrame(socket)
+        XCTAssertEqual(release["method"] as? String, "display.lease.release")
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(release["id"] as? Int),
+            "result": ["lease": ["epoch": 2, "owner": "agent"]]
+        ], to: socket)
+        await waitForSends(base + 2, on: socket)
+        let status = try sentFrame(socket)
+        XCTAssertEqual(status["method"] as? String, "display.status")
+        XCTAssertNil(BotScreenModel.owedReleases["furina"], "The hand back went before the read")
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(status["id"] as? Int), "result": [String: Any]()
+        ], to: socket)
+        await load.value
+        client.disconnect()
+    }
+
     func testResumeKeepsAnOpenClarifyWhenPendingClarifyIsAlsoPresent() async throws {
         let (client, socket) = try await connectedClientForServerRequests()
         let sent = Gate()
