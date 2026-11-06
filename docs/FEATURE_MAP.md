@@ -4971,7 +4971,7 @@ diffs route (`/boards/diffs`)
 - A checklist that stays on screen reads other devices' ticks only when it's drawn again or ticked here.
 - A typed message on a Hermes where Conduit's report doesn't reach the turn (plugin isolation, a compute host) is unknown, so Markdown alone there still waits for a call screen that may not be open.
 
-**Checked:** 2026-11-06, #PRNUM (a finished row's board read once, issue 1851; Code, gaps); 2026-11-05, #1833 with notifier #566 (diff cards, issue 1818; intro, Siblings, Code, Rulings, gaps); 2026-11-05, #1815 with notifier #556 (a typed chat's conduit_show keeps nothing for a call screen, issue 1808; Code, Rulings, gaps); 2026-11-04, #1751 with notifier #539 (boards drawn in Hermes Desktop by the plugin's Desktop half; Conduit hides its line; Siblings, Code, Rulings, gaps); 2026-11-04, #1748 (ticks fenced to their own dashboard; unsent ticks follow the chat's ids); 2026-11-04, #1736 with notifier #536 (boards drawn in group rooms); 2026-11-03, #1713 with notifier #528.
+**Checked:** 2026-11-06, #1853 (a finished row's board read once, issue 1851; Code, gaps); 2026-11-05, #1833 with notifier #566 (diff cards, issue 1818; intro, Siblings, Code, Rulings, gaps); 2026-11-05, #1815 with notifier #556 (a typed chat's conduit_show keeps nothing for a call screen, issue 1808; Code, Rulings, gaps); 2026-11-04, #1751 with notifier #539 (boards drawn in Hermes Desktop by the plugin's Desktop half; Conduit hides its line; Siblings, Code, Rulings, gaps); 2026-11-04, #1748 (ticks fenced to their own dashboard; unsent ticks follow the chat's ids); 2026-11-04, #1736 with notifier #536 (boards drawn in group rooms); 2026-11-03, #1713 with notifier #528.
 
 ## Cards drawn in web pages
 
