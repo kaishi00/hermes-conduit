@@ -5374,13 +5374,13 @@ this view, so the branch takes it with main) · text: no caption or doc gives
 the width or the color
 
 **Code**
-- `Conduit/Views/GroupChatView.swift` (GroupMemberBubble: avatarSize, trailingRoom, avatar, groupMemberBubbleSurface; GroupRespondingRow; GroupUserBubble; DesktopGroupChatView's shortened caption)
+- `Conduit/Views/GroupChatView.swift` (GroupMemberBubble: avatarSize, trailingRoom, groupMemberBubbleSurface; GroupMemberHeaderAvatar; GroupRespondingRow; GroupUserBubble; DesktopGroupChatView's shortened caption)
 - Colors: `Conduit/Services/AppState.swift` (groupMemberTints, groupMemberColor), from `Conduit/Services/AppState+V2Shell.swift` (botColor)
 - Tests: `ConduitTests/BotWorkstreamsTests.swift` (testABotsRingTakesItsGlowColorFirst)
 
 **Rulings**
 - A bot's bubble runs to 8 pt from the column's edge (`GroupMemberBubble.trailingRoom`), and the "Responding…" placeholder keeps the same margin. Its replies are long, like a chat's, and the picture and tinted bubble already say who is talking. The bubble still hugs its text, so a short reply stays short (Eric, 2026-11-06, #1859: the old 32 pt margin made room replies about a quarter narrower than a chat's, kept from the first room screen without a reason; he picked this over dropping the bubble).
-- The bot's picture (24 pt) sits beside its name over the bubble, not in a column of its own, so the bubble starts at the column's edge: on a phone its text runs about nine tenths of a chat reply's width, where the 30 pt picture column and its gap left about four fifths (Eric, 2026-11-06, "the chat bubble width still seems pretty small" on build 254, which had #1859). Tapping the picture still picks the bot in the "To" row.
+- The bot's picture (24 pt) sits beside its name over the bubble, not in a column of its own, so the bubble starts at the column's edge: on a phone its text runs about nine tenths of a chat reply's width, where the 30 pt picture column and its gap left about four fifths (Eric, 2026-11-06, "the chat bubble width still seems pretty small" on build 254, which had #1859). Tapping the picture, on the bubble or the "Responding…" placeholder, picks the bot in the "To" row through a 44 pt target (`GroupMemberHeaderAvatar`).
 - A member's name, bubble and the tags that name it take its bot's color on Bots Home (`botColor`: the color picked for its profile or drawn from its photo, else its Hermes color), else its name's hue. Before this they took the Hermes color alone, so a bot with a photo or a picked color glowed one color on its tile and spoke in another (Eric, 2026-11-06).
 - The user's own bubble keeps 48 pt on its leading side: the gap marks it as theirs. Boards under a message keep their own 560 pt cap.
 

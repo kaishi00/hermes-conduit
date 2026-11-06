@@ -889,19 +889,34 @@ struct GroupMemberBubble: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    @ViewBuilder
     private var avatar: some View {
+        GroupMemberHeaderAvatar(member: member, name: name, handle: handle)
+    }
+}
+
+/// A member's picture beside its name. Where the room can be addressed to
+/// it, tapping it picks the bot in the "To" row, through a 44 pt target
+/// around the drawn 24 pt picture.
+struct GroupMemberHeaderAvatar: View {
+    let member: GroupMember?
+    let name: String
+    let handle: String?
+
+    var body: some View {
+        let size = GroupMemberBubble.avatarSize
         Group {
             if let handle {
-                // Tapping a bot's picture picks it in the "To" row.
                 GroupMemberMentionButton(handle: handle, name: name) {
-                    GroupMemberAvatar(member: member, name: name, size: Self.avatarSize)
+                    GroupMemberAvatar(member: member, name: name, size: size)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
+                .padding(-(44 - size) / 2)
             } else {
-                GroupMemberAvatar(member: member, name: name, size: Self.avatarSize)
+                GroupMemberAvatar(member: member, name: name, size: size)
             }
         }
-        .frame(width: Self.avatarSize, height: Self.avatarSize)
+        .frame(width: size, height: size)
     }
 }
 
@@ -1027,11 +1042,12 @@ struct GroupRespondingRow: View {
     var body: some View {
         let name = GroupRoomTurns.displayName(of: member)
         let tint = tints[member.identityKey]
+        // As on its bubble, the picture picks the bot in the "To" row.
+        let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines).flatMap { $0.isEmpty ? nil : $0 }
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 7) {
-                    GroupMemberAvatar(member: member, name: name, size: GroupMemberBubble.avatarSize)
-                        .frame(width: GroupMemberBubble.avatarSize, height: GroupMemberBubble.avatarSize)
+                    GroupMemberHeaderAvatar(member: member, name: name, handle: handle)
                     Text(name)
                         .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(tint.map { Color(uiColor: $0.readableColor) } ?? .secondary)
