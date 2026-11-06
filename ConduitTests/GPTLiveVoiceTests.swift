@@ -1580,6 +1580,8 @@ extension VoiceConversationControllerTests {
             ("No se lo envío a Hermes.", "es"),
             ("Si quieres, se lo envío a Hermes.", "es"),
             ("Hermes dice que mañana va a llover.", "es"),
+            ("Te cuento lo que pasó con Hermes.", "es"),
+            ("Je vais vous raconter ce qui s'est passé avec Hermes.", "fr"),
             ("Je ne transmets pas ça à Hermes.", "fr"),
             ("Posso mandarlo a Hermes se vuoi.", "it"),
             ("Lo mando a Hermes se serve.", "it"),

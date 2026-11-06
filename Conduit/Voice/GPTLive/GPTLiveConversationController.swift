@@ -1153,12 +1153,12 @@ final class GPTLiveConversationController: ObservableObject {
             condition: #"\b(?:wenn|falls|sobald|bevor|nachdem)\b"#),
         // "Se lo envío a Hermes.", "Le pregunto a Hermes."
         "es": SendClaimWords(
-            verbsBefore: #"\b(?:env[ií]|mand|pas|pregunt|dig|dec|avis|reenv|consult|traslad)\w*"#,
+            verbsBefore: #"\b(?:env[ií]|mand|pas(?!ó|ad)|pregunt|dig|dec|avis|reenv|consult|traslad)\w*"#,
             hedge: #"\b(?:puedo|podr[ií]a|deber[ií]a|quieres|quiere|no|nunca)\b"#,
             condition: #"\b(?:si|cuando|antes)\b"#),
         // "J'envoie ça à Hermes.", "Je demande à Hermes."
         "fr": SendClaimWords(
-            verbsBefore: #"(?:\b|')(?:envoi|envoy|transm|pass|demand|dis|dit|préviens|prévien|transf)\w*"#,
+            verbsBefore: #"(?:\b|')(?:envoi|envoy|transm|pass(?!é)|demand|dis|dit|préviens|prévien|transf)\w*"#,
             hedge: #"\b(?:peux|pourrais|pourrait|devrais|veux|voulez|voudrais|ne|pas|jamais)\b|n'"#,
             condition: #"\b(?:si|quand|avant)\b"#),
         // "Lo mando a Hermes.", "Chiedo a Hermes."
