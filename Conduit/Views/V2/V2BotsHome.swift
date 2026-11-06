@@ -848,13 +848,25 @@ enum BotDragPayload {
     /// A drop's location in the cell's own space. `DropInfo.location` is
     /// documented to be in the drop view's space, but holding a bot over a
     /// face never swelled it on a phone (Eric, 2026-11-06, TestFlight), which
-    /// is what a location in the window's space would do. So a point outside
-    /// the cell's own bounds that lies in its frame in the window is read as
-    /// a window point; one inside them is taken as documented.
+    /// is what a location in the window's space would do. A drop target only
+    /// hears hovers over itself, so a point outside the cell's own bounds that
+    /// lies in its frame in the window shows the locations come in the
+    /// window's space; from then on every one is read that way, even one that
+    /// would also fit the cell's own bounds (a first-row cell near the
+    /// window's corner). Until then a point inside them is taken as documented.
     static func cellPoint(_ location: CGPoint, cellInWindow: CGRect) -> CGPoint {
-        guard cellInWindow.size != .zero else { return location }
-        if CGRect(origin: .zero, size: cellInWindow.size).contains(location) { return location }
-        guard cellInWindow.contains(location) else { return location }
+        cellPoint(location, cellInWindow: cellInWindow, windowSpace: &locationsInWindowSpace)
+    }
+
+    /// Whether a drop location has shown it came in the window's space.
+    static var locationsInWindowSpace = false
+
+    static func cellPoint(_ location: CGPoint, cellInWindow: CGRect, windowSpace: inout Bool) -> CGPoint {
+        guard cellInWindow.size != .zero, cellInWindow.contains(location) else { return location }
+        if !windowSpace {
+            if CGRect(origin: .zero, size: cellInWindow.size).contains(location) { return location }
+            windowSpace = true
+        }
         return CGPoint(x: location.x - cellInWindow.minX, y: location.y - cellInWindow.minY)
     }
 

@@ -1160,9 +1160,23 @@ extension BotModeTests {
         // A drop's location reads in the cell's space whichever space it
         // comes in.
         let cell = CGRect(x: 200, y: 300, width: 110, height: 150)
-        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 50, y: 40), cellInWindow: cell), CGPoint(x: 50, y: 40))
-        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 250, y: 340), cellInWindow: cell), CGPoint(x: 50, y: 40))
-        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 50, y: 40), cellInWindow: .zero), CGPoint(x: 50, y: 40))
+        var seen = false
+        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 50, y: 40), cellInWindow: cell, windowSpace: &seen), CGPoint(x: 50, y: 40))
+        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 250, y: 340), cellInWindow: cell, windowSpace: &seen), CGPoint(x: 50, y: 40))
+        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 50, y: 40), cellInWindow: .zero, windowSpace: &seen), CGPoint(x: 50, y: 40))
+
+        // A first-row cell near the window's corner: a window point over its
+        // face also fits the cell's own bounds. Taken as documented until a
+        // point outside them shows the window's space, then read that way.
+        let corner = CGRect(x: 16, y: 125, width: 110, height: 160)
+        var windowSpace = false
+        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 60, y: 140), cellInWindow: corner, windowSpace: &windowSpace), CGPoint(x: 60, y: 140))
+        XCTAssertFalse(windowSpace)
+        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 60, y: 200), cellInWindow: corner, windowSpace: &windowSpace), CGPoint(x: 44, y: 75))
+        XCTAssertTrue(windowSpace)
+        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 60, y: 140), cellInWindow: corner, windowSpace: &windowSpace), CGPoint(x: 44, y: 15))
+        // A point outside the cell's window frame is left alone.
+        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 5, y: 5), cellInWindow: corner, windowSpace: &windowSpace), CGPoint(x: 5, y: 5))
         XCTAssertTrue(BotDragPayload.staysStill(CGPoint(x: 55, y: 45), from: CGPoint(x: 50, y: 40)))
         XCTAssertFalse(BotDragPayload.staysStill(CGPoint(x: 70, y: 40), from: CGPoint(x: 50, y: 40)))
     }
