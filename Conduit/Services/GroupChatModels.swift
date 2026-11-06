@@ -1232,10 +1232,7 @@ enum GroupRoomTurns {
         members: [GroupMember]
     ) -> [String: GroupMemberStatus] {
         var statuses: [String: GroupMemberStatus] = [:]
-        var discussions: [String: String] = [:]
-        for event in events where event.isUserMessage && !event.eventID.isEmpty {
-            discussions[event.threadID ?? ""] = event.eventID
-        }
+        let discussions = currentDiscussions(events)
         for event in events {
             guard let memberID = event.payload["member_id"]?.stringValue,
                   let discussion = event.payload["discussion_event_id"]?.stringValue,
@@ -1271,16 +1268,47 @@ enum GroupRoomTurns {
         return statuses
     }
 
+    /// Each thread's current discussion: its newest message's event id. A
+    /// thread whose message the kept events (the last 200) no longer hold
+    /// takes the newest discussion its events name, so a long discussion
+    /// keeps its outcomes.
+    static func currentDiscussions(_ events: [GroupEvent]) -> [String: String] {
+        var fromMessages: [String: String] = [:]
+        var named: [String: String] = [:]
+        for event in events {
+            let thread = event.threadID ?? ""
+            if event.isUserMessage, !event.eventID.isEmpty {
+                fromMessages[thread] = event.eventID
+            } else if let id = event.payload["discussion_event_id"]?.stringValue, !id.isEmpty {
+                named[thread] = id
+            }
+        }
+        return named.merging(fromMessages) { _, message in message }
+    }
+
     /// Whether the newest message's discussion settled, nobody having more
     /// to say (its last `room.activity` is `settled`, with no Continue or
     /// Stop after it): the room's title says so while it is idle, where
     /// the transcript had "The room settled.". A message being sent
     /// (`sending`, not in the log yet) starts the next one.
     static func latestDiscussionSettled(_ events: [GroupEvent], sending: Bool = false) -> Bool {
-        guard !sending, let index = events.lastIndex(where: \.isUserMessage) else { return false }
-        let discussion = events[index].eventID
+        guard !sending else { return false }
+        // The newest message, or, when the kept events start after it, the
+        // newest discussion they name.
+        let discussion: String
+        let start: Int
+        if let index = events.lastIndex(where: \.isUserMessage) {
+            discussion = events[index].eventID
+            start = index + 1
+        } else if let named = events.last(where: { $0.payload["discussion_event_id"]?.stringValue != nil }),
+                  let id = named.payload["discussion_event_id"]?.stringValue {
+            discussion = id
+            start = 0
+        } else {
+            return false
+        }
         var settled = false
-        for event in events[(index + 1)...] {
+        for event in events[start...] {
             let ofIt = event.payload["discussion_event_id"]?.stringValue == discussion
             switch event.kind {
             case "room.activity" where ofIt: settled = roomActivityOutcome(event) == .settled

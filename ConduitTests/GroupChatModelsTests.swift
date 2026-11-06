@@ -1336,6 +1336,21 @@ final class GroupChatModelsTests: XCTestCase {
         )["furina"])
     }
 
+    func testALongDiscussionKeepsItsPillsWhenItsMessageIsTrimmed() {
+        let members = roomMembers()
+        let stopped = turnEvent(eventJSON(
+            seq: 250, kind: "turn.cancelled", actor: ["kind": "gateway", "id": "gw-a"],
+            payload: ["thread_id": "main", "discussion_event_id": "user:d1", "member_id": "zhongli"]
+        ))
+        // The kept events start after the message that opened the discussion.
+        let kept = [settled(seq: 240, member: "furina", round: 2, messageSeq: nil), stopped]
+        let statuses = GroupRoomTurns.memberStatuses(
+            events: kept, activity: [], responder: nil, approvals: [], members: members
+        )
+        XCTAssertEqual(statuses["furina"], .passed)
+        XCTAssertEqual(statuses["zhongli"], .stopped)
+    }
+
     func testAFailureInAnotherThreadStaysOnItsPill() {
         let members = roomMembers()
         let failed = turnEvent(eventJSON(
@@ -1417,6 +1432,9 @@ final class GroupChatModelsTests: XCTestCase {
             log + [event(3, "room.continued", ["discussion_event_id": "user:d1"])]
         ))
         XCTAssertFalse(GroupRoomTurns.latestDiscussionSettled(log + [userMessage(seq: 3, text: "more", id: "user:d2")]))
+        XCTAssertFalse(GroupRoomTurns.latestDiscussionSettled(log + [event(3, "room.stop_requested", [:])]))
+        // The message trimmed from the kept events: its settling still counts.
+        XCTAssertTrue(GroupRoomTurns.latestDiscussionSettled(Array(log.dropFirst())))
         XCTAssertFalse(GroupRoomTurns.latestDiscussionSettled(
             [log[0], event(2, "room.activity", ["status": "bounded", "discussion_event_id": "user:d1"])]
         ))
