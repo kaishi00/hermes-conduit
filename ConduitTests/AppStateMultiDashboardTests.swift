@@ -879,6 +879,35 @@ extension AppStateMultiDashboardTests {
         XCTAssertNotNil(appState.pendingLoginFailure, "...saying why")
     }
 
+    /// A switch runs to its end when the task that asked for it is
+    /// cancelled halfway. A notification tap's route restarts when the
+    /// switch retires the outgoing connection, and cancelling the target's
+    /// sign-in there left Conduit on the login screen, connected to neither
+    /// dashboard (issue 1888).
+    func testCancellingTheCallerDoesNotStopASwitchHalfway() async {
+        let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let vps = dashboard("VPS", "https://hermes.example.com")
+        var caller: Task<Void, Never>?
+        var mintSawCancellation: Bool?
+        let appState = makeAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps]),
+            mintTicket: { _ in
+                caller?.cancel()
+                mintSawCancellation = Task.isCancelled
+                throw DashboardTicketBridgeError.signInRequired
+            }
+        )
+        KeychainHelper.saveNativeOAuthTokens(grant(), dashboardID: track(vps.id))
+
+        caller = Task { await appState.switchDashboard(to: vps.id) }
+        await caller?.value
+
+        XCTAssertEqual(mintSawCancellation, false, "The caller's cancellation never reaches the target's sign-in")
+        XCTAssertEqual(appState.activeDashboardID, vps.id)
+        XCTAssertFalse(appState.isConnecting, "Nothing is left connecting")
+        XCTAssertNotNil(appState.pendingLoginFailure, "The sign-in ran to its answer")
+    }
+
     /// The sign-in screen's row for that dashboard: a tap reaches the grant
     /// and, when it is refused, shows why. It never does nothing.
     func testTappingAGrantOnlyDashboardRowIsNeverADeadTap() async {
