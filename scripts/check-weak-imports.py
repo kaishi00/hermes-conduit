@@ -11,23 +11,28 @@ each target, so a comparison of two Dates never reaches Foundation's.
 Two checks:
 
   targets   (Linux) every application and app extension in project.yml
-            compiles Shared/DateOrder, through `Shared` or the folder itself.
+            compiles Shared/DateOrder, through `Shared` or the folder itself,
+            and no `excludes:` of that source leaves it out.
   binaries  (macOS) no Mach-O under a products folder (the app, its .debug.dylib
             in a Debug build, every .appex and framework; not test bundles or
-            UI test runners) weak-imports a symbol in BANNED. Reads `nm -m`; a Debug build's local thunks for the
-            symbols (`...FZTwb`) aren't imports and pass.
+            UI test runners) weak-imports a symbol in BANNED. Reads `nm -m`: an undefined weak external whose name
+            starts with a banned symbol (its thunks included) fails; a
+            Debug build's own thunks for them (`...FZTwb`, defined in
+            __TEXT) are the app's code, not imports, and pass.
 
 Usage: check-weak-imports.py targets [--repo-root DIR]
        check-weak-imports.py binaries --products DIR
 """
 
 import argparse
+import fnmatch
 import os
 import re
 import subprocess
 import sys
 
 DATE_ORDER = "Shared/DateOrder"
+DATE_ORDER_FILE = DATE_ORDER + "/DateOrder.swift"
 SHIPPED_TYPES = {"application", "app-extension"}
 
 # Back-deployed API that an OS in the field may lack although it passes the
@@ -45,11 +50,13 @@ MACHO_MAGICS = {
 
 
 def shipped_targets(project_yml):
-    """{target name: [source paths]} for every application and app extension."""
+    """{target name: [(source path, [its excludes])]} for every application and
+    app extension. Reads project.yml's shape (two-space indents), not YAML."""
     targets = {}
     in_targets = False
     name = None
     kinds = {}
+    in_excludes = False
     for line in project_yml.splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
             continue
@@ -72,27 +79,52 @@ def shipped_targets(project_yml):
             continue
         match = re.match(r"^\s{6}- path:\s*(\S+)", line)
         if match:
-            targets[name].append(match.group(1).strip("\"'").rstrip("/"))
-    return {n: paths for n, paths in targets.items() if kinds.get(n) in SHIPPED_TYPES}
+            targets[name].append((match.group(1).strip("\"'").rstrip("/"), []))
+            in_excludes = False
+            continue
+        if targets[name] and re.match(r"^\s{8}excludes:\s*$", line):
+            in_excludes = True
+            continue
+        match = re.match(r"^\s{10}-\s*(\S+)", line)
+        if in_excludes and match:
+            targets[name][-1][1].append(match.group(1).strip("\"'"))
+            continue
+        if indent <= 8:
+            in_excludes = False
+    return {n: sources for n, sources in targets.items() if kinds.get(n) in SHIPPED_TYPES}
+
+
+def compiles_date_order(sources):
+    """Whether a target's sources reach Shared/DateOrder/DateOrder.swift and
+    no excludes pattern of that source drops it."""
+    for path, excludes in sources:
+        if path == DATE_ORDER_FILE:
+            return True
+        if DATE_ORDER_FILE.startswith(path + "/"):
+            rest = DATE_ORDER_FILE[len(path) + 1:]
+            if not any(fnmatch.fnmatch(rest, pattern) for pattern in excludes):
+                return True
+    return False
 
 
 def target_problems(project_yml):
     problems = []
-    for name, paths in sorted(shipped_targets(project_yml).items()):
-        if "Shared" not in paths and DATE_ORDER not in paths:
+    for name, sources in sorted(shipped_targets(project_yml).items()):
+        if not compiles_date_order(sources):
             problems.append(
-                f"project.yml: target {name} doesn't compile {DATE_ORDER}: "
-                f"add `- path: {DATE_ORDER}` to its sources")
+                f"project.yml: target {name} doesn't compile {DATE_ORDER_FILE}: "
+                f"add `- path: {DATE_ORDER}` to its sources (or drop the excludes that leave it out)")
     return problems
 
 
 def weak_import_problems(binary, nm_output):
     problems = []
     for line in nm_output.splitlines():
+        # Only what dyld must find in another image: an undefined symbol.
         if "weak external" not in line or "(undefined)" not in line:
             continue
         for symbol, what in BANNED.items():
-            if re.search(re.escape(symbol) + r"(\s|$)", line):
+            if symbol in line:
                 problems.append(f"{binary}: weak-imports {symbol} ({what})")
     return problems
 

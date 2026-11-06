@@ -38,14 +38,29 @@ class TargetTests(unittest.TestCase):
             sources:
               - path: Fixed
               - path: Shared/DateOrder
+          Excluded:
+            type: app-extension
+            sources:
+              - path: Excluded
+              - path: Shared
+                excludes:
+                  - "Widgets/**"
+                  - "DateOrder/**"
+          KeptExcludes:
+            type: app-extension
+            sources:
+              - path: KeptExcludes
+              - path: Shared
+                excludes:
+                  - "Widgets/**"
           Tests:
             type: bundle.unit-test
             sources:
               - path: Tests
         """)
         problems = check_weak_imports.target_problems(project)
-        self.assertEqual(len(problems), 1, problems)
-        self.assertIn("target Ext", problems[0])
+        self.assertEqual([p.split("target ")[1].split(" ")[0] for p in problems],
+                         ["Excluded", "Ext"], problems)
 
 
 class BinaryTests(unittest.TestCase):
@@ -59,11 +74,15 @@ class BinaryTests(unittest.TestCase):
     def test_local_thunks_and_other_imports_pass(self):
         out = textwrap.dedent("""\
             0000000100001000 (__TEXT,__text) weak external _$s10Foundation4DateV2leoiySbAC_ACtFZTwb
-                             (undefined) weak external _$s10Foundation4DateV2leoiySbAC_ACtFZTwb (from Foundation)
                              (undefined) external _$s10Foundation4DateV2ltoiySbAC_ACtFZ (from Foundation)
                              (undefined) weak external _$s7SwiftUI4ViewPAAE14navigationZoomQrvg (from SwiftUI)
             """)
         self.assertEqual(check_weak_imports.weak_import_problems("x", out), [])
+
+    def test_an_undefined_thunk_of_a_banned_symbol_is_reported(self):
+        out = ("                 (undefined) weak external _$s10Foundation4DateV2geoiySbAC_ACtFZTwb"
+               " (from Foundation)\n")
+        self.assertEqual(len(check_weak_imports.weak_import_problems("x", out)), 1)
 
     def test_test_bundles_and_runners_are_skipped(self):
         import tempfile
