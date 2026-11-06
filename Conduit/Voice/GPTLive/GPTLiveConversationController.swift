@@ -1068,6 +1068,9 @@ final class GPTLiveConversationController: ObservableObject {
         let acknowledgements = sentences.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         if !acknowledgements.isEmpty, acknowledgements.count <= 3,
            acknowledgements.allSatisfy({ $0.range(of: Self.acknowledgementOnly, options: .regularExpression) != nil }),
+           // "I'll send nothing." reads like "I'll send it." to the
+           // acknowledgement's words: a refusal is no acknowledgement.
+           normalized.range(of: Self.sendsNothing, options: .regularExpression) == nil,
            acknowledgements.contains(where: { $0.range(of: Self.workUnderway, options: .regularExpression) != nil }) {
             return true
         }
@@ -1235,7 +1238,10 @@ final class GPTLiveConversationController: ObservableObject {
     private static let acknowledgementOnly = "^(?:\(acknowledgementFiller)[, ]*)*(?:\(acknowledgementWork)(?:[, ]*(?:\(acknowledgementWork)|\(acknowledgementFiller)))*)?$"
     private static let workUnderway = #"\b(?:(?:let me|i'll|i will) (?:do|check|look|find|get|pull up|send|set up|book|add|put in|sort out)|on it|on that|right away|check|checking|look|looking|find out|finding out|work|working|take care|taking care|handle|handling|sort|sorting|dig|digging|sec|second|moment|hang on|hold on|bear with me)\b"#
     /// An offer, a condition or a no: nothing is being sent yet.
-    private static let sendClaimHedge = #"\b(can|could|should|shall|would|might|may|want me|do you|if you|once you|when you|after you|before|not|never|won't|didn't|don't|can't|couldn't|haven't|hasn't|wasn't)\b|n't\b|\b(?:send|sending|pass|passing|forward|forwarding|hand|handing|give|giving|tell|telling)(?: hermes)? nothing\b|\bnothing to (?:send|pass|forward|hand|give|tell)\b"#
+    private static let sendClaimHedge = #"\b(can|could|should|shall|would|might|may|want me|do you|if you|once you|when you|after you|before|not|never|won't|didn't|don't|can't|couldn't|haven't|hasn't|wasn't)\b|n't\b|"# + sendsNothing
+    /// A refusal in "nothing" (issue 1869): "I'll send nothing to Hermes.",
+    /// "I'll tell Hermes nothing.", "There's nothing to send."
+    private static let sendsNothing = #"\b(?:send|sending|pass|passing|forward|forwarding|hand|handing|give|giving|tell|telling)(?: hermes)? nothing\b|\bnothing to (?:send|pass|forward|hand|give|tell)\b"#
 
     /// The user finished an utterance: an end phrase ends the call, and the
     /// spoken job commands ("job status", "cancel background jobs") are
