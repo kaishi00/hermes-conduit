@@ -171,6 +171,88 @@
         }
       }
     },
+    "Hermes was updated on the host while its dashboard kept running. Restart the Hermes dashboard on the host, then update again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes wurde auf dem Host aktualisiert, während sein Dashboard weiterlief. Starte das Hermes-Dashboard auf dem Host neu und aktualisiere dann erneut."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes se actualizó en el host mientras su panel seguía en marcha. Reinicia el panel de Hermes en el host y vuelve a actualizar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes a été mis à jour sur l'hôte pendant que son tableau de bord tournait. Redémarre le tableau de bord Hermes sur l'hôte, puis relance la mise à jour."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes diperbarui di host saat dasbornya tetap berjalan. Mulai ulang dasbor Hermes di host, lalu perbarui lagi."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes è stato aggiornato sull'host mentre la sua dashboard era in esecuzione. Riavvia la dashboard di Hermes sull'host, poi aggiorna di nuovo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ダッシュボードの実行中にホストの Hermes が更新されました。ホストで Hermes ダッシュボードを再起動してから、もう一度アップデートしてください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "대시보드가 실행 중인 동안 호스트의 Hermes가 업데이트되었습니다. 호스트에서 Hermes 대시보드를 다시 시작한 다음 다시 업데이트하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes został zaktualizowany na hoście, gdy jego panel nadal działał. Uruchom ponownie panel Hermes na hoście, a potem zaktualizuj jeszcze raz."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Hermes foi atualizado no host enquanto o painel continuava em execução. Reinicie o painel do Hermes no host e atualize de novo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes обновился на хосте, пока его панель продолжала работать. Перезапустите панель Hermes на хосте и обновите ещё раз."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Panosu çalışmaya devam ederken Hermes ana makinede güncellendi. Ana makinede Hermes panosunu yeniden başlatın, ardından tekrar güncelleyin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主机上的 Hermes 在其仪表板运行期间已更新。请在主机上重启 Hermes 仪表板，然后再次更新。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主機上的 Hermes 在其儀表板執行期間已更新。請在主機上重新啟動 Hermes 儀表板，然後再次更新。"
+          }
+        }
+      }
+    },
     "Hold one bot over another to start a room.": {
       "localizations": {
         "de": {

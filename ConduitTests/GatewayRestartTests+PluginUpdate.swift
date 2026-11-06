@@ -945,6 +945,63 @@ extension GatewayRestartTests {
         XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
     }
 
+    private static let mixedHermesDetail =
+        "Plugin 'conduit_push' update was not published: 'PythonDeclaration' object has no attribute 'installs_packages'"
+
+    /// Issue 1889: Hermes updated under a running dashboard fails the pull; the
+    /// dashboard's restart loads the new Hermes and the update runs again.
+    func testAPullThatMeetsMixedHermesRestartsTheDashboardAndUpdatesAgain() async {
+        let host = PluginHost()
+        host.selfUpdateJobs = [
+            ["id": "j1", "step": "failed", "failed_step": "downloading", "detail": Self.mixedHermesDetail],
+            ["id": "j2", "step": "downloading"],
+            ["id": "j2", "step": "done", "loaded_version": "0.63.0"],
+        ]
+        host.capabilities = [
+            Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "old"),
+            Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "fresh"),
+            Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"),
+        ]
+        var updater = host.updater()
+        updater.onHost = true
+        var steps: [NotifierPluginUpdateState] = []
+        let outcome = await updater.run { steps.append($0) }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        XCTAssertEqual(host.calls.filter { $0 == "POST \(NotifierPluginUpdater.selfRestartPath)" }.count, 1)
+        XCTAssertEqual(host.calls.filter { $0 == "POST \(NotifierPluginUpdater.selfUpdatePath)" }.count, 2)
+        XCTAssertTrue(steps.contains(.updating(.restartingDashboard)))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+    }
+
+    func testMixedHermesAfterTheRestartFailsOnceAndSaysWhatToDo() async {
+        let host = PluginHost()
+        host.selfUpdateJobs = [["id": "j1", "step": "failed", "failed_step": "downloading", "detail": Self.mixedHermesDetail]]
+        host.capabilities = [
+            Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "old"),
+            Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "fresh"),
+        ]
+        var updater = host.updater()
+        updater.onHost = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .failed(detail: NotifierPluginUpdater.explainingMixedHermes(Self.mixedHermesDetail)))
+        XCTAssertEqual(host.calls.filter { $0 == "POST \(NotifierPluginUpdater.selfRestartPath)" }.count, 1)
+    }
+
+    func testMixedHermesWithoutTheRestartRouteSaysToRestartTheDashboard() async {
+        let host = PluginHost()
+        host.selfUpdateJobs = [["id": "j1", "step": "failed", "failed_step": "downloading", "detail": Self.mixedHermesDetail]]
+        host.selfRestartErrors = [DashboardTicketBridgeError.http(status: 501, detail: "Restart Hermes Desktop")]
+        host.capabilities = [Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "old")]
+        var updater = host.updater()
+        updater.onHost = true
+        let outcome = await updater.run { _ in }
+        guard case .failed(let detail?) = outcome else { return XCTFail("\(outcome)") }
+        XCTAssertTrue(detail.hasPrefix(Self.mixedHermesDetail))
+        XCTAssertTrue(detail.contains("Restart the Hermes dashboard"))
+        XCTAssertEqual(NotifierPluginUpdater.explainingMixedHermes("Plugin not found"), "Plugin not found")
+        XCTAssertTrue(NotifierPluginUpdater.ranMixedHermes("cannot import name 'x' from 'pm.workspace'"))
+    }
+
     func testHostJobOutcomes() {
         XCTAssertNil(NotifierPluginUpdater.hostOutcome(["step": "restarting_gateway"]))
         XCTAssertEqual(NotifierPluginUpdater.hostStep(["step": "restarting_gateway"]), .restartingGateway(nil))
