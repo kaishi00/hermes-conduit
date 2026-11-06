@@ -1036,6 +1036,7 @@ struct GroupRoomContinueButton: View {
 /// The member whose turn is running, as a placeholder bubble where their
 /// reply will land.
 struct GroupRespondingRow: View {
+    @EnvironmentObject private var appState: AppState
     let member: GroupMember
     @Environment(\.groupMemberTints) private var tints
 
@@ -1071,6 +1072,14 @@ struct GroupRespondingRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(AppLocalization.string("\(name) is responding…")))
         .accessibilityAddTraits(.updatesFrequently)
+        // The row reads as one, so its picture's mention is an action.
+        .accessibilityActions {
+            if let handle, appState.canQuoteIntoRoom() {
+                Button(AppLocalization.string("Mention \(name)")) {
+                    appState.mentionInRoomComposer(handle: handle)
+                }
+            }
+        }
     }
 }
 
