@@ -1242,7 +1242,7 @@ final class GPTLiveConversationController: ObservableObject {
     /// A refusal in "nothing" (issue 1869): "I'll send nothing to Hermes.",
     /// "I'll tell Hermes nothing.", "I'll send absolutely nothing to Hermes.",
     /// "There's nothing to send." "Nothing but …" is still a send.
-    private static let sendsNothing = #"\b(?:send|sending|pass|passing|forward|forwarding|hand|handing|relay|relaying|give|giving|tell|telling|ask|asking|ping|pinging|update|updating)(?: hermes)?(?: (?:absolutely|simply|just|really))? nothing\b(?! (?:but|except|other than|besides|apart from|beyond)\b)|\bnothing (?:at all )?to (?:send|pass|forward|hand|relay|give|tell|ask)\b"#
+    private static let sendsNothing = #"\b(?:send|sending|pass|passing|forward|forwarding|hand|handing|relay|relaying|give|giving|tell|telling|ask|asking|ping|pinging|update|updating)(?: hermes)?(?: (?:absolutely|simply|just|really))? nothing\b(?! (?:but|except|other than|besides|apart from|beyond)\b)|\bnothing (?:at all )?to (?:send|pass|forward|hand|relay|give|tell|ask|check|ping|update)\b|\blet(?:ting)? hermes know nothing\b(?! (?:but|except|other than|besides|apart from|beyond)\b)"#
 
     /// The user finished an utterance: an end phrase ends the call, and the
     /// spoken job commands ("job status", "cancel background jobs") are
