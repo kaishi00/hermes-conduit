@@ -799,8 +799,8 @@ struct GroupUserBubble<Footer: View>: View {
     }
 }
 
-/// A member's message: its picture beside a soft bubble, its name and time
-/// above (once per run), and the Copy button under it.
+/// A member's message: its picture, name and time (once per run) over a
+/// soft bubble, and the Copy button under it.
 struct GroupMemberBubble: View {
     let member: GroupMember?
     let name: String
@@ -817,9 +817,10 @@ struct GroupMemberBubble: View {
     var boards: [RichBoard] = []
     @Environment(\.groupMemberTints) private var tints
 
-    static let avatarSize: CGFloat = 30
+    /// The picture beside the name, above the bubble.
+    static let avatarSize: CGFloat = 24
     /// The room left past a bot's bubble. A bot's reply is long, like a
-    /// chat's, so the bubble runs nearly to the edge; the avatar and the
+    /// chat's, so the bubble runs nearly to the edge; the picture and the
     /// tinted bubble already say who is talking.
     static let trailingRoom: CGFloat = 8
 
@@ -835,23 +836,14 @@ struct GroupMemberBubble: View {
 
     var body: some View {
         let parts = GroupMessageParts(text)
-        HStack(alignment: .top, spacing: 9) {
-            Group {
-                if continuesRun {
-                    Color.clear
-                } else if let handle {
-                    // Tapping a bot's picture picks it in the "To" row.
-                    GroupMemberMentionButton(handle: handle, name: name) {
-                        GroupMemberAvatar(member: member, name: name, size: Self.avatarSize)
-                    }
-                } else {
-                    GroupMemberAvatar(member: member, name: name, size: Self.avatarSize)
-                }
-            }
-            .frame(width: Self.avatarSize, height: Self.avatarSize)
-            VStack(alignment: .leading, spacing: 3) {
+        // The picture sits by the name, not in a column of its own, so the
+        // bubble starts at the column's edge and runs nearly the chat's
+        // width (Eric, 2026-11-06).
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
                 if !continuesRun {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 7) {
+                        avatar
                         Text(name)
                             .scaledFont(.caption.weight(.semibold))
                             .foregroundStyle(tint.map { Color(uiColor: $0.readableColor) } ?? .secondary)
@@ -895,6 +887,21 @@ struct GroupMemberBubble: View {
             Spacer(minLength: GroupMemberBubble.trailingRoom)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var avatar: some View {
+        Group {
+            if let handle {
+                // Tapping a bot's picture picks it in the "To" row.
+                GroupMemberMentionButton(handle: handle, name: name) {
+                    GroupMemberAvatar(member: member, name: name, size: Self.avatarSize)
+                }
+            } else {
+                GroupMemberAvatar(member: member, name: name, size: Self.avatarSize)
+            }
+        }
+        .frame(width: Self.avatarSize, height: Self.avatarSize)
     }
 }
 
@@ -1020,13 +1027,16 @@ struct GroupRespondingRow: View {
     var body: some View {
         let name = GroupRoomTurns.displayName(of: member)
         let tint = tints[member.identityKey]
-        HStack(alignment: .top, spacing: 9) {
-            GroupMemberAvatar(member: member, name: name, size: GroupMemberBubble.avatarSize)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(name)
-                    .scaledFont(.caption.weight(.semibold))
-                    .foregroundStyle(tint.map { Color(uiColor: $0.readableColor) } ?? .secondary)
-                    .lineLimit(1)
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 7) {
+                    GroupMemberAvatar(member: member, name: name, size: GroupMemberBubble.avatarSize)
+                        .frame(width: GroupMemberBubble.avatarSize, height: GroupMemberBubble.avatarSize)
+                    Text(name)
+                        .scaledFont(.caption.weight(.semibold))
+                        .foregroundStyle(tint.map { Color(uiColor: $0.readableColor) } ?? .secondary)
+                        .lineLimit(1)
+                }
                 HStack(spacing: 6) {
                     ProgressView()
                         .controlSize(.mini)
@@ -2072,7 +2082,7 @@ struct DesktopGroupChatView: View {
                 Text(AppLocalization.string("Shortened — the full message is in Hermes Desktop."))
                     .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
-                    .padding(.leading, message.isMember ? GroupMemberBubble.avatarSize + 9 : 0)
+                    .padding(.leading, message.isMember ? 4 : 0)
             }
         }
         .frame(maxWidth: .infinity, alignment: message.isMember ? .leading : .trailing)

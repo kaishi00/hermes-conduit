@@ -860,7 +860,8 @@ extension BotModeTests {
     }
 
     /// A ring takes the bot's glow color (picked or drawn from its photo),
-    /// else its Hermes color, else its name's hue (build 248).
+    /// else its Hermes color, else its name's hue (build 248); a group
+    /// room's name and bubble take the same (build 254).
     @MainActor
     func testABotsRingTakesItsGlowColorFirst() {
         func bot(_ color: String?) -> BotProfile {
@@ -872,6 +873,19 @@ extension BotModeTests {
         XCTAssertEqual(AppState.botColor(bot("#00ff00"), glow: glow), glow.color, "the glow wins")
         XCTAssertEqual(AppState.botColor(bot("#00ff00"), glow: nil), BotAvatarView.color(for: "#00ff00", name: "raiden"))
         XCTAssertEqual(AppState.botColor(bot(nil), glow: nil), BotAvatarView.color(for: nil, name: "raiden"), "the name's hue")
+        // A group room names and tints the bot in the same color as its
+        // ring, not its Hermes color under a picked or photo glow.
+        XCTAssertEqual(
+            AppState.groupMemberColor(bot: bot("#00ff00"), name: "Raiden", glows: ["raiden": glow]), glow.color
+        )
+        XCTAssertEqual(
+            AppState.groupMemberColor(bot: bot("#00ff00"), name: "Raiden", glows: [:]),
+            BotAvatarView.color(for: "#00ff00", name: "raiden")
+        )
+        XCTAssertEqual(
+            AppState.groupMemberColor(bot: nil, name: "Guest", glows: ["raiden": glow]),
+            BotAvatarView.color(for: nil, name: "Guest"), "a member with no bot: its name's hue"
+        )
     }
 
     /// A workstream opened from its Bot Chat shows in the same pushed

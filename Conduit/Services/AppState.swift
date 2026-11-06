@@ -12976,22 +12976,32 @@ final class AppState: ObservableObject {
             ?? roster.first { $0.displayLabel == label }
     }
 
-    /// Each member's color by `identityKey`: its bot's color, else the hue
-    /// its picture falls back to, so a bot looks the same in its picture,
-    /// its name, its bubble and the tags that name it.
+    /// Each member's color by `identityKey`: its bot's glow on Bots Home
+    /// (`botColor`: the color picked for it or drawn from its photo, else
+    /// its color in Hermes), else the hue its picture falls back to, so a
+    /// bot looks the same on its tile, in its name, its bubble and the tags
+    /// that name it.
     func groupMemberTints(_ members: [GroupMember]) -> [String: CustomAccentColor] {
         var tints: [String: CustomAccentColor] = [:]
+        let glows = profileGlowColors()
         for member in members {
             let key = member.identityKey
             guard !key.isEmpty, tints[key] == nil else { continue }
             let name = GroupRoomTurns.displayName(of: member)
             let bot = groupMemberBot(member, name: name)
-            let color = UIColor(BotAvatarView.color(for: bot?.appearanceColor, name: bot?.name ?? name))
+            let color = UIColor(Self.groupMemberColor(bot: bot, name: name, glows: glows))
             var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
             guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { continue }
             tints[key] = CustomAccentColor(red: Double(red), green: Double(green), blue: Double(blue))
         }
         return tints
+    }
+
+    /// A room member's color: its bot's (`botColor`, the glow first), else
+    /// its name's hue.
+    static func groupMemberColor(bot: BotProfile?, name: String, glows: [String: ProfileGlowRGB]) -> Color {
+        guard let bot else { return BotAvatarView.color(for: nil, name: name) }
+        return botColor(bot, glow: glows[bot.name])
     }
 
     /// The room composer took the quote.
