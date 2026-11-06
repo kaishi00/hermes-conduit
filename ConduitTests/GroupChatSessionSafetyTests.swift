@@ -1027,7 +1027,10 @@ final class GroupChatSessionSafetyTests: XCTestCase {
     }
 
     func testContinueIsOfferedUnderAPauseAndSendsItsDiscussion() async {
-        final class Box { var continued: [String] = [] }
+        final class Box {
+            var continued: [String] = []
+            var maxContinues = 5
+        }
         let box = Box()
         let room = self.room()
         let events = [
@@ -1048,7 +1051,7 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             list: { _ in ([room], nil) },
             state: { _, _ in
                 var status = GroupDriverStatus(running: true, working: false, blocked: false, counts: [:], pendingActions: [])
-                status.maxContinues = 5
+                status.maxContinues = box.maxContinues
                 return (self.roomWithLatest(2), status)
             },
             log: { _, _, sinceSeq, _ in
@@ -1064,6 +1067,15 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         await appState.openGroupRoom(room)
 
         XCTAssertEqual(appState.activeRoomContinuablePauses["cap-1"]?.discussionEventID, "user:d1")
+        // The host's cap decides: a pause whose next grant is past it offers nothing.
+        box.maxContinues = 0
+        appState.closeGroupRoom()
+        await appState.openGroupRoom(room)
+        XCTAssertTrue(appState.activeRoomContinuablePauses.isEmpty)
+        box.maxContinues = 5
+        appState.closeGroupRoom()
+        await appState.openGroupRoom(room)
+        XCTAssertNotNil(appState.activeRoomContinuablePauses["cap-1"])
         await appState.continueActiveRoomDiscussion("user:d1")
         XCTAssertEqual(box.continued, ["user:d1"])
         appState.closeGroupRoom()

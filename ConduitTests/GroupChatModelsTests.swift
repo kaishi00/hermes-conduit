@@ -1148,6 +1148,16 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(GroupRoomTurns.pendingResponder(events: log, members: members)?.memberID, "zhongli",
                        "round 1 rotates the roster")
 
+        // A Stop after the discussion's message ends the pause.
+        let stopped = Array(log.prefix(6)) + [roomEvent(seq: 7, kind: "room.stop_requested", ["cancel_id": "c1"])]
+        XCTAssertTrue(GroupRoomTurns.continuablePauses(events: stopped).isEmpty)
+
+        // Paused again after its first Continue: the next one is the second grant.
+        let again = log + [roomEvent(seq: 8, kind: "room.activity", [
+            "status": "bounded", "reason_code": "max_rounds", "thread_id": "main", "discussion_event_id": "user:d1",
+        ])]
+        XCTAssertEqual(GroupRoomTurns.continuablePauses(events: again)["e8"]?.grant, 2)
+
         // A newer message in the thread ends a pause.
         let moved = Array(log.prefix(6)) + [userMessage(seq: 7, text: "Next topic", id: "user:d2")]
         XCTAssertTrue(GroupRoomTurns.continuablePauses(events: moved).isEmpty)

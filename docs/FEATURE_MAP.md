@@ -5286,7 +5286,7 @@ Rooms, whose posts from a linked person still go in one `main` thread
 - A lead's routing turn that ends without an assignment (discarded or superseded) leaves the line on the lead until the room's next event.
 - The mirror tells a new thread from the kept events (the last 200): a reply that names nobody in a thread whose earlier messages fell out of them reads as routed, so a lead or automatic room's title line says it's choosing while the members answer.
 - A "Replying to" quote is text in a new thread, not a reply in the quoted message's thread: in a lead or automatic room it is routed like any message that names nobody.
-- A routing mode newer than this client reads as Everyone in Group Settings. A save that leaves Who answers as it opened keeps the room's mode; picking Everyone there replaces it.
+- A routing mode newer than this client reads as Everyone in Group Settings. Its real mode survives any save that leaves Who answers there, so such a room can't be switched to Everyone from Conduit; only picking a lead (or Automatically, where offered) sends routing.
 
 **Checked:** 2026-11-06, #1845 (added; from review, each message its own thread, routing goes in a save only when it changes, a save checks its room, and three gaps recorded).
 
