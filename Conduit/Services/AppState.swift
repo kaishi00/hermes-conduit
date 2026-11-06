@@ -2399,9 +2399,10 @@ final class AppState: ObservableObject {
         showSidebar = false
     }
 
-    /// The bot whose chat a list of bots is opening. The list closes first
-    /// and the shell routes the chat then, before it lands, so this tells
-    /// it a Bot Chat is coming (it stays in Bots) whatever was open before.
+    /// The bot whose chat a list of bots is opening, or the room Bots Home
+    /// is (`BotZoomArm.roomKey`). The list closes first and the shell routes
+    /// the chat then, before it lands, so this tells it a Bot Chat or a room
+    /// is coming (it stays in Bots) whatever was open before.
     private(set) var botChatOpening: String?
 
     /// Closes the list for `name`'s Bot Chat; `endOpeningBotChat` once the
