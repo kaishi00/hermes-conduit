@@ -1620,6 +1620,8 @@ extension VoiceConversationControllerTests {
             // A "nothing" that refuses the send itself (issue 1869).
             ("Ich schicke nichts an Hermes.", "de"),
             ("I'll send nothing to Hermes.", "en"),
+            ("I'll tell Hermes nothing.", "en"),
+            ("There's nothing to send to Hermes.", "en"),
             // English narration on a German call is read as English.
             ("Hermes passed it along.", "de"),
             ("Hermes passed it along.", "en"),
