@@ -1204,8 +1204,11 @@ final class AppState: ObservableObject {
                 // app link) takes them down; a new id for the same
                 // conversation leaves them up.
                 if !activeChatScrollSessionIdentity.contains(oldValue) {
-                    showModelPicker = false
-                    showContextSheet = false
+                    // Only when they're up: assigning false to a flag
+                    // already false still publishes AppState, and this runs
+                    // on every chat the person opens.
+                    if showModelPicker { showModelPicker = false }
+                    if showContextSheet { showContextSheet = false }
                 }
                 updateChatOnScreen()
             }
@@ -20119,25 +20122,31 @@ final class AppState: ObservableObject {
         authoritativeYolo: Bool? = nil,
         authoritativeApprovalsMode: String? = nil
     ) {
-        if let model = snapshot.model { runtime.model = model }
-        if let provider = snapshot.provider { runtime.provider = provider }
-        if let cwd = snapshot.cwd { runtime.cwd = cwd }
-        if let percent = snapshot.contextPercent { runtime.contextPercent = normalizedContextPercent(percent, used: snapshot.contextUsed, max: snapshot.contextMax) }
-        if let used = snapshot.contextUsed { runtime.contextUsed = used }
-        if let max = snapshot.contextMax { runtime.contextMax = max }
-        if let count = snapshot.activeAgents { activeAgents = count }
+        // The snapshot lands as one runtime. Each write through the
+        // published property publishes AppState, and a resume arrives while
+        // the chat it opened is still animating in, so a dozen member
+        // writes cost every observer a dozen redraws for one new state.
+        var next = runtime
+        if let model = snapshot.model { next.model = model }
+        if let provider = snapshot.provider { next.provider = provider }
+        if let cwd = snapshot.cwd { next.cwd = cwd }
+        if let percent = snapshot.contextPercent { next.contextPercent = normalizedContextPercent(percent, used: snapshot.contextUsed, max: snapshot.contextMax) }
+        if let used = snapshot.contextUsed { next.contextUsed = used }
+        if let max = snapshot.contextMax { next.contextMax = max }
+        if let count = snapshot.activeAgents { setActiveAgents(count) }
         if let reasoningEffort = snapshot.reasoningEffort {
-            runtime.reasoningEffort = reasoningEffort.lowercased() == "none" ? "" : reasoningEffort
+            next.reasoningEffort = reasoningEffort.lowercased() == "none" ? "" : reasoningEffort
         }
-        if let fast = snapshot.fast { runtime.fast = fast }
+        if let fast = snapshot.fast { next.fast = fast }
         // A gateway that reports `fast` without the tier leaves no stale
         // Ultrafast behind.
         if let serviceTier = snapshot.serviceTier ?? snapshot.fast.map({ _ in "" }) {
-            runtime.serviceTier = serviceTier
+            next.serviceTier = serviceTier
         }
         if let approvalsMode = authoritativeApprovalsMode ?? snapshot.approvalsMode {
-            runtime.approvalsMode = approvalsMode
+            next.approvalsMode = approvalsMode
         }
+        setRuntime(next)
         if let reportedYolo = authoritativeYolo ?? snapshot.yolo {
             lastReportedSessionYolo = reportedYolo
         }
@@ -20213,9 +20222,13 @@ final class AppState: ObservableObject {
     }
 
     func applyContextBreakdown(_ breakdown: ContextBreakdown) {
-        runtime.contextUsed = breakdown.resolvedUsed
-        runtime.contextMax = breakdown.contextMax
-        runtime.contextPercent = breakdown.resolvedPercent
+        // One runtime, one publication: these three arrive together while
+        // the chat is opening.
+        var next = runtime
+        next.contextUsed = breakdown.resolvedUsed
+        next.contextMax = breakdown.contextMax
+        next.contextPercent = breakdown.resolvedPercent
+        setRuntime(next)
     }
 
     @discardableResult

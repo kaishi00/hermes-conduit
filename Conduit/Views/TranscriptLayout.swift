@@ -477,6 +477,11 @@ final class TranscriptLayout: UICollectionViewLayout {
             if byte == UInt8(ascii: "\n") {
                 lines += max(1, (CGFloat(paragraphCharacters) / charactersPerLine).rounded(.up))
                 paragraphCharacters = 0
+                // The height is capped at 6,000 points, and lines only ever
+                // add up: once the counted lines reach the cap, the rest of
+                // the text cannot change the answer, so a long paste costs
+                // no more than about 270 lines' worth of bytes.
+                if lines * 22 + 24 >= 6_000 { return 6_000 }
             } else if (byte & 0xC0) != 0x80 {
                 paragraphCharacters += 1
             }

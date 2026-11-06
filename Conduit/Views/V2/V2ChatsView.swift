@@ -286,6 +286,9 @@ struct V2ChatsView: View, Equatable {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @State private var searchText = ""
+    /// The nest tree the list last showed, reused while its inputs stand
+    /// still (see `nestedSections`).
+    @State private var nestingCache = V2SessionsNestingCache()
     @FocusState private var searchFocused: Bool
     /// The bar is stacked (profiles on their own row): search is a button
     /// in the controls and opens over the filter row, so the list doesn't
@@ -1285,15 +1288,37 @@ struct V2ChatsView: View, Equatable {
     }
 
     /// Pinned in the order the person set (issue 1354), then Recent.
+    ///
+    /// Worked out once per set of inputs and kept: the tree walks the whole
+    /// catalog, indexes every id a row answers to and sorts each sibling
+    /// group, and the list asks for it on each render and again whenever it
+    /// reveals the open chat's parents. Which rows are pinned is resolved
+    /// first, so the same answer decides both the tree and whether it can
+    /// be reused.
     private func nestedSections(_ displayed: [SessionSummary]) -> (pinned: [SessionNesting.Node], recent: [SessionNesting.Node]) {
-        let sections = SessionNesting.sections(
-            displayed,
+        let pinnedIDs = Set(displayed.lazy.filter { appState.isSessionPinned($0) }.map(\.id))
+        let key = V2SessionsNestingCache.Key(
+            rows: displayed,
             query: searchText,
-            statusFilterActive: selection.flattens,
-            isPinned: appState.isSessionPinned,
-            parentKeyOf: appState.sessionNestingParentKey
+            flattens: selection.flattens,
+            pinnedIDs: pinnedIDs,
+            tags: appState.voiceSessionTagsByKey,
+            linksRevision: appState.voiceCallChatLinksRevision,
+            profile: appState.activeProfile,
+            profiles: appState.profiles,
+            order: appState.pinnedChatOrder,
+            groupsByProfile: appState.allProfilesGroupsByProfile
         )
-        return (appState.arrangePinnedNodes(sections.pinned), sections.recent)
+        return nestingCache.sections(for: key) {
+            let sections = SessionNesting.sections(
+                displayed,
+                query: searchText,
+                statusFilterActive: selection.flattens,
+                isPinned: { pinnedIDs.contains($0.id) },
+                parentKeyOf: appState.sessionNestingParentKey
+            )
+            return (appState.arrangePinnedNodes(sections.pinned), sections.recent)
+        }
     }
 
     // MARK: - Sessions list
@@ -2682,6 +2707,41 @@ final class V2NestExpansionCache {
             line.hasPrefix(prefix) ? String(line.dropFirst(prefix.count)) : nil
         })
         return cached
+    }
+}
+
+/// The Sessions nest tree, kept between renders while the things it is
+/// built from stand still. Its key is every input the tree reads: the rows
+/// the list shows, the search and filter, which of those rows are pinned,
+/// the voice tags and call links that decide a row's parent, the profile,
+/// the person's pinned order and whether profiles are grouped. An equal
+/// key is the same tree, so nothing outlives the state it was read from.
+final class V2SessionsNestingCache {
+    struct Key: Equatable {
+        var rows: [SessionSummary]
+        var query: String
+        var flattens: Bool
+        var pinnedIDs: Set<String>
+        var tags: [String: [String: VoiceSessionTag]]
+        var linksRevision: Int
+        var profile: String
+        var profiles: [String]
+        var order: PinnedChatOrder
+        var groupsByProfile: Bool
+    }
+
+    private var key: Key?
+    private var value: (pinned: [SessionNesting.Node], recent: [SessionNesting.Node])?
+
+    func sections(
+        for key: Key,
+        build: () -> (pinned: [SessionNesting.Node], recent: [SessionNesting.Node])
+    ) -> (pinned: [SessionNesting.Node], recent: [SessionNesting.Node]) {
+        if key == self.key, let value { return value }
+        let built = build()
+        self.key = key
+        self.value = built
+        return built
     }
 }
 
