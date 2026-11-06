@@ -16,8 +16,11 @@ struct V2ProjectPage: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.v2Shell) private var shell
     @Environment(\.v2OpenBeside) private var openBeside
+    @Environment(\.scenePhase) private var scenePhase
     let project: ProjectSummary
     @State private var detail: ProjectSessionDetail?
+    /// The 20 s reads stopped while the page was out of sight.
+    @State private var missedReads = false
     @State private var isLoading = true
     /// Pull-to-refresh and the page's own load can overlap; only the
     /// newest one writes back.
@@ -44,6 +47,12 @@ struct V2ProjectPage: View {
     /// Home (chats in no project) has no folder: its new chat is a plain
     /// one, which lands in Home. Other folderless projects offer none,
     /// since the chat wouldn't show up in them.
+    /// On screen: its tab shows, nothing is pushed over it (beside it, on
+    /// a wide window, is still on screen) and the app isn't in the background.
+    private var pageShows: Bool {
+        shell.isTabActive && shell.showsChatRows && scenePhase != .background
+    }
+
     private var startsPlainChat: Bool { newConversationPath == nil && project.isHome }
 
     private var canStartConversation: Bool { newConversationPath != nil || startsPlainChat }
@@ -219,8 +228,18 @@ struct V2ProjectPage: View {
         // chat on a wide window the page stays on screen (issue 1454).
         .task(id: "\(project.id)|\(appState.chatListCatalogGeneration)") { await reload() }
         // Another profile's changes move nothing here: read them every 20 s
-        // while the page is open, as All's poll does.
-        .task(id: project.id) {
+        // while the page shows, as All's poll does. Its tab hidden, a chat
+        // over it or the app in the background stops the reads (#1827);
+        // showing it again reads at once.
+        .task(id: "\(project.id)|\(pageShows)") {
+            guard pageShows else {
+                missedReads = true
+                return
+            }
+            if missedReads {
+                missedReads = false
+                await reload()
+            }
             while true {
                 do { try await Task.sleep(for: .seconds(20)) } catch { return }
                 await reload()
