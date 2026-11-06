@@ -830,10 +830,18 @@ enum BotDragPayload {
     /// kept starting rooms instead).
     static let mergeStillness: CGFloat = 12
 
-    /// The part of a face a merge needs the bot held over: its middle, not
-    /// the cell around it, so a drop beside a face or on its name moves.
+    /// How far past a face's edge, above and beside it, a hold still
+    /// starts a room: a bot carried in slows down before it gets to the
+    /// face, and held there it would otherwise take the face's place and
+    /// slide it away (Eric, 2026-11-06, TestFlight: holding over a face
+    /// never started a room).
+    static let mergeMargin: CGFloat = 14
+
+    /// Where a merge needs the bot held: the face and a ring around it, not
+    /// the gaps between cells or the name under the face, where it moves.
     static func mergeZone(face: CGRect) -> CGRect {
-        face.insetBy(dx: face.width * 0.1, dy: face.height * 0.1)
+        CGRect(x: face.minX - mergeMargin, y: face.minY - mergeMargin,
+               width: face.width + mergeMargin * 2, height: face.height + mergeMargin)
     }
 
     /// Whether the hover at `location` keeps the dwell that began at
@@ -1040,7 +1048,7 @@ struct BotPortraitCell<MenuContent: View>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
     /// A dragged bot is over this one; `mergeReady` once it has been held
-    /// still over the middle of the face for half a second
+    /// still over the face (or just beside it) for half a second
     /// (BotDragPayload.mergeDwell, mergeStillness, mergeZone).
     @State private var isTargeted = false
     @State private var mergeReady = false
@@ -1051,7 +1059,7 @@ struct BotPortraitCell<MenuContent: View>: View {
     @State private var placed = false
     /// Where the bot in hand was when the slide's wait began: carried on
     /// further, the wait starts again, so passing over on the way to a
-    /// face's middle never slides it away (Eric, 2026-11-06).
+    /// face never slides it away (Eric, 2026-11-06).
     @State private var slideAnchor: CGPoint?
     /// When a merge-ready hover ended. A drop ends the hover before it
     /// lands, so the drop reads this rather than `mergeReady`, which has
@@ -1264,9 +1272,9 @@ struct BotPortraitCell<MenuContent: View>: View {
     }
 
     /// The bot in hand moved over this cell, as on the Home Screen: held
-    /// still over the middle of the face for `mergeDwell`, it swells for a
+    /// still over the face (or just beside it) for `mergeDwell`, it swells for a
     /// room (a folder there); carried on, the dwell starts again and a
-    /// swollen face lets go. Off the middle of the face, or when the two
+    /// swollen face lets go. Off the face and the ring around it, or when the two
     /// can't make a room, it takes this one's place after `slideDwell` and
     /// the others slide aside, while it's still in hand.
     private func hover(at location: CGPoint) {
@@ -1283,7 +1291,7 @@ struct BotPortraitCell<MenuContent: View>: View {
             beginSlide(lifted, at: location)
             return
         }
-        // Over the middle of the face: a room, not a move, unless it's
+        // Over the face: a room, not a move, unless it's
         // carried off again.
         slide?.cancel()
         slide = nil
@@ -1309,7 +1317,7 @@ struct BotPortraitCell<MenuContent: View>: View {
 
     /// Starts the wait before `lifted` takes this one's place, held still
     /// (`mergeStillness`) for `slideDwell`: passing over on the way
-    /// somewhere, a face's middle included, moves nothing.
+    /// somewhere, a face included, moves nothing.
     private func beginSlide(_ lifted: String, at location: CGPoint) {
         // Once it has slid here, staying over this one moves nothing more.
         guard !placed, let onSlide else { return }
