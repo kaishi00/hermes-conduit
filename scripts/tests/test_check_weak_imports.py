@@ -1,0 +1,87 @@
+"""Regression coverage for scripts/check-weak-imports.py (back-deployed Date guard)."""
+
+import os
+import textwrap
+import unittest
+
+from _util import load_module
+
+check_weak_imports = load_module("check_weak_imports", "check-weak-imports.py")
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+
+class TargetTests(unittest.TestCase):
+    def test_every_shipped_target_in_the_project_compiles_date_order(self):
+        with open(os.path.join(REPO_ROOT, "project.yml"), encoding="utf-8") as handle:
+            project = handle.read()
+        self.assertEqual(check_weak_imports.target_problems(project), [])
+        names = set(check_weak_imports.shipped_targets(project))
+        self.assertTrue({"Conduit", "ConduitWatch", "ConduitWidgets"} <= names, names)
+        self.assertNotIn("ConduitTests", names)
+
+    def test_a_target_without_it_is_reported(self):
+        project = textwrap.dedent("""
+        targets:
+          App:
+            type: application
+            sources:
+              - path: App
+              - path: Shared
+          Ext:
+            type: app-extension
+            sources:
+              - path: Ext
+              - path: Shared/Widgets
+          Fixed:
+            type: app-extension
+            sources:
+              - path: Fixed
+              - path: Shared/DateOrder
+          Tests:
+            type: bundle.unit-test
+            sources:
+              - path: Tests
+        """)
+        problems = check_weak_imports.target_problems(project)
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("target Ext", problems[0])
+
+
+class BinaryTests(unittest.TestCase):
+    def test_a_weak_import_is_reported(self):
+        out = ("                 (undefined) weak external _$s10Foundation4DateV2leoiySbAC_ACtFZ"
+               " (from Foundation)\n")
+        problems = check_weak_imports.weak_import_problems("Conduit.app/Conduit", out)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("Date.<=", problems[0])
+
+    def test_local_thunks_and_other_imports_pass(self):
+        out = textwrap.dedent("""\
+            0000000100001000 (__TEXT,__text) weak external _$s10Foundation4DateV2leoiySbAC_ACtFZTwb
+                             (undefined) weak external _$s10Foundation4DateV2leoiySbAC_ACtFZTwb (from Foundation)
+                             (undefined) external _$s10Foundation4DateV2ltoiySbAC_ACtFZ (from Foundation)
+                             (undefined) weak external _$s7SwiftUI4ViewPAAE14navigationZoomQrvg (from SwiftUI)
+            """)
+        self.assertEqual(check_weak_imports.weak_import_problems("x", out), [])
+
+    def test_test_bundles_and_runners_are_skipped(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as products:
+            for rel in ("Conduit.app/Conduit", "Conduit.app/Conduit.debug.dylib",
+                        "Conduit.app/PlugIns/ConduitWidgets.appex/ConduitWidgets",
+                        "Conduit.app/PlugIns/ConduitTests.xctest/ConduitTests",
+                        "ConduitUITests-Runner.app/ConduitUITests-Runner",
+                        "Conduit.app/Info.plist"):
+                path = os.path.join(products, rel)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "wb") as handle:
+                    handle.write(b"<?xml" if rel.endswith(".plist") else b"\xcf\xfa\xed\xfe....")
+            found = sorted(os.path.relpath(p, products)
+                           for p in check_weak_imports.binaries_under(products))
+        self.assertEqual(found, ["Conduit.app/Conduit", "Conduit.app/Conduit.debug.dylib",
+                                 "Conduit.app/PlugIns/ConduitWidgets.appex/ConduitWidgets"])
+
+
+if __name__ == "__main__":
+    unittest.main()

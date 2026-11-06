@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""Keep Foundation's back-deployed Date comparisons out of shipped builds.
+
+The iOS and watchOS 27.2 SDKs mark Foundation's `Date.<=` and `Date.>=`
+`@backDeployed(before: 27.2)`, so a build made with them weak-imports both and
+calls Foundation's copy on 27.2 and later. Foundation in the early 27.2 betas
+doesn't export them, and TestFlight builds 250 to 252 jumped to a null pointer
+at launch there (2026-11-05). Shared/DateOrder/DateOrder.swift declares both in
+each target, so a comparison of two Dates never reaches Foundation's.
+
+Two checks:
+
+  targets   (Linux) every application and app extension in project.yml
+            compiles Shared/DateOrder, through `Shared` or the folder itself.
+  binaries  (macOS) no Mach-O under a products folder (the app, its .debug.dylib
+            in a Debug build, every .appex and framework; not test bundles or
+            UI test runners) weak-imports a symbol in BANNED. Reads `nm -m`; a Debug build's local thunks for the
+            symbols (`...FZTwb`) aren't imports and pass.
+
+Usage: check-weak-imports.py targets [--repo-root DIR]
+       check-weak-imports.py binaries --products DIR
+"""
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+
+DATE_ORDER = "Shared/DateOrder"
+SHIPPED_TYPES = {"application", "app-extension"}
+
+# Back-deployed API that an OS in the field may lack although it passes the
+# availability check (an early beta of the version it was back-deployed to).
+BANNED = {
+    "_$s10Foundation4DateV2leoiySbAC_ACtFZ": "Date.<=, back-deployed before iOS/watchOS 27.2",
+    "_$s10Foundation4DateV2geoiySbAC_ACtFZ": "Date.>=, back-deployed before iOS/watchOS 27.2",
+}
+
+MACHO_MAGICS = {
+    b"\xfe\xed\xfa\xce", b"\xce\xfa\xed\xfe",  # 32-bit
+    b"\xfe\xed\xfa\xcf", b"\xcf\xfa\xed\xfe",  # 64-bit
+    b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca",  # universal
+}
+
+
+def shipped_targets(project_yml):
+    """{target name: [source paths]} for every application and app extension."""
+    targets = {}
+    in_targets = False
+    name = None
+    kinds = {}
+    for line in project_yml.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        if indent == 0:
+            in_targets = line.rstrip() == "targets:"
+            name = None
+            continue
+        if not in_targets:
+            continue
+        if indent == 2 and line.rstrip().endswith(":"):
+            name = line.strip()[:-1]
+            targets[name] = []
+            continue
+        if name is None:
+            continue
+        match = re.match(r"^\s{4}type:\s*(\S+)", line)
+        if match:
+            kinds[name] = match.group(1)
+            continue
+        match = re.match(r"^\s{6}- path:\s*(\S+)", line)
+        if match:
+            targets[name].append(match.group(1).strip("\"'").rstrip("/"))
+    return {n: paths for n, paths in targets.items() if kinds.get(n) in SHIPPED_TYPES}
+
+
+def target_problems(project_yml):
+    problems = []
+    for name, paths in sorted(shipped_targets(project_yml).items()):
+        if "Shared" not in paths and DATE_ORDER not in paths:
+            problems.append(
+                f"project.yml: target {name} doesn't compile {DATE_ORDER}: "
+                f"add `- path: {DATE_ORDER}` to its sources")
+    return problems
+
+
+def weak_import_problems(binary, nm_output):
+    problems = []
+    for line in nm_output.splitlines():
+        if "weak external" not in line or "(undefined)" not in line:
+            continue
+        for symbol, what in BANNED.items():
+            if re.search(re.escape(symbol) + r"(\s|$)", line):
+                problems.append(f"{binary}: weak-imports {symbol} ({what})")
+    return problems
+
+
+def is_macho(path):
+    try:
+        with open(path, "rb") as handle:
+            return handle.read(4) in MACHO_MAGICS
+    except OSError:
+        return False
+
+
+def binaries_under(products):
+    for root, dirs, files in os.walk(products):
+        # Test bundles and UI test runners don't ship (a test bundle that
+        # imports the app's internals uses Foundation's comparisons).
+        dirs[:] = [d for d in dirs if not d.endswith(".xctest") and not d.endswith("-Runner.app")]
+        for file in files:
+            path = os.path.join(root, file)
+            if not os.path.islink(path) and is_macho(path):
+                yield path
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    sub = parser.add_subparsers(dest="mode", required=True)
+    targets = sub.add_parser("targets")
+    targets.add_argument("--repo-root", default=".")
+    binaries = sub.add_parser("binaries")
+    binaries.add_argument("--products", required=True)
+    args = parser.parse_args()
+
+    if args.mode == "targets":
+        with open(os.path.join(args.repo_root, "project.yml"), encoding="utf-8") as handle:
+            problems = target_problems(handle.read())
+        checked = "shipped targets"
+    else:
+        problems = []
+        count = 0
+        for path in binaries_under(args.products):
+            count += 1
+            nm = subprocess.run(["xcrun", "nm", "-m", path], capture_output=True, text=True)
+            problems += weak_import_problems(os.path.relpath(path, args.products), nm.stdout)
+        if count == 0:
+            print(f"::error::no Mach-O files under {args.products}")
+            return 1
+        checked = f"{count} Mach-O files"
+
+    for problem in problems:
+        print(f"::error::{problem}")
+    if problems:
+        print("Foundation's back-deployed Date comparisons crash on early 27.2 betas: "
+              "see Shared/DateOrder/DateOrder.swift.")
+        return 1
+    print(f"check-weak-imports: {checked} OK")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
