@@ -2794,6 +2794,8 @@ private struct GatewayMediaFileCard: View {
     @State private var failed = false
     @State private var tooLarge = false
     @State private var openTask: Task<Void, Never>?
+    /// A Markdown file opens in the Markdown reader, as from Artifacts.
+    @State private var markdown: MarkdownDocument?
 
     var body: some View {
         Group {
@@ -2817,6 +2819,9 @@ private struct GatewayMediaFileCard: View {
             openTask?.cancel()
             openTask = nil
             loading = false
+        }
+        .sheet(item: $markdown) { document in
+            MarkdownDocumentSheet(document: document)
         }
     }
 
@@ -2918,6 +2923,12 @@ private struct GatewayMediaFileCard: View {
     /// URL ceiling still opens (#569); the data URL when the download is
     /// unavailable (an older Hermes, or no sign-in yet).
     private func fetchAndPresent() async -> OpenOutcome {
+        if MarkdownArtifact.isMarkdown(path), let document = await markdownDocument() {
+            guard !Task.isCancelled else { return .failed }
+            markdown = document
+            return .presented
+        }
+        guard !Task.isCancelled else { return .failed }
         if let gatewayMediaFiles {
             switch await gatewayMediaFiles.file(for: path) {
             case .downloaded(let download):
@@ -2931,6 +2942,20 @@ private struct GatewayMediaFileCard: View {
         guard !Task.isCancelled, let gatewayMediaDataURL,
               let dataURL = await gatewayMediaDataURL(path), !Task.isCancelled else { return .failed }
         return await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: path) ? .presented : .failed
+    }
+
+    /// The Markdown file's text for the reader, or nil when it falls back
+    /// to Quick Look (not UTF-8, over the ceiling, or not fetched).
+    private func markdownDocument() async -> MarkdownDocument? {
+        let files = gatewayMediaFiles
+        var dataURL = gatewayMediaDataURL
+        if dataURL == nil, let files {
+            dataURL = { path in await files.dataURL(for: path) }
+        }
+        guard let dataURL,
+              let text = await MarkdownArtifact.load(path: path, dataURL: dataURL) else { return nil }
+        return MarkdownDocument(name: displayName, path: path, text: text,
+                                gatewayMediaDataURL: dataURL, gatewayMediaFiles: files)
     }
 }
 

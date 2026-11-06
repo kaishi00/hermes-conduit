@@ -1088,9 +1088,11 @@ chat's latest reply in a chat call's instructions) and read_chat as Gemini, Qwen
 GPT-Live and Local Live get them, on the phone and the Watch, and a
 Hermes call's reply in its instructions · the
 notifier's line for a spoken turn, which tells the model its answer is
-heard · chat bubbles (the file card)
+heard · chat bubbles (the file card; a Markdown file opens in the
+Markdown reader, see Artifacts)
 
 **Code**
+- The file card: `Conduit/Views/Components/MarkdownText.swift` (GatewayMediaFileCard; a Markdown file opens `Conduit/Views/Components/MarkdownDocumentSheet.swift`)
 - The tag grammar: `Conduit/Views/Components/GatewayMediaTags.swift` (removingTags, namingFiles; also built into the Watch app, `project.yml`)
 - Streaming speech: `Conduit/Voice/SpokenMediaTagFilter.swift`, used by `Conduit/Voice/SpokenTextFilter.swift` (Classic, Read Aloud's Now Playing) and `Conduit/Voice/LocalLive/SpokenVisualSplitter.swift` (Local Live, which puts the files on the call's screen)
 - Read Aloud: `Conduit/Voice/MessageReadAloudController.swift` (toggle)
@@ -1106,12 +1108,13 @@ heard · chat bubbles (the file card)
 - Streaming voices hold from where a tag may begin (with its emphasis or `[label](`) to the end of its line, and only while it can still be one: `MEDIA:` with a path after it, or a directive. Prose such as "social media: we shipped" is said as it comes; a `[` with no `]` waits up to 80 characters, then is said as it comes (Local Live's splitter, older than this, holds a `[` until its `)` or the line's end, for links). Once a tag may have begun, the rest of its line waits for the line's end, the price of a reply being said the same however it is split (#1449). Text that can't start a tag goes out as it came, its chunks unchanged ("One " then "turn."), so a space said before a tag that arrives later stays, and "Hello!" is said while a "!" after a space or mark waits for a possible image.
 - Local Live puts a tagged file on the call's screen, as the chat shows it (a tag written as a link included), even when the model showed its own card or the call cut the reply off for its own line (#1449).
 - A live model is told of a file by name ("(a file in the chat: report.pdf)"), never its path: a job's result, a chat reply, a chat read into the call and the reply a Hermes call is about alike (#1449).
+- A file card opens its file in the chat's viewers; a Markdown file opens in the Markdown reader Artifacts uses, formatted, falling back to Quick Look when it isn't UTF-8 or is over 16 MB (2026-11-06, #1884, carrying #1879).
 - A spoken message's line tells the model its answer is heard: say it in words, not with text_to_speech or a sound file of its own; a file the user asks for is still fine. Hermes' own spoken-reply note isn't on every Hermes (2026-10-28, #1434, notifier #444, 0.115.1).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1434, carried in #1449.
+**Checked:** 2026-11-06, #1884 (a Markdown file card opens the Markdown reader, as Artifacts does since #1879); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1434, carried in #1449.
 
 ## Qwen direct voice
 
@@ -1559,21 +1562,25 @@ pulse where`, `pulse spots` and `pulse status` commands (`pulse status` shows Wh
 
 The files, pages and links Hermes made, listed for every chat (the Chats
 bar's Artifacts page) or for one chat (its … menu), opened in the chat's own
-viewers, with Show in Chat. Beside the list, the Folder tab (Workspace files).
+viewers, with Show in Chat. A Markdown file opens in the Markdown reader the
+Folder draws it with, formatted, with Show Source and a system Open In and
+Share handoff; every other file keeps Quick Look, a page its full-screen
+view, and a link Safari. Beside the list, the Folder tab (Workspace files).
 
 **Siblings:** the Artifacts page (from the Sessions bar and Bots Home's shortcut) · a bot's Bot Overview (its whole profile, #1678; see Bots Home) · a chat's own Artifacts sheet · the panel
 beside the chat on a wide window · Bot Chats
 (kept in the bot's own profile) · All (every included profile's chats) ·
 group rooms (no Artifacts list) · a Bot Chat's Work panel (done: it shares the column beside
-the chat, one at a time; see Bot workstreams) · the notifier's artifacts route · README.md
+the chat, one at a time; see Bot workstreams) · the Folder's Markdown reader (Workspace files) ·
+the chat's `MEDIA:` file cards (see Files Hermes attaches) · the notifier's artifacts route · README.md
 
 **Code**
 - List model and merge: `Conduit/Services/Artifacts.swift` (ArtifactItem, ArtifactSource, ArtifactFeed, ArtifactsClient, its keptRoute, keptPage and answer(_:withoutRowsOf:))
 - Which stores a list reads (a bot's overview: `ArtifactScope.bot`), a chat's ids, Show in Chat: `Conduit/Services/AppState+Artifacts.swift` (artifactSources, activeChatArtifactSessionIDs, botChatIDs, showArtifactInChat)
-- Screens: `Conduit/Views/V2/V2ArtifactsViews.swift`; the column beside the chat and its toggle: `Conduit/Views/V2/V2ConversationScreen.swift` (openArtifacts, showsSidePanel)
+- Screens: `Conduit/Views/V2/V2ArtifactsViews.swift`; a Markdown artifact's sheet: `Conduit/Views/Components/MarkdownDocumentSheet.swift` (MarkdownArtifact, MarkdownDocument), also opened by a chat's file card (`Conduit/Views/Components/MarkdownText.swift`, GatewayMediaFileCard); the system Open In handoff: `Conduit/Views/Components/MediaPreviewPresenter.swift` (presentOpenIn); the column beside the chat and its toggle: `Conduit/Views/V2/V2ConversationScreen.swift` (openArtifacts, showsSidePanel)
 - A chat's store: `Conduit/Services/AppState.swift` (botStoreProfile, openLinkedBotChat, openOtherProfileChat; removeSavedCopies takes a deleted chat's rows from the profile's kept list)
 - Host: `notifier/artifacts_index.py`, `notifier/dashboard/api/workspace.py` (GET /artifacts, one profile per request)
-- Tests: `ConduitTests/GatewayRestartTests+Artifacts.swift`, `ConduitTests/AppStateMultiDashboardTests.swift` (testADeleteAnsweredAfterASwitchSaysNothingOnTheNewDashboard)
+- Tests: `ConduitTests/GatewayRestartTests+Artifacts.swift`, `ConduitTests/MarkdownDocumentSheetTests.swift`, `ConduitTests/AppStateMultiDashboardTests.swift` (testADeleteAnsweredAfterASwitchSaysNothingOnTheNewDashboard)
 
 **Rulings**
 - A list reads each store the chats it covers are kept in: a Bot Chat's sheet reads the bot's profile, and the Artifacts page reads the profile in use, each other profile All shows while it's on, and every other bot's Bot Chat, merged newest first (2026-10-24, #1203, Eric's report).
@@ -1588,12 +1595,13 @@ the chat, one at a time; see Bot workstreams) · the notifier's artifacts route 
 - The panel beside the chat drags wider or narrower by the line beside it, kept per device; it shows at its standard width's window as before (Eric, 2026-10-29, #1492, see Resizable columns on a split window).
 - One host path is one artifact across stores: profiles share the host's files, so a file two stores list shows once, at its newest mention.
 - A file still opening is dropped when the list moves to another server or profile, and only the latest open clears the spinner. Every reload, including one on a dashboard without artifacts, outdates the request before it (2026-10-24, from #895's review, #1191).
+- A Markdown artifact opens in the Markdown reader, not Quick Look: the same `MarkdownText` the Folder draws a `.md` with, read-only, with Show Source and a system Open In/Share handoff to another reader (MDReader on the user's iPad). A file that isn't UTF-8 or is over 16 MB falls back to Quick Look. The file's own pictures page through its own pictures, not the chat's it was opened over, and a chat's `MEDIA:` file card for a Markdown file opens the same reader. A Markdown file the user sent is drawn as their message is: its `MEDIA:` lines stay text and fetch nothing from the host (2026-11-06, PeterChencha's #1879, carried in #1884).
 - A list opens on what it listed last time, kept as it opens (every kind, unsearched, its first page) for each store's profile, a chat's own for the chats read last, which a deleted chat takes with it, as it takes its rows from the profile's; a bot's store that fails shows its kept rows, which don't page on, and kept rows wait for the plugin to say it serves artifacts or rule them out. The update notice shows only once it rules them out: with nothing kept, the list shows its loader until then, or offline, that Conduit isn't connected. Connected with no word from the plugin (its read failed as Conduit connected), the list asks it again as it opens and on a refresh, and with nothing kept says it couldn't reach the dashboard's notifier, with Try Again, if it still doesn't answer. A list kept or loaded empty says so at once, offline too (2026-10-31, #1582 and #1584, issue #1533; see Screens that open on their last answer).
 
 **Open gaps**
 - Group rooms' messages aren't listed: a room has no Artifacts list, and its members' replies stay out of the Artifacts page.
 
-**Checked:** 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1679 (on `bot-workstreams`, a chat opened from Artifacts pushed in Bots stays in Bots, under the page; from Sessions unchanged); 2026-11-03, #1678 (on `bot-workstreams`, Bots Home's Artifacts shortcut opens the page, and a bot's overview lists its whole profile's, Show in Chat closing the overview first); 2026-11-01, #1619 (Artifacts and the Work panel share the column beside the chat); 2026-10-31, #1584 (from #1582's review, a deleted chat's rows leave the profile's kept list, and offline a list kept empty says so); 2026-10-31, #1582 (a list opens on what it listed last time, and a deleted chat takes its own; the update notice waits for the plugin to rule artifacts out, kept rows or none, and a list whose plugin never answered asks it again); 2026-10-29, #1491 (a picture opens in the picture viewer and pages through the list's pictures); 2026-10-29, #1492 (the panel's width drags); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1399 (the panel and the Folder tab); #1272 with notifier #376; the sheet's ids at #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
+**Checked:** 2026-11-06, #1884 (carries #1879, and closes its file-card gap: a `MEDIA:` card for a Markdown file opens the same reader; the reader's pictures page through the file's own); 2026-11-06, #1879 (a Markdown artifact opens in the Markdown reader, with Show Source and the Open In/Share handoff; Windows and Mac names, the 16 MB ceiling and the Quick Look fallback; code, tests and map); 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1679 (on `bot-workstreams`, a chat opened from Artifacts pushed in Bots stays in Bots, under the page; from Sessions unchanged); 2026-11-03, #1678 (on `bot-workstreams`, Bots Home's Artifacts shortcut opens the page, and a bot's overview lists its whole profile's, Show in Chat closing the overview first); 2026-11-01, #1619 (Artifacts and the Work panel share the column beside the chat); 2026-10-31, #1584 (from #1582's review, a deleted chat's rows leave the profile's kept list, and offline a list kept empty says so); 2026-10-31, #1582 (a list opens on what it listed last time, and a deleted chat takes its own; the update notice waits for the plugin to rule artifacts out, kept rows or none, and a list whose plugin never answered asks it again); 2026-10-29, #1491 (a picture opens in the picture viewer and pages through the list's pictures); 2026-10-29, #1492 (the panel's width drags); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1399 (the panel and the Folder tab); #1272 with notifier #376; the sheet's ids at #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
 
 ## Workspace files
 
@@ -4619,23 +4627,25 @@ copy goes and when it is removed.
 
 **Siblings:** a chat's media and file previews · the picture viewer · the
 Artifacts page's opener · the gateway media resolver · the Folder's Quick Look
-and Share or Save
+and Share or Save · the Markdown reader's Open In and Share copy
 
 **Code**
 - Media previews: `Conduit/Views/Components/MediaPreviewPresenter.swift` (stage, stagingRoot, removeDirectory), `Conduit/Views/Components/MarkdownText.swift`, `Conduit/Views/Components/GatewayMediaDataURLResolver.swift`, `Conduit/Views/V2/V2ArtifactsViews.swift`
 - Folder: `Conduit/Views/V2/V2WorkspaceViews.swift` (quickLook), through the media preview presenter
+- The Markdown reader's handoff copy: `Conduit/Views/Components/MarkdownDocumentSheet.swift` (stageForSharing, removeShareDirectory), `Conduit/Views/Components/MediaPreviewPresenter.swift` (stage(text:filename:), presentOpenIn and its OpenInDelegate, presentShare)
 - Picture viewer: `Conduit/Views/Components/ImageGalleryViewer.swift` (ImageGalleryFile, ImageGalleryViewController.finish)
 - Tests: `ConduitTests/MarkdownLargeDocumentTests+MediaPreview.swift`
 
 **Rulings**
 - Each download goes in a folder of its own, removed when the preview or share sheet that asked for it closes, or when it is dismissed or switched to another file while still downloading; a previous run's leftovers are swept at launch (2026-10-24, #1220, from #1002).
 - The Folder opens files through the media preview presenter, so its copies follow the same rule; the workspace browser's own download folder is gone (2026-10-27, #1399).
+- The Markdown reader writes the file's text to a folder of its own for Open In and Share as it opens, and removes it when the reader closes, or at once when it closes before the copy is written; the Open In menu's controller is kept only while the menu is up (2026-11-06, #1884, carrying #1879).
 - The picture viewer fetches each picture into a folder of its own the same way, removes one once the reader is two pages past it (paging back fetches it again), and removes the rest when it closes, including one still arriving then; a photo on the device or a copy kept on the phone is shown in place and stays (2026-10-29, #1491).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-30, #1524 (the resolver gains the connected dashboard's bridge and a plugin route read for Desktop cards; previews unchanged); 2026-10-29, #1491 (the picture viewer's copies); 2026-10-27, #1399; #1220.
+**Checked:** 2026-11-06, #1884 (the Markdown reader's Open In and Share copy, carried from #1879); 2026-10-30, #1524 (the resolver gains the connected dashboard's bridge and a plugin route read for Desktop cards; previews unchanged); 2026-10-29, #1491 (the picture viewer's copies); 2026-10-27, #1399; #1220.
 
 ## Review labels
 
@@ -4980,7 +4990,7 @@ shared or saved from its Share button.
 **Siblings:** chats, project chats and Bot Chat (attachments, reply pictures,
 tool pictures) · the saved-chat copy · call job result sheets and the cards a
 voice model shows · group rooms · the Artifacts page, a chat's Artifacts sheet
-and the panel beside the chat · the Folder tab · iPhone, iPad and Mac (the
+and the panel beside the chat · the Markdown reader (a Markdown artifact or file card) · the Folder tab · iPhone, iPad and Mac (the
 same viewer; keys and a trackpad on an iPad or Mac) · Quick Look, which still
 opens videos, audio and documents · README.md · text that describes it (the
 pictures' VoiceOver hint "Opens full screen with save and share")
@@ -4989,12 +4999,12 @@ pictures' VoiceOver hint "Opens full screen with save and share")
 - Viewer and presenting it: `Conduit/Views/Components/ImageGalleryViewer.swift` (ImageGalleryViewController, ImageGalleryPageController, ImageGalleryDecoder, ImageGalleryItem, ImageGallery, ImageGallerySource, the `imageGallery` environment value), `Conduit/Views/Components/MediaPreviewPresenter.swift` (presentGallery)
 - What a chat lists: `Conduit/Views/Components/ImageGalleryItems.swift` (ChatImageGallery, the item makers), set in `Conduit/Services/AppState.swift` (chatImageGallery, from chatRowsOnScreen: the saved copy's pictures while it stands in) and `Conduit/Views/ChatView.swift`
 - Taps: `Conduit/Views/ChatView.swift` (UserImageAttachmentPreview, whole or as a tile), `Conduit/Views/Components/MarkdownText.swift` (RemoteMarkdownImage.openImage, whole or as a tile of MarkdownPictureGrid)
-- Other lists: `Conduit/Views/GroupChatView.swift` (GroupRoomImageGallery), `Conduit/Views/LiveVoiceCallJobs.swift` (both sheets), `Conduit/Views/V2/V2ArtifactsViews.swift` (openImage), `Conduit/Views/V2/V2WorkspaceViews.swift` (openImage)
+- Other lists: `Conduit/Views/GroupChatView.swift` (GroupRoomImageGallery), `Conduit/Views/LiveVoiceCallJobs.swift` (both sheets), `Conduit/Views/V2/V2ArtifactsViews.swift` (openImage), `Conduit/Views/V2/V2WorkspaceViews.swift` (openImage), `Conduit/Views/Components/MarkdownDocumentSheet.swift` (the reader's own source)
 - Tests: `ConduitTests/MarkdownLargeDocumentTests+ImageGallery.swift`
 
 **Rulings**
 - Pictures page in Conduit's own viewer, not Quick Look: Quick Look shows one file and has no swipe down. Videos, audio and documents still open in Quick Look; a picture never pages to one (2026-10-29, #1491, Eric asked for both gestures).
-- A picture pages through the pictures of what it was tapped in, in the order they show: a chat's (each message's pictures in its text, then the ones it attaches, then a tool's), the saved copy's, a room's, a job result's or card's, the Artifacts list's as filtered, or the Folder's (the search's names, else the file's folder, else Recently Changed); one in a Markdown file the Folder previews pages through that file's pictures. Each picture is listed once, where it first shows. One its list doesn't have (a reply still streaming) opens alone (2026-10-29, #1491).
+- A picture pages through the pictures of what it was tapped in, in the order they show: a chat's (each message's pictures in its text, then the ones it attaches, then a tool's), the saved copy's, a room's, a job result's or card's, the Artifacts list's as filtered, or the Folder's (the search's names, else the file's folder, else Recently Changed); one in a Markdown file the Folder previews, or the Markdown reader shows (from Artifacts or a file card), pages through that file's pictures. Each picture is listed once, where it first shows. One its list doesn't have (a reply still streaming) opens alone (2026-10-29, #1491).
 - The list is read when a picture is tapped, never while scrolling: each screen holds one source, so no row redraws for it. Each picture fetches its original only as its page comes near (its own, then its neighbours once it is in, so a tap never starts three large downloads at once), the way its row opened it alone: the photo on this device, the copy kept on the phone, then Hermes; a picture in a list fetches as Artifacts and the Folder open a file. The row's own copy shows until the original is in, and stays if the original can't be had (2026-10-29, #1491).
 - A swipe down (or up) of a picture that isn't zoomed in drags it, fading the backdrop; past a fifth of the screen or flung it closes, short of that it springs back. A zoomed picture pans instead, and its edge hands a sideways swipe on to the next. One finger only: two are a pinch. A trackpad's two-finger swipe does the same; on a keyboard the arrows page and Escape closes; VoiceOver pages with a three-finger swipe and closes with the escape gesture (2026-10-29, #1491).
 - A single tap shows or hides the bar (Done, the name, "3 / 12", Share); Share opens once the picture's original is in. The Folder's Share or Save opens a picture in the viewer too, since its Share saves and copies (2026-10-29, #1491).
@@ -5007,7 +5017,7 @@ pictures' VoiceOver hint "Opens full screen with save and share")
 - An animated GIF plays at up to 120 frames, drawn small enough that its frames stay within 32 MB (the pager holds three pages); Quick Look played every frame at full size.
 - The Folder pages through its listed files only: a folder not opened in the tree isn't listed.
 
-**Checked:** 2026-11-05, #1803 (a tile of a message's picture grid opens the viewer as its picture did, the "+N" tile on its own picture, the rest paged to; Code); 2026-10-30, #1550 (a saved copy's pictures page through the chat's own list, from the rows drawn); 2026-10-29, #1491.
+**Checked:** 2026-11-06, #1884 (the Markdown reader's pictures page through the file's own, not the chat's it opened over); 2026-11-05, #1803 (a tile of a message's picture grid opens the viewer as its picture did, the "+N" tile on its own picture, the rest paged to; Code); 2026-10-30, #1550 (a saved copy's pictures page through the chat's own list, from the rows drawn); 2026-10-29, #1491.
 
 ## Cards Hermes shows
 
