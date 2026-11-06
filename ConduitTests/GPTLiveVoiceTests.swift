@@ -1557,9 +1557,11 @@ extension VoiceConversationControllerTests {
             "わかりました。ヘルメスに送ります。",
             "알겠어요. 헤르메스에게 보낼게요.",
             "好的，我把这个发给赫尔墨斯。",
+            // A reassurance after the send doesn't hold it.
+            "Vale, se lo envío a Hermes ahora mismo, no te preocupes.",
         ]
         for claim in claims {
-            XCTAssertTrue(GPTLiveConversationController.claimsToSendToHermes(claim), claim)
+            XCTAssertTrue(GPTLiveConversationController.claimsToSendToHermes(claim, callLanguage: "de"), claim)
         }
         let notClaims = [
             "Soll ich das an Hermes schicken?",
@@ -1573,11 +1575,15 @@ extension VoiceConversationControllerTests {
             "ヘルメスに送りましょうか。",
             "헤르메스에게 보낼까요.",
             "要不要发给赫尔墨斯。",
-            "Hermes passed the whole message along to the team yesterday afternoon.",
+            // An offer before the send holds it.
+            "Si quieres, se lo envío a Hermes.",
         ]
         for text in notClaims {
-            XCTAssertFalse(GPTLiveConversationController.claimsToSendToHermes(text), text)
+            XCTAssertFalse(GPTLiveConversationController.claimsToSendToHermes(text, callLanguage: "de"), text)
         }
+        // English words that start another language's stems ("passed"):
+        // an English call reads them by the English rules alone.
+        XCTAssertFalse(GPTLiveConversationController.claimsToSendToHermes("Hermes passed it along.", callLanguage: "en"))
     }
 
     func testGPTLiveDelegationResultWaitsForTheUserToFinishAndTheirWordsComeFirst() async {

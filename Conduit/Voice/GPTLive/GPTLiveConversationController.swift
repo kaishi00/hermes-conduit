@@ -1054,7 +1054,8 @@ final class GPTLiveConversationController: ObservableObject {
     /// user's language (LiveVoiceLanguage), so a sentence naming Hermes is
     /// read in each language Conduit ships too ("Ich schicke das an
     /// Hermes."); an acknowledgement alone is read in English only.
-    static func claimsToSendToHermes(_ text: String) -> Bool {
+    /// `callLanguage`: the call's language, for a turn too short to tell.
+    static func claimsToSendToHermes(_ text: String, callLanguage: String? = LiveVoiceLanguage.current) -> Bool {
         let normalized = text.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         // A turn that ends asking ("… Send it?") waits for the user.
@@ -1075,21 +1076,32 @@ final class GPTLiveConversationController: ObservableObject {
             if line.range(of: Self.sendClaimPattern, options: .regularExpression) != nil { return true }
         }
         // Another language's stems ("pas", "send") also start English
-        // words: an English turn is read by the English rules alone.
-        guard OnDeviceSpeechStream.language(of: text) != "en" else { return false }
+        // words: an English turn, or one too short to tell on an English
+        // call, is read by the English rules alone.
+        guard let language = OnDeviceSpeechStream.language(of: text) ?? callLanguage,
+              !language.hasPrefix("en") else { return false }
         for sentence in sentences {
             if let next = normalized[sentence.endIndex...].first, next == "?" || next == "？" { continue }
-            let line = String(sentence)
-            guard Self.hermesNames.contains(where: { line.contains($0) }),
-                  line.range(of: Self.sendClaimHedge, options: .regularExpression) == nil else { continue }
-            // Any language's hedge holds it: stems are shared across
-            // languages ("pas" is Spanish's send and French's no).
-            guard line.range(of: Self.otherLanguageHedge, options: .regularExpression) == nil else { continue }
-            if Self.otherLanguageSendClaims.contains(where: { line.range(of: $0.send, options: .regularExpression) != nil }) { return true }
+            // A condition anywhere holds it ("…, sobald du ja sagst").
+            guard Self.hermesNames.contains(where: { sentence.contains($0) }),
+                  sentence.range(of: Self.otherLanguageCondition, options: .regularExpression) == nil else { continue }
+            // Then clause by clause: an offer or a no before the send holds
+            // it, a reassurance after it doesn't ("… se lo envío a Hermes,
+            // no te preocupes"). Any
+            // language's hedge holds it: stems are shared across languages
+            // ("pas" is Spanish's send and French's no).
+            for clause in sentence.split(omittingEmptySubsequences: true, whereSeparator: { ",;，、；".contains($0) }) {
+                let line = String(clause)
+                if line.range(of: Self.sendClaimHedge, options: .regularExpression) != nil
+                    || line.range(of: Self.otherLanguageHedge, options: .regularExpression) != nil { break }
+                if Self.otherLanguageSendClaims.contains(where: { line.range(of: $0.send, options: .regularExpression) != nil }) { return true }
+            }
         }
         return false
     }
 
+    /// The conditions among those hedges: one after the send holds it too.
+    private static let otherLanguageCondition = #"\b(wenn|falls|sobald|bevor|nachdem|si|cuando|quand|quando|jeśli|jeżeli|gdy|kiedy|zanim|если|когда|прежде|eğer|kalau|jika|setelah|sebelum|once|if|when|before)\b|たら|れば|なら|면 |如果|的话|的話|之前|전에"#
     private static let otherLanguageHedge = otherLanguageSendClaims.map { "(?:\($0.hedge))" }.joined(separator: "|")
 
     /// Hermes as the model may write it in another script.
