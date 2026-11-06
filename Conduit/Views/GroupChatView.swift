@@ -13,6 +13,17 @@ struct GroupChatView: View {
     /// actions.
     @Environment(\.v2ComposerRests) private var isV2
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.v2Shell) private var shell
+    /// This screen, to AppState's room poll: it stops while no room screen
+    /// shows (`noteRoomView`).
+    @State private var roomViewID = UUID()
+    /// Active, not just out of the background: the poll waits for the scene
+    /// to be active, so a return's catch-up lands when it can read. Split,
+    /// the chat column shows it beside whatever the list column holds
+    /// (Pulse, say); otherwise Back to the list or Settings covers it.
+    private var roomShows: Bool {
+        shell.isTabActive && (shell.hasChatBeside || !appState.showSidebar) && scenePhase == .active
+    }
     @State private var showingDisbandConfirmation = false
     @State private var choosingPicture: GroupRoomPictureRequest?
     /// Moves the transcript by the chat's rules (#1533, the transcript
@@ -205,8 +216,17 @@ struct GroupChatView: View {
             rowDisclosure.scroller = scroller
             scroller.holdsRepliesAtStart = { ChatReplyStartPreference.isOn }
             scroller.setPaused(scenePhase == .background)
+            appState.noteRoomView(roomViewID, shows: roomShows)
         }
-        .onDisappear { scroller.viewDisappeared() }
+        // Its tab hidden, or the chat column covered (Settings beside the
+        // list, Back to the list): the room isn't seen.
+        .onChange(of: roomShows) { _, shows in
+            appState.noteRoomView(roomViewID, shows: shows)
+        }
+        .onDisappear {
+            scroller.viewDisappeared()
+            appState.noteRoomView(roomViewID, shows: nil)
+        }
     }
 
     /// One of the transcript's rows.
