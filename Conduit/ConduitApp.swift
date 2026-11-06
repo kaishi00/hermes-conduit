@@ -8,6 +8,7 @@
 
 import Combine
 import SwiftUI
+import TipKit
 import UIKit
 import UserNotifications
 import os
@@ -22,6 +23,12 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         // A "Hermes wants to talk" notification's Talk button (#449), and a
         // Pulse push's Quiet for today.
         NotificationCategories.register()
+        // Bots Home's tip (BotsHomeGesturesTip), hidden in UI tests and
+        // the App Store screenshots.
+        if BotsHomeGesturesTip.hiddenForTesting {
+            Tips.hideAllTipsForTesting()
+        }
+        try? Tips.configure()
         // Set up before launch returns: a call the Apple Watch starts can
         // launch Conduit in the background, and its message waits on this.
         MainActor.assumeIsolated {
