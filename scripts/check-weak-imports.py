@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Keep Foundation's back-deployed Date comparisons out of shipped builds.
+"""Keep Foundation's back-deployed Date comparisons out of shipped builds,
+and the frameworks some supported OS lacks weak-linked.
 
 The iOS and watchOS 27.2 SDKs mark Foundation's `Date.<=` and `Date.>=`
 `@backDeployed(before: 27.2)`, so a build made with them weak-imports both and
@@ -19,6 +20,9 @@ Two checks:
             starts with a banned symbol (its thunks included) fails; a
             Debug build's own thunks for them (`...FZTwb`, defined in
             __TEXT) are the app's code, not imports, and pass.
+            Also reads `otool -l`: a Mach-O that loads a framework in
+            WEAK_FRAMEWORKS must load it weak (LC_LOAD_WEAK_DYLIB), or dyld
+            stops the app at launch where the framework is missing.
 
 Usage: check-weak-imports.py targets [--repo-root DIR]
        check-weak-imports.py binaries --products DIR
@@ -40,6 +44,13 @@ SHIPPED_TYPES = {"application", "app-extension"}
 BANNED = {
     "_$s10Foundation4DateV2leoiySbAC_ACtFZ": "Date.<=, back-deployed before iOS/watchOS 27.2",
     "_$s10Foundation4DateV2geoiySbAC_ACtFZ": "Date.>=, back-deployed before iOS/watchOS 27.2",
+}
+
+# Frameworks a supported OS lacks, so a strong link stops Conduit at launch
+# there; project.yml weak-links each (`sdk: ... weak: true`).
+WEAK_FRAMEWORKS = {
+    "ActivityKit": "macOS 14 has none for iPhone and iPad apps (issue 1877)",
+    "ImagePlayground": "iOS 17 has none",
 }
 
 MACHO_MAGICS = {
@@ -137,6 +148,24 @@ def weak_import_problems(binary, nm_output):
     return problems
 
 
+def strong_link_problems(binary, otool_output):
+    """Problems for each WEAK_FRAMEWORKS framework `otool -l` shows loaded by
+    a plain LC_LOAD_DYLIB (or a re-export or upward load) instead of
+    LC_LOAD_WEAK_DYLIB."""
+    problems = []
+    command = None
+    for line in otool_output.splitlines():
+        words = line.split()
+        if len(words) >= 2 and words[0] == "cmd":
+            command = words[1]
+        elif len(words) >= 2 and words[0] == "name" and command and command.startswith("LC_") and "DYLIB" in command:
+            framework = os.path.basename(words[1])
+            if framework in WEAK_FRAMEWORKS and command != "LC_LOAD_WEAK_DYLIB":
+                problems.append(f"{binary}: links {framework} strongly ({command}); "
+                                f"{WEAK_FRAMEWORKS[framework]}, so it must be weak")
+    return problems
+
+
 def is_macho(path):
     try:
         with open(path, "rb") as handle:
@@ -181,6 +210,12 @@ def main():
                                 f"(exit {nm.returncode}): {nm.stderr.strip()}")
                 continue
             problems += weak_import_problems(os.path.relpath(path, args.products), nm.stdout)
+            otool = subprocess.run(["xcrun", "otool", "-l", path], capture_output=True, text=True)
+            if otool.returncode != 0:
+                problems.append(f"{os.path.relpath(path, args.products)}: otool failed "
+                                f"(exit {otool.returncode}): {otool.stderr.strip()}")
+                continue
+            problems += strong_link_problems(os.path.relpath(path, args.products), otool.stdout)
         if count == 0:
             print(f"::error::no Mach-O files under {args.products}")
             return 1
@@ -189,8 +224,9 @@ def main():
     for problem in problems:
         print(f"::error::{problem}")
     if problems:
-        print("Foundation's back-deployed Date comparisons crash on early 27.2 betas: "
-              "see Shared/DateOrder/DateOrder.swift.")
+        print("Foundation's back-deployed Date comparisons crash on early 27.2 betas "
+              "(see Shared/DateOrder/DateOrder.swift), and a strongly linked framework "
+              "an OS lacks stops Conduit at launch there (project.yml weak: true).")
         return 1
     print(f"check-weak-imports: {checked} OK")
     return 0

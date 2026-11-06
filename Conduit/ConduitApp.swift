@@ -67,7 +67,7 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             }
             // Lock Screen progress of a turn sent before a relaunch (#605):
             // the chat's stream can still update and end it.
-            LiveTurnActivities.shared.adoptExisting()
+            LiveTurnActivities.shared?.adoptExisting()
             // Hermes dictations whose words never came, from this run's
             // predecessor too: offered in the composer for Retry.
             Task { await DictationClipInbox.shared.load() }
