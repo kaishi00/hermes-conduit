@@ -1051,9 +1051,9 @@ final class GPTLiveConversationController: ObservableObject {
     /// won't. A turn that is only an acknowledgement ("On it.", "One
     /// moment, checking.") counts too: the briefing asks for one before
     /// each delegation without naming Hermes every time. A call speaks the
-    /// user's language (LiveVoiceLanguage), so a sentence naming Hermes is
-    /// read in each language Conduit ships too ("Ich schicke das an
-    /// Hermes."); an acknowledgement alone is read in English only.
+    /// user's language (LiveVoiceLanguage), so a sentence sending something
+    /// to Hermes is read in each language Conduit ships too ("Ich schicke
+    /// das an Hermes."); an acknowledgement alone is read in English only.
     /// `callLanguage`: the call's language, for a turn too short to tell.
     static func claimsToSendToHermes(_ text: String, callLanguage: String? = LiveVoiceLanguage.current) -> Bool {
         let normalized = text.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
@@ -1069,7 +1069,7 @@ final class GPTLiveConversationController: ObservableObject {
         }
         for sentence in sentences {
             // A question ("Shall I send that to Hermes?") asks, it doesn't send.
-            if normalized[sentence.endIndex...].first == "?" { continue }
+            if let next = normalized[sentence.endIndex...].first, next == "?" || next == "？" { continue }
             let line = String(sentence)
             guard line.contains("hermes") else { continue }
             if line.range(of: Self.sendClaimHedge, options: .regularExpression) != nil { continue }
@@ -1077,84 +1077,127 @@ final class GPTLiveConversationController: ObservableObject {
         }
         // Another language's stems ("pas", "send") also start English
         // words: an English turn, or one too short to tell on an English
-        // call, is read by the English rules alone.
-        guard let language = OnDeviceSpeechStream.language(of: text) ?? callLanguage,
-              !language.hasPrefix("en") else { return false }
-        for sentence in sentences {
-            if let next = normalized[sentence.endIndex...].first, next == "?" || next == "？" { continue }
-            // A condition anywhere holds it ("…, sobald du ja sagst"), and
-            // on an Italian or Portuguese call their "se" ("… se serve"),
-            // which is Spanish's pronoun ("se lo envío"), so only there.
-            guard Self.hermesNames.contains(where: { sentence.contains($0) }),
-                  sentence.range(of: Self.otherLanguageCondition, options: .regularExpression) == nil,
-                  !([language, callLanguage ?? ""].contains { ["it", "pt"].contains(String($0.prefix(2))) } && sentence.range(of: #"\bse\b"#, options: .regularExpression) != nil) else { continue }
-            // Then clause by clause: an offer or a no before the send holds
-            // it, a reassurance after it doesn't ("… se lo envío a Hermes,
-            // no te preocupes"). Any
-            // language's hedge holds it: stems are shared across languages
-            // ("pas" is Spanish's send and French's no).
-            for clause in sentence.split(omittingEmptySubsequences: true, whereSeparator: { ",;，、；".contains($0) }) {
-                let line = String(clause)
-                // "Kein Problem," opens a yes, not a no.
-                if line.range(of: Self.noProblemOpener, options: .regularExpression) != nil { continue }
-                if line.range(of: Self.sendClaimHedge, options: .regularExpression) != nil
-                    || line.range(of: Self.otherLanguageHedge, options: .regularExpression) != nil { break }
-                if Self.otherLanguageSendClaims.contains(where: { line.range(of: $0.send, options: .regularExpression) != nil }) { return true }
+        // call, is read by the English rules alone. Otherwise the turn is
+        // read in its own language, then the call's, never in all at once:
+        // "se" is Italian's "if" and Spanish's pronoun.
+        let detected = OnDeviceSpeechStream.language(of: text)
+        guard detected?.hasPrefix("en") != true else { return false }
+        var codes: [String] = []
+        for tag in [detected, callLanguage].compactMap({ $0 }) {
+            let code = String(tag.prefix { $0 != "-" && $0 != "_" })
+            if code != "en", !codes.contains(code) { codes.append(code) }
+        }
+        for words in codes.compactMap({ Self.sendClaimWords[$0] }) {
+            for sentence in sentences {
+                if let next = normalized[sentence.endIndex...].first, next == "?" || next == "？" { continue }
+                // A condition anywhere holds it ("…, sobald du ja sagst").
+                guard sentence.range(of: words.condition, options: .regularExpression) == nil else { continue }
+                // Then clause by clause: an offer or a no before the send
+                // holds it, a reassurance after it doesn't ("… se lo envío
+                // a Hermes, no te preocupes").
+                for clause in sentence.split(omittingEmptySubsequences: true, whereSeparator: { ",;，、；".contains($0) }) {
+                    let line = String(clause)
+                    // "Kein Problem," and "Keine Sorge," open a yes, not a no.
+                    if line.range(of: Self.reassuranceOpener, options: .regularExpression) != nil { continue }
+                    if line.range(of: words.hedge, options: .regularExpression) != nil { break }
+                    // The send has to go to Hermes: "Hermes sagt, …" only
+                    // reports what Hermes said.
+                    if line.range(of: words.claim, options: .regularExpression) != nil { return true }
+                }
             }
         }
         return false
     }
 
-    /// A clause that is only "no problem", whose no is a yes.
-    private static let noProblemOpener = #"^\s*(?:no problem|kein problem|no hay problema|no pasa nada|pas de problème|pas de souci|aucun problème|non c'è problema|nessun problema|não tem problema|sem problema|nie ma problemu|без проблем|нет проблем|sorun değil|sorun yok|tidak masalah|tidak apa-apa|問題ありません|問題ない|문제없어요|문제없습니다|没问题|沒問題)\s*$"#
-    /// The conditions among those hedges: one after the send holds it too.
-    private static let otherLanguageCondition = #"\b(wenn|falls|sobald|bevor|nachdem|si|cuando|quand|quando|jeśli|jeżeli|gdy|kiedy|zanim|если|когда|прежде|eğer|kalau|jika|setelah|sebelum|once|if|when|before)\b|たら|れば|なら|면 |如果|的话|的話|之前|전에"#
-    private static let otherLanguageHedge = otherLanguageSendClaims.map { "(?:\($0.hedge))" }.joined(separator: "|")
+    /// A clause that is only "no problem" or "don't worry", whose no is a yes.
+    private static let reassuranceOpener = #"^\s*(?:no problem|no worries|kein problem|keine sorge|no hay problema|no pasa nada|no te preocupes|pas de problème|pas de souci|aucun problème|ne t'inquiète pas|ne vous inquiétez pas|non c'è problema|nessun problema|non preoccuparti|não tem problema|sem problema|não se preocupe|não te preocupes|nie ma problemu|nie martw się|без проблем|нет проблем|не волнуйся|не переживай|sorun değil|sorun yok|merak etme|tidak masalah|tidak apa-apa|jangan khawatir|問題ありません|問題ない|心配しないで|문제없어요|문제없습니다|걱정 마세요|没问题|沒問題|别担心|別擔心)\s*$"#
 
-    /// Hermes as the model may write it in another script.
-    private static let hermesNames = ["hermes", "гермес", "ヘルメス", "헤르메스", "赫尔墨斯", "赫爾墨斯"]
+    /// What reads as a send to Hermes in each language Conduit ships, by
+    /// language code: `claim`, a send, pass-on, ask or tell verb aimed at
+    /// Hermes (before the name in most, after it with the dative in
+    /// Turkish, Japanese and Korean); `hedge`, an offer or a no, which holds
+    /// a send in its clause or after it; `condition`, which holds it
+    /// anywhere in the sentence. Lowercased, like the text.
+    private struct SendClaimWords {
+        let claim: String
+        let hedge: String
+        let condition: String
 
-    /// Each shipped language's words for sending, passing on, asking or
-    /// telling, and its offers, conditions and noes, which send nothing yet
-    /// (in any of them, so none may be a common word elsewhere: Polish
-    /// "tak" is yes, Spanish "mi" is my). Lowercased, like the text.
-    private static let otherLanguageSendClaims: [(send: String, hedge: String)] = [
-        // German: "Ich schicke das an Hermes.", "Ich frage Hermes."
-        (#"\b(schick|send|geb|gib|leit|weiterleit|frag|sag|reich|übergeb|übermittl)\w*"#,
-         #"\b(soll|sollte|kann|könnte|würde|möchtest|willst|darf|nicht|kein|keine|nie|niemals|wenn|falls|sobald|bevor|nachdem)\b"#),
-        // Spanish: "Se lo envío a Hermes.", "Le pregunto a Hermes."
-        (#"\b(env[ií]|mand|pas|pregunt|dig|dec|avis|reenv|consult|traslad)\w*"#,
-         #"\b(puedo|podr[ií]a|deber[ií]a|quieres|quiere|si|cuando|antes|no|nunca)\b"#),
-        // French: "J'envoie ça à Hermes.", "Je demande à Hermes."
-        (#"(\b|')(envoi|envoy|transm|pass|demand|dis|dit|préviens|prévien|transf)\w*"#,
-         #"\b(peux|pourrais|pourrait|devrais|veux|voulez|voudrais|si|quand|avant|ne|pas|jamais)\b|n'"#),
-        // Italian: "Lo mando a Hermes.", "Chiedo a Hermes."
-        (#"\b(invi|mand|pass|chied|chiede|dic|dir|gir|inoltr|avvis)\w*"#,
-         #"\b(posso|puoi|potrei|dovrei|vuoi|vuole|quando|prima|non|mai)\b"#),
-        // Portuguese: "Vou enviar isso ao Hermes.", "Pergunto ao Hermes."
-        (#"\b(envi|mand|pass|pergunt|dig|diz|avis|encaminh|repass)\w*"#,
-         #"\b(posso|poderia|deveria|quer|queres|quiser|quando|antes|não|nunca)\b"#),
-        // Polish: "Przekażę to Hermesowi.", "Zapytam Hermesa."
-        (#"\b(wyśl|wysył|przekaż|przekazuj|zapyt|pyta|powiem|mówię|dam znać|daję znać)\w*"#,
-         #"\b(mogę|mógłbym|mogłabym|czy|chcesz|jeśli|jeżeli|gdy|kiedy|zanim|nie|nigdy)\b"#),
-        // Russian: "Передам это Гермесу.", "Спрошу у Гермеса."
-        (#"\b(отправ|переда|перешл|спрош|спрашива|скаж|сообщ)\w*"#,
-         #"\b(могу|мог|могла|хочешь|хотите|если|когда|прежде|не|никогда)\b"#),
-        // Turkish: "Bunu Hermes'e gönderiyorum.", "Hermes'e soracağım."
-        (#"\b(gönderiyor|göndereceğ|gönderdim|iletiyor|ileteceğ|soruyor|soracağ|söylüyor|söyleyeceğ|aktarıyor|aktaracağ|haber veriyor|haber vereceğ)\w*"#,
-         #"\b(istersen|ister misin|eğer|yapabilirim|gönderebilirim|iletebilirim|sorabilirim)\b"#),
-        // Indonesian: "Saya kirim ke Hermes.", "Saya tanyakan ke Hermes."
-        (#"\b(kirim|mengirim|terus|meneruskan|tanya|menanya|bilang|sampaikan|menyampaikan|kasih tahu|beri tahu|memberi tahu)\w*"#,
-         #"\b(bisa|boleh|mau|ingin|apakah|kalau|jika|setelah|sebelum|tidak|nggak|enggak|jangan|belum)\b"#),
-        // Japanese: 「ヘルメスに送ります。」「ヘルメスに聞いてみます。」
-        (#"(送|伝え|聞|訊|頼|渡|回し|転送|確認|問い合わせ)"#,
-         #"(ましょうか|ませんか|でしょうか|ません|ない|たら|れば|なら|できます)"#),
-        // Korean: "헤르메스에게 보낼게요.", "헤르메스에게 물어볼게요."
-        (#"(보내|보낼|보냈|전달|물어|알려|넘길|넘겨|확인)"#,
-         #"(까요|할까|않|못|안 |면 |수 있|전에)"#),
-        // Chinese: "我把这个发给赫尔墨斯。", "我问一下 Hermes。"
-        (#"(发|發|传|傳|转|轉|告诉|告訴|问|問|交给|交給|让|讓)"#,
-         #"(吗|嗎|要不要|可以|能|不|没|沒|如果|的话|的話|之前)"#),
+        /// A verb from `verbs` before Hermes' name in the same clause.
+        init(verbsBefore verbs: String, hedge: String, condition: String) {
+            claim = verbs + #"[^,;.!?]{0,60}?(?:hermes|гермес|赫尔墨斯|赫爾墨斯)"#
+            self.hedge = hedge
+            self.condition = condition
+        }
+
+        init(claim: String, hedge: String, condition: String) {
+            self.claim = claim
+            self.hedge = hedge
+            self.condition = condition
+        }
+    }
+
+    private static let sendClaimWords: [String: SendClaimWords] = [
+        // "Ich schicke das an Hermes.", "Ich frage Hermes."
+        "de": SendClaimWords(
+            verbsBefore: #"\b(?:schick|send|geb|gib|leit|weiterleit|frag|sag|reich|übergeb|übermittl)\w*"#,
+            hedge: #"\b(?:soll|sollte|kann|könnte|würde|möchtest|willst|darf|nicht|kein|keine|nie|niemals)\b"#,
+            condition: #"\b(?:wenn|falls|sobald|bevor|nachdem)\b"#),
+        // "Se lo envío a Hermes.", "Le pregunto a Hermes."
+        "es": SendClaimWords(
+            verbsBefore: #"\b(?:env[ií]|mand|pas|pregunt|dig|dec|avis|reenv|consult|traslad)\w*"#,
+            hedge: #"\b(?:puedo|podr[ií]a|deber[ií]a|quieres|quiere|no|nunca)\b"#,
+            condition: #"\b(?:si|cuando|antes)\b"#),
+        // "J'envoie ça à Hermes.", "Je demande à Hermes."
+        "fr": SendClaimWords(
+            verbsBefore: #"(?:\b|')(?:envoi|envoy|transm|pass|demand|dis|dit|préviens|prévien|transf)\w*"#,
+            hedge: #"\b(?:peux|pourrais|pourrait|devrais|veux|voulez|voudrais|ne|pas|jamais)\b|n'"#,
+            condition: #"\b(?:si|quand|avant)\b"#),
+        // "Lo mando a Hermes.", "Chiedo a Hermes."
+        "it": SendClaimWords(
+            verbsBefore: #"\b(?:invi|mand|pass|chied|chiede|dic|dir|gir|inoltr|avvis)\w*"#,
+            hedge: #"\b(?:posso|puoi|potrei|dovrei|vuoi|vuole|non|mai)\b"#,
+            condition: #"\b(?:se|quando|prima)\b"#),
+        // "Vou enviar isso ao Hermes.", "Pergunto ao Hermes."
+        "pt": SendClaimWords(
+            verbsBefore: #"\b(?:envi|mand|pass|pergunt|dig|diz|avis|encaminh|repass)\w*"#,
+            hedge: #"\b(?:posso|poderia|deveria|quer|queres|quiser|não|nunca)\b"#,
+            condition: #"\b(?:se|quando|antes)\b"#),
+        // "Przekażę to Hermesowi.", "Zapytam Hermesa."
+        "pl": SendClaimWords(
+            verbsBefore: #"\b(?:wyśl|wysył|przekaż|przekazuj|zapyt|pyta|powiem|mówię|dam znać|daję znać)\w*"#,
+            hedge: #"\b(?:mogę|mógłbym|mogłabym|czy|chcesz|nie|nigdy)\b"#,
+            condition: #"\b(?:jeśli|jeżeli|gdy|kiedy|zanim)\b"#),
+        // "Передам это Гермесу.", "Спрошу у Гермеса."
+        "ru": SendClaimWords(
+            verbsBefore: #"\b(?:отправ|переда|перешл|спрош|спрашива|скаж|сообщ)\w*"#,
+            hedge: #"\b(?:могу|мог|могла|хочешь|хотите|не|никогда)\b"#,
+            condition: #"\b(?:если|когда|прежде)\b"#),
+        // "Saya kirim ke Hermes.", "Saya tanyakan ke Hermes."
+        "id": SendClaimWords(
+            verbsBefore: #"\b(?:kirim|mengirim|terus|meneruskan|tanya|menanya|bilang|sampaikan|menyampaikan|kasih tahu|beri tahu|memberi tahu)\w*"#,
+            hedge: #"\b(?:bisa|boleh|mau|ingin|apakah|tidak|nggak|enggak|jangan|belum)\b"#,
+            condition: #"\b(?:kalau|jika|setelah|sebelum)\b"#),
+        // "Bunu Hermes'e gönderiyorum.", "Hermes'e soracağım."
+        "tr": SendClaimWords(
+            claim: #"hermes'?(?:e|a|ye|ya)\b[^,;.!?]{0,60}?\b(?:gönderiyor|göndereceğ|gönderdim|iletiyor|ileteceğ|soruyor|soracağ|söylüyor|söyleyeceğ|aktarıyor|aktaracağ|haber veriyor|haber vereceğ)"#,
+            hedge: #"\b(?:istersen|ister misin|yapabilirim|gönderebilirim|iletebilirim|sorabilirim)\b"#,
+            condition: #"\beğer\b"#),
+        // 「ヘルメスに送ります。」「ヘルメスに聞いてみます。」
+        "ja": SendClaimWords(
+            claim: #"(?:ヘルメス|hermes)(?:さん)?に[^,;。]{0,30}?(?:送|伝え|聞|訊|頼|渡|回し|転送|確認|問い合わせ)"#,
+            hedge: #"ましょうか|ませんか|でしょうか|ません|ない|できます"#,
+            condition: #"たら|れば|なら|前に"#),
+        // "헤르메스에게 보낼게요.", "헤르메스에게 물어볼게요."
+        "ko": SendClaimWords(
+            claim: #"(?:헤르메스|hermes)(?:에게|한테|께|에)[^,;.]{0,30}?(?:보내|보낼|보냈|전달|물어|알려|넘길|넘겨|확인)"#,
+            hedge: #"까요|할까|않|못|안 |수 있"#,
+            condition: #"면 |전에"#),
+        // "我把这个发给赫尔墨斯。", "我问一下 Hermes。"
+        "zh": SendClaimWords(
+            claim: #"(?:发|發|传|傳|转|轉|告诉|告訴|问|問|交给|交給|让|讓)[^,;，。]{0,10}?(?:赫尔墨斯|赫爾墨斯|hermes)"#,
+            hedge: #"吗|嗎|要不要|可以|能|不|没|沒"#,
+            condition: #"如果|的话|的話|之前"#),
     ]
 
     private static let sendClaimPattern = #"\b(send|sending|pass|passing|forward|forwarding|hand|handing|relay|relaying|give|giving|get|getting|take|taking|put|putting)\b[^.!?]{0,40}?\bto hermes\b|\b(tell|telling|ask|asking|let|letting|ping|pinging|update|updating)\s+hermes\b|\b(check|checking) with hermes\b"#

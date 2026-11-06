@@ -1533,6 +1533,7 @@ extension VoiceConversationControllerTests {
             "I'm doing well, how about you.",
             "I'll check your calendar. You're free at three.",
             "I'll tell you a joke.",
+            "Shall I send that to Hermes？I'll check now.",
         ]
         for text in notClaims {
             XCTAssertFalse(GPTLiveConversationController.claimsToSendToHermes(text), text)
@@ -1540,59 +1541,62 @@ extension VoiceConversationControllerTests {
     }
 
     /// A call speaks the user's language now (LiveVoiceLanguage), so the
-    /// send-claim fallback (#945) reads a sentence naming Hermes in each
-    /// shipped language, and its offers and noes still send nothing.
+    /// send-claim fallback (#945) reads a sentence sending something to
+    /// Hermes in each shipped language: the turn's own, then the call's.
+    /// Its offers, conditions and noes still send nothing, and neither does
+    /// a sentence that only reports what Hermes said.
     func testGPTLiveSendClaimIsReadInTheCallsLanguage() {
-        let claims = [
-            "Alles klar, ich schicke das jetzt an Hermes.",
-            "Ich frage Hermes danach.",
-            "Vale, se lo envío a Hermes ahora mismo.",
-            "D'accord, je transmets ça à Hermes.",
-            "Va bene, lo mando a Hermes.",
-            "Certo, vou enviar isso ao Hermes agora.",
-            "Dobrze, przekażę to Hermesowi.",
-            "Хорошо, передам это Гермесу.",
-            "Tamam, bunu Hermes'e gönderiyorum.",
-            "Oke, saya kirim ke Hermes sekarang.",
-            "わかりました。ヘルメスに送ります。",
-            "알겠어요. 헤르메스에게 보낼게요.",
-            "好的，我把这个发给赫尔墨斯。",
-            // A reassurance after the send doesn't hold it.
-            "Vale, se lo envío a Hermes ahora mismo, no te preocupes.",
-            // "No problem" opens a yes.
-            "Kein Problem, ich schicke das jetzt an Hermes.",
-            "Pas de problème, je transmets ça à Hermes.",
-            "No hay problema, se lo envío a Hermes.",
+        let claims: [(String, String)] = [
+            ("Alles klar, ich schicke das jetzt an Hermes.", "de"),
+            ("Ich frage Hermes danach.", "de"),
+            ("Vale, se lo envío a Hermes ahora mismo.", "es"),
+            ("D'accord, je transmets ça à Hermes.", "fr"),
+            ("Va bene, lo mando a Hermes.", "it"),
+            ("Certo, vou enviar isso ao Hermes agora.", "pt"),
+            ("Dobrze, przekażę to Hermesowi.", "pl"),
+            ("Хорошо, передам это Гермесу.", "ru"),
+            ("Tamam, bunu Hermes'e gönderiyorum.", "tr"),
+            ("Oke, saya kirim ke Hermes sekarang.", "id"),
+            ("わかりました。ヘルメスに送ります。", "ja"),
+            ("알겠어요. 헤르메스에게 보낼게요.", "ko"),
+            ("好的，我把这个发给赫尔墨斯。", "zh-CN"),
+            // A reassurance after the send doesn't hold it, nor one before.
+            ("Vale, se lo envío a Hermes ahora mismo, no te preocupes.", "es"),
+            ("No te preocupes, se lo envío a Hermes ahora mismo.", "es"),
+            ("Keine Sorge, ich schicke das an Hermes.", "de"),
+            ("Kein Problem, ich schicke das jetzt an Hermes.", "de"),
+            ("Pas de problème, je transmets ça à Hermes.", "fr"),
+            ("No hay problema, se lo envío a Hermes.", "es"),
+            // Spanish on an Italian call: its "se" is a pronoun.
+            ("Vale, se lo mando a Hermes ahora mismo.", "it"),
         ]
-        for claim in claims {
-            XCTAssertTrue(GPTLiveConversationController.claimsToSendToHermes(claim, callLanguage: "de"), claim)
+        for (claim, language) in claims {
+            XCTAssertTrue(GPTLiveConversationController.claimsToSendToHermes(claim, callLanguage: language), claim)
         }
-        let notClaims = [
-            "Soll ich das an Hermes schicken?",
-            "Ich schicke das nicht an Hermes.",
-            "Ich schicke es an Hermes, sobald du ja sagst.",
-            "¿Se lo envío a Hermes?",
-            "No se lo envío a Hermes.",
-            "Je ne transmets pas ça à Hermes.",
-            "Posso mandarlo a Hermes se vuoi.",
-            "Могу передать это Гермесу, если хочешь.",
-            "ヘルメスに送りましょうか。",
-            "헤르메스에게 보낼까요.",
-            "要不要发给赫尔墨斯。",
-            // An offer before the send holds it.
-            "Si quieres, se lo envío a Hermes.",
+        let notClaims: [(String, String)] = [
+            ("Soll ich das an Hermes schicken?", "de"),
+            ("Ich schicke das nicht an Hermes.", "de"),
+            ("Ich schicke es an Hermes, sobald du ja sagst.", "de"),
+            ("Hermes sagt, dass dein Kalender heute leer ist.", "de"),
+            ("¿Se lo envío a Hermes?", "es"),
+            ("No se lo envío a Hermes.", "es"),
+            ("Si quieres, se lo envío a Hermes.", "es"),
+            ("Hermes dice que mañana va a llover.", "es"),
+            ("Je ne transmets pas ça à Hermes.", "fr"),
+            ("Posso mandarlo a Hermes se vuoi.", "it"),
+            ("Lo mando a Hermes se serve.", "it"),
+            ("Mando isso ao Hermes se precisar.", "pt"),
+            ("Могу передать это Гермесу, если хочешь.", "ru"),
+            ("ヘルメスに送りましょうか。", "ja"),
+            ("헤르메스에게 보낼까요.", "ko"),
+            ("要不要发给赫尔墨斯。", "zh-CN"),
+            // English narration on a German call is read as English.
+            ("Hermes passed it along.", "de"),
+            ("Hermes passed it along.", "en"),
         ]
-        for text in notClaims {
-            XCTAssertFalse(GPTLiveConversationController.claimsToSendToHermes(text, callLanguage: "de"), text)
+        for (text, language) in notClaims {
+            XCTAssertFalse(GPTLiveConversationController.claimsToSendToHermes(text, callLanguage: language), text)
         }
-        // Italian and Portuguese "se" is a condition on their calls, and
-        // Spanish's pronoun everywhere else.
-        XCTAssertFalse(GPTLiveConversationController.claimsToSendToHermes("Lo mando a Hermes se serve.", callLanguage: "it"))
-        XCTAssertFalse(GPTLiveConversationController.claimsToSendToHermes("Mando isso ao Hermes se precisar.", callLanguage: "pt"))
-        XCTAssertTrue(GPTLiveConversationController.claimsToSendToHermes("Vale, se lo mando a Hermes.", callLanguage: "es"))
-        // English words that start another language's stems ("passed"):
-        // an English call reads them by the English rules alone.
-        XCTAssertFalse(GPTLiveConversationController.claimsToSendToHermes("Hermes passed it along.", callLanguage: "en"))
     }
 
     func testGPTLiveDelegationResultWaitsForTheUserToFinishAndTheirWordsComeFirst() async {
