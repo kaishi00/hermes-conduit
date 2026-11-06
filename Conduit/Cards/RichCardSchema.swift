@@ -103,7 +103,7 @@ struct RichCardSchema {
     /// stays as it is (an empty one is a dash), a number becomes its digits,
     /// anything else is a dash.
     static func prepared(_ raw: Any) -> Any {
-        guard var object = raw as? [String: Any], (object["type"] as? String)?.lowercased() == "table",
+        guard var object = raw as? [String: Any], (object["type"] as? String).map({ cleanText($0).lowercased() }) == "table",
               var table = object["table"] as? [String: Any] else { return raw }
         if let columns = table["columns"] as? [Any] {
             table["columns"] = columns.map(cell)
