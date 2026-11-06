@@ -5226,7 +5226,7 @@ model-facing text (none describe the glow)
 - The drawer shell (Appearance, V2 off) draws every chat on the gold backdrop, a Bot Chat included, though the Model and Context sheets over it take the chat's glow.
 - The chat's other sheets (gateway diagnostics, workspace browser, delegate agents, pinned replies) never took a profile glow and stay gold.
 
-**Checked:** 2026-11-06, #PRNUM (group room names and bubbles take the glow).
+**Checked:** 2026-11-06, #1874 (group room names and bubbles take the glow).
 
 ## Profile names
 
@@ -5387,7 +5387,7 @@ the width or the color
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-06, #PRNUM (picture by the name, colors from the glow).
+**Checked:** 2026-11-06, #1874 (picture by the name, colors from the glow).
 
 ## Who answers in a group chat
 
