@@ -581,6 +581,12 @@ struct NotifierPluginUpdateBanner: View {
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                } else if update != .idle, !update.isInProgress, let detail = row?.detail {
+                    // Why it failed and what to do (Hermes' words, issue 1889); Settings shows it whole.
+                    Text(verbatim: detail)
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(4)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

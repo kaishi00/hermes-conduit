@@ -706,6 +706,8 @@ private final class PluginHost {
     /// The dashboard restart signs everyone out, like a host without a
     /// fixed sign-in secret.
     var restartSignsOut = false
+    /// The next capabilities read finds the sign-in expired.
+    var statusReadSignsOut = false
     /// Whether signing in again with the saved password works; nil leaves
     /// the updater without a way to sign in again.
     var signInAgainWorks: Bool?
@@ -731,6 +733,10 @@ private final class PluginHost {
 
     private func respond(path: String, method: String, body: [String: Any]?) throws -> [String: Any] {
         calls.append("\(method) \(path.split(separator: "?").first.map(String.init) ?? path)")
+        if statusReadSignsOut, path == NotifierPluginStatus.path {
+            statusReadSignsOut = false
+            signedIn = false
+        }
         guard signedIn else { throw DashboardTicketBridgeError.signInRequired }
         if path.hasPrefix(NotifierPluginUpdater.selfUpdatePath) {
             selfUpdatePaths.append(path)
@@ -993,7 +999,7 @@ extension GatewayRestartTests {
         XCTAssertEqual(host.calls.filter { $0 == "POST \(NotifierPluginUpdater.selfUpdatePath)" }.count, 2)
     }
 
-    func testASignInThatCantBeRenewedBeforeTheRestartSaysToSignIn() async {
+    func testASignInThatCantBeRenewedDuringTheRestartSaysToSignIn() async {
         let host = PluginHost()
         host.selfUpdateJobs = [["id": "j1", "step": "failed", "failed_step": "downloading", "detail": Self.mixedHermesDetail]]
         host.capabilities = [Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "old")]
@@ -1003,6 +1009,28 @@ extension GatewayRestartTests {
         updater.onHost = true
         let outcome = await updater.run { _ in }
         XCTAssertEqual(outcome, NotifierPluginUpdater.outcome(forRequestError: DashboardTicketBridgeError.signInRequired))
+    }
+
+    func testASignInThatCantBeRenewedBeforeTheRestartSaysToSignIn() async {
+        let host = PluginHost()
+        host.selfUpdateJobs = [["id": "j1", "step": "failed", "failed_step": "downloading", "detail": Self.mixedHermesDetail]]
+        host.capabilities = [Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "old")]
+        host.statusReadSignsOut = true
+        host.signInAgainWorks = false
+        var updater = host.updater()
+        updater.onHost = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, NotifierPluginUpdater.outcome(forRequestError: DashboardTicketBridgeError.signInRequired))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.selfRestartPath)"))
+    }
+
+    func testThePhoneRunStepsSayToRestartADashboardRunningMixedHermes() async {
+        let host = PluginHost()
+        host.updateError = DashboardTicketBridgeError.http(status: 400, detail: Self.mixedHermesDetail)
+        let outcome = await host.updater().run { _ in }
+        XCTAssertEqual(outcome, .failed(detail: NotifierPluginUpdater.explainingMixedHermes(Self.mixedHermesDetail)))
+        guard case .failed(let detail?) = outcome else { return XCTFail("\(outcome)") }
+        XCTAssertTrue(detail.hasPrefix(Self.mixedHermesDetail))
     }
 
     func testMixedHermesWithoutTheRestartRouteSaysToRestartTheDashboard() async {
