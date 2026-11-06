@@ -685,9 +685,14 @@ private struct ArtifactsList: View {
                 return
             }
             guard !Task.isCancelled else { return }
+            // A file the user sent is the user's text, not Hermes': its
+            // `MEDIA:` lines stay text and fetch nothing, as in their message.
+            let trusted = item.source != .attached
+            var dataURL: ((String) async -> String?)?
+            if trusted { dataURL = { path in await resolver.dataURL(for: path) } }
             markdown = MarkdownDocument(name: item.name, path: path, text: text,
-                                        gatewayMediaDataURL: { await resolver.dataURL(for: $0) },
-                                        gatewayMediaFiles: resolver)
+                                        gatewayMediaDataURL: dataURL,
+                                        gatewayMediaFiles: trusted ? resolver : nil)
         }
     }
 

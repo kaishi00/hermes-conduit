@@ -119,7 +119,8 @@ struct MarkdownDocumentSheet: View {
         ScrollView {
             let _ = imageGallery.update { [text, gatewayMediaFiles, gatewayMediaDataURL] in
                 ChatImageGallery.markdownItems(text, resolver: gatewayMediaFiles,
-                                               recognizesGatewayMedia: true, dataURL: gatewayMediaDataURL)
+                                               recognizesGatewayMedia: gatewayMediaDataURL != nil,
+                                               dataURL: gatewayMediaDataURL)
             }
             MarkdownText(source: text, gatewayMediaDataURL: gatewayMediaDataURL)
                 .environment(\.gatewayMediaFiles, gatewayMediaFiles)
