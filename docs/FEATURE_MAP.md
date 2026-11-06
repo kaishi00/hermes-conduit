@@ -466,12 +466,12 @@ that describes it: "What Conduit sends" (shows the rule), docs/VOICE_SETTINGS.md
 - Where it goes: `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (briefing, after the persona and memory), `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (instructions, last; Gemini, Qwen, Grok, Local Live's agent mode, and the Watch's setups)
 
 **Rulings**
-- The user's language is the App Language they picked, else the iPhone's first language, whether Conduit ships it or not. The model is told to speak it from its first words, a call's opening and a call from Hermes included, and to put English instructions, Hermes' replies, job results and Conduit's notes into it. When the user speaks another language or asks to switch, that one holds for the rest of the call. The rule comes after the persona and memory, so a persona in another language doesn't win (2026-11-06, tester report: GPT-Live answered a German user in English, #PRNUM).
+- The user's language is the App Language they picked, else the iPhone's first language, whether Conduit ships it or not. The model is told to speak it from its first words, a call's opening and a call from Hermes included, and to put English instructions, Hermes' replies, job results and Conduit's notes into it. When the user speaks another language or asks to switch, that one holds for the rest of the call. The rule comes after the persona and memory, so a persona in another language doesn't win (2026-11-06, tester report: GPT-Live answered a German user in English, #1846).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-06, #PRNUM (added: every live mode names the user's language).
+**Checked:** 2026-11-06, #1846 (added: every live mode names the user's language).
 
 ## Switching voice mode in a call
 
