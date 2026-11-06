@@ -1099,7 +1099,19 @@ extension BotModeTests {
             XCTAssertEqual(RoomDragPayload.lifted, "r")
             withExtendedLifetime(provider) {}
         }
-        XCTAssertNil(RoomDragPayload.lifted, "a drag that's gone leaves no room in hand")
+        // The system may let go of the item mid-drag: the room stays in
+        // hand a while, so the drag keeps showing a move, not a +.
+        XCTAssertEqual(RoomDragPayload.lifted, "r")
+        XCTAssertNil(RoomDragPayload.lifted(at: Date().addingTimeInterval(BotDragPayload.liftedGrace + 1)),
+                     "a drag that's gone leaves no room in hand")
+        RoomDragPayload.lifted = nil
+        autoreleasepool {
+            let provider = BotDragPayload.lift("Ayaka")
+            withExtendedLifetime(provider) {}
+        }
+        XCTAssertEqual(BotDragPayload.lifted, "Ayaka")
+        XCTAssertNil(BotDragPayload.lifted(at: Date().addingTimeInterval(BotDragPayload.liftedGrace + 1)))
+        BotDragPayload.lifted = nil
     }
 
     /// A bot dropped on another takes its place, as a room does (bots match
