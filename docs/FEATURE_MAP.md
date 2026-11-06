@@ -6018,6 +6018,35 @@ notifier README's "Where in Conduit a message was sent"
 
 **Checked:** 2026-11-05, #1815 with notifier #556 (the turn's tools read how its message was entered, turn_entry; Siblings, Code); 2026-11-02, #1631 (entry seeded with the discard; notifier #504).
 
+## Back-deployed Foundation API in shipped targets
+
+A comparison of two Dates calls the target's own `<=` and `>=`, never
+Foundation's: the 27.2 SDKs back-deploy those two, and Foundation in early
+iOS 27.2 betas lacks them, so a build that imported them crashed at launch
+there (TestFlight 251, "Error" and "Keeps crashing", 2026-11-05).
+
+**Siblings:** every shipped target compiles `Shared/DateOrder/DateOrder.swift`: the app, the
+notification service and location push extensions (through `Shared`), the
+widgets, the share extension, the Apple Watch app and its widgets (the folder
+itself) · CI's two checks (project.yml's targets on Linux, the smoke build's
+binaries on macOS) · not needed: the test bundles and UI test runners (they
+don't ship; `@testable import Conduit` resolves to Foundation's)
+
+**Code**
+- `Shared/DateOrder/DateOrder.swift` (Date's `<=` and `>=`, internal and `@_disfavoredOverload`)
+- `project.yml` (each shipped target's sources)
+- `scripts/check-weak-imports.py` (targets: every application and app extension reaches DateOrder.swift, its excludes honored; binaries: no shipped Mach-O weak-imports a BANNED symbol), `scripts/tests/test_check_weak_imports.py`
+- `.github/workflows/ci.yml` (the self-test job's "Every shipped target keeps Date's comparisons", the smoke job's "No back-deployed Date comparisons in the build"), held by `scripts/tests/test_ci_workflow_contract.py`; `docs/RELEASE_WORKFLOW.md` (the archive's check before upload)
+
+**Rulings**
+- A Foundation API the SDK back-deploys to a version whose betas are in testers' hands is declared in each target instead, or not used; a newly back-deployed symbol Conduit calls goes in both DateOrder (or a file beside it) and BANNED. The shadow stays `@_disfavoredOverload`: an internal, `@_spi` or `@usableFromInline` copy is visible to `@testable import Conduit` and makes ConduitTests' comparisons ambiguous (checked with Xcode 27B52, 2026-11-06; Claude's pick after the TestFlight 251 crash Eric asked to be fixed, #1848).
+
+**Open gaps**
+- The binaries check passes without testing anything while the hosted runner's Xcode predates the 27.2 SDK; the targets check holds until then, and each TestFlight archive is checked on the Mac (`conduit-save-dsyms`, docs/RELEASE_WORKFLOW.md step 4). That check only blocks an upload once the per-build archive script stops on its exit code.
+- The smoke build has no Watch app, so only the targets check covers the Watch's binaries.
+
+**Checked:** 2026-11-06, #1848.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays
