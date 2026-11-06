@@ -947,7 +947,8 @@ struct V2Shell: View {
             }
         case .bots:
             NavigationStack(path: $botsPath) {
-                // A Bot Chat grows out of its portrait (BotZoomDestination).
+                // A Bot Chat or a room grows out of its portrait
+                // (BotZoomDestination).
                 listRoot(tabBarClearance(V2BotsView()), alone: canSplit)
                     .environment(\.botZoomNamespace, botZoom)
                     .navigationDestination(for: V2Route.self) { route in
@@ -958,14 +959,15 @@ struct V2Shell: View {
                                                          fromHome: botsPath.first == .conversation))
                     }
             }
-            // The tapped portrait's chat lands after the push (#1700).
-            .onChange(of: appState.activeBotChatProfile) { _, open in
+            // The tapped portrait's chat lands after the push (#1700); a
+            // room has landed by its push.
+            .onChange(of: appState.botZoomRoomKey ?? appState.activeBotChatProfile) { _, open in
                 appState.botZoom.opened(open)
             }
             // The tapped portrait's chat has left: the next open pushes.
             .onChange(of: botsPath) { old, path in
                 if path == [.conversation], !old.contains(.conversation) {
-                    appState.botZoom.pushed(open: appState.activeBotChatProfile)
+                    appState.botZoom.pushed(open: appState.botZoomRoomKey ?? appState.activeBotChatProfile)
                 } else if !path.contains(.conversation) {
                     appState.botZoom.left()
                 }

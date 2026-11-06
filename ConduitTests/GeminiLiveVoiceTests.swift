@@ -2724,6 +2724,17 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(olderContext, "a plugin without the route means no memory, not a failed conversation")
     }
 
+    /// Gemini, Qwen, Grok and Local Live's agent mode share these
+    /// instructions: each names the user's language last, after the persona
+    /// and its speech rule.
+    func testLiveInstructionsEndWithTheUsersLanguage() {
+        let french = GeminiLiveConversationController.instructions(search: .google, personality: "A pirate", language: "fr")
+        XCTAssertTrue(french.hasSuffix(LiveVoiceLanguage.rule(language: "fr")))
+        XCTAssertTrue(french.contains("Language: speak French, the user's language"))
+        let watch = GeminiLiveConversationController.instructions(search: .none, onWatch: true, language: "ja")
+        XCTAssertTrue(watch.contains("Language: speak Japanese"))
+    }
+
     func testGeminiLiveMemoryShapesTheInstructionsAndTools() {
         XCTAssertFalse(GeminiLiveToolBridge.declarations(webSearch: false).contains { $0.name == "recall_memory" })
         XCTAssertTrue(GeminiLiveToolBridge.declarations(webSearch: false, memoryRecall: true).contains { $0.name == "recall_memory" })

@@ -33,7 +33,12 @@ struct AnimatedAvatarFrames: View {
     }
 
     var body: some View {
-        Group {
+        // A ZStack with a clear base, not a Group: a Group hands its
+        // modifiers to its children, and with no frame yet it has none, so
+        // onAppear never ran and nothing ever played (Eric, 2026-11-06: a
+        // GIF and a video both stayed still).
+        ZStack {
+            Color.clear
             if plays, let frame = player.frame {
                 Image(decorative: frame, scale: 1)
                     .resizable()
@@ -48,6 +53,8 @@ struct AnimatedAvatarFrames: View {
         .onChange(of: playback) { _, playback in
             if plays { player.play(playback) } else { player.stop() }
         }
+        // Decorative over the still: taps go to whatever holds the face.
+        .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
 }

@@ -109,6 +109,7 @@ struct V2ConversationScreen: View {
     @State private var chatTitlePendingDeletion: SessionSummary?
     @State private var confirmsRoomDisband = false
     @State private var choosesRoomPicture: GroupRoomPictureRequest?
+    @State private var showsRoomSettings = false
     /// The open chat's ids while its Artifacts sheet shows.
     @State private var artifactSessionIDs: ArtifactSheetIDs?
     /// Edit Bot from a Bot Chat's ⋯ menu (Eric 2026-11-03).
@@ -264,6 +265,11 @@ struct V2ConversationScreen: View {
         // A workstream's chat goes back to the Bot Chat that started it,
         // by Back and by the edge swipe, not to the list under both.
         .navigationBarBackButtonHidden(workstreamGoesBack != nil)
+        // Hiding Back doesn't stop the system's own swipes off the screen:
+        // a Bot Chat's zoom from its portrait (a slow swipe went to Bots
+        // Home, a quick one to the Bot Chat), and iOS 26's swipe from
+        // anywhere. Only `backSwipe` goes back from a workstream.
+        .background { SystemBackSwipeGate(blocked: workstreamGoesBack != nil) }
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
@@ -330,7 +336,8 @@ struct V2ConversationScreen: View {
             chatTitlePendingRename: $chatTitlePendingRename,
             chatTitlePendingDeletion: $chatTitlePendingDeletion,
             confirmsRoomDisband: $confirmsRoomDisband,
-            choosesRoomPicture: $choosesRoomPicture
+            choosesRoomPicture: $choosesRoomPicture,
+            showsRoomSettings: $showsRoomSettings
         ))
     }
 
@@ -406,9 +413,10 @@ struct V2ConversationScreen: View {
     }
 
     /// The bot whose Bot Chat a workstream's Back returns to; nil for any
-    /// other chat, or beside the list on a wide window, which has no Back.
+    /// other chat, a room shown over the workstream (its Back leaves the
+    /// room), or beside the list on a wide window, which has no Back.
     private var workstreamGoesBack: String? {
-        guard !shell.isSplit else { return nil }
+        guard !shell.isSplit, appState.activeRoomSurface == nil else { return nil }
         return appState.activeWorkstream?.profile
     }
 
@@ -418,15 +426,17 @@ struct V2ConversationScreen: View {
         appState.openCoordinator(profile: profile)
     }
 
-    /// A Bot Chat grown from its portrait goes home by a swipe from
+    /// A Bot Chat or a room grown from its portrait goes home by a swipe from
     /// anywhere, as a session's chat does: the zoom's own swipe starts only
-    /// where the transcript has no text. A workstream's chat, whose hidden
-    /// Back button takes the system's swipe with it, goes to its Bot Chat.
+    /// where the transcript has no text. A workstream's chat goes to its Bot
+    /// Chat by this swipe alone, slow or quick: `SystemBackSwipeGate` holds
+    /// the system's and the zoom's swipes back there.
     /// Not while the composer is in use (a caret or selection dragged
     /// along a line) or a held voice message slides to cancel.
     private var swipesBack: Bool {
         guard !composerExpanded, !composerTyping, !voiceMessages.isActive else { return false }
-        return workstreamGoesBack != nil || (botChatZoomed && !shell.isSplit && appState.activeBotChatProfile != nil)
+        return workstreamGoesBack != nil || (botChatZoomed && !shell.isSplit
+            && (appState.activeBotChatProfile != nil || appState.activeRoomSurface != nil))
     }
 
     private var backSwipe: some Gesture {
@@ -570,6 +580,7 @@ struct V2ConversationScreen: View {
                 onDelete: { chatTitlePendingDeletion = $0 },
                 onDisbandRoom: { confirmsRoomDisband = true },
                 onChooseRoomPicture: { choosesRoomPicture = $0 },
+                onRoomSettings: { showsRoomSettings = true },
                 onArtifacts: { openArtifacts(tab: .made) },
                 onEditBot: { editedBot = .edit($0) },
                 onScreen: { screenTarget = $0 },
@@ -602,17 +613,22 @@ struct V2ConversationScreen: View {
     }
 }
 
-/// The conversation's rename sheet, delete alert, room picture picker and
-/// disband confirmation.
+/// The conversation's rename sheet, delete alert, room picture picker, room
+/// settings and disband confirmation.
 private struct ConversationDialogs: ViewModifier {
     @EnvironmentObject private var appState: AppState
     @Binding var chatTitlePendingRename: SessionSummary?
     @Binding var chatTitlePendingDeletion: SessionSummary?
     @Binding var confirmsRoomDisband: Bool
     @Binding var choosesRoomPicture: GroupRoomPictureRequest?
+    @Binding var showsRoomSettings: Bool
 
     func body(content: Content) -> some View {
         content
+            .sheet(isPresented: $showsRoomSettings) {
+                GroupRoomSettingsSheet()
+                    .environmentObject(appState)
+            }
             .sheet(item: $chatTitlePendingRename) { session in
                 RenameSheet.conversation(session) { title in
                     Task { await appState.renameSession(session, to: title) }
@@ -738,6 +754,7 @@ private struct V2ConversationMenu: View {
     let onDelete: (SessionSummary) -> Void
     let onDisbandRoom: () -> Void
     let onChooseRoomPicture: (GroupRoomPictureRequest) -> Void
+    let onRoomSettings: () -> Void
     let onArtifacts: () -> Void
     let onEditBot: (BotProfile) -> Void
     let onScreen: (BotScreenTarget) -> Void
@@ -775,7 +792,9 @@ private struct V2ConversationMenu: View {
     var body: some View {
         Menu {
             if appState.activeRoomSurface != nil {
-                GroupRoomActionItems(onDisband: onDisbandRoom, onChoosePicture: onChooseRoomPicture)
+                GroupRoomActionItems(
+                    onDisband: onDisbandRoom, onChoosePicture: onChooseRoomPicture, onOpenSettings: onRoomSettings
+                )
             } else {
                 Button {
                     Task { await appState.refreshActiveSession() }

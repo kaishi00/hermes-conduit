@@ -294,6 +294,10 @@ struct GroupChatLifecycleOperations {
     var stop: (@MainActor (HermesClient, String) async throws -> Int)?
     var approve: (@MainActor (HermesClient, String, GroupPendingApproval, String) async throws -> Bool)?
     var disband: (@MainActor (HermesClient, String) async throws -> Void)?
+    /// Room, event id, settings, whether routing goes along.
+    var context: (@MainActor (HermesClient, String, String, GroupRoomContext, Bool) async throws -> GroupRoomContext)?
+    /// Room, discussion event id.
+    var continueDiscussion: (@MainActor (HermesClient, String, String) async throws -> Void)?
 
     static let live = GroupChatLifecycleOperations()
 }
@@ -2395,9 +2399,10 @@ final class AppState: ObservableObject {
         showSidebar = false
     }
 
-    /// The bot whose chat a list of bots is opening. The list closes first
-    /// and the shell routes the chat then, before it lands, so this tells
-    /// it a Bot Chat is coming (it stays in Bots) whatever was open before.
+    /// The bot whose chat a list of bots is opening, or the room Bots Home
+    /// is (`BotZoomArm.roomKey`). The list closes first and the shell routes
+    /// the chat then, before it lands, so this tells it a Bot Chat or a room
+    /// is coming (it stays in Bots) whatever was open before.
     private(set) var botChatOpening: String?
 
     /// Closes the list for `name`'s Bot Chat; `endOpeningBotChat` once the
@@ -12518,10 +12523,14 @@ final class AppState: ObservableObject {
         let dashboardID: UUID
         let room: GroupRoom
 
-        /// The room-composer thread id. The wire contract requires
-        /// `thread_id` on every `message.user` payload; the main composer is
-        /// one stable thread (thread replies are a later parity slice).
-        static let mainThreadID = "main"
+        /// The thread a composer message starts: its own, named by its
+        /// client event id, as Hermes Desktop sends one. The host routes and
+        /// caps each thread as its own discussion, and routes (lead or
+        /// automatic) only a message that opens a new thread, so a single
+        /// shared thread would make every message after the first a reply
+        /// that no routing ever sees. A retry keeps its event id, so it
+        /// keeps its thread.
+        static func threadID(forEventID eventID: String) -> String { eventID }
     }
 
     /// Lifecycle of the Group Chat capability probe.
@@ -12602,6 +12611,8 @@ final class AppState: ObservableObject {
         case failed(String)
     }
     @Published private(set) var roomApprovalAnswers: [String: RoomApprovalAnswer] = [:]
+    /// Discussions whose Continue is on its way, so a second tap waits.
+    @Published private(set) var continuingRoomDiscussions: Set<String> = []
 
     /// The open room's approvals still waiting on the user.
     var activeRoomPendingApprovals: [GroupPendingApproval] {
@@ -12613,21 +12624,66 @@ final class AppState: ObservableObject {
 
     /// The last `activeRoomResponder` answer, keyed on what it reads, so a
     /// render that asks several times replays the log once.
-    private var roomResponderCache: (key: String, member: GroupMember?)?
+    private var roomResponderCache: (key: String, context: GroupRoomContext?, member: GroupMember?)?
 
     /// The member whose turn the open room is running. A driver that reports
-    /// idle or blocked names nobody; with no driver status yet (first load,
-    /// or a gateway without one) the log alone decides.
+    /// idle or blocked names nobody. A host that lists its live turns
+    /// (`member_activity`) says who outright; otherwise, and with no driver
+    /// status yet (first load, or a gateway without one), the log decides.
     var activeRoomResponder: GroupMember? {
         if let driver = activeRoomDriverStatus, !driver.working || driver.blocked { return nil }
         let room = activeRoomSurface?.room
+        if let activity = activeRoomDriverStatus?.memberActivity {
+            return GroupRoomTurns.activeResponder(activity: activity, members: room?.members ?? [])
+        }
         let key = "\(activeRoomReplay.roomID)|\(activeRoomReplay.cursor)|\(room?.revision ?? -1)"
-        if let cached = roomResponderCache, cached.key == key { return cached.member }
+            + "|\(activeRoomDriverStatus?.maxRounds ?? 0)"
+        let context = activeRoomContext
+        if let cached = roomResponderCache, cached.key == key, cached.context == context { return cached.member }
         let member = GroupRoomTurns.pendingResponder(
-            events: activeRoomReplay.events, members: room?.members ?? []
+            events: activeRoomReplay.events, members: room?.members ?? [], context: context,
+            roundLimit: activeRoomDriverStatus?.maxRounds
         )
-        roomResponderCache = (key, member)
+        roomResponderCache = (key, context, member)
         return member
+    }
+
+    /// The open room's settings, as `groups.state` last gave them (or a
+    /// save here). Nil until the host answers, or on a host without them.
+    var activeRoomContext: GroupRoomContext? { activeRoomDriverStatus?.roomContext }
+
+    /// Whether the open room's settings can be changed here.
+    var canEditActiveRoomSettings: Bool {
+        groupCapabilities?.supports("groups.context") == true && activeRoomContext != nil
+            && activeRoomSurface.map { !$0.room.isDisbanded } == true
+    }
+
+    /// The who-answers modes the host offers; empty on a host that routes
+    /// every message to everyone, whose rooms keep only purpose and notes.
+    var activeRoomRoutingModes: [GroupRouting] {
+        (activeRoomDriverStatus?.routingModes ?? []).compactMap(GroupRouting.init(rawValue:))
+    }
+
+    /// The pending discussion's routing while it is still being picked:
+    /// a lead's routing turn or the router's call (the room's subtitle).
+    /// The router's call runs before any turn, so the driver can read idle
+    /// meanwhile: the log alone says it's choosing.
+    var activeRoomPendingRoute: GroupRoomTurns.DiscussionRoute? {
+        guard let route = GroupRoomTurns.pendingRoute(
+            events: activeRoomReplay.events, members: activeRoomSurface?.room.members ?? [], context: activeRoomContext
+        ) else { return nil }
+        switch route {
+        case .leadChoosing, .routerChoosing: return route
+        case .unrouted, .routed: return nil
+        }
+    }
+
+    /// The open room's discussions paused at their cap that Continue can
+    /// reopen, by the cap's event id (its caption carries the button).
+    var activeRoomContinuablePauses: [String: (discussionEventID: String, grant: Int)] {
+        guard groupCapabilities?.supports("groups.continue") == true,
+              let maxContinues = activeRoomDriverStatus?.maxContinues, maxContinues > 0 else { return [:] }
+        return GroupRoomTurns.continuablePauses(events: activeRoomReplay.events).filter { $0.value.grant <= maxContinues }
     }
     @Published private(set) var activeRoomSendInFlight = false
     /// A send whose outcome is unknown keeps its retry key (via the outbox):
@@ -12861,10 +12917,13 @@ final class AppState: ObservableObject {
     /// A room message's Reply button: the whole message rides along with
     /// the next one, shown in the room composer as a "Replying to…" chip,
     /// and the bot that wrote it is picked in the "To" row.
-    func replyInRoomComposer(text: String, authorName: String, authorHandle: String? = nil) {
+    func replyInRoomComposer(text: String, authorName: String, authorHandle: String? = nil, threadID: String? = nil) {
         guard canQuoteIntoRoom(), text.contains(where: { !$0.isWhitespace }) else { return }
+        let thread = threadID?.trimmingCharacters(in: .whitespacesAndNewlines)
         roomQuoteRequest = ComposerQuoteRequest(
-            content: .reply(ComposerReplyReference(authorName: authorName, text: text))
+            content: .reply(ComposerReplyReference(
+                authorName: authorName, text: text, threadID: thread?.isEmpty == false ? thread : nil
+            ))
         )
         if let authorHandle { mentionInRoomComposer(handle: authorHandle) }
     }
@@ -13441,8 +13500,10 @@ final class AppState: ObservableObject {
     /// Returns whether the send was REGISTERED — the pending row (and its
     /// retry key) now owns the text. `false` means the guards declined it
     /// and nothing holds the text, so the composer must keep its draft.
+    /// `threadID` is a reply's: the message goes in the thread it answers.
+    /// Otherwise it opens a thread of its own, so the host can route it.
     @discardableResult
-    func sendGroupRoomMessage(_ rawText: String) async -> Bool {
+    func sendGroupRoomMessage(_ rawText: String, threadID: String? = nil) async -> Bool {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return false }
         guard let surface = activeRoomSurface, let client, isConnected,
@@ -13459,7 +13520,7 @@ final class AppState: ObservableObject {
             return false
         }
         let epoch = groupRoomEpoch
-        let logical = groupRoomOutbox.beginSend(text: text) {
+        let logical = groupRoomOutbox.beginSend(text: text, threadID: threadID) {
             "conduit-\(UUID().uuidString.lowercased())"
         }
         pendingRoomMessage = groupRoomOutbox.pending
@@ -13486,7 +13547,7 @@ final class AppState: ObservableObject {
                 roomID: surface.room.roomID,
                 eventID: logical.eventID,
                 text: logical.text,
-                threadID: GroupRoomSurface.mainThreadID
+                threadID: logical.threadID ?? GroupRoomSurface.threadID(forEventID: logical.eventID)
             )
             // A non-throwing groups.send is a delivered event: upstream
             // `methods_groups.py` answers `accepted: true` for a fresh or an
@@ -13531,14 +13592,8 @@ final class AppState: ObservableObject {
             if result.driverStarted {
                 // The driver took the message on: show it working now rather
                 // than waiting for the next poll's status, which corrects it.
-                let previous = activeRoomDriverStatus
-                activeRoomDriverStatus = GroupDriverStatus(
-                    running: true,
-                    working: true,
-                    blocked: previous?.blocked ?? false,
-                    counts: previous?.counts ?? [:],
-                    pendingActions: previous?.pendingActions ?? []
-                )
+                activeRoomDriverStatus = activeRoomDriverStatus?.with(running: true, working: true)
+                    ?? GroupDriverStatus(running: true, working: true, blocked: false, counts: [:], pendingActions: [])
             }
             // A delivered message retires the failure banner of its earlier
             // ambiguous attempt.
@@ -13609,6 +13664,77 @@ final class AppState: ObservableObject {
             guard groupRoomEpoch == epoch else { return }
             // Surface without closing: stop is advisory to the driver.
             errorMessage = AppLocalization.string("Could not stop this group chat's work: \(UserFacingError.message(for: error))")
+        }
+    }
+
+    /// Continue a discussion paused at its cap (`groups.continue`): the
+    /// room's members get another budget of rounds and messages for it.
+    func continueActiveRoomDiscussion(_ discussionEventID: String) async {
+        guard let surface = activeRoomSurface, let client, isConnected,
+              groupCapabilities?.supports("groups.continue") == true,
+              !continuingRoomDiscussions.contains(discussionEventID),
+              // A Stop or a newer message since the tap ended the pause.
+              activeRoomContinuablePauses.values.contains(where: { $0.discussionEventID == discussionEventID })
+        else { return }
+        let epoch = groupRoomEpoch
+        continuingRoomDiscussions.insert(discussionEventID)
+        defer { continuingRoomDiscussions.remove(discussionEventID) }
+        do {
+            if let operation = groupChatOperations.continueDiscussion {
+                try await operation(client, surface.room.roomID, discussionEventID)
+            } else {
+                try await client.groupsContinue(roomID: surface.room.roomID, discussionEventID: discussionEventID)
+            }
+            guard groupRoomEpoch == epoch else { return }
+            await pollActiveRoomOnce(epoch: epoch)
+        } catch {
+            guard groupRoomEpoch == epoch else { return }
+            errorMessage = AppLocalization.string("Could not continue this conversation: \(UserFacingError.message(for: error))")
+        }
+    }
+
+    /// Save the open room's settings (`groups.context`). `eventID` is the
+    /// save's retry key: the same settings sent again keep it, so the host
+    /// returns the first save instead of writing a second. Routing goes
+    /// along only where the host routes and the save changes it, so a mode
+    /// this client predates (read as Everyone) survives a purpose or notes
+    /// edit. `original` is the settings the draft started from (the room's
+    /// current ones when nil): another client's routing change while the
+    /// sheet was open survives a save that left Who answers alone. Returns
+    /// the error to show, or nil once the host took it.
+    func saveActiveRoomSettings(
+        _ context: GroupRoomContext, eventID: String, roomID: String, original: GroupRoomContext? = nil
+    ) async -> String? {
+        guard let surface = activeRoomSurface, let client, isConnected,
+              groupCapabilities?.supports("groups.context") == true else {
+            return AppLocalization.string("Connect to Hermes to change this group chat's settings.")
+        }
+        // Settings drafted for one room never land in another opened since.
+        guard surface.room.roomID == roomID else { return AppLocalization.string("That chat is no longer available.") }
+        let epoch = groupRoomEpoch
+        // Who answers showed where the host lists a mode this app knows, or
+        // where the room runs on one newer than it (then with Everyone).
+        let opened = original ?? activeRoomContext
+        let offersRouting = !activeRoomRoutingModes.isEmpty || opened?.newerRouting.isEmpty == false
+        let includesRouting = offersRouting && opened.map {
+            $0.routing != context.routing || $0.leadMemberID != context.leadMemberID
+                || $0.newerRouting != context.newerRouting
+        } ?? true
+        do {
+            let saved: GroupRoomContext
+            if let operation = groupChatOperations.context {
+                saved = try await operation(client, surface.room.roomID, eventID, context, includesRouting)
+            } else {
+                saved = try await client.groupsContext(
+                    roomID: surface.room.roomID, eventID: eventID, context: context, includesRouting: includesRouting
+                )
+            }
+            guard groupRoomEpoch == epoch else { return nil }
+            activeRoomDriverStatus?.roomContext = saved
+            await pollActiveRoomOnce(epoch: epoch)
+            return nil
+        } catch {
+            return UserFacingError.message(for: error)
         }
     }
 

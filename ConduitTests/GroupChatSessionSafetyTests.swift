@@ -193,7 +193,9 @@ final class GroupChatSessionSafetyTests: XCTestCase {
                 recorder.ids.append(eventID)
                 XCTAssertEqual(roomID, "room-1")
                 XCTAssertEqual(text, "hello room")
-                XCTAssertEqual(threadID, "main")
+                // Each message opens its own thread, as Desktop's do, so
+                // the host can route it; a retry keeps it.
+                XCTAssertEqual(threadID, eventID)
                 if recorder.failFirst {
                     recorder.failFirst = false
                     throw TestError()
@@ -223,6 +225,44 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1])
         XCTAssertEqual(appState.activeRoomReplay.cursor, 1)
 
+        appState.closeGroupRoom()
+    }
+
+    /// A reply goes in the thread of the message it answers, as Desktop's
+    /// do, and its retry keeps that thread.
+    func testAReplyIsSentInTheThreadItAnswers() async {
+        final class SendRecorder {
+            var threads: [String] = []
+            var failFirst = true
+        }
+        let recorder = SendRecorder()
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, roomID in (room, nil) },
+            log: { _, roomID, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            send: { _, roomID, _, _, threadID in
+                recorder.threads.append(threadID)
+                if recorder.failFirst {
+                    recorder.failFirst = false
+                    throw TestError()
+                }
+                return self.sendResult(roomID: roomID, seq: 1)
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+
+        await appState.sendGroupRoomMessage("> quoted\n\nagreed", threadID: "conduit-first")
+        // The retry, from the room's row, names no thread: the pending one keeps it.
+        await appState.sendGroupRoomMessage("> quoted\n\nagreed")
+        XCTAssertEqual(recorder.threads, ["conduit-first", "conduit-first"])
         appState.closeGroupRoom()
     }
 
@@ -948,6 +988,164 @@ final class GroupChatSessionSafetyTests: XCTestCase {
     /// silently converted into a resend of the old pending text (the
     /// data-loss path): it is refused, the pending row stays visible, and
     /// the retry keeps the original event id.
+    // MARK: - Room settings and Continue (Hermes 0.23)
+
+    private func settingsCapabilities() -> GroupCapabilities {
+        let base = capabilities(supported: true)
+        return GroupCapabilities(
+            protocolVersion: base.protocolVersion,
+            driverReady: base.driverReady,
+            authorityGatewayID: base.authorityGatewayID,
+            features: base.features,
+            methods: base.methods.union(["groups.context", "groups.continue"]),
+            maxLogLimit: base.maxLogLimit
+        )
+    }
+
+    func testRoomSettingsSaveSendsRoutingOnlyWhereTheHostRoutes() async {
+        final class Box {
+            var routes = true
+            var newer = false
+            var saves: [(String, String, GroupRoomContext, Bool)] = []
+        }
+        let box = Box()
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.settingsCapabilities() },
+            list: { _ in ([room], nil) },
+            state: { _, _ in
+                var status = GroupDriverStatus(running: true, working: false, blocked: false, counts: [:], pendingActions: [])
+                status.routingModes = box.newer ? ["vote"] : box.routes ? ["everyone", "lead", "auto"] : nil
+                var context = GroupRoomContext(purpose: "Plans")
+                if box.newer { context.newerRouting = "vote" }
+                status.roomContext = context
+                return (room, status)
+            },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            context: { _, roomID, eventID, context, includesRouting in
+                box.saves.append((roomID, eventID, context, includesRouting))
+                return context
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        XCTAssertTrue(appState.canEditActiveRoomSettings)
+        XCTAssertEqual(appState.activeRoomRoutingModes, [.everyone, .lead, .auto])
+
+        let lead = GroupRoomContext(purpose: "Plans", routing: .lead, leadMemberID: "researcher")
+        let error = await appState.saveActiveRoomSettings(lead, eventID: "context-1", roomID: "room-1")
+        XCTAssertNil(error)
+        XCTAssertEqual(box.saves.first?.0, "room-1")
+        XCTAssertEqual(box.saves.first?.1, "context-1")
+        XCTAssertEqual(box.saves.first?.2, lead)
+        XCTAssertEqual(box.saves.first?.3, true)
+
+        // A save that leaves who answers as it opened keeps the room's own
+        // routing, a mode this client predates included.
+        var purposeOnly = appState.activeRoomContext ?? GroupRoomContext()
+        purposeOnly.purpose = "Trips"
+        _ = await appState.saveActiveRoomSettings(purposeOnly, eventID: "context-1b", roomID: "room-1")
+        XCTAssertEqual(box.saves.last?.3, false)
+        // Drafted from settings another client has changed since: who
+        // answers was left as it opened, so the newer routing stays.
+        let opened = GroupRoomContext(purpose: "Plans")
+        var drafted = opened
+        drafted.purpose = "Trips"
+        _ = await appState.saveActiveRoomSettings(drafted, eventID: "context-1c", roomID: "room-1", original: opened)
+        XCTAssertEqual(box.saves.last?.3, false)
+
+        // A host before routing keeps the room's routing as it is.
+        box.routes = false
+        appState.closeGroupRoom()
+        await appState.openGroupRoom(room)
+        XCTAssertTrue(appState.activeRoomRoutingModes.isEmpty)
+        _ = await appState.saveActiveRoomSettings(GroupRoomContext(purpose: "New"), eventID: "context-2", roomID: "room-1")
+        XCTAssertEqual(box.saves.last?.3, false)
+        // A host listing only a mode newer than this app, with the room on
+        // it: picking Everyone in its place sends it.
+        box.newer = true
+        appState.closeGroupRoom()
+        await appState.openGroupRoom(room)
+        XCTAssertTrue(appState.activeRoomRoutingModes.isEmpty)
+        XCTAssertEqual(appState.activeRoomContext?.newerRouting, "vote")
+        _ = await appState.saveActiveRoomSettings(GroupRoomContext(purpose: "Plans"), eventID: "context-2b", roomID: "room-1")
+        XCTAssertEqual(box.saves.last?.3, true)
+        // Drafted for another room: refused, nothing sent.
+        let count = box.saves.count
+        let refused = await appState.saveActiveRoomSettings(GroupRoomContext(purpose: "X"), eventID: "context-3", roomID: "room-2")
+        XCTAssertNotNil(refused)
+        XCTAssertEqual(box.saves.count, count)
+        appState.closeGroupRoom()
+    }
+
+    func testContinueIsOfferedUnderAPauseAndSendsItsDiscussion() async {
+        final class Box {
+            var continued: [String] = []
+            var maxContinues = 5
+        }
+        let box = Box()
+        let room = self.room()
+        let events = [
+            GroupDecoders.event(AnyCodable.from([
+                "room_id": "room-1", "seq": 1, "event_id": "user:d1", "kind": "message.user",
+                "actor": ["kind": "user", "id": "human"], "payload": ["text": "Debate", "thread_id": "main"],
+                "created_at": 1.0,
+            ]))!,
+            GroupDecoders.event(AnyCodable.from([
+                "room_id": "room-1", "seq": 2, "event_id": "cap-1", "kind": "room.activity",
+                "actor": ["kind": "gateway", "id": "gw-a"],
+                "payload": ["status": "bounded", "thread_id": "main", "discussion_event_id": "user:d1"],
+                "created_at": 2.0,
+            ]))!,
+        ]
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.settingsCapabilities() },
+            list: { _ in ([room], nil) },
+            state: { _, _ in
+                var status = GroupDriverStatus(running: true, working: false, blocked: false, counts: [:], pendingActions: [])
+                status.maxContinues = box.maxContinues
+                return (self.roomWithLatest(2), status)
+            },
+            log: { _, _, sinceSeq, _ in
+                let fresh = events.filter { $0.seq > sinceSeq }
+                return GroupLogPage(events: fresh, cursor: fresh.last?.seq ?? sinceSeq, latestSeq: 2, hasMore: false,
+                                    authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            continueDiscussion: { _, _, discussionID in box.continued.append(discussionID) }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+
+        XCTAssertEqual(appState.activeRoomContinuablePauses["cap-1"]?.discussionEventID, "user:d1")
+        // A cap of one still offers the first Continue.
+        box.maxContinues = 1
+        appState.closeGroupRoom()
+        await appState.openGroupRoom(room)
+        XCTAssertEqual(appState.activeRoomContinuablePauses["cap-1"]?.grant, 1)
+        // The host's cap decides: a pause whose next grant is past it offers nothing.
+        box.maxContinues = 0
+        appState.closeGroupRoom()
+        await appState.openGroupRoom(room)
+        XCTAssertTrue(appState.activeRoomContinuablePauses.isEmpty)
+        // A tap that lands after the pause ended sends nothing.
+        await appState.continueActiveRoomDiscussion("user:d1")
+        XCTAssertTrue(box.continued.isEmpty)
+        box.maxContinues = 5
+        appState.closeGroupRoom()
+        await appState.openGroupRoom(room)
+        XCTAssertNotNil(appState.activeRoomContinuablePauses["cap-1"])
+        await appState.continueActiveRoomDiscussion("user:d1")
+        XCTAssertEqual(box.continued, ["user:d1"])
+        appState.closeGroupRoom()
+    }
+
     func testNewTextAfterAmbiguousFailureIsRefusedNotSwallowed() async {
         final class SendRecorder {
             var ids: [String] = []

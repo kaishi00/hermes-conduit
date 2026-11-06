@@ -157,7 +157,8 @@ final class GeminiLiveConversationController: ObservableObject {
         asksFirst: Bool = true,
         readsBack: Bool = true,
         onWatch: Bool = false,
-        acknowledgesOnceStarted: Bool = false
+        acknowledgesOnceStarted: Bool = false,
+        language: String? = LiveVoiceLanguage.current
     ) -> String {
         // A Watch call has no read-backs (#451) and no screen to show
         // things on; its approvals come as requests that say how to answer.
@@ -186,7 +187,7 @@ final class GeminiLiveConversationController: ObservableObject {
     \(readsBack ? readBackParagraph + "\n" : "")\(onWatch ? watchFindChatParagraph + "\n" : showOnScreenParagraph + "\n" + findChatParagraph + "\n")\(onWatch ? watchApprovalParagraph : "Never approve, deny, or answer anything on a job's behalf yourself. When a job update says it needs the user's OK, ask them, and answer it with answer_approval only on their own yes or no; if a job needs any other input, tell the user to open it in Conduit.")
     When the user corrects, changes, pauses or calls off a job Hermes is still working on ("wait, make it Alex", "hold that", "never mind"), call interrupt_job with their words right away (job_id from list_jobs): Hermes takes them in at once and decides what they mean. Use cancel_job only when the user asks to cancel.
     \(asksFirst ? askFirstParagraph + "\n" : "")When the user says goodbye to you, or asks to end, hang up or close the call, say a short goodbye, then call end_conversation. Jobs keep running after it ends.
-    """ + personalityInstructions(personality) + memoryInstructions(memory) + speechRule(personality)
+    """ + personalityInstructions(personality) + memoryInstructions(memory) + speechRule(personality) + LiveVoiceLanguage.rule(language: language)
     }
 
     static let showOnScreenParagraph = "Use show_on_screen for anything better seen than heard: charts, tables, forecasts, recipes and other steps, comparisons, images and links, and places as map or place cards. Put the full detail there; once it's shown, say in a sentence that it's on their screen and give the gist: the screen takes the place of a long spoken answer. If it says the screen isn't available, just tell the user."
