@@ -1128,8 +1128,9 @@ extension BotModeTests {
     }
 
     /// A bot dropped on another takes its place, as a room does (bots match
-    /// in any case), and a merge needs the bot held still over the middle of
-    /// the face: carried across it, or beside it, the drop only moves.
+    /// in any case), and a merge needs the bot held still over the face or
+    /// just above or beside it: carried across it, or in the gap to the next
+    /// cell or on its name, the drop only moves.
     @MainActor
     func testABotDroppedOnAnotherTakesItsPlaceAndMergesOnlyHeldStill() throws {
         let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
@@ -1150,11 +1151,32 @@ extension BotModeTests {
         let face = CGRect(x: 10, y: 0, width: 80, height: 80)
         let zone = BotDragPayload.mergeZone(face: face)
         XCTAssertTrue(zone.contains(CGPoint(x: 50, y: 40)))
-        XCTAssertFalse(zone.contains(CGPoint(x: 14, y: 40)), "the face's rim moves")
-        XCTAssertTrue(zone.contains(CGPoint(x: 20, y: 40)), "all but the outer tenth starts a room")
-        XCTAssertTrue(zone.contains(CGPoint(x: 50, y: 10)))
-        XCTAssertTrue(zone.contains(CGPoint(x: 50, y: 70)))
-        XCTAssertFalse(zone.contains(CGPoint(x: 50, y: 100)), "the name under it moves")
+        XCTAssertTrue(zone.contains(CGPoint(x: 12, y: 40)), "the face's rim starts a room")
+        XCTAssertTrue(zone.contains(CGPoint(x: 0, y: 40)), "so does a hold just beside it")
+        XCTAssertTrue(zone.contains(CGPoint(x: 50, y: -10)), "or just above it")
+        XCTAssertFalse(zone.contains(CGPoint(x: -10, y: 40)), "the gap to the next cell moves")
+        XCTAssertFalse(zone.contains(CGPoint(x: 50, y: 85)), "the name under it moves")
+
+        // A drop's location reads in the cell's space whichever space it
+        // comes in.
+        let cell = CGRect(x: 200, y: 300, width: 110, height: 150)
+        var seen = false
+        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 50, y: 40), cellInWindow: cell, windowSpace: &seen), CGPoint(x: 50, y: 40))
+        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 250, y: 340), cellInWindow: cell, windowSpace: &seen), CGPoint(x: 50, y: 40))
+        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 50, y: 40), cellInWindow: .zero, windowSpace: &seen), CGPoint(x: 50, y: 40))
+
+        // A first-row cell near the window's corner: a window point over its
+        // face also fits the cell's own bounds. Taken as documented until a
+        // point outside them shows the window's space, then read that way.
+        let corner = CGRect(x: 16, y: 125, width: 110, height: 160)
+        var windowSpace = false
+        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 60, y: 140), cellInWindow: corner, windowSpace: &windowSpace), CGPoint(x: 60, y: 140))
+        XCTAssertFalse(windowSpace)
+        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 60, y: 200), cellInWindow: corner, windowSpace: &windowSpace), CGPoint(x: 44, y: 75))
+        XCTAssertTrue(windowSpace)
+        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 60, y: 140), cellInWindow: corner, windowSpace: &windowSpace), CGPoint(x: 44, y: 15))
+        // A point outside the cell's window frame is left alone.
+        XCTAssertEqual(BotDragPayload.cellPoint(CGPoint(x: 5, y: 5), cellInWindow: corner, windowSpace: &windowSpace), CGPoint(x: 5, y: 5))
         XCTAssertTrue(BotDragPayload.staysStill(CGPoint(x: 55, y: 45), from: CGPoint(x: 50, y: 40)))
         XCTAssertFalse(BotDragPayload.staysStill(CGPoint(x: 70, y: 40), from: CGPoint(x: 50, y: 40)))
     }
