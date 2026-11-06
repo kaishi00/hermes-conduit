@@ -107,7 +107,9 @@ When the release candidate passes final QA:
    Before uploading, check the archive: no shipped binary may weak-import a
    back-deployed Foundation symbol an early beta lacks (build 251 crashed at
    launch on iOS 27.2 betas that way; see "Back-deployed Foundation API in
-   shipped targets" in FEATURE_MAP.md). Upload only when this passes:
+   shipped targets" in FEATURE_MAP.md), and none may load ActivityKit or
+   ImagePlayground strongly (2.3.0 build 252 didn't launch on macOS 14 that
+   way, issue 1877). Upload only when this passes:
 
    ```bash
    python3 scripts/check-weak-imports.py binaries --products <archive>.xcarchive/Products

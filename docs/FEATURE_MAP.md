@@ -3238,7 +3238,7 @@ from Hermes: commentary is said, see Acknowledging work handed to Hermes)
 **Open gaps**
 - `Haptics.signal` still plays the writing haptic only for `message.delta`.
 
-**Checked:** 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files, even beside a card); 2026-10-28, #1430 (Local Live's spoken stream passes the action filter; its writing state is unchanged); 2026-10-27, #1390 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
+**Checked:** 2026-11-06, #1891 (no Live Activity on a Mac, so no writing state there; see Live Activity for a running turn); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files, even beside a card); 2026-10-28, #1430 (Local Live's spoken stream passes the action filter; its writing state is unchanged); 2026-10-27, #1390 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
 
 ## Live Activity for a running turn
 
@@ -3253,11 +3253,13 @@ relay · the plugin's reporter (phases, tool categories, context, ends) · the
 relay's route, which turns reports into Live Activity pushes · the widget's
 Lock Screen and Dynamic Island views · Settings > Notifications > Progress on
 the Lock Screen · a tap on the card, which opens the chat · the plugin's
-CHANGELOG
+CHANGELOG · Conduit on a Mac, which has none of it
 
 **Code**
 - App: `Conduit/Services/LiveTurnActivities.swift` (turnStarted, observe, reconcile, register, registerUnregistered), `Conduit/Services/PushNotificationService.swift` (registerLiveActivity), `Conduit/Services/AppState.swift` (the turnStarted call, liveTurnActivitiesRegistrySnapshot)
 - Widget: `Shared/Widgets/HermesTurnActivity.swift`, `ConduitWidgets/HermesTurnLiveActivity.swift`
+- Settings: `Conduit/Views/AuxiliaryViews.swift` (NotificationsSettingsDetail, the Lock Screen section)
+- Linking: `project.yml` (ActivityKit weak in Conduit and ConduitWidgets), held by `scripts/check-weak-imports.py` (WEAK_FRAMEWORKS) in the Smoke job
 - Notifier: `notifier/live_activity.py` (the reporter, compacted_from), `notifier/__init__.py` (the hooks that feed it), `notifier/relay/src/live-activities.mjs`, `notifier/relay/src/server.mjs`
 
 **Rulings**
@@ -3266,13 +3268,15 @@ CHANGELOG
 - A turn that a compaction moves to a new session id reports and ends under the id the card was registered with (2026-10-27, #1374, notifier #421).
 - A fork of the chat (Predictions' `/predict`, step summaries' /btw, the self-improvement review) never starts, moves or ends its card, even on a Hermes that runs plugin hooks for forks (2026-10-29, #1495 carrying #1489, notifier #464 carrying #462; see Notifications).
 - The card's registration runs as a background task, so it finishes when Conduit leaves the screen right after sending, and one that didn't reach the relay is sent again when Conduit is next on screen (2026-10-27, #1374).
+- On a Mac there is no card: `LiveTurnActivities.shared` is nil there, so nothing starts, adopts or ends one and Settings shows no Lock Screen section. ActivityKit is weak-linked (in the widget extension too), because macOS 14 has none for iPhone and iPad apps and every build that linked it strongly stopped at launch on Sonoma; nothing may touch it on a Mac (2026-11-06, #1891, issue 1877).
 
 **Open gaps**
 - The relay keeps registrations and unwatched ends in memory: a relay restart during a turn leaves its card to Conduit's next time on screen, or to iOS's 8 hours.
 - The live registry check reads the profile and dashboard on screen, so a card from another one ends only by push.
+- The widget bundle still lists the Live Activity on a Mac: `WidgetBundleBuilder` takes no runtime `if` (#1891's try didn't compile), so whether the launcher widgets load on macOS 14 is untried.
 - The registration and its retry go through `URLSession.shared`, so only their decisions (`needsRegistration`, `liveActivityStartedAgo`, `liveActivityRouteExists`) are tested.
 
-**Checked:** 2026-10-29, #1495, carrying #1489 (a chat's fork never touches the card, notifier #464); 2026-10-27, #1374.
+**Checked:** 2026-11-06, #1891 (no card on a Mac and ActivityKit weak-linked, issue 1877; the relay, the plugin's reporter and the card's views needed no change); 2026-10-29, #1495, carrying #1489 (a chat's fork never touches the card, notifier #464); 2026-10-27, #1374.
 
 ## Large code blocks in messages
 
@@ -6231,17 +6235,17 @@ don't ship; `@testable import Conduit` resolves to Foundation's)
 **Code**
 - `Shared/DateOrder/DateOrder.swift` (Date's `<=` and `>=`, internal and `@_disfavoredOverload`)
 - `project.yml` (each shipped target's sources)
-- `scripts/check-weak-imports.py` (targets: every application and app extension reaches DateOrder.swift, its excludes honored; binaries: no shipped Mach-O weak-imports a BANNED symbol), `scripts/tests/test_check_weak_imports.py`
-- `.github/workflows/ci.yml` (the self-test job's "Every shipped target keeps Date's comparisons", the smoke job's "No back-deployed Date comparisons in the build"), held by `scripts/tests/test_ci_workflow_contract.py`; `docs/RELEASE_WORKFLOW.md` (the archive's check before upload)
+- `scripts/check-weak-imports.py` (targets: every application and app extension reaches DateOrder.swift, its excludes honored; binaries: no shipped Mach-O weak-imports a BANNED symbol or strongly loads a WEAK_FRAMEWORKS framework, ActivityKit and ImagePlayground, see Live Activity for a running turn), `scripts/tests/test_check_weak_imports.py`
+- `.github/workflows/ci.yml` (the self-test job's "Every shipped target keeps Date's comparisons", the smoke job's "No back-deployed Date comparisons or strong framework loads in the build"), held by `scripts/tests/test_ci_workflow_contract.py`; `docs/RELEASE_WORKFLOW.md` (the archive's check before upload)
 
 **Rulings**
 - A Foundation API the SDK back-deploys to a version whose betas are in testers' hands is declared in each target instead, or not used; a newly back-deployed symbol Conduit calls goes in both DateOrder (or a file beside it) and BANNED. The shadow stays `@_disfavoredOverload`: an internal, `@_spi` or `@usableFromInline` copy is visible to `@testable import Conduit` and makes ConduitTests' comparisons ambiguous (checked with Xcode 27B52, 2026-11-06; Claude's pick after the TestFlight 251 crash Eric asked to be fixed, #1848).
 
 **Open gaps**
-- The binaries check passes without testing anything while the hosted runner's Xcode predates the 27.2 SDK; the targets check holds until then, and each TestFlight archive is checked on the Mac (`conduit-save-dsyms`, docs/RELEASE_WORKFLOW.md, the "Archive and upload" step of section 3). A failed check there renames the archive to `*.xcarchive.blocked-weak-imports`, so the upload step can't find it whatever the per-build scripts do with the exit code.
+- The binaries check's Date half passes without testing anything while the hosted runner's Xcode predates the 27.2 SDK (its framework half, #1891, runs on any Xcode); the targets check holds until then, and each TestFlight archive is checked on the Mac (`conduit-save-dsyms`, docs/RELEASE_WORKFLOW.md, the "Archive and upload" step of section 3). A failed check there renames the archive to `*.xcarchive.blocked-weak-imports`, so the upload step can't find it whatever the per-build scripts do with the exit code.
 - The smoke build has no Watch app, so only the targets check covers the Watch's binaries.
 
-**Checked:** 2026-11-06, #1856 (a failed archive check blocks the upload; Open gaps); 2026-11-06, #1848.
+**Checked:** 2026-11-06, #1891 (the binaries check also fails a strong load of ActivityKit or ImagePlayground, issue 1877; DateOrder and BANNED unchanged); 2026-11-06, #1856 (a failed archive check blocks the upload; Open gaps); 2026-11-06, #1848.
 
 ## Feature map rules
 

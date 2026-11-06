@@ -1102,7 +1102,7 @@ final class AppState: ObservableObject {
     /// snapshot answers true when a turn's chat was just seen absent and
     /// another read is needed to settle it.
     var liveTurnActivitiesRegistrySnapshot: @MainActor (Set<String>, String, String?) -> Bool = { ids, profile, dashboardID in
-        LiveTurnActivities.shared.reconcile(liveSessionIDs: ids, profile: profile, dashboardID: dashboardID)
+        LiveTurnActivities.shared?.reconcile(liveSessionIDs: ids, profile: profile, dashboardID: dashboardID) ?? false
     }
     /// The one `session.active_list` read that settles a turn whose chat
     /// was just seen absent, whether or not the chat list (and its poll) is
@@ -1112,7 +1112,7 @@ final class AppState: ObservableObject {
     /// Ends a dashboard's turn activities (Disconnect, Sign Out, a required
     /// sign-in), or with `true` only those the relay can't end by push.
     var liveTurnActivitiesEndDashboard: @MainActor (String?, Bool) -> Void = { dashboardID, keepingThoseOnRelay in
-        LiveTurnActivities.shared.endTurns(ofDashboard: dashboardID, keepingThoseOnRelay: keepingThoseOnRelay)
+        LiveTurnActivities.shared?.endTurns(ofDashboard: dashboardID, keepingThoseOnRelay: keepingThoseOnRelay)
     }
 
     private var liveSessionStatusProfile: String?
@@ -29082,7 +29082,7 @@ final class AppState: ObservableObject {
         // Events that arrive while prompt.submit is in flight are held for
         // the turn's Live Activity (#605), which starts once it's accepted.
         if !joinsRunningTurn {
-            LiveTurnActivities.shared.turnSubmitting(sessionIDs: submissionSessionIDs)
+            LiveTurnActivities.shared?.turnSubmitting(sessionIDs: submissionSessionIDs)
         }
         do {
             let outcome: PromptSubmissionOutcome
@@ -29139,7 +29139,7 @@ final class AppState: ObservableObject {
                         preSubmitOrderingBaseline: preSubmitOrderingBaseline
                     )
                     // The new turn's progress on the Lock Screen (#605).
-                    LiveTurnActivities.shared.turnStarted(
+                    LiveTurnActivities.shared?.turnStarted(
                         sessionIDs: submissionSessionIDs,
                         primaryID: sessionId,
                         linkID: liveActivityLinkSessionID(for: sessionId),
@@ -37023,7 +37023,7 @@ final class AppState: ObservableObject {
         guard eventBelongsToActiveSession(streamSessionId) else { return }
         defer { schedulePresentationCacheFlush(for: streamSessionId) }
         noteOpenChatStreamEvent()
-        LiveTurnActivities.shared.observe(event, sessionID: streamSessionId)
+        LiveTurnActivities.shared?.observe(event, sessionID: streamSessionId)
         if let signal = ResponseHapticPolicy.signal(for: event) {
             applyResponseHapticSignal(signal)
         }
