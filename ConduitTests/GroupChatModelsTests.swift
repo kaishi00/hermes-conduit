@@ -1205,6 +1205,13 @@ final class GroupChatModelsTests: XCTestCase {
             "round_index": 0, "seen_through_seq": 2, "task_id": "answer-task", "passed": true,
         ])]
         XCTAssertNil(GroupRoomTurns.pendingResponder(events: answered, members: members))
+        // Its pill: nothing for the routing receipt, then its own answer.
+        XCTAssertNil(GroupRoomTurns.memberStatuses(
+            events: twice, activity: [], responder: nil, approvals: [], members: members
+        )["zhongli"])
+        XCTAssertEqual(GroupRoomTurns.memberStatuses(
+            events: answered, activity: [], responder: nil, approvals: [], members: members
+        )["zhongli"], .passed)
     }
 
     func testTheKeptEventsDecideOnlyWhatTheyCanKnow() {

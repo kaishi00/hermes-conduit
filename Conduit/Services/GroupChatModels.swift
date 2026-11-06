@@ -1233,12 +1233,28 @@ enum GroupRoomTurns {
     ) -> [String: GroupMemberStatus] {
         var statuses: [String: GroupMemberStatus] = [:]
         let discussions = currentDiscussions(events)
-        // A lead's routing turn picks who answers; it isn't a reply or a pass.
+        // A lead's routing turn picks who answers; it isn't a reply or a
+        // pass. It is the task a `room.assignment` names, or (one that
+        // ended without a pick) a round-0 receipt that read the room only
+        // up to just before the message, as `route(of:)` reads it: an
+        // answer reads the message itself.
         let routingTasks = Set(events.compactMap { event -> String? in
             event.kind == "room.assignment" ? event.payload["task_id"]?.stringValue : nil
         })
+        var messageSeqs: [String: Int] = [:]
+        for event in events where event.isUserMessage && !event.eventID.isEmpty {
+            messageSeqs[event.eventID] = event.seq
+        }
+        func isRoutingTurn(_ event: GroupEvent) -> Bool {
+            if let task = event.payload["task_id"]?.stringValue, routingTasks.contains(task) { return true }
+            guard let discussion = event.payload["discussion_event_id"]?.stringValue,
+                  let messageSeq = messageSeqs[discussion],
+                  HermesClient.exactIntValue(event.payload["round_index"]) == 0,
+                  let seen = HermesClient.exactIntValue(event.payload["seen_through_seq"]) else { return false }
+            return seen == messageSeq - 1
+        }
         for event in events {
-            if let task = event.payload["task_id"]?.stringValue, routingTasks.contains(task) { continue }
+            if event.kind.hasPrefix("turn."), isRoutingTurn(event) { continue }
             guard let memberID = event.payload["member_id"]?.stringValue,
                   let discussion = event.payload["discussion_event_id"]?.stringValue,
                   discussion == discussions[event.threadID ?? ""],
