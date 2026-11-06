@@ -28,6 +28,9 @@ struct TranscriptCellEnvironment: Equatable {
         "chatPinReplyAction",
         "richChecklistContext",
         "richChecklistInChat",
+        // The call screen's control row sets it for its own buttons; no
+        // transcript row reads it.
+        "liveVoiceCallButtonSlotWidth",
     ]
 
     // Conduit's
