@@ -807,6 +807,8 @@ enum BotDragPayload {
 
     /// Starts a portrait's drag: its item, and the name the portraits read.
     static func lift(_ name: String) -> NSItemProvider {
+        // A bot in hand isn't a room, whatever an earlier room drag left.
+        RoomDragPayload.lifted = nil
         let provider = NSItemProvider(object: payload(for: name) as NSString)
         liftedName = name
         liftedProvider = provider
@@ -1031,7 +1033,9 @@ struct BotPortraitCell<MenuContent: View>: View {
             exited: { if onDrop != nil { endTargeting() } },
             updated: { location in if onDrop != nil { hover(at: location) } }
         ) { dragged in
-            guard let onDrop, dragged.caseInsensitiveCompare(bot.name) != .orderedSame else { return false }
+            guard let onDrop else { return false }
+            // Back on its own place: taken here and left where it was.
+            guard dragged.caseInsensitiveCompare(bot.name) != .orderedSame else { return true }
             let merge = BotDragPayload.dropMerges(mergeReady: mergeReady, endedAt: mergeReadyEndedAt)
             endTargeting()
             // After endTargeting, which stamps it when the hover hadn't
@@ -1156,8 +1160,13 @@ struct BotPortraitCell<MenuContent: View>: View {
             }
             return
         }
-        if mergeReady { return }
         if let anchor = dwellAnchor, BotDragPayload.staysStill(location, from: anchor) { return }
+        if mergeReady {
+            // Carried on across a swollen face: it lets go, and a drop now
+            // moves until the bot is held still again.
+            mergeReadyEndedAt = nil
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { mergeReady = false }
+        }
         dwellAnchor = location
         dwell?.cancel()
         dwell = Task { @MainActor in
