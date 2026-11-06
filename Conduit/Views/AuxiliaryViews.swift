@@ -926,9 +926,14 @@ struct SettingsView: View {
                         enabled: appState.isLocalLiveEnabled,
                         setEnabled: { appState.setLocalLiveEnabled($0) },
                         agent: appState.isLocalLiveAgent,
-                        setAgent: { appState.setLocalLiveAgent($0) }
+                        setAgent: { appState.setLocalLiveAgent($0) },
+                        personality: appState.localLivePersonalityEnabled,
+                        setPersonality: { appState.setLocalLivePersonalityEnabled($0) }
                     ),
+                    // Local Live's agent mode reads the style too; its
+                    // hands-free option (Hermes answers each turn) doesn't.
                     liveStyle: appState.isQwenLiveEnabled || appState.isGeminiLiveEnabled || appState.isGPTLiveEnabled || appState.isGrokLiveEnabled
+                        || (appState.isLocalLiveEnabled && appState.isLocalLiveAgent)
                         ? LiveVoiceStyleSettingsModel(
                             profile: appState.activeProfile,
                             style: appState.liveVoiceStyle,

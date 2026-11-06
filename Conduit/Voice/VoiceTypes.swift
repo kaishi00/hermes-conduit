@@ -182,6 +182,9 @@ struct VoiceProfilePreferences: Codable, Equatable {
     var grokLiveMemory: Bool? = nil
     /// Whether Grok Live speaks as the profile's SOUL.md persona. Nil is off.
     var grokLivePersonality: Bool? = nil
+    /// Whether Local Live's fast model (agent mode) speaks as the profile's
+    /// SOUL.md persona (issue 583). Nil is off.
+    var localLivePersonality: Bool? = nil
     /// Opt-in Local Live voice mode: a live call through the user's own
     /// speech server, with Hermes answering each turn in the call's chat
     /// (off by default; older blobs decode off). Never on with another live mode.
@@ -217,6 +220,9 @@ struct VoiceProfilePreferences: Codable, Equatable {
     /// Whether live calls start asking before sending a request to Hermes
     /// (#451). Nil is off.
     var liveVoiceAskBeforeSending: Bool? = nil
+    /// The user's own instructions for every live model, after Conduit's
+    /// rules (issue 583). Nil is none.
+    var liveVoiceExtraInstructions: String? = nil
 
     var liveVoiceStyle: LiveVoiceStyle {
         LiveVoiceStyle(
@@ -224,7 +230,8 @@ struct VoiceProfilePreferences: Codable, Equatable {
             backchannels: liveVoiceBackchannels ?? true,
             greeting: liveVoiceGreeting,
             answerLength: liveVoiceAnswerLength ?? .standard,
-            asksBeforeSending: liveVoiceAskBeforeSending ?? false
+            asksBeforeSending: liveVoiceAskBeforeSending ?? false,
+            extraInstructions: liveVoiceExtraInstructions
         )
     }
 
@@ -297,6 +304,7 @@ struct VoiceProfilePreferences: Codable, Equatable {
         grokLivePersonality = (try? container.decodeIfPresent(Bool.self, forKey: .grokLivePersonality)) ?? nil
         localLiveEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .localLiveEnabled)) ?? false
         localLiveAgent = (try? container.decodeIfPresent(Bool.self, forKey: .localLiveAgent)) ?? false
+        localLivePersonality = (try? container.decodeIfPresent(Bool.self, forKey: .localLivePersonality)) ?? nil
         voiceJobModel = try container.decodeIfPresent(String.self, forKey: .voiceJobModel)
         voiceJobProvider = try container.decodeIfPresent(String.self, forKey: .voiceJobProvider)
         voiceJobReasoningEffort = try container.decodeIfPresent(String.self, forKey: .voiceJobReasoningEffort)
@@ -309,6 +317,7 @@ struct VoiceProfilePreferences: Codable, Equatable {
         // An unknown length (a newer build's) is Default.
         liveVoiceAnswerLength = try? container.decodeIfPresent(LiveVoiceAnswerLength.self, forKey: .liveVoiceAnswerLength)
         liveVoiceAskBeforeSending = try? container.decodeIfPresent(Bool.self, forKey: .liveVoiceAskBeforeSending)
+        liveVoiceExtraInstructions = (try? container.decodeIfPresent(String.self, forKey: .liveVoiceExtraInstructions)) ?? nil
     }
 
     /// What a voice job's `session.create` asks for: the chosen voice-job

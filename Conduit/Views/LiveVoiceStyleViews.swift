@@ -3,8 +3,9 @@
 //  Conduit
 //
 //  Voice settings for how live calls sound (#290): a greeting when a call
-//  connects, the tone, answer length, backchannels, and a look at what
-//  Conduit sends the voice model.
+//  connects, the tone, answer length, backchannels, the user's own
+//  instructions (issue 583), and a look at what Conduit sends the voice
+//  model.
 //
 
 import SwiftUI
@@ -38,6 +39,7 @@ struct LiveVoiceStyleSettingsSection: View {
     @State private var answerLength: LiveVoiceAnswerLength
     @State private var backchannels: Bool
     @State private var asksBeforeSending: Bool
+    @State private var extraInstructions: String
     @State private var showsPreview = false
     @State private var greetingSave: Task<Void, Never>?
     /// The typed greeting not saved yet, pinned to its style and profile.
@@ -54,6 +56,7 @@ struct LiveVoiceStyleSettingsSection: View {
         _answerLength = State(initialValue: model.style.answerLength)
         _backchannels = State(initialValue: model.style.backchannels)
         _asksBeforeSending = State(initialValue: model.style.asksBeforeSending)
+        _extraInstructions = State(initialValue: model.style.extraInstructions ?? "")
     }
 
     private var style: LiveVoiceStyle {
@@ -62,8 +65,30 @@ struct LiveVoiceStyleSettingsSection: View {
             backchannels: backchannels,
             greeting: greets ? LiveVoiceStyle.cleanedGreeting(greeting) : nil,
             answerLength: answerLength,
-            asksBeforeSending: asksBeforeSending
+            asksBeforeSending: asksBeforeSending,
+            extraInstructions: LiveVoiceStyle.cleanedExtraInstructions(extraInstructions)
         )
+    }
+
+    /// Saves typed text once typing pauses, not on every keystroke: the
+    /// style as typed, to the profile it was typed in, even if the section
+    /// shows another one by then.
+    private func scheduleTypedSave() {
+        greetingSave?.cancel()
+        let pending = style
+        // Already stored (a resync after a profile switch, or typed back).
+        guard pending != model.style else {
+            pendingSave = nil
+            return
+        }
+        let setStyle = model.setStyle
+        lastSaved = pending
+        pendingSave = { setStyle(pending) }
+        greetingSave = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled else { return }
+            flushPendingSave()
+        }
     }
 
     /// Saves the typed greeting now, to the profile it was typed in.
@@ -103,24 +128,7 @@ struct LiveVoiceStyleSettingsSection: View {
                         if newValue.count > LiveVoiceStyle.maxGreetingCharacters {
                             greeting = String(newValue.prefix(LiveVoiceStyle.maxGreetingCharacters))
                         }
-                        // Saved once typing pauses, not on every keystroke:
-                        // the style as typed, to the profile it was typed in,
-                        // even if the section shows another one by then.
-                        greetingSave?.cancel()
-                        let pending = style
-                        // Already stored (a resync after a profile switch, or typed back).
-                        guard pending != model.style else {
-                            pendingSave = nil
-                            return
-                        }
-                        let setStyle = model.setStyle
-                        lastSaved = pending
-                        pendingSave = { setStyle(pending) }
-                        greetingSave = Task { @MainActor in
-                            try? await Task.sleep(for: .milliseconds(600))
-                            guard !Task.isCancelled else { return }
-                            flushPendingSave()
-                        }
+                        scheduleTypedSave()
                     }
                     .onSubmit {
                         // Shows what is saved and sent (one line, no double quotes).
@@ -178,6 +186,20 @@ struct LiveVoiceStyleSettingsSection: View {
             Text("The voice model tells you what it will send and waits for your OK before Hermes starts on it. Say “send it to Hermes” to skip the question. Change it during a call with the call screen's button or by asking. Applies to the next call.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
+            TextField(AppLocalization.string("Your instructions"), text: $extraInstructions, prompt: Text("Your instructions for the voice model"), axis: .vertical)
+                .lineLimit(3...8)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("voice.liveStyle.extraInstructions")
+                .onChange(of: extraInstructions) { _, newValue in
+                    if newValue.count > LiveVoiceStyle.maxExtraInstructionsCharacters {
+                        extraInstructions = String(newValue.prefix(LiveVoiceStyle.maxExtraInstructionsCharacters))
+                    }
+                    scheduleTypedSave()
+                }
+                .onDisappear { flushPendingSave() }
+            Text("Added to every live call after Conduit's own instructions: its personality, how it words things, or anything it should know about you. Conduit's instructions can't be shortened or replaced, because jobs, approvals and the call's tools depend on them, so where yours disagree, Conduit's come first. Applies to the next call.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
             Button {
                 // A greeting still being typed is saved first, so the
                 // preview shows it.
@@ -207,6 +229,11 @@ struct LiveVoiceStyleSettingsSection: View {
             answerLength = newValue.answerLength
             backchannels = newValue.backchannels
             asksBeforeSending = newValue.asksBeforeSending
+            // Changed elsewhere: never while the stored text is just this
+            // field's, cleaned.
+            if newValue.extraInstructions != LiveVoiceStyle.cleanedExtraInstructions(extraInstructions) {
+                extraInstructions = newValue.extraInstructions ?? ""
+            }
             // Now in sync: coming back to an earlier profile resyncs again.
             lastSaved = newValue
         }
@@ -221,6 +248,7 @@ struct LiveVoiceStyleSettingsSection: View {
             answerLength = style.answerLength
             backchannels = style.backchannels
             asksBeforeSending = style.asksBeforeSending
+            extraInstructions = style.extraInstructions ?? ""
             lastSaved = style
         }
         .sheet(isPresented: $showsPreview) {
