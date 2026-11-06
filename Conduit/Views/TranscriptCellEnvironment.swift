@@ -55,6 +55,8 @@ struct TranscriptCellEnvironment: Equatable {
     var botChatZoomed: Bool
     var rosterRowsInScroll: Bool
     var v2TabBarClearance: CGFloat
+    /// The side safe area the chat's column takes (#1900); no row reads it yet.
+    var windowSideInsets: WindowSideInsets?
     var v2ComposerRests: Bool
     var groupMemberTints: [String: CustomAccentColor]
     var conduitAccent: ConduitAccent
@@ -95,6 +97,7 @@ struct TranscriptCellEnvironment: Equatable {
         botChatZoomed = values.botChatZoomed
         rosterRowsInScroll = values.rosterRowsInScroll
         v2TabBarClearance = values.v2TabBarClearance
+        windowSideInsets = values.windowSideInsets
         v2ComposerRests = values.v2ComposerRests
         groupMemberTints = values.groupMemberTints
         conduitAccent = values.conduitAccent
@@ -138,6 +141,7 @@ struct TranscriptCellEnvironment: Equatable {
             && lhs.botChatZoomed == rhs.botChatZoomed
             && lhs.rosterRowsInScroll == rhs.rosterRowsInScroll
             && lhs.v2TabBarClearance == rhs.v2TabBarClearance
+            && lhs.windowSideInsets == rhs.windowSideInsets
             && lhs.v2ComposerRests == rhs.v2ComposerRests
             && lhs.groupMemberTints == rhs.groupMemberTints
             && lhs.conduitAccent == rhs.conduitAccent
@@ -196,6 +200,7 @@ private struct TranscriptCellConduitEnvironmentMore: ViewModifier {
             .environment(\.botChatZoomed, values.botChatZoomed)
             .environment(\.rosterRowsInScroll, values.rosterRowsInScroll)
             .environment(\.v2TabBarClearance, values.v2TabBarClearance)
+            .environment(\.windowSideInsets, values.windowSideInsets)
             .environment(\.v2ComposerRests, values.v2ComposerRests)
             .environment(\.groupMemberTints, values.groupMemberTints)
             .environment(\.conduitAccent, values.conduitAccent)
