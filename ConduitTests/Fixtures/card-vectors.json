@@ -3563,11 +3563,11 @@
       "input": [
         {
           "type": "diff",
-          "title": "﻿Fix the ‮admin‬ check 👨‍👩‍👧",
+          "title": "\ufeffFix the \u202eadmin\u202c check 👨\u200d👩\u200d👧",
           "diff": {
             "files": [
               {
-                "path": "src/auth​.py",
+                "path": "src/auth\u200b.py",
                 "status": "modified",
                 "added": 1,
                 "removed": 1,
@@ -3575,11 +3575,11 @@
                   {
                     "old_start": 3,
                     "new_start": 3,
-                    "context": "def is⁠_admin(user):",
+                    "context": "def is\u2060_admin(user):",
                     "lines": [
                       "-    if user.role != \"admin\":",
-                      "+    if user.role != \"user‮ ⁦// admin⁩ ⁦\":",
-                      "     return ‏True"
+                      "+    if user.role != \"user\u202e \u2066// admin\u2069 \u2066\":",
+                      "     return \u200fTrue"
                     ]
                   }
                 ]
@@ -3593,7 +3593,7 @@
       "output": [
         {
           "type": "diff",
-          "title": "Fix the admin check 👨‍👩‍👧",
+          "title": "Fix the admin check 👨\u200d👩\u200d👧",
           "diff": {
             "files": [
               {
@@ -3609,7 +3609,7 @@
                     "lines": [
                       "-    if user.role != \"admin\":",
                       "+    if user.role != \"user� �// admin� �\":",
-                      "     return ‏True"
+                      "     return \u200fTrue"
                     ]
                   }
                 ]
