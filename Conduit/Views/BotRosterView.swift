@@ -533,10 +533,13 @@ struct BotRosterView: View {
             } else {
                 roomsBeforeCreate = nil
                 Haptics.warning()
-                // Bots left or rooms no longer possible meanwhile: the room
-                // goes now, as it would have, and the error shows over the
-                // grid; else in the bar.
-                if !shell.isTabActive || !canStartRoomHere { newRoom.clear() }
+                // Rooms no longer possible meanwhile: the room goes now, as
+                // it would have, and the error shows over the grid; else in
+                // the bar, also for a person who left Bots meanwhile, who
+                // finds it there with the room kept for a retry.
+                // (canStartRoomHere reads the live appState; the captured
+                // environment would still say Bots shows.)
+                if !canStartRoomHere { newRoom.clear() }
                 if newRoom.isEmpty {
                     managementNotice = appState.errorMessage
                 } else {
