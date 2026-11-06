@@ -494,7 +494,7 @@ enum BotDragPayload {
 }
 
 /// What a bot's status line on Bots Home says: what needs the user first,
-/// then what's working, else "Idle". It never names the policy: that's a
+/// then what's working, else nothing. It never names the policy: that's a
 /// setting, in Edit Bot.
 enum BotPortraitStatus: Equatable {
     case needsYou(Int)
@@ -553,7 +553,8 @@ enum BotPortraitStatus: Equatable {
         case .inRooms(let rooms) where rooms.count == 1: return AppLocalization.string("In \(rooms[0])")
         case .inRooms(let rooms): return AppLocalization.string("In \(rooms.count) rooms")
         case .waitingOn(let name): return AppLocalization.string("Waiting on \(name)")
-        case .idle: return AppLocalization.string("Idle")
+        // Idle says nothing: the portrait's still ring says it.
+        case .idle: return ""
         }
     }
 
@@ -580,7 +581,7 @@ enum BotPortraitStatus: Equatable {
 /// One bot on Bots Home: its portrait in its own color, its name with an ⓘ,
 /// and its status. The portrait and name open the Bot Chat; the ⓘ opens the
 /// overview, and so does the status pill when it says something (a tap on
-/// "Needs you" goes to what needs the user). Idle is plain faint text. A
+/// "Needs you" goes to what needs the user). Idle shows nothing there. A
 /// long press has the Bots list's row menu.
 struct BotPortraitCell<MenuContent: View>: View {
     let bot: BotProfile
@@ -756,17 +757,15 @@ struct BotPortraitCell<MenuContent: View>: View {
         .accessibilityIdentifier("bots.overview.\(bot.name)")
     }
 
-    /// What the bot is doing: idle is faint text; anything else a pill that
-    /// opens the overview, where its work is. VoiceOver hears it as the
+    /// What the bot is doing: nothing when idle (its still ring says so),
+    /// in the same height so a row doesn't jump when a bot starts work;
+    /// anything else a pill that opens the overview, where its work is. VoiceOver hears it as the
     /// portrait's value, and the ⓘ opens the overview.
     @ViewBuilder
     private func statusLine(_ status: BotPortraitStatus) -> some View {
         if status == .idle {
-            Text(verbatim: status.title)
-                .scaledFont(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .frame(minHeight: 44)
+            Color.clear
+                .frame(width: 1, height: 44)
                 .accessibilityHidden(true)
         } else {
             Button {

@@ -983,7 +983,7 @@ extension BotModeTests {
         quiet["work"] = workResponse()["work"]
         XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: quiet, profile: "furina"), talkingIn: ["Trip", "Ops"]),
                        .inRooms(["Trip", "Ops"]))
-        XCTAssertEqual(BotPortraitStatus.idle.title, AppLocalization.string("Idle"))
+        XCTAssertEqual(BotPortraitStatus.idle.title, "")
     }
 
     /// Hand-offs between bots: answering another bot's ask comes before its
