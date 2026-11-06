@@ -12505,10 +12505,14 @@ final class AppState: ObservableObject {
         let dashboardID: UUID
         let room: GroupRoom
 
-        /// The room-composer thread id. The wire contract requires
-        /// `thread_id` on every `message.user` payload; the main composer is
-        /// one stable thread (thread replies are a later parity slice).
-        static let mainThreadID = "main"
+        /// The thread a composer message starts: its own, named by its
+        /// client event id, as Hermes Desktop sends one. The host routes and
+        /// caps each thread as its own discussion, and routes (lead or
+        /// automatic) only a message that opens a new thread, so a single
+        /// shared thread would make every message after the first a reply
+        /// that no routing ever sees. A retry keeps its event id, so it
+        /// keeps its thread.
+        static func threadID(forEventID eventID: String) -> String { eventID }
     }
 
     /// Lifecycle of the Group Chat capability probe.
@@ -12595,7 +12599,7 @@ final class AppState: ObservableObject {
 
     /// The last `activeRoomResponder` answer, keyed on what it reads, so a
     /// render that asks several times replays the log once.
-    private var roomResponderCache: (key: String, member: GroupMember?)?
+    private var roomResponderCache: (key: String, context: GroupRoomContext?, member: GroupMember?)?
 
     /// The member whose turn the open room is running. A driver that reports
     /// idle or blocked names nobody; with no driver status yet (first load,
@@ -12603,12 +12607,13 @@ final class AppState: ObservableObject {
     var activeRoomResponder: GroupMember? {
         if let driver = activeRoomDriverStatus, !driver.working || driver.blocked { return nil }
         let room = activeRoomSurface?.room
-        let key = "\(activeRoomReplay.roomID)|\(activeRoomReplay.cursor)|\(room?.revision ?? -1)|\(String(describing: activeRoomContext))"
-        if let cached = roomResponderCache, cached.key == key { return cached.member }
+        let key = "\(activeRoomReplay.roomID)|\(activeRoomReplay.cursor)|\(room?.revision ?? -1)"
+        let context = activeRoomContext
+        if let cached = roomResponderCache, cached.key == key, cached.context == context { return cached.member }
         let member = GroupRoomTurns.pendingResponder(
-            events: activeRoomReplay.events, members: room?.members ?? [], context: activeRoomContext
+            events: activeRoomReplay.events, members: room?.members ?? [], context: context
         )
-        roomResponderCache = (key, member)
+        roomResponderCache = (key, context, member)
         return member
     }
 
@@ -13480,7 +13485,7 @@ final class AppState: ObservableObject {
                 roomID: surface.room.roomID,
                 eventID: logical.eventID,
                 text: logical.text,
-                threadID: GroupRoomSurface.mainThreadID
+                threadID: GroupRoomSurface.threadID(forEventID: logical.eventID)
             )
             // A non-throwing groups.send is a delivered event: upstream
             // `methods_groups.py` answers `accepted: true` for a fresh or an
@@ -13626,15 +13631,21 @@ final class AppState: ObservableObject {
     /// Save the open room's settings (`groups.context`). `eventID` is the
     /// save's retry key: the same settings sent again keep it, so the host
     /// returns the first save instead of writing a second. Routing goes
-    /// along only where the host routes. Returns the error to show, or nil
+    /// along only where the host routes and the save changes it, so a mode
+    /// this client predates (read as Everyone) survives a purpose or notes
+    /// edit. Returns the error to show, or nil
     /// once the host took it.
-    func saveActiveRoomSettings(_ context: GroupRoomContext, eventID: String) async -> String? {
+    func saveActiveRoomSettings(_ context: GroupRoomContext, eventID: String, roomID: String) async -> String? {
         guard let surface = activeRoomSurface, let client, isConnected,
               groupCapabilities?.supports("groups.context") == true else {
             return AppLocalization.string("Connect to Hermes to change this group chat's settings.")
         }
+        // Settings drafted for one room never land in another opened since.
+        guard surface.room.roomID == roomID else { return AppLocalization.string("That chat is no longer available.") }
         let epoch = groupRoomEpoch
-        let includesRouting = !activeRoomRoutingModes.isEmpty
+        let includesRouting = !activeRoomRoutingModes.isEmpty && activeRoomContext.map {
+            $0.routing != context.routing || $0.leadMemberID != context.leadMemberID
+        } ?? true
         do {
             let saved: GroupRoomContext
             if let operation = groupChatOperations.context {

@@ -1062,6 +1062,25 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(GroupRoomTurns.pendingRoute(events: named, members: members), .unrouted)
     }
 
+    func testEachNewThreadIsRoutedAndAReplyInItsThreadIsNot() {
+        let members = roomMembers()
+        func message(_ seq: Int, _ text: String, thread: String) -> GroupEvent {
+            turnEvent(eventJSON(seq: seq, kind: "message.user", payload: ["text": text, "thread_id": thread],
+                                eventID: "user:\(thread)-\(seq)"))
+        }
+        let settled = roomEvent(seq: 3, kind: "room.activity", [
+            "status": "settled", "thread_id": "t1", "discussion_event_id": "user:t1-2",
+        ])
+        // A second message in a thread of its own goes to the lead again.
+        let second = [contextSet(seq: 1, routing: "lead", lead: "zhongli"), message(2, "First", thread: "t1"),
+                      settled, message(4, "Second", thread: "t2")]
+        XCTAssertEqual(GroupRoomTurns.pendingRoute(events: second, members: members), .leadChoosing(members[1]))
+        // One in the first message's thread is a reply, which goes to everyone.
+        let reply = [contextSet(seq: 1, routing: "lead", lead: "zhongli"), message(2, "First", thread: "t1"),
+                     settled, message(4, "More", thread: "t1")]
+        XCTAssertEqual(GroupRoomTurns.pendingRoute(events: reply, members: members), .unrouted)
+    }
+
     func testTheLeadsRoutingTurnIsNotItsAnswer() {
         let members = roomMembers()
         let log = [

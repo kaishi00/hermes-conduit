@@ -193,7 +193,9 @@ final class GroupChatSessionSafetyTests: XCTestCase {
                 recorder.ids.append(eventID)
                 XCTAssertEqual(roomID, "room-1")
                 XCTAssertEqual(text, "hello room")
-                XCTAssertEqual(threadID, "main")
+                // Each message opens its own thread, as Desktop's do, so
+                // the host can route it; a retry keeps it.
+                XCTAssertEqual(threadID, eventID)
                 if recorder.failFirst {
                     recorder.failFirst = false
                     throw TestError()
@@ -995,20 +997,32 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         XCTAssertEqual(appState.activeRoomRoutingModes, [.everyone, .lead, .auto])
 
         let lead = GroupRoomContext(purpose: "Plans", routing: .lead, leadMemberID: "researcher")
-        let error = await appState.saveActiveRoomSettings(lead, eventID: "context-1")
+        let error = await appState.saveActiveRoomSettings(lead, eventID: "context-1", roomID: "room-1")
         XCTAssertNil(error)
         XCTAssertEqual(box.saves.first?.0, "room-1")
         XCTAssertEqual(box.saves.first?.1, "context-1")
         XCTAssertEqual(box.saves.first?.2, lead)
         XCTAssertEqual(box.saves.first?.3, true)
 
+        // A save that leaves who answers as it opened keeps the room's own
+        // routing, a mode this client predates included.
+        var purposeOnly = appState.activeRoomContext ?? GroupRoomContext()
+        purposeOnly.purpose = "Trips"
+        _ = await appState.saveActiveRoomSettings(purposeOnly, eventID: "context-1b", roomID: "room-1")
+        XCTAssertEqual(box.saves.last?.3, false)
+
         // A host before routing keeps the room's routing as it is.
         box.routes = false
         appState.closeGroupRoom()
         await appState.openGroupRoom(room)
         XCTAssertTrue(appState.activeRoomRoutingModes.isEmpty)
-        _ = await appState.saveActiveRoomSettings(GroupRoomContext(purpose: "New"), eventID: "context-2")
+        _ = await appState.saveActiveRoomSettings(GroupRoomContext(purpose: "New"), eventID: "context-2", roomID: "room-1")
         XCTAssertEqual(box.saves.last?.3, false)
+        // Drafted for another room: refused, nothing sent.
+        let count = box.saves.count
+        let refused = await appState.saveActiveRoomSettings(GroupRoomContext(purpose: "X"), eventID: "context-3", roomID: "room-2")
+        XCTAssertNotNil(refused)
+        XCTAssertEqual(box.saves.count, count)
         appState.closeGroupRoom()
     }
 

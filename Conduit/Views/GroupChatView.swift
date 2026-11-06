@@ -913,7 +913,9 @@ struct GroupSystemEventCaption: View {
                 .flatMap { GroupRoomTurns.member(withID: $0, in: members) }
                 .map(GroupRoomTurns.displayName(of:)) ?? AppLocalization.string("The lead")
             let picked = GroupRoomTurns.memberIDs(event.payload["member_ids"], in: members)
-            if event.payload["fallback"]?.boolValue == true || picked.isEmpty {
+            let leadID = event.payload["lead_member_id"]?.stringValue?.lowercased()
+            let keptIt = picked.count == 1 && (picked[0].memberID?.lowercased() ?? picked[0].identityKey.lowercased()) == leadID
+            if event.payload["fallback"]?.boolValue == true || picked.isEmpty || keptIt {
                 return AppLocalization.string("\(lead) is taking this.")
             }
             return AppLocalization.string("\(lead) gave this to \(names(picked)).")
@@ -1648,6 +1650,8 @@ struct GroupRoomSettingsSheet: View {
     @State private var attempt: (eventID: String, context: GroupRoomContext)?
     @State private var isSaving = false
     @State private var failure: String?
+    /// The room the draft was read from.
+    @State private var roomID: String?
 
     private var members: [GroupMember] {
         GroupRoomTurns.members(appState.activeRoomSurface?.room.members ?? [], namedBy: appState.shownBotRoster)
@@ -1743,11 +1747,12 @@ struct GroupRoomSettingsSheet: View {
         .onAppear {
             guard !loaded, let context = appState.activeRoomContext else { return }
             draft = context
+            roomID = appState.activeRoomSurface?.room.roomID
             loaded = true
         }
-        // The room closed or went away under the sheet.
-        .onChange(of: appState.activeRoomSurface?.room.roomID) { _, roomID in
-            if roomID == nil { dismiss() }
+        // The room closed, or another opened, under the sheet.
+        .onChange(of: appState.activeRoomSurface?.room.roomID) { _, current in
+            if current != roomID { dismiss() }
         }
     }
 
@@ -1838,7 +1843,7 @@ struct GroupRoomSettingsSheet: View {
     }
 
     private func save() {
-        guard canSave else { return }
+        guard canSave, let roomID else { return }
         let context = normalized(draft)
         let eventID: String
         if let attempt, attempt.context == context {
@@ -1850,7 +1855,7 @@ struct GroupRoomSettingsSheet: View {
         isSaving = true
         failure = nil
         Task {
-            let error = await appState.saveActiveRoomSettings(context, eventID: eventID)
+            let error = await appState.saveActiveRoomSettings(context, eventID: eventID, roomID: roomID)
             isSaving = false
             if let error {
                 failure = AppLocalization.string("Could not save this group chat's settings: \(error)")
