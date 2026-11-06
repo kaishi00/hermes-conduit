@@ -6030,7 +6030,7 @@ don't ship; `@testable import Conduit` resolves to Foundation's)
 - `Shared/DateOrder/DateOrder.swift` (Date's `<=` and `>=`, internal and `@_disfavoredOverload`)
 - `project.yml` (each shipped target's sources)
 - `scripts/check-weak-imports.py` (targets: every application and app extension reaches DateOrder.swift, its excludes honored; binaries: no shipped Mach-O weak-imports a BANNED symbol), `scripts/tests/test_check_weak_imports.py`
-- `.github/workflows/ci.yml` (the self-test job's "Every shipped target keeps Date's comparisons", the smoke job's "No back-deployed Date comparisons in the build"); `docs/RELEASE_WORKFLOW.md` (the archive's check before upload)
+- `.github/workflows/ci.yml` (the self-test job's "Every shipped target keeps Date's comparisons", the smoke job's "No back-deployed Date comparisons in the build"), held by `scripts/tests/test_ci_workflow_contract.py`; `docs/RELEASE_WORKFLOW.md` (the archive's check before upload)
 
 **Rulings**
 - A Foundation API the SDK back-deploys to a version whose betas are in testers' hands is declared in each target instead, or not used; a newly back-deployed symbol Conduit calls goes in both DateOrder (or a file beside it) and BANNED. The shadow stays `@_disfavoredOverload`: an internal, `@_spi` or `@usableFromInline` copy is visible to `@testable import Conduit` and makes ConduitTests' comparisons ambiguous (checked with Xcode 27B52, 2026-11-06; Claude's pick after the TestFlight 251 crash Eric asked to be fixed, #1848).

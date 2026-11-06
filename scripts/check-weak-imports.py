@@ -59,16 +59,18 @@ def shipped_targets(project_yml):
     kinds = {}
     in_excludes = False
     for line in project_yml.splitlines():
-        if not line.strip() or line.lstrip().startswith("#"):
+        # A comment after a key (`excludes:  # why`) is no part of it.
+        line = re.sub(r"(^|\s+)#.*$", "", line).rstrip()
+        if not line.strip():
             continue
         indent = len(line) - len(line.lstrip(" "))
         if indent == 0:
-            in_targets = re.match(r"^targets:\s*(#.*)?$", line) is not None
+            in_targets = line == "targets:"
             name = None
             continue
         if not in_targets:
             continue
-        if indent == 2 and line.rstrip().endswith(":"):
+        if indent == 2 and line.endswith(":"):
             name = line.strip()[:-1]
             targets[name] = []
             continue
@@ -83,7 +85,7 @@ def shipped_targets(project_yml):
             targets[name].append((match.group(1).strip("\"'").rstrip("/"), []))
             in_excludes = False
             continue
-        if targets[name] and re.match(r"^\s{8}excludes:\s*$", line):
+        if targets[name] and re.match(r"^\s{8}excludes:$", line):
             in_excludes = True
             continue
         match = re.match(r"^\s{10}-\s*(\S+)", line)
@@ -103,7 +105,9 @@ def compiles_date_order(sources):
             return True
         if DATE_ORDER_FILE.startswith(path + "/"):
             rest = DATE_ORDER_FILE[len(path) + 1:]
-            if not any(fnmatch.fnmatch(rest, pattern) for pattern in excludes):
+            # A pattern drops the file, or a folder it's in (`DateOrder`).
+            if not any(fnmatch.fnmatch(rest, pattern) or rest.startswith(pattern.rstrip("/") + "/")
+                       for pattern in excludes):
                 return True
     return False
 

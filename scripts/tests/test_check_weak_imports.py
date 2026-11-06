@@ -17,7 +17,10 @@ class TargetTests(unittest.TestCase):
             project = handle.read()
         self.assertEqual(check_weak_imports.target_problems(project), [])
         names = set(check_weak_imports.shipped_targets(project))
-        self.assertTrue({"Conduit", "ConduitWatch", "ConduitWidgets"} <= names, names)
+        self.assertEqual(names, {
+            "Conduit", "ConduitNotificationService", "ConduitLocationPush", "ConduitWidgets",
+            "ConduitShareExtension", "ConduitWatch", "ConduitWatchWidgets",
+        })
         self.assertNotIn("ConduitTests", names)
 
     def test_no_targets_found_fails(self):
@@ -55,6 +58,14 @@ class TargetTests(unittest.TestCase):
                 excludes:
                   - "Widgets/**"
                   - "DateOrder/**"
+          Commented:  # a note on the target
+            type: app-extension
+            sources:
+              - path: Commented
+              - path: Shared
+                excludes:  # why these go
+                  - "Widgets/**"
+                  - DateOrder
           KeptExcludes:
             type: app-extension
             sources:
@@ -69,7 +80,7 @@ class TargetTests(unittest.TestCase):
         """)
         problems = check_weak_imports.target_problems(project)
         self.assertEqual([p.split("target ")[1].split(" ")[0] for p in problems],
-                         ["Excluded", "Ext"], problems)
+                         ["Commented", "Excluded", "Ext"], problems)
 
 
 class BinaryTests(unittest.TestCase):
@@ -112,6 +123,26 @@ class BinaryTests(unittest.TestCase):
         self.assertEqual(found, ["Conduit.app/Conduit", "Conduit.app/Conduit.debug.dylib",
                                  "Conduit.app/Frameworks/Fat64.framework/Fat64",
                                  "Conduit.app/PlugIns/ConduitWidgets.appex/ConduitWidgets"])
+
+
+class MainTests(unittest.TestCase):
+    def test_a_binary_nm_cant_read_fails_the_check(self):
+        import subprocess
+        import sys
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as products:
+            path = os.path.join(products, "Conduit.app", "Conduit")
+            os.makedirs(os.path.dirname(path))
+            with open(path, "wb") as handle:
+                handle.write(b"\xcf\xfa\xed\xfe....")
+            failed = subprocess.CompletedProcess([], 1, stdout="", stderr="truncated file")
+            with mock.patch.object(check_weak_imports.subprocess, "run", return_value=failed), \
+                 mock.patch.object(sys, "argv", ["check", "binaries", "--products", products]), \
+                 mock.patch("builtins.print") as printed:
+                self.assertEqual(check_weak_imports.main(), 1)
+        output = " ".join(str(call.args[0]) for call in printed.call_args_list)
+        self.assertIn("Conduit.app/Conduit: nm failed", output)
 
 
 if __name__ == "__main__":
