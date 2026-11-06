@@ -131,7 +131,7 @@ from Hermes opens Local Live and the fast model says it.
   from plugin 0.88.
 - **Silence while Hermes works, though your server says a filler**: on a
   server that only reads text back, a line it says on its own while Hermes
-  works ("let me look that up") plays from plugin 0.134.7, and Hermes'
+  works ("let me look that up") plays from plugin 0.134.8, and Hermes'
   answer follows once it ends. Talking over it or Interrupt stops it like
   the reply.
 
