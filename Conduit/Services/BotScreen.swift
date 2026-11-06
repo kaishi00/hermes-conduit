@@ -281,6 +281,8 @@ final class BotScreenModel: ObservableObject {
             }
             apply(next)
             availability = next.isSupported ? .available : .unsupported
+            // Read fine again: an earlier action's error is over, unless one is still going.
+            if !isBusy, !isInstalling { errorText = nil }
             if next.isRunning, stream == .idle { await attach() }
         } catch let error as RpcError where error.code == HermesClient.methodNotFoundCode {
             availability = .unsupported
