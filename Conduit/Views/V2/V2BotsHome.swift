@@ -1075,12 +1075,15 @@ struct BotPortraitCell<MenuContent: View>: View {
             guard let onDrop else { return false }
             // Back on its own place: taken here and left where it was.
             guard dragged.caseInsensitiveCompare(bot.name) != .orderedSame else { return true }
-            // It already slid into this one's place: it stays there.
-            if placed {
+            let merge = BotDragPayload.dropMerges(mergeReady: mergeReady, endedAt: mergeReadyEndedAt)
+            // It already slid into this one's place: as a move it stays
+            // there, but held still since for a room, the room still starts
+            // (a slide across pinned bots may have moved nothing).
+            if placed && !merge {
                 endTargeting()
+                mergeReadyEndedAt = nil
                 return true
             }
-            let merge = BotDragPayload.dropMerges(mergeReady: mergeReady, endedAt: mergeReadyEndedAt)
             endTargeting()
             // After endTargeting, which stamps it when the hover hadn't
             // ended yet: this drop has used it.
@@ -1251,6 +1254,7 @@ struct BotPortraitCell<MenuContent: View>: View {
         dwell = nil
         slide?.cancel()
         slide = nil
+        placed = false
         dwellAnchor = nil
         isTargeted = false
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { mergeReady = false }

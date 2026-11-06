@@ -1100,6 +1100,11 @@ extension BotModeTests {
         appState.dropBot("Ayaka", onto: "furina", shown: ["ayaka", "Furina", "Yelan"])
         XCTAssertEqual(appState.botOrder.names, ["Furina", "Ayaka", "Yelan"], "onto its right neighbour: they swap")
         XCTAssertLessThan(BotDragPayload.slideDwell, BotDragPayload.mergeDwell, "a bot slides into place before it could swell for a room")
+        // Pinned bots show first: carried on, a bot goes after its target in
+        // the order itself, so two pinned neighbours still swap.
+        let pinnedFirst = BotOrder(names: ["Tighnari", "Ayaka", "Bennett"], kind: .bots)
+            .dropping("Ayaka", onto: "Bennett", shown: ["Ayaka", "Bennett", "Tighnari"])
+        XCTAssertEqual(pinnedFirst.names, ["Tighnari", "Bennett", "Ayaka"])
         appState.dropBot("Yelan", onto: "Furina", shown: ["Furina", "Ayaka", "Yelan"])
         XCTAssertEqual(appState.botOrder.names, ["Yelan", "Furina", "Ayaka"])
 
