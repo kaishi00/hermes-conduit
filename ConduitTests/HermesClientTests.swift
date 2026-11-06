@@ -3925,6 +3925,40 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testABotScreenStoppedStreamsMessagesAreStale() {
+        let model = BotScreenModel(profile: "furina", client: nil)
+        let old = model.currentStreamTag
+        XCTAssertTrue(model.isCurrent(old))
+        model.detach()
+        XCTAssertFalse(model.isCurrent(old), "A stopped stream's late close or failure is ignored")
+        XCTAssertTrue(model.isCurrent(model.currentStreamTag), "The stream now open is current")
+        XCTAssertFalse(model.isCurrent(nil), "An untagged message is ignored")
+    }
+
+    func testAnOwedBotScreenHandBackIsInFlightUntilAnswered() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let base = socket.sentTexts.count
+        BotScreenModel.viewerIDs["furina"] = "viewer-1"
+        BotScreenModel.owedReleases["furina"] = "viewer-1"
+        defer {
+            BotScreenModel.viewerIDs["furina"] = nil
+            BotScreenModel.owedReleases["furina"] = nil
+        }
+        XCTAssertFalse(BotScreenModel.releaseInFlight("furina"), "Owed, but nothing is on its way")
+        BotScreenModel.spawnOwedRelease(profile: "furina", client: client)
+        XCTAssertTrue(BotScreenModel.releaseInFlight("furina"), "In flight from the moment it's spawned")
+        await waitForSends(base + 1, on: socket)
+        let release = try sentFrame(socket)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(release["id"] as? Int),
+            "result": ["lease": NSNull()]
+        ], to: socket)
+        for _ in 0..<100 where BotScreenModel.releaseInFlight("furina") { await Task.yield() }
+        XCTAssertFalse(BotScreenModel.releaseInFlight("furina"))
+        XCTAssertNil(BotScreenModel.owedReleases["furina"])
+        client.disconnect()
+    }
+
     func testResumeKeepsAnOpenClarifyWhenPendingClarifyIsAlsoPresent() async throws {
         let (client, socket) = try await connectedClientForServerRequests()
         let sent = Gate()
