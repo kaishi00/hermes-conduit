@@ -16,6 +16,8 @@ struct LiveVoiceInstructionsPreviewContent: Equatable {
     var mode: String
     var instructions: String
     var openingTurn: String?
+
+    var isLocalLive: Bool { mode == "Local Live" }
 }
 
 /// What Voice settings needs to show the live call style.
@@ -216,26 +218,31 @@ struct LiveVoiceStyleSettingsSection: View {
             // This view's own save: the fields already show it (and turning
             // the greeting off keeps its text for turning it back on).
             guard newValue != lastSaved else { return }
-            greets = newValue.greeting != nil
-            // Changed elsewhere (another profile's settings): never while the
-            // stored text is just this field's, cleaned.
-            if let stored = newValue.greeting {
-                if stored != LiveVoiceStyle.cleanedGreeting(greeting) { greeting = stored }
-            } else {
-                // Off (or another profile without one): its text mustn't carry over.
-                greeting = ""
+            // Text still being typed (a save is pending) stays as typed: a
+            // change made elsewhere meanwhile, such as Hermes setting the
+            // tone, is taken in and saved with it, so neither undoes the other.
+            let typing = pendingSave != nil
+            if !typing {
+                greets = newValue.greeting != nil
+                // Changed elsewhere (another profile's settings): never while the
+                // stored text is just this field's, cleaned.
+                if let stored = newValue.greeting {
+                    if stored != LiveVoiceStyle.cleanedGreeting(greeting) { greeting = stored }
+                } else {
+                    // Off (or another profile without one): its text mustn't carry over.
+                    greeting = ""
+                }
+                if newValue.extraInstructions != LiveVoiceStyle.cleanedExtraInstructions(extraInstructions) {
+                    extraInstructions = newValue.extraInstructions ?? ""
+                }
             }
             tone = newValue.tone?.rawValue ?? ""
             answerLength = newValue.answerLength
             backchannels = newValue.backchannels
             asksBeforeSending = newValue.asksBeforeSending
-            // Changed elsewhere: never while the stored text is just this
-            // field's, cleaned.
-            if newValue.extraInstructions != LiveVoiceStyle.cleanedExtraInstructions(extraInstructions) {
-                extraInstructions = newValue.extraInstructions ?? ""
-            }
             // Now in sync: coming back to an earlier profile resyncs again.
             lastSaved = newValue
+            if typing { scheduleTypedSave() }
         }
         .onChange(of: model.profile) { _, _ in
             // Another profile, even one with the same style: what was typed
@@ -270,7 +277,11 @@ struct LiveVoiceInstructionsPreview: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     if let preview {
-                        Text(AppLocalization.string("Conduit adds this to \(preview.mode)'s instructions for every call. Your Hermes server adds its own voice persona before it. Memory and personality are read when a call starts."))
+                        // Local Live's fast model gets this as all its instructions:
+                        // no server adds a persona of its own.
+                        Text(preview.isLocalLive
+                            ? AppLocalization.string("Conduit sends this to your fast model as its instructions for every call; nothing else is added before it. Personality is read when a call starts.")
+                            : AppLocalization.string("Conduit adds this to \(preview.mode)'s instructions for every call. Your Hermes server adds its own voice persona before it. Memory and personality are read when a call starts."))
                             .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                         Text(verbatim: preview.instructions)

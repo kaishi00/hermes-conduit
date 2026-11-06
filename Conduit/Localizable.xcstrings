@@ -440953,6 +440953,94 @@
           }
         }
       }
+    },
+    "Conduit sends this to your fast model as its instructions for every call; nothing else is added before it. Personality is read when a call starts.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit sendet das bei jedem Anruf als Anweisungen an dein schnelles Modell; davor wird nichts weiter hinzugefügt. Die Persönlichkeit wird beim Start eines Anrufs gelesen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit sends this to your fast model as its instructions for every call; nothing else is added before it. Personality is read when a call starts."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit envía esto a tu modelo rápido como sus instrucciones en cada llamada; no se añade nada antes. La personalidad se lee al empezar una llamada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit envoie ceci à votre modèle rapide comme instructions à chaque appel ; rien d'autre n'est ajouté avant. La personnalité est lue au début de l'appel."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit mengirim ini ke model cepat Anda sebagai instruksinya di setiap panggilan; tidak ada lagi yang ditambahkan sebelumnya. Kepribadian dibaca saat panggilan dimulai."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit invia questo al tuo modello veloce come istruzioni a ogni chiamata; prima non viene aggiunto nient'altro. La personalità viene letta all'inizio della chiamata."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduitは通話のたびに、これを高速モデルへの指示として送信します。その前には何も追加されません。パーソナリティは通話の開始時に読み込まれます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit는 통화할 때마다 이 내용을 빠른 모델의 지시사항으로 보내요. 그 앞에는 아무것도 추가되지 않아요. 성격은 통화가 시작될 때 읽어요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit wysyła to do twojego szybkiego modelu jako jego instrukcje przy każdym połączeniu; nic więcej nie jest dodawane przed nimi. Osobowość jest odczytywana na początku połączenia."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Conduit envia isto ao seu modelo rápido como instruções em toda chamada; nada mais é adicionado antes. A personalidade é lida quando a chamada começa."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit отправляет это быстрой модели как её инструкции в каждом звонке; перед ними больше ничего не добавляется. Личность считывается в начале звонка."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit bunu her aramada hızlı modelinize talimatları olarak gönderir; öncesine başka bir şey eklenmez. Kişilik arama başlarken okunur."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 会在每次通话时把这些作为指令发送给你的快速模型，前面不会再添加其他内容。性格会在通话开始时读取。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 會在每次通話時把這些作為指示傳送給你的快速模型，前面不會再加入其他內容。個性會在通話開始時讀取。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
