@@ -414,6 +414,16 @@ final class BotScreenModel: ObservableObject {
             }
             self.applyLease(BotScreenLease(answer["lease"]?.objectValue))
         }
+        // It failed: tried again as a closed sheet's is, so closing the sheet
+        // now leaves it on its way.
+        if !force, let viewerID, let client, Self.owedReleases[profile] == viewerID {
+            let profile = profile
+            Task { [weak self] in
+                if let answer = await Self.sendOwedRelease(profile: profile, client: client) {
+                    self?.applyLease(BotScreenLease(answer["lease"]?.objectValue))
+                }
+            }
+        }
     }
 
     /// The view is going: the person's hold goes with it (as closing the

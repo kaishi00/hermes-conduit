@@ -3894,6 +3894,34 @@ final class HermesClientTests: XCTestCase {
             "result": ["lease": ["epoch": 4, "owner": "human"]]
         ], to: socket)
         await take.value
+        XCTAssertEqual(socket.sentTexts.count, base + 1, "No release follows the takeover")
+        XCTAssertNil(BotScreenModel.owedReleases["furina"])
+        client.disconnect()
+    }
+
+    func testABotScreenTakeoverAnsweredAfterTheSheetClosedOwesItsRelease() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let base = socket.sentTexts.count
+        BotScreenModel.viewerIDs["furina"] = "viewer-1"
+        defer {
+            BotScreenModel.viewerIDs["furina"] = nil
+            BotScreenModel.owedReleases["furina"] = nil
+        }
+        let model = BotScreenModel(profile: "furina", client: client)
+        let take = Task { await model.takeOver() }
+        await waitForSends(base + 1, on: socket)
+        let acquire = try sentFrame(socket)
+        model.close()
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(acquire["id"] as? Int),
+            "result": ["lease": ["epoch": 4, "owner": "human"]]
+        ], to: socket)
+        await take.value
+        XCTAssertEqual(BotScreenModel.owedReleases["furina"], "viewer-1", "Owed until it goes through")
+        await waitForSends(base + 2, on: socket)
+        let release = try sentFrame(socket)
+        XCTAssertEqual(release["method"] as? String, "display.lease.release")
+        XCTAssertEqual((release["params"] as? [String: Any])?["viewer_id"] as? String, "viewer-1")
         client.disconnect()
     }
 
