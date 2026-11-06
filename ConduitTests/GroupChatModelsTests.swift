@@ -1351,6 +1351,27 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(statuses["zhongli"], .stopped)
     }
 
+    func testALeadsRoutingTurnIsNotItsPass() {
+        let members = roomMembers()
+        let routing = turnEvent(eventJSON(
+            seq: 2, kind: "turn.settled", actor: ["kind": "gateway", "id": "gw-a"],
+            payload: ["thread_id": "main", "discussion_event_id": "user:d1", "member_id": "zhongli",
+                      "round_index": 0, "passed": true, "task_id": "route-1"]
+        ))
+        let assignment = turnEvent(eventJSON(
+            seq: 3, kind: "room.assignment", actor: ["kind": "gateway", "id": "gw-a"],
+            payload: ["thread_id": "main", "discussion_event_id": "user:d1", "lead_member_id": "zhongli",
+                      "member_ids": ["furina"], "task_id": "route-1"]
+        ))
+        let log = [userMessage(seq: 1, text: "hi"), routing, assignment,
+                   settled(seq: 4, member: "furina", round: 0, messageSeq: nil)]
+        let statuses = GroupRoomTurns.memberStatuses(
+            events: log, activity: [], responder: nil, approvals: [], members: members
+        )
+        XCTAssertNil(statuses["zhongli"])
+        XCTAssertEqual(statuses["furina"], .passed)
+    }
+
     func testAFailureInAnotherThreadStaysOnItsPill() {
         let members = roomMembers()
         let failed = turnEvent(eventJSON(
@@ -1404,6 +1425,13 @@ final class GroupChatModelsTests: XCTestCase {
             responder: members[0], approvals: [], members: members
         )
         XCTAssertTrue(idle.isEmpty)
+        // How each turn went still shows once the room is idle.
+        let done = GroupRoomTurns.memberStatuses(
+            events: [userMessage(seq: 1, text: "hi"), settled(seq: 2, member: "furina", round: 0, messageSeq: nil)],
+            activity: rows, working: false, responder: nil, approvals: [], members: members
+        )
+        XCTAssertEqual(done["furina"], .passed)
+        XCTAssertNil(done["zhongli"])
         let working = GroupRoomTurns.memberStatuses(
             events: [userMessage(seq: 1, text: "hi")], activity: rows, working: true,
             responder: nil, approvals: [], members: members

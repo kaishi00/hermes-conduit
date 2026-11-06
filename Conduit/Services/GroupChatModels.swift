@@ -1233,7 +1233,12 @@ enum GroupRoomTurns {
     ) -> [String: GroupMemberStatus] {
         var statuses: [String: GroupMemberStatus] = [:]
         let discussions = currentDiscussions(events)
+        // A lead's routing turn picks who answers; it isn't a reply or a pass.
+        let routingTasks = Set(events.compactMap { event -> String? in
+            event.kind == "room.assignment" ? event.payload["task_id"]?.stringValue : nil
+        })
         for event in events {
+            if let task = event.payload["task_id"]?.stringValue, routingTasks.contains(task) { continue }
             guard let memberID = event.payload["member_id"]?.stringValue,
                   let discussion = event.payload["discussion_event_id"]?.stringValue,
                   discussion == discussions[event.threadID ?? ""],
