@@ -104,6 +104,39 @@ class BinaryTests(unittest.TestCase):
                " (from Foundation)\n")
         self.assertEqual(len(check_weak_imports.weak_import_problems("x", out)), 1)
 
+    def test_a_strong_activitykit_link_is_reported(self):
+        out = textwrap.dedent("""\
+            Load command 12
+                      cmd LC_LOAD_DYLIB
+                  cmdsize 88
+                     name /System/Library/Frameworks/ActivityKit.framework/ActivityKit (offset 24)
+            """)
+        problems = check_weak_imports.strong_link_problems("Conduit.app/Conduit.debug.dylib", out)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("ActivityKit strongly", problems[0])
+        self.assertIn("1877", problems[0])
+
+    def test_weak_links_and_other_frameworks_pass(self):
+        out = textwrap.dedent("""\
+            Load command 12
+                      cmd LC_LOAD_WEAK_DYLIB
+                  cmdsize 88
+                     name /System/Library/Frameworks/ActivityKit.framework/ActivityKit (offset 24)
+            Load command 13
+                      cmd LC_LOAD_WEAK_DYLIB
+                  cmdsize 96
+                     name /System/Library/Frameworks/ImagePlayground.framework/ImagePlayground (offset 24)
+            Load command 14
+                      cmd LC_LOAD_DYLIB
+                  cmdsize 80
+                     name /System/Library/Frameworks/SwiftUI.framework/SwiftUI (offset 24)
+            Load command 15
+                      cmd LC_RPATH
+                  cmdsize 32
+                     path @executable_path/Frameworks (offset 12)
+            """)
+        self.assertEqual(check_weak_imports.strong_link_problems("x", out), [])
+
     def test_test_bundles_and_runners_are_skipped(self):
         import tempfile
         with tempfile.TemporaryDirectory() as products:

@@ -37,7 +37,11 @@ struct ConduitWidgets: WidgetBundle {
     var body: some Widget {
         NativeLauncherWidget()
         CharacterLauncherWidget()
-        HermesTurnLiveActivity()
+        // A Mac has no Lock Screen for it, and macOS 14 no ActivityKit
+        // (weak-linked, issue 1877).
+        if !ProcessInfo.processInfo.isiOSAppOnMac {
+            HermesTurnLiveActivity()
+        }
     }
 }
 
