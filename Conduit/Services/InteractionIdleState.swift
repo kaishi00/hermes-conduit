@@ -244,12 +244,22 @@ final class InteractionIdleTouchRecognizer: UIGestureRecognizer, UIGestureRecogn
 
     /// Fails once every finger has lifted, which resets it for the next touch.
     private func finishIfLastTouch(_ touches: Set<UITouch>, event: UIEvent) {
-        let stillDown = (event.touches(for: self) ?? []).contains { touch in
-            !touches.contains(touch) && touch.phase != .ended && touch.phase != .cancelled
-        }
-        guard !stillDown else { return }
+        guard !Self.fingerStillDown(besides: touches, among: event.touches(for: self) ?? []) else { return }
         // The countdown starts when the finger lifts.
         note()
         state = .failed
+    }
+}
+
+extension UIGestureRecognizer {
+    /// Whether a finger other than the ones just lifted is still on the
+    /// screen. A passive recognizer that watches touches fails once none
+    /// is: UIKit resets the gestures a touch went through only when every
+    /// one of them has finished, so one left `.possible` holds the rest
+    /// (issue 1687).
+    static func fingerStillDown(besides lifted: Set<UITouch>, among touches: Set<UITouch>) -> Bool {
+        touches.contains { touch in
+            !lifted.contains(touch) && touch.phase != .ended && touch.phase != .cancelled
+        }
     }
 }

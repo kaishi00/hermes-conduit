@@ -1054,6 +1054,7 @@ struct BotOverviewSheet: View {
     }
 
     @State private var section: Section = .work
+    @State private var screenTarget: BotScreenTarget?
 
     private var bot: BotProfile? {
         appState.shownBotRoster.first { AppState.profilesMatch($0.name, profile) }
@@ -1127,6 +1128,10 @@ struct BotOverviewSheet: View {
         }
         // A workstream opened from its list shows its own chat.
         .onChange(of: appState.activeSessionId) { _, _ in onClose() }
+        .sheet(item: $screenTarget) { target in
+            BotScreenSheet(target: target)
+                .environmentObject(appState)
+        }
         .accessibilityIdentifier("botOverview")
     }
 
@@ -1187,6 +1192,11 @@ struct BotOverviewSheet: View {
                 }
             }
             Spacer(minLength: 4)
+            // Its screen (Bot Screen), once its host said it can have one.
+            BotScreenButton(support: appState.botScreens, profile: profile, open: {
+                Haptics.light()
+                screenTarget = BotScreenTarget(profile: profile, botName: botName)
+            }, title: AppLocalization.string("\(botName)'s Screen"), iconOnly: true)
             if let bot, let onEdit {
                 Button {
                     Haptics.light()
