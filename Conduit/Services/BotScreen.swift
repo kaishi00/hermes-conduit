@@ -224,7 +224,39 @@ final class BotScreenModel: ObservableObject {
     /// The viewer id each bot's screen was last watched with, kept past the
     /// sheet: a reconnect starts the sheet over, and the user's own hold is
     /// still theirs on the new connection.
-    private static var viewerIDs: [String: String] = [:]
+    static var viewerIDs: [String: String] = [:]
+
+    /// A hand back owed per bot (its viewer id): the sheet closed or the
+    /// app went to the background while the user held the screen, and the
+    /// release hasn't gone through yet. Tried again a few times, then on
+    /// the bot's next status read, so Hermes doesn't keep the hold until
+    /// its idle expiry.
+    static var owedReleases: [String: String] = [:]
+    /// Hand backs on their way per bot (a send or its retries running), so
+    /// a close or backgrounding while one is in flight sends no second one,
+    /// and one whose retries gave up is sent again.
+    static var releasesInFlight: [String: Int] = [:]
+    static func releaseInFlight(_ profile: String) -> Bool { (releasesInFlight[profile] ?? 0) > 0 }
+    static func beginRelease(_ profile: String) { releasesInFlight[profile, default: 0] += 1 }
+    static func endRelease(_ profile: String) {
+        let left = (releasesInFlight[profile] ?? 1) - 1
+        releasesInFlight[profile] = left > 0 ? left : nil
+    }
+    /// Sends the owed hand back in the background, counted in flight from now.
+    static func spawnOwedRelease(profile: String, client: HermesClient,
+                                 then answered: (@MainActor ([String: AnyCodable]) -> Void)? = nil) {
+        beginRelease(profile)
+        Task {
+            defer { endRelease(profile) }
+            if let answer = await sendOwedRelease(profile: profile, client: client) { answered?(answer) }
+        }
+    }
+    static let releaseRetryDelays: [Duration] = [.seconds(1), .seconds(3), .seconds(9)]
+    /// JSON-RPC's internal error: Hermes failed, not refused, so a hand back is tried again.
+    static let internalErrorCode = -32603
+
+    /// Whether this model talks over `client` (a reconnect replaces it).
+    func uses(_ client: HermesClient?) -> Bool { self.client === client }
 
     init(profile: String, client: HermesClient?) {
         self.profile = profile
@@ -272,6 +304,13 @@ final class BotScreenModel: ObservableObject {
         guard let client else {
             availability = .failed(AppLocalization.string("Not connected to Hermes."))
             return
+        }
+        // A hand back that didn't go through when the sheet last closed goes
+        // first, so the sheet doesn't open on the user still in control.
+        if Self.owedReleases[profile] != nil {
+            if let answer = await Self.sendOwedRelease(profile: profile, client: client, delays: []) {
+                applyLease(BotScreenLease(answer["lease"]?.objectValue))
+            }
         }
         do {
             let answer = try await client.display("display.status", profile: profile)
@@ -364,14 +403,18 @@ final class BotScreenModel: ObservableObject {
     /// bot's screen tools are refused until they hand back.
     func takeOver() async {
         guard let viewerID else { return }
+        // Taking over again cancels a hand back still owed from before.
+        Self.owedReleases[profile] = nil
         let leave = leaveGeneration
         await perform { client in
             let answer = try await client.display("display.lease.acquire", profile: self.profile,
                                                   params: ["viewer_id": viewerID, "reason": "Conduit"])
             guard leave == self.leaveGeneration else {
-                // Nobody watches any more: the bot isn't kept off its screen.
-                _ = try? await client.display("display.lease.release", profile: self.profile,
-                                              params: ["viewer_id": viewerID])
+                // Nobody watches any more: the bot isn't kept off its screen,
+                // and a release that fails is owed like the sheet's own.
+                let profile = self.profile
+                Self.owedReleases[profile] = viewerID
+                Self.spawnOwedRelease(profile: profile, client: client)
                 return
             }
             self.applyLease(BotScreenLease(answer["lease"]?.objectValue))
@@ -380,25 +423,86 @@ final class BotScreenModel: ObservableObject {
 
     /// Hand back: the bot has control again.
     func handBack(force: Bool = false) async {
+        // One that fails is owed, as the sheet's close owes it, so the sheet
+        // closing while it's in flight sends no second one.
+        let owes = !force && viewerID != nil
+        if owes, let viewerID { Self.owedReleases[profile] = viewerID; Self.beginRelease(profile) }
         await perform { client in
             var params: [String: Any] = [:]
             if let viewerID = self.viewerID, !force { params["viewer_id"] = viewerID }
             if force { params["force"] = true }
-            let answer = try await client.display("display.lease.release", profile: self.profile, params: params)
+            let answer: [String: AnyCodable]
+            do {
+                answer = try await client.display("display.lease.release", profile: self.profile, params: params)
+            } catch let error as RpcError where error.code != Self.internalErrorCode {
+                // Refused (the hold isn't this viewer's any more): not owed.
+                if let viewerID = self.viewerID, Self.owedReleases[self.profile] == viewerID {
+                    Self.owedReleases[self.profile] = nil
+                }
+                throw error
+            }
+            if let viewerID = self.viewerID, Self.owedReleases[self.profile] == viewerID {
+                Self.owedReleases[self.profile] = nil
+            }
             self.applyLease(BotScreenLease(answer["lease"]?.objectValue))
         }
+        // It failed: tried again as a closed sheet's is, so closing the sheet
+        // now leaves it on its way. Counted in flight until then.
+        if owes, let viewerID, let client, Self.owedReleases[profile] == viewerID {
+            Self.spawnOwedRelease(profile: profile, client: client) { [weak self] answer in
+                // It went through after all: the earlier failure no longer stands.
+                self?.errorText = nil
+                self?.applyLease(BotScreenLease(answer["lease"]?.objectValue))
+            }
+        }
+        if owes { Self.endRelease(profile) }
     }
 
     /// The view is going: the person's hold goes with it (as closing the
     /// pane does on Hermes Desktop), then the stream.
-    func close() {
+    /// A reconnect rebuilds the sheet on the new client: the stream goes,
+    /// the hold stays the user's (the same viewer id is still theirs).
+    func close(reconnecting: Bool = false) {
+        // Not a leave: a takeover answered meanwhile stays the user's.
+        if reconnecting { detach(); return }
         leaveGeneration += 1
-        if iHold, let client, let viewerID {
-            let profile = profile
-            Task { _ = try? await client.display("display.lease.release", profile: profile,
-                                                 params: ["viewer_id": viewerID]) }
+        // A hand back already on its way for this hold isn't sent twice; one
+        // whose retries gave up, or a retry left from a hold a takeover
+        // since replaced, doesn't stop this one.
+        if iHold, let client, let viewerID,
+           !(Self.releaseInFlight(profile) && Self.owedReleases[profile] == viewerID) {
+            Self.owedReleases[profile] = viewerID
+            Self.spawnOwedRelease(profile: profile, client: client)
         }
         detach()
+    }
+
+    /// Sends the hand back owed for a bot, trying again after each of
+    /// `delays`; the answer once it went through, nil if it's still owed.
+    /// A later takeover of the screen cancels it, and so does Hermes
+    /// refusing it (a hold that's no longer this viewer's): only a failed
+    /// send or Hermes' internal error is tried again.
+    @discardableResult
+    static func sendOwedRelease(profile: String, client: HermesClient,
+                                delays: [Duration] = releaseRetryDelays) async -> [String: AnyCodable]? {
+        beginRelease(profile)
+        defer { endRelease(profile) }
+        var waits = delays[...]
+        while let viewerID = owedReleases[profile] {
+            do {
+                let answer = try await client.display("display.lease.release", profile: profile,
+                                                      params: ["viewer_id": viewerID])
+                if owedReleases[profile] == viewerID { owedReleases[profile] = nil }
+                return answer
+            } catch let error as RpcError where error.code != internalErrorCode {
+                if owedReleases[profile] == viewerID { owedReleases[profile] = nil }
+                return nil
+            } catch {
+                guard let wait = waits.popFirst() else { return nil }
+                try? await Task.sleep(for: wait)
+            }
+        }
+        return nil
     }
 
     func type(_ text: String) {
@@ -553,7 +657,7 @@ final class BotScreenModel: ObservableObject {
             let request = try await client.displayStreamRequest(path: observed["path"]?.stringValue ?? "/api/display/ws",
                                                                 ticket: ticket)
             guard generation == attachGeneration else { return }
-            page?.startStream(viewOnly: !iHold)
+            page?.startStream(viewOnly: !iHold, tag: generation)
             dialedAt = Date()
             let transport = URLSessionWebSocketTransport()
             self.transport = transport
@@ -586,28 +690,36 @@ final class BotScreenModel: ObservableObject {
         stream = .idle
     }
 
+    /// Whether a page message is about the stream now open: each attach
+    /// tags the page's stream with its generation, so a stopped stream's
+    /// late close or failure never ends the one that replaced it.
+    func isCurrent(_ tag: Int?) -> Bool { tag == attachGeneration }
+    /// The tag the page's current stream carries.
+    var currentStreamTag: Int { attachGeneration }
+
     /// Bytes the page sends (input, when this view holds the screen).
-    func pageSent(_ data: Data) {
+    func pageSent(_ data: Data, tag: Int?) {
+        guard isCurrent(tag) else { return }
         socket?.send(.data(data)) { _ in }
     }
 
-    func pageConnected() {
+    func pageConnected(tag: Int?) {
+        guard isCurrent(tag), stream == .connecting else { return }
         stream = .live
         // rapidEvictions isn't reset here: an attach that's evicted at once
         // still completes its handshake first. A close after ten quiet
         // seconds starts the count over.
     }
 
-    /// The page closed its end: only a live stream's, since a detach's own
-    /// stop reports a close after the next stream may have started dialling.
-    func pageClosedStream() {
-        guard stream == .live else { return }
+    /// The page closed its end of the stream now open.
+    func pageClosedStream(tag: Int?) {
+        guard isCurrent(tag) else { return }
         socket?.cancel(with: .normalClosure, reason: nil)
     }
 
     /// The page's RFB handshake failed (the server refused it).
-    func pageFailed(_ reason: String) {
-        guard stream == .connecting || stream == .live else { return }
+    func pageFailed(_ reason: String, tag: Int?) {
+        guard isCurrent(tag), stream == .connecting || stream == .live else { return }
         detach()
         stream = .lost(reason.isEmpty ? AppLocalization.string("The screen's stream was lost.") : reason)
     }
@@ -617,7 +729,13 @@ final class BotScreenModel: ObservableObject {
     /// closes until it's watched again.
     func backgrounded() {
         leaveGeneration += 1
-        if iHold { Task { await handBack(force: false) } }
+        if iHold, let client, let viewerID,
+           !(Self.releaseInFlight(profile) && Self.owedReleases[profile] == viewerID) {
+            Self.owedReleases[profile] = viewerID
+            Self.spawnOwedRelease(profile: profile, client: client) { [weak self] answer in
+                self?.applyLease(BotScreenLease(answer["lease"]?.objectValue))
+            }
+        }
         detach()
     }
 
@@ -671,7 +789,8 @@ final class BotScreenModel: ObservableObject {
 /// The page that draws a screen (BotScreenWebView), as the model drives it.
 @MainActor
 protocol BotScreenPage: AnyObject {
-    func startStream(viewOnly: Bool)
+    /// Starts a stream the page tags its messages with (`tag`).
+    func startStream(viewOnly: Bool, tag: Int)
     func streamOpened()
     func streamData(_ data: Data)
     func streamClosed(code: Int)

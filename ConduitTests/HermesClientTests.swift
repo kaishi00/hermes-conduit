@@ -3795,6 +3795,190 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testAFailedBotScreenHandBackIsSentAgain() async throws {
+        // The sheet closed while the user held the screen and the release
+        // failed: it's tried again, so Hermes doesn't keep the hold until
+        // its idle expiry.
+        let (client, socket) = try await connectedClientForServerRequests()
+        let base = socket.sentTexts.count
+        BotScreenModel.owedReleases["furina"] = "viewer-1"
+        defer { BotScreenModel.owedReleases["furina"] = nil }
+        let send = Task { await BotScreenModel.sendOwedRelease(profile: "furina", client: client,
+                                                               delays: [.milliseconds(10)]) }
+        await waitForSends(base + 1, on: socket)
+        let first = try sentFrame(socket)
+        XCTAssertEqual(first["method"] as? String, "display.lease.release")
+        XCTAssertEqual((first["params"] as? [String: Any])?["viewer_id"] as? String, "viewer-1")
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(first["id"] as? Int),
+            "error": ["code": -32603, "message": "transient"]
+        ], to: socket)
+        await waitForSends(base + 2, on: socket)
+        let second = try sentFrame(socket)
+        XCTAssertEqual(second["method"] as? String, "display.lease.release")
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(second["id"] as? Int),
+            "result": ["lease": ["epoch": 3, "holder": "agent"]]
+        ], to: socket)
+        let answer = await send.value
+        XCTAssertNotNil(answer, "The second try went through")
+        XCTAssertNil(BotScreenModel.owedReleases["furina"], "Nothing is owed once it went through")
+        client.disconnect()
+    }
+
+    func testABotScreenReadSendsAnOwedHandBackFirst() async throws {
+        // A reopened sheet sends the hand back still owed before it reads
+        // the status, so it doesn't open on the user still in control.
+        let (client, socket) = try await connectedClientForServerRequests()
+        let base = socket.sentTexts.count
+        BotScreenModel.owedReleases["furina"] = "viewer-1"
+        defer { BotScreenModel.owedReleases["furina"] = nil }
+        let model = BotScreenModel(profile: "furina", client: client)
+        let load = Task { await model.load() }
+        await waitForSends(base + 1, on: socket)
+        let release = try sentFrame(socket)
+        XCTAssertEqual(release["method"] as? String, "display.lease.release")
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(release["id"] as? Int),
+            "result": ["lease": ["epoch": 2, "holder": "agent"]]
+        ], to: socket)
+        await waitForSends(base + 2, on: socket)
+        let status = try sentFrame(socket)
+        XCTAssertEqual(status["method"] as? String, "display.status")
+        XCTAssertNil(BotScreenModel.owedReleases["furina"], "The hand back went before the read")
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(status["id"] as? Int), "result": [String: Any]()
+        ], to: socket)
+        await load.value
+        client.disconnect()
+    }
+
+    func testABotScreenHandBackHermesRefusesIsNoLongerOwed() async throws {
+        // Hermes refusing it (the hold is no longer this viewer's) isn't
+        // tried again on every later read.
+        let (client, socket) = try await connectedClientForServerRequests()
+        let base = socket.sentTexts.count
+        BotScreenModel.owedReleases["furina"] = "viewer-1"
+        defer { BotScreenModel.owedReleases["furina"] = nil }
+        let send = Task { await BotScreenModel.sendOwedRelease(profile: "furina", client: client,
+                                                               delays: [.milliseconds(10)]) }
+        await waitForSends(base + 1, on: socket)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(try sentFrame(socket)["id"] as? Int),
+            "error": ["code": 4003, "message": "not the lease holder"]
+        ], to: socket)
+        let answer = await send.value
+        XCTAssertNil(answer)
+        XCTAssertNil(BotScreenModel.owedReleases["furina"])
+        XCTAssertEqual(socket.sentTexts.count, base + 1, "A refusal isn't sent again")
+        client.disconnect()
+    }
+
+    func testABotScreenTakeoverCancelsAnOwedHandBack() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let base = socket.sentTexts.count
+        BotScreenModel.viewerIDs["furina"] = "viewer-1"
+        BotScreenModel.owedReleases["furina"] = "viewer-1"
+        defer {
+            BotScreenModel.viewerIDs["furina"] = nil
+            BotScreenModel.owedReleases["furina"] = nil
+        }
+        let model = BotScreenModel(profile: "furina", client: client)
+        let take = Task { await model.takeOver() }
+        await waitForSends(base + 1, on: socket)
+        let acquire = try sentFrame(socket)
+        XCTAssertEqual(acquire["method"] as? String, "display.lease.acquire")
+        XCTAssertNil(BotScreenModel.owedReleases["furina"], "Taking over cancels the hand back still owed")
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(acquire["id"] as? Int),
+            "result": ["lease": ["epoch": 4, "holder": "human"]]
+        ], to: socket)
+        await take.value
+        XCTAssertEqual(socket.sentTexts.count, base + 1, "No release follows the takeover")
+        XCTAssertNil(BotScreenModel.owedReleases["furina"])
+        client.disconnect()
+    }
+
+    func testABotScreenTakeoverAnsweredAfterTheSheetClosedOwesItsRelease() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let base = socket.sentTexts.count
+        BotScreenModel.viewerIDs["furina"] = "viewer-1"
+        defer {
+            BotScreenModel.viewerIDs["furina"] = nil
+            BotScreenModel.owedReleases["furina"] = nil
+        }
+        let model = BotScreenModel(profile: "furina", client: client)
+        let take = Task { await model.takeOver() }
+        await waitForSends(base + 1, on: socket)
+        let acquire = try sentFrame(socket)
+        model.close()
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(acquire["id"] as? Int),
+            "result": ["lease": ["epoch": 4, "holder": "human"]]
+        ], to: socket)
+        await take.value
+        XCTAssertEqual(BotScreenModel.owedReleases["furina"], "viewer-1", "Owed until it goes through")
+        await waitForSends(base + 2, on: socket)
+        let release = try sentFrame(socket)
+        XCTAssertEqual(release["method"] as? String, "display.lease.release")
+        XCTAssertEqual((release["params"] as? [String: Any])?["viewer_id"] as? String, "viewer-1")
+        // Answered, so its retry task ends here and not in a later test.
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(release["id"] as? Int),
+            "result": ["lease": NSNull()]
+        ], to: socket)
+        for _ in 0..<200 where BotScreenModel.releaseInFlight("furina") { await Task.yield() }
+        XCTAssertFalse(BotScreenModel.releaseInFlight("furina"))
+        client.disconnect()
+    }
+
+    func testABotScreenRebuiltByAReconnectKeepsTheHold() async throws {
+        let (client, _) = try await connectedClientForServerRequests()
+        BotScreenModel.viewerIDs["furina"] = "viewer-1"
+        defer { BotScreenModel.viewerIDs["furina"] = nil }
+        let model = BotScreenModel(profile: "furina", client: client)
+        XCTAssertTrue(model.uses(client))
+        XCTAssertFalse(model.uses(nil), "A new client (or none) is a reconnect")
+        model.close(reconnecting: true)
+        XCTAssertNil(BotScreenModel.owedReleases["furina"], "No hand back is owed for a reconnect")
+        XCTAssertFalse(BotScreenModel.releaseInFlight("furina"))
+        client.disconnect()
+    }
+
+    func testABotScreenStoppedStreamsMessagesAreStale() {
+        let model = BotScreenModel(profile: "furina", client: nil)
+        let old = model.currentStreamTag
+        XCTAssertTrue(model.isCurrent(old))
+        model.detach()
+        XCTAssertFalse(model.isCurrent(old), "A stopped stream's late close or failure is ignored")
+        XCTAssertTrue(model.isCurrent(model.currentStreamTag), "The stream now open is current")
+        XCTAssertFalse(model.isCurrent(nil), "An untagged message is ignored")
+    }
+
+    func testAnOwedBotScreenHandBackIsInFlightUntilAnswered() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        let base = socket.sentTexts.count
+        BotScreenModel.viewerIDs["furina"] = "viewer-1"
+        BotScreenModel.owedReleases["furina"] = "viewer-1"
+        defer {
+            BotScreenModel.viewerIDs["furina"] = nil
+            BotScreenModel.owedReleases["furina"] = nil
+        }
+        XCTAssertFalse(BotScreenModel.releaseInFlight("furina"), "Owed, but nothing is on its way")
+        BotScreenModel.spawnOwedRelease(profile: "furina", client: client)
+        XCTAssertTrue(BotScreenModel.releaseInFlight("furina"), "In flight from the moment it's spawned")
+        await waitForSends(base + 1, on: socket)
+        let release = try sentFrame(socket)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(release["id"] as? Int),
+            "result": ["lease": NSNull()]
+        ], to: socket)
+        for _ in 0..<100 where BotScreenModel.releaseInFlight("furina") { await Task.yield() }
+        XCTAssertFalse(BotScreenModel.releaseInFlight("furina"))
+        XCTAssertNil(BotScreenModel.owedReleases["furina"])
+        client.disconnect()
+    }
+
     func testResumeKeepsAnOpenClarifyWhenPendingClarifyIsAlsoPresent() async throws {
         let (client, socket) = try await connectedClientForServerRequests()
         let sent = Gate()

@@ -77,7 +77,8 @@ private struct BotScreenContent: View {
         .task { await model.load() }
         // Who drives the screen now, read again while the sheet is open.
         .refreshesBotWork(profile: target.profile)
-        .onDisappear { model.close() }
+        // Gone because a reconnect rebuilt it on a new client: the hold stays.
+        .onDisappear { model.close(reconnecting: !model.uses(appState.client)) }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { model.backgrounded() }
             // Read again: the screen may have started or stopped meanwhile.
@@ -444,7 +445,7 @@ private struct BotScreenContent: View {
                 keyButton(.backspace, AppLocalization.string("Delete"))
                 keyButton(.escape, AppLocalization.string("Esc"))
             }
-            Text(AppLocalization.string("Tap the screen to click. What you type goes to the screen as a US keyboard types it."))
+            Text(AppLocalization.string("Tap the screen to click. What you type in this bar lands as you typed it, whatever your keyboard's layout."))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -522,6 +523,8 @@ struct BotScreenWebView: UIViewRepresentable {
         }
 
         private func received(_ body: [String: Any]) {
+            // The stream a message is about, as startStream tagged it.
+            let tag = (body["stream"] as? NSNumber)?.intValue
             switch body["type"] as? String {
             case "ready":
                 ready = true
@@ -531,14 +534,14 @@ struct BotScreenWebView: UIViewRepresentable {
                 }
             case "send":
                 if let text = body["data"] as? String, let data = Data(base64Encoded: text) {
-                    model?.pageSent(data)
+                    model?.pageSent(data, tag: tag)
                 }
             case "connected":
-                model?.pageConnected()
+                model?.pageConnected(tag: tag)
             case "close":
-                model?.pageClosedStream()
+                model?.pageClosedStream(tag: tag)
             case "failed":
-                model?.pageFailed(body["reason"] as? String ?? "")
+                model?.pageFailed(body["reason"] as? String ?? "", tag: tag)
             default:
                 break
             }
@@ -549,7 +552,9 @@ struct BotScreenWebView: UIViewRepresentable {
             webView?.evaluateJavaScript(script, completionHandler: nil)
         }
 
-        func startStream(viewOnly: Bool) { call("conduitScreen.start({viewOnly: \(viewOnly)})") }
+        func startStream(viewOnly: Bool, tag: Int) {
+            call("conduitScreen.start({viewOnly: \(viewOnly), stream: \(tag)})")
+        }
         func streamOpened() { call("conduitScreen.opened()") }
         func streamData(_ data: Data) { call("conduitScreen.data('\(data.base64EncodedString())')") }
         func streamClosed(code: Int) { call("conduitScreen.closed(\(code), '')") }
