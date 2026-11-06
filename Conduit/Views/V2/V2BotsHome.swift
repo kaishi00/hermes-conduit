@@ -426,7 +426,10 @@ struct RoomTileDrop: DropDelegate {
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
+        // A bot carried over the rooms stays in hand too, or its + comes
+        // back once the system lets go of its item.
         RoomDragPayload.seen()
+        BotDragPayload.seen()
         guard validateDrop(info: info) else { return DropProposal(operation: .forbidden) }
         // A move only for our own tile: text from elsewhere is a copy, so
         // its source never deletes what this may not take.

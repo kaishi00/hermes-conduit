@@ -1108,6 +1108,9 @@ extension BotModeTests {
         XCTAssertFalse(RoomDragPayload.isLive)
         XCTAssertNil(RoomDragPayload.lifted(at: Date().addingTimeInterval(BotDragPayload.liftedGrace + 1)),
                      "a drag that's gone leaves no room in hand")
+        let roomSeen = Date()
+        RoomDragPayload.seen()
+        XCTAssertEqual(RoomDragPayload.lifted(at: roomSeen.addingTimeInterval(BotDragPayload.liftedGrace - 0.5)), "r")
         RoomDragPayload.lifted = nil
         autoreleasepool {
             let provider = BotDragPayload.lift("Ayaka")
