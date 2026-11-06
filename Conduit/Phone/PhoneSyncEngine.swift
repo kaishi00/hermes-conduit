@@ -191,10 +191,15 @@ final class PhoneSyncEngine: ObservableObject {
     @Published var autoAdded: PhoneAutoAdded?
     /// The people the user picked for Hermes.
     @Published private(set) var people: [PhonePerson]
+    /// Picked people the last read from Contacts missed, by id, with why.
+    @Published private(set) var peopleProblems: [String: PhonePersonProblem] = [:]
+    /// Whether the picked people can be read again from Contacts.
+    @Published private(set) var contactsAccess: PhoneContactsAccess
 
     let calendarSource: PhoneCalendarSource
     let statusSource: PhoneStatusSource
     let alarmSource: PhoneAlarmSource
+    let contactsSource: PhoneContactsSource
     private let store: PhoneSyncStateStore
     private let keys: PhoneSyncKeyStore
     private let defaults: UserDefaults
@@ -224,6 +229,7 @@ final class PhoneSyncEngine: ObservableObject {
         calendarSource: PhoneCalendarSource,
         statusSource: PhoneStatusSource,
         alarmSource: PhoneAlarmSource = PhoneAlarmSources.system(),
+        contactsSource: PhoneContactsSource = SystemContactsSource(),
         store: PhoneSyncStateStore = .standard,
         keys: PhoneSyncKeyStore = .keychain,
         defaults: UserDefaults = .standard,
@@ -234,6 +240,8 @@ final class PhoneSyncEngine: ObservableObject {
         self.calendarSource = calendarSource
         self.statusSource = statusSource
         self.alarmSource = alarmSource
+        self.contactsSource = contactsSource
+        contactsAccess = contactsSource.access
         self.store = store
         self.keys = keys
         self.defaults = defaults
@@ -260,6 +268,34 @@ final class PhoneSyncEngine: ObservableObject {
         let kept = Array(people.prefix(PhonePerson.maximum))
         PhonePeopleStore.save(kept, to: defaults)
         self.people = kept
+        peopleProblems = peopleProblems.filter { id, _ in kept.contains { $0.id == id } }
+    }
+
+    /// Reads the picked people again from Contacts, when Conduit may: what a
+    /// contact says now replaces what Conduit had (their relation stays),
+    /// and someone who can't be read keeps their last copy and is listed in
+    /// `peopleProblems`.
+    func refreshPeople() async {
+        contactsAccess = contactsSource.access
+        guard contactsAccess.canRead, !people.isEmpty else {
+            peopleProblems = [:]
+            return
+        }
+        let missing = Set(people.filter { $0.contactID == nil }.map(\.id))
+        let found = missing.isEmpty ? [:] : await contactsSource.identifiers(for: missing)
+        let identifiers = people.compactMap { $0.contactID ?? found[$0.id] }
+        let reads = await contactsSource.read(identifiers)
+        // People changed while Contacts was read are matched by id, so an
+        // edit or removal made meanwhile stands.
+        let (refreshed, problems) = PhonePeopleStore.refreshed(people, reads: reads, found: found, access: contactsAccess)
+        if refreshed != people { savePeople(refreshed) }
+        peopleProblems = problems
+    }
+
+    /// Asks once for Contacts access, then reads the picked people again.
+    func requestContactsAccess() async {
+        contactsAccess = await contactsSource.requestAccess()
+        await refreshPeople()
     }
 
     /// Runs a pass, or joins the one already running and runs once more
@@ -569,6 +605,7 @@ final class PhoneSyncEngine: ObservableObject {
             newAlarmsHash = nil
         }
         if preferences.contacts {
+            await refreshPeople()
             let contacts = people.map(\.json)
             let hash = Self.hash(contacts)
             if full || hash != state.contactsHash {
