@@ -36,6 +36,8 @@ struct VoiceConversationSheet: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showsTranscript = false
+    /// Speaker, during a call from Hermes.
+    @ObservedObject private var callSpeaker = VoiceAudioSessionCoordinator.shared.nativeCallSpeaker
     /// When the sheet opened, for V2's call clock.
     @State private var openedAt = Date()
     /// The job whose result V2 shows over the conversation.
@@ -246,12 +248,23 @@ struct VoiceConversationSheet: View {
                 }
 
                 Button { controller.setOutputMuted(!controller.isOutputMuted) } label: {
-                    Label(controller.isOutputMuted ? AppLocalization.string("Unmute") : AppLocalization.string("Mute"), systemImage: controller.isOutputMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    Label(controller.isOutputMuted ? AppLocalization.string("Unmute") : AppLocalization.string("Mute"), systemImage: controller.isOutputMuted ? LiveVoiceCallButton.silencedSymbol : LiveVoiceCallButton.silenceSymbol)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 48)
                 }
                 .conduitGlassControl(cornerRadius: 17, tint: controller.isOutputMuted ? .orange.opacity(0.18) : .conduitAura.opacity(0.14))
                 .accessibilityHint("Mutes assistant audio without changing chat messages")
+
+                if callSpeaker.isShown {
+                    Button { VoiceAudioSessionCoordinator.shared.setNativeCallSpeaker(!callSpeaker.isOn) } label: {
+                        Label(AppLocalization.string("Speaker"), systemImage: "speaker.wave.3.fill")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6).frame(minHeight: 48)
+                    }
+                    .conduitGlassControl(cornerRadius: 17, tint: callSpeaker.isOn ? .conduitAccent.opacity(0.4) : .conduitAura.opacity(0.14))
+                    .accessibilityValue(callSpeaker.isOn ? Text("On") : Text("Off"))
+                    .accessibilityHint(Text("Plays the call on the loudspeaker"))
+                }
             }
             Text(controller.isPushToTalkActive
                 ? AppLocalization.string("Hold to talk, let go to send. Close ends the voice session.")
@@ -695,8 +708,11 @@ extension VoiceConversationSheet {
                 )
                 .disabled(controller.state == .transcribing)
             }
+            if callSpeaker.isShown {
+                NativeCallSpeakerButton(speaker: callSpeaker)
+            }
             LiveVoiceCallButton(
-                symbol: controller.isOutputMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                symbol: controller.isOutputMuted ? LiveVoiceCallButton.silencedSymbol : LiveVoiceCallButton.silenceSymbol,
                 title: controller.isOutputMuted ? AppLocalization.string("Sound on") : AppLocalization.string("Silence"),
                 style: controller.isOutputMuted ? .selected : .normal,
                 voiceOverLabel: controller.isOutputMuted
@@ -721,6 +737,8 @@ extension VoiceConversationSheet {
             )
         }
         .frame(maxWidth: .infinity)
+        // Microphone, Silence, Transcript, End, and Speaker in a call.
+        .modifier(LiveVoiceCallButtonRowFit(slots: callSpeaker.isShown ? 5 : 4))
         .padding(.horizontal, 12)
         .padding(.top, 14)
         .padding(.bottom, 12)
