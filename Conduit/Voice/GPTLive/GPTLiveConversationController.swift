@@ -1052,8 +1052,10 @@ final class GPTLiveConversationController: ObservableObject {
     /// moment, checking.") counts too: the briefing asks for one before
     /// each delegation without naming Hermes every time. A call speaks the
     /// user's language (LiveVoiceLanguage), so a sentence sending something
-    /// to Hermes is read in each language Conduit ships too ("Ich schicke
-    /// das an Hermes."); an acknowledgement alone is read in English only.
+    /// to Hermes is also read in the turn's detected language and the
+    /// call's, when Conduit ships them ("Ich schicke das an Hermes."), with
+    /// the verb and Hermes in one clause; an acknowledgement alone is read
+    /// in English only.
     /// `callLanguage`: the call's language, for a turn too short to tell.
     static func claimsToSendToHermes(_ text: String, callLanguage: String? = LiveVoiceLanguage.current) -> Bool {
         let normalized = text.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
