@@ -189,5 +189,29 @@ class MainTests(unittest.TestCase):
         self.assertIn("Conduit.app/Conduit: nm failed", output)
 
 
+    def test_a_strong_framework_load_fails_the_binaries_check(self):
+        import subprocess
+        import sys
+        import tempfile
+        from unittest import mock
+        otool = ("Load command 12\n          cmd LC_LOAD_DYLIB\n      cmdsize 88\n"
+                 "         name /System/Library/Frameworks/ActivityKit.framework/ActivityKit (offset 24)\n")
+
+        def run(args, **kwargs):
+            return subprocess.CompletedProcess(args, 0, stdout=otool if "otool" in args else "", stderr="")
+
+        with tempfile.TemporaryDirectory() as products:
+            path = os.path.join(products, "Conduit.app", "Conduit")
+            os.makedirs(os.path.dirname(path))
+            with open(path, "wb") as handle:
+                handle.write(b"\xcf\xfa\xed\xfe....")
+            with mock.patch.object(check_weak_imports.subprocess, "run", side_effect=run) as ran, \
+                 mock.patch.object(sys, "argv", ["check", "binaries", "--products", products]), \
+                 mock.patch("builtins.print") as printed:
+                self.assertEqual(check_weak_imports.main(), 1)
+        self.assertTrue(any("otool" in call.args[0] for call in ran.call_args_list))
+        output = " ".join(str(call.args[0]) for call in printed.call_args_list)
+        self.assertIn("Conduit.app/Conduit: links ActivityKit strongly", output)
+
 if __name__ == "__main__":
     unittest.main()

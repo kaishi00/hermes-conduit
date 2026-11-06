@@ -6228,7 +6228,7 @@ don't ship; `@testable import Conduit` resolves to Foundation's)
 **Code**
 - `Shared/DateOrder/DateOrder.swift` (Date's `<=` and `>=`, internal and `@_disfavoredOverload`)
 - `project.yml` (each shipped target's sources)
-- `scripts/check-weak-imports.py` (targets: every application and app extension reaches DateOrder.swift, its excludes honored; binaries: no shipped Mach-O weak-imports a BANNED symbol), `scripts/tests/test_check_weak_imports.py`
+- `scripts/check-weak-imports.py` (targets: every application and app extension reaches DateOrder.swift, its excludes honored; binaries: no shipped Mach-O weak-imports a BANNED symbol or strongly loads a WEAK_FRAMEWORKS framework, ActivityKit and ImagePlayground, see Live Activity for a running turn), `scripts/tests/test_check_weak_imports.py`
 - `.github/workflows/ci.yml` (the self-test job's "Every shipped target keeps Date's comparisons", the smoke job's "No back-deployed Date comparisons in the build"), held by `scripts/tests/test_ci_workflow_contract.py`; `docs/RELEASE_WORKFLOW.md` (the archive's check before upload)
 
 **Rulings**
@@ -6238,7 +6238,7 @@ don't ship; `@testable import Conduit` resolves to Foundation's)
 - The binaries check passes without testing anything while the hosted runner's Xcode predates the 27.2 SDK; the targets check holds until then, and each TestFlight archive is checked on the Mac (`conduit-save-dsyms`, docs/RELEASE_WORKFLOW.md, the "Archive and upload" step of section 3). A failed check there renames the archive to `*.xcarchive.blocked-weak-imports`, so the upload step can't find it whatever the per-build scripts do with the exit code.
 - The smoke build has no Watch app, so only the targets check covers the Watch's binaries.
 
-**Checked:** 2026-11-06, #1856 (a failed archive check blocks the upload; Open gaps); 2026-11-06, #1848.
+**Checked:** 2026-11-06, #1891 (the binaries check also fails a strong load of ActivityKit or ImagePlayground, issue 1877; DateOrder and BANNED unchanged); 2026-11-06, #1856 (a failed archive check blocks the upload; Open gaps); 2026-11-06, #1848.
 
 ## Feature map rules
 
