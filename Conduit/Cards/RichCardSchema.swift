@@ -15,8 +15,9 @@
 //  - a table's cells and column names are made text first, so each keeps
 //    its place (prepared);
 //  - unknown keys are dropped;
-//  - text has control characters turned into spaces, is trimmed, and is cut
-//    to maxLength code points (a URL that's too long, or holds a space,
+//  - text has control characters turned into spaces and hidden bidi and
+//    zero-width characters dropped (in a line each shows as U+FFFD, and a
+//    line is never trimmed), is trimmed, and is cut to maxLength code points (a URL that's too long, or holds a space,
 //    quote, bracket or parenthesis, is invalid instead);
 //  - an invalid optional value is dropped, an invalid list item is dropped
 //    (then the list is cut to maxItems), and an invalid required value
