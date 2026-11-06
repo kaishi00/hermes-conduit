@@ -4,7 +4,9 @@
 //
 //  The bots in the order the person sets on Bots Home (BotOrder): dragged
 //  in the grid or from Reorder Bots. Every list of bots follows it: Bots
-//  Home, New Group Chat's members, Mention a Bot and the widget.
+//  Home, New Group Chat's members, Mention a Bot and the widget. The group
+//  chats keep an order of their own the same way, by room id: dragged on
+//  Bots Home or from Reorder Group Chats.
 //
 
 import Foundation
@@ -43,5 +45,46 @@ extension AppState {
                 self.setBotOrder(BotOrder(names: value as? [String] ?? []))
             }
         )
+    }
+
+    /// A room's tile dropped before `target` (nil: at the end), among `shown`.
+    func moveGroupRoom(_ moved: String, before target: String?, shown: [String]) {
+        setGroupRoomOrder(groupRoomOrder.moving(moved, before: target, shown: shown))
+    }
+
+    /// Reorder Group Chats' list moved a row.
+    func moveGroupRooms(fromOffsets source: IndexSet, toOffset destination: Int, shown: [String]) {
+        setGroupRoomOrder(groupRoomOrder.moving(fromOffsets: source, toOffset: destination, shown: shown))
+    }
+
+    /// The group chats' order for Sync across devices. Rooms are the
+    /// gateway's, so every profile's copy holds the same list.
+    var groupRoomOrderSlot: SyncedPreferenceSlot {
+        SyncedPreferenceSlot(
+            key: "groups.order",
+            read: { [weak self] in
+                guard let self, !self.groupRoomOrder.isEmpty else { return nil }
+                return self.groupRoomOrder.names
+            },
+            write: { [weak self] value in
+                guard let self else { return }
+                self.setGroupRoomOrder(BotOrder(names: value as? [String] ?? [], kind: .rooms))
+            }
+        )
+    }
+}
+
+/// Group Settings asked for from a room's tile on Bots Home, which opens the
+/// room first. It counts for a short while only, so a room opened much later
+/// (the open failed, or Hermes keeps no settings) doesn't pop its settings.
+struct GroupSettingsRequest: Equatable {
+    let roomID: String
+    var at = Date()
+
+    static let lifetime: TimeInterval = 15
+
+    /// Whether the open room's screen shows the settings now.
+    func shows(openRoomID: String?, canEdit: Bool, now: Date = Date()) -> Bool {
+        openRoomID == roomID && canEdit && now.timeIntervalSince(at) < Self.lifetime
     }
 }

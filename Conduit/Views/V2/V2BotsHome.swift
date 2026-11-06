@@ -90,6 +90,8 @@ extension EnvironmentValues {
 /// are talking now is ringed in gold and says so, in its place: like a bot,
 /// a room never moves for being busy.
 struct BotRoomGrid<Content: View>: View {
+    /// A room's tile dropped past the last one, by its room id.
+    var onDropAtEnd: ((String) -> Void)?
     @ViewBuilder let content: () -> Content
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -99,6 +101,12 @@ struct BotRoomGrid<Content: View>: View {
             : [GridItem(.adaptive(minimum: 76, maximum: 110), spacing: 8, alignment: .top)]
         LazyVGrid(columns: columns, alignment: .center, spacing: 16) {
             content()
+        }
+        // A drop between or after the rooms, not on one: the end.
+        .dropDestination(for: String.self) { items, _ in
+            guard let onDropAtEnd, let dragged = items.first.flatMap(RoomDragPayload.roomID(from:)) else { return false }
+            onDropAtEnd(dragged)
+            return true
         }
     }
 }
@@ -154,9 +162,28 @@ struct BotRoomPortraitLabel<Icon: View>: View {
     }
 }
 
-/// A hosted room on Bots Home; a tap opens it.
+/// What a room's tile on Bots Home does beyond its tap: its menu (the open
+/// room's own, less what needs the room open) and its drag.
+struct GroupRoomTileActions {
+    /// Asks for the room's Group Settings, where Hermes keeps them, then
+    /// opens the room with the open it's handed (the tile's own, so it zooms
+    /// as a tap does), which says whether the room opened.
+    var settings: ((_ open: (@escaping @MainActor (Bool) -> Void) -> Void) -> Void)?
+    /// Chooses, generates or removes its picture, where the plugin keeps
+    /// pictures.
+    var picture: ((GroupRoomPictureRequest) -> Void)?
+    let reorder: () -> Void
+    /// Asks first (the dialog is Bots Home's, not the menu's).
+    var disband: (() -> Void)?
+    /// Another room's tile dropped on this one: it moves before it.
+    let onDrop: (String) -> Void
+}
+
+/// A hosted room on Bots Home; a tap opens it, a touch and hold has its
+/// menu, and a drag moves it among the rooms, as a bot's portrait does.
 struct GroupRoomPortrait: View {
     let room: GroupRoom
+    var actions: GroupRoomTileActions?
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.v2Shell) private var shell
@@ -176,17 +203,8 @@ struct GroupRoomPortrait: View {
 
     var body: some View {
         Button {
-            Haptics.light()
-            // Its screen opens in Bots whatever chat was open before, and
-            // grows out of this portrait as a Bot Chat does from its bot's
-            // (BotZoomDestination), unless it opens beside the list.
-            appState.beginOpeningBotChat(zoomKey)
-            if openBeside == nil { appState.botZoom.tap(zoomKey) }
-            Task {
-                await appState.openGroupRoom(room)
-                if appState.activeRoomSurface?.room.roomID != room.roomID { appState.botZoom.openFailed(zoomKey) }
-                appState.endOpeningBotChat(zoomKey)
-            }
+            appState.groupSettingsOnOpen = nil
+            open()
         } label: {
             BotRoomPortraitLabel(title: room.name, talking: talking, highlighted: selection == .open,
                                  animates: animates, zoomSource: zoomKey) { size in
@@ -194,6 +212,21 @@ struct GroupRoomPortrait: View {
             }
         }
         .buttonStyle(PressableButtonStyle())
+        .contextMenu {
+            if let actions { menu(actions) }
+        }
+        .modifier(RoomTileDrag(roomID: room.roomID, enabled: actions != nil) {
+            // Drawn outside the view's environment, as a bot's preview.
+            GroupRoomIcon(picture: appState.groupRoomPicture(roomID: room.roomID), members: room.members, size: 56)
+                .environmentObject(appState)
+        })
+        .dropDestination(for: String.self) { items, _ in
+            guard let actions, let dragged = items.first.flatMap(RoomDragPayload.roomID(from:)) else { return false }
+            // Dropped back on its own tile: taken here and left where it
+            // was, so the grid around it never reads it as a drop at the end.
+            if dragged != room.roomID { actions.onDrop(dragged) }
+            return true
+        }
         .accessibilityLabel(Text(room.name))
         .accessibilityValue(Text(accessibilityValue))
         .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
@@ -201,9 +234,109 @@ struct GroupRoomPortrait: View {
         .v2SelectedTrait(selection)
     }
 
+    /// Its screen opens in Bots whatever chat was open before, and grows out
+    /// of this portrait as a Bot Chat does from its bot's
+    /// (BotZoomDestination), unless it opens beside the list. `done` hears
+    /// whether the room opened.
+    private func open(then done: @escaping @MainActor (Bool) -> Void = { _ in }) {
+        Haptics.light()
+        appState.beginOpeningBotChat(zoomKey)
+        if openBeside == nil { appState.botZoom.tap(zoomKey) }
+        Task {
+            await appState.openGroupRoom(room)
+            let opened = appState.activeRoomSurface?.room.roomID == room.roomID
+            if !opened { appState.botZoom.openFailed(zoomKey) }
+            appState.endOpeningBotChat(zoomKey)
+            done(opened)
+        }
+    }
+
+    /// The room's menu, from its tile: what its own menu has that needs no
+    /// open room, then Reorder Group Chats, as a bot's has Reorder Bots.
+    @ViewBuilder
+    private func menu(_ actions: GroupRoomTileActions) -> some View {
+        if let settings = actions.settings {
+            Button { settings { done in open(then: done) } } label: {
+                Label(AppLocalization.string("Group Settings"), systemImage: "gearshape")
+            }
+        }
+        if let picture = actions.picture {
+            Button { picture(.choose) } label: {
+                Label(AppLocalization.string("Choose Group Picture"), systemImage: "photo")
+            }
+            if appState.canGeneratePictures {
+                Button { picture(.generate) } label: {
+                    Label(AppLocalization.string("Generate Group Picture"), systemImage: "sparkles")
+                }
+            }
+            if ImagePlaygroundPicture.current == .available {
+                Button { picture(.playground) } label: {
+                    Label(AppLocalization.string("Image Playground"), systemImage: "apple.image.playground")
+                }
+            }
+            if appState.hasCustomGroupRoomPicture(roomID: room.roomID) {
+                Button {
+                    Task { await appState.setGroupRoomPicture(nil, roomID: room.roomID) }
+                } label: {
+                    Label(AppLocalization.string("Remove Group Picture"), systemImage: "photo.badge.minus")
+                }
+            }
+        }
+        Button(action: actions.reorder) {
+            Label(AppLocalization.string("Reorder Group Chats"), systemImage: "arrow.up.arrow.down")
+        }
+        if let disband = actions.disband {
+            Divider()
+            Button(role: .destructive, action: disband) {
+                Label(AppLocalization.string("Disband Group"), systemImage: "trash")
+            }
+        }
+    }
+
     private var accessibilityValue: String {
         let members = AppLocalization.string("\(room.members.count) members")
         return talking ? "\(AppLocalization.string("Talking now")), \(members)" : members
+    }
+}
+
+/// A room's tile picked up by a touch and hold that moves: dropped on
+/// another room it moves before it, past the last one to the end. Its
+/// payload is marked as a room's, so a bot's portrait never takes it for a
+/// bot, nor a room's tile a bot for a room.
+struct RoomTileDrag<Preview: View>: ViewModifier {
+    let roomID: String
+    let enabled: Bool
+    @ViewBuilder let preview: () -> Preview
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.onDrag {
+                RoomDragPayload.lift(roomID)
+            } preview: {
+                preview()
+            }
+        } else {
+            content
+        }
+    }
+}
+
+/// What a dragged room's tile carries: its room id, marked.
+enum RoomDragPayload {
+    static let prefix = "conduit-room:"
+
+    static func lift(_ roomID: String) -> NSItemProvider {
+        // A room in hand isn't a bot: no face swells for it.
+        BotDragPayload.lifted = nil
+        return NSItemProvider(object: payload(for: roomID) as NSString)
+    }
+
+    static func payload(for roomID: String) -> String { prefix + roomID }
+
+    static func roomID(from payload: String) -> String? {
+        guard payload.hasPrefix(prefix) else { return nil }
+        let id = String(payload.dropFirst(prefix.count))
+        return id.isEmpty ? nil : id
     }
 }
 
@@ -1277,6 +1410,41 @@ struct BotReorderSheet: View {
             }
             .environment(\.editMode, .constant(.active))
             .navigationTitle(AppLocalization.string("Reorder Bots"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(AppLocalization.string("Done")) { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+/// Reorder Group Chats, from a room's menu: the hosted rooms as a list with
+/// handles, for VoiceOver, a pointer, or anyone who'd rather not drag. The
+/// same order as the tiles' drags.
+struct GroupRoomReorderSheet: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        let rooms = appState.shownGroupRooms
+        NavigationStack {
+            ConduitList {
+                ForEach(rooms) { room in
+                    HStack(spacing: 12) {
+                        GroupRoomIcon(picture: appState.groupRoomPicture(roomID: room.roomID), members: room.members, size: 36)
+                            .accessibilityHidden(true)
+                        Text(verbatim: room.name)
+                            .scaledFont(.body)
+                    }
+                }
+                .onMove { source, destination in
+                    appState.moveGroupRooms(fromOffsets: source, toOffset: destination, shown: rooms.map(\.roomID))
+                }
+            }
+            .environment(\.editMode, .constant(.active))
+            .navigationTitle(AppLocalization.string("Reorder Group Chats"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

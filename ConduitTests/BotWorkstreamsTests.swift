@@ -988,6 +988,59 @@ extension BotModeTests {
         XCTAssertNil(BotDragPayload.botName(from: BotDragPayload.prefix))
     }
 
+    /// A room's tile carries its marked id, which no bot portrait takes for
+    /// a bot, nor a room's tile a bot's for a room.
+    func testARoomDragCarriesAMarkedIDThatNoBotTakes() {
+        let payload = RoomDragPayload.payload(for: "room-1")
+        XCTAssertEqual(RoomDragPayload.roomID(from: payload), "room-1")
+        XCTAssertNil(BotDragPayload.botName(from: payload))
+        XCTAssertNil(RoomDragPayload.roomID(from: BotDragPayload.payload(for: "furina")))
+        XCTAssertNil(RoomDragPayload.roomID(from: RoomDragPayload.prefix))
+    }
+
+    /// The group chats keep the person's order by room id, saved apart from
+    /// the bots' and synced as `groups.order`; a room it doesn't name yet
+    /// (one just made) comes first, where Hermes lists it, and ids match
+    /// exactly.
+    @MainActor
+    func testTheGroupChatsOrderIsSavedAndSyncedApartFromTheBots() throws {
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let slot = appState.groupRoomOrderSlot
+        XCTAssertEqual(slot.key, "groups.order")
+        XCTAssertNil(slot.read())
+        appState.moveGroupRoom("b", before: "a", shown: ["a", "b", "c"])
+        XCTAssertEqual(slot.read() as? [String], ["b", "a", "c"])
+        XCTAssertEqual(defaults.stringArray(forKey: BotOrder.roomStorageKey), ["b", "a", "c"])
+        XCTAssertTrue(appState.botOrder.isEmpty, "the bots' order is its own")
+        appState.moveGroupRooms(fromOffsets: IndexSet(integer: 2), toOffset: 0, shown: ["b", "a", "c"])
+        XCTAssertEqual(appState.groupRoomOrder.names, ["c", "b", "a"])
+        XCTAssertEqual(appState.groupRoomOrder.arrange(["a", "new", "b", "c"], name: { $0 }), ["new", "c", "b", "a"])
+        // A drag after a room was made keeps it where it shows.
+        appState.moveGroupRoom("a", before: "c", shown: ["new", "c", "b", "a"])
+        XCTAssertEqual(appState.groupRoomOrder.names, ["new", "a", "c", "b"])
+        // Room ids are case-sensitive: "A" is another room.
+        XCTAssertEqual(BotOrder(names: ["a", "A"], kind: .rooms).names, ["a", "A"])
+        XCTAssertEqual(BotOrder(names: ["a", "A"]).names, ["a"], "bots match in any case")
+        slot.write(nil)
+        XCTAssertTrue(appState.groupRoomOrder.isEmpty)
+        XCTAssertNil(defaults.stringArray(forKey: BotOrder.roomStorageKey))
+    }
+
+    /// Group Settings from a room's tile shows once that room is open and
+    /// its settings are read, and not for another room or long after.
+    func testGroupSettingsFromATileWaitsForItsRoomBriefly() {
+        let now = Date()
+        let request = GroupSettingsRequest(roomID: "r", at: now)
+        XCTAssertTrue(request.shows(openRoomID: "r", canEdit: true, now: now.addingTimeInterval(2)))
+        XCTAssertFalse(request.shows(openRoomID: "r", canEdit: false, now: now), "settings not read yet")
+        XCTAssertFalse(request.shows(openRoomID: "other", canEdit: true, now: now))
+        XCTAssertFalse(request.shows(openRoomID: "r", canEdit: true,
+                                     now: now.addingTimeInterval(GroupSettingsRequest.lifetime + 1)))
+    }
+
     /// A drop ends the hover before it lands, so a face that was swollen a
     /// moment before still starts a room (Eric 2026-11-04: it never did).
     func testADropJustAfterTheFaceSwelledStillStartsARoom() {

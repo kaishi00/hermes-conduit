@@ -43,6 +43,13 @@ struct BotRosterView: View {
     @State private var landingRoomID: String?
     @Namespace private var roomTiles
     @State private var showingReorder = false
+    /// Reorder Group Chats, from a room's menu on Bots Home.
+    @State private var showingRoomReorder = false
+    /// A room whose tile's Disband Group waits for its confirmation.
+    @State private var pendingDisbandRoom: GroupRoom?
+    /// A picture asked for from a room's tile, and the room it's for.
+    @State private var roomPictureRequest: GroupRoomPictureRequest?
+    @State private var pictureRoom: GroupRoom?
     /// Bots Home's one tip on its gestures (BotsHomeGesturesTip).
     private let gesturesTip = BotsHomeGesturesTip()
     @Environment(\.v2Shell) private var shell
@@ -108,6 +115,33 @@ struct BotRosterView: View {
         .sheet(isPresented: $showingReorder) {
             BotReorderSheet()
                 .environmentObject(appState)
+        }
+        .sheet(isPresented: $showingRoomReorder) {
+            GroupRoomReorderSheet()
+                .environmentObject(appState)
+        }
+        .modifier(GroupRoomPicturePicker(request: $roomPictureRequest, target: pictureRoom))
+        .confirmationDialog(
+            AppLocalization.string("Disband this group chat?"),
+            isPresented: Binding(
+                get: { pendingDisbandRoom != nil },
+                set: { if !$0 { pendingDisbandRoom = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingDisbandRoom
+        ) { room in
+            Button(AppLocalization.string("Disband"), role: .destructive) {
+                pendingDisbandRoom = nil
+                Task {
+                    // Bots Home shows no chat error: say it in its notice.
+                    if let failure = await appState.disbandGroupRoom(room.roomID) { managementNotice = failure }
+                }
+            }
+            Button(AppLocalization.string("Cancel"), role: .cancel) { pendingDisbandRoom = nil }
+        } message: { _ in
+            Text(AppLocalization.string(
+                "The room, its history, and every member's session end permanently. This cannot be undone."
+            ))
         }
         .sheet(item: $presentedDesktopGroup) { group in
             DesktopGroupChatView(group: group)
@@ -680,7 +714,8 @@ struct BotRosterView: View {
 
     /// One of this screen's sheets is up over the grid.
     private var coveredBySheet: Bool {
-        overviewBot != nil || showingNewRoomSheet || showingReorder || presentedDesktopGroup != nil
+        overviewBot != nil || showingNewRoomSheet || showingReorder || showingRoomReorder || presentedDesktopGroup != nil
+            || roomPictureRequest != nil
             || repairContext != nil || editorMode != nil || showingGroupCreateSheet || groupSheetBot != nil
     }
 
@@ -893,10 +928,16 @@ struct BotRosterView: View {
                     .padding(.top, 2)
                     .padding(.bottom, 16)
             } else {
-                BotRoomGrid { homeRoomTiles }
+                BotRoomGrid(onDropAtEnd: { dropRoom($0, before: nil) }) { homeRoomTiles }
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
                     .padding(.bottom, 16)
+                    // Whether a room's menu offers Generate Group Picture,
+                    // asked as the open room's menu asks it.
+                    .task(id: "\(appState.isConnected)|\(appState.canSetGroupRoomPictures)|\(homeRooms.isEmpty)") {
+                        guard appState.isConnected, appState.canSetGroupRoomPictures, !homeRooms.isEmpty else { return }
+                        await appState.refreshPictureGeneration()
+                    }
             }
         }
     }
@@ -914,7 +955,7 @@ struct BotRosterView: View {
     @ViewBuilder
     private var homeRoomTiles: some View {
         ForEach(homeRooms) { room in
-            GroupRoomPortrait(room: room)
+            GroupRoomPortrait(room: room, actions: roomActions(room))
                 .matchedGeometryEffect(id: room.roomID == landingRoomID ? BotsHomeAnchorKey.newRoom : room.roomID,
                                        in: roomTiles)
         }
@@ -934,6 +975,44 @@ struct BotRosterView: View {
             )
             .matchedGeometryEffect(id: BotsHomeAnchorKey.newRoom, in: roomTiles)
             .transition(.scale(scale: 0.4).combined(with: .opacity))
+        }
+    }
+
+    /// A room tile's menu and drag on Bots Home: what the open room's menu
+    /// has that the host serves, plus Reorder Group Chats.
+    private func roomActions(_ room: GroupRoom) -> GroupRoomTileActions {
+        let capabilities = appState.groupCapabilities
+        return GroupRoomTileActions(
+            settings: capabilities?.supports("groups.context") == true ? { open in
+                // The settings are the open room's: open it, and its
+                // screen shows them once Hermes has read them.
+                let request = GroupSettingsRequest(roomID: room.roomID)
+                appState.groupSettingsOnOpen = request
+                open { opened in
+                    // An open that failed leaves no request behind for a
+                    // later open of the room from elsewhere; a newer
+                    // request stays.
+                    guard !opened, appState.groupSettingsOnOpen == request else { return }
+                    appState.groupSettingsOnOpen = nil
+                    // Bots Home shows no chat error: say it in its notice.
+                    if let failure = appState.errorMessage { managementNotice = failure }
+                }
+            } : nil,
+            picture: appState.canSetGroupRoomPictures ? { request in
+                pictureRoom = room
+                roomPictureRequest = request
+            } : nil,
+            reorder: { showingRoomReorder = true },
+            disband: capabilities?.supports("groups.disband") == true ? { pendingDisbandRoom = room } : nil,
+            onDrop: { dropRoom($0, before: room.roomID) }
+        )
+    }
+
+    /// A room's tile dropped before `target` (nil: at the end).
+    private func dropRoom(_ dragged: String, before target: String?) {
+        Haptics.selection()
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            appState.moveGroupRoom(dragged, before: target, shown: appState.shownGroupRooms.map(\.roomID))
         }
     }
 

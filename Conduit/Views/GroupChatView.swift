@@ -1088,12 +1088,15 @@ enum GroupRoomPictureRequest: String, Identifiable {
     var id: String { rawValue }
 }
 
-/// Picks or generates a picture for the open room and saves it. On the
-/// screen, not in its menu: a sheet raised as a menu closes may never show.
+/// Picks or generates a picture for the open room and saves it, or for
+/// `target`, a room's tile on Bots Home. On the screen, not in its menu: a
+/// sheet raised as a menu closes may never show.
 struct GroupRoomPicturePicker: ViewModifier {
     @EnvironmentObject private var appState: AppState
     @Binding var request: GroupRoomPictureRequest?
     var isEnabled = true
+    /// The room the picture is for, when it isn't the open one.
+    var target: GroupRoom?
     @State private var picked: UIImage?
     @State private var room: GroupRoom?
     /// Image Playground's own sheet, which `.sheet(item:)` can't hold.
@@ -1126,7 +1129,7 @@ struct GroupRoomPicturePicker: ViewModifier {
                     // One room for the prompt and the save: the open one
                     // (the capture below may still hold the last one while
                     // this sheet is first built).
-                    let target = appState.activeRoomSurface?.room ?? room
+                    let target = self.target ?? appState.activeRoomSurface?.room ?? room
                     GeneratePictureSheet(
                         defaultPrompt: PictureGeneration.groupPrompt(
                             name: target?.name ?? "",
@@ -1160,7 +1163,7 @@ struct GroupRoomPicturePicker: ViewModifier {
             }
             .onChange(of: request) { _, request in
                 // The room the menu was for, even if another opens meanwhile.
-                if request != nil { room = appState.activeRoomSurface?.room }
+                if request != nil { room = target ?? appState.activeRoomSurface?.room }
                 if request == .playground { showingPlayground = true }
             }
             .onChange(of: picked) { _, image in
