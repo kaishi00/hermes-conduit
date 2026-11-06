@@ -5482,7 +5482,7 @@ Linked Rooms: its rooms use this view, so the branch takes it with main
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-06, #PRNUM (pills under the title; the entry added).
+**Checked:** 2026-11-06, #1895 (pills under the title; the entry added).
 
 ## Linked Rooms
 
