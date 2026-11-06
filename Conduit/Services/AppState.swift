@@ -12753,6 +12753,27 @@ final class AppState: ObservableObject {
         return member
     }
 
+    /// Each member's pill under the open room's title, by `identityKey`
+    /// (GroupRoomTurns.memberStatuses). A driver that reports idle has no
+    /// live turns, so only outcomes and approvals show.
+    var activeRoomMemberStatuses: [String: GroupMemberStatus] {
+        GroupRoomTurns.memberStatuses(
+            events: activeRoomReplay.events,
+            activity: activeRoomDriverStatus?.memberActivity,
+            working: activeRoomDriverStatus?.working,
+            responder: activeRoomResponder,
+            approvals: activeRoomPendingApprovals,
+            members: activeRoomSurface?.room.members ?? [],
+            context: activeRoomContext
+        )
+    }
+
+    /// Whether the open room's newest message settled, for its title. Not
+    /// while one is on its way.
+    var activeRoomSettled: Bool {
+        GroupRoomTurns.latestDiscussionSettled(activeRoomReplay.events, sending: pendingRoomMessage != nil)
+    }
+
     /// The open room's settings, as `groups.state` last gave them (or a
     /// save here). Nil until the host answers, or on a host without them.
     var activeRoomContext: GroupRoomContext? { activeRoomDriverStatus?.roomContext }

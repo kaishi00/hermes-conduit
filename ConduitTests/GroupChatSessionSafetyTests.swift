@@ -964,6 +964,37 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
     }
 
+    func testAnIdleRoomsPillsShowNoLiveTurn() async {
+        let room = self.room()
+        func statuses(working: Bool) async -> (AppState, [String: GroupMemberStatus]) {
+            let driver = GroupDecoders.driverStatus(AnyCodable.from([
+                "running": true, "working": working, "blocked": false,
+                "member_activity": [["member_id": "researcher", "status": "running"]],
+            ] as [String: Any]))
+            let operations = GroupChatLifecycleOperations(
+                capabilities: { _ in self.capabilities(supported: true) },
+                list: { _ in ([room], nil) },
+                state: { _, _ in (room, driver) },
+                log: { _, _, sinceSeq, _ in
+                    GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                                 authorityGatewayID: "gw-a", authorityEpoch: 1)
+                }
+            )
+            let appState = makeAppState(operations: operations)
+            connect(appState)
+            await appState.refreshGroupChatSupport()
+            await appState.openGroupRoom(room)
+            let result = appState.activeRoomMemberStatuses
+            appState.closeGroupRoom()
+            return (appState, result)
+        }
+        let (_, working) = await statuses(working: true)
+        XCTAssertEqual(working["researcher"], .responding)
+        // The driver went idle while still listing the turn.
+        let (_, idle) = await statuses(working: false)
+        XCTAssertNil(idle["researcher"])
+    }
+
     func testGatewayWithoutGroupsApproveShowsNoApprovalCards() async {
         let room = self.room()
         let operations = GroupChatLifecycleOperations(

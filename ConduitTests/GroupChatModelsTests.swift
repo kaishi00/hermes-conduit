@@ -1205,6 +1205,35 @@ final class GroupChatModelsTests: XCTestCase {
             "round_index": 0, "seen_through_seq": 2, "task_id": "answer-task", "passed": true,
         ])]
         XCTAssertNil(GroupRoomTurns.pendingResponder(events: answered, members: members))
+        // Its pill: nothing for the routing receipt, then its own answer.
+        XCTAssertNil(GroupRoomTurns.memberStatuses(
+            events: twice, activity: [], responder: nil, approvals: [], members: members
+        )["zhongli"])
+        XCTAssertEqual(GroupRoomTurns.memberStatuses(
+            events: answered, activity: [], responder: nil, approvals: [], members: members
+        )["zhongli"], .passed)
+        // Outside a lead-routed discussion, or from another member, a
+        // receipt that stopped short of the message (a bounded batch) is
+        // that member's own turn.
+        let batched = roomEvent(seq: 3, kind: "turn.settled", [
+            "thread_id": "main", "discussion_event_id": "user:d1", "member_id": "furina",
+            "round_index": 0, "seen_through_seq": 1, "task_id": "batch-task", "passed": true,
+        ])
+        XCTAssertEqual(GroupRoomTurns.memberStatuses(
+            events: [log[0], log[1], batched], activity: [], responder: nil, approvals: [], members: members
+        )["furina"], .passed)
+        XCTAssertEqual(GroupRoomTurns.memberStatuses(
+            events: [log[1], batched], activity: [], responder: nil, approvals: [], members: members
+        )["furina"], .passed)
+        // A message that names the lead skips routing, so the lead's own
+        // batch that stopped short of it is its answer.
+        let addressed = [log[0], userMessage(seq: 2, text: "@zhongli plan the trip"), roomEvent(seq: 3, kind: "turn.settled", [
+            "thread_id": "main", "discussion_event_id": "user:d1", "member_id": "zhongli",
+            "round_index": 0, "seen_through_seq": 1, "task_id": "batch-task", "passed": true,
+        ])]
+        XCTAssertEqual(GroupRoomTurns.memberStatuses(
+            events: addressed, activity: [], responder: nil, approvals: [], members: members
+        )["zhongli"], .passed)
     }
 
     func testTheKeptEventsDecideOnlyWhatTheyCanKnow() {
@@ -1291,14 +1320,181 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(status?.with(running: true, working: true).roomContext?.leadMemberID, "zhongli")
     }
 
-    func testOnlyPassedTurnsEarnATranscriptRow() {
-        let members = roomMembers()
+    func testSettledTurnsAndASettledRoomLeaveTheTranscriptToThePills() {
         let spoke = settled(seq: 3, member: "furina", round: 0, messageSeq: 2)
         let passed = settled(seq: 6, member: "furina", round: 1, messageSeq: nil)
+        func activity(_ status: String) -> GroupEvent {
+            turnEvent(eventJSON(seq: 9, kind: "room.activity", actor: ["kind": "gateway", "id": "gw-a"],
+                                payload: ["status": status, "discussion_event_id": "user:d1"]))
+        }
         XCTAssertFalse(GroupRoomTurns.isVisible(spoke))
-        XCTAssertTrue(GroupRoomTurns.isVisible(passed))
-        XCTAssertEqual(GroupRoomTurns.member(for: passed, members: members)?.displayName, "Furina")
+        XCTAssertFalse(GroupRoomTurns.isVisible(passed))
+        XCTAssertFalse(GroupRoomTurns.isVisible(activity("settled")))
+        // The turn limit keeps its row, with Continue under it.
+        XCTAssertTrue(GroupRoomTurns.isVisible(activity("bounded")))
         XCTAssertTrue(GroupRoomTurns.isVisible(userMessage(seq: 1, text: "hi")))
+    }
+
+    func testEachPillShowsTheMembersLastTurnInItsThreadsDiscussion() {
+        let members = roomMembers()
+        let log = [
+            userMessage(seq: 1, text: "Hello everyone"),
+            memberMessage(seq: 2, member: "zhongli", round: 0, text: "Greetings."),
+            settled(seq: 3, member: "zhongli", round: 0, messageSeq: 2),
+            settled(seq: 4, member: "furina", round: 0, messageSeq: nil),
+        ]
+        let statuses = GroupRoomTurns.memberStatuses(
+            events: log, activity: [], responder: nil, approvals: [], members: members
+        )
+        XCTAssertEqual(statuses["furina"], .passed)
+        XCTAssertEqual(statuses["zhongli"], .replied)
+
+        // A newer message in the same thread starts over: Zhongli runs,
+        // Furina waits, and the last discussion's outcomes are gone.
+        let next = log + [userMessage(seq: 5, text: "Again", id: "user:d2")]
+        let live = GroupRoomTurns.memberStatuses(
+            events: next,
+            activity: [GroupMemberActivity(memberID: "zhongli", status: "running"),
+                       GroupMemberActivity(memberID: "furina", status: "queued")],
+            responder: nil, approvals: [], members: members
+        )
+        XCTAssertEqual(live["zhongli"], .responding)
+        XCTAssertEqual(live["furina"], .waiting)
+        XCTAssertNil(GroupRoomTurns.memberStatuses(
+            events: next, activity: [], responder: nil, approvals: [], members: members
+        )["furina"])
+    }
+
+    func testALongDiscussionKeepsItsPillsWhenItsMessageIsTrimmed() {
+        let members = roomMembers()
+        let stopped = turnEvent(eventJSON(
+            seq: 250, kind: "turn.cancelled", actor: ["kind": "gateway", "id": "gw-a"],
+            payload: ["thread_id": "main", "discussion_event_id": "user:d1", "member_id": "zhongli"]
+        ))
+        // The kept events start after the message that opened the discussion.
+        let kept = [settled(seq: 240, member: "furina", round: 2, messageSeq: nil), stopped]
+        let statuses = GroupRoomTurns.memberStatuses(
+            events: kept, activity: [], responder: nil, approvals: [], members: members
+        )
+        XCTAssertEqual(statuses["furina"], .passed)
+        XCTAssertEqual(statuses["zhongli"], .stopped)
+    }
+
+    func testALeadsRoutingTurnIsNotItsPass() {
+        let members = roomMembers()
+        let routing = turnEvent(eventJSON(
+            seq: 2, kind: "turn.settled", actor: ["kind": "gateway", "id": "gw-a"],
+            payload: ["thread_id": "main", "discussion_event_id": "user:d1", "member_id": "zhongli",
+                      "round_index": 0, "passed": true, "task_id": "route-1"]
+        ))
+        let assignment = turnEvent(eventJSON(
+            seq: 3, kind: "room.assignment", actor: ["kind": "gateway", "id": "gw-a"],
+            payload: ["thread_id": "main", "discussion_event_id": "user:d1", "lead_member_id": "zhongli",
+                      "member_ids": ["furina"], "task_id": "route-1"]
+        ))
+        let log = [userMessage(seq: 1, text: "hi"), routing, assignment,
+                   settled(seq: 4, member: "furina", round: 0, messageSeq: nil)]
+        let statuses = GroupRoomTurns.memberStatuses(
+            events: log, activity: [], responder: nil, approvals: [], members: members
+        )
+        XCTAssertNil(statuses["zhongli"])
+        XCTAssertEqual(statuses["furina"], .passed)
+    }
+
+    func testAFailureInAnotherThreadStaysOnItsPill() {
+        let members = roomMembers()
+        let failed = turnEvent(eventJSON(
+            seq: 2, kind: "turn.failed", actor: ["kind": "gateway", "id": "gw-a"],
+            payload: ["thread_id": "main", "discussion_event_id": "user:d1", "member_id": "furina", "round_index": 0]
+        ))
+        let other = turnEvent(eventJSON(
+            seq: 3, kind: "message.user", payload: ["text": "Elsewhere", "thread_id": "t2"], eventID: "user:d2"
+        ))
+        let unreachable = turnEvent(eventJSON(
+            seq: 4, kind: "turn.deferred", actor: ["kind": "gateway", "id": "gw-a"],
+            payload: ["thread_id": "t2", "discussion_event_id": "user:d2", "member_id": "zhongli",
+                      "reason": "member_unavailable"]
+        ))
+        let log = [userMessage(seq: 1, text: "hi"), failed, other, unreachable]
+        let statuses = GroupRoomTurns.memberStatuses(
+            events: log, activity: nil, responder: nil, approvals: [], members: members
+        )
+        XCTAssertEqual(statuses["furina"], .failed)
+        XCTAssertEqual(statuses["zhongli"], .unavailable)
+    }
+
+    func testAnApprovalOutranksTheTurnAndAnOlderHostNamesItsResponder() {
+        let members = roomMembers()
+        let approval = GroupPendingApproval(action: [
+            "kind": AnyCodable.from("approval"), "member_id": AnyCodable.from("furina"),
+            "task_id": AnyCodable.from("t"), "execution_generation": AnyCodable.from(1),
+            "request_id": AnyCodable.from("r"),
+        ])!
+        let statuses = GroupRoomTurns.memberStatuses(
+            events: [userMessage(seq: 1, text: "hi")],
+            activity: [GroupMemberActivity(memberID: "furina", status: "running")],
+            responder: nil, approvals: [approval], members: members
+        )
+        XCTAssertEqual(statuses["furina"], .needsApproval)
+        // Before member_activity (0.22.5), the log's responder.
+        let older = GroupRoomTurns.memberStatuses(
+            events: [userMessage(seq: 1, text: "hi")], activity: nil,
+            responder: members[1], approvals: [], members: members
+        )
+        XCTAssertEqual(older["zhongli"], .responding)
+    }
+
+    func testAnIdleDriverOrAStatusThisAppPredatesShowsNoLiveTurn() {
+        let members = roomMembers()
+        let rows = [GroupMemberActivity(memberID: "furina", status: "running"),
+                    GroupMemberActivity(memberID: "zhongli", status: "queued")]
+        // Idle: rows it still lists are stale, and the log's responder too.
+        let idle = GroupRoomTurns.memberStatuses(
+            events: [userMessage(seq: 1, text: "hi")], activity: rows, working: false,
+            responder: members[0], approvals: [], members: members
+        )
+        XCTAssertTrue(idle.isEmpty)
+        // How each turn went still shows once the room is idle.
+        let done = GroupRoomTurns.memberStatuses(
+            events: [userMessage(seq: 1, text: "hi"), settled(seq: 2, member: "furina", round: 0, messageSeq: nil)],
+            activity: rows, working: false, responder: nil, approvals: [], members: members
+        )
+        XCTAssertEqual(done["furina"], .passed)
+        XCTAssertNil(done["zhongli"])
+        let working = GroupRoomTurns.memberStatuses(
+            events: [userMessage(seq: 1, text: "hi")], activity: rows, working: true,
+            responder: nil, approvals: [], members: members
+        )
+        XCTAssertEqual(working["furina"], .responding)
+        XCTAssertEqual(working["zhongli"], .waiting)
+        let future = GroupRoomTurns.memberStatuses(
+            events: [userMessage(seq: 1, text: "hi")],
+            activity: [GroupMemberActivity(memberID: "furina", status: "warming")], working: true,
+            responder: nil, approvals: [], members: members
+        )
+        XCTAssertNil(future["furina"])
+    }
+
+    func testTheTitleSaysSettledUntilTheNextMessageOrAContinue() {
+        func event(_ seq: Int, _ kind: String, _ payload: [String: Any]) -> GroupEvent {
+            turnEvent(eventJSON(seq: seq, kind: kind, actor: ["kind": "gateway", "id": "gw-a"], payload: payload))
+        }
+        var log = [userMessage(seq: 1, text: "hi")]
+        XCTAssertFalse(GroupRoomTurns.latestDiscussionSettled(log))
+        log.append(event(2, "room.activity", ["status": "settled", "discussion_event_id": "user:d1"]))
+        XCTAssertTrue(GroupRoomTurns.latestDiscussionSettled(log))
+        // A message on its way, before the log has it.
+        XCTAssertFalse(GroupRoomTurns.latestDiscussionSettled(log, sending: true))
+        XCTAssertFalse(GroupRoomTurns.latestDiscussionSettled(
+            log + [event(3, "room.continued", ["discussion_event_id": "user:d1"])]
+        ))
+        XCTAssertFalse(GroupRoomTurns.latestDiscussionSettled(log + [userMessage(seq: 3, text: "more", id: "user:d2")]))
+        XCTAssertFalse(GroupRoomTurns.latestDiscussionSettled(log + [event(3, "room.stop_requested", [:])]))
+        // The message trimmed from the kept events: its settling still counts.
+        XCTAssertTrue(GroupRoomTurns.latestDiscussionSettled(Array(log.dropFirst())))
+        XCTAssertFalse(GroupRoomTurns.latestDiscussionSettled(
+            [log[0], event(2, "room.activity", ["status": "bounded", "discussion_event_id": "user:d1"])]
+        ))
     }
 
     // MARK: - Mention autocomplete
