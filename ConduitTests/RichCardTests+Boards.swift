@@ -48,13 +48,13 @@ extension AppStateVoiceCapabilityTests {
     /// what it draws and what its copy controls paste is cleaned.
     func testABoardsMarkdownFallbackMarksHiddenCharactersAndKeepsItsLines() throws {
         let answer: [String: Any] = [
-            "ok": true, "markdown": "## Fix the \u{202E}admin\u{202C} check\n\n\tok = role != 'user\u{2066}'\u{7}\n👨\u{200D}👩\u{200D}👧",
+            "ok": true, "markdown": "## Fix the \u{202E}admin\u{202C} check\u{200B}\u{2060}\u{FEFF}\n\n\tok = role != 'user\u{2066}'\u{7}\n👨\u{200D}👩\u{200D}👧",
             "cards": [["type": "hologram", "hologram": ["x": 1]]],
         ]
         let board = try XCTUnwrap(RichBoard.board(for: boardTool(answer, id: "t1867")))
         XCTAssertTrue(board.cards.isEmpty)
         let markdown = try XCTUnwrap(board.markdown)
-        XCTAssertEqual(markdown, "## Fix the \u{FFFD}admin\u{FFFD} check\n\n\tok = role != 'user\u{FFFD}' \n👨\u{200D}👩\u{200D}👧",
+        XCTAssertEqual(markdown, "## Fix the \u{FFFD}admin\u{FFFD} check\u{FFFD}\u{FFFD}\u{FFFD}\n\n\tok = role != 'user\u{FFFD}' \n👨\u{200D}👩\u{200D}👧",
                        "a hidden one shows as a mark, a bell is a space; lines, tabs and an emoji's joiners stay")
         XCTAssertTrue(markdown.unicodeScalars.filter(RichCardSchema.isHidden).isEmpty, "copying pastes none of them")
     }

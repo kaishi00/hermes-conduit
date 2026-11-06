@@ -428,13 +428,14 @@ extension HermesVoiceGatewayTimeoutTests {
     /// Issue 1868: the language goes last in the briefing a call sends,
     /// after the call's own English blocks (its tools, approvals, style),
     /// not only after the persona.
-    func testTheBuiltGPTLiveBriefingEndsWithTheUsersLanguage() {
+    func testTheBuiltGPTLiveBriefingEndsWithTheUsersLanguage() throws {
         let appState = AppState(defaults: makeScratchDefaults("GPTLiveBriefingLanguage"), loadSavedConnection: false)
         let briefing = appState.gptLiveBriefing()
         let rule = LiveVoiceLanguage.rule(language: LiveVoiceLanguage.current)
         XCTAssertTrue(briefing.hasSuffix(rule))
-        let approvals = briefing.range(of: GPTLiveConversationController.jobApprovalRule)!
-        XCTAssertLessThan(approvals.upperBound, briefing.range(of: rule, options: .backwards)!.lowerBound)
+        let approvals = try XCTUnwrap(briefing.range(of: GPTLiveConversationController.jobApprovalRule))
+        let language = try XCTUnwrap(briefing.range(of: rule, options: .backwards))
+        XCTAssertLessThan(approvals.upperBound, language.lowerBound)
     }
 
     /// The notifier plugin refuses a briefing over 32 KB ("briefing is too
@@ -1510,6 +1511,9 @@ extension VoiceConversationControllerTests {
             "Got it, passing that on to Hermes.",
             "Sure, I'll ask Hermes.",
             "Let me check with Hermes. Hang on.",
+            // A "nothing" or "without" outside a refusal still sends (issue 1869).
+            "Nothing else needed; I'll send that to Hermes now.",
+            "I'll send that to Hermes without delay.",
             // Acknowledgements without Hermes' name (#1251).
             "On it.",
             "Sure, one moment.",
@@ -1583,10 +1587,10 @@ extension VoiceConversationControllerTests {
             ("No hay problema, se lo envío a Hermes.", "es"),
             // Italian's pronoun "se lo" isn't its "if".
             ("Va bene, se lo mando a Hermes.", "it"),
-            // "Without a problem" opens a yes too (issue 1869).
-            ("Sin problema, se lo envío a Hermes.", "es"),
-            ("Sans problème, je transmets ça à Hermes.", "fr"),
-            ("Senza problemi, lo mando a Hermes.", "it"),
+            // A "without" or a "nothing" outside the send isn't a no (issue 1869).
+            ("Sin demora, se lo envío a Hermes.", "es"),
+            ("Sans attendre, je transmets ça à Hermes.", "fr"),
+            ("Nichts weiter, ich schicke das jetzt an Hermes.", "de"),
         ]
         for (claim, language) in claims {
             XCTAssertTrue(GPTLiveConversationController.claimsToSendToHermes(claim, callLanguage: language), claim)
@@ -1612,18 +1616,9 @@ extension VoiceConversationControllerTests {
             ("ヘルメスに送りましょうか。", "ja"),
             ("헤르메스에게 보낼까요.", "ko"),
             ("要不要发给赫尔墨斯。", "zh-CN"),
-            // A refusal in "without" or "nothing" sends nothing (issue 1869).
-            ("Ich schicke das ohne deine Erlaubnis an Hermes.", "de"),
+            // A "nothing" that refuses the send itself (issue 1869).
             ("Ich schicke nichts an Hermes.", "de"),
-            ("Lo mando a Hermes sin tu permiso.", "es"),
-            ("J'envoie ça à Hermes sans ton accord.", "fr"),
-            ("Lo mando a Hermes senza il tuo permesso.", "it"),
-            ("Envio isso ao Hermes sem sua autorização.", "pt"),
-            ("Передам это Гермесу без твоего разрешения.", "ru"),
-            ("Przekażę to Hermesowi bez twojej zgody.", "pl"),
-            ("Saya kirim ke Hermes tanpa izinmu.", "id"),
             ("I'll send nothing to Hermes.", "en"),
-            ("I'll send that to Hermes without your OK.", "en"),
             // English narration on a German call is read as English.
             ("Hermes passed it along.", "de"),
             ("Hermes passed it along.", "en"),

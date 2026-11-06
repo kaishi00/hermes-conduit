@@ -8439,14 +8439,17 @@ final class AppState: ObservableObject {
         let placeholderPersona = AppLocalization.string("(This profile's SOUL.md, read when the call starts.)")
         let thread = liveVoiceThreadInstructions(delegation: isGPTLiveEnabled)
         let style = loadVoiceProfilePreferences(profile: profile ?? activeProfile).liveVoiceStyle
-        var text: String
+        // The call's own blocks, before the language rule as a call sends them.
+        let callBlocks = thread + LiveVoiceStyle.askFirstInstructions(on: style.asksBeforeSending) + style.instructions
+        let text: String
         let mode: String
         if isGPTLiveEnabled {
             mode = "GPT-Live"
             text = GPTLiveConversationController.briefing(
                 memory: gptLiveMemoryEnabled ? placeholderMemory : nil,
                 personality: gptLivePersonalityEnabled ? placeholderPersona : nil,
-                answerLength: style.answerLength
+                answerLength: style.answerLength,
+                followedBy: callBlocks
             )
         } else if isGrokLiveEnabled {
             mode = "Grok Live"
@@ -8456,7 +8459,7 @@ final class AppState: ObservableObject {
                 personality: grokLivePersonalityEnabled ? placeholderPersona : nil,
                 answerLength: style.answerLength,
                 acknowledgesOnceStarted: true,
-                followedBy: GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
+                followedBy: GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current) + callBlocks
             )
         } else if isQwenLiveEnabled {
             mode = "Qwen Live"
@@ -8464,7 +8467,8 @@ final class AppState: ObservableObject {
                 search: qwenLiveSearchMode == .off ? .none : qwenLiveSearchSource,
                 memory: qwenLiveMemoryEnabled ? placeholderMemory : nil,
                 personality: qwenLivePersonalityEnabled ? placeholderPersona : nil,
-                answerLength: style.answerLength
+                answerLength: style.answerLength,
+                followedBy: callBlocks
             )
         } else if isGeminiLiveEnabled {
             mode = "Gemini Live"
@@ -8472,12 +8476,12 @@ final class AppState: ObservableObject {
                 search: geminiLiveSearchSource,
                 memory: geminiLiveMemoryEnabled ? placeholderMemory : nil,
                 personality: geminiLivePersonalityEnabled ? placeholderPersona : nil,
-                answerLength: style.answerLength
+                answerLength: style.answerLength,
+                followedBy: callBlocks
             )
         } else {
             return nil
         }
-        text += thread + LiveVoiceStyle.askFirstInstructions(on: style.asksBeforeSending) + style.instructions
         // Every live mode gets the greeting as the call's first turn: GPT-Live
         // no longer speaks first from its instructions (notifier #541).
         return LiveVoiceInstructionsPreviewContent(
