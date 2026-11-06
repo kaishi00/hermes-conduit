@@ -12798,6 +12798,8 @@ final class AppState: ObservableObject {
         groupChatPhase = .idle
         groupChatProbeRetry.succeeded()
         groupCapabilities = nil
+        // Group Settings asked for on the outgoing server isn't for this one.
+        groupSettingsOnOpen = nil
         // Whether the gateway can make pictures is the outgoing one's answer.
         canGeneratePictures = false
         groupRoomsListed = false
@@ -13796,20 +13798,24 @@ final class AppState: ObservableObject {
     /// Permanently disband a room, open or not: from its own menu, or its
     /// tile's on Bots Home (destructive; the view confirms). `opened`: asked
     /// from the open room, whose failure says nothing once another opens.
-    func disbandGroupRoom(_ roomID: String, opened: Bool = false) async {
+    /// Returns what went wrong, also set as `errorMessage`, else nil.
+    @discardableResult
+    func disbandGroupRoom(_ roomID: String, opened: Bool = false) async -> String? {
         guard let client, isConnected,
-              groupCapabilities?.supports("groups.disband") == true else { return }
+              groupCapabilities?.supports("groups.disband") == true else { return nil }
         let epoch = groupRoomEpoch
         do {
             try await groupsDisband(client, roomID: roomID)
         } catch {
-            guard self.client === client, !opened || groupRoomEpoch == epoch else { return }
-            errorMessage = AppLocalization.string("Could not disband this group chat: \(UserFacingError.message(for: error))")
-            return
+            guard self.client === client, !opened || groupRoomEpoch == epoch else { return nil }
+            let message = AppLocalization.string("Could not disband this group chat: \(UserFacingError.message(for: error))")
+            errorMessage = message
+            return message
         }
-        guard self.client === client else { return }
+        guard self.client === client else { return nil }
         if activeRoomSurface?.room.roomID == roomID { closeGoneRoomSurface() }
         await refreshGroupRooms()
+        return nil
     }
 
     /// Leave the room view WITHOUT touching session state — the next session

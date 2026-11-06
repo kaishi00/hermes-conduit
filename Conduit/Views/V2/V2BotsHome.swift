@@ -214,9 +214,10 @@ struct GroupRoomPortrait: View {
                 .environmentObject(appState)
         })
         .dropDestination(for: String.self) { items, _ in
-            guard let actions, let dragged = items.first.flatMap(RoomDragPayload.roomID(from:)),
-                  dragged != room.roomID else { return false }
-            actions.onDrop(dragged)
+            guard let actions, let dragged = items.first.flatMap(RoomDragPayload.roomID(from:)) else { return false }
+            // Dropped back on its own tile: taken here and left where it
+            // was, so the grid around it never reads it as a drop at the end.
+            if dragged != room.roomID { actions.onDrop(dragged) }
             return true
         }
         .accessibilityLabel(Text(room.name))

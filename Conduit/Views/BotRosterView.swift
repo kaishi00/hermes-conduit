@@ -132,7 +132,10 @@ struct BotRosterView: View {
         ) { room in
             Button(AppLocalization.string("Disband"), role: .destructive) {
                 pendingDisbandRoom = nil
-                Task { await appState.disbandGroupRoom(room.roomID) }
+                Task {
+                    // Bots Home shows no chat error: say it in its notice.
+                    if let failure = await appState.disbandGroupRoom(room.roomID) { managementNotice = failure }
+                }
             }
             Button(AppLocalization.string("Cancel"), role: .cancel) { pendingDisbandRoom = nil }
         } message: { _ in
@@ -986,7 +989,15 @@ struct BotRosterView: View {
                 appState.groupSettingsOnOpen = GroupSettingsRequest(roomID: room.roomID)
                 Haptics.light()
                 appState.dismissSidebarDrawer()
-                Task { await appState.openGroupRoom(room) }
+                Task {
+                    await appState.openGroupRoom(room)
+                    // An open that failed leaves no request behind for a
+                    // later open of the room from elsewhere.
+                    if appState.activeRoomSurface?.room.roomID != room.roomID,
+                       appState.groupSettingsOnOpen?.roomID == room.roomID {
+                        appState.groupSettingsOnOpen = nil
+                    }
+                }
             } : nil,
             picture: appState.canSetGroupRoomPictures ? { request in
                 pictureRoom = room
