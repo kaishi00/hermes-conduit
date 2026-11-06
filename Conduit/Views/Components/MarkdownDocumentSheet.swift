@@ -41,7 +41,16 @@ enum MarkdownArtifact {
                      dataURL: (String) async -> String?) async -> String? {
         if let knownSize, knownSize > Int64(DataURLLimits.maxDecodedBytes) { return nil }
         guard let url = await dataURL(path), !Task.isCancelled else { return nil }
-        return text(from: url)
+        // Up to 16 MB of base64 to decode: off the main actor.
+        return await Task.detached(priority: .userInitiated) { MarkdownArtifact.text(from: url) }.value
+    }
+
+    /// The name the Open In and Share copy is staged under: the title when
+    /// it names a Markdown file, else the host path's own name, so a file
+    /// card labelled "Report" still hands over `PLAN.md` and the system
+    /// offers Markdown readers for it.
+    static func handoffName(title: String, path: String) -> String {
+        isMarkdown(title) ? title : MediaPreviewPresenter.sanitizedFilename(path)
     }
 }
 
@@ -50,6 +59,8 @@ enum MarkdownArtifact {
 struct MarkdownDocument: Identifiable {
     let id = UUID()
     let name: String
+    /// The file's path on the host, for the handoff copy's name.
+    let path: String
     let text: String
     let gatewayMediaDataURL: ((String) async -> String?)?
     let gatewayMediaFiles: GatewayMediaDataURLResolver?
@@ -57,7 +68,7 @@ struct MarkdownDocument: Identifiable {
 
 extension MarkdownDocumentSheet {
     init(document: MarkdownDocument) {
-        self.init(name: document.name, text: document.text,
+        self.init(name: document.name, path: document.path, text: document.text,
                   gatewayMediaDataURL: document.gatewayMediaDataURL,
                   gatewayMediaFiles: document.gatewayMediaFiles)
     }
@@ -72,6 +83,7 @@ struct MarkdownDocumentSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let name: String
+    let path: String
     let text: String
     /// Where the file's own `MEDIA:` pictures and file cards load from.
     let gatewayMediaDataURL: ((String) async -> String?)?
@@ -167,7 +179,7 @@ struct MarkdownDocumentSheet: View {
         // Touch the presenter first: its one-time sweep clears a previous
         // run's preview directories before this sheet adds one.
         _ = MediaPreviewPresenter.shared.stagingDirectory
-        let name = name
+        let name = MarkdownArtifact.handoffName(title: name, path: path)
         let text = text
         let staged = await Task.detached(priority: .utility) {
             MediaPreviewPresenter.stage(text: text, filename: name)

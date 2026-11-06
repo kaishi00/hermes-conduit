@@ -2954,7 +2954,7 @@ private struct GatewayMediaFileCard: View {
         }
         guard let dataURL,
               let text = await MarkdownArtifact.load(path: path, dataURL: dataURL) else { return nil }
-        return MarkdownDocument(name: displayName, text: text,
+        return MarkdownDocument(name: displayName, path: path, text: text,
                                 gatewayMediaDataURL: dataURL, gatewayMediaFiles: files)
     }
 }

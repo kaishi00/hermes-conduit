@@ -685,7 +685,7 @@ private struct ArtifactsList: View {
                 return
             }
             guard !Task.isCancelled else { return }
-            markdown = MarkdownDocument(name: item.name, text: text,
+            markdown = MarkdownDocument(name: item.name, path: path, text: text,
                                         gatewayMediaDataURL: { await resolver.dataURL(for: $0) },
                                         gatewayMediaFiles: resolver)
         }

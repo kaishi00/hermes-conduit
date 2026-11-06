@@ -51,6 +51,12 @@ final class MarkdownDocumentSheetTests: XCTestCase {
         XCTAssertEqual(MediaPreviewPresenter.sanitizedFilename("PLAN.md?download=1"), "PLAN.md")
     }
 
+    func testHandoffKeepsAMarkdownNameWhenTheCardsLabelHasNone() {
+        XCTAssertEqual(MarkdownArtifact.handoffName(title: "Report", path: "/tmp/out/PLAN.md"), "PLAN.md")
+        XCTAssertEqual(MarkdownArtifact.handoffName(title: "Report", path: "C:\\Hermes\\PLAN.md"), "PLAN.md")
+        XCTAssertEqual(MarkdownArtifact.handoffName(title: "notes.md", path: "/tmp/x/other.md"), "notes.md")
+    }
+
     func testLoadSkipsAFileKnownToBeOverTheCeiling() async {
         // The host would answer, so a nil says the reader never asked: the
         // fallback downloads the file once instead.
