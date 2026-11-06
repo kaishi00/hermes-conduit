@@ -1010,6 +1010,13 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         purposeOnly.purpose = "Trips"
         _ = await appState.saveActiveRoomSettings(purposeOnly, eventID: "context-1b", roomID: "room-1")
         XCTAssertEqual(box.saves.last?.3, false)
+        // Drafted from settings another client has changed since: who
+        // answers was left as it opened, so the newer routing stays.
+        let opened = GroupRoomContext(purpose: "Plans")
+        var drafted = opened
+        drafted.purpose = "Trips"
+        _ = await appState.saveActiveRoomSettings(drafted, eventID: "context-1c", roomID: "room-1", original: opened)
+        XCTAssertEqual(box.saves.last?.3, false)
 
         // A host before routing keeps the room's routing as it is.
         box.routes = false
@@ -1072,6 +1079,9 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
         await appState.openGroupRoom(room)
         XCTAssertTrue(appState.activeRoomContinuablePauses.isEmpty)
+        // A tap that lands after the pause ended sends nothing.
+        await appState.continueActiveRoomDiscussion("user:d1")
+        XCTAssertTrue(box.continued.isEmpty)
         box.maxContinues = 5
         appState.closeGroupRoom()
         await appState.openGroupRoom(room)

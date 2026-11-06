@@ -13660,7 +13660,10 @@ final class AppState: ObservableObject {
     func continueActiveRoomDiscussion(_ discussionEventID: String) async {
         guard let surface = activeRoomSurface, let client, isConnected,
               groupCapabilities?.supports("groups.continue") == true,
-              !continuingRoomDiscussions.contains(discussionEventID) else { return }
+              !continuingRoomDiscussions.contains(discussionEventID),
+              // A Stop or a newer message since the tap ended the pause.
+              activeRoomContinuablePauses.values.contains(where: { $0.discussionEventID == discussionEventID })
+        else { return }
         let epoch = groupRoomEpoch
         continuingRoomDiscussions.insert(discussionEventID)
         defer { continuingRoomDiscussions.remove(discussionEventID) }
@@ -13683,9 +13686,13 @@ final class AppState: ObservableObject {
     /// returns the first save instead of writing a second. Routing goes
     /// along only where the host routes and the save changes it, so a mode
     /// this client predates (read as Everyone) survives a purpose or notes
-    /// edit. Returns the error to show, or nil
-    /// once the host took it.
-    func saveActiveRoomSettings(_ context: GroupRoomContext, eventID: String, roomID: String) async -> String? {
+    /// edit. `original` is the settings the draft started from (the room's
+    /// current ones when nil): another client's routing change while the
+    /// sheet was open survives a save that left Who answers alone. Returns
+    /// the error to show, or nil once the host took it.
+    func saveActiveRoomSettings(
+        _ context: GroupRoomContext, eventID: String, roomID: String, original: GroupRoomContext? = nil
+    ) async -> String? {
         guard let surface = activeRoomSurface, let client, isConnected,
               groupCapabilities?.supports("groups.context") == true else {
             return AppLocalization.string("Connect to Hermes to change this group chat's settings.")
@@ -13693,7 +13700,7 @@ final class AppState: ObservableObject {
         // Settings drafted for one room never land in another opened since.
         guard surface.room.roomID == roomID else { return AppLocalization.string("That chat is no longer available.") }
         let epoch = groupRoomEpoch
-        let includesRouting = !activeRoomRoutingModes.isEmpty && activeRoomContext.map {
+        let includesRouting = !activeRoomRoutingModes.isEmpty && (original ?? activeRoomContext).map {
             $0.routing != context.routing || $0.leadMemberID != context.leadMemberID
         } ?? true
         do {

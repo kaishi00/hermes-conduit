@@ -1663,6 +1663,9 @@ struct GroupRoomSettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @State private var draft = GroupRoomContext()
+    /// The settings the draft was read from. Save compares against these,
+    /// so another client's change while the sheet is open enables nothing.
+    @State private var original = GroupRoomContext()
     @State private var loaded = false
     /// The save's retry key, kept while the settings sent with it are: a
     /// retry after an unclear failure returns the first save, and edited
@@ -1687,7 +1690,7 @@ struct GroupRoomSettingsSheet: View {
     private var canSave: Bool {
         loaded && !isSaving && !purposeTooLong && !notesTooLong
             && (draft.routing != .lead || GroupRoomTurns.member(withID: draft.leadMemberID, in: members) != nil)
-            && normalized(draft) != appState.activeRoomContext
+            && normalized(draft) != original
     }
 
     var body: some View {
@@ -1767,6 +1770,7 @@ struct GroupRoomSettingsSheet: View {
         .onAppear {
             guard !loaded, let context = appState.activeRoomContext else { return }
             draft = context
+            original = context
             roomID = appState.activeRoomSurface?.room.roomID
             loaded = true
         }
@@ -1875,7 +1879,9 @@ struct GroupRoomSettingsSheet: View {
         isSaving = true
         failure = nil
         Task {
-            let error = await appState.saveActiveRoomSettings(context, eventID: eventID, roomID: roomID)
+            let error = await appState.saveActiveRoomSettings(
+                context, eventID: eventID, roomID: roomID, original: original
+            )
             isSaving = false
             if let error {
                 failure = AppLocalization.string("Could not save this group chat's settings: \(error)")
