@@ -1180,6 +1180,13 @@ final class GroupChatModelsTests: XCTestCase {
                        .routed([members[1]], routingTaskID: "route-task"))
         XCTAssertEqual(GroupRoomTurns.pendingResponder(events: log, members: members)?.memberID, "zhongli",
                        "the lead takes it alone, and its routing receipt is not its answer")
+        // A routing turn discarded twice leaves two such receipts; neither
+        // is the lead's answer.
+        let twice = log + [roomEvent(seq: 4, kind: "turn.cancelled", [
+            "thread_id": "main", "discussion_event_id": "user:d1", "member_id": "zhongli",
+            "round_index": 0, "seen_through_seq": 1, "task_id": "route-task-2", "reason": "discarded",
+        ])]
+        XCTAssertEqual(GroupRoomTurns.pendingResponder(events: twice, members: members)?.memberID, "zhongli")
         // Its own answer's receipt reads the message: the lead is done.
         let answered = log + [roomEvent(seq: 4, kind: "turn.settled", [
             "thread_id": "main", "discussion_event_id": "user:d1", "member_id": "zhongli",

@@ -1114,7 +1114,10 @@ enum GroupRoomTurns {
         let budgets = continues.count + 1
         guard memberMessages.count < maxMessages * budgets else { return nil }
 
-        // The lead's routing turn is not its round-0 answer.
+        // The lead's routing turn is not its round-0 answer: neither the
+        // task the route names nor any other round-0 receipt that read the
+        // room only up to just before the message (a routing turn tried
+        // again), since an answer reads the message itself.
         let routingTaskID = route.routingTaskID
         var terminals = Set<String>()
         for event in events where terminalKinds.contains(event.kind)
@@ -1122,6 +1125,10 @@ enum GroupRoomTurns {
             && (routingTaskID == nil || event.payload["task_id"]?.stringValue != routingTaskID) {
             if let round = HermesClient.exactIntValue(event.payload["round_index"]),
                let memberID = event.payload["member_id"]?.stringValue {
+                if routingTaskID != nil, round == 0,
+                   HermesClient.exactIntValue(event.payload["seen_through_seq"]) == discussion.seq - 1 {
+                    continue
+                }
                 terminals.insert("\(round)|\(memberID.lowercased())")
             }
         }
