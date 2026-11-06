@@ -15557,6 +15557,11 @@ final class AppState: ObservableObject {
     }
 
     func disconnect() {
+        // A switch to it still signing in loses the flow: its answer must
+        // not connect it again (Disconnect, Sign Out) or add it back and
+        // select it (removal). A switch runs to its end whatever cancels
+        // its caller, so the generation is what stops it.
+        dashboardSwitchGeneration &+= 1
         // Its waits belong to the signed-out user (issue 1705).
         needsYou.reset(dashboardID: nil)
         // The next sign-in to it asks for Face ID again.
@@ -16245,9 +16250,6 @@ final class AppState: ObservableObject {
         guard let removed = savedDashboardRegistry.dashboard(with: id) else { return }
         let wasActive = id == activeDashboardID
         if wasActive {
-            // A switch to it still signing in loses the flow: its answer
-            // must not add the dashboard back and select it.
-            dashboardSwitchGeneration &+= 1
             // Full scoped teardown of the active dashboard's auth and live
             // session (including its origin's cookies).
             disconnect()

@@ -930,6 +930,27 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(appState.connection, "Nothing connects to it")
     }
 
+    /// Disconnecting while a switch is still signing in ends that switch:
+    /// its answer never connects the dashboard the user just left.
+    func testDisconnectingMidSwitchEndsTheSwitch() async {
+        let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let vps = dashboard("VPS", "https://hermes.example.com")
+        var appState: AppState!
+        appState = makeAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps]),
+            mintTicket: { _ in
+                appState.disconnect()
+                return "ticket"
+            }
+        )
+        KeychainHelper.saveNativeOAuthTokens(grant(), dashboardID: track(vps.id))
+
+        await appState.switchDashboard(to: vps.id)
+
+        XCTAssertNil(appState.connection, "Nothing connects after Disconnect")
+        XCTAssertFalse(appState.isConnecting)
+    }
+
     /// The sign-in screen's row for that dashboard: a tap reaches the grant
     /// and, when it is refused, shows why. It never does nothing.
     func testTappingAGrantOnlyDashboardRowIsNeverADeadTap() async {
