@@ -633,7 +633,10 @@ struct NotifierPluginUpdateBanner: View {
         // The notice and how it ended are announced; each step isn't.
         .task(id: update.isInProgress ? nil : text) {
             guard !update.isInProgress else { return }
-            UIAccessibility.post(notification: .announcement, argument: text)
+            // How it ended, with why when it says (a failure's detail).
+            let detail = update == .idle ? nil : row?.detail
+            UIAccessibility.post(notification: .announcement,
+                                 argument: [text, detail].compactMap { $0 }.joined(separator: ". "))
         }
         // A finished update leaves on its own once Conduit is connected
         // again; with VoiceOver on it stays until closed.

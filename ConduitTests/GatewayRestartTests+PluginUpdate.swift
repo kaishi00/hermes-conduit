@@ -708,6 +708,8 @@ private final class PluginHost {
     var restartSignsOut = false
     /// The next capabilities read finds the sign-in expired.
     var statusReadSignsOut = false
+    /// The dashboard's restart loads the Hermes updated under it: the update pulls again.
+    var restartClearsUpdateError = false
     /// Whether signing in again with the saved password works; nil leaves
     /// the updater without a way to sign in again.
     var signInAgainWorks: Bool?
@@ -762,6 +764,7 @@ private final class PluginHost {
         case NotifierPluginUpdater.selfRestartPath:
             if !selfRestartErrors.isEmpty { throw selfRestartErrors.removeFirst() }
             if restartSignsOut { signedIn = false }
+            if restartClearsUpdateError { updateError = nil }
             return ["ok": true, "restarting": true]
         case NotifierPluginStatus.path:
             guard let first = capabilities.first else {
@@ -1024,13 +1027,29 @@ extension GatewayRestartTests {
         XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.selfRestartPath)"))
     }
 
+    func testThePhoneRunStepsRestartADashboardRunningMixedHermesAndUpdateAgain() async {
+        let host = PluginHost()
+        host.updateError = DashboardTicketBridgeError.http(status: 400, detail: Self.mixedHermesDetail)
+        host.restartClearsUpdateError = true
+        host.capabilities = [
+            Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "old"),
+            Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "fresh"),
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "fresh"),
+            Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"),
+        ]
+        let outcome = await host.updater().run { _ in }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        XCTAssertEqual(host.calls.filter { $0 == "POST \(NotifierPluginUpdater.updatePath)" }.count, 2)
+        XCTAssertEqual(host.calls.filter { $0 == "POST \(NotifierPluginUpdater.selfRestartPath)" }.count, 2)
+    }
+
     func testThePhoneRunStepsSayToRestartADashboardRunningMixedHermes() async {
         let host = PluginHost()
         host.updateError = DashboardTicketBridgeError.http(status: 400, detail: Self.mixedHermesDetail)
         let outcome = await host.updater().run { _ in }
         XCTAssertEqual(outcome, .failed(detail: NotifierPluginUpdater.explainingMixedHermes(Self.mixedHermesDetail)))
         guard case .failed(let detail?) = outcome else { return XCTFail("\(outcome)") }
-        XCTAssertTrue(detail.hasPrefix(Self.mixedHermesDetail))
+        XCTAssertTrue(detail.hasSuffix(Self.mixedHermesDetail))
     }
 
     func testMixedHermesWithoutTheRestartRouteSaysToRestartTheDashboard() async {
@@ -1042,7 +1061,7 @@ extension GatewayRestartTests {
         updater.onHost = true
         let outcome = await updater.run { _ in }
         guard case .failed(let detail?) = outcome else { return XCTFail("\(outcome)") }
-        XCTAssertTrue(detail.hasPrefix(Self.mixedHermesDetail))
+        XCTAssertTrue(detail.hasSuffix(Self.mixedHermesDetail))
         XCTAssertTrue(detail.contains("Restart the Hermes dashboard"))
         XCTAssertEqual(NotifierPluginUpdater.explainingMixedHermes("Plugin not found"), "Plugin not found")
         XCTAssertTrue(NotifierPluginUpdater.ranMixedHermes("cannot import name 'x' from 'pm.workspace'"))

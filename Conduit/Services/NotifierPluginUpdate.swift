@@ -169,8 +169,15 @@ struct NotifierPluginUpdater {
     /// Reports each step to `progress` and returns how it ended. Returns
     /// `.idle` when cancelled.
     func run(progress: (NotifierPluginUpdateState) -> Void) async -> NotifierPluginUpdateState {
-        let request = renewingSignIn(self.request)
-        if onHost, !install, let outcome = await runOnHost(request: request, progress: progress) {
+        await run(request: renewingSignIn(self.request), progress: progress, restartedForHermes: false)
+    }
+
+    /// `restartedForHermes`: the dashboard was restarted to load the Hermes
+    /// updated under it, so a pull that meets mixed Hermes again isn't retried.
+    private func run(request: @escaping Request, progress: (NotifierPluginUpdateState) -> Void,
+                     restartedForHermes: Bool) async -> NotifierPluginUpdateState {
+        if onHost, !install,
+           let outcome = await runOnHost(request: request, progress: progress, restartedForHermes: restartedForHermes) {
             return outcome
         }
         // 1. The new plugin onto the host.
@@ -200,6 +207,13 @@ struct NotifierPluginUpdater {
             }
         } catch {
             if Task.isCancelled { return .idle }
+            if !restartedForHermes, Self.httpStatus(of: error) == 400, Self.ranMixedHermes(Self.detail(of: error)) {
+                // Hermes' own pull, in a dashboard Hermes was updated under (issue 1889).
+                let detail = Self.detail(of: error)
+                return await restartForUpdatedHermes(request: request, progress: progress, detail: detail) {
+                    await run(request: request, progress: progress, restartedForHermes: true)
+                } ?? .failed(detail: Self.explainingMixedHermes(detail))
+            }
             return Self.outcome(forRequestError: error)
         }
         if Task.isCancelled { return .idle }
@@ -354,7 +368,9 @@ struct NotifierPluginUpdater {
                     // Hermes was updated under the running dashboard (issue 1889): its
                     // restart loads the new Hermes whole, then the update runs again.
                     guard !restartedForHermes else { return .failed(detail: Self.explainingMixedHermes(detail)) }
-                    return await restartForUpdatedHermes(request: request, progress: progress, detail: detail)
+                    return await restartForUpdatedHermes(request: request, progress: progress, detail: detail) {
+                        await runOnHost(request: request, progress: progress, restartedForHermes: true)
+                    }
                 }
                 return await finishHostUpdate(outcome, pullFailed: pullFailed, request: request)
             } else {
@@ -385,20 +401,25 @@ struct NotifierPluginUpdater {
     }
 
     /// Restarts a dashboard still running the Hermes it started with, then
-    /// starts the update again on the new one, once.
+    /// runs the update again (`again`) on the new one.
     private func restartForUpdatedHermes(request: Request, progress: (NotifierPluginUpdateState) -> Void,
-                                         detail: String?) async -> NotifierPluginUpdateState? {
+                                         detail: String?,
+                                         again: () async -> NotifierPluginUpdateState?) async -> NotifierPluginUpdateState? {
         let failed = NotifierPluginUpdateState.failed(detail: Self.explainingMixedHermes(detail))
-        let json: [String: Any]
-        do {
-            json = try await request(NotifierPluginStatus.path, "GET", nil)
-        } catch DashboardTicketBridgeError.signInRequired {
-            // Signing in again didn't work: that, not the restart, is what to fix.
-            return Self.outcome(forRequestError: DashboardTicketBridgeError.signInRequired)
-        } catch {
-            return Task.isCancelled ? .idle : failed
+        // The dashboard answered a moment ago: a read that fails once is asked again.
+        var fetched: [String: Any]?
+        for attempt in 0..<3 {
+            do {
+                fetched = try await request(NotifierPluginStatus.path, "GET", nil)
+                break
+            } catch DashboardTicketBridgeError.signInRequired {
+                // Signing in again didn't work: that, not the restart, is what to fix.
+                return Self.outcome(forRequestError: DashboardTicketBridgeError.signInRequired)
+            } catch {}
+            if Task.isCancelled { return .idle }
+            if attempt < 2 { do { try await sleep(pollInterval) } catch { return .idle } }
         }
-        guard let runtime = NotifierPluginStatus.runtime(from: json),
+        guard let json = fetched, let runtime = NotifierPluginStatus.runtime(from: json),
               (json["capabilities"] as? [String] ?? []).contains(Self.selfRestartCapability) else { return failed }
         switch await restartDashboard(from: runtime, request: request, progress: progress) {
         case .ended(.idle):
@@ -408,7 +429,7 @@ struct NotifierPluginUpdater {
         case .ended:
             return failed
         case .back:
-            return await runOnHost(request: request, progress: progress, restartedForHermes: true)
+            return await again()
         }
     }
 
@@ -421,10 +442,11 @@ struct NotifierPluginUpdater {
         return detail.contains("has no attribute '") || detail.contains("cannot import name '")
     }
 
-    /// Hermes' words, with what to do about a dashboard running mixed Hermes.
+    /// What to do about a dashboard running mixed Hermes, then Hermes' words:
+    /// the notice shows the first lines only.
     static func explainingMixedHermes(_ detail: String?) -> String? {
         guard ranMixedHermes(detail), let detail else { return detail }
-        return detail + "\n\n" + AppLocalization.string("Hermes was updated on the host while its dashboard kept running. Restart the Hermes dashboard on the host, then update again.")
+        return AppLocalization.string("Hermes was updated on the host while its dashboard kept running. Restart the Hermes dashboard on the host, then update again.") + "\n\n" + detail
     }
 
     /// The host's last word, with the new plugin's report. A pull that
