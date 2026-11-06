@@ -1689,7 +1689,13 @@ struct GroupRoomSettingsSheet: View {
         GroupRoomTurns.members(appState.activeRoomSurface?.room.members ?? [], namedBy: appState.shownBotRoster)
     }
 
-    private var modes: [GroupRouting] { appState.activeRoomRoutingModes }
+    /// The modes to offer: the host's known ones, or just Everyone when the
+    /// room runs on a mode newer than this app and the host lists no other,
+    /// so that mode can still be replaced.
+    private var modes: [GroupRouting] {
+        let known = appState.activeRoomRoutingModes
+        return known.isEmpty && !original.newerRouting.isEmpty ? [.everyone] : known
+    }
 
     private var purposeTooLong: Bool { draft.purpose.count > GroupRoomContext.maxPurposeCharacters }
     private var notesTooLong: Bool {

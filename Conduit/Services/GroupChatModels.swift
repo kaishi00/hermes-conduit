@@ -1119,13 +1119,17 @@ enum GroupRoomTurns {
         // room only up to just before the message (a routing turn tried
         // again), since an answer reads the message itself.
         let routingTaskID = route.routingTaskID
+        var leadRouted = false
+        if case .routed = route {
+            leadRouted = contextInForce(at: discussion.seq, in: events, current: context)?.routing == .lead
+        }
         var terminals = Set<String>()
         for event in events where terminalKinds.contains(event.kind)
             && event.payload["discussion_event_id"]?.stringValue == discussion.eventID
             && (routingTaskID == nil || event.payload["task_id"]?.stringValue != routingTaskID) {
             if let round = HermesClient.exactIntValue(event.payload["round_index"]),
                let memberID = event.payload["member_id"]?.stringValue {
-                if routingTaskID != nil, round == 0,
+                if leadRouted, round == 0,
                    HermesClient.exactIntValue(event.payload["seen_through_seq"]) == discussion.seq - 1 {
                     continue
                 }
@@ -1157,10 +1161,10 @@ enum GroupRoomTurns {
     }
 
     /// The member answering now, from the host's own `member_activity`: a
-    /// running turn first, else the next queued one. The host runs one
+    /// running turn first, then one stopping, else the next queued one. The host runs one
     /// discussion at a time, so this is that discussion's.
     static func activeResponder(activity: [GroupMemberActivity], members: [GroupMember]) -> GroupMember? {
-        for status in ["running", "queued"] {
+        for status in ["running", "stopping", "queued"] {
             for row in activity where row.status == status {
                 if let member = member(withID: row.memberID, in: members) { return member }
             }

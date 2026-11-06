@@ -1192,6 +1192,13 @@ final class GroupChatModelsTests: XCTestCase {
             "round_index": 0, "seen_through_seq": 1, "task_id": "route-task-2", "reason": "discarded",
         ])]
         XCTAssertEqual(GroupRoomTurns.pendingResponder(events: twice, members: members)?.memberID, "zhongli")
+        // A routing receipt without a task id is recognized the same way.
+        let untasked = [log[0], log[1], roomEvent(seq: 3, kind: "turn.cancelled", [
+            "thread_id": "main", "discussion_event_id": "user:d1", "member_id": "zhongli",
+            "round_index": 0, "seen_through_seq": 1, "reason": "discarded",
+        ])]
+        XCTAssertEqual(GroupRoomTurns.pendingRoute(events: untasked, members: members), .routed([members[1]], routingTaskID: nil))
+        XCTAssertEqual(GroupRoomTurns.pendingResponder(events: untasked, members: members)?.memberID, "zhongli")
         // Its own answer's receipt reads the message: the lead is done.
         let answered = log + [roomEvent(seq: 4, kind: "turn.settled", [
             "thread_id": "main", "discussion_event_id": "user:d1", "member_id": "zhongli",
@@ -1245,6 +1252,9 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(GroupRoomTurns.activeResponder(activity: activity, members: members)?.memberID, "zhongli")
         XCTAssertEqual(GroupRoomTurns.activeResponder(activity: [activity[0]], members: members)?.memberID, "furina")
         XCTAssertNil(GroupRoomTurns.activeResponder(activity: [], members: members))
+        // A turn being stopped is still the live one, ahead of a queued one.
+        let stopping = [GroupMemberActivity(memberID: "zhongli", status: "stopping"), activity[0]]
+        XCTAssertEqual(GroupRoomTurns.activeResponder(activity: stopping, members: members)?.memberID, "zhongli")
         // A host whose config allows one round: nobody is cited past it.
         let log = [
             userMessage(seq: 1, text: "Hello"),
