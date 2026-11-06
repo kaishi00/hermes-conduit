@@ -393,7 +393,7 @@ instructions as sent) · Settings captions · docs/VOICE_SETTINGS.md
 - Tests: `ConduitTests/GeminiLiveVoiceTests.swift` (testLiveCallStyleAddsTheUsersOwnInstructionsAfterConduitsRules), `ConduitTests/HermesVoiceGatewayTimeoutTests+LocalLive.swift` (testLocalLiveAgentModeTakesThePersonalityAndTheUsersInstructions)
 
 **Rulings**
-- The user adds to Conduit's instructions and never shortens or replaces them: jobs, approvals and the call's tools depend on them. The user's text goes after Conduit's rules and the style, before the language rule, in every live mode, and the model is told Conduit's rules win where the two differ (Eric 2026-11-06, notifier issue 583, #1896).
+- The user adds to Conduit's instructions and never shortens or replaces them: jobs, approvals and the call's tools depend on them. The user's text goes after Conduit's rules and the style, before the language rule, in every live mode (on the Watch's Gemini, Qwen and Grok calls the phone-tools briefing still follows the style, as recorded under The language a live call speaks), and the model is told Conduit's rules win where the two differ (Eric 2026-11-06, notifier issue 583, #1896).
 - Your instructions are one text per profile for every live mode, at most 2,000 characters, trimmed; empty adds nothing (#1896).
 - Each mode's persona switch is off until the user turns it on, Local Live's too: it sends SOUL.md to that mode's server, and a long one slows a small model's first words (#1896).
 
