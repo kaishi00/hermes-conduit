@@ -236,8 +236,11 @@ struct GroupRoomPortrait: View {
         .onChange(of: dropTarget) { _, over in
             slide?.cancel()
             slide = nil
+            // The drop ends the hover before it lands, so `placed` outlives
+            // it, as a bot's does, and starts over only on the next hover.
+            guard over else { return }
             placed = false
-            guard over, let dragged = RoomDragPayload.lifted else { return }
+            guard let dragged = RoomDragPayload.lifted else { return }
             slide = Task { @MainActor in
                 try? await Task.sleep(for: BotDragPayload.slideDwell)
                 guard !Task.isCancelled, dropTarget, RoomDragPayload.lifted == dragged else { return }
@@ -353,22 +356,42 @@ enum RoomDragPayload {
         BotDragPayload.lifted = nil
         let provider = NSItemProvider(object: payload(for: roomID) as NSString)
         liftedID = roomID
+        liftedSeenAt = Date()
         liftedProvider = provider
         return provider
     }
 
     /// The room whose tile is being dragged, set as its drag starts. It
-    /// counts only while the drag's item lives, as a bot's does, so a
-    /// cancelled drag leaves nothing for a later drop to borrow.
+    /// counts while the drag's item lives, or a drop target saw it within
+    /// `BotDragPayload.liftedGrace`, as a bot's does, so a cancelled drag
+    /// leaves nothing for a later drop to borrow.
     static var lifted: String? {
-        get { liftedProvider == nil ? nil : liftedID }
+        get { lifted(at: Date()) }
         set {
             liftedID = newValue
+            liftedSeenAt = Date()
             if newValue == nil { liftedProvider = nil }
         }
     }
     private static var liftedID: String?
     private static weak var liftedProvider: NSItemProvider?
+    private static var liftedSeenAt = Date.distantPast
+
+    static func lifted(at now: Date) -> String? {
+        guard let liftedID else { return nil }
+        if liftedProvider != nil { return liftedID }
+        return now.timeIntervalSince(liftedSeenAt) < BotDragPayload.liftedGrace ? liftedID : nil
+    }
+
+    /// A drop target saw the tile in hand: it still counts for a while.
+    static func seen(at now: Date = Date()) {
+        if lifted(at: now) != nil { liftedSeenAt = now }
+    }
+
+    /// Whether the drag that set `lifted` still holds its item. Only then
+    /// is a drop surely that tile; a drop within the grace alone is read
+    /// from its own text, so a foreign drop never borrows the room.
+    static var isLive: Bool { liftedID != nil && liftedProvider != nil }
 
     static func payload(for roomID: String) -> String { prefix + roomID }
 
@@ -403,6 +426,10 @@ struct RoomTileDrop: DropDelegate {
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
+        // A bot carried over the rooms stays in hand too, or its + comes
+        // back once the system lets go of its item.
+        RoomDragPayload.seen()
+        BotDragPayload.seen()
         guard validateDrop(info: info) else { return DropProposal(operation: .forbidden) }
         // A move only for our own tile: text from elsewhere is a copy, so
         // its source never deletes what this may not take.
@@ -415,11 +442,14 @@ struct RoomTileDrop: DropDelegate {
         targeted = false
         let target = target
         let onDrop = onDrop
-        if let dragged = RoomDragPayload.lifted {
+        if RoomDragPayload.isLive, let dragged = RoomDragPayload.lifted {
             RoomDragPayload.lifted = nil
             if dragged != target { onDrop(dragged) }
             return true
         }
+        // Past its item, the tile in hand is only a guess: read the drop's
+        // own text (a tile's carries its mark).
+        RoomDragPayload.lifted = nil
         guard let provider = info.itemProviders(for: [UTType.text]).first else { return false }
         _ = provider.loadObject(ofClass: NSString.self) { object, _ in
             guard let text = object as? String, let dragged = RoomDragPayload.roomID(from: text),
@@ -744,6 +774,8 @@ struct LiftedBotDrop: DropDelegate {
     func dropEntered(info: DropInfo) { entered() }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
+        BotDragPayload.seen()
+        RoomDragPayload.seen()
         guard validateDrop(info: info) else { return DropProposal(operation: .forbidden) }
         updated(info.location)
         // A move only for our own portrait: text from elsewhere is a copy,
@@ -754,7 +786,7 @@ struct LiftedBotDrop: DropDelegate {
     func dropExited(info: DropInfo) { exited() }
 
     func performDrop(info: DropInfo) -> Bool {
-        if let dragged = BotDragPayload.lifted {
+        if BotDragPayload.isLive, let dragged = BotDragPayload.lifted {
             BotDragPayload.lifted = nil
             // The target reads its own hover state first (a merge), then
             // ends it.
@@ -762,6 +794,9 @@ struct LiftedBotDrop: DropDelegate {
             exited()
             return landed
         }
+        // Past its item, the portrait in hand is only a guess: read the
+        // drop's own text (a portrait's carries its mark).
+        BotDragPayload.lifted = nil
         exited()
         guard let provider = info.itemProviders(for: [UTType.text]).first else { return false }
         let perform = perform
@@ -787,7 +822,7 @@ enum BotDragPayload {
     /// How long a portrait or room tile in hand waits over another before
     /// taking its place, so one carried past on the way elsewhere moves
     /// nothing (the Home Screen's pause); shorter than `mergeDwell`.
-    static var slideDwell: Duration { .milliseconds(250) }
+    static var slideDwell: Duration { .milliseconds(300) }
 
     /// How far the bot in hand may drift and still count as held still over
     /// a face: a move further starts the dwell again, so a bot carried
@@ -798,7 +833,7 @@ enum BotDragPayload {
     /// The part of a face a merge needs the bot held over: its middle, not
     /// the cell around it, so a drop beside a face or on its name moves.
     static func mergeZone(face: CGRect) -> CGRect {
-        face.insetBy(dx: face.width * 0.2, dy: face.height * 0.2)
+        face.insetBy(dx: face.width * 0.1, dy: face.height * 0.1)
     }
 
     /// Whether the hover at `location` keeps the dwell that began at
@@ -829,18 +864,43 @@ enum BotDragPayload {
     static let prefix = "conduit-bot:"
 
     /// The bot whose portrait is being dragged, set as its drag starts.
-    /// The drag session holds its item provider until it ends, dropped or
-    /// not, so the name counts only while that provider lives: a cancelled
-    /// drag leaves no name for a later drag from another app to borrow.
+    /// It counts while the drag's item provider lives, or a drop target saw
+    /// it within `liftedGrace` (`seen()`): the system can let go of the
+    /// provider before the drag ends (Eric, 2026-11-06: a + came back now
+    /// and then). A drop trusts it only while the provider lives
+    /// (`isLive`), so a cancelled drag leaves no name for a later drag from
+    /// another app to borrow.
     static var lifted: String? {
-        get { liftedProvider == nil ? nil : liftedName }
+        get { lifted(at: Date()) }
         set {
             liftedName = newValue
+            liftedSeenAt = Date()
             if newValue == nil { liftedProvider = nil }
         }
     }
     private static var liftedName: String?
     private static weak var liftedProvider: NSItemProvider?
+    private static var liftedSeenAt = Date.distantPast
+
+    /// How long a drag no drop target has seen still counts as in hand once
+    /// its provider is gone; a cancelled drag is forgotten after it.
+    static let liftedGrace: TimeInterval = 3
+
+    static func lifted(at now: Date) -> String? {
+        guard let liftedName else { return nil }
+        if liftedProvider != nil { return liftedName }
+        return now.timeIntervalSince(liftedSeenAt) < liftedGrace ? liftedName : nil
+    }
+
+    /// A drop target saw the drag in hand: it still counts for a while.
+    static func seen(at now: Date = Date()) {
+        if lifted(at: now) != nil { liftedSeenAt = now }
+    }
+
+    /// Whether the drag that set `lifted` still holds its item. Only then
+    /// is a drop surely that portrait; a drop within the grace alone is
+    /// read from its own text, so a foreign drop never borrows the name.
+    static var isLive: Bool { liftedName != nil && liftedProvider != nil }
 
     /// Starts a portrait's drag: its item, and the name the portraits read.
     static func lift(_ name: String) -> NSItemProvider {
@@ -848,6 +908,7 @@ enum BotDragPayload {
         RoomDragPayload.lifted = nil
         let provider = NSItemProvider(object: payload(for: name) as NSString)
         liftedName = name
+        liftedSeenAt = Date()
         liftedProvider = provider
         return provider
     }
@@ -988,6 +1049,10 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// The bot in hand already took this one's place: let go here, it
     /// stays where it went rather than moving again.
     @State private var placed = false
+    /// Where the bot in hand was when the slide's wait began: carried on
+    /// further, the wait starts again, so passing over on the way to a
+    /// face's middle never slides it away (Eric, 2026-11-06).
+    @State private var slideAnchor: CGPoint?
     /// When a merge-ready hover ended. A drop ends the hover before it
     /// lands, so the drop reads this rather than `mergeReady`, which has
     /// already gone (Eric 2026-11-04: dropping a bot on another never
@@ -1215,13 +1280,14 @@ struct BotPortraitCell<MenuContent: View>: View {
                 mergeReadyEndedAt = nil
                 withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { mergeReady = false }
             }
-            beginSlide(lifted)
+            beginSlide(lifted, at: location)
             return
         }
         // Over the middle of the face: a room, not a move, unless it's
         // carried off again.
         slide?.cancel()
         slide = nil
+        slideAnchor = nil
         if let anchor = dwellAnchor, BotDragPayload.staysStill(location, from: anchor) { return }
         if mergeReady {
             // Carried on across a swollen face: it lets go, and a drop now
@@ -1241,11 +1307,17 @@ struct BotPortraitCell<MenuContent: View>: View {
         }
     }
 
-    /// Starts the wait before `lifted` takes this one's place, unless it's
-    /// already running: passing over on the way somewhere moves nothing.
-    private func beginSlide(_ lifted: String) {
+    /// Starts the wait before `lifted` takes this one's place, held still
+    /// (`mergeStillness`) for `slideDwell`: passing over on the way
+    /// somewhere, a face's middle included, moves nothing.
+    private func beginSlide(_ lifted: String, at location: CGPoint) {
         // Once it has slid here, staying over this one moves nothing more.
-        guard !placed, slide == nil, let onSlide else { return }
+        guard !placed, let onSlide else { return }
+        // Held still: the wait already running goes on. Carried on: it
+        // starts again from here.
+        if slide != nil, let anchor = slideAnchor, BotDragPayload.staysStill(location, from: anchor) { return }
+        slide?.cancel()
+        slideAnchor = location
         slide = Task { @MainActor in
             try? await Task.sleep(for: BotDragPayload.slideDwell)
             guard !Task.isCancelled, isTargeted, BotDragPayload.lifted == lifted else { return }
@@ -1261,6 +1333,7 @@ struct BotPortraitCell<MenuContent: View>: View {
         dwell = nil
         slide?.cancel()
         slide = nil
+        slideAnchor = nil
         // `placed` outlives the hover on purpose: a drop ends the hover
         // before it lands, and the drop reads it (beginTargeting clears it).
         dwellAnchor = nil
