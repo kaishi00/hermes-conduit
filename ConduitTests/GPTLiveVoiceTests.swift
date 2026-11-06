@@ -1634,6 +1634,9 @@ extension VoiceConversationControllerTests {
             ("There's nothing to send to Hermes.", "en"),
             ("There's nothing to check with Hermes about.", "en"),
             ("I'll let Hermes know nothing.", "en"),
+            ("I'll send nothing to Hermes but look it up myself.", "en"),
+            // An exception after a comma is held: the safe side.
+            ("I'll send nothing to Hermes, except the summary.", "en"),
             // English narration on a German call is read as English.
             ("Hermes passed it along.", "de"),
             ("Hermes passed it along.", "en"),

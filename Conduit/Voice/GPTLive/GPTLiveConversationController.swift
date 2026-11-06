@@ -1248,8 +1248,10 @@ final class GPTLiveConversationController: ObservableObject {
     private static let sendClaimHedge = #"\b(can|could|should|shall|would|might|may|want me|do you|if you|once you|when you|after you|before|not|never|won't|didn't|don't|can't|couldn't|haven't|hasn't|wasn't)\b|n't\b"#
     /// A refusal in "nothing" (issue 1869): "I'll send nothing to Hermes.",
     /// "I'll tell Hermes nothing.", "I'll send absolutely nothing to Hermes.",
-    /// "There's nothing to send." "Nothing but …" is still a send.
-    private static let sendsNothing = #"\b(?:send|sending|pass|passing|forward|forwarding|hand|handing|relay|relaying|give|giving|tell|telling|ask|asking|ping|pinging|update|updating)(?: hermes)?(?: (?:absolutely|simply|just|really))? nothing\b(?![^.!?,;]{0,40}\b(?:but|except|other than|besides|apart from|beyond)\b)|\bnothing (?:at all )?to (?:send|pass|forward|hand|relay|give|tell|ask|check|ping|update)\b(?![^.!?,;]{0,40}\b(?:but|except|other than|besides|apart from|beyond)\b)|\blet(?:ting)? hermes know nothing\b(?![^.!?,;]{0,40}\b(?:but|except|other than|besides|apart from|beyond)\b)"#
+    /// "There's nothing to send." "Nothing but …" and an "except …"
+    /// later in the clause are still a send; a "but" further on starts a
+    /// clause of its own ("… nothing to Hermes but look it up myself").
+    private static let sendsNothing = #"\b(?:send|sending|pass|passing|forward|forwarding|hand|handing|relay|relaying|give|giving|tell|telling|ask|asking|ping|pinging|update|updating)(?: hermes)?(?: (?:absolutely|simply|just|really))? nothing\b(?! but\b)(?![^.!?,;]{0,40}\b(?:except|other than|besides|apart from|beyond)\b)|\bnothing (?:at all )?to (?:send|pass|forward|hand|relay|give|tell|ask|check|ping|update)\b(?! but\b)(?![^.!?,;]{0,40}\b(?:except|other than|besides|apart from|beyond)\b)|\blet(?:ting)? hermes know nothing\b(?! but\b)(?![^.!?,;]{0,40}\b(?:except|other than|besides|apart from|beyond)\b)"#
 
     /// The user finished an utterance: an end phrase ends the call, and the
     /// spoken job commands ("job status", "cancel background jobs") are
