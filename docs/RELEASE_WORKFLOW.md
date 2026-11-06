@@ -113,9 +113,12 @@ When the release candidate passes final QA:
    python3 scripts/check-weak-imports.py binaries --products <archive>.xcarchive/Products
    ```
 
-   On the Mac, `conduit-save-dsyms` runs it after shelving the dSYMs and exits
-   non-zero when it fails; a build script stops on that exit rather than going
-   on to the upload.
+   On the Mac, `conduit-save-dsyms` runs it after shelving the dSYMs. When it
+   fails, it renames the archive to `<name>.xcarchive.blocked-weak-imports`,
+   so `-exportArchive` can't find it, and exits non-zero. The rename is what
+   blocks the upload: the generated per-build scripts don't stop on that exit.
+   A build script that runs the check itself still adds `|| exit 1`, so its own
+   step fails too.
 5. Record the tag, commit SHA, marketing version, and build number in the release PR or release notes.
 6. After the candidate has been uploaded and accepted for release, mark the release PR ready and merge it into `main`.
 

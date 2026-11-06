@@ -6094,10 +6094,10 @@ don't ship; `@testable import Conduit` resolves to Foundation's)
 - A Foundation API the SDK back-deploys to a version whose betas are in testers' hands is declared in each target instead, or not used; a newly back-deployed symbol Conduit calls goes in both DateOrder (or a file beside it) and BANNED. The shadow stays `@_disfavoredOverload`: an internal, `@_spi` or `@usableFromInline` copy is visible to `@testable import Conduit` and makes ConduitTests' comparisons ambiguous (checked with Xcode 27B52, 2026-11-06; Claude's pick after the TestFlight 251 crash Eric asked to be fixed, #1848).
 
 **Open gaps**
-- The binaries check passes without testing anything while the hosted runner's Xcode predates the 27.2 SDK; the targets check holds until then, and each TestFlight archive is checked on the Mac (`conduit-save-dsyms`, docs/RELEASE_WORKFLOW.md step 4). That check only blocks an upload once the per-build archive script stops on its exit code.
+- The binaries check passes without testing anything while the hosted runner's Xcode predates the 27.2 SDK; the targets check holds until then, and each TestFlight archive is checked on the Mac (`conduit-save-dsyms`, docs/RELEASE_WORKFLOW.md, the "Archive and upload" step of section 3). A failed check there renames the archive to `*.xcarchive.blocked-weak-imports`, so the upload step can't find it whatever the per-build scripts do with the exit code.
 - The smoke build has no Watch app, so only the targets check covers the Watch's binaries.
 
-**Checked:** 2026-11-06, #1848.
+**Checked:** 2026-11-06, #1856 (a failed archive check blocks the upload; Open gaps); 2026-11-06, #1848.
 
 ## Feature map rules
 
