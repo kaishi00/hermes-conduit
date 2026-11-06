@@ -35,7 +35,11 @@
 //    that look like one, and a person's message only with their phone; a
 //    table keeps the rows with one cell per column; a checklist keeps one
 //    item per text; a list item's photo needs an https url; a progress goal
-//    is above 0; a live name is kept on the first card of a set that has it.
+//    is above 0; a diff hunk keeps the lines that start with +, - or a
+//    space, a binary file no lines, and an id only the host's; a live name
+//    is kept on the first card of a set that has it.
+//  - a diff line (format line) keeps its spaces: never trimmed. The plugin
+//    reads a patch into those lines; the app only ever sees them read.
 //
 
 import Foundation
@@ -159,9 +163,16 @@ struct RichCardSchema {
             return .valid(items)
         case "string":
             guard let raw = value as? String else { return .invalid }
+            let limit = schema["maxLength"] as? Int
+            if schema["format"] as? String == "line" {
+                // A line of code or text keeps its spaces: never trimmed.
+                let line = cleanLine(raw)
+                guard !line.isEmpty else { return .invalid }
+                guard let limit, line.unicodeScalars.count > limit else { return .valid(line) }
+                return .valid(String(String.UnicodeScalarView(line.unicodeScalars.prefix(limit))))
+            }
             let text = cleanText(raw)
             guard !text.isEmpty else { return .invalid }
-            let limit = schema["maxLength"] as? Int
             if schema["format"] as? String == "uri" {
                 guard isURI(text), limit.map({ text.unicodeScalars.count <= $0 }) ?? true else { return .invalid }
                 return .valid(text)
@@ -198,11 +209,16 @@ struct RichCardSchema {
 
     /// Control characters become spaces; trimmed.
     static func cleanText(_ text: String) -> String {
+        cleanLine(text).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Control characters become spaces.
+    static func cleanLine(_ text: String) -> String {
         var scalars = String.UnicodeScalarView()
         for scalar in text.unicodeScalars {
             scalars.append(scalar.properties.generalCategory == .control ? " " : scalar)
         }
-        return String(scalars).trimmingCharacters(in: .whitespacesAndNewlines)
+        return String(scalars)
     }
 
     private static func trimmingTrailingWhitespace(_ text: String) -> String {
@@ -233,7 +249,7 @@ struct RichCardSchema {
         "chart": ["chart"], "weather": ["weather"], "comparison": ["options"], "steps": ["steps", "needs"],
         "media": ["media"], "contact": ["people"], "status": ["status"], "table": ["table"],
         "timeline": ["timeline"], "checklist": ["checklist"], "list": ["list", "ranked"],
-        "progress": ["progress"], "callout": ["callout"],
+        "progress": ["progress"], "callout": ["callout"], "diff": ["diff"],
     ]
 
     /// The cards about places; every other type can name a source.
@@ -345,10 +361,56 @@ struct RichCardSchema {
             }
             guard !items.isEmpty else { return nil }
             card["progress"] = items
+        case "diff":
+            card["diff"] = diffRules(card["diff"] as? [String: Any] ?? [:])
         default:
             break
         }
         return card
+    }
+
+    // MARK: Diffs
+
+    private static let diffID = try! NSRegularExpression(pattern: #"^cd-[0-9a-f]{16}$"#)
+
+    /// Whether an id names a diff the host keeps.
+    static func isDiffID(_ text: String) -> Bool {
+        matches(diffID, text)
+    }
+
+    /// A line a patch can hold: + added, - removed, a space unchanged.
+    static func isDiffLine(_ line: String) -> Bool {
+        guard let first = line.unicodeScalars.first else { return false }
+        return first == "+" || first == "-" || first == " "
+    }
+
+    /// A hunk keeps the lines a patch can hold (+, - or a space first) and
+    /// goes when none is left; a binary file has no lines; an id is the
+    /// host's (the plugin's _diff_rules).
+    private static func diffRules(_ diff: [String: Any]) -> [String: Any] {
+        var diff = diff
+        if let id = diff["id"] as? String, !isDiffID(id) { diff["id"] = nil }
+        diff["files"] = (diff["files"] as? [[String: Any]] ?? []).map { file in
+            var file = file
+            if (file["binary"] as? Bool) == true { file["hunks"] = nil }
+            let hunks: [[String: Any]] = (file["hunks"] as? [[String: Any]] ?? []).compactMap { hunk in
+                let lines = (hunk["lines"] as? [String] ?? []).filter(isDiffLine)
+                guard !lines.isEmpty else { return nil }
+                var hunk = hunk
+                hunk["lines"] = lines
+                return hunk
+            }
+            file["hunks"] = hunks.isEmpty ? nil : hunks
+            return file
+        }
+        return diff
+    }
+
+    /// A whole diff the host kept (GET /boards/diffs), checked as a diff
+    /// card's is; nil when it isn't one.
+    func normalizeDiff(_ value: Any?) -> [String: Any]? {
+        guard let value else { return nil }
+        return normalizeCard(["type": "diff", "diff": value])?["diff"] as? [String: Any]
     }
 
     // MARK: A board's follow-ups
@@ -419,12 +481,24 @@ struct RichCardSchema {
     /// The `cards` parameter of a live model's tool, in Gemini's schema
     /// dialect (upper-case types; Grok's and GPT's sessions lower-case them
     /// again). Formats are left out: Gemini knows none of them.
+    /// The kinds a live model isn't offered: a diff comes from a patch
+    /// Hermes read on its host, which a call's model has none of.
+    static let notLiveTypes: Set<String> = ["diff"]
+
     func liveToolParameter(description: String) -> [String: Any] {
-        [
+        var live = card
+        var properties = live["properties"] as? [String: Any] ?? [:]
+        for type in Self.notLiveTypes { properties[type] = nil }
+        if var kind = properties["type"] as? [String: Any], let kinds = kind["enum"] as? [String] {
+            kind["enum"] = kinds.filter { !Self.notLiveTypes.contains($0) }
+            properties["type"] = kind
+        }
+        live["properties"] = properties
+        return [
             "type": "ARRAY",
             "maxItems": maxCards,
             "description": description,
-            "items": Self.geminiSchema(card),
+            "items": Self.geminiSchema(live),
         ]
     }
 

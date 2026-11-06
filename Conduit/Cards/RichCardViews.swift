@@ -64,6 +64,8 @@ struct RichCardView: View {
             RichProgressCard(card: card)
         case .callout:
             RichCalloutCard(card: card)
+        case .diff:
+            RichDiffCard(card: card)
         }
     }
 }

@@ -3739,15 +3739,16 @@ private struct GatewaySettingsDetail: View {
                     .scaledFont(.footnote).foregroundStyle(.secondary)
                 // The gateway's state, connectors, last connection and logs,
                 // which the chat header used to open.
+                // Open while disconnected too: that's when its logs, traces
+                // and device reports are needed most.
                 NavigationLink {
-                    GatewayDiagnosticsSheet(embedded: true)
+                    GatewayDiagnosticsSheet(placement: .settings)
                         .v2TabBarClearance()
                 } label: {
                     Label(AppLocalization.string("Diagnostics & logs"), systemImage: "doc.text.magnifyingglass")
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .frame(minHeight: 44)
                 }
-                .disabled(snapshot.server == nil)
                 .accessibilityIdentifier("settings.gateway.diagnostics")
             }
             ConduitSettingsSection(title: "Cloudflare Access", symbol: "shield.lefthalf.filled", tint: .conduitAccent) {

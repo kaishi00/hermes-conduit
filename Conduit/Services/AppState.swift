@@ -7719,6 +7719,7 @@ final class AppState: ObservableObject {
             }
         // After init's own defaults reads, so they don't queue behind it.
         sessionPresentationCache.prewarm()
+        installRichDiffReader()
     }
 
     func deviceConditionsChanged(_ conditions: DeviceConditions) {
@@ -38222,7 +38223,12 @@ final class AppState: ObservableObject {
         gatewayDiagnosticsLoading = true
         defer { gatewayDiagnosticsLoading = false }
         guard let dashboardTicketBridge else {
-            gatewayDiagnostics = GatewayDiagnostics(gatewayRunning: isConnected, gatewayState: nil, version: nil, pid: nil, connectors: [], logs: [], error: AppLocalization.string("Dashboard diagnostics are still loading."))
+            // Signed out or never connected, there's no dashboard to ask; what
+            // the page keeps on this device still shows under this.
+            let error = connection == nil && !isConnecting
+                ? AppLocalization.string("Not connected. The gateway's status, connectors and logs show once Conduit reconnects.")
+                : AppLocalization.string("Dashboard diagnostics are still loading.")
+            gatewayDiagnostics = GatewayDiagnostics(gatewayRunning: isConnected, gatewayState: nil, version: nil, pid: nil, connectors: [], logs: [], error: error)
             return
         }
         async let statusResult = dashboardTicketBridge.requestJSON(path: "/api/status")
