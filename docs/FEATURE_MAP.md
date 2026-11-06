@@ -3238,7 +3238,7 @@ from Hermes: commentary is said, see Acknowledging work handed to Hermes)
 **Open gaps**
 - `Haptics.signal` still plays the writing haptic only for `message.delta`.
 
-**Checked:** 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files, even beside a card); 2026-10-28, #1430 (Local Live's spoken stream passes the action filter; its writing state is unchanged); 2026-10-27, #1390 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
+**Checked:** 2026-11-06, #1891 (no Live Activity on a Mac, so no writing state there; see Live Activity for a running turn); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files, even beside a card); 2026-10-28, #1430 (Local Live's spoken stream passes the action filter; its writing state is unchanged); 2026-10-27, #1390 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
 
 ## Live Activity for a running turn
 
@@ -6229,13 +6229,13 @@ don't ship; `@testable import Conduit` resolves to Foundation's)
 - `Shared/DateOrder/DateOrder.swift` (Date's `<=` and `>=`, internal and `@_disfavoredOverload`)
 - `project.yml` (each shipped target's sources)
 - `scripts/check-weak-imports.py` (targets: every application and app extension reaches DateOrder.swift, its excludes honored; binaries: no shipped Mach-O weak-imports a BANNED symbol or strongly loads a WEAK_FRAMEWORKS framework, ActivityKit and ImagePlayground, see Live Activity for a running turn), `scripts/tests/test_check_weak_imports.py`
-- `.github/workflows/ci.yml` (the self-test job's "Every shipped target keeps Date's comparisons", the smoke job's "No back-deployed Date comparisons in the build"), held by `scripts/tests/test_ci_workflow_contract.py`; `docs/RELEASE_WORKFLOW.md` (the archive's check before upload)
+- `.github/workflows/ci.yml` (the self-test job's "Every shipped target keeps Date's comparisons", the smoke job's "No back-deployed Date comparisons or strong framework loads in the build"), held by `scripts/tests/test_ci_workflow_contract.py`; `docs/RELEASE_WORKFLOW.md` (the archive's check before upload)
 
 **Rulings**
 - A Foundation API the SDK back-deploys to a version whose betas are in testers' hands is declared in each target instead, or not used; a newly back-deployed symbol Conduit calls goes in both DateOrder (or a file beside it) and BANNED. The shadow stays `@_disfavoredOverload`: an internal, `@_spi` or `@usableFromInline` copy is visible to `@testable import Conduit` and makes ConduitTests' comparisons ambiguous (checked with Xcode 27B52, 2026-11-06; Claude's pick after the TestFlight 251 crash Eric asked to be fixed, #1848).
 
 **Open gaps**
-- The binaries check passes without testing anything while the hosted runner's Xcode predates the 27.2 SDK; the targets check holds until then, and each TestFlight archive is checked on the Mac (`conduit-save-dsyms`, docs/RELEASE_WORKFLOW.md, the "Archive and upload" step of section 3). A failed check there renames the archive to `*.xcarchive.blocked-weak-imports`, so the upload step can't find it whatever the per-build scripts do with the exit code.
+- The binaries check's Date half passes without testing anything while the hosted runner's Xcode predates the 27.2 SDK (its framework half, #1891, runs on any Xcode); the targets check holds until then, and each TestFlight archive is checked on the Mac (`conduit-save-dsyms`, docs/RELEASE_WORKFLOW.md, the "Archive and upload" step of section 3). A failed check there renames the archive to `*.xcarchive.blocked-weak-imports`, so the upload step can't find it whatever the per-build scripts do with the exit code.
 - The smoke build has no Watch app, so only the targets check covers the Watch's binaries.
 
 **Checked:** 2026-11-06, #1891 (the binaries check also fails a strong load of ActivityKit or ImagePlayground, issue 1877; DateOrder and BANNED unchanged); 2026-11-06, #1856 (a failed archive check blocks the upload; Open gaps); 2026-11-06, #1848.
