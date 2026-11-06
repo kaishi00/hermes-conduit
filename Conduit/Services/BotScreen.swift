@@ -466,9 +466,11 @@ final class BotScreenModel: ObservableObject {
         // Not a leave: a takeover answered meanwhile stays the user's.
         if reconnecting { detach(); return }
         leaveGeneration += 1
-        // A hand back already on its way isn't sent twice; one whose
-        // retries gave up is sent again.
-        if iHold, let client, let viewerID, !Self.releaseInFlight(profile) {
+        // A hand back already on its way for this hold isn't sent twice; one
+        // whose retries gave up, or a retry left from a hold a takeover
+        // since replaced, doesn't stop this one.
+        if iHold, let client, let viewerID,
+           !(Self.releaseInFlight(profile) && Self.owedReleases[profile] == viewerID) {
             Self.owedReleases[profile] = viewerID
             Self.spawnOwedRelease(profile: profile, client: client)
         }
@@ -727,7 +729,8 @@ final class BotScreenModel: ObservableObject {
     /// closes until it's watched again.
     func backgrounded() {
         leaveGeneration += 1
-        if iHold, let client, let viewerID, !Self.releaseInFlight(profile) {
+        if iHold, let client, let viewerID,
+           !(Self.releaseInFlight(profile) && Self.owedReleases[profile] == viewerID) {
             Self.owedReleases[profile] = viewerID
             Self.spawnOwedRelease(profile: profile, client: client) { [weak self] answer in
                 self?.applyLease(BotScreenLease(answer["lease"]?.objectValue))
