@@ -46,6 +46,8 @@ struct LiveVoiceStyleSettingsSection: View {
     @State private var greetingSave: Task<Void, Never>?
     /// The typed greeting not saved yet, pinned to its style and profile.
     @State private var pendingSave: (() -> Void)?
+    /// The profile the pending save goes to.
+    @State private var pendingProfile: String?
     /// The style this view last saved, so its own change isn't mistaken
     /// for one made elsewhere (another profile).
     @State private var lastSaved: LiveVoiceStyle?
@@ -85,6 +87,7 @@ struct LiveVoiceStyleSettingsSection: View {
         }
         let setStyle = model.setStyle
         lastSaved = pending
+        pendingProfile = model.profile
         pendingSave = { setStyle(pending) }
         greetingSave = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(600))
@@ -242,7 +245,10 @@ struct LiveVoiceStyleSettingsSection: View {
             asksBeforeSending = newValue.asksBeforeSending
             // Now in sync: coming back to an earlier profile resyncs again.
             lastSaved = newValue
-            if typing { scheduleTypedSave() }
+            // Only within the profile it was typed in: a profile switch in the
+            // same update flushes the pending save to that profile instead
+            // (onChange(of: model.profile)), whichever handler runs first.
+            if typing, pendingProfile == model.profile { scheduleTypedSave() }
         }
         .onChange(of: model.profile) { _, _ in
             // Another profile, even one with the same style: what was typed
