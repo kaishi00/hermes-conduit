@@ -300,6 +300,9 @@ final class MediaPreviewPresenter {
     @discardableResult
     func presentOpenIn(fileURL: URL) -> Bool {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return false }
+        // A menu still up (or coming up) keeps its controller: a second tap
+        // must not drop the only reference to the one on screen.
+        guard openInDelegate.controller == nil else { return true }
         guard let presenter = Self.topViewController() else { return false }
         let controller = UIDocumentInteractionController(url: fileURL)
         controller.delegate = openInDelegate
@@ -463,12 +466,17 @@ private final class OpenInDelegate: NSObject, UIDocumentInteractionControllerDel
     var controller: UIDocumentInteractionController?
 
     func documentInteractionControllerDidDismissOpenInMenu(_ controller: UIDocumentInteractionController) {
-        self.controller = nil
+        release(controller)
     }
 
     func documentInteractionController(_ controller: UIDocumentInteractionController,
                                        didEndSendingToApplication bundleIdentifier: String?) {
-        self.controller = nil
+        release(controller)
+    }
+
+    /// Only the controller that closed lets go of its slot.
+    private func release(_ closed: UIDocumentInteractionController) {
+        if controller === closed { controller = nil }
     }
 }
 
