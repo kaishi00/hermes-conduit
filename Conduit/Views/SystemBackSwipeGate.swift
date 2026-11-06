@@ -65,10 +65,25 @@ struct SystemBackSwipeGate: UIViewRepresentable {
             if window == nil { release() } else { apply() }
         }
 
-        private func apply() {
+        private func apply(retry: Bool = true) {
             guard blocked else { return release() }
-            guard window != nil, let page = pushedPage() else { return }
-            for recognizer in Self.systemBackSwipes(of: page) where recognizer.isEnabled {
+            guard window != nil else { return }
+            guard let page = pushedPage() else {
+                // Opened with its push (a workstream straight from the
+                // bot's overview): the stack may not hold the page yet.
+                if retry { DispatchQueue.main.async { [weak self] in self?.apply(retry: false) } }
+                return
+            }
+            holdOff(Self.systemBackSwipes(of: page))
+            // The push may still be running, and the zoom's gestures and the
+            // stack's top settle as it ends: look again then.
+            page.transitionCoordinator?.animate(alongsideTransition: nil) { [weak self] _ in
+                self?.apply(retry: false)
+            }
+        }
+
+        private func holdOff(_ recognizers: [UIGestureRecognizer]) {
+            for recognizer in recognizers where recognizer.isEnabled {
                 recognizer.isEnabled = false
                 heldOff.add(recognizer)
             }

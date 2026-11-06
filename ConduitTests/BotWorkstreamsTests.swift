@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 @testable import Conduit
@@ -858,6 +859,47 @@ extension BotModeTests {
         }
         XCTAssertFalse(SystemBackSwipeGate.isZoomDismissal(nil))
         XCTAssertFalse(SystemBackSwipeGate.isZoomDismissal("UINavigationController.edgeSwipe"))
+    }
+
+    /// The gate turns the page's back swipes off while blocked and back on
+    /// as it clears, leaving one that was already off as it was.
+    @MainActor
+    func testTheBackSwipeGateTurnsOnOnlyWhatItTurnedOff() {
+        let root = UIViewController()
+        let page = UIViewController()
+        let navigation = UINavigationController()
+        navigation.setViewControllers([root, page], animated: false)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = navigation
+        window.isHidden = false
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+        XCTAssertNotNil(page.view.window)
+
+        let zoom = UIPanGestureRecognizer()
+        zoom.name = SystemBackSwipeGate.zoomDismissalPrefix + "LeadingEdgePan"
+        let alreadyOff = UIPanGestureRecognizer()
+        alreadyOff.name = SystemBackSwipeGate.zoomDismissalPrefix + "SwipeDown"
+        alreadyOff.isEnabled = false
+        let other = UIPanGestureRecognizer()
+        [zoom, alreadyOff, other].forEach(page.view.addGestureRecognizer)
+
+        let gate = SystemBackSwipeGate.GateView()
+        page.view.addSubview(gate)
+        gate.blocked = true
+        XCTAssertFalse(zoom.isEnabled)
+        XCTAssertFalse(alreadyOff.isEnabled)
+        XCTAssertTrue(other.isEnabled, "only the system's back swipes")
+        XCTAssertEqual(navigation.interactivePopGestureRecognizer?.isEnabled, false)
+
+        gate.blocked = false
+        XCTAssertTrue(zoom.isEnabled)
+        XCTAssertFalse(alreadyOff.isEnabled, "it was off before the gate")
+        XCTAssertEqual(navigation.interactivePopGestureRecognizer?.isEnabled, true)
+
+        gate.blocked = true
+        gate.removeFromSuperview()
+        XCTAssertTrue(zoom.isEnabled, "a gate that leaves the screen lets go")
     }
 
     /// Bots Home's voice button lists the shown bots to call, the one that
