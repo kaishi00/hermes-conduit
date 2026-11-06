@@ -70,9 +70,14 @@ private struct WindowSideContent: ViewModifier {
     func body(content: Content) -> some View {
         // Values rather than a branch, so the screen keeps its views (and
         // a list its scroll position) when the shell first reads them.
+        // The padding goes inside: the outer `ignoresSafeArea` drops the
+        // stack's side insets, and the screen then takes the window's. The
+        // other way round, it would ignore the padding too, and a window
+        // with side insets of its own (a landscape iPhone's sensor) would
+        // lose them.
         content
-            .ignoresSafeArea(.container, edges: insets == nil ? Edge.Set() : Edge.Set.horizontal)
             .safeAreaPadding(.leading, insets?.leading ?? 0)
             .safeAreaPadding(.trailing, insets?.trailing ?? 0)
+            .ignoresSafeArea(.container, edges: insets == nil ? Edge.Set() : Edge.Set.horizontal)
     }
 }

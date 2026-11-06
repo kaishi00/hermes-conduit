@@ -584,6 +584,7 @@ struct ProviderDetailPage: View {
                                           value: endpoint.keySaved ? AppLocalization.string("Key saved") : AppLocalization.string("None"))
                         NavigationLink {
                             CustomEndpointForm(service: service, existing: (name: entry.name, endpoint: endpoint), onSaved: {})
+                                .v2TabBarClearance()
                         } label: {
                             Label(AppLocalization.string("Edit endpoint"), systemImage: "pencil")
                                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
