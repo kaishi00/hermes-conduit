@@ -94,6 +94,14 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(memo.value(for: tool, make: read), 4, "its slot held the other answer")
         XCTAssertEqual(memo.value(for: tool, id: "row", make: read), 5, "past the limit the memo starts over")
 
+        let bytes = (tool.input?.utf8.count ?? 0) + (tool.output?.utf8.count ?? 0)
+        let small = FinishedToolMemo<Int>(limit: 10, byteBudget: bytes * 2)
+        XCTAssertEqual(small.value(for: tool, id: "a") { 1 }, 1)
+        XCTAssertEqual(small.value(for: tool, id: "b") { 2 }, 2)
+        XCTAssertEqual(small.value(for: tool, id: "a") { 3 }, 1, "within its budget")
+        XCTAssertEqual(small.value(for: tool, id: "c") { 4 }, 4)
+        XCTAssertEqual(small.value(for: tool, id: "a") { 5 }, 5, "past its budget the memo starts over")
+
         let first = try XCTUnwrap(RichBoard.board(for: tool))
         let second = try XCTUnwrap(RichBoard.board(for: changed))
         XCTAssertEqual(first.cards.first?.callout?.text, "Done.")

@@ -312,6 +312,8 @@ struct RichBoard: Equatable {
 /// used only while the call's name, input and output are still the same.
 /// Comparing a string the row still holds with the one kept is a pointer
 /// check; an equal copy read again is compared once, then kept in its place.
+/// It keeps at most `limit` rows and about `byteBudget` of their text, so
+/// closed chats' answers don't stay in memory for long.
 final class FinishedToolMemo<Value>: @unchecked Sendable {
     private struct Key: Hashable {
         let id: String
@@ -329,11 +331,14 @@ final class FinishedToolMemo<Value>: @unchecked Sendable {
     }
 
     private let limit: Int
+    private let byteBudget: Int
     private let lock = NSLock()
     private var entries: [Key: Entry] = [:]
+    private var bytes = 0
 
-    init(limit: Int = 200) {
+    init(limit: Int = 200, byteBudget: Int = 16_000_000) {
         self.limit = limit
+        self.byteBudget = byteBudget
     }
 
     /// The value kept for `tool` under `id` (the tool call's id when nil),
@@ -352,9 +357,17 @@ final class FinishedToolMemo<Value>: @unchecked Sendable {
         }
         lock.unlock()
         let value = make()
+        let size = max(key.input, 0) + max(key.output, 0)
         lock.lock()
-        if entries.count >= limit { entries.removeAll(keepingCapacity: true) }
+        if let old = entries[key] {
+            bytes -= (old.input?.utf8.count ?? 0) + (old.output?.utf8.count ?? 0)
+        }
+        if entries.count >= limit || bytes + size > byteBudget {
+            entries.removeAll(keepingCapacity: true)
+            bytes = 0
+        }
         entries[key] = Entry(name: tool.name, input: tool.input, output: tool.output, value: value)
+        bytes += size
         lock.unlock()
         return value
     }
