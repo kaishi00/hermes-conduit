@@ -92,11 +92,13 @@ struct BotRosterView: View {
         }
         // Leaving Bots, or a room no longer possible, drops the room being
         // started: nothing was made.
+        // A room Hermes is making settles when it answers (createNewRoom),
+        // so its id is kept for a retry.
         .onChange(of: shell.isTabActive) { _, active in
-            if !active { newRoom.clear() }
+            if !active, !creatingNewRoom { newRoom.clear() }
         }
         .onChange(of: canStartRoomHere) { _, can in
-            if !can { newRoom.clear() }
+            if !can, !creatingNewRoom { newRoom.clear() }
         }
         .onChange(of: visibleBotNames) { _, _ in
             let kept = newRoom.pruned(visible: visibleBotNames)
@@ -531,8 +533,10 @@ struct BotRosterView: View {
             } else {
                 roomsBeforeCreate = nil
                 Haptics.warning()
-                // Said in the bar; if the bar went meanwhile (Bots left,
-                // rooms no longer possible), over the grid instead.
+                // Bots left or rooms no longer possible meanwhile: the room
+                // goes now, as it would have, and the error shows over the
+                // grid; else in the bar.
+                if !shell.isTabActive || !canStartRoomHere { newRoom.clear() }
                 if newRoom.isEmpty {
                     managementNotice = appState.errorMessage
                 } else {
