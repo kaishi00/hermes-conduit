@@ -222,22 +222,22 @@ struct BotEditorSheet: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(AppLocalization.string("Picture")))
             .accessibilityValue(Text(pictureStateDescription))
-            AdaptiveStack(spacing: 12) {
+            // One menu for every way to set the picture: side by side they
+            // wrapped letter by letter on a phone (Eric, 2026-11-06).
+            Menu {
                 Button {
                     Haptics.light()
                     showingImagePicker = true
                 } label: {
                     Label(AppLocalization.string("Choose Photo"), systemImage: "photo")
                 }
-                .buttonStyle(.settings)
                 Button {
                     Haptics.light()
                     showingMotionPicker = true
                 } label: {
                     Label(AppLocalization.string("Choose GIF or Video"), systemImage: "film")
                 }
-                .buttonStyle(.settings)
-                generateButton
+                generateItems
                 if let still = previewImage, previewPlayback == nil {
                     Button {
                         Haptics.light()
@@ -245,9 +245,9 @@ struct BotEditorSheet: View {
                     } label: {
                         Label(AppLocalization.string("Bring to Life"), systemImage: "wand.and.stars")
                     }
-                    .buttonStyle(.settings)
                 }
                 if previewImage != nil || (hasStoredAvatar && !draft.removesAvatar) {
+                    Divider()
                     Button(role: .destructive) {
                         Haptics.light()
                         if draft.newAvatarPNG != nil {
@@ -260,17 +260,20 @@ struct BotEditorSheet: View {
                     } label: {
                         Label(AppLocalization.string("Remove Photo"), systemImage: "trash")
                     }
-                    .buttonStyle(.settings)
                 } else if draft.removesAvatar {
+                    Divider()
                     Button {
                         Haptics.light()
                         draft.removesAvatar = false
                     } label: {
                         Label(AppLocalization.string("Keep Photo"), systemImage: "arrow.uturn.backward")
                     }
-                    .buttonStyle(.settings)
                 }
+            } label: {
+                Label(AppLocalization.string("Edit Picture"), systemImage: "photo.badge.plus")
             }
+            .buttonStyle(.settings)
+            .accessibilityIdentifier("bot-editor-picture-menu")
             .scaledFont(.subheadline)
             // A picked GIF or video lands in the draft once it's made, so
             // nothing else may change the picture meanwhile.
@@ -295,10 +298,10 @@ struct BotEditorSheet: View {
         .padding(.vertical, 4)
     }
 
-    /// Generate: Image Playground, Hermes' own image generation, or a menu
-    /// of both when both can.
+    /// Generate, in the picture menu: Image Playground, Hermes' own image
+    /// generation, or a submenu of both when both can.
     @ViewBuilder
-    private var generateButton: some View {
+    private var generateItems: some View {
         let hermes = canGeneratePictures == true
         // Not before an edited bot's SOUL has loaded, which the sheet starts from.
         let apple = playground == .available && (isCreating || showsKeptDetails || detailsState == .loaded || detailsState == .failed)
@@ -319,7 +322,6 @@ struct BotEditorSheet: View {
             } label: {
                 Label(AppLocalization.string("Generate"), systemImage: "sparkles")
             }
-            .buttonStyle(.settings)
         } else if apple || hermes {
             Button {
                 Haptics.light()
@@ -327,7 +329,6 @@ struct BotEditorSheet: View {
             } label: {
                 Label(AppLocalization.string("Generate"), systemImage: "sparkles")
             }
-            .buttonStyle(.settings)
         }
     }
 

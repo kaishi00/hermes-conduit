@@ -983,24 +983,19 @@ struct BotRosterView: View {
     private func roomActions(_ room: GroupRoom) -> GroupRoomTileActions {
         let capabilities = appState.groupCapabilities
         return GroupRoomTileActions(
-            settings: capabilities?.supports("groups.context") == true ? {
+            settings: capabilities?.supports("groups.context") == true ? { open in
                 // The settings are the open room's: open it, and its
                 // screen shows them once Hermes has read them.
                 let request = GroupSettingsRequest(roomID: room.roomID)
                 appState.groupSettingsOnOpen = request
-                Haptics.light()
-                appState.dismissSidebarDrawer()
-                Task {
-                    await appState.openGroupRoom(room)
+                open { opened in
                     // An open that failed leaves no request behind for a
                     // later open of the room from elsewhere; a newer
                     // request stays.
-                    if appState.activeRoomSurface?.room.roomID != room.roomID,
-                       appState.groupSettingsOnOpen == request {
-                        appState.groupSettingsOnOpen = nil
-                        // Bots Home shows no chat error: say it in its notice.
-                        if let failure = appState.errorMessage { managementNotice = failure }
-                    }
+                    guard !opened, appState.groupSettingsOnOpen == request else { return }
+                    appState.groupSettingsOnOpen = nil
+                    // Bots Home shows no chat error: say it in its notice.
+                    if let failure = appState.errorMessage { managementNotice = failure }
                 }
             } : nil,
             picture: appState.canSetGroupRoomPictures ? { request in

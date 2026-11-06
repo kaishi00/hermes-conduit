@@ -120,6 +120,8 @@ struct BotRoomPortraitLabel<Icon: View>: View {
     var highlighted = false
     var dashed = false
     var animates = false
+    /// The zoom source key a room's screen grows out of (BotZoomSource).
+    var zoomSource: String?
     @ViewBuilder let icon: (CGFloat) -> Icon
     @ScaledMetric(relativeTo: .body) private var size: CGFloat = 56
 
@@ -129,6 +131,7 @@ struct BotRoomPortraitLabel<Icon: View>: View {
             icon(size)
                 .frame(width: size, height: size)
                 .padding(4)
+                .modifier(BotZoomSource(name: zoomSource))
                 .overlay {
                     Circle().strokeBorder(
                         gold ? Color.conduitAccent.opacity(0.85) : Color.primary.opacity(0.14),
@@ -162,8 +165,10 @@ struct BotRoomPortraitLabel<Icon: View>: View {
 /// What a room's tile on Bots Home does beyond its tap: its menu (the open
 /// room's own, less what needs the room open) and its drag.
 struct GroupRoomTileActions {
-    /// Opens the room and its Group Settings, where Hermes keeps them.
-    var settings: (() -> Void)?
+    /// Asks for the room's Group Settings, where Hermes keeps them, then
+    /// opens the room with the open it's handed (the tile's own, so it zooms
+    /// as a tap does), which says whether the room opened.
+    var settings: ((_ open: (@escaping @MainActor (Bool) -> Void) -> Void) -> Void)?
     /// Chooses, generates or removes its picture, where the plugin keeps
     /// pictures.
     var picture: ((GroupRoomPictureRequest) -> Void)?
@@ -194,13 +199,15 @@ struct GroupRoomPortrait: View {
             && !reduceMotion && !devicePower.isLowPowerModeEnabled
     }
 
+    private var zoomKey: String { BotZoomArm.roomKey(room.roomID) }
+
     var body: some View {
         Button {
             appState.groupSettingsOnOpen = nil
             open()
         } label: {
             BotRoomPortraitLabel(title: room.name, talking: talking, highlighted: selection == .open,
-                                 animates: animates) { size in
+                                 animates: animates, zoomSource: zoomKey) { size in
                 GroupRoomIcon(picture: appState.groupRoomPicture(roomID: room.roomID), members: room.members, size: size)
             }
         }
@@ -227,10 +234,21 @@ struct GroupRoomPortrait: View {
         .v2SelectedTrait(selection)
     }
 
-    private func open() {
+    /// Its screen opens in Bots whatever chat was open before, and grows out
+    /// of this portrait as a Bot Chat does from its bot's
+    /// (BotZoomDestination), unless it opens beside the list. `done` hears
+    /// whether the room opened.
+    private func open(then done: @escaping @MainActor (Bool) -> Void = { _ in }) {
         Haptics.light()
-        appState.dismissSidebarDrawer()
-        Task { await appState.openGroupRoom(room) }
+        appState.beginOpeningBotChat(zoomKey)
+        if openBeside == nil { appState.botZoom.tap(zoomKey) }
+        Task {
+            await appState.openGroupRoom(room)
+            let opened = appState.activeRoomSurface?.room.roomID == room.roomID
+            if !opened { appState.botZoom.openFailed(zoomKey) }
+            appState.endOpeningBotChat(zoomKey)
+            done(opened)
+        }
     }
 
     /// The room's menu, from its tile: what its own menu has that needs no
@@ -238,7 +256,7 @@ struct GroupRoomPortrait: View {
     @ViewBuilder
     private func menu(_ actions: GroupRoomTileActions) -> some View {
         if let settings = actions.settings {
-            Button(action: settings) {
+            Button { settings { done in open(then: done) } } label: {
                 Label(AppLocalization.string("Group Settings"), systemImage: "gearshape")
             }
         }
@@ -1468,14 +1486,15 @@ extension EnvironmentValues {
     }
 }
 
-/// The portrait the chat grows from: a circle, keyed by its bot.
+/// The portrait the chat grows from: a circle, keyed by its bot, or by
+/// its room (`BotZoomArm.roomKey`). No key: no source.
 struct BotZoomSource: ViewModifier {
-    let name: String
+    let name: String?
     @Environment(\.botZoomNamespace) private var namespace
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
-        if #available(iOS 18.0, *), let namespace, !reduceMotion {
+        if #available(iOS 18.0, *), let namespace, let name, !reduceMotion {
             // The source is a copy behind the portrait, not the portrait:
             // iOS hides a zoom's source while it runs, and on a phone a
             // source sometimes stayed hidden afterwards, leaving empty rings
@@ -1499,8 +1518,9 @@ struct BotZoomSource: ViewModifier {
     }
 }
 
-/// A Bot Chat pushed in the Bots stack: it zooms from its bot's portrait.
-/// Any other page, a plain session, or Reduce Motion: the usual push.
+/// A Bot Chat or a room pushed in the Bots stack: it zooms from its bot's
+/// or its room's portrait. Any other page, a plain session, or Reduce
+/// Motion: the usual push.
 struct BotZoomDestination: ViewModifier {
     let route: V2Route
     let namespace: Namespace.ID
@@ -1515,9 +1535,10 @@ struct BotZoomDestination: ViewModifier {
         // visit and Back still shrinks the Bot Chat home. A transition
         // changed on a pushed screen leaves Back with no animation.
         if #available(iOS 18.0, *), route == .conversation, fromHome, !reduceMotion,
-           let bot = appState.botZoom.source(open: appState.activeBotChatProfile ?? appState.activeWorkstream?.profile) {
+           let source = appState.botZoom.source(open: appState.botZoomRoomKey
+                ?? appState.activeBotChatProfile ?? appState.activeWorkstream?.profile) {
             content
-                .navigationTransition(.zoom(sourceID: bot, in: namespace))
+                .navigationTransition(.zoom(sourceID: source, in: namespace))
                 .environment(\.botChatZoomed, true)
         } else {
             content
@@ -1525,7 +1546,8 @@ struct BotZoomDestination: ViewModifier {
     }
 }
 
-/// Which Bot Chat grows out of its portrait. A portrait's tap arms it for a
+/// Which Bot Chat or room grows out of its portrait, by its key: a bot's
+/// name, or `roomKey` for a room. A portrait's tap arms it for a
 /// few seconds; the push that follows takes it, and it lasts while that
 /// chat is in the Bots stack, so Back shrinks it home. A Bot Chat a
 /// notification, widget, Shortcut, call or link opens finds nothing armed
@@ -1533,6 +1555,9 @@ struct BotZoomDestination: ViewModifier {
 struct BotZoomArm: Equatable {
     /// How long a tap waits for its chat to be pushed.
     static let window: TimeInterval = 3
+
+    /// A room's key, apart from any bot's name.
+    static func roomKey(_ roomID: String) -> String { "room:" + roomID }
 
     private(set) var tapped: String?
     private(set) var tappedAt: Date?
@@ -1601,6 +1626,14 @@ struct BotZoomArm: Equatable {
     private static func same(_ a: String?, _ b: String?) -> Bool {
         guard let a, let b else { return false }
         return a.caseInsensitiveCompare(b) == .orderedSame
+    }
+}
+
+extension AppState {
+    /// The open room's zoom key (`BotZoomArm.roomKey`): a room shows over
+    /// the chat under it, so it comes before the open Bot Chat.
+    var botZoomRoomKey: String? {
+        activeRoomSurface.map { BotZoomArm.roomKey($0.room.roomID) }
     }
 }
 
