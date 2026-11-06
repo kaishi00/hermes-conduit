@@ -4509,7 +4509,41 @@ final class HermesClient: ObservableObject {
         guard let room = GroupDecoders.room(result.objectValue?["room"]) else {
             throw HermesError.invalidResponse
         }
-        return (room, GroupDecoders.driverStatus(result.objectValue?["driver_status"]))
+        return (room, GroupDecoders.driverStatus(
+            result.objectValue?["driver_status"], context: result.objectValue?["context"]
+        ))
+    }
+
+    /// Save one room's settings (`groups.context`): purpose, shared notes
+    /// and, where the host routes, who answers. IDEMPOTENT by `eventID`:
+    /// a retry with the same id returns the first save. Returns the
+    /// settings the host kept.
+    func groupsContext(roomID: String, eventID: String, context: GroupRoomContext, includesRouting: Bool)
+        async throws -> GroupRoomContext {
+        var params: [String: Any] = [
+            "room_id": roomID,
+            "event_id": eventID,
+            "purpose": context.purpose,
+            "notes": context.notes,
+        ]
+        // Left out, the host keeps the room's routing as it is.
+        if includesRouting {
+            params["routing"] = context.routing.rawValue
+            params["lead_member_id"] = context.leadMemberID
+        }
+        let result = try await rpc("groups.context", params: params, scoped: false)
+        guard let saved = result.objectValue?["context"]?.objectValue else { throw HermesError.invalidResponse }
+        return GroupRoomContext(object: saved)
+    }
+
+    /// Give a discussion paused at its cap one more budget of rounds and
+    /// messages (`groups.continue`, Hermes 0.23).
+    func groupsContinue(roomID: String, discussionEventID: String) async throws {
+        _ = try await rpc(
+            "groups.continue",
+            params: ["room_id": roomID, "discussion_event_id": discussionEventID],
+            scoped: false
+        )
     }
 
     /// Append one inert `message.user` event. IDEMPOTENT: `eventID` is the

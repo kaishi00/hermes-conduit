@@ -948,6 +948,113 @@ final class GroupChatSessionSafetyTests: XCTestCase {
     /// silently converted into a resend of the old pending text (the
     /// data-loss path): it is refused, the pending row stays visible, and
     /// the retry keeps the original event id.
+    // MARK: - Room settings and Continue (Hermes 0.23)
+
+    private func settingsCapabilities() -> GroupCapabilities {
+        let base = capabilities(supported: true)
+        return GroupCapabilities(
+            protocolVersion: base.protocolVersion,
+            driverReady: base.driverReady,
+            authorityGatewayID: base.authorityGatewayID,
+            features: base.features,
+            methods: base.methods.union(["groups.context", "groups.continue"]),
+            maxLogLimit: base.maxLogLimit
+        )
+    }
+
+    func testRoomSettingsSaveSendsRoutingOnlyWhereTheHostRoutes() async {
+        final class Box {
+            var routes = true
+            var saves: [(String, String, GroupRoomContext, Bool)] = []
+        }
+        let box = Box()
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.settingsCapabilities() },
+            list: { _ in ([room], nil) },
+            state: { _, _ in
+                var status = GroupDriverStatus(running: true, working: false, blocked: false, counts: [:], pendingActions: [])
+                status.routingModes = box.routes ? ["everyone", "lead", "auto"] : nil
+                status.roomContext = GroupRoomContext(purpose: "Plans")
+                return (room, status)
+            },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            context: { _, roomID, eventID, context, includesRouting in
+                box.saves.append((roomID, eventID, context, includesRouting))
+                return context
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        XCTAssertTrue(appState.canEditActiveRoomSettings)
+        XCTAssertEqual(appState.activeRoomRoutingModes, [.everyone, .lead, .auto])
+
+        let lead = GroupRoomContext(purpose: "Plans", routing: .lead, leadMemberID: "researcher")
+        let error = await appState.saveActiveRoomSettings(lead, eventID: "context-1")
+        XCTAssertNil(error)
+        XCTAssertEqual(box.saves.first?.0, "room-1")
+        XCTAssertEqual(box.saves.first?.1, "context-1")
+        XCTAssertEqual(box.saves.first?.2, lead)
+        XCTAssertEqual(box.saves.first?.3, true)
+
+        // A host before routing keeps the room's routing as it is.
+        box.routes = false
+        appState.closeGroupRoom()
+        await appState.openGroupRoom(room)
+        XCTAssertTrue(appState.activeRoomRoutingModes.isEmpty)
+        _ = await appState.saveActiveRoomSettings(GroupRoomContext(purpose: "New"), eventID: "context-2")
+        XCTAssertEqual(box.saves.last?.3, false)
+        appState.closeGroupRoom()
+    }
+
+    func testContinueIsOfferedUnderAPauseAndSendsItsDiscussion() async {
+        final class Box { var continued: [String] = [] }
+        let box = Box()
+        let room = self.room()
+        let events = [
+            GroupDecoders.event(AnyCodable.from([
+                "room_id": "room-1", "seq": 1, "event_id": "user:d1", "kind": "message.user",
+                "actor": ["kind": "user", "id": "human"], "payload": ["text": "Debate", "thread_id": "main"],
+                "created_at": 1.0,
+            ]))!,
+            GroupDecoders.event(AnyCodable.from([
+                "room_id": "room-1", "seq": 2, "event_id": "cap-1", "kind": "room.activity",
+                "actor": ["kind": "gateway", "id": "gw-a"],
+                "payload": ["status": "bounded", "thread_id": "main", "discussion_event_id": "user:d1"],
+                "created_at": 2.0,
+            ]))!,
+        ]
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.settingsCapabilities() },
+            list: { _ in ([room], nil) },
+            state: { _, _ in
+                var status = GroupDriverStatus(running: true, working: false, blocked: false, counts: [:], pendingActions: [])
+                status.maxContinues = 5
+                return (self.roomWithLatest(2), status)
+            },
+            log: { _, _, sinceSeq, _ in
+                let fresh = events.filter { $0.seq > sinceSeq }
+                return GroupLogPage(events: fresh, cursor: fresh.last?.seq ?? sinceSeq, latestSeq: 2, hasMore: false,
+                                    authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            continueDiscussion: { _, _, discussionID in box.continued.append(discussionID) }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+
+        XCTAssertEqual(appState.activeRoomContinuablePauses["cap-1"]?.discussionEventID, "user:d1")
+        await appState.continueActiveRoomDiscussion("user:d1")
+        XCTAssertEqual(box.continued, ["user:d1"])
+        appState.closeGroupRoom()
+    }
+
     func testNewTextAfterAmbiguousFailureIsRefusedNotSwallowed() async {
         final class SendRecorder {
             var ids: [String] = []
