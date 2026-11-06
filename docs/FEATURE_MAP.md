@@ -3268,14 +3268,14 @@ CHANGELOG · Conduit on a Mac, which has none of it
 - A turn that a compaction moves to a new session id reports and ends under the id the card was registered with (2026-10-27, #1374, notifier #421).
 - A fork of the chat (Predictions' `/predict`, step summaries' /btw, the self-improvement review) never starts, moves or ends its card, even on a Hermes that runs plugin hooks for forks (2026-10-29, #1495 carrying #1489, notifier #464 carrying #462; see Notifications).
 - The card's registration runs as a background task, so it finishes when Conduit leaves the screen right after sending, and one that didn't reach the relay is sent again when Conduit is next on screen (2026-10-27, #1374).
-- On a Mac there is no card: `LiveTurnActivities.shared` is nil there, so nothing starts, adopts or ends one, Settings shows no Lock Screen section and the widget extension leaves the Live Activity out. ActivityKit is weak-linked, because macOS 14 has none for iPhone and iPad apps and every build that linked it strongly stopped at launch on Sonoma; nothing may touch it on a Mac (2026-11-06, #PRNUM, issue 1877).
+- On a Mac there is no card: `LiveTurnActivities.shared` is nil there, so nothing starts, adopts or ends one, Settings shows no Lock Screen section and the widget extension leaves the Live Activity out. ActivityKit is weak-linked, because macOS 14 has none for iPhone and iPad apps and every build that linked it strongly stopped at launch on Sonoma; nothing may touch it on a Mac (2026-11-06, #1891, issue 1877).
 
 **Open gaps**
 - The relay keeps registrations and unwatched ends in memory: a relay restart during a turn leaves its card to Conduit's next time on screen, or to iOS's 8 hours.
 - The live registry check reads the profile and dashboard on screen, so a card from another one ends only by push.
 - The registration and its retry go through `URLSession.shared`, so only their decisions (`needsRegistration`, `liveActivityStartedAgo`, `liveActivityRouteExists`) are tested.
 
-**Checked:** 2026-11-06, #PRNUM (no card on a Mac and ActivityKit weak-linked, issue 1877; the relay, the plugin's reporter and the card's views needed no change); 2026-10-29, #1495, carrying #1489 (a chat's fork never touches the card, notifier #464); 2026-10-27, #1374.
+**Checked:** 2026-11-06, #1891 (no card on a Mac and ActivityKit weak-linked, issue 1877; the relay, the plugin's reporter and the card's views needed no change); 2026-10-29, #1495, carrying #1489 (a chat's fork never touches the card, notifier #464); 2026-10-27, #1374.
 
 ## Large code blocks in messages
 
