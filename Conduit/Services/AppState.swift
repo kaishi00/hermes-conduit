@@ -1060,6 +1060,12 @@ final class AppState: ObservableObject {
     @Published private(set) var pinnedChatOrder = PinnedChatOrder()
     /// The bots' order on Bots Home and every bot list (AppState+BotOrder).
     @Published private(set) var botOrder = BotOrder()
+    /// The group chats' order on Bots Home and every list of rooms, by room
+    /// id (AppState+BotOrder).
+    @Published private(set) var groupRoomOrder = BotOrder()
+    /// Group Settings asked for from a room's tile on Bots Home: the room
+    /// opens, then its screen shows the settings once Hermes has read them.
+    @Published var groupSettingsOnOpen: GroupSettingsRequest?
     /// Which Bot Chat grows out of its Bots Home portrait (BotZoomArm).
     var botZoom = BotZoomArm()
     /// Replies pinned to the top of their chat, per profile (#918). Kept on
@@ -7695,6 +7701,7 @@ final class AppState: ObservableObject {
         sessionStars = SessionStars(defaults: defaults)
         pinnedChatOrder = PinnedChatOrder(defaults: defaults)
         botOrder = BotOrder(defaults: defaults)
+        groupRoomOrder = BotOrder(defaults: defaults, key: BotOrder.roomStorageKey)
         allProfilesChatsSettings = AllProfilesChatsSettings(defaults: defaults)
         if let data = defaults.data(forKey: pinnedRepliesByProfileKey),
            let stored = try? JSONDecoder().decode([String: [PinnedReply]].self, from: data) {
@@ -10581,6 +10588,14 @@ final class AppState: ObservableObject {
         publishWidgetSnapshot()
     }
 
+    /// Saves the group chats' order, set on Bots Home or from Sync across
+    /// devices.
+    func setGroupRoomOrder(_ order: BotOrder) {
+        guard order != groupRoomOrder else { return }
+        groupRoomOrder = order
+        order.save(to: defaults, key: BotOrder.roomStorageKey)
+    }
+
     /// Saves where All's mixed Pinned section holds each profile's chats
     /// (issue 1486), on this device only.
     func setPinnedChatMixedOrder(_ keys: [String]) {
@@ -12372,6 +12387,8 @@ final class AppState: ObservableObject {
         defaults.removeObject(forKey: PinnedChatOrder.mixedStorageKey)
         botOrder = BotOrder()
         defaults.removeObject(forKey: BotOrder.storageKey)
+        groupRoomOrder = BotOrder()
+        defaults.removeObject(forKey: BotOrder.roomStorageKey)
         allProfilesCatalogTask?.cancel()
         allProfilesCatalogTask = nil
         allProfilesCatalog = AllProfilesCatalog()
@@ -13243,10 +13260,14 @@ final class AppState: ObservableObject {
     }
 
     /// The Bots list's hosted rooms: `groups.list`'s, else the kept ones
-    /// until it answers, none once Hermes says it has no hosted rooms.
+    /// until it answers, none once Hermes says it has no hosted rooms; in
+    /// the person's order (`groupRoomOrder`), a room it doesn't name yet
+    /// last, as Hermes lists them.
     var shownGroupRooms: [GroupRoom] {
-        if groupRoomsListed || groupChatPhase == .gatewayUnsupported { return groupRooms }
-        return keptGroupRooms()?.rooms ?? []
+        let rooms = groupRoomsListed || groupChatPhase == .gatewayUnsupported
+            ? groupRooms
+            : keptGroupRooms()?.rooms ?? []
+        return groupRoomOrder.arrange(rooms, name: \.roomID)
     }
 
     /// The rooms kept on this dashboard, decoded once per answer kept.
@@ -13294,6 +13315,8 @@ final class AppState: ObservableObject {
         }
         guard groupCapabilities?.foundationSupported == true else { return }
         guard room.isDisbanded == false else { return }
+        // Group Settings asked for another room waits for that room.
+        if groupSettingsOnOpen?.roomID != room.roomID { groupSettingsOnOpen = nil }
         // A newer destination than a New Chat or widget action on its way.
         widgetLaunchCoordinator.supersede()
 
@@ -13766,18 +13789,26 @@ final class AppState: ObservableObject {
 
     /// Permanently disband the open room (destructive; the view confirms).
     func disbandActiveRoom() async {
-        guard let surface = activeRoomSurface, let client, isConnected,
+        guard let roomID = activeRoomSurface?.room.roomID else { return }
+        await disbandGroupRoom(roomID, opened: true)
+    }
+
+    /// Permanently disband a room, open or not: from its own menu, or its
+    /// tile's on Bots Home (destructive; the view confirms). `opened`: asked
+    /// from the open room, whose failure says nothing once another opens.
+    func disbandGroupRoom(_ roomID: String, opened: Bool = false) async {
+        guard let client, isConnected,
               groupCapabilities?.supports("groups.disband") == true else { return }
         let epoch = groupRoomEpoch
         do {
-            try await groupsDisband(client, roomID: surface.room.roomID)
-            guard groupRoomEpoch == epoch else { return }
+            try await groupsDisband(client, roomID: roomID)
         } catch {
-            guard groupRoomEpoch == epoch else { return }
+            guard self.client === client, !opened || groupRoomEpoch == epoch else { return }
             errorMessage = AppLocalization.string("Could not disband this group chat: \(UserFacingError.message(for: error))")
             return
         }
-        closeGoneRoomSurface()
+        guard self.client === client else { return }
+        if activeRoomSurface?.room.roomID == roomID { closeGoneRoomSurface() }
         await refreshGroupRooms()
     }
 
@@ -15624,6 +15655,8 @@ final class AppState: ObservableObject {
         defaults.removeObject(forKey: PinnedChatOrder.mixedStorageKey)
         botOrder = BotOrder()
         defaults.removeObject(forKey: BotOrder.storageKey)
+        groupRoomOrder = BotOrder()
+        defaults.removeObject(forKey: BotOrder.roomStorageKey)
         allProfilesCatalogTask?.cancel()
         allProfilesCatalogTask = nil
         allProfilesCatalog = AllProfilesCatalog()

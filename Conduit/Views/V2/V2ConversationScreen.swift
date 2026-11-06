@@ -334,6 +334,21 @@ struct V2ConversationScreen: View {
             choosesRoomPicture: $choosesRoomPicture,
             showsRoomSettings: $showsRoomSettings
         ))
+        // Group Settings asked for from a room's tile on Bots Home: once
+        // that room is open here and Hermes has read its settings.
+        .onChange(of: roomSettingsKey, initial: true) { _, _ in showRequestedRoomSettings() }
+    }
+
+    private var roomSettingsKey: String {
+        "\(appState.activeRoomSurface?.room.roomID ?? "")|\(appState.canEditActiveRoomSettings)|\(appState.groupSettingsOnOpen?.roomID ?? "")|\(shell.isTabActive)"
+    }
+
+    private func showRequestedRoomSettings() {
+        guard let request = appState.groupSettingsOnOpen, shell.isTabActive,
+              request.shows(openRoomID: appState.activeRoomSurface?.room.roomID,
+                            canEdit: appState.canEditActiveRoomSettings) else { return }
+        appState.groupSettingsOnOpen = nil
+        showsRoomSettings = true
     }
 
     /// The chat's ⋯ › Artifacts, or a tapped file path: beside the chat

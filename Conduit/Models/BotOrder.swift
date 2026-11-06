@@ -11,12 +11,18 @@
 //  hidden or deleted bot keeps its name in the order, so it comes back to
 //  its place.
 //
+//  The same order keeps Bots Home's group chats, by room id, under a key
+//  of its own (`roomStorageKey`, synced as `groups.order`): Hermes lists
+//  rooms by activity and keeps no place for them either.
+//
 
 import Foundation
 import SwiftUI // Array.move(fromOffsets:toOffset:)
 
 struct BotOrder: Equatable {
     static let storageKey = "conduit.botOrder.v1"
+    /// The group chats' order, by room id.
+    static let roomStorageKey = "conduit.groupRoomOrder.v1"
 
     private(set) var names: [String]
 
@@ -25,15 +31,15 @@ struct BotOrder: Equatable {
         self.names = names.filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
     }
 
-    init(defaults: UserDefaults) {
-        self.init(names: defaults.stringArray(forKey: Self.storageKey) ?? [])
+    init(defaults: UserDefaults, key: String = BotOrder.storageKey) {
+        self.init(names: defaults.stringArray(forKey: key) ?? [])
     }
 
-    func save(to defaults: UserDefaults) {
+    func save(to defaults: UserDefaults, key: String = BotOrder.storageKey) {
         if names.isEmpty {
-            defaults.removeObject(forKey: Self.storageKey)
+            defaults.removeObject(forKey: key)
         } else {
-            defaults.set(names, forKey: Self.storageKey)
+            defaults.set(names, forKey: key)
         }
     }
 
