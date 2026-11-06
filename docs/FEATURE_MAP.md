@@ -2906,8 +2906,8 @@ devices)
 - An open group room keeps a bounded tail: it opens on the last 200 events, and polling trims back to 200 once it holds 400 (2026-10-24, #1184).
 - The delegate tail sheet always follows its end: it is a live log, not a reply to read (2026-10-25, #1256).
 - Nothing rebuilds a transcript. Chats and group rooms each rebuilt a following lazy stack that laid out no row on screen (#887, #971, #1367, issue 1358) until the transcript rewrite: their collection view lays out every row crossing the screen, at its measured or estimated height, so the lazy stack's blank screen can't happen there (chats 2026-10-31, #1577; group rooms 2026-10-31, #1590; Eric delegated the chat scroll's design to Claude, 2026-09-28, and approved the transcript rewrite's design, 2026-10-30).
-
 - The jump button, and the "Go to" pill that shares its spot, sit centered over the composer in chats and group rooms, so either thumb reaches them; they show only while the reader browses, so what they cover is about to scroll away (Eric, 2026-11-06, #1860: bottom right suited only a right hand).
+
 **Open gaps**
 - Group rooms have no "Load earlier messages", so history above the 200-event tail isn't reachable in the app.
 - The Responding row reads the kept tail, so a discussion longer than 200 events (when opened, or after a trim) can lose it while a member still works.
