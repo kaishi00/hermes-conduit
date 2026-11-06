@@ -1102,20 +1102,25 @@ final class GroupChatModelsTests: XCTestCase {
     func testAnAutomaticRoomWaitsOnTheRouter() {
         let members = roomMembers()
         // Kept events from past the room's start, with no settings change in
-        // them: the host's current settings were in force.
-        var log = [userMessage(seq: 101, text: "What's the weather?")]
+        // them: the host's current settings were in force. The message opened
+        // its own thread, as Conduit's and Desktop's do.
+        let own = GroupRoomOutbox.serverEventID(forClientEventID: "conduit-w")
+        func opener(_ seq: Int, _ text: String) -> GroupEvent {
+            turnEvent(eventJSON(seq: seq, kind: "message.user", payload: ["text": text, "thread_id": "conduit-w"], eventID: own))
+        }
+        var log = [opener(101, "What's the weather?")]
         let auto = GroupRoomContext(routing: .auto)
         XCTAssertNil(GroupRoomTurns.pendingResponder(events: log, members: members, context: auto))
         XCTAssertEqual(GroupRoomTurns.pendingRoute(events: log, members: members, context: auto), .routerChoosing)
 
         log.append(roomEvent(seq: 102, kind: "room.routed", [
-            "discussion_event_id": "user:d1", "thread_id": "main", "member_ids": ["zhongli"],
+            "discussion_event_id": own, "thread_id": "conduit-w", "member_ids": ["zhongli"],
             "everyone": false, "fallback": false,
         ]))
         XCTAssertEqual(GroupRoomTurns.pendingResponder(events: log, members: members, context: auto)?.memberID, "zhongli")
 
-        let fallback = [userMessage(seq: 101, text: "Hi"), roomEvent(seq: 102, kind: "room.routed", [
-            "discussion_event_id": "user:d1", "thread_id": "main", "member_ids": [String](),
+        let fallback = [opener(101, "Hi"), roomEvent(seq: 102, kind: "room.routed", [
+            "discussion_event_id": own, "thread_id": "conduit-w", "member_ids": [String](),
             "everyone": true, "fallback": true,
         ])]
         XCTAssertEqual(GroupRoomTurns.pendingResponder(events: fallback, members: members, context: auto)?.memberID, "furina")
