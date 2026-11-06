@@ -656,6 +656,7 @@ struct GroupEventRow: View {
                 timestamp: event.createdAt,
                 continuesRun: continuesRun,
                 roomEventID: event.id,
+                roomThreadID: event.threadID,
                 boards: boards
             )
         } else {
@@ -810,6 +811,8 @@ struct GroupMemberBubble: View {
     /// A hosted room's event id: its messages can be quoted and read
     /// aloud. A Desktop group, read-only here, passes none.
     var roomEventID: String? = nil
+    /// The thread it was said in: a reply to it goes there (as Desktop's do).
+    var roomThreadID: String? = nil
     /// The boards the agent showed with this message, under its bubble.
     var boards: [RichBoard] = []
     @Environment(\.groupMemberTints) private var tints
@@ -880,7 +883,9 @@ struct GroupMemberBubble: View {
                     HStack(spacing: 2) {
                         GroupMessageCopyButton(text: GroupRoomMentions.refanged(parts.text), label: .response)
                         if let roomEventID {
-                            GroupMessageQuoteButton(text: parts.text, authorName: name, authorHandle: handle)
+                            GroupMessageQuoteButton(
+                                text: parts.text, authorName: name, authorHandle: handle, threadID: roomThreadID
+                            )
                             GroupReadAloudButton(eventID: roomEventID, text: parts.text, memberProfile: member?.profile)
                         }
                     }
@@ -1307,10 +1312,14 @@ struct GroupMessageQuoteButton: View {
     let authorName: String
     /// The author's tag: replying also addresses the next message to it.
     var authorHandle: String? = nil
+    /// The message's thread: the reply is sent in it.
+    var threadID: String? = nil
 
     var body: some View {
         Button {
-            appState.replyInRoomComposer(text: text, authorName: authorName, authorHandle: authorHandle)
+            appState.replyInRoomComposer(
+                text: text, authorName: authorName, authorHandle: authorHandle, threadID: threadID
+            )
         } label: {
             Image(systemName: "quote.bubble")
                 .scaledFont(.footnote.weight(.semibold))
@@ -1683,7 +1692,13 @@ struct GroupRoomSettingsSheet: View {
         GroupRoomTurns.members(appState.activeRoomSurface?.room.members ?? [], namedBy: appState.shownBotRoster)
     }
 
-    private var modes: [GroupRouting] { appState.activeRoomRoutingModes }
+    /// The modes to offer: the host's known ones, or just Everyone when the
+    /// room runs on a mode newer than this app and the host lists no other,
+    /// so that mode can still be replaced.
+    private var modes: [GroupRouting] {
+        let known = appState.activeRoomRoutingModes
+        return known.isEmpty && !original.newerRouting.isEmpty ? [.everyone] : known
+    }
 
     private var purposeTooLong: Bool { draft.purpose.count > GroupRoomContext.maxPurposeCharacters }
     private var notesTooLong: Bool {
@@ -1739,6 +1754,9 @@ struct GroupRoomSettingsSheet: View {
                         symbol: "arrow.triangle.branch",
                         tint: .purple
                     ) {
+                        if !original.newerRouting.isEmpty {
+                            newerModeRow
+                        }
                         ForEach(modes, id: \.self) { mode in
                             modeRow(mode)
                         }
@@ -1788,6 +1806,11 @@ struct GroupRoomSettingsSheet: View {
     }
 
     private var modeCaption: String {
+        if !draft.newerRouting.isEmpty {
+            return AppLocalization.string(
+                "This room answers in a way set in a newer app. It stays that way unless you pick another."
+            )
+        }
         switch draft.routing {
         case .everyone:
             return AppLocalization.string("Every member gets a turn on a message that names nobody.")
@@ -1810,10 +1833,35 @@ struct GroupRoomSettingsSheet: View {
         }
     }
 
-    private func modeRow(_ mode: GroupRouting) -> some View {
-        let isSelected = draft.routing == mode
+    /// The room's own mode, where it is one this app predates: kept until
+    /// another is picked, and pickable again until the save.
+    private var newerModeRow: some View {
+        let isSelected = !draft.newerRouting.isEmpty
         return Button {
             Haptics.light()
+            draft.routing = .everyone
+            draft.leadMemberID = ""
+            draft.newerRouting = original.newerRouting
+        } label: {
+            HStack(spacing: 12) {
+                Text(AppLocalization.string("As set elsewhere (\(original.newerRouting))"))
+                    .scaledFont(.body)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 0)
+                selectionGlyph(isSelected)
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func modeRow(_ mode: GroupRouting) -> some View {
+        let isSelected = draft.newerRouting.isEmpty && draft.routing == mode
+        return Button {
+            Haptics.light()
+            draft.newerRouting = ""
             draft.routing = mode
             if mode == .lead, GroupRoomTurns.member(withID: draft.leadMemberID, in: members) == nil {
                 // The first member until one is picked, as Desktop starts it.
@@ -1865,12 +1913,14 @@ struct GroupRoomSettingsSheet: View {
     /// The settings as the host keeps them: the purpose on one line, the
     /// notes trimmed, no lead unless the room has one.
     private func normalized(_ context: GroupRoomContext) -> GroupRoomContext {
-        GroupRoomContext(
+        var normalized = GroupRoomContext(
             purpose: context.purpose.split(whereSeparator: \.isWhitespace).joined(separator: " "),
             notes: context.notes.trimmingCharacters(in: .whitespacesAndNewlines),
             routing: context.routing,
             leadMemberID: context.leadMemberID
         )
+        normalized.newerRouting = context.newerRouting
+        return normalized
     }
 
     private func save() {
