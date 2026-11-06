@@ -177,29 +177,18 @@ struct RichCard: Identifiable, Equatable, Hashable {
         return RichBoard.board(for: tool) != nil
     }
 
-    /// The live names a transcript row's cards carry. Only a row whose
-    /// JSON names one is read, since every publish asks.
-    @MainActor
+    /// The live names a transcript row's cards carry. Every publish asks,
+    /// so each row is read once and kept.
     static func liveNames(_ message: ChatMessage) -> [String] {
         guard message.role == .tool, let tool = message.tool, tool.name.lowercased() == toolName,
-              tool.status == .complete,
-              (tool.output ?? "").contains("\"live\"") || (tool.input ?? "").contains("\"live\"") else { return [] }
-        // Each row is read once, not on every publish.
-        let key = LiveNamesKey(id: message.id, input: tool.input, output: tool.output)
-        if let names = liveNamesCache[key] { return names }
-        let names = cards(for: tool).compactMap(\.live)
-        if liveNamesCache.count >= 200 { liveNamesCache.removeAll() }
-        liveNamesCache[key] = names
-        return names
+              tool.status == .complete else { return [] }
+        return liveNamesMemo.value(for: tool, id: message.id) {
+            guard (tool.output ?? "").contains("\"live\"") || (tool.input ?? "").contains("\"live\"") else { return [] }
+            return cards(for: tool).compactMap(\.live)
+        }
     }
 
-    private struct LiveNamesKey: Hashable {
-        let id: String
-        let input: String?
-        let output: String?
-    }
-
-    @MainActor private static var liveNamesCache: [LiveNamesKey: [String]] = [:]
+    private static let liveNamesMemo = FinishedToolMemo<[String]>()
 
     /// Each live name's last row in `messages`: the earlier rows with it
     /// were brought up to date there.
