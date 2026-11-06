@@ -410,6 +410,7 @@ extension HermesVoiceGatewayTimeoutTests {
     /// the persona and memory so an English persona doesn't win.
     func testGPTLiveBriefingNamesTheUsersLanguageAfterThePersona() {
         let german = GPTLiveConversationController.briefing(personality: "A calm judge", language: "de")
+        XCTAssertTrue(german.contains("read back word for word because the user asked to hear it: read it as written"), "a read-back keeps Hermes' words (#451)")
         XCTAssertTrue(german.contains("Language: speak German, the user's language, from your first words"))
         XCTAssertTrue(german.contains("asks you to switch, use theirs from then on"))
         let persona = german.range(of: "</hermes_persona>")!
@@ -1567,6 +1568,8 @@ extension VoiceConversationControllerTests {
             ("Kein Problem, ich schicke das jetzt an Hermes.", "de"),
             ("Pas de problème, je transmets ça à Hermes.", "fr"),
             ("No hay problema, se lo envío a Hermes.", "es"),
+            // Italian's pronoun "se lo" isn't its "if".
+            ("Va bene, se lo mando a Hermes.", "it"),
         ]
         for (claim, language) in claims {
             XCTAssertTrue(GPTLiveConversationController.claimsToSendToHermes(claim, callLanguage: language), claim)
@@ -1582,6 +1585,8 @@ extension VoiceConversationControllerTests {
             ("Hermes dice que mañana va a llover.", "es"),
             ("Te cuento lo que pasó con Hermes.", "es"),
             ("Je vais vous raconter ce qui s'est passé avec Hermes.", "fr"),
+            ("La discussion avec Hermes était utile.", "fr"),
+            ("Lo que pasó con Hermes fue interesante.", "es"),
             ("Je ne transmets pas ça à Hermes.", "fr"),
             ("Posso mandarlo a Hermes se vuoi.", "it"),
             ("Lo mando a Hermes se serve.", "it"),

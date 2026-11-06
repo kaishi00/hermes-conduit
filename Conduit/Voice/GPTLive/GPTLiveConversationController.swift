@@ -1148,27 +1148,27 @@ final class GPTLiveConversationController: ObservableObject {
     private static let sendClaimWords: [String: SendClaimWords] = [
         // "Ich schicke das an Hermes.", "Ich frage Hermes."
         "de": SendClaimWords(
-            verbsBefore: #"\b(?:schick|send|geb|gib|leit|weiterleit|frag|sag|reich|übergeb|übermittl)\w*"#,
+            verbsBefore: #"\b(?:schick\w*|sende|gebe|gib|leite|weiterleit\w*|frage|sage|reiche|übergeb\w*|übermittl\w*)\b"#,
             hedge: #"\b(?:soll|sollte|kann|könnte|würde|möchtest|willst|darf|nicht|kein|keine|nie|niemals)\b"#,
             condition: #"\b(?:wenn|falls|sobald|bevor|nachdem)\b"#),
         // "Se lo envío a Hermes.", "Le pregunto a Hermes."
         "es": SendClaimWords(
-            verbsBefore: #"\b(?:env[ií]|mand|pas(?!ó|ad)|pregunt|dig|dec|avis|reenv|consult|traslad)\w*"#,
+            verbsBefore: #"\b(?:env[ií]o|enviar\w*|envi[ée]|mando|mandar\w*|mand[ée]|paso|pasar\w*|pas[ée]|pregunto|preguntar\w*|pregunt[ée]|digo|decir\w*|dir[ée]|aviso|avisar\w*|avis[ée]|reenv[ií]o|reenviar\w*|consulto|consultar\w*|traslado|trasladar\w*)\b"#,
             hedge: #"\b(?:puedo|podr[ií]a|deber[ií]a|quieres|quiere|no|nunca)\b"#,
             condition: #"\b(?:si|cuando|antes)\b"#),
         // "J'envoie ça à Hermes.", "Je demande à Hermes."
         "fr": SendClaimWords(
-            verbsBefore: #"(?:\b|')(?:envoi|envoy|transm|pass(?!é)|demand|dis|dit|préviens|prévien|transf)\w*"#,
+            verbsBefore: #"(?:\b|')(?:envoie|envoyer\w*|envoie\w*|transmets|transmettre\w*|transmettrai\w*|passe|passer\w*|passerai\w*|demande|demander\w*|demanderai\w*|dis|dire|dirai\w*|préviens|prévenir|préviendrai\w*|transfère|transférer\w*)\b"#,
             hedge: #"\b(?:peux|pourrais|pourrait|devrais|veux|voulez|voudrais|ne|pas|jamais)\b|n'"#,
             condition: #"\b(?:si|quand|avant)\b"#),
         // "Lo mando a Hermes.", "Chiedo a Hermes."
         "it": SendClaimWords(
-            verbsBefore: #"\b(?:invi|mand|pass|chied|chiede|dic|dir|gir|inoltr|avvis)\w*"#,
+            verbsBefore: #"\b(?:invio|inviare|invierò|inviarl\w*|mando|mandare|manderò|mandarl\w*|passo|passare|passerò|passarl\w*|chiedo|chiedere|chiederò|dico|dire|dirò|giro|girare|girerò|girarl\w*|inoltro|inoltrare|inoltrerò|inoltrarl\w*|avviso|avvisare|avviserò)\b"#,
             hedge: #"\b(?:posso|puoi|potrei|dovrei|vuoi|vuole|non|mai)\b"#,
-            condition: #"\b(?:se|quando|prima)\b"#),
+            condition: #"\bse\b(?!\s+(?:lo|la|li|le|ne)\b)|\b(?:quando|prima)\b"#),
         // "Vou enviar isso ao Hermes.", "Pergunto ao Hermes."
         "pt": SendClaimWords(
-            verbsBefore: #"\b(?:envi|mand|pass|pergunt|dig|diz|avis|encaminh|repass)\w*"#,
+            verbsBefore: #"\b(?:envio|enviar\w*|enviei|mando|mandar\w*|mandei|passo|passar\w*|passei|pergunto|perguntar\w*|perguntei|digo|dizer|direi|aviso|avisar\w*|avisei|encaminho|encaminhar\w*|encaminhei|repasso|repassar\w*|repassei)\b"#,
             hedge: #"\b(?:posso|poderia|deveria|quer|queres|quiser|não|nunca)\b"#,
             condition: #"\b(?:se|quando|antes)\b"#),
         // "Przekażę to Hermesowi.", "Zapytam Hermesa."

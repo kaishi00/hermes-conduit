@@ -23,7 +23,9 @@ enum LiveVoiceLanguage {
     /// the part about following the user.
     static func rule(language: String?) -> String {
         let follow = "If the user speaks to you in another language, or asks you to switch, use theirs from then on, for the rest of the call."
-        let hold = "This holds whatever language these instructions, the persona, Hermes' replies, job results or Conduit's notes are in: put what they say into the call's language."
+        // A read-back is the one exception: it reads Hermes' words as
+        // written (#451).
+        let hold = "This holds whatever language these instructions, the persona, Hermes' replies, job results or Conduit's notes are in: put what they say into the call's language. The one exception is a reply you read back word for word because the user asked to hear it: read it as written."
         guard let language, let name = name(of: language) else {
             return "\nLanguage: answer in the language the user speaks to you. \(follow) \(hold)"
         }
