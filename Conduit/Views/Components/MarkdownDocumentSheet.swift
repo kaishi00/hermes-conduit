@@ -32,6 +32,35 @@ enum MarkdownArtifact {
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return text
     }
+
+    /// The Markdown file's text from the host, or nil when the reader can't
+    /// draw it (too large, not UTF-8, gone) and the file's usual viewer
+    /// should open it instead. A file known to be over the ceiling isn't
+    /// fetched at all, so the fallback downloads it once.
+    static func load(path: String, knownSize: Int64? = nil,
+                     dataURL: (String) async -> String?) async -> String? {
+        if let knownSize, knownSize > Int64(DataURLLimits.maxDecodedBytes) { return nil }
+        guard let url = await dataURL(path), !Task.isCancelled else { return nil }
+        return text(from: url)
+    }
+}
+
+/// What a Markdown sheet opens on: the file's name and text, and where its
+/// own pictures load from.
+struct MarkdownDocument: Identifiable {
+    let id = UUID()
+    let name: String
+    let text: String
+    let gatewayMediaDataURL: ((String) async -> String?)?
+    let gatewayMediaFiles: GatewayMediaDataURLResolver?
+}
+
+extension MarkdownDocumentSheet {
+    init(document: MarkdownDocument) {
+        self.init(name: document.name, text: document.text,
+                  gatewayMediaDataURL: document.gatewayMediaDataURL,
+                  gatewayMediaFiles: document.gatewayMediaFiles)
+    }
 }
 
 /// A Markdown file from Artifacts. The reader is `MarkdownText`, so the
@@ -44,8 +73,14 @@ struct MarkdownDocumentSheet: View {
 
     let name: String
     let text: String
-    let resolver: GatewayMediaDataURLResolver
+    /// Where the file's own `MEDIA:` pictures and file cards load from.
+    let gatewayMediaDataURL: ((String) async -> String?)?
+    /// Downloads a large file card's file; nil keeps cards on data URLs.
+    let gatewayMediaFiles: GatewayMediaDataURLResolver?
 
+    /// The file's pictures, which a tapped one pages through, rather than
+    /// the chat's the sheet was opened over.
+    @State private var imageGallery = ImageGallerySource()
     @State private var showsSource = false
     @State private var shareURL: URL?
     @State private var shareDirectory: URL?
@@ -70,12 +105,15 @@ struct MarkdownDocumentSheet: View {
 
     private var reader: some View {
         ScrollView {
-            MarkdownText(
-                source: text,
-                gatewayMediaDataURL: { path in await resolver.dataURL(for: path) }
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
+            let _ = imageGallery.update { [text, gatewayMediaFiles, gatewayMediaDataURL] in
+                ChatImageGallery.markdownItems(text, resolver: gatewayMediaFiles,
+                                               recognizesGatewayMedia: true, dataURL: gatewayMediaDataURL)
+            }
+            MarkdownText(source: text, gatewayMediaDataURL: gatewayMediaDataURL)
+                .environment(\.gatewayMediaFiles, gatewayMediaFiles)
+                .environment(\.imageGallery, imageGallery)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
         }
     }
 

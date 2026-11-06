@@ -184,7 +184,7 @@ private struct ArtifactsList: View {
     @State private var generation = 0
     @State private var openingID: String?
     @State private var page: OpenPage?
-    @State private var markdown: OpenMarkdown?
+    @State private var markdown: MarkdownDocument?
     @State private var missing: ArtifactItem?
     /// The open alert is for a file too big for the phone, not a gone one.
     @State private var missingIsTooLarge = false
@@ -199,13 +199,6 @@ private struct ArtifactsList: View {
         let id = UUID()
         let name: String
         let html: String
-    }
-
-    private struct OpenMarkdown: Identifiable {
-        let id = UUID()
-        let name: String
-        let text: String
-        let resolver: GatewayMediaDataURLResolver
     }
 
     /// What the list is read for: its key, and whether the plugin says it
@@ -243,7 +236,7 @@ private struct ArtifactsList: View {
             HTMLPreviewSheet(name: page.name, html: page.html)
         }
         .sheet(item: $markdown) { document in
-            MarkdownDocumentSheet(name: document.name, text: document.text, resolver: document.resolver)
+            MarkdownDocumentSheet(document: document)
         }
         .onDisappear { openTask?.cancel() }
         .alert(
@@ -685,22 +678,16 @@ private struct ArtifactsList: View {
                     openToken = nil
                 }
             }
-            // A file over the data URL ceiling is downloaded once by the
-            // fallback below, not fetched and discarded here.
-            if let size = item.size, size > Int64(DataURLLimits.maxDecodedBytes) {
-                await presentAsFile(item, path: path, resolver: resolver)
-                return
-            }
-            guard let dataURL = await resolver.dataURL(for: path) else {
+            guard let text = await MarkdownArtifact.load(
+                path: path, knownSize: item.size, dataURL: { await resolver.dataURL(for: $0) }
+            ) else {
                 await presentAsFile(item, path: path, resolver: resolver)
                 return
             }
             guard !Task.isCancelled else { return }
-            guard let text = MarkdownArtifact.text(from: dataURL) else {
-                await presentAsFile(item, path: path, resolver: resolver)
-                return
-            }
-            markdown = OpenMarkdown(name: item.name, text: text, resolver: resolver)
+            markdown = MarkdownDocument(name: item.name, text: text,
+                                        gatewayMediaDataURL: { await resolver.dataURL(for: $0) },
+                                        gatewayMediaFiles: resolver)
         }
     }
 

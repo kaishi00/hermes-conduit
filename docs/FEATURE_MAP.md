@@ -794,7 +794,7 @@ notifier's README
 - A Bot Chat's calls are kept in the bot's profile, so another device doesn't adopt them (#1445).
 - Desktop doesn't group voice rows under their call; archiving is how they stay out of its list (would need Hermes).
 
-**Checked:** 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1445.
+**Checked:** 2026-11-06, #1884 (a Markdown file card opens the Markdown reader, as Artifacts does since #1879); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1445.
 
 ## The user's words in a call's transcript
 
@@ -1088,9 +1088,11 @@ chat's latest reply in a chat call's instructions) and read_chat as Gemini, Qwen
 GPT-Live and Local Live get them, on the phone and the Watch, and a
 Hermes call's reply in its instructions · the
 notifier's line for a spoken turn, which tells the model its answer is
-heard · chat bubbles (the file card)
+heard · chat bubbles (the file card; a Markdown file opens in the
+Markdown reader, see Artifacts)
 
 **Code**
+- The file card: `Conduit/Views/Components/MarkdownText.swift` (GatewayMediaFileCard; a Markdown file opens `Conduit/Views/Components/MarkdownDocumentSheet.swift`)
 - The tag grammar: `Conduit/Views/Components/GatewayMediaTags.swift` (removingTags, namingFiles; also built into the Watch app, `project.yml`)
 - Streaming speech: `Conduit/Voice/SpokenMediaTagFilter.swift`, used by `Conduit/Voice/SpokenTextFilter.swift` (Classic, Read Aloud's Now Playing) and `Conduit/Voice/LocalLive/SpokenVisualSplitter.swift` (Local Live, which puts the files on the call's screen)
 - Read Aloud: `Conduit/Voice/MessageReadAloudController.swift` (toggle)
@@ -1106,12 +1108,13 @@ heard · chat bubbles (the file card)
 - Streaming voices hold from where a tag may begin (with its emphasis or `[label](`) to the end of its line, and only while it can still be one: `MEDIA:` with a path after it, or a directive. Prose such as "social media: we shipped" is said as it comes; a `[` with no `]` waits up to 80 characters, then is said as it comes (Local Live's splitter, older than this, holds a `[` until its `)` or the line's end, for links). Once a tag may have begun, the rest of its line waits for the line's end, the price of a reply being said the same however it is split (#1449). Text that can't start a tag goes out as it came, its chunks unchanged ("One " then "turn."), so a space said before a tag that arrives later stays, and "Hello!" is said while a "!" after a space or mark waits for a possible image.
 - Local Live puts a tagged file on the call's screen, as the chat shows it (a tag written as a link included), even when the model showed its own card or the call cut the reply off for its own line (#1449).
 - A live model is told of a file by name ("(a file in the chat: report.pdf)"), never its path: a job's result, a chat reply, a chat read into the call and the reply a Hermes call is about alike (#1449).
+- A file card opens its file in the chat's viewers; a Markdown file opens in the Markdown reader Artifacts uses, formatted, falling back to Quick Look when it isn't UTF-8 or is over 16 MB (2026-11-06, #1884, carrying #1879).
 - A spoken message's line tells the model its answer is heard: say it in words, not with text_to_speech or a sound file of its own; a file the user asks for is still fine. Hermes' own spoken-reply note isn't on every Hermes (2026-10-28, #1434, notifier #444, 0.115.1).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1434, carried in #1449.
+**Checked:** 2026-11-06, #1884 (a Markdown file card opens the Markdown reader, as Artifacts does since #1879); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1434, carried in #1449.
 
 ## Qwen direct voice
 
@@ -1574,7 +1577,7 @@ the chat's `MEDIA:` file cards (see Files Hermes attaches) · the notifier's art
 **Code**
 - List model and merge: `Conduit/Services/Artifacts.swift` (ArtifactItem, ArtifactSource, ArtifactFeed, ArtifactsClient, its keptRoute, keptPage and answer(_:withoutRowsOf:))
 - Which stores a list reads (a bot's overview: `ArtifactScope.bot`), a chat's ids, Show in Chat: `Conduit/Services/AppState+Artifacts.swift` (artifactSources, activeChatArtifactSessionIDs, botChatIDs, showArtifactInChat)
-- Screens: `Conduit/Views/V2/V2ArtifactsViews.swift`; a Markdown artifact's sheet: `Conduit/Views/Components/MarkdownDocumentSheet.swift`; the system Open In handoff: `Conduit/Views/Components/MediaPreviewPresenter.swift` (presentOpenIn); the column beside the chat and its toggle: `Conduit/Views/V2/V2ConversationScreen.swift` (openArtifacts, showsSidePanel)
+- Screens: `Conduit/Views/V2/V2ArtifactsViews.swift`; a Markdown artifact's sheet: `Conduit/Views/Components/MarkdownDocumentSheet.swift` (MarkdownArtifact, MarkdownDocument), also opened by a chat's file card (`Conduit/Views/Components/MarkdownText.swift`, GatewayMediaFileCard); the system Open In handoff: `Conduit/Views/Components/MediaPreviewPresenter.swift` (presentOpenIn); the column beside the chat and its toggle: `Conduit/Views/V2/V2ConversationScreen.swift` (openArtifacts, showsSidePanel)
 - A chat's store: `Conduit/Services/AppState.swift` (botStoreProfile, openLinkedBotChat, openOtherProfileChat; removeSavedCopies takes a deleted chat's rows from the profile's kept list)
 - Host: `notifier/artifacts_index.py`, `notifier/dashboard/api/workspace.py` (GET /artifacts, one profile per request)
 - Tests: `ConduitTests/GatewayRestartTests+Artifacts.swift`, `ConduitTests/MarkdownDocumentSheetTests.swift`, `ConduitTests/AppStateMultiDashboardTests.swift` (testADeleteAnsweredAfterASwitchSaysNothingOnTheNewDashboard)
@@ -1592,13 +1595,13 @@ the chat's `MEDIA:` file cards (see Files Hermes attaches) · the notifier's art
 - The panel beside the chat drags wider or narrower by the line beside it, kept per device; it shows at its standard width's window as before (Eric, 2026-10-29, #1492, see Resizable columns on a split window).
 - One host path is one artifact across stores: profiles share the host's files, so a file two stores list shows once, at its newest mention.
 - A file still opening is dropped when the list moves to another server or profile, and only the latest open clears the spinner. Every reload, including one on a dashboard without artifacts, outdates the request before it (2026-10-24, from #895's review, #1191).
-- A Markdown artifact opens in the Markdown reader, not Quick Look: the same `MarkdownText` the Folder draws a `.md` with, read-only, with Show Source and a system Open In/Share handoff to another reader (MDReader on the user's iPad). A file that isn't UTF-8 or is over 16 MB falls back to Quick Look (2026-11-06, #1879).
+- A Markdown artifact opens in the Markdown reader, not Quick Look: the same `MarkdownText` the Folder draws a `.md` with, read-only, with Show Source and a system Open In/Share handoff to another reader (MDReader on the user's iPad). A file that isn't UTF-8 or is over 16 MB falls back to Quick Look. The file's own pictures page through its own pictures, not the chat's it was opened over, and a chat's `MEDIA:` file card for a Markdown file opens the same reader (2026-11-06, PeterChencha's #1879, carried in #1884).
 - A list opens on what it listed last time, kept as it opens (every kind, unsearched, its first page) for each store's profile, a chat's own for the chats read last, which a deleted chat takes with it, as it takes its rows from the profile's; a bot's store that fails shows its kept rows, which don't page on, and kept rows wait for the plugin to say it serves artifacts or rule them out. The update notice shows only once it rules them out: with nothing kept, the list shows its loader until then, or offline, that Conduit isn't connected. Connected with no word from the plugin (its read failed as Conduit connected), the list asks it again as it opens and on a refresh, and with nothing kept says it couldn't reach the dashboard's notifier, with Try Again, if it still doesn't answer. A list kept or loaded empty says so at once, offline too (2026-10-31, #1582 and #1584, issue #1533; see Screens that open on their last answer).
 
 **Open gaps**
 - Group rooms' messages aren't listed: a room has no Artifacts list, and its members' replies stay out of the Artifacts page.
 
-**Checked:** 2026-11-06, #1879 (a Markdown artifact opens in the Markdown reader, with Show Source and the Open In/Share handoff; Windows and Mac names, the 16 MB ceiling and the Quick Look fallback; code, tests and map); 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1679 (on `bot-workstreams`, a chat opened from Artifacts pushed in Bots stays in Bots, under the page; from Sessions unchanged); 2026-11-03, #1678 (on `bot-workstreams`, Bots Home's Artifacts shortcut opens the page, and a bot's overview lists its whole profile's, Show in Chat closing the overview first); 2026-11-01, #1619 (Artifacts and the Work panel share the column beside the chat); 2026-10-31, #1584 (from #1582's review, a deleted chat's rows leave the profile's kept list, and offline a list kept empty says so); 2026-10-31, #1582 (a list opens on what it listed last time, and a deleted chat takes its own; the update notice waits for the plugin to rule artifacts out, kept rows or none, and a list whose plugin never answered asks it again); 2026-10-29, #1491 (a picture opens in the picture viewer and pages through the list's pictures); 2026-10-29, #1492 (the panel's width drags); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1399 (the panel and the Folder tab); #1272 with notifier #376; the sheet's ids at #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
+**Checked:** 2026-11-06, #1884 (carries #1879, and closes its file-card gap: a `MEDIA:` card for a Markdown file opens the same reader; the reader's pictures page through the file's own); 2026-11-06, #1879 (a Markdown artifact opens in the Markdown reader, with Show Source and the Open In/Share handoff; Windows and Mac names, the 16 MB ceiling and the Quick Look fallback; code, tests and map); 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1679 (on `bot-workstreams`, a chat opened from Artifacts pushed in Bots stays in Bots, under the page; from Sessions unchanged); 2026-11-03, #1678 (on `bot-workstreams`, Bots Home's Artifacts shortcut opens the page, and a bot's overview lists its whole profile's, Show in Chat closing the overview first); 2026-11-01, #1619 (Artifacts and the Work panel share the column beside the chat); 2026-10-31, #1584 (from #1582's review, a deleted chat's rows leave the profile's kept list, and offline a list kept empty says so); 2026-10-31, #1582 (a list opens on what it listed last time, and a deleted chat takes its own; the update notice waits for the plugin to rule artifacts out, kept rows or none, and a list whose plugin never answered asks it again); 2026-10-29, #1491 (a picture opens in the picture viewer and pages through the list's pictures); 2026-10-29, #1492 (the panel's width drags); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1399 (the panel and the Folder tab); #1272 with notifier #376; the sheet's ids at #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
 
 ## Workspace files
 
@@ -2892,7 +2895,7 @@ calls reading a job's chat · the Watch's answer to a call from Hermes
 **Open gaps**
 - The same message sent twice and answered in the same words, read once from saved history and once from the open chat, still can't be told apart.
 
-**Checked:** 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-24, at #1185; a Shortcut send's failed try counted even when its text repeats the banner at #1191 (#1056 review).
+**Checked:** 2026-11-06, #1884 (a Markdown file card opens the Markdown reader, as Artifacts does since #1879); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-24, at #1185; a Shortcut send's failed try counted even when its text repeats the banner at #1191 (#1056 review).
 
 ## Following the latest message
 
@@ -3235,7 +3238,7 @@ from Hermes: commentary is said, see Acknowledging work handed to Hermes)
 **Open gaps**
 - `Haptics.signal` still plays the writing haptic only for `message.delta`.
 
-**Checked:** 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files, even beside a card); 2026-10-28, #1430 (Local Live's spoken stream passes the action filter; its writing state is unchanged); 2026-10-27, #1390 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
+**Checked:** 2026-11-06, #1884 (a Markdown file card opens the Markdown reader, as Artifacts does since #1879); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files, even beside a card); 2026-10-28, #1430 (Local Live's spoken stream passes the action filter; its writing state is unchanged); 2026-10-27, #1390 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
 
 ## Live Activity for a running turn
 
@@ -3732,7 +3735,7 @@ transcript (never filtered)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1449 (Hermes' file tags are left out too, with their own entry, Files Hermes attaches); #1429, carried in #1430.
+**Checked:** 2026-11-06, #1884 (a Markdown file card opens the Markdown reader, as Artifacts does since #1879); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1449 (Hermes' file tags are left out too, with their own entry, Files Hermes attaches); #1429, carried in #1430.
 
 ## Speech stream failures
 
@@ -4615,7 +4618,7 @@ split · Read Aloud and live read-back · chat list previews and quotes
 - Previews and quotes only drop fence lines and track no block, so they need no closing rule (not a gap, noted so nobody adds one).
 - A ```` block holding a ``` line in a Bot Chat can route a mention after that line, as Hermes does; changing it starts in Hermes.
 
-**Checked:** 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-30, #1524 (a Desktop card or preview directive in a code block stays as written: read-back, previews, quotes and the streaming speech filter); 2026-10-28, #1449 (Local Live's split leaves file tags unsaid and shows their files); 2026-10-28, #1430 (read-back's action filter runs only on lines outside a code block); 2026-10-24, at #1220.
+**Checked:** 2026-11-06, #1884 (a Markdown file card opens the Markdown reader, as Artifacts does since #1879); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-30, #1524 (a Desktop card or preview directive in a code block stays as written: read-back, previews, quotes and the streaming speech filter); 2026-10-28, #1449 (Local Live's split leaves file tags unsaid and shows their files); 2026-10-28, #1430 (read-back's action filter runs only on lines outside a code block); 2026-10-24, at #1220.
 
 ## Files prepared for preview and Save to Files
 

@@ -37,4 +37,24 @@ final class MarkdownDocumentSheetTests: XCTestCase {
         XCTAssertEqual(MediaPreviewPresenter.sanitizedFilename("/Users/chencha/Hermes/PLAN.md"), "PLAN.md")
         XCTAssertEqual(MediaPreviewPresenter.sanitizedFilename("PLAN.md?download=1"), "PLAN.md")
     }
+
+    func testLoadSkipsAFileKnownToBeOverTheCeiling() async {
+        // The host would answer, so a nil says the reader never asked: the
+        // fallback downloads the file once instead.
+        let dataURL = "data:text/markdown;base64," + Data("# Big".utf8).base64EncodedString()
+        let text = await MarkdownArtifact.load(
+            path: "/tmp/BIG.md", knownSize: Int64(DataURLLimits.maxDecodedBytes) + 1,
+            dataURL: { _ in dataURL }
+        )
+        XCTAssertNil(text)
+    }
+
+    func testLoadReadsTheTextAndFallsBackWhenTheHostHasNone() async {
+        let source = "# Notes\n\n- [x] done\n"
+        let dataURL = "data:text/markdown;base64," + Data(source.utf8).base64EncodedString()
+        let loaded = await MarkdownArtifact.load(path: "C:\\Hermes\\notes.md", dataURL: { _ in dataURL })
+        XCTAssertEqual(loaded, source)
+        let missing = await MarkdownArtifact.load(path: "/Users/x/gone.md", dataURL: { _ in nil })
+        XCTAssertNil(missing)
+    }
 }
