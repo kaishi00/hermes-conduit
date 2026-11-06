@@ -68,7 +68,7 @@ extension AppState {
             },
             write: { [weak self] value in
                 guard let self else { return }
-                self.setGroupRoomOrder(BotOrder(names: value as? [String] ?? []))
+                self.setGroupRoomOrder(BotOrder(names: value as? [String] ?? [], kind: .rooms))
             }
         )
     }

@@ -1000,7 +1000,8 @@ extension BotModeTests {
 
     /// The group chats keep the person's order by room id, saved apart from
     /// the bots' and synced as `groups.order`; a room it doesn't name yet
-    /// comes last.
+    /// (one just made) comes first, where Hermes lists it, and ids match
+    /// exactly.
     @MainActor
     func testTheGroupChatsOrderIsSavedAndSyncedApartFromTheBots() throws {
         let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
@@ -1016,7 +1017,13 @@ extension BotModeTests {
         XCTAssertTrue(appState.botOrder.isEmpty, "the bots' order is its own")
         appState.moveGroupRooms(fromOffsets: IndexSet(integer: 2), toOffset: 0, shown: ["b", "a", "c"])
         XCTAssertEqual(appState.groupRoomOrder.names, ["c", "b", "a"])
-        XCTAssertEqual(appState.groupRoomOrder.arrange(["a", "new", "b", "c"], name: { $0 }), ["c", "b", "a", "new"])
+        XCTAssertEqual(appState.groupRoomOrder.arrange(["a", "new", "b", "c"], name: { $0 }), ["new", "c", "b", "a"])
+        // A drag after a room was made keeps it where it shows.
+        appState.moveGroupRoom("a", before: "c", shown: ["new", "c", "b", "a"])
+        XCTAssertEqual(appState.groupRoomOrder.names, ["new", "a", "c", "b"])
+        // Room ids are case-sensitive: "A" is another room.
+        XCTAssertEqual(BotOrder(names: ["a", "A"], kind: .rooms).names, ["a", "A"])
+        XCTAssertEqual(BotOrder(names: ["a", "A"]).names, ["a"], "bots match in any case")
         slot.write(nil)
         XCTAssertTrue(appState.groupRoomOrder.isEmpty)
         XCTAssertNil(defaults.stringArray(forKey: BotOrder.roomStorageKey))

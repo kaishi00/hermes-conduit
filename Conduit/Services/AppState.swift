@@ -1062,7 +1062,7 @@ final class AppState: ObservableObject {
     @Published private(set) var botOrder = BotOrder()
     /// The group chats' order on Bots Home and every list of rooms, by room
     /// id (AppState+BotOrder).
-    @Published private(set) var groupRoomOrder = BotOrder()
+    @Published private(set) var groupRoomOrder = BotOrder.rooms
     /// Group Settings asked for from a room's tile on Bots Home: the room
     /// opens, then its screen shows the settings once Hermes has read them.
     @Published var groupSettingsOnOpen: GroupSettingsRequest?
@@ -7702,7 +7702,7 @@ final class AppState: ObservableObject {
         sessionStars = SessionStars(defaults: defaults)
         pinnedChatOrder = PinnedChatOrder(defaults: defaults)
         botOrder = BotOrder(defaults: defaults)
-        groupRoomOrder = BotOrder(defaults: defaults, key: BotOrder.roomStorageKey)
+        groupRoomOrder = BotOrder(defaults: defaults, key: BotOrder.roomStorageKey, kind: .rooms)
         allProfilesChatsSettings = AllProfilesChatsSettings(defaults: defaults)
         if let data = defaults.data(forKey: pinnedRepliesByProfileKey),
            let stored = try? JSONDecoder().decode([String: [PinnedReply]].self, from: data) {
@@ -10592,6 +10592,7 @@ final class AppState: ObservableObject {
     /// Saves the group chats' order, set on Bots Home or from Sync across
     /// devices.
     func setGroupRoomOrder(_ order: BotOrder) {
+        let order = order.kind == .rooms ? order : BotOrder(names: order.names, kind: .rooms)
         guard order != groupRoomOrder else { return }
         groupRoomOrder = order
         order.save(to: defaults, key: BotOrder.roomStorageKey)
@@ -12388,7 +12389,7 @@ final class AppState: ObservableObject {
         defaults.removeObject(forKey: PinnedChatOrder.mixedStorageKey)
         botOrder = BotOrder()
         defaults.removeObject(forKey: BotOrder.storageKey)
-        groupRoomOrder = BotOrder()
+        groupRoomOrder = BotOrder.rooms
         defaults.removeObject(forKey: BotOrder.roomStorageKey)
         allProfilesCatalogTask?.cancel()
         allProfilesCatalogTask = nil
@@ -13264,8 +13265,9 @@ final class AppState: ObservableObject {
 
     /// The Bots list's hosted rooms: `groups.list`'s, else the kept ones
     /// until it answers, none once Hermes says it has no hosted rooms; in
-    /// the person's order (`groupRoomOrder`), a room it doesn't name yet
-    /// last, as Hermes lists them.
+    /// the person's order (`groupRoomOrder`), the rooms it doesn't name yet
+    /// first, as Hermes lists them, so a room just made lands at the top
+    /// where Hermes puts it.
     var shownGroupRooms: [GroupRoom] {
         let rooms = groupRoomsListed || groupChatPhase == .gatewayUnsupported
             ? groupRooms
@@ -13805,7 +13807,9 @@ final class AppState: ObservableObject {
         guard groupCapabilities?.supports("groups.disband") == true else { return nil }
         guard let client, isConnected else {
             // Asked for and confirmed: say why nothing happened.
-            return AppLocalization.string("Connect to Hermes to open group chats.")
+            let message = AppLocalization.string("Connect to Hermes to open group chats.")
+            errorMessage = message
+            return message
         }
         let epoch = groupRoomEpoch
         do {
@@ -15665,7 +15669,7 @@ final class AppState: ObservableObject {
         defaults.removeObject(forKey: PinnedChatOrder.mixedStorageKey)
         botOrder = BotOrder()
         defaults.removeObject(forKey: BotOrder.storageKey)
-        groupRoomOrder = BotOrder()
+        groupRoomOrder = BotOrder.rooms
         defaults.removeObject(forKey: BotOrder.roomStorageKey)
         allProfilesCatalogTask?.cancel()
         allProfilesCatalogTask = nil

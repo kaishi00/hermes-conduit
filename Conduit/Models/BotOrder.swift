@@ -13,7 +13,9 @@
 //
 //  The same order keeps Bots Home's group chats, by room id, under a key
 //  of its own (`roomStorageKey`, synced as `groups.order`): Hermes lists
-//  rooms by activity and keeps no place for them either.
+//  rooms by activity and keeps no place for them either. Room ids match
+//  exactly (the gateway's are case-sensitive), and a room the order
+//  doesn't name yet goes first, where Hermes lists a room just made.
 //
 
 import Foundation
@@ -24,16 +26,27 @@ struct BotOrder: Equatable {
     /// The group chats' order, by room id.
     static let roomStorageKey = "conduit.groupRoomOrder.v1"
 
+    /// What the order holds: bots by profile name, matched in any case,
+    /// with ones it doesn't name last; or rooms by id, matched exactly,
+    /// with ones it doesn't name first.
+    enum Kind: Equatable { case bots, rooms }
+
     private(set) var names: [String]
+    let kind: Kind
 
-    init(names: [String] = []) {
+    init(names: [String] = [], kind: Kind = .bots) {
+        self.kind = kind
         var seen = Set<String>()
-        self.names = names.filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
+        let key: (String) -> String = kind == .rooms ? { $0 } : { $0.lowercased() }
+        self.names = names.filter { !$0.isEmpty && seen.insert(key($0)).inserted }
     }
 
-    init(defaults: UserDefaults, key: String = BotOrder.storageKey) {
-        self.init(names: defaults.stringArray(forKey: key) ?? [])
+    init(defaults: UserDefaults, key: String = BotOrder.storageKey, kind: Kind = .bots) {
+        self.init(names: defaults.stringArray(forKey: key) ?? [], kind: kind)
     }
+
+    /// An empty order of the group chats.
+    static var rooms: BotOrder { BotOrder(kind: .rooms) }
 
     func save(to defaults: UserDefaults, key: String = BotOrder.storageKey) {
         if names.isEmpty {
@@ -45,16 +58,28 @@ struct BotOrder: Equatable {
 
     var isEmpty: Bool { names.isEmpty }
 
-    /// `bots` in this order: the ones it names first, as it names them,
-    /// then the rest in the order they came.
+    private func key(_ value: String) -> String { kind == .rooms ? value : value.lowercased() }
+    private func same(_ a: String, _ b: String) -> Bool { key(a) == key(b) }
+
+    /// `bots` in this order: the ones it names as it names them, and the
+    /// rest in the order they came, after them (bots) or before them
+    /// (rooms).
     func arrange<Bot>(_ bots: [Bot], name: (Bot) -> String) -> [Bot] {
         guard !names.isEmpty else { return bots }
         var place: [String: Int] = [:]
-        for (index, value) in names.enumerated() { place[value.lowercased()] = index }
+        for (index, value) in names.enumerated() { place[key(value)] = index }
         let ranked = bots.enumerated().map { offset, bot in
-            (bot: bot, rank: place[name(bot).lowercased()] ?? names.count + offset)
+            let unnamed = kind == .rooms ? offset - bots.count : names.count + offset
+            return (bot: bot, rank: place[key(name(bot))] ?? unnamed)
         }
         return ranked.sorted { $0.rank < $1.rank }.map(\.bot)
+    }
+
+    /// The order with every shown name in it: the ones it doesn't name yet
+    /// where `arrange` shows them.
+    private func filled(with shown: [String]) -> [String] {
+        let missing = shown.filter { value in !names.contains(where: { same($0, value) }) }
+        return kind == .rooms ? missing + names : names + missing
     }
 
     /// The order after `moved` is dropped before `target` (or at the end
@@ -62,22 +87,19 @@ struct BotOrder: Equatable {
     /// order. Names the order already holds but that aren't shown (hidden
     /// or gone) keep their places relative to the rest.
     func moving(_ moved: String, before target: String?, shown: [String]) -> BotOrder {
-        guard moved.caseInsensitiveCompare(target ?? "") != .orderedSame else { return self }
+        if let target, same(moved, target) { return self }
         // Every shown bot gets a place, so the order is total from now on.
-        var full = names
-        for value in shown where !full.contains(where: { $0.caseInsensitiveCompare(value) == .orderedSame }) {
-            full.append(value)
-        }
-        full.removeAll { $0.caseInsensitiveCompare(moved) == .orderedSame }
-        if let target, let index = full.firstIndex(where: { $0.caseInsensitiveCompare(target) == .orderedSame }) {
+        var full = filled(with: shown)
+        full.removeAll { same($0, moved) }
+        if let target, let index = full.firstIndex(where: { same($0, target) }) {
             full.insert(moved, at: index)
-        } else if let last = shown.last(where: { $0.caseInsensitiveCompare(moved) != .orderedSame }),
-                  let index = full.firstIndex(where: { $0.caseInsensitiveCompare(last) == .orderedSame }) {
+        } else if let last = shown.last(where: { !same($0, moved) }),
+                  let index = full.firstIndex(where: { same($0, last) }) {
             full.insert(moved, at: index + 1)
         } else {
             full.append(moved)
         }
-        return BotOrder(names: full)
+        return BotOrder(names: full, kind: kind)
     }
 
     /// The order after a List's `onMove` among `shown`.
@@ -85,16 +107,13 @@ struct BotOrder: Equatable {
         var reordered = shown
         reordered.move(fromOffsets: source, toOffset: destination)
         // Unshown names keep their places: shown ones fill the shown slots.
-        var full = names
-        for value in shown where !full.contains(where: { $0.caseInsensitiveCompare(value) == .orderedSame }) {
-            full.append(value)
-        }
-        let shownKeys = Set(shown.map { $0.lowercased() })
+        let full = filled(with: shown)
+        let shownKeys = Set(shown.map(key))
         var queue = reordered[...]
         let merged = full.map { value -> String in
-            guard shownKeys.contains(value.lowercased()), let next = queue.popFirst() else { return value }
+            guard shownKeys.contains(key(value)), let next = queue.popFirst() else { return value }
             return next
         }
-        return BotOrder(names: merged)
+        return BotOrder(names: merged, kind: kind)
     }
 }
