@@ -444,7 +444,7 @@ private struct BotScreenContent: View {
                 keyButton(.backspace, AppLocalization.string("Delete"))
                 keyButton(.escape, AppLocalization.string("Esc"))
             }
-            Text(AppLocalization.string("Tap the screen to click. What you type lands on the screen as you typed it, whatever your keyboard's layout."))
+            Text(AppLocalization.string("Tap the screen to click. What you type in this bar lands as you typed it, whatever your keyboard's layout."))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
