@@ -218528,6 +218528,88 @@
         }
       }
     },
+    "Not connected. The gateway's status, connectors and logs show once Conduit reconnects.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nicht verbunden. Status, Connectors und Protokolle des Gateways erscheinen, sobald Conduit wieder verbunden ist."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin conexión. El estado, los conectores y los registros del gateway aparecerán cuando Conduit se vuelva a conectar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non connecté. L’état, les connecteurs et les journaux de la passerelle s’afficheront une fois Conduit reconnecté."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tidak terhubung. Status, konektor, dan log gateway akan muncul setelah Conduit terhubung kembali."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non connesso. Stato, connettori e log del gateway appariranno quando Conduit si riconnetterà."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接続されていません。Conduit が再接続すると、ゲートウェイの状態、コネクタ、ログが表示されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "연결되어 있지 않습니다. Conduit이 다시 연결되면 게이트웨이의 상태, 커넥터, 로그가 표시됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brak połączenia. Stan bramy, jej łączniki i dzienniki pojawią się, gdy Conduit ponownie się połączy."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sem conexão. O status, os conectores e os registros do gateway aparecem quando o Conduit se reconectar."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет подключения. Состояние шлюза, коннекторы и журналы появятся, когда Conduit снова подключится."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlı değil. Ağ geçidinin durumu, bağlayıcıları ve günlükleri Conduit yeniden bağlandığında görünür."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未连接。Conduit 重新连接后，会显示网关的状态、连接器和日志。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未連線。Conduit 重新連線後，會顯示閘道的狀態、連接器與記錄。"
+          }
+        }
+      }
+    },
     "Not delivered — retry": {
       "localizations": {
         "de": {
