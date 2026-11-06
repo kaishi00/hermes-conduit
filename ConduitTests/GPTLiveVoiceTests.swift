@@ -1636,6 +1636,9 @@ extension VoiceConversationControllerTests {
             ("I'll let Hermes know nothing.", "en"),
             ("I'll take nothing to Hermes.", "en"),
             ("I'll put nothing to Hermes.", "en"),
+            ("There's nothing for me to send to Hermes.", "en"),
+            // A "nothing" elsewhere in the sending clause holds: the safe side.
+            ("I'll put nothing sensitive in the report and send it to Hermes.", "en"),
             ("I'll send nothing to Hermes but look it up myself.", "en"),
             // An exception after a comma is held: the safe side.
             ("I'll send nothing to Hermes, except the summary.", "en"),
