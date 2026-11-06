@@ -1005,6 +1005,7 @@ final class GroupChatSessionSafetyTests: XCTestCase {
     func testRoomSettingsSaveSendsRoutingOnlyWhereTheHostRoutes() async {
         final class Box {
             var routes = true
+            var newer = false
             var saves: [(String, String, GroupRoomContext, Bool)] = []
         }
         let box = Box()
@@ -1014,8 +1015,10 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             list: { _ in ([room], nil) },
             state: { _, _ in
                 var status = GroupDriverStatus(running: true, working: false, blocked: false, counts: [:], pendingActions: [])
-                status.routingModes = box.routes ? ["everyone", "lead", "auto"] : nil
-                status.roomContext = GroupRoomContext(purpose: "Plans")
+                status.routingModes = box.newer ? ["vote"] : box.routes ? ["everyone", "lead", "auto"] : nil
+                var context = GroupRoomContext(purpose: "Plans")
+                if box.newer { context.newerRouting = "vote" }
+                status.roomContext = context
                 return (room, status)
             },
             log: { _, _, sinceSeq, _ in
@@ -1063,6 +1066,15 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         XCTAssertTrue(appState.activeRoomRoutingModes.isEmpty)
         _ = await appState.saveActiveRoomSettings(GroupRoomContext(purpose: "New"), eventID: "context-2", roomID: "room-1")
         XCTAssertEqual(box.saves.last?.3, false)
+        // A host listing only a mode newer than this app, with the room on
+        // it: picking Everyone in its place sends it.
+        box.newer = true
+        appState.closeGroupRoom()
+        await appState.openGroupRoom(room)
+        XCTAssertTrue(appState.activeRoomRoutingModes.isEmpty)
+        XCTAssertEqual(appState.activeRoomContext?.newerRouting, "vote")
+        _ = await appState.saveActiveRoomSettings(GroupRoomContext(purpose: "Plans"), eventID: "context-2b", roomID: "room-1")
+        XCTAssertEqual(box.saves.last?.3, true)
         // Drafted for another room: refused, nothing sent.
         let count = box.saves.count
         let refused = await appState.saveActiveRoomSettings(GroupRoomContext(purpose: "X"), eventID: "context-3", roomID: "room-2")

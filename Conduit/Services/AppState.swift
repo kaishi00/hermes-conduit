@@ -13711,7 +13711,11 @@ final class AppState: ObservableObject {
         // Settings drafted for one room never land in another opened since.
         guard surface.room.roomID == roomID else { return AppLocalization.string("That chat is no longer available.") }
         let epoch = groupRoomEpoch
-        let includesRouting = !activeRoomRoutingModes.isEmpty && (original ?? activeRoomContext).map {
+        // Who answers showed where the host lists a mode this app knows, or
+        // where the room runs on one newer than it (then with Everyone).
+        let opened = original ?? activeRoomContext
+        let offersRouting = !activeRoomRoutingModes.isEmpty || opened?.newerRouting.isEmpty == false
+        let includesRouting = offersRouting && opened.map {
             $0.routing != context.routing || $0.leadMemberID != context.leadMemberID
                 || $0.newerRouting != context.newerRouting
         } ?? true
