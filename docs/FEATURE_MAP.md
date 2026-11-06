@@ -4472,6 +4472,41 @@ Continue and Sign in, Settings' Save and Apply), white only in light mode
 
 **Checked:** 2026-10-25, the Qwen setup step, at #1182, carried in #1235; 2026-10-24, at #1208, carried in #1229.
 
+## Maps lookups
+
+Apple Maps lookups answered on the iPhone with MapKit: search, lookup,
+reverse geocoding, directions, travel times and navigate, and what an answer
+may say about the user's position and their saved places.
+
+**Siblings:** the host's `conduit_maps` (answered by the Location Push
+extension) · the live voice modes' maps tool (Gemini, Grok, GPT-Live, Local
+Live agent) · Pulse's Maps look-ups (through the host tool) · navigate on the
+phone, behind a notification and on the CarPlay screen · a locate answered
+from the push extension (the same consent read after its fix) · the
+notifier's host-only maps path · the tool text each model reads (the voice
+tool's description, `conduit_maps`' description and the using-location
+skill) · not needed: the Watch and Classic (no maps tool of their own; they
+reach `conduit_maps` through Hermes)
+
+**Code**
+- Engine: `Shared/Location/MapsEngine.swift` (MapsRun, MapsDistance, MapsKit, MapsDeadline)
+- Voice: `Conduit/Location/MapsVoiceTool.swift` (run, allowsLocation)
+- Host requests: `ConduitLocationPush/LocationPushService.swift` (answerMaps, run, stillAnswers)
+- Navigate: `Conduit/Location/MapsNavigator.swift` (openInCar)
+- Notifier: `notifier/maps_tool.py`, `notifier/maps_host.py`, `notifier/skills/using-location/SKILL.md`
+- Tests: `ConduitTests/LocationSharingTests.swift` (the Maps section), `notifier/tests/test_maps.py`
+
+**Rulings**
+- "Me" is never coordinates: "Current location" at Precise, the area's name at Area, refused at Places only or inside a private place. Distances from "me" are rounded to 10 m at Precise and 100 m at Area, and a route from or to "me" at Area has no steps.
+- A saved place goes to the host and the voice model by name only. A distance to or from one is rounded to 100 m at every detail, and a route that starts or ends at one has no steps, so an answer can't pin it to the metre or the street. A search near one still shows roughly where it is, which is what the search is for (2026-11-06, #1901, issue 1880).
+- Consent, pause and the detail level are read again after each wait, not only when a lookup starts (a detail lowered meanwhile counts as turned off). The voice tool checks after the fix and after the lookup and says the location isn't shared. Navigate uses the area only to search near the user, so a detail lowered to Places drops that hint and goes on; consent or a pause turned off stops it after each wait, Apple Maps' and the car screen's included. The push extension reads the config again before it seals an answer and answers `paused`, and a locate drops its fix (2026-11-06, #1901, issue 1881).
+- A completion-based call under a deadline resumes exactly once, by its answer or by the deadline, and nothing is left waiting when it never answers: MapsKit.call for MapKit, MapsDeadline.first for CarPlay's open (2026-11-06, #1901, issue 1882).
+
+**Open gaps**
+- A voice lookup still running when its call ends has no way to be cancelled. Its answer goes to a call that's gone (issue 1881).
+
+**Checked:** 2026-11-06, #1901 with notifier #587 (the entry added: saved places' distances and steps, consent read after each wait, CarPlay's open under a deadline).
+
 ## Phone data sync with the host
 - Background time: `Conduit/Services/BackgroundTaskHold.swift` (LocationSharingController's fix and send work)
 
