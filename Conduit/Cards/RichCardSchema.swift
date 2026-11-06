@@ -207,16 +207,39 @@ struct RichCardSchema {
         }
     }
 
-    /// Control characters become spaces; trimmed.
-    static func cleanText(_ text: String) -> String {
-        cleanLine(text).trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Invisible characters that can make text read differently from what it
+    /// holds (Trojan Source, issue 1852): the bidi embeddings, overrides and
+    /// isolates, and the zero-width space, word joiner and BOM (the plugin's
+    /// _HIDDEN). ZWJ and ZWNJ stay (emoji, Persian and Indic spelling need
+    /// them), and so do the plain marks LRM, RLM and ALM.
+    static func isHidden(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x202A...0x202E, 0x2066...0x2069, 0x200B, 0x2060, 0xFEFF: return true
+        default: return false
+        }
     }
 
-    /// Control characters become spaces.
+    /// Control characters become spaces and hidden ones are dropped; trimmed.
+    static func cleanText(_ text: String) -> String {
+        cleaned(text, hidden: nil).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Control characters become spaces; a hidden one becomes U+FFFD, so a
+    /// line of code shows where one was and a copied patch doesn't hide it.
     static func cleanLine(_ text: String) -> String {
+        cleaned(text, hidden: "\u{FFFD}")
+    }
+
+    private static func cleaned(_ text: String, hidden: Unicode.Scalar?) -> String {
         var scalars = String.UnicodeScalarView()
         for scalar in text.unicodeScalars {
-            scalars.append(scalar.properties.generalCategory == .control ? " " : scalar)
+            if scalar.properties.generalCategory == .control {
+                scalars.append(" ")
+            } else if isHidden(scalar) {
+                if let hidden { scalars.append(hidden) }
+            } else {
+                scalars.append(scalar)
+            }
         }
         return String(scalars)
     }

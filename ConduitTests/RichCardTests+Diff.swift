@@ -153,6 +153,32 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertTrue(kinds.contains("callout"))
     }
 
+    /// Issue 1852 (Trojan Source): an override in a line would draw it in
+    /// another order than it runs, and Copy Changes would paste it.
+    func testHiddenBidiCharactersShowAsMarksAndNeverReachCopyChanges() throws {
+        let card: [String: Any] = [
+            "type": "diff", "title": "\u{FEFF}Fix the \u{202E}admin\u{202C} check",
+            "diff": [
+                "files": [["path": "auth\u{200B}.py", "status": "modified", "added": 1, "removed": 0, "hunks": [
+                    ["old_start": 1, "new_start": 1, "context": "def is\u{2066}_admin",
+                     "lines": ["+ok = role != 'user\u{202E} \u{2066}'", " family = \"👨\u{200D}👩\u{200D}👧\""]]
+                    as [String: Any],
+                ]] as [String: Any]],
+                "added": 1, "removed": 0,
+            ] as [String: Any],
+        ]
+        let normalized = try XCTUnwrap(RichCardSchema.bundled?.normalizeCards([card]).first)
+        XCTAssertEqual(normalized["title"] as? String, "Fix the admin check", "text drops them")
+        let file = try XCTUnwrap(RichCard(normalized: normalized, id: 0)?.diff?.files.first)
+        XCTAssertEqual(file.path, "auth.py")
+        XCTAssertEqual(file.hunks[0].lines.map(\.text), ["ok = role != 'user\u{FFFD} \u{FFFD}'",
+                                                         "family = \"👨\u{200D}👩\u{200D}👧\""],
+                       "a line shows where each was; an emoji keeps its joiners")
+        let hidden = file.patch.unicodeScalars.filter(RichCardSchema.isHidden)
+        XCTAssertTrue(hidden.isEmpty, "Copy Changes pastes none of them")
+        XCTAssertTrue(file.patch.contains("def is_admin"), "the hunk header drops them too")
+    }
+
     func testAKeptDiffIsCheckedAsACardsIs() throws {
         let schema = try XCTUnwrap(RichCardSchema.bundled)
         let diff = try XCTUnwrap(schema.normalizeDiff([
