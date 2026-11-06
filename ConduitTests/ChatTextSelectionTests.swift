@@ -433,6 +433,10 @@ final class ChatTextSelectionTests: XCTestCase {
     /// which kept the chat's scroll and the swipe back from resetting, so a
     /// flick from the left edge over a code box or a table left the chat
     /// unable to scroll. The passive recognizers fail once no finger is left.
+    /// Outside a touch UIKit sends, a recognizer set to `.failed` is reset to
+    /// `.possible` at once, and a bare `UITouch`'s phase can't be set, so the
+    /// transition itself and the finished-phase clause were checked on a
+    /// phone (failing the stuck observer in the debugger unfroze the chat).
     @MainActor
     func testPassiveRecognizersSeeTheirLastFingerLift() {
         let lifted = UITouch()
@@ -441,28 +445,6 @@ final class ChatTextSelectionTests: XCTestCase {
         XCTAssertFalse(UIGestureRecognizer.fingerStillDown(besides: [lifted], among: []))
         XCTAssertTrue(UIGestureRecognizer.fingerStillDown(besides: [lifted], among: [lifted, other]))
         XCTAssertFalse(UIGestureRecognizer.fingerStillDown(besides: [lifted, other], among: [lifted, other]))
-    }
-
-    @MainActor
-    func testSelectionObserverFailsOnlyOnceTheLastFingerLifts() throws {
-        let selectionCoordinator = MarkdownSelectionCoordinator()
-        let descriptor = MarkdownSelectionSegmentDescriptor(id: "code", order: 0, separatorBefore: "")
-        selectionCoordinator.replaceSegments([descriptor], revision: "observer-last-lift-v1")
-        let view = SelectableTextView(
-            text: "let x = 1",
-            selectionCoordinator: selectionCoordinator,
-            selectionSegment: descriptor
-        )
-        let hostView = view.makeUIViewForTests(coordinator: view.makeCoordinator())
-        let observer = try XCTUnwrap(hostView.selectionObserverForTesting)
-        let lifted = UITouch()
-        let other = UITouch()
-
-        observer.failIfNoFingerRemains(besides: [lifted], among: [lifted, other])
-        XCTAssertEqual(observer.state, .possible, "a finger is still down: the observer keeps watching")
-
-        observer.failIfNoFingerRemains(besides: [lifted], among: [lifted])
-        XCTAssertEqual(observer.state, .failed, "the last finger lifted: the observer lets UIKit reset the touch's gestures")
     }
 
     @MainActor
