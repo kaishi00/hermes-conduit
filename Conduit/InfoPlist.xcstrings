@@ -1335,6 +1335,95 @@
           }
         }
       }
+    },
+    "NSContactsUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit liest nur die Personen, die du für Hermes auswählst, damit deine Änderungen an ihnen in Kontakte deinen eigenen Hermes-Server erreichen. Nichts davon geht an den Entwickler von Conduit."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit reads only the people you pick for Hermes, so edits you make to them in Contacts reach your own Hermes server. Nothing goes to Conduit's developer."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit lee solo a las personas que eliges para Hermes, para que los cambios que hagas en ellas en Contactos lleguen a tu propio servidor Hermes. Nada se envía al desarrollador de Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit lit uniquement les personnes que vous choisissez pour Hermes, afin que les modifications que vous leur apportez dans Contacts arrivent à votre propre serveur Hermes. Rien n'est envoyé au développeur de Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit hanya membaca orang-orang yang Anda pilih untuk Hermes, agar perubahan yang Anda buat pada mereka di Kontak sampai ke server Hermes Anda sendiri. Tidak ada yang dikirim ke developer Conduit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit legge solo le persone che scegli per Hermes, così le modifiche che fai loro in Contatti arrivano al tuo server Hermes. Nulla viene inviato allo sviluppatore di Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ConduitはHermes用に選んだ人だけを読み取り、連絡先アプリでの編集をあなた自身のHermesサーバに届けます。Conduitの開発者には何も送信されません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit은 Hermes용으로 선택한 사람만 읽어서, 연락처 앱에서 수정한 내용을 사용자의 Hermes 서버에 전달해요. Conduit 개발자에게는 아무것도 전송되지 않아요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit odczytuje tylko osoby wybrane dla Hermesa, aby zmiany, które wprowadzisz w nich w Kontaktach, trafiały na Twój własny serwer Hermes. Nic nie trafia do dewelopera Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit lê apenas as pessoas que você escolhe para o Hermes, para que as edições que você fizer nelas no Contatos cheguem ao seu próprio servidor Hermes. Nada vai para o desenvolvedor do Conduit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit читает только людей, которых вы выбрали для Hermes, чтобы ваши изменения в Контактах доходили до вашего собственного сервера Hermes. Разработчику Conduit ничего не отправляется."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit yalnızca Hermes için seçtiğiniz kişileri okur, böylece Kişiler'de onlarda yaptığınız düzenlemeler kendi Hermes sunucunuza ulaşır. Conduit'in geliştiricisine hiçbir şey gitmez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 只读取你为 Hermes 选择的人，以便你在“通讯录”中对他们所做的修改传到你自己的 Hermes 服务器。不会向 Conduit 的开发者发送任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 只讀取你為 Hermes 選擇的人，以便你在「聯絡人」中對他們所做的修改傳到你自己的 Hermes 伺服器。不會向 Conduit 的開發者傳送任何內容。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

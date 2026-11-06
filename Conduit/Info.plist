@@ -105,6 +105,8 @@
 	<string>When you share your calendar, Conduit sends the events you choose to your own Hermes server so your agent can answer questions about your schedule, and adds or changes events when you approve them. Nothing goes to Conduit's developer.</string>
 	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
 	<string>Conduit adds events your Hermes agent suggests, when you approve them. It doesn't read your calendar with this access.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Conduit reads only the people you pick for Hermes, so edits you make to them in Contacts reach your own Hermes server. Nothing goes to Conduit's developer.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Conduit uses Face ID to unlock saved Hermes credentials.</string>
 	<key>NSHealthShareUsageDescription</key>

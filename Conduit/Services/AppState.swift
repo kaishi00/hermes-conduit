@@ -1102,7 +1102,7 @@ final class AppState: ObservableObject {
     /// snapshot answers true when a turn's chat was just seen absent and
     /// another read is needed to settle it.
     var liveTurnActivitiesRegistrySnapshot: @MainActor (Set<String>, String, String?) -> Bool = { ids, profile, dashboardID in
-        LiveTurnActivities.shared.reconcile(liveSessionIDs: ids, profile: profile, dashboardID: dashboardID)
+        LiveTurnActivities.shared?.reconcile(liveSessionIDs: ids, profile: profile, dashboardID: dashboardID) ?? false
     }
     /// The one `session.active_list` read that settles a turn whose chat
     /// was just seen absent, whether or not the chat list (and its poll) is
@@ -1112,7 +1112,7 @@ final class AppState: ObservableObject {
     /// Ends a dashboard's turn activities (Disconnect, Sign Out, a required
     /// sign-in), or with `true` only those the relay can't end by push.
     var liveTurnActivitiesEndDashboard: @MainActor (String?, Bool) -> Void = { dashboardID, keepingThoseOnRelay in
-        LiveTurnActivities.shared.endTurns(ofDashboard: dashboardID, keepingThoseOnRelay: keepingThoseOnRelay)
+        LiveTurnActivities.shared?.endTurns(ofDashboard: dashboardID, keepingThoseOnRelay: keepingThoseOnRelay)
     }
 
     private var liveSessionStatusProfile: String?
@@ -15633,6 +15633,11 @@ final class AppState: ObservableObject {
     }
 
     func disconnect() {
+        // A switch to it still signing in loses the flow: its answer must
+        // not connect it again (Disconnect, Sign Out) or add it back and
+        // select it (removal). A switch runs to its end whatever cancels
+        // its caller, so the generation is what stops it.
+        dashboardSwitchGeneration &+= 1
         // Its waits belong to the signed-out user (issue 1705).
         needsYou.reset(dashboardID: nil)
         // The next sign-in to it asks for Face ID again.
@@ -16059,7 +16064,22 @@ final class AppState: ObservableObject {
     /// server streaming behind the new target's sign-in surface. The target
     /// becomes the selected dashboard BEFORE connecting, so a failed switch
     /// leaves it selected; no other dashboard is auto-connected.
+    ///
+    /// A switch runs to its end even when the task that asked for it is
+    /// cancelled: by the time it signs in to the target it has already
+    /// retired the outgoing connection, so stopping there leaves neither
+    /// dashboard connected. A newer switch supersedes it by generation,
+    /// never by cancellation. A notification's tap is the case in point:
+    /// its route restarts when `isConnected` flips, which the retirement
+    /// does, and that cancelled the target's sign-in halfway, leaving
+    /// Conduit on the login screen "connecting" to it (issue 1888).
     func switchDashboard(to id: UUID, widgetLease: WidgetLaunchLease? = nil) async {
+        await Task { @MainActor in
+            await self.runDashboardSwitch(to: id, widgetLease: widgetLease)
+        }.value
+    }
+
+    private func runDashboardSwitch(to id: UUID, widgetLease: WidgetLaunchLease?) async {
         if widgetLease == nil { widgetLaunchCoordinator.supersede() }
         guard widgetLease?.isCurrent != false else { return }
         widgetAwaitingInteractiveAuthenticationDashboardID = nil
@@ -26271,6 +26291,10 @@ final class AppState: ObservableObject {
                 return callOutcome
             }
             await switchDashboard(to: dashboardID)
+            // The switch flipped `isConnected`, which restarts this route's
+            // task; the run it restarted opens the tap once the dashboard is
+            // connected, so this one stops (issue 1888).
+            if Task.isCancelled { return .retry }
             guard isConnected, activeDashboardID == dashboardID, client != nil else {
                 // The switch failed: the target stays selected with its
                 // sign-in/repair surface, and the notification routes
@@ -29158,7 +29182,7 @@ final class AppState: ObservableObject {
         // Events that arrive while prompt.submit is in flight are held for
         // the turn's Live Activity (#605), which starts once it's accepted.
         if !joinsRunningTurn {
-            LiveTurnActivities.shared.turnSubmitting(sessionIDs: submissionSessionIDs)
+            LiveTurnActivities.shared?.turnSubmitting(sessionIDs: submissionSessionIDs)
         }
         do {
             let outcome: PromptSubmissionOutcome
@@ -29215,7 +29239,7 @@ final class AppState: ObservableObject {
                         preSubmitOrderingBaseline: preSubmitOrderingBaseline
                     )
                     // The new turn's progress on the Lock Screen (#605).
-                    LiveTurnActivities.shared.turnStarted(
+                    LiveTurnActivities.shared?.turnStarted(
                         sessionIDs: submissionSessionIDs,
                         primaryID: sessionId,
                         linkID: liveActivityLinkSessionID(for: sessionId),
@@ -37099,7 +37123,7 @@ final class AppState: ObservableObject {
         guard eventBelongsToActiveSession(streamSessionId) else { return }
         defer { schedulePresentationCacheFlush(for: streamSessionId) }
         noteOpenChatStreamEvent()
-        LiveTurnActivities.shared.observe(event, sessionID: streamSessionId)
+        LiveTurnActivities.shared?.observe(event, sessionID: streamSessionId)
         if let signal = ResponseHapticPolicy.signal(for: event) {
             applyResponseHapticSignal(signal)
         }

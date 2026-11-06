@@ -425,10 +425,12 @@ jobs:
           BUILD_CACHE: ${{ steps.cache.outputs.cache-matched-key || format('none saved under {0}', steps.cache-key.outputs.prefix) }}
         run: bash scripts/ci-hosted-build.sh
 
-      - name: No back-deployed Date comparisons in the build
+      - name: No back-deployed Date comparisons or strong framework loads in the build
         # The smoke build's app, its .debug.dylib and its extensions: none may
         # weak-import Foundation's Date <= or >=, which early iOS 27.2 betas
-        # lack (TestFlight 251, 2026-11-05; Shared/DateOrder/DateOrder.swift).
+        # lack (TestFlight 251, 2026-11-05; Shared/DateOrder/DateOrder.swift),
+        # or load ActivityKit or ImagePlayground strongly, which macOS 14 and
+        # iOS 17 lack (issue 1877).
         run: python3 scripts/check-weak-imports.py binaries --products "${DERIVED_DATA_PATH:-$PWD/ci-derived-data}/Build/Products/Debug-iphonesimulator"
 
       - name: Run the curated unit smoke classes
