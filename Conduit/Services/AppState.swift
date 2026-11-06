@@ -4553,6 +4553,12 @@ final class AppState: ObservableObject {
     /// after its call ended or a newer one started stores nothing.
     private var localLivePersonaLookup = 0
 
+    /// A starting call's claim on the persona; any earlier claim goes stale.
+    private func claimLocalLivePersonaLookup() -> Int {
+        localLivePersonaLookup &+= 1
+        return localLivePersonaLookup
+    }
+
     /// Personal text goes, and any lookup still running is dropped.
     private func dropLocalLivePersonality() {
         localLivePersonality = nil
@@ -4816,6 +4822,13 @@ final class AppState: ObservableObject {
                 return session
             },
             availability: { [weak self] in
+                // The call's claim on the persona, taken before any wait:
+                // a newer call's start or any teardown bumps the count, and
+                // a stale claim then stores and clears nothing. A lookup
+                // that outlives a profile switch is dropped too, so another
+                // profile's SOUL.md never reaches this call.
+                let lookup = self?.claimLocalLivePersonaLookup()
+                let profile = self?.activeProfile
                 let status = try await client.status()
                 if let reason = LocalLiveClient.unavailableReason(status) {
                     throw LocalLiveClientError.unavailable(reason)
@@ -4824,13 +4837,6 @@ final class AppState: ObservableObject {
                     // The phone's own tools (calendar, reminders, alarms,
                     // maps, health, location) the user lets Local Live use.
                     async let hostTools: Void = self.prepareVoiceHostTools(for: .localLive)
-                    // A lookup that outlives a profile switch is dropped:
-                    // another profile's SOUL.md never reaches this call.
-                    // So does one an ended or newer call took over: each
-                    // lookup and each teardown bumps the count.
-                    self.localLivePersonaLookup &+= 1
-                    let lookup = self.localLivePersonaLookup
-                    let profile = self.activeProfile
                     async let personality = self.localLivePersonalityEnabled ? hostContext.personality() : nil
                     // Off only when the user turned web lookups off.
                     if self.geminiLiveSearchMode != .off {
@@ -4843,8 +4849,8 @@ final class AppState: ObservableObject {
                         self.localLivePersonality = self.activeProfile == profile ? persona : nil
                     }
                     await hostTools
-                } else {
-                    self?.dropLocalLivePersonality()
+                } else if let self, self.localLivePersonaLookup == lookup {
+                    self.localLivePersonality = nil
                 }
                 return .available(model: status.modelName)
             },
