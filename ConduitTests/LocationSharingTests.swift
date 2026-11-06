@@ -1068,6 +1068,52 @@ extension NotificationE2ETests {
         }
     }
 
+    func testAMapsDistanceToASavedPlaceIsRoundedLikeAnAreaOne() {
+        // Exact metres from a saved place to several known places would give
+        // its coordinates away (issue 1880): 100 m, whatever "me" is.
+        XCTAssertEqual(MapsDistance.rounded(1_234.4, saved: true, me: false, meAtArea: false), 1_200)
+        XCTAssertEqual(MapsDistance.rounded(1_234.4, saved: true, me: true, meAtArea: false), 1_200,
+                       "me at Precise to a saved place: the saved place's step")
+        XCTAssertEqual(MapsDistance.rounded(1_234.4, saved: false, me: true, meAtArea: false), 1_230)
+        XCTAssertEqual(MapsDistance.rounded(1_234.4, saved: false, me: true, meAtArea: true), 1_200)
+        XCTAssertEqual(MapsDistance.rounded(1_234.4, saved: false, me: false, meAtArea: false), 1_234, "between other places, to the metre")
+        XCTAssertEqual(MapsDistance.rounded(.infinity, saved: true, me: false, meAtArea: false), 0)
+    }
+
+    @MainActor
+    func testACompletionThatNeverAnswersEndsAtTheDeadline() async {
+        // CarPlay's open(_:options:completionHandler:) may never answer:
+        // nothing is left waiting on it (issue 1882).
+        var kept: ((Bool) -> Void)?
+        let silent = await MapsDeadline.first(after: 0.05, fallback: false) { answer in kept = answer }
+        XCTAssertFalse(silent)
+        kept?(true)
+        let answered = await MapsDeadline.first(after: 5, fallback: false) { answer in
+            answer(true)
+            answer(false)
+        }
+        XCTAssertTrue(answered, "the first answer counts, a second is ignored")
+    }
+
+    @MainActor
+    func testTheVoiceMapsToolReadsTheLocationConsentAgainEachTime() {
+        // MapsVoiceTool checks it again after the fix and after the lookup:
+        // a pause that starts meanwhile is seen (issue 1881).
+        var config = LocationFixtures.config(background: false, talking: true, pausedUntil: LocationFixtures.at.addingTimeInterval(60))
+        config.setVoiceRead(LiveVoiceModeName.geminiLive.storageID, allowed: true)
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")),
+                                        keys: LocationKeyStore.memory())
+        let controller = LocationSharingController(engine: engine, config: config, unsent: LocationUnsent())
+        var now = LocationFixtures.at.addingTimeInterval(120)
+        controller.now = { now }
+        XCTAssertTrue(MapsVoiceTool.allowsLocation(mode: .geminiLive, controller: controller))
+        XCTAssertFalse(MapsVoiceTool.allowsLocation(mode: .gptLive, controller: controller), "each mode is its own yes")
+        now = LocationFixtures.at
+        XCTAssertFalse(MapsVoiceTool.allowsLocation(mode: .geminiLive, controller: controller), "paused")
+    }
+
     func testEveryIngestSaysWhetherTheHostsOtherProfilesMayRead() throws {
         var settings = LocationSharingSettings()
         settings.talking = true

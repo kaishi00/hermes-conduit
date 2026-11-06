@@ -36,7 +36,7 @@ enum MapsVoiceTool {
         description: "Apple Maps on the user's iPhone, answered at once. search: places matching a query or category near "
             + "somewhere (default near the user). lookup: one named place or address, best match first. reverse_geocode: "
             + "what is at a place (default the user's position). directions: routes with times, distances and turns from "
-            + "one place to another (default from the user). travel_times: how long from one place to up to 10 others. "
+            + "one place to another (default from the user; no turns to or from a saved place). travel_times: how long from one place to up to 10 others. "
             + "navigate: open Apple Maps with directions to one place from where the user is, when they ask to go there "
             + "or to open it in Maps (on the car screen in CarPlay; behind a notification when the phone is locked). "
             + "Places are \"me\" (where the user is), one of their saved places by name, an address or a place's name, "
@@ -79,7 +79,7 @@ enum MapsVoiceTool {
     static func run(_ arguments: [String: Any], mode: LiveVoiceModeName,
                     controller: LocationSharingController, sharedHere: Bool) async -> [String: String] {
         // Checked at each call: the user may have turned it off mid-call.
-        let locationAllowed = sharedHere && controller.letsVoiceRead(mode) && controller.settings.talking
+        let locationAllowed = sharedHere && allowsLocation(mode: mode, controller: controller)
         let places = locationAllowed ? controller.places : []
         if (arguments["action"] as? String)?.lowercased() == "navigate" {
             return await navigate(arguments, mode: mode, controller: controller, places: places, locationAllowed: locationAllowed)
@@ -108,9 +108,14 @@ enum MapsVoiceTool {
                 me = .unavailable(.noLocation())
             }
         }
+        // And again after each wait: turned off while the fix or the lookup
+        // was on its way, nothing from it reaches the model (issue 1881).
+        let readsLocation = usesLocation(request)
+        if readsLocation, !allowsLocation(mode: mode, controller: controller) { return ["error": notShared] }
         let answer = await MapsEngine.answer(request, context: MapsContext(me: me, places: places), deadline: lookupDeadline)
         // Listed whatever the outcome: a lookup was attempted.
         HealthVoiceReadLog.record(mode: mode, action: "maps \(action.rawValue)", key: HealthVoiceReadLog.locationStorageKey)
+        if readsLocation, !allowsLocation(mode: mode, controller: controller) { return ["error": notShared] }
         switch answer {
         case .failure(let failure):
             return ["error": "\(failure.code): \(failure.note)"]
@@ -155,6 +160,12 @@ enum MapsVoiceTool {
         case .failed(let failure):
             return ["error": "\(failure.code): \(failure.note)"]
         }
+    }
+
+    /// Whether `mode` may use the user's position and saved places now: its
+    /// location voice consent and the "while I'm talking" layer, not paused.
+    static func allowsLocation(mode: LiveVoiceModeName, controller: LocationSharingController) -> Bool {
+        controller.letsVoiceRead(mode) && controller.settings.talking
     }
 
     /// Whether a request reads the user's position or saved places.

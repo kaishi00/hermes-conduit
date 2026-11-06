@@ -92,10 +92,8 @@ enum MapsNavigator {
     /// Whether the car screen opened it; a scene that never answers counts
     /// as no after a few seconds, and the phone is tried next.
     private static func openInCar(_ url: URL, scene: CPTemplateApplicationScene) async -> Bool {
-        await MapsDeadline.run(after: 3, fallback: false) {
-            await withCheckedContinuation { continuation in
-                scene.open(url, options: nil) { opened in continuation.resume(returning: opened) }
-            }
+        await MapsDeadline.first(after: 3, fallback: false) { answer in
+            scene.open(url, options: nil) { opened in answer(opened) }
         }
     }
 

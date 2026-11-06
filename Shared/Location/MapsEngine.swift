@@ -15,7 +15,11 @@
 //    starts or ends at "me" has no steps (the first turns give the street);
 //  - inside a private saved place, a request that uses "me" is refused, and
 //    a private saved place is never an origin or destination;
-//  - saved places go to the host by name only, never their coordinates.
+//  - saved places go to the host by name only, never their coordinates:
+//    a distance to or from one is rounded to 100 m, and a route that starts
+//    or ends at one has no steps, so an answer can't pin it down to the
+//    metre or the street (issue 1880). Searching near one still says
+//    roughly where it is: that's what the search is for.
 //
 //  Apple sees the queries, the start and the destination (a saved place's
 //  coordinates included), as with any Apple Maps use. Answers are for a model, not UI copy, so not localized.
@@ -301,6 +305,21 @@ enum MapsText {
     }
 }
 
+/// Meters as an answer gives them: to 100 m when an end is a saved place
+/// (exact metres from one to several known places would give its
+/// coordinates away, issue 1880), to 100 m from "me" at Area and 10 m at
+/// Precise, to the metre between other places.
+enum MapsDistance {
+    static let savedStep: Double = 100
+
+    static func rounded(_ meters: Double, saved: Bool, me: Bool, meAtArea: Bool) -> Int {
+        guard meters.isFinite, meters >= 0, meters < 1e9 else { return 0 }
+        if saved { return LocationPrecisionRules.roundedDistance(meters, step: savedStep) }
+        guard me else { return Int(meters.rounded()) }
+        return LocationPrecisionRules.roundedDistance(meters, step: meAtArea ? 100 : 10)
+    }
+}
+
 enum MapsDates {
     static func parse(_ text: String) -> Date? {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
@@ -365,6 +384,8 @@ private final class MapsRun {
         /// What the answer says about it.
         var json: [String: Any]
         var isMe: Bool
+        /// One of the user's saved places, whose coordinates stay on the phone.
+        var isSaved = false
     }
 
     let request: MapsRequest
@@ -466,7 +487,7 @@ private final class MapsRun {
             // The host hears its name only; Apple routes from its coordinates.
             let name = MapsText.clean(place.name, limit: LocationSavedPlace.maxNameLength)
             return Resolved(item: MapsKit.item(at: MapDatum.toMap(place.coordinate), name: name), coordinate: place.coordinate,
-                            json: ["name": name.isEmpty ? "Saved place" : name], isMe: false)
+                            json: ["name": name.isEmpty ? "Saved place" : name], isMe: false, isSaved: true)
         case .text(let text):
             let found = try await MapsKit.search(text, near: hint, span: MapsEngine.resolveSpan)
             guard let item = found.first else { throw MapsFailure.notFound("Nothing matched \(text).") }
@@ -526,17 +547,14 @@ private final class MapsRun {
         if let origin {
             let meters = CLLocation(latitude: origin.coordinate.latitude, longitude: origin.coordinate.longitude)
                 .distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
-            json["distance_m"] = distance(meters, fromMe: origin.isMe)
+            json["distance_m"] = distance(meters, between: [origin])
         }
         return json
     }
 
-    /// Meters as an answer gives them: to 100 m from "me" at Area, 10 m from
-    /// "me" at Precise, to the metre otherwise.
-    private func distance(_ meters: CLLocationDistance, fromMe: Bool) -> Int {
-        guard meters.isFinite, meters >= 0, meters < 1e9 else { return 0 }
-        guard fromMe else { return Int(meters.rounded()) }
-        return LocationPrecisionRules.roundedDistance(meters, step: meAtArea ? 100 : 10)
+    /// Meters between `ends` as the answer gives them (MapsDistance).
+    private func distance(_ meters: CLLocationDistance, between ends: [Resolved]) -> Int {
+        MapsDistance.rounded(meters, saved: ends.contains { $0.isSaved }, me: ends.contains { $0.isMe }, meAtArea: meAtArea)
     }
 
     static func rounded(_ value: Double) -> Double {
@@ -671,7 +689,7 @@ private final class MapsRun {
             json["routes"] = [[
                 "name": "Public transport",
                 "duration_s": Self.whole(eta.expectedTravelTime),
-                "distance_m": distance(eta.distance, fromMe: from.isMe || to.isMe),
+                "distance_m": distance(eta.distance, between: [from, to]),
             ] as [String: Any]]
             json.merge(timeFields(duration: eta.expectedTravelTime, departure: eta.expectedDepartureDate,
                                   arrival: eta.expectedArrivalDate)) { _, new in new }
@@ -680,13 +698,13 @@ private final class MapsRun {
         directions.requestsAlternateRoutes = request.alternatives
         let routes = try await MapsKit.routes(directions)
         guard let first = routes.first else { throw MapsFailure.noRoute() }
-        // The first and last turns would give the street "me" is on.
-        let withSteps = request.steps && !((from.isMe || to.isMe) && meAtArea)
+        // The first and last turns would give the street "me" or a saved place is on.
+        let withSteps = request.steps && !((from.isMe || to.isMe) && meAtArea) && !from.isSaved && !to.isSaved
         json["routes"] = routes.prefix(request.alternatives ? 3 : 1).map { route -> [String: Any] in
             var entry: [String: Any] = [
                 "name": MapsText.cleanOrNil(route.name, limit: 120) ?? "Route",
                 "duration_s": Self.whole(route.expectedTravelTime),
-                "distance_m": distance(route.distance, fromMe: from.isMe || to.isMe),
+                "distance_m": distance(route.distance, between: [from, to]),
                 "has_tolls": route.hasTolls,
             ]
             let advisories = route.advisoryNotices.prefix(5).compactMap { MapsText.cleanOrNil($0, limit: 200) }
@@ -742,7 +760,7 @@ private final class MapsRun {
             var entry: [String: Any] = [
                 "to": to.json,
                 "duration_s": Self.whole(eta.expectedTravelTime),
-                "distance_m": distance(eta.distance, fromMe: from.isMe || to.isMe),
+                "distance_m": distance(eta.distance, between: [from, to]),
             ]
             let times = timeFields(duration: eta.expectedTravelTime, departure: eta.expectedDepartureDate,
                                    arrival: eta.expectedArrivalDate)
@@ -927,7 +945,7 @@ enum MapsKit {
 
 /// The first of an operation's result and a deadline's fallback.
 enum MapsDeadline {
-    private final class Once<Value> {
+    private final class Once<Value>: @unchecked Sendable {
         private let lock = NSLock()
         private var continuation: CheckedContinuation<Value, Never>?
 
@@ -954,6 +972,21 @@ enum MapsDeadline {
                 once.resume(fallback)
                 task.cancel()
             }
+        }
+    }
+
+    /// The first of a completion handler's answer and the fallback, for a
+    /// call that may never answer. Nothing waits on the handler: a deadline
+    /// passing ends the wait for good, where cancelling a task can't end one
+    /// that's waiting on a handler (issue 1882). A late or second answer is
+    /// ignored.
+    @MainActor
+    static func first<Value: Sendable>(after seconds: TimeInterval, fallback: Value,
+                                       _ start: (@escaping @Sendable (Value) -> Void) -> Void) async -> Value {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Value, Never>) in
+            let once = Once(continuation)
+            start { once.resume($0) }
+            DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { once.resume(fallback) }
         }
     }
 }
