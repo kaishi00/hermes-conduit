@@ -275,6 +275,10 @@ struct V2ConversationScreen: View {
         // Home, a quick one to the Bot Chat), and iOS 26's swipe from
         // anywhere. Only `backSwipe` goes back from a workstream.
         .background { SystemBackSwipeGate(blocked: workstreamGoesBack != nil) }
+        // A swipe back let go can leave the list's hidden bar over the
+        // chat (a Bot Chat or room grown from its portrait, Eric
+        // 2026-11-06): the chat's title, Back and ⋯ come back.
+        .background { NavigationBarKeeper() }
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }

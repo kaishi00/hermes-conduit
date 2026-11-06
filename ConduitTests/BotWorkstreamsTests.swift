@@ -992,6 +992,36 @@ extension BotModeTests {
         XCTAssertTrue(zoom.isEnabled)
     }
 
+    /// A swipe back let go that left the list's hidden bar over a chat
+    /// brings the chat's bar back; once another screen is on top, the
+    /// keeper leaves the bar alone (Eric 2026-11-06: a room lost its top
+    /// menus).
+    @MainActor
+    func testTheBarKeeperShowsTheChatsBarAgainOnlyWhileItsOnTop() {
+        let root = UIViewController()
+        let page = UIViewController()
+        let navigation = UINavigationController()
+        navigation.setViewControllers([root, page], animated: false)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = navigation
+        window.isHidden = false
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+
+        let keeper = NavigationBarKeeper.KeeperView()
+        page.view.addSubview(keeper)
+        XCTAssertTrue(keeper.page === page)
+        navigation.setNavigationBarHidden(true, animated: false)
+        keeper.restoreBar()
+        XCTAssertFalse(navigation.isNavigationBarHidden)
+
+        navigation.pushViewController(UIViewController(), animated: false)
+        navigation.setNavigationBarHidden(true, animated: false)
+        keeper.restoreBar()
+        XCTAssertTrue(navigation.isNavigationBarHidden, "another screen's bar is its own")
+        keeper.removeFromSuperview()
+    }
+
     /// Bots Home's voice button lists the shown bots to call, the one that
     /// talked last first, ties in roster order (Eric 2026-11-03).
     func testBotsHomesVoiceButtonListsTheBotUsedLastFirst() {
