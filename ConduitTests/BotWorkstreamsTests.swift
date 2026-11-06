@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 @testable import Conduit
@@ -838,6 +839,26 @@ extension BotModeTests {
         XCTAssertNil(arm.source(open: "atlas", now: now))
     }
 
+    /// A room's portrait arms the zoom by its own key, apart from any bot's
+    /// name: its screen grows out of the room, also over a Bot Chat still
+    /// named open under it, and the bot's chat after it zooms no more.
+    func testARoomsPortraitZoomsItsOwnScreen() {
+        let now = Date()
+        let room = BotZoomArm.roomKey("trip")
+        XCTAssertNotEqual(room, "trip", "never a bot's name")
+        var arm = BotZoomArm()
+        arm.tap(room, now: now)
+        // The room shows before its push, so it has landed by then.
+        arm.pushed(open: room, now: now.addingTimeInterval(0.2))
+        XCTAssertEqual(arm.source(open: room, now: now.addingTimeInterval(60)), room, "Back shrinks it home")
+        XCTAssertNil(arm.source(open: "furina", now: now.addingTimeInterval(60)), "the Bot Chat under it")
+        arm.left()
+        // A room whose open failed zooms nothing.
+        arm.tap(room, now: now)
+        arm.openFailed(room)
+        XCTAssertNil(arm.source(open: room, now: now))
+    }
+
     /// A ring takes the bot's glow color (picked or drawn from its photo),
     /// else its Hermes color, else its name's hue (build 248).
     @MainActor
@@ -871,6 +892,90 @@ extension BotModeTests {
         XCTAssertFalse(BotChatSwap.isBackSwipe(CGSize(width: 60, height: 0)), "too short")
         XCTAssertFalse(BotChatSwap.isBackSwipe(CGSize(width: 120, height: 100)), "mostly down")
         XCTAssertFalse(BotChatSwap.isBackSwipe(CGSize(width: -120, height: 0)), "the other way")
+    }
+
+    /// A workstream's screen holds back the zoom's own dismissals by their
+    /// UIKit names, so a slow swipe can't pop past its Bot Chat to Bots Home.
+    func testTheBackSwipeGateKnowsTheZoomsDismissals() {
+        for name in ["LeadingEdgePan", "SwipeDown", "Pinch"] {
+            XCTAssertTrue(SystemBackSwipeGate.isZoomDismissal("com.apple.UIKit.ZoomInteractiveDismiss" + name), name)
+        }
+        XCTAssertFalse(SystemBackSwipeGate.isZoomDismissal(nil))
+        XCTAssertFalse(SystemBackSwipeGate.isZoomDismissal("UINavigationController.edgeSwipe"))
+    }
+
+    /// The gate turns the page's back swipes off while blocked and back on
+    /// as it clears, leaving one that was already off as it was.
+    @MainActor
+    func testTheBackSwipeGateTurnsOnOnlyWhatItTurnedOff() {
+        let root = UIViewController()
+        let page = UIViewController()
+        let navigation = UINavigationController()
+        navigation.setViewControllers([root, page], animated: false)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = navigation
+        window.isHidden = false
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+        XCTAssertNotNil(page.view.window)
+
+        let zoom = UIPanGestureRecognizer()
+        zoom.name = SystemBackSwipeGate.zoomDismissalPrefix + "LeadingEdgePan"
+        let alreadyOff = UIPanGestureRecognizer()
+        alreadyOff.name = SystemBackSwipeGate.zoomDismissalPrefix + "SwipeDown"
+        alreadyOff.isEnabled = false
+        let other = UIPanGestureRecognizer()
+        [zoom, alreadyOff, other].forEach(page.view.addGestureRecognizer)
+
+        let gate = SystemBackSwipeGate.GateView()
+        page.view.addSubview(gate)
+        gate.blocked = true
+        XCTAssertFalse(zoom.isEnabled)
+        XCTAssertFalse(alreadyOff.isEnabled)
+        XCTAssertTrue(other.isEnabled, "only the system's back swipes")
+        XCTAssertEqual(navigation.interactivePopGestureRecognizer?.isEnabled, false)
+
+        gate.blocked = false
+        XCTAssertTrue(zoom.isEnabled)
+        XCTAssertFalse(alreadyOff.isEnabled, "it was off before the gate")
+        XCTAssertEqual(navigation.interactivePopGestureRecognizer?.isEnabled, true)
+
+        gate.blocked = true
+        gate.removeFromSuperview()
+        XCTAssertTrue(zoom.isEnabled, "a gate that leaves the screen lets go")
+    }
+
+    /// A gate that comes on before its page is in the stack (a workstream
+    /// opened with its push) keeps looking, and holds the swipes once it is.
+    @MainActor
+    func testTheBackSwipeGateWaitsForItsPageToBePushed() {
+        let navigation = UINavigationController(rootViewController: UIViewController())
+        let page = UIViewController()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = navigation
+        window.isHidden = false
+        defer { window.isHidden = true }
+        // On screen, but not yet the stack's.
+        window.addSubview(page.view)
+
+        let zoom = UIPanGestureRecognizer()
+        zoom.name = SystemBackSwipeGate.zoomDismissalPrefix + "SwipeDown"
+        page.view.addGestureRecognizer(zoom)
+        let gate = SystemBackSwipeGate.GateView()
+        page.view.addSubview(gate)
+        gate.blocked = true
+        XCTAssertTrue(zoom.isEnabled, "no page in a stack yet")
+
+        let held = expectation(description: "held once it's the stack's")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            navigation.addChild(page)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                if !zoom.isEnabled { held.fulfill() }
+            }
+        }
+        wait(for: [held], timeout: 2)
+        gate.blocked = false
+        XCTAssertTrue(zoom.isEnabled)
     }
 
     /// Bots Home's voice button lists the shown bots to call, the one that
@@ -977,6 +1082,14 @@ extension BotModeTests {
         appState.botChatOpeningPlaced()
         XCTAssertFalse(appState.placesConversationAsBotChat)
         appState.endOpeningBotChat("chef")
+        XCTAssertNil(appState.botChatOpening)
+
+        // So does a room Bots Home opens, with no Bot Chat under it.
+        let room = BotZoomArm.roomKey("trip")
+        appState.beginOpeningBotChat(room)
+        XCTAssertEqual(V2Tab.conversationTab(selected: .bots, isBotsChat: appState.placesConversationAsBotChat), .bots)
+        appState.botChatOpeningPlaced()
+        appState.endOpeningBotChat(room)
         XCTAssertNil(appState.botChatOpening)
     }
 

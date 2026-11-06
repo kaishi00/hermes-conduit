@@ -112,8 +112,8 @@ struct GroupChatView: View {
             MinimisedLiveVoiceBar()
             GroupRoomComposer(members: members)
         }
-        .overlay(alignment: .topTrailing) {
-            // Shown while browsing, as on the chat screen.
+        .overlay(alignment: .top) {
+            // Shown while browsing, centered as on the chat screen.
             GroupRoomJumpButton(chrome: scroller.chrome) {
                 ChatViewportWatch.shared.command("room latest (button)")
                 scroller.explicitLatestRequested(animated: true)
@@ -403,7 +403,6 @@ private struct GroupRoomJumpButton: View {
             }
             .conduitGlassControl(cornerRadius: 22, tint: Color.conduitAccent.opacity(0.14))
             .accessibilityLabel(AppLocalization.string("Scroll to latest message"))
-            .padding(.trailing, 18)
         }
     }
 }
@@ -816,6 +815,10 @@ struct GroupMemberBubble: View {
     @Environment(\.groupMemberTints) private var tints
 
     static let avatarSize: CGFloat = 30
+    /// The room left past a bot's bubble. A bot's reply is long, like a
+    /// chat's, so the bubble runs nearly to the edge; the avatar and the
+    /// tinted bubble already say who is talking.
+    static let trailingRoom: CGFloat = 8
 
     private var tint: CustomAccentColor? { member.flatMap { tints[$0.identityKey] } }
 
@@ -884,7 +887,7 @@ struct GroupMemberBubble: View {
                     .padding(.leading, 4)
                 }
             }
-            Spacer(minLength: 32)
+            Spacer(minLength: GroupMemberBubble.trailingRoom)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1030,7 +1033,7 @@ struct GroupRespondingRow: View {
                 .padding(.vertical, 10)
                 .groupMemberBubbleSurface(tint: tint)
             }
-            Spacer(minLength: 32)
+            Spacer(minLength: GroupMemberBubble.trailingRoom)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
