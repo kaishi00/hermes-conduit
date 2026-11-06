@@ -100,6 +100,14 @@ struct GatewayDiagnosticsSheet: View {
             guard placement != .signIn else { return }
             Task { await appState.refreshGatewayDiagnostics() }
         }
+        // A restart that ends while the page is open, from here or from
+        // Settings > Connection, reads what the gateway did: the socket goes
+        // through the dashboard and usually stays up, so the line above
+        // rarely fires for one.
+        .onChange(of: appState.activeGatewayRestart.isInProgress) { _, inProgress in
+            guard placement != .signIn, !inProgress else { return }
+            Task { await appState.refreshGatewayDiagnostics() }
+        }
     }
 
     /// Connectors and gateway logs come from the gateway: shown while
