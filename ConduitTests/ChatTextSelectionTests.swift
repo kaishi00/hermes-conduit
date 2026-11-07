@@ -506,6 +506,59 @@ final class ChatTextSelectionTests: XCTestCase {
         XCTAssertTrue(selectionCoordinator.hasCrossSegmentSelection)
     }
 
+    /// A Bot Chat's swipe home waits while text in the chat is selected:
+    /// a handle dragged toward the trailing edge read as the swipe and
+    /// closed the chat (issue 1948).
+    @MainActor
+    func testASelectionInTheChatHoldsTheSwipeHome() {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let segment = MarkdownSelectionSegmentDescriptor(id: "reply", order: 0, separatorBefore: "")
+        selectionCoordinator.replaceSegments([segment], revision: "swipe-hold-v1")
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 240, height: 180))
+        window.addSubview(UIView(frame: window.bounds))
+        window.isHidden = false
+        let host = mountedSelectionHost(
+            text: "Drag my handle",
+            segment: segment,
+            frame: CGRect(x: 10, y: 10, width: 200, height: 40),
+            coordinator: selectionCoordinator,
+            in: window
+        )
+        XCTAssertFalse(ChatTextSelection.isShowing)
+
+        // A reply's words selected: the coordinator holds the selection.
+        host.mountedTextView.selectedRange = NSRange(location: 0, length: 4)
+        selectionCoordinator.updateNativeSelection(
+            segmentID: segment.id,
+            selectedRange: NSRange(location: 0, length: 4),
+            lowerWindowPoint: CGPoint(x: 12, y: 20),
+            upperWindowPoint: CGPoint(x: 40, y: 20)
+        )
+        XCTAssertTrue(ChatTextSelection.isShowing)
+
+        selectionCoordinator.clearSelection()
+        XCTAssertFalse(ChatTextSelection.isShowing)
+
+        // A text view without a coordinator (a tool result, your own
+        // message) shows its selection only while it's first responder in
+        // a window.
+        let plain = SelectableTextView.makeTextView()
+        plain.attributedText = NSAttributedString(string: "Plain words")
+        plain.selectedRange = NSRange(location: 0, length: 5)
+        ChatTextSelection.note(plain)
+        XCTAssertFalse(ChatTextSelection.showsSelection(plain), "not in a window")
+        window.subviews.first?.addSubview(plain)
+        XCTAssertFalse(ChatTextSelection.showsSelection(plain), "not first responder")
+        XCTAssertFalse(ChatTextSelection.isShowing)
+        window.makeKey()
+        if plain.becomeFirstResponder() {
+            XCTAssertTrue(ChatTextSelection.isShowing)
+            plain.selectedRange = NSRange(location: 0, length: 0)
+            XCTAssertFalse(ChatTextSelection.isShowing, "a range cleared in code")
+            plain.resignFirstResponder()
+        }
+    }
+
     @MainActor
     private func mountedSelectionHost(
         text: String,
