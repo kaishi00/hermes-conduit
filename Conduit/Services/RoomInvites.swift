@@ -428,6 +428,28 @@ extension AppState {
         _ = await readLinkedRoomInvites()
     }
 
+    /// Every 10 s for 3 minutes after a Link is made: the room the other
+    /// person makes next reaches this Hermes through the mailbox within a
+    /// minute or so, and its push may not reach the phone (or not while
+    /// the screen showing the Link is up), so Group Chats would show it only
+    /// once it's read again. A new Link starts the count again, and another
+    /// dashboard or a sign-out ends it.
+    func followLinkedRoomInvitesAfterLink() {
+        linkedRoomInviteFollow?.cancel()
+        let dashboard = activeDashboardID
+        linkedRoomInviteFollow = Task { [weak self] in
+            for _ in 0..<Self.linkedRoomInviteFollowReads {
+                try? await Task.sleep(for: Self.linkedRoomInviteFollowInterval)
+                guard !Task.isCancelled, let self, self.activeDashboardID == dashboard else { return }
+                await self.refreshLinkedRoomDrafts()
+                await self.refreshLinkedRoomInvites()
+            }
+        }
+    }
+
+    nonisolated static let linkedRoomInviteFollowReads = 18
+    nonisolated static let linkedRoomInviteFollowInterval: Duration = .seconds(10)
+
     /// Whether the invites were read now and kept.
     func readLinkedRoomInvites() async -> Bool {
         guard canInviteLinkedPeople, isConnected else { return false }
