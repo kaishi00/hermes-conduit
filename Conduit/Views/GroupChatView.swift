@@ -79,6 +79,8 @@ struct GroupChatView: View {
         .animation(.easeInOut(duration: 0.2), value: appState.minimisedLiveVoice)
         // Each bot's color, for its name, bubble, tags and "To" chip.
         .environment(\.groupMemberTints, appState.groupMemberTints(members))
+        // Other people's agents and the people, as their own Conduits draw them.
+        .environment(\.groupRoomLooks, appState.activeRoomLooksShown)
         .environment(\.chatTextSize, chatTextSize)
         // A Desktop card reads its title and summary from the connected
         // Hermes (#1522). A member's MEDIA: files read through its own
@@ -755,7 +757,7 @@ struct GroupApprovalCard: View {
 /// every other (or unknown future) kind is a compact system caption — a room
 /// this client predates still renders, never crashes.
 struct GroupEventRow: View {
-    @EnvironmentObject private var appState: AppState
+    @Environment(\.groupRoomLooks) private var looks
     let event: GroupEvent
     let members: [GroupMember]
     /// The previous row is the same speaker's: no picture or name again.
@@ -793,7 +795,7 @@ struct GroupEventRow: View {
                 continuesRun: continuesRun,
                 roomEventID: event.id,
                 roomThreadID: event.threadID,
-                personLook: appState.roomPersonLook(named: name)
+                personLook: looks.person(named: name)
             )
         } else if event.isUserMessage, attribution.poster(of: event) == nil, let host {
             GroupMemberBubble(
@@ -805,7 +807,7 @@ struct GroupEventRow: View {
                 continuesRun: continuesRun,
                 roomEventID: event.id,
                 roomThreadID: event.threadID,
-                personLook: appState.activeRoomLooks.home
+                personLook: looks.home
             )
         } else if event.isUserMessage {
             GroupUserBubble(text: attribution.text(of: event), members: members, timestamp: event.createdAt, eventID: event.id) {
@@ -1022,7 +1024,7 @@ struct GroupMemberBubble: View {
     /// A person's look (RoomLooks), for one of the room's people: their
     /// picture and color, as their own Conduit gave them.
     var personLook: RoomLook? = nil
-    @EnvironmentObject private var appState: AppState
+    @Environment(\.groupRoomLooks) private var looks
     @Environment(\.groupMemberTints) private var tints
     /// The room's resolver, which a Desktop card in a message without one
     /// of its own still reads (#1522).
@@ -1065,7 +1067,7 @@ struct GroupMemberBubble: View {
                             .lineLimit(1)
                             .layoutPriority(1)
                         if let owner {
-                            GroupMemberOwnerChip(owner: owner, look: appState.roomPersonLook(named: owner))
+                            GroupMemberOwnerChip(owner: owner, look: looks.person(named: owner))
                         }
                         if let timestamp {
                             Text(GroupBubbleTime.text(timestamp))
@@ -1481,6 +1483,7 @@ struct GroupMemberAvatar: View {
     let size: CGFloat
     /// A person's look, for a bubble that isn't a member's.
     var look: RoomLook? = nil
+    @Environment(\.groupRoomLooks) private var roomLooks
 
     /// The roster bot this member is.
     private var bot: BotProfile? { appState.groupMemberBot(member, name: name) }
@@ -1501,7 +1504,7 @@ struct GroupMemberAvatar: View {
             .accessibilityHidden(true)
         } else {
             // Another person's agent, or a person: as their own Conduit draws them.
-            let look = self.look ?? appState.roomLook(for: member)
+            let look = self.look ?? roomLooks.member(member) ?? appState.roomLook(for: member)
             BotAvatarView(name: name, label: name, colorString: look?.color, image: look?.image, size: size)
                 .accessibilityHidden(true)
         }

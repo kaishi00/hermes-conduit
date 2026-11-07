@@ -59,6 +59,7 @@ struct TranscriptCellEnvironment: Equatable {
     var windowSideInsets: WindowSideInsets?
     var v2ComposerRests: Bool
     var groupMemberTints: [String: CustomAccentColor]
+    var groupRoomLooks: RoomLooks
     var conduitAccent: ConduitAccent
     var settingsGlowTint: Color?
     // SwiftUI's that the chat or the app sets (traits carry the rest)
@@ -100,6 +101,7 @@ struct TranscriptCellEnvironment: Equatable {
         windowSideInsets = values.windowSideInsets
         v2ComposerRests = values.v2ComposerRests
         groupMemberTints = values.groupMemberTints
+        groupRoomLooks = values.groupRoomLooks
         conduitAccent = values.conduitAccent
         settingsGlowTint = values.settingsGlowTint
         locale = values.locale
@@ -144,6 +146,7 @@ struct TranscriptCellEnvironment: Equatable {
             && lhs.windowSideInsets == rhs.windowSideInsets
             && lhs.v2ComposerRests == rhs.v2ComposerRests
             && lhs.groupMemberTints == rhs.groupMemberTints
+            && lhs.groupRoomLooks == rhs.groupRoomLooks
             && lhs.conduitAccent == rhs.conduitAccent
             && lhs.settingsGlowTint == rhs.settingsGlowTint
             && lhs.locale == rhs.locale
@@ -203,6 +206,7 @@ private struct TranscriptCellConduitEnvironmentMore: ViewModifier {
             .environment(\.windowSideInsets, values.windowSideInsets)
             .environment(\.v2ComposerRests, values.v2ComposerRests)
             .environment(\.groupMemberTints, values.groupMemberTints)
+            .environment(\.groupRoomLooks, values.groupRoomLooks)
             .environment(\.conduitAccent, values.conduitAccent)
             .environment(\.settingsGlowTint, values.settingsGlowTint)
     }

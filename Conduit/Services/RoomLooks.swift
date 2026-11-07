@@ -16,7 +16,7 @@ import SwiftUI
 import UIKit
 
 /// A picture and a color, either of which may be missing.
-struct RoomLook: Equatable {
+struct RoomLook: Equatable, Sendable {
     /// A small JPEG or PNG.
     var picture: Data?
     /// `#RRGGBB`.
@@ -47,7 +47,7 @@ struct RoomLook: Equatable {
 
 /// How the open room's other people and their agents look, as their own
 /// Conduits gave it (`GET /rooms/looks`).
-struct RoomLooks: Equatable {
+struct RoomLooks: Equatable, Sendable {
     /// Other people's agents, by member id.
     var members: [String: RoomLook] = [:]
     /// The other people but the host, by their Link's name and by the name
@@ -55,6 +55,9 @@ struct RoomLooks: Equatable {
     var people: [String: RoomLook] = [:]
     /// The host's, in a room someone else hosts.
     var home: RoomLook?
+    /// The host's name as your Link gives it, in a room someone else hosts
+    /// (`GET /rooms/people`'s `home`), which finds `home` by name.
+    var hostName: String?
 
     static let empty = RoomLooks()
 
@@ -83,7 +86,7 @@ struct RoomLooks: Equatable {
 
     /// A person's by the name your Link or their posts give them, the
     /// host's when it's the host's name (`home`).
-    func person(named name: String?, hostName: String?) -> RoomLook? {
+    func person(named name: String?) -> RoomLook? {
         guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
         if let look = people[name] { return look }
         if let hostName, name == hostName.trimmingCharacters(in: .whitespacesAndNewlines) { return home }
@@ -180,9 +183,12 @@ extension AppState {
         activeRoomLooks.member(member)
     }
 
-    /// A person's look in the open room, by the name it shows them under.
-    func roomPersonLook(named name: String?) -> RoomLook? {
-        activeRoomLooks.person(named: name, hostName: activeRoomHomeName)
+    /// The open room's looks with its host's name, for the room screen's
+    /// environment (`groupRoomLooks`).
+    var activeRoomLooksShown: RoomLooks {
+        var looks = activeRoomLooks
+        looks.hostName = activeRoomHomeName
+        return looks
     }
 
     /// Sets the picture you show in rooms over Links (nil takes it away),
@@ -262,4 +268,16 @@ extension AppState {
     }
 
     nonisolated static let roomLooksReadInterval: TimeInterval = 30
+}
+
+private struct GroupRoomLooksKey: EnvironmentKey {
+    static let defaultValue = RoomLooks.empty
+}
+
+extension EnvironmentValues {
+    /// How the open room's other people and their agents look (RoomLooks).
+    var groupRoomLooks: RoomLooks {
+        get { self[GroupRoomLooksKey.self] }
+        set { self[GroupRoomLooksKey.self] = newValue }
+    }
 }

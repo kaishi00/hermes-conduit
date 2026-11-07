@@ -25,16 +25,17 @@ extension GroupChatModelsTests {
     }
 
     func testRoomLooksReadEachMemberPersonAndTheHost() throws {
-        let looks = RoomLooks(looksResponse())
+        var looks = RoomLooks(looksResponse())
         XCTAssertEqual(looks.members.keys.sorted(), ["m-laifu"], "a look with neither, or a color that isn't one, is left out")
         XCTAssertEqual(looks.members["m-laifu"], RoomLook(picture: looksJPEG, color: "#AA3300"))
         // A person is found by their Link's name and by the name their posts carry.
-        XCTAssertEqual(looks.person(named: "Mona Lisa", hostName: nil)?.color, "#00AA00")
-        XCTAssertEqual(looks.person(named: " Mona ", hostName: nil)?.color, "#00AA00")
+        XCTAssertEqual(looks.person(named: "Mona Lisa")?.color, "#00AA00")
+        XCTAssertEqual(looks.person(named: " Mona ")?.color, "#00AA00")
+        XCTAssertNil(looks.person(named: "Furina"), "the host only by the host's name")
         // The host, by the name your Link gives them.
-        XCTAssertEqual(looks.person(named: "Furina", hostName: "Furina")?.picture, looksJPEG)
-        XCTAssertNil(looks.person(named: "Furina", hostName: nil))
-        XCTAssertNil(looks.person(named: nil, hostName: "Furina"))
+        looks.hostName = "Furina"
+        XCTAssertEqual(looks.person(named: "Furina")?.picture, looksJPEG)
+        XCTAssertNil(looks.person(named: nil))
         XCTAssertEqual(RoomLooks(["ok": true]), .empty)
     }
 
