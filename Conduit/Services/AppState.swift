@@ -7016,7 +7016,7 @@ final class AppState: ObservableObject {
     /// copy down too, so a read-only chat doesn't stay up with nothing on
     /// its way.
     private func openChatPickedFromSavedList(_ sessionID: String) {
-        requestOpenSession(sessionID) { [weak self] in
+        requestOpenSession(sessionID) { [weak self] _ in
             guard let self, self.offlineChatPresentation?.isPickedChat == true else { return }
             self.dismissOfflineChatPresentation()
         }
@@ -9483,11 +9483,11 @@ final class AppState: ObservableObject {
             // Still no row: the stored id learned for a reaped runtime
             // resumes where the runtime id can't.
             let fallback = self.conversationIdentityIndex.durableID(forRuntime: id, profile: self.activeProfile)
-            let opened = await self.requestOpenSession(target ?? fallback ?? id) { [weak self] in
+            let opened = await self.requestOpenSession(target ?? fallback ?? id) { [weak self] refused in
                 guard let self else { return }
                 self.errorMessage = Self.linkedSessionFailureMessage(
                     current: self.errorMessage,
-                    sessionWasNotFound: self.reconciliationSessionWasNotFound,
+                    sessionWasNotFound: refused && self.reconciliationSessionWasNotFound,
                     kanbanWorker: self.reconciliationWasKanbanWorker,
                     unavailable: unavailable
                 )
@@ -25925,9 +25925,10 @@ final class AppState: ObservableObject {
     }
 
     /// `onFailure` runs when the open failed (not when a newer navigation
-    /// superseded it).
+    /// superseded it), told whether Hermes refused this open's own reconcile
+    /// (the reconcile flags then describe this chat).
     @discardableResult
-    func requestOpenSession(_ sessionId: String, onFailure: (@MainActor () -> Void)? = nil) -> Task<Bool, Never> {
+    func requestOpenSession(_ sessionId: String, onFailure: (@MainActor (_ refused: Bool) -> Void)? = nil) -> Task<Bool, Never> {
         // Tapping the chat already open and settled reads it, and nothing
         // else: it shows Hermes' rows as they stand, streamed in live, so a
         // second open would only read them again and drop rows Load earlier
@@ -25944,8 +25945,8 @@ final class AppState: ObservableObject {
         explicitSessionOpenRequestID = requestID
         let task = Task { @MainActor [weak self] in
             guard let self else { return false }
-            let outcome = await self.openSessionOutcome(sessionId)
-            if outcome == .failed, !Task.isCancelled { onFailure?() }
+            let (outcome, refused) = await self.performSessionOpenNotingRefusal(sessionId, reusing: nil)
+            if outcome == .failed, !Task.isCancelled { onFailure?(refused) }
             let opened = outcome == .opened
             // Tapping a chat reads it, even when it was already the open one
             // (the id didn't change, so activeSessionId's didSet stayed quiet).
@@ -26193,8 +26194,11 @@ final class AppState: ObservableObject {
             }
             // This open still owns the viewport, so the reconcile failure is
             // genuine (identity rejection and friends set their own message).
-            // Read before any await: the flags describe the reconcile above.
-            return (.failed, reconciliationWasIdentityRejected || reconciliationSessionWasNotFound)
+            // Read before any await: the flags describe the reconcile above,
+            // unless another reconcile (an automatic resume of another chat)
+            // began meanwhile and set them for its own chat (#1918).
+            let verdictIsOwn = reconciliationToken == token
+            return (.failed, verdictIsOwn && (reconciliationWasIdentityRejected || reconciliationSessionWasNotFound))
         }
         if opensUnreadReply, !landsFromSavedRows { chatReplyStartLandingRequest &+= 1 }
         return (.opened, false)
