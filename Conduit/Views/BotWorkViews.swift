@@ -725,6 +725,8 @@ private struct BotWorkRow: View {
                     .lineLimit(expanded ? nil : 1)
                 if !item.call.isEmpty {
                     fromCallLine
+                } else if !item.room.isEmpty {
+                    fromRoomLine
                 }
                 if !item.room.isEmpty {
                     fromRoomLine
