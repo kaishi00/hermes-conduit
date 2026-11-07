@@ -87,7 +87,7 @@ final class VoiceSpeechDetectorTests: XCTestCase {
             detections.append(detector.observe(index.isMultiple(of: 3) ? 0.011 : 0.009, at: date))
         }
         XCTAssertEqual(detections.first, .continued, "the room noise first reads as more speech")
-        XCTAssertEqual(detections.last, .none, "a steady room ends the utterance")
+        XCTAssertEqual(detections.last, VoiceSpeechDetection.none, "a steady room ends the utterance")
         XCTAssertFalse(detector.isSpeechActive)
         XCTAssertEqual(detector.noiseFloor, 0.009, accuracy: 0.0005, "the room's quietest level is the floor")
 
