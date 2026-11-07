@@ -1,0 +1,472 @@
+Optional(Attributes: Application, 0x11367bac0, pid: 48748, label: 'Conduit'
+Element subtree:
+ →Application, 0x11367bac0, pid: 48748, label: 'Conduit'
+    Window (Main), 0x1136797c0, {{0.0, 0.0}, {440.0, 956.0}}
+      Other, 0x11367a940, {{0.0, 0.0}, {440.0, 956.0}}
+        Other, 0x11367aa80, {{0.0, 0.0}, {440.0, 956.0}}
+          Other, 0x113678140, {{-440.0, -956.0}, {1320.0, 2868.0}}, identifier: 'PopoverDismissRegion', label: 'dismiss popup'
+          Other, 0x113679900, {{0.0, 0.0}, {440.0, 956.0}}
+            Other, 0x113679e00, {{0.0, 0.0}, {440.0, 956.0}}
+              Other, 0x113679f40, {{0.0, 62.0}, {440.0, 860.0}}
+              Other, 0x11367a080, {{0.0, 62.0}, {440.0, 860.0}}
+              Other, 0x11367a1c0, {{0.0, 62.0}, {440.0, 860.0}}
+              Other, 0x11367af80, {{0.0, 0.0}, {440.0, 956.0}}
+                NavigationBar, 0x11367ad00, {{0.0, 62.0}, {440.0, 54.0}}, identifier: '_TtGC7SwiftUI29PresentationHosting'
+                  Button, 0x1136783c0, {{20.0, 62.0}, {44.0, 44.0}}, identifier: 'BackButton', label: 'Bots'
+                  Other, 0x11367b840, {{159.3, 68.0}, {121.3, 32.0}}
+                    Other, 0x11367a6c0, {{159.3, 68.0}, {121.3, 32.0}}
+                      Button, 0x11367be80, {{159.3, 58.3}, {121.3, 32.3}}, label: 'Conduit Chan'
+                      Button, 0x11367b480, {{188.3, 91.7}, {63.7, 18.0}}, identifier: 'botWork.titleLine', label: 'Work'
+                        Other, 0x11367a440, {{188.3, 97.2}, {6.7, 6.7}}
+                        StaticText, 0x11367a580, {{188.3, 91.7}, {63.7, 18.0}}, label: 'Work'
+                        Image, 0x113678a00, {{237.7, 97.0}, {12.7, 7.3}}, identifier: 'chevron.up', label: 'Go Up'
+                  Other, 0x113679cc0, {{364.0, 66.0}, {52.0, 36.0}}, identifier: 'conversation.menu', label: 'Conversation options', value: Connected
+                    Other, 0x113679400, {{364.0, 66.0}, {52.0, 36.0}}
+                      Button, 0x113678c80, {{364.0, 66.0}, {52.0, 36.0}}, identifier: 'conversation.menu', label: 'Conversation options', value: Connected
+                        Button, 0x1136788c0, {{364.0, 66.0}, {52.0, 36.0}}
+                          Image, 0x102e23d40, {{379.0, 80.3}, {22.3, 7.7}}, identifier: 'ellipsis', label: 'More'
+                          Other, 0x113728140, {{395.0, 72.0}, {7.0, 7.0}}
+                Other, 0x113728000, {{0.0, 0.0}, {440.0, 956.0}}
+                  Other, 0x113730c80, {{0.0, 0.0}, {440.0, 956.0}}
+                    Other, 0x113731040, {{0.0, 0.0}, {440.0, 956.0}}
+                      Other, 0x113731180, {{0.0, 0.0}, {440.0, 956.0}}
+                        Other, 0x113730dc0, {{0.0, 116.0}, {440.0, 806.0}}
+                        Other, 0x1137312c0, {{0.0, 116.0}, {440.0, 806.0}}
+                        Other, 0x113730f00, {{-216.3, -197.5}, {913.7, 1402.2}}
+                        Other, 0x113731540, {{0.0, 0.0}, {440.0, 956.0}}
+                          CollectionView, 0x113731400, {{0.0, 0.0}, {440.0, 956.0}}
+                            Cell, 0x113730280, {{18.0, -35.0}, {404.0, 170.0}}
+                              Other, 0x1137303c0, {{18.0, -35.0}, {404.0, 170.0}}
+                                Other, 0x113730500, {{18.0, -35.0}, {404.0, 170.0}}
+                                  Other, 0x113730b40, {{18.0, -35.0}, {404.0, 170.0}}
+                                    Image, 0x113730640, {{18.0, -17.0}, {30.0, 30.0}}
+                                    StaticText, 0x1137308c0, {{56.0, -9.2}, {80.3, 14.3}}, label: 'Conduit Chan'
+                                    StaticText, 0x113730140, {{144.3, -8.7}, {44.3, 13.3}}, label: 'Sent 8:34 AM'
+                                    Other, 0x113730a00, {{18.0, 19.0}, {404.0, 74.0}}
+                                      TextView, 0x113730000, {{18.0, 19.0}, {404.0, 74.0}}, value: Morning! Your dent...
+                                        TextView, 0x11367fac0, {{18.0, 19.0}, {406.9, 74.0}}, label: 'Morning! Your dentist is at 2, and Riri says Aunt Mae's birthday card needs to go out today. Piko fixed the garage sensor overnight.'
+                                        Other, 0x11367fc00, {{389.0, 81.0}, {30.0, 12.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                                          Other, 0x11367fd40, {{416.0, 54.0}, {3.0, 36.0}}
+                                        Other, 0x11367f480, {{18.0, 60.0}, {404.0, 30.0}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+                                          Other, 0x11367f700, {{21.0, 87.0}, {398.0, 3.0}}
+                                    Button, 0x11367f0c0, {{283.3, 110.3}, {15.3, 15.3}}, identifier: 'face.smiling', label: 'React to this response'
+                                    Button, 0x11367f340, {{321.3, 108.3}, {15.7, 19.0}}, identifier: 'doc.on.doc', label: 'Copy response'
+                                    Button, 0x11367f840, {{358.3, 111.3}, {17.7, 13.3}}, identifier: 'speaker.wave.2', label: 'Read response aloud'
+                                    Button, 0x11367fe80, {{388.0, 101.0}, {34.0, 34.0}}, identifier: 'chat.replyMoreMenu', label: 'More'
+                                      Button, 0x11367f980, {{388.0, 101.0}, {34.0, 34.0}}
+                                        Image, 0x11367f200, {{388.0, 101.0}, {34.0, 34.0}}, identifier: 'ellipsis', label: 'More'
+                            Other, 0x11367f5c0, {{0.0, 0.0}, {440.0, 956.0}}
+                              Other, 0x11367ef80, {{0.0, 0.0}, {440.0, 174.5}}
+                              Other, 0x113697c00, {{0.0, 782.9}, {440.0, 173.1}}
+                            Other, 0x1136970c0, {{0.0, 0.0}, {440.0, 956.0}}
+                              Other, 0x113697d40, {{0.0, 0.0}, {440.0, 174.5}}
+                                Image, 0x113697980, {{-120.0, -166.0}, {680.0, 332.0}}, identifier: 'AdditionalDimmingOverlay'
+                                Other, 0x113696f80, {{0.0, 0.0}, {440.0, 109.7}}
+                                Other, 0x113697480, {{0.0, 0.0}, {440.0, 174.5}}
+                                  Other, 0x113697e80, {{0.0, 0.0}, {440.0, 174.5}}
+                                Other, 0x113697840, {{0.0, 0.0}, {440.0, 174.5}}
+                                  Other, 0x113697200, {{0.0, 0.0}, {440.0, 174.5}}
+                                Other, 0x113696d00, {{0.0, 0.0}, {440.0, 174.5}}
+                                  Other, 0x113697700, {{0.0, 0.0}, {440.0, 174.5}}
+                                  Other, 0x113697ac0, {{0.0, 0.0}, {440.0, 174.5}}
+                              Other, 0x1136975c0, {{0.0, 782.9}, {440.0, 173.1}}
+                                Other, 0x113696e40, {{0.0, 782.9}, {440.0, 173.1}}
+                                  Other, 0x113697340, {{0.0, 782.9}, {440.0, 173.1}}
+                                Other, 0x11368d400, {{0.0, 782.9}, {440.0, 173.1}}
+                                  Other, 0x11368cf00, {{0.0, 782.9}, {440.0, 173.1}}
+                                Other, 0x11368c640, {{0.0, 782.9}, {440.0, 173.1}}
+                                  Other, 0x11368c140, {{0.0, 782.9}, {440.0, 173.1}}
+                                  Other, 0x11368c780, {{0.0, 782.9}, {440.0, 173.1}}
+                                Image, 0x11368d680, {{-120.0, 808.0}, {680.0, 296.0}}, identifier: 'AdditionalDimmingOverlay'
+                                Other, 0x11368d540, {{0.0, 868.0}, {440.0, 88.0}}
+                            Cell, 0x11368c3c0, {{18.0, 135.0}, {404.0, 150.0}}
+                              Other, 0x11368ebc0, {{18.0, 135.0}, {404.0, 150.0}}
+                                Other, 0x11368c000, {{18.0, 135.0}, {404.0, 150.0}}
+                                  Other, 0x11368e800, {{18.0, 135.0}, {404.0, 150.0}}
+                                    Other, 0x11368ea80, {{75.0, 164.0}, {330.0, 74.0}}
+                                      TextView, 0x11368c280, {{75.0, 164.0}, {330.0, 74.0}}, value: Plan our Kyoto wee...
+                                        TextView, 0x11368e080, {{75.0, 164.0}, {333.0, 74.0}}, label: 'Plan our Kyoto weekend: find a ryokan under $300, and clear the duplicates out of my trip photos.'
+                                        Other, 0x11368df40, {{372.0, 164.0}, {30.0, 74.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                                          Other, 0x11368e300, {{399.0, 125.0}, {3.0, 36.0}}
+                                        Other, 0x11368e580, {{75.0, 205.0}, {330.0, 30.0}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+                                          Other, 0x11368e6c0, {{36.0, 232.0}, {36.0, 3.0}}
+                                    StaticText, 0x11368e940, {{309.7, 262.3}, {44.3, 13.3}}, label: 'Sent 8:58 AM'
+                                    Button, 0x11368d900, {{350.0, 247.0}, {44.0, 44.0}}, identifier: 'doc.on.doc', label: 'Copy message'
+                                    Button, 0x11368d7c0, {{390.0, 253.0}, {32.0, 32.0}}, identifier: 'chat.messageMoreMenu', label: 'More'
+                                      Button, 0x11368de00, {{390.0, 253.0}, {32.0, 32.0}}
+                                        Image, 0x11368db80, {{384.0, 247.0}, {44.0, 44.0}}, identifier: 'ellipsis', label: 'More'
+                            Cell, 0x11368e440, {{18.0, 285.0}, {404.0, 60.0}}
+                              Other, 0x11368c500, {{18.0, 285.0}, {404.0, 60.0}}
+                                Other, 0x11368d040, {{18.0, 285.0}, {404.0, 60.0}}
+                                  Other, 0x11368c8c0, {{18.0, 285.0}, {404.0, 60.0}}
+                                    Button, 0x11368ca00, {{18.0, 285.0}, {404.0, 60.0}}, label: '3 steps, 22 seconds', value: Collapsed
+                                      Image, 0x11368d180, {{32.0, 313.0}, {22.0, 22.0}}, identifier: 'ellipsis.bubble', label: 'ellipsis.bubble'
+                                      Image, 0x11368d2c0, {{58.0, 313.0}, {22.0, 22.0}}, identifier: 'wrench.and.screwdriver', label: 'wrench.and.screwdriver'
+                                      StaticText, 0x11368e1c0, {{18.0, 303.0}, {404.0, 42.0}}, label: '3 steps, 22 seconds'
+                                      Image, 0x11368dcc0, {{396.0, 321.0}, {10.7, 6.3}}, identifier: 'chevron.down', label: 'Go Down'
+                            Cell, 0x11368cdc0, {{18.0, 345.0}, {404.0, 118.0}}
+                              Other, 0x11368da40, {{18.0, 345.0}, {404.0, 118.0}}
+                                Other, 0x11368cc80, {{18.0, 345.0}, {404.0, 118.0}}
+                                  Other, 0x11368cb40, {{18.0, 345.0}, {404.0, 118.0}}
+                                    Image, 0x113a730c0, {{18.0, 363.0}, {30.0, 30.0}}
+                                    StaticText, 0x113a73480, {{56.0, 370.8}, {80.3, 14.3}}, label: 'Conduit Chan'
+                                    StaticText, 0x113a72940, {{144.3, 371.3}, {44.3, 13.3}}, label: 'Sent 8:58 AM'
+                                    Other, 0x113a72f80, {{18.0, 399.0}, {404.0, 22.0}}
+                                      TextView, 0x113a72d00, {{18.0, 399.0}, {404.0, 22.0}}, value: On it! I'll tell y...
+                                        TextView, 0x113a73200, {{18.0, 399.0}, {319.8, 22.0}}, label: 'On it! I'll tell you the moment they're back.'
+                                        Other, 0x113a72a80, {{389.0, 399.0}, {30.0, 22.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                                          Other, 0x113a72bc0, {{416.0, 382.0}, {3.0, 36.0}}
+                                        Other, 0x113a73d40, {{18.0, 407.0}, {404.0, 11.0}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+                                          Other, 0x113a73e80, {{21.0, 415.0}, {199.0, 3.0}}
+                                    Button, 0x113a73340, {{283.3, 438.3}, {15.3, 15.3}}, identifier: 'face.smiling', label: 'React to this response', Disabled
+                                    Button, 0x113a72e40, {{321.3, 436.7}, {15.7, 19.0}}, identifier: 'doc.on.doc', label: 'Copy response'
+                                    Button, 0x113a735c0, {{358.3, 439.3}, {17.7, 13.3}}, identifier: 'speaker.wave.2', label: 'Read response aloud'
+                                    Button, 0x113a73840, {{388.0, 429.0}, {34.0, 34.0}}, identifier: 'chat.replyMoreMenu', label: 'More'
+                                      Button, 0x113a73980, {{388.0, 429.0}, {34.0, 34.0}}
+                                        Image, 0x113a726c0, {{388.0, 429.0}, {34.0, 34.0}}, identifier: 'ellipsis', label: 'More'
+                            Cell, 0x113a72800, {{18.0, 463.0}, {404.0, 144.0}}
+                              Other, 0x113a73ac0, {{18.0, 463.0}, {404.0, 144.0}}
+                                Other, 0x113a73c00, {{18.0, 463.0}, {404.0, 144.0}}
+                                  Other, 0x113a73700, {{18.0, 463.0}, {404.0, 144.0}}
+                                    Image, 0x113465040, {{18.0, 481.0}, {30.0, 30.0}}
+                                    StaticText, 0x113465180, {{56.0, 488.8}, {80.3, 14.3}}, label: 'Conduit Chan'
+                                    StaticText, 0x113467c00, {{144.3, 489.3}, {44.3, 13.3}}, label: 'Sent 8:58 AM'
+                                    Other, 0x113466d00, {{18.0, 517.0}, {404.0, 48.0}}
+                                      TextView, 0x113465680, {{18.0, 517.0}, {404.0, 48.0}}, value: The ryokan shortli...
+                                        TextView, 0x1134670c0, {{18.0, 517.0}, {364.9, 48.0}}, label: 'The ryokan shortlist is in. Hanami-tei is the best value at $240 a night. Want me to hold a room?'
+                                        Other, 0x113464b40, {{389.0, 517.0}, {30.0, 48.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                                          Other, 0x113464a00, {{416.0, 478.0}, {3.0, 36.0}}
+                                        Other, 0x113464780, {{18.0, 538.0}, {404.0, 24.0}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+                                          Other, 0x113464640, {{-21.0, 559.0}, {36.0, 3.0}}
+                                    Button, 0x1134643c0, {{283.3, 582.3}, {15.3, 15.3}}, identifier: 'face.smiling', label: 'React to this response', Disabled
+                                    Button, 0x113464500, {{321.3, 580.7}, {15.7, 19.0}}, identifier: 'doc.on.doc', label: 'Copy response'
+                                    Button, 0x113464280, {{358.3, 583.3}, {17.7, 13.3}}, identifier: 'speaker.wave.2', label: 'Read response aloud'
+                                    Button, 0x113466f80, {{388.0, 573.0}, {34.0, 34.0}}, identifier: 'chat.replyMoreMenu', label: 'More'
+                                      Button, 0x113466e40, {{388.0, 573.0}, {34.0, 34.0}}
+                                        Image, 0x113466300, {{388.0, 573.0}, {34.0, 34.0}}, identifier: 'ellipsis', label: 'More'
+                            Cell, 0x113464f00, {{18.0, 607.0}, {404.0, 144.0}}
+                              Other, 0x113464dc0, {{18.0, 607.0}, {404.0, 144.0}}
+                                Other, 0x113464c80, {{18.0, 607.0}, {404.0, 144.0}}
+                                  Other, 0x1134652c0, {{18.0, 607.0}, {404.0, 144.0}}
+                                    Image, 0x1134648c0, {{18.0, 625.0}, {30.0, 30.0}}
+                                    StaticText, 0x1134661c0, {{56.0, 632.8}, {80.3, 14.3}}, label: 'Conduit Chan'
+                                    StaticText, 0x113466800, {{144.3, 633.3}, {44.3, 13.3}}, label: 'Sent 8:58 AM'
+                                    Other, 0x113467700, {{18.0, 661.0}, {404.0, 48.0}}
+                                      TextView, 0x113466a80, {{18.0, 661.0}, {404.0, 48.0}}, value: The photo cleanup ...
+                                        TextView, 0x113467d40, {{18.0, 661.0}, {391.0, 48.0}}, label: 'The photo cleanup needs your OK before it deletes anything.'
+                                        Other, 0x113466bc0, {{389.0, 661.0}, {30.0, 48.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                                          Other, 0x113467840, {{416.0, 622.0}, {3.0, 36.0}}
+                                        Other, 0x113465f40, {{18.0, 682.0}, {404.0, 24.0}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+                                          Other, 0x113465e00, {{-21.0, 703.0}, {36.0, 3.0}}
+                                    Button, 0x113465cc0, {{283.3, 726.3}, {15.3, 15.3}}, identifier: 'face.smiling', label: 'React to this response', Disabled
+                                    Button, 0x113465b80, {{321.3, 724.7}, {15.7, 19.0}}, identifier: 'doc.on.doc', label: 'Copy response'
+                                    Button, 0x113466440, {{358.3, 727.3}, {17.7, 13.3}}, identifier: 'speaker.wave.2', label: 'Read response aloud'
+                                    Button, 0x113466080, {{388.0, 717.0}, {34.0, 34.0}}, identifier: 'chat.replyMoreMenu', label: 'More'
+                                      Button, 0x113467200, {{388.0, 717.0}, {34.0, 34.0}}
+                                        Image, 0x113466580, {{388.0, 717.0}, {34.0, 34.0}}, identifier: 'ellipsis', label: 'More'
+                            Cell, 0x113465900, {{18.0, 751.0}, {404.0, 144.0}}
+                              Other, 0x113467e80, {{18.0, 751.0}, {404.0, 144.0}}
+                                Other, 0x113467980, {{18.0, 751.0}, {404.0, 144.0}}
+                                  Other, 0x113467ac0, {{18.0, 751.0}, {404.0, 144.0}}
+                                    Image, 0x1134675c0, {{18.0, 769.0}, {30.0, 30.0}}
+                                    StaticText, 0x113465a40, {{56.0, 776.8}, {80.3, 14.3}}, label: 'Conduit Chan'
+                                    StaticText, 0x113467340, {{144.3, 777.3}, {44.3, 13.3}}, label: 'Sent 8:59 AM'
+                                    Other, 0x1134666c0, {{18.0, 805.0}, {404.0, 48.0}}
+                                      TextView, 0x113466940, {{18.0, 805.0}, {404.0, 48.0}}, value: Photos are tidy: 2...
+                                        TextView, 0x113467480, {{18.0, 805.0}, {366.6, 48.0}}, label: 'Photos are tidy: 214 duplicates gone and 3.1 GB back. Your Kyoto weekend is all set!'
+                                        Other, 0x113a7fc00, {{389.0, 805.0}, {30.0, 48.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                                          Other, 0x113a7f5c0, {{416.0, 766.0}, {3.0, 36.0}}
+                                        Other, 0x113a7f980, {{18.0, 826.0}, {404.0, 24.0}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+                                          Other, 0x113a7dcc0, {{-21.0, 847.0}, {36.0, 3.0}}
+                                    Button, 0x113a7f480, {{283.3, 870.3}, {15.3, 15.3}}, identifier: 'face.smiling', label: 'React to this response'
+                                    Button, 0x113a7e080, {{321.3, 868.7}, {15.7, 19.0}}, identifier: 'doc.on.doc', label: 'Copy response'
+                                    Button, 0x113a7e800, {{358.3, 871.3}, {17.7, 13.3}}, identifier: 'speaker.wave.2', label: 'Read response aloud'
+                                    Button, 0x113a7e6c0, {{388.0, 861.0}, {34.0, 34.0}}, identifier: 'chat.replyMoreMenu', label: 'More'
+                                      Button, 0x113a7df40, {{388.0, 861.0}, {34.0, 34.0}}
+                                        Image, 0x113a7f700, {{388.0, 861.0}, {34.0, 34.0}}, identifier: 'ellipsis', label: 'More'
+                            Other, 0x113a7fac0, {{407.0, 116.0}, {30.0, 731.7}}, label: 'Vertical scroll bar, 2 pages', value: 80%
+                              Other, 0x113a7d2c0, {{434.0, 289.3}, {3.0, 555.3}}
+                            Other, 0x113a7ee40, {{62.0, 923.0}, {316.0, 30.0}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+                              Other, 0x113a7d400, {{65.0, 950.0}, {310.0, 3.0}}
+                            Other, 0x113a7e300, {{407.0, 116.0}, {30.0, 731.7}}, label: 'Vertical scroll bar, 2 pages', value: 80%
+                              Other, 0x113a7e580, {{434.0, 289.3}, {3.0, 555.3}}
+                            Other, 0x113a7e940, {{62.0, 923.0}, {316.0, 30.0}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+                              Other, 0x113a7f840, {{65.0, 950.0}, {310.0, 3.0}}
+                        Button, 0x113a7ebc0, {{198.0, 789.7}, {44.0, 44.0}}, identifier: 'arrow.down', label: 'Scroll to latest message'
+                        Button, 0x113a7e1c0, {{28.0, 868.0}, {32.0, 32.0}}, label: 'Attach'
+                          Button, 0x113a7e440, {{28.0, 868.0}, {32.0, 32.0}}
+                            Image, 0x113a7d7c0, {{24.0, 864.0}, {40.0, 40.0}}, identifier: 'plus', label: 'Add'
+                        StaticText, 0x113a7f340, {{76.0, 873.7}, {190.3, 20.3}}, label: 'Message Conduit Chan…'
+                        TextView, 0x113a7ef80, {{67.0, 861.7}, {234.0, 44.0}}
+                          Other, 0x113a7fe80, {{268.0, 861.7}, {30.0, 44.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                            Other, 0x113a7d540, {{295.0, 908.7}, {3.0, 32.0}}
+                          Other, 0x113a7d680, {{67.0, 880.7}, {234.0, 22.0}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+                            Other, 0x113a7de00, {{70.0, 899.7}, {353.0, 3.0}}
+                        Button, 0x113a7da40, {{314.0, 868.0}, {32.0, 32.0}}, identifier: 'composer.dictate', label: 'Dictate'
+                        Button, 0x113a7ea80, {{368.0, 856.0}, {56.0, 56.0}}, label: 'Call Conduit Chan'
+                          Button, 0x113a7f0c0, {{368.0, 856.0}, {56.0, 56.0}}
+                            Other, 0x113ad8500, {{368.0, 856.0}, {56.0, 56.0}}
+                Other, 0x113ad97c0, {{0.0, 0.0}, {440.0, 956.0}}
+                  Other, 0x113ad9900, {{0.0, 0.0}, {440.0, 956.0}}
+              Other, 0x113ad8640, {{0.0, 0.0}, {440.0, 956.0}}
+                Other, 0x113ad9a40, {{0.0, 0.0}, {440.0, 956.0}}
+                  Other, 0x113ad8a00, {{0.0, 0.0}, {440.0, 956.0}}
+                    Other, 0x113ad9f40, {{0.0, 0.0}, {440.0, 956.0}}
+                      Other, 0x113ad8280, {{0.0, 0.0}, {440.0, 956.0}}
+                        Other, 0x113ad8140, {{-277.7, -170.0}, {1048.8, 1352.3}}
+                        CollectionView, 0x113ad8780, {{0.0, 0.0}, {440.0, 956.0}}
+                          Other, 0x113ad88c0, {{0.0, -1740.0}, {440.0, 2168.0}}
+                          Cell, 0x113ad9400, {{0.0, 172.0}, {440.0, 50.0}}
+                            Other, 0x113ad83c0, {{0.0, 172.0}, {440.0, 50.0}}
+                              Other, 0x113ad8000, {{0.0, 172.0}, {440.0, 50.0}}
+                                Other, 0x113ad9180, {{0.0, 172.0}, {440.0, 50.0}}
+                            Other, 0x113ad9540, {{0.0, 172.0}, {440.0, 50.0}}
+                              Other, 0x113ad9040, {{0.0, 172.0}, {440.0, 50.0}}
+                                Other, 0x113ad8b40, {{0.0, 172.0}, {440.0, 50.0}}
+                                  Image, 0x113ad8dc0, {{31.7, 188.7}, {14.7, 15.0}}, identifier: 'magnifyingglass', label: 'Search'
+                                  TextField, 0x113aa4000, {{56.0, 185.0}, {362.0, 22.0}}, placeholderValue: 'Search Hermes'
+                          Cell, 0x113aa4140, {{0.0, 172.0}, {440.0, 256.0}}
+                            Other, 0x113aa4280, {{0.0, 172.0}, {440.0, 256.0}}
+                              Other, 0x113aa43c0, {{0.0, 172.0}, {440.0, 256.0}}
+                                Other, 0x113aa4500, {{0.0, 172.0}, {440.0, 256.0}}
+                            Other, 0x113aa4640, {{0.0, 172.0}, {440.0, 256.0}}
+                              Other, 0x113aa4780, {{0.0, 172.0}, {440.0, 256.0}}
+                                Other, 0x113aa48c0, {{0.0, 172.0}, {440.0, 256.0}}
+                                  Other, 0x113aa4a00, {{16.0, 174.0}, {408.0, 242.0}}, identifier: 'finish-setup.card'
+                                    Image, 0x113aa4b40, {{33.3, 190.7}, {11.0, 10.7}}, identifier: 'checkmark', label: 'Selected', Selected
+                                    StaticText, 0x113aa4c80, {{51.7, 188.2}, {104.7, 15.7}}, label: 'Finish setting up'
+                                    Button, 0x113aa4dc0, {{343.7, 174.0}, {76.3, 44.0}}, identifier: 'finish-setup.not-now', label: 'Not now'
+                                    Other, 0x113aa4f00, {{35.0, 238.0}, {375.3, 36.0}}, identifier: 'finish-setup.plugin'
+                                      Image, 0x113aa5040, {{35.0, 248.0}, {20.7, 16.3}}, identifier: 'puzzlepiece.extension', label: 'puzzlepiece.extension'
+                                      StaticText, 0x113aa5180, {{72.0, 238.0}, {216.7, 36.0}}, label: 'Conduit plugin, Up to date on this dashboard's host'
+                                        StaticText, 0x113aa52c0, {{72.0, 238.0}, {110.7, 19.3}}, label: 'Conduit plugin'
+                                        StaticText, 0x113aa5400, {{72.0, 258.3}, {216.7, 15.7}}, label: 'Up to date on this dashboard's host'
+                                      Image, 0x113aa5540, {{390.3, 246.0}, {20.0, 20.0}}, identifier: 'checkmark.circle.fill', label: 'Done', Selected
+                                    Other, 0x113aa5680, {{37.0, 302.0}, {375.0, 36.0}}, identifier: 'finish-setup.notifications'
+                                      Image, 0x113aa57c0, {{37.0, 310.7}, {16.3, 18.7}}, identifier: 'bell.badge', label: 'bell.badge'
+                                      StaticText, 0x113aa5900, {{72.0, 302.0}, {192.7, 36.0}}, label: 'Notifications, Hear back when Hermes replies'
+                                        StaticText, 0x113aa5a40, {{72.0, 302.0}, {96.7, 19.3}}, label: 'Notifications'
+                                        StaticText, 0x113aa5b80, {{72.0, 322.3}, {192.7, 15.7}}, label: 'Hear back when Hermes replies'
+                                      Button, 0x113aa5cc0, {{329.7, 302.0}, {82.3, 36.0}}, label: 'Turn on'
+                                    Other, 0x113aa5e00, {{72.0, 288.0}, {352.0, 0.7}}
+                                    Other, 0x113aa5f40, {{37.0, 366.0}, {373.3, 36.0}}, identifier: 'finish-setup.voice'
+                                      Image, 0x113aa6080, {{37.0, 375.0}, {16.0, 18.0}}, identifier: 'waveform', label: 'waveform'
+                                      StaticText, 0x113aa61c0, {{72.0, 366.0}, {41.7, 36.0}}, label: 'Voice, Ready'
+                                        StaticText, 0x113aa6300, {{72.0, 366.0}, {41.7, 19.3}}, label: 'Voice'
+                                        StaticText, 0x113aa6440, {{72.0, 386.3}, {37.7, 15.7}}, label: 'Ready'
+                                      Image, 0x113aa6580, {{390.3, 374.0}, {20.0, 20.0}}, identifier: 'checkmark.circle.fill', label: 'Done', Selected
+                                    Other, 0x113aa66c0, {{72.0, 352.0}, {352.0, 0.7}}
+                          Cell, 0x113aa6800, {{0.0, 222.0}, {440.0, 100.0}}
+                            Other, 0x113aa6940, {{0.0, 222.0}, {440.0, 100.0}}
+                              Other, 0x113aa6a80, {{0.0, 222.0}, {440.0, 100.0}}
+                                Other, 0x113aa6bc0, {{0.0, 222.0}, {440.0, 100.0}}
+                            Other, 0x113aa6d00, {{0.0, 222.0}, {440.0, 100.0}}
+                              Other, 0x113aa6e40, {{0.0, 222.0}, {440.0, 100.0}}
+                                Other, 0x113aa6f80, {{0.0, 222.0}, {440.0, 100.0}}
+                                  Button, 0x113aa70c0, {{0.0, 222.0}, {440.0, 100.0}}, identifier: 'chats.repair-connection', label: 'Repair Connection'
+                                    Image, 0x113aa7200, {{143.7, 257.0}, {20.3, 20.3}}, identifier: 'wrench.and.screwdriver', label: 'wrench.and.screwdriver'
+                                    StaticText, 0x113aa7340, {{30.0, 238.0}, {380.0, 58.0}}, label: 'Repair Connection'
+                          Cell, 0x113aa7480, {{0.0, 222.0}, {440.0, 170.0}}
+                            Other, 0x113aa75c0, {{0.0, 222.0}, {440.0, 170.0}}
+                              Other, 0x113aa7700, {{0.0, 222.0}, {440.0, 170.0}}
+                                Other, 0x113aa7840, {{0.0, 222.0}, {440.0, 170.0}}
+                            Other, 0x113aa7980, {{0.0, 222.0}, {440.0, 170.0}}
+                              Other, 0x113aa7ac0, {{0.0, 222.0}, {440.0, 170.0}}
+                                Other, 0x113aa7c00, {{0.0, 222.0}, {440.0, 170.0}}
+                                  ActivityIndicator, 0x113aa7d40, {{0.0, 222.0}, {440.0, 170.0}}, label: 'Loading chats…', value: 1
+                                    ActivityIndicator, 0x113aa7e80, {{210.0, 283.7}, {20.0, 20.0}}, value: 1
+                                      Image, 0x113aac000, {{210.0, 283.7}, {20.0, 20.0}}
+                                    StaticText, 0x113aac140, {{0.0, 0.0}, {0.0, 0.0}}, label: 'Loading chats…'
+                          Cell, 0x113aac280, {{0.0, 322.0}, {440.0, 170.0}}
+                            Other, 0x113aac3c0, {{0.0, 322.0}, {440.0, 170.0}}
+                              Other, 0x113aac500, {{0.0, 322.0}, {440.0, 170.0}}
+                                Other, 0x113aac640, {{0.0, 322.0}, {440.0, 170.0}}
+                            Other, 0x113aac780, {{0.0, 322.0}, {440.0, 170.0}}
+                              Other, 0x113aac8c0, {{0.0, 322.0}, {440.0, 170.0}}
+                                Other, 0x113aaca00, {{0.0, 322.0}, {440.0, 170.0}}
+                                  ActivityIndicator, 0x113aacb40, {{0.0, 322.0}, {440.0, 170.0}}, label: 'Loading chats…', value: 1
+                                    ActivityIndicator, 0x113aacc80, {{210.0, 383.7}, {20.0, 20.0}}, value: 1
+                                      Image, 0x113aacdc0, {{210.0, 383.7}, {20.0, 20.0}}
+                                    StaticText, 0x113aacf00, {{0.0, 0.0}, {0.0, 0.0}}, label: 'Loading chats…'
+                          Other, 0x113aad040, {{20.0, 416.7}, {400.0, 1.0}}
+                          Other, 0x113aad180, {{0.0, 428.0}, {440.0, 2043.3}}
+                          Cell, 0x113aad2c0, {{0.0, 450.0}, {440.0, 44.0}}
+                            Other, 0x113aad400, {{0.0, 450.0}, {440.0, 44.0}}
+                            Other, 0x113aad540, {{0.0, 450.0}, {440.0, 44.0}}
+                              Other, 0x113aad680, {{0.0, 450.0}, {440.0, 44.0}}
+                                Other, 0x113aad7c0, {{0.0, 450.0}, {440.0, 44.0}}
+                                  StaticText, 0x113aad900, {{0.0, 450.0}, {440.0, 44.0}}, label: 'Today', value: Expanded
+                                    Button, 0x113aada40, {{0.0, 450.0}, {440.0, 44.0}}, label: 'Today'
+                                      StaticText, 0x113aadb80, {{16.0, 464.2}, {38.0, 15.7}}, label: 'Today'
+                                      Image, 0x113aadcc0, {{59.3, 469.7}, {10.0, 6.0}}, identifier: 'chevron.right', label: 'Forward'
+                          Cell, 0x113aade00, {{0.0, 494.0}, {440.0, 65.3}}
+                            Other, 0x113aadf40, {{0.0, 494.0}, {440.0, 65.3}}
+                              Other, 0x113aae080, {{0.0, 494.0}, {440.0, 65.3}}
+                                Other, 0x113aae1c0, {{0.0, 494.0}, {440.0, 65.3}}
+                            Other, 0x113aae300, {{0.0, 494.0}, {440.0, 65.3}}
+                              Other, 0x113aae440, {{0.0, 494.0}, {440.0, 65.3}}
+                                Other, 0x113aae580, {{0.0, 494.0}, {440.0, 65.3}}
+                                  Button, 0x113aae6c0, {{0.0, 494.0}, {440.0, 65.3}}, label: 'Kyoto packing list', value: What should I pack...
+                                    Image, 0x113aae800, {{16.0, 507.7}, {38.0, 38.0}}, identifier: 'bubble.left.fill', label: 'Comment Left'
+                                    StaticText, 0x113aae940, {{66.0, 507.0}, {134.0, 19.3}}, label: 'Kyoto packing list'
+                                    StaticText, 0x113aaea80, {{374.0, 510.0}, {50.0, 15.7}}, label: '8:35 AM'
+                                    StaticText, 0x113aaebc0, {{66.0, 528.3}, {324.0, 18.0}}, label: 'What should I pack for Kyoto in late November?'
+                                  Other, 0x113aaed00, {{66.0, 559.0}, {374.0, 0.3}}
+                          Other, 0x113aaee40, {{407.0, 172.0}, {30.0, 688.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                          Other, 0x113aaef80, {{407.0, 172.0}, {30.0, 688.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                        ScrollView, 0x113aaf0c0, {{0.0, 66.0}, {440.0, 48.0}}
+                          Other, 0x113aaf200, {{0.0, 66.0}, {404.3, 48.0}}
+                            Button, 0x113aaf340, {{16.0, 68.0}, {44.0, 44.0}}, identifier: 'v2.profile.all', label: 'All profiles'
+                              Image, 0x113aaf480, {{33.0, 79.0}, {22.0, 22.0}}
+                              Image, 0x113aaf5c0, {{27.0, 79.0}, {22.0, 22.0}}
+                              Image, 0x113aaf700, {{21.0, 79.0}, {22.0, 22.0}}
+                            Button, 0x113aaf840, {{68.0, 68.0}, {112.3, 44.0}}, identifier: 'sidebar.workspace', label: 'Hermes profile', Selected
+                              Image, 0x113aaf980, {{71.0, 73.0}, {34.0, 34.0}}
+                              StaticText, 0x113aafac0, {{68.0, 68.0}, {112.3, 44.0}}, label: 'Hermes'
+                            Button, 0x113aafc00, {{188.3, 68.0}, {44.0, 44.0}}, identifier: 'v2.profile.conduit-chan', label: 'Conduit Chan profile'
+                              Image, 0x113aafd40, {{188.3, 68.0}, {44.0, 44.0}}
+                            Button, 0x113aafe80, {{240.3, 68.0}, {44.0, 44.0}}, identifier: 'v2.profile.mira', label: 'Mira profile'
+                              Image, 0x113ab8000, {{240.3, 68.0}, {44.0, 44.0}}
+                            Button, 0x113ab8140, {{292.3, 68.0}, {44.0, 44.0}}, identifier: 'v2.profile.piko', label: 'Piko profile'
+                              Image, 0x113ab8280, {{292.3, 68.0}, {44.0, 44.0}}
+                            Button, 0x113ab83c0, {{344.3, 68.0}, {44.0, 44.0}}, identifier: 'v2.profile.riri', label: 'Riri profile'
+                              Image, 0x113ab8500, {{344.3, 68.0}, {44.0, 44.0}}
+                        Button, 0x113ab8640, {{16.0, 120.0}, {164.0, 44.0}}, label: 'Filter', value: All
+                          Button, 0x113ab8780, {{16.0, 120.0}, {164.0, 44.0}}
+                            Image, 0x113ab88c0, {{31.7, 137.7}, {14.3, 8.7}}, identifier: 'line.3.horizontal.decrease', label: 'Filter'
+                            StaticText, 0x113ab8a00, {{53.7, 133.0}, {18.7, 18.0}}, label: 'All'
+                            Image, 0x113ab8b40, {{155.0, 139.3}, {9.7, 5.7}}, identifier: 'chevron.down', label: 'Go Down'
+                        Button, 0x113ab8c80, {{202.0, 120.0}, {44.0, 44.0}}, identifier: 'magnifyingglass', label: 'Search'
+                        Button, 0x113ab8dc0, {{246.0, 120.0}, {44.0, 44.0}}, identifier: 'folder', label: 'Browse projects'
+                        Button, 0x113ab8f00, {{290.0, 120.0}, {44.0, 44.0}}, identifier: 'chats.pulse', label: 'Pulse'
+                        Button, 0x113ab9040, {{334.0, 120.0}, {44.0, 44.0}}, identifier: 'square.grid.2x2', label: 'Artifacts'
+                        Button, 0x113ab9180, {{378.0, 120.0}, {44.0, 44.0}}, identifier: 'square.and.pencil', label: 'New Chat'
+                        Other, 0x113ab92c0, {{0.0, 860.0}, {440.0, 62.0}}
+                Other, 0x113ab9400, {{0.0, 0.0}, {440.0, 956.0}}
+                  Other, 0x113ab9540, {{0.0, 0.0}, {0.0, 0.0}}
+                  Other, 0x113ab9680, {{0.0, 0.0}, {440.0, 956.0}}
+              WebView, 0x113ab97c0, {{219.7, 491.7}, {1.0, 1.0}}
+                WebView, 0x113ab9900, {{219.7, 491.7}, {1.0, 1.0}}
+                  WebView, 0x113ab9a40, {{219.7, 491.7}, {1.0, 1.0}}
+                    Other, 0x113ab9b80, {{0.0, 0.0}, {1.0, 1.0}}
+                      Other, 0x113ab9cc0, {{0.0, 0.0}, {1.0, 1.0}}
+                        Other, 0x113ab9e00, {{219.0, 491.0}, {1.0, 1.0}}
+                          Other, 0x113ab9f40, {{219.0, 491.0}, {111.0, 120.0}}, Focused
+                            Other, 0x113aba080, {{221.0, 494.0}, {107.0, 113.0}}, Focused
+                              StaticText, 0x113aba1c0, {{221.0, 494.0}, {107.0, 113.0}}, label: '{"version":"unknown","release_date":"2026.9.24","config_version":51,"latest_config_version":51,"can_update_hermes":true,"gateway_running":true,"gateway_state":"running","gateway_platforms":{},"gateway_exit_reason":null,"gateway_updated_at":"2026-11-07T04:56:01.954387+00:00","gateway_heartbeat_stale_s":null,"gateway_shared_with":["default","conduit-chan","mira","piko","riri"],"active_agents":0,"gateway_busy":false,"gateway_drainable":true,"restart_drain_timeout":0.0,"active_sessions":0,"auth_required":true,"auth_providers":["basic","conduit-local-live"],"auth_flows":["cookie","native_pkce"],"nous_session_valid":"unknown","install_id":"71eed71ef39e4b79bd40063457681b72","shared_profile_warning":false,"components":{"gateway":{"status":"ok","state":"running"},"dashboard":{"status":"ok","recent_unhandled_errors":0,"last_error_at":null,"selftest":"unknown"},"storage":{"status":"ok"},"platforms":{"status":"ok","configured":0,"connected":0}},"overall":"ok","memory":{"pressure":"unknown","gateway_rss_mb":null,"system_total_mb":null,"system_available_mb":null,"swap_used_mb":null,"sampled_at":null,"last_boot_unclean":false,"last_boot_suspected_oom":false,"boot_id":"2026-11-07T04:35:21.838738+00:00"},"disk":{"pressure":"ok","total_mb":327180,"free_mb":92129,"used_percent":71.8},"profiles":["default","conduit-chan","mira","piko","riri"],"parked_profiles":[],"gateway_mode":"multiplex","multiplex_standalone_reason":null}', value: {"version":"unknow..., Focused
+                  Other, 0x113aba300, {{217.2, 491.7}, {0.5, 1.0}}, label: 'Vertical scroll bar, 119 pages', value: 0%
+                    Other, 0x113aba440, {{214.7, 450.0}, {3.0, 36.0}}
+                  Other, 0x113aba580, {{219.7, 489.2}, {1.0, 0.5}}, label: 'Horizontal scroll bar, 110 pages', value: 0%
+                    Other, 0x113aba6c0, {{175.0, 486.7}, {36.0, 3.0}}
+                  Other, 0x113aba800, {{217.2, 491.7}, {0.5, 1.0}}, label: 'Vertical scroll bar, 119 pages', value: 0%
+                    Other, 0x113aba940, {{214.7, 450.0}, {3.0, 36.0}}
+                  Other, 0x113abaa80, {{219.7, 489.2}, {1.0, 0.5}}, label: 'Horizontal scroll bar, 110 pages', value: 0%
+                    Other, 0x113ababc0, {{175.0, 486.7}, {36.0, 3.0}}
+      Other, 0x113abad00, {{0.0, 0.0}, {440.0, 956.0}}
+        Other, 0x113abae40, {{-440.0, -956.0}, {1320.0, 2868.0}}, identifier: 'PopoverDismissRegion', label: 'dismiss popup'
+        Other, 0x113abaf80, {{8.0, 451.1}, {424.0, 496.9}}
+          Button, 0x113abb0c0, {{183.4, 446.3}, {73.2, 24.1}}, label: 'Sheet Grabber', value: Half screen
+          Other, 0x113abb200, {{8.0, 451.1}, {424.0, 496.9}}
+            Other, 0x113abb340, {{8.0, 451.1}, {424.0, 496.9}}
+              Other, 0x113abb480, {{8.0, 451.1}, {424.0, 496.9}}
+                Other, 0x113abb5c0, {{8.0, 451.1}, {424.0, 496.9}}
+                  Other, 0x113abb700, {{8.0, 451.1}, {424.0, 496.9}}, identifier: 'botOverview'
+                    Other, 0x113abb840, {{8.0, 451.1}, {424.0, 496.9}}
+                      Other, 0x113abb980, {{8.0, 451.1}, {424.0, 496.9}}
+                        Other, 0x113abbac0, {{8.0, 451.1}, {424.0, 496.9}}
+                          Other, 0x113abbc00, {{8.0, 451.1}, {424.0, 496.9}}
+                            Other, 0x113abbd40, {{-259.4, 177.1}, {1010.7, 1082.5}}
+                            Image, 0x113abbe80, {{27.3, 468.4}, {50.1, 50.1}}
+                            StaticText, 0x113ac0000, {{88.9, 473.4}, {120.8, 23.1}}, label: 'Conduit Chan'
+                            StaticText, 0x113ac0140, {{88.9, 498.5}, {30.2, 15.1}}, label: 'Work'
+                            Button, 0x113ac0280, {{326.0, 472.3}, {42.4, 42.4}}, identifier: 'slider.horizontal.3', label: 'Edit Bot'
+                            Button, 0x113ac03c0, {{380.0, 472.3}, {42.4, 42.4}}, identifier: 'xmark', label: 'Close'
+                            Button, 0x113ac0500, {{23.4, 532.0}, {393.2, 42.4}}, identifier: 'botOverview.chat', label: 'Chat with Conduit Chan'
+                              Image, 0x113ac0640, {{126.5, 545.8}, {16.1, 15.1}}, identifier: 'bubble.left.fill', label: 'Comment Left'
+                              StaticText, 0x113ac0780, {{23.4, 532.0}, {393.2, 42.4}}, label: 'Chat with Conduit Chan'
+                            SegmentedControl, 0x113ac08c0, {{23.4, 587.9}, {393.2, 29.9}}
+                              Button, 0x113ac0a00, {{23.4, 587.9}, {196.6, 30.8}}, label: 'Work', Selected
+                              Button, 0x113ac0b40, {{220.0, 587.9}, {196.6, 30.8}}, label: 'Artifacts'
+                            CollectionView, 0x113ac0c80, {{8.0, 621.6}, {424.0, 326.4}}, identifier: 'botWork.panel'
+                              Other, 0x113ac0dc0, {{8.0, -31.1}, {424.0, 1622.1}}
+                              Cell, 0x113ac0f00, {{8.0, 621.6}, {424.0, 50.1}}
+                                Other, 0x113ac1040, {{8.0, 621.6}, {424.0, 50.1}}
+                                  Other, 0x113ac1180, {{8.0, 621.6}, {424.0, 50.1}}
+                                    Other, 0x113ac12c0, {{8.0, 621.6}, {424.0, 50.1}}
+                                Other, 0x113ac1400, {{8.0, 621.6}, {424.0, 50.1}}
+                                  Other, 0x113ac1540, {{8.0, 621.6}, {424.0, 50.1}}
+                                    Other, 0x113ac1680, {{8.0, 621.6}, {424.0, 50.1}}
+                                      ScrollView, 0x113ac17c0, {{23.4, 635.1}, {393.2, 25.1}}
+                                        Other, 0x113ac1900, {{23.4, 635.1}, {268.9, 25.1}}
+                                          StaticText, 0x113ac1a40, {{23.4, 635.1}, {97.0, 25.4}}, label: 'Needs you, 0'
+                                            StaticText, 0x113ac1b80, {{35.0, 640.9}, {60.1, 13.8}}, label: 'Needs you'
+                                            StaticText, 0x113ac1cc0, {{100.8, 640.9}, {8.0, 13.8}}, label: '0'
+                                          StaticText, 0x113ac1e00, {{128.1, 635.1}, {84.2, 25.4}}, label: 'Working, 0'
+                                            StaticText, 0x113ac1f40, {{139.7, 640.9}, {47.2, 13.8}}, label: 'Working'
+                                            StaticText, 0x113ac2080, {{192.7, 640.9}, {8.0, 13.8}}, label: '0'
+                                          StaticText, 0x113ac21c0, {{220.0, 635.1}, {72.3, 25.4}}, label: 'Ready, 0'
+                                            StaticText, 0x113ac2300, {{231.6, 640.9}, {35.3, 13.8}}, label: 'Ready'
+                                            StaticText, 0x113ac2440, {{272.7, 640.9}, {8.0, 13.8}}, label: '0'
+                              Cell, 0x113ac2580, {{8.0, 671.8}, {424.0, 50.1}}
+                                Other, 0x113ac26c0, {{8.0, 671.8}, {424.0, 50.1}}
+                                  Other, 0x113ac2800, {{8.0, 671.8}, {424.0, 50.1}}
+                                    Other, 0x113ac2940, {{8.0, 671.8}, {424.0, 50.1}}
+                                Other, 0x113ac2a80, {{8.0, 671.8}, {424.0, 50.1}}
+                                  Other, 0x113ac2bc0, {{8.0, 671.8}, {424.0, 50.1}}
+                                    Other, 0x113ac2d00, {{8.0, 671.8}, {424.0, 50.1}}
+                                      StaticText, 0x113ac2e40, {{8.0, 671.8}, {424.0, 50.1}}, label: 'Recent'
+                                        Image, 0x113ac2f80, {{28.2, 694.9}, {11.9, 11.9}}, identifier: 'clock.fill', label: 'Clock'
+                                        StaticText, 0x113ac30c0, {{46.9, 693.1}, {42.7, 15.1}}, label: 'Recent'
+                              Cell, 0x113ac3200, {{8.0, 721.9}, {424.0, 108.2}}
+                                Other, 0x113ac3340, {{8.0, 721.9}, {424.0, 108.2}}
+                                  Other, 0x113ac3480, {{8.0, 721.9}, {424.0, 108.2}}
+                                    Other, 0x113ac35c0, {{8.0, 721.9}, {424.0, 108.2}}
+                                Other, 0x113ac3700, {{8.0, 721.9}, {424.0, 108.2}}
+                                  Other, 0x113ac3840, {{8.0, 721.9}, {424.0, 108.2}}
+                                    Other, 0x113ac3980, {{8.0, 721.9}, {424.0, 108.2}}
+                                      Button, 0x113ac3ac0, {{8.0, 721.9}, {424.0, 108.2}}, identifier: 'botWork.row.W2', label: 'W2, Trip photo cleanup, 52s ago, Done, Done: 214 duplicates deleted, the sharpest shot of each set kept. Kyoto went from 1,032 photos to 818, and 3.1 GB is free again.', value: Collapsed
+                                        Image, 0x113ac3c00, {{36.9, 740.2}, {28.9, 28.9}}, identifier: 'checkmark', label: 'Selected', Selected
+                                        StaticText, 0x113ac3d40, {{77.4, 743.1}, {19.0, 13.8}}, label: 'W2'
+                                        StaticText, 0x113ac3e80, {{102.1, 740.2}, {128.8, 17.3}}, label: 'Trip photo cleanup'
+                                        StaticText, 0x113ad0000, {{366.2, 743.1}, {36.9, 13.8}}, label: '52s ago'
+                                        StaticText, 0x113ad0140, {{77.4, 760.4}, {30.8, 15.1}}, label: 'Done'
+                                        StaticText, 0x113ad0280, {{77.4, 779.4}, {323.8, 32.4}}, label: 'Done: 214 duplicates deleted, the sharpest shot of each set kept. Kyoto went from 1,032 photos to 818, and 3.1 GB is free again.'
+                              Cell, 0x113ad03c0, {{8.0, 830.1}, {424.0, 108.2}}
+                                Other, 0x113ad0500, {{8.0, 830.1}, {424.0, 108.2}}
+                                  Other, 0x113ad0640, {{8.0, 830.1}, {424.0, 108.2}}
+                                    Other, 0x113ad0780, {{8.0, 830.1}, {424.0, 108.2}}
+                                Other, 0x113ad08c0, {{8.0, 830.1}, {424.0, 108.2}}
+                                  Other, 0x113ad0a00, {{8.0, 830.1}, {424.0, 108.2}}
+                                    Other, 0x113ad0b40, {{8.0, 830.1}, {424.0, 108.2}}
+                                      Button, 0x113ad0c80, {{8.0, 830.1}, {424.0, 108.2}}, identifier: 'botWork.row.W1', label: 'W1, Ryokan shortlist, 2m ago, Done, Three picks near Gion, all under $300 a night with a private bath: 1. Ryokan Hanami-tei: $240, quiet garden rooms, 5 minutes to Gion. 2. Gion Kotori: $285, 2 minutes from Yasaka Shrine, kaiseki dinner included. 3. Shirakawa Yado: $295, on the Shirakawa canal, rated 9.6. Hanami-tei is the best value; Shirakawa Yado if you want the canal view.', value: Collapsed
+                                        Image, 0x113ad0dc0, {{36.9, 848.4}, {28.9, 28.9}}, identifier: 'checkmark', label: 'Selected', Selected
+                                        StaticText, 0x113ad0f00, {{77.4, 851.3}, {17.3, 13.8}}, label: 'W1'
+                                        StaticText, 0x113ad1040, {{100.5, 848.4}, {111.5, 17.3}}, label: 'Ryokan shortlist'
+                                        StaticText, 0x113ad1180, {{359.1, 851.3}, {44.0, 13.8}}, label: '2m ago'
+                                        StaticText, 0x113ad12c0, {{77.4, 868.7}, {30.8, 15.1}}, label: 'Done'
+                                        StaticText, 0x113ad1400, {{77.4, 887.6}, {325.7, 32.4}}, label: 'Three picks near Gion, all under $300 a night with a private bath: 1. Ryokan Hanami-tei: $240, quiet garden rooms, 5 minutes to Gion. 2. Gion Kotori: $285, 2 minutes from Yasaka Shrine, kaiseki dinner included. 3. Shirakawa Yado: $295, on the Shirakawa canal, rated 9.6. Hanami-tei is the best value; Shirakawa Yado if you want the canal view.'
+                              Other, 0x113ad1540, {{400.2, 621.6}, {28.9, 272.2}}, label: 'Vertical scroll bar, 2 pages', value: 0%
+                                Other, 0x113ad1680, {{426.2, 624.5}, {2.9, 204.0}}
+                              Other, 0x113ad17c0, {{400.2, 621.6}, {28.9, 272.2}}, label: 'Vertical scroll bar, 2 pages', value: 0%
+                                Other, 0x113ad1900, {{426.2, 624.5}, {2.9, 204.0}}
+                    Other, 0x113ad1a40, {{8.0, 451.1}, {424.0, 496.9}}
+                      Other, 0x113ad1b80, {{8.0, 451.1}, {424.0, 496.9}}
+          Other, 0x113ad1cc0, {{8.0, 451.1}, {424.0, 496.9}}
+            Other, 0x113ad1e00, {{8.0, 451.1}, {424.0, 496.9}}
+              Other, 0x113ad1f40, {{8.0, 451.1}, {424.0, 496.9}}
+                Other, 0x113ad2080, {{8.0, 451.1}, {424.0, 496.9}}
+                  Other, 0x113ad21c0, {{8.0, 451.1}, {424.0, 496.9}}
+                    Other, 0x113ad2300, {{8.0, 451.1}, {424.0, 496.9}}
+                Other, 0x113ad2440, {{8.0, 451.1}, {424.0, 496.9}}
+                  Other, 0x113ad2580, {{8.0, 451.1}, {424.0, 496.9}}
+    Window, 0x113ad26c0, {{0.0, 0.0}, {440.0, 956.0}}
+      Other, 0x113ad2800, {{0.0, 0.0}, {440.0, 956.0}}
+        Other, 0x113ad2940, {{0.0, 0.0}, {440.0, 956.0}}
+Path to element:
+ →Application, 0x11367bac0, pid: 48748, label: 'Conduit'
+Query chain:
+ →Find: Target Application 'com.milim.relay'
+  Output: {
+    Application, 0x113ad2a80, pid: 48748, label: 'Conduit'
+  }
+)

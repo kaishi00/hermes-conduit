@@ -1,0 +1,17 @@
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-07 04:34:43,435 WARNING gateway.run: No messaging platforms enabled.
+2026-11-07 04:35:12,273 WARNING gateway.run: Shutdown context: signal=SIGTERM under_systemd=no parent_pid=2119 parent_name=? loadavg_1m=12.31
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-07 04:35:22,584 WARNING gateway.run: No messaging platforms enabled.
