@@ -438,6 +438,8 @@ struct RichCardSchema {
                                       "recoverykey", "licensekey", "seedphrase", "verificationcode", "securitycode",
                                       "authcode", "backupcode", "passphrase", "totp", "masterkey", "credential",
                                       "2fa", "twofactor", "logincode", "accesscode", "unlockcode", "securitykey",
+                                      "resetcode", "recoverycode", "activationcode", "authkey", "verificationkey",
+                                      "backupkey",
                                       // The same in the languages Conduit ships, as a model writes
                                       // labels in the user's.
                                       "passwort", "kennwort", "contraseña", "motdepasse", "senha", "пароль",
