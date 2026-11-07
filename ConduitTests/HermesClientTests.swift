@@ -2889,7 +2889,7 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual(words("session_idle"), "No reply is running to send it into. It runs next.")
         XCTAssertEqual(words("admission_terminal"), "That message isn't waiting any more.")
         XCTAssertEqual(AppState.queueActionRefusal(URLError(.timedOut)),
-                       "Hermes couldn't be reached, so nothing changed. Try again.")
+                       "Hermes couldn't be reached. Check the queue before you try again.")
     }
 
     func testAuthorityResumeTakenBeforeASeenTurnStartedLeavesItRunning() async throws {

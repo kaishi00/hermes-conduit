@@ -29466,6 +29466,15 @@ final class AppState: ObservableObject {
                 case .accepted:
                     if client.speaksSessionAuthority, let admission = HermesClient.admittedAdmissionID(for: sessionId) {
                         noteOwnSend(admissionID: admission, rowID: userMessage.id)
+                        // A queue push that came before this reply already
+                        // listed it: read that list again now it's known as ours.
+                        if authorityQueue.sessionID.map({ $0 == sessionId || knownSessionIDs(for: sessionId).contains($0) }) == true {
+                            adoptOwnQueuedSends(authorityQueue.rows)
+                            if messages.contains(where: { $0.id == userMessage.id }) == false {
+                                locallyOwnedInFlightTurn = nil
+                                break
+                            }
+                        }
                         // A turn a restart cut off holds the chat: the send
                         // waits behind it in the dock, and no turn starts.
                         if !authorityQueue.lost.isEmpty, let queueChat = authorityQueue.sessionID,
@@ -30039,7 +30048,9 @@ final class AppState: ObservableObject {
             if activeSessionId == requestedSessionID || eventBelongsToActiveSession(requestedSessionID) {
                 authorityQueue.apply(rows, for: requestedSessionID)
             }
-            return .acceptedRunning
+            // Taken either way; it runs only behind a running turn. Held by
+            // a cut-off one, nothing runs: the next snapshot says so.
+            return row.status == .queued && rows.contains { $0.status == .started } ? .acceptedRunning : .acceptedUnsettled
         case .started:
             if activeSessionId == requestedSessionID || eventBelongsToActiveSession(requestedSessionID) {
                 authorityQueue.apply(rows, for: requestedSessionID)

@@ -59,9 +59,10 @@ struct AuthorityQueueDock: View {
                 let text = editText
                 Task { await appState.editQueuedPrompt(row, text: text) }
             }
+            .disabled(editText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("It goes to the back of the line.")
+            Text("It goes to the back of the line. To withdraw it, use Remove from queue.")
         }
     }
 

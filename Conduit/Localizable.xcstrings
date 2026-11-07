@@ -446062,88 +446062,6 @@
         }
       }
     },
-    "It goes to the back of the line." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sie kommt ans Ende der Warteschlange."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pasa al final de la cola."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Il passe en fin de file."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pesan dipindah ke akhir antrean."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Va in fondo alla coda."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "列の最後に回ります。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "대기열 맨 뒤로 갑니다."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Trafi na koniec kolejki."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ela vai para o fim da fila."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Оно переместится в конец очереди."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sıranın sonuna gider."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "它会排到队尾。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "它會排到隊尾。"
-          }
-        }
-      }
-    },
     "Send now" : {
       "localizations" : {
         "de" : {
@@ -447046,88 +446964,6 @@
         }
       }
     },
-    "Hermes couldn't be reached, so nothing changed. Try again." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes war nicht erreichbar, daher hat sich nichts geändert. Versuche es noch einmal."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se pudo contactar con Hermes, así que no cambió nada. Inténtalo de nuevo."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Impossible de joindre Hermes, rien n'a changé. Réessayez."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes tidak bisa dihubungi, jadi tidak ada yang berubah. Coba lagi."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Impossibile raggiungere Hermes, quindi non è cambiato nulla. Riprova."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermesに接続できなかったため、何も変わっていません。もう一度お試しください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes에 연결할 수 없어 아무것도 바뀌지 않았습니다. 다시 시도하세요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nie udało się połączyć z Hermesem, więc nic się nie zmieniło. Spróbuj ponownie."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Não foi possível falar com o Hermes, então nada mudou. Tente de novo."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Не удалось связаться с Hermes, поэтому ничего не изменилось. Повторите попытку."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes'e ulaşılamadı, bu yüzden hiçbir şey değişmedi. Tekrar dene."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法连接 Hermes，因此没有任何更改。请再试一次。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無法連線 Hermes，因此沒有任何變更。請再試一次。"
-          }
-        }
-      }
-    },
     "Hermes can't take it into this reply yet. It stays queued." : {
       "localizations" : {
         "de" : {
@@ -447452,6 +447288,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "那則訊息已不再等待。"
+          }
+        }
+      }
+    },
+    "Hermes couldn't be reached. Check the queue before you try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes war nicht erreichbar. Sieh in der Warteschlange nach, bevor du es noch einmal versuchst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo contactar con Hermes. Revisa la cola antes de volver a intentarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de joindre Hermes. Vérifiez la file d'attente avant de réessayer."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak bisa dihubungi. Periksa antrean sebelum mencoba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile raggiungere Hermes. Controlla la coda prima di riprovare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesに接続できませんでした。もう一度試す前に待機列を確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes에 연결할 수 없습니다. 다시 시도하기 전에 대기열을 확인하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się połączyć z Hermesem. Sprawdź kolejkę, zanim spróbujesz ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível falar com o Hermes. Confira a fila antes de tentar de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось связаться с Hermes. Проверьте очередь, прежде чем повторить попытку."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'e ulaşılamadı. Tekrar denemeden önce sırayı kontrol et."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接 Hermes。请先查看队列，再重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連線 Hermes。請先查看佇列，再重試。"
+          }
+        }
+      }
+    },
+    "It goes to the back of the line. To withdraw it, use Remove from queue." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie kommt ans Ende der Warteschlange. Um sie zurückzuziehen, nutze „Aus der Warteschlange entfernen“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pasa al final de la cola. Para retirarlo, usa «Quitar de la cola»."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il passe en fin de file. Pour le retirer, utilisez « Retirer de la file d'attente »."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesan dipindah ke akhir antrean. Untuk menariknya, gunakan Hapus dari antrean."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Va in fondo alla coda. Per ritirarlo, usa «Rimuovi dalla coda»."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列の最後に回ります。取り下げるには「待機列から削除」を使ってください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "대기열 맨 뒤로 갑니다. 취소하려면 '대기열에서 제거'를 사용하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trafi na koniec kolejki. Aby ją wycofać, użyj opcji „Usuń z kolejki”."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ela vai para o fim da fila. Para retirá-la, use Remover da fila."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Оно переместится в конец очереди. Чтобы отозвать его, нажмите «Убрать из очереди»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sıranın sonuna gider. Geri çekmek için Sıradan kaldır'ı kullan."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它会排到队尾。要撤回，请使用“从队列中移除”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它會排到隊尾。要撤回，請使用「從佇列中移除」。"
           }
         }
       }

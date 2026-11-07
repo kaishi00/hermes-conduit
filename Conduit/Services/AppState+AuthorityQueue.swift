@@ -109,6 +109,8 @@ extension AppState {
         do {
             try await action(client, sessionID)
         } catch {
+            // Said under its own chat's queue only, not one opened meanwhile.
+            guard authorityQueue.sessionID == sessionID else { return }
             authorityQueue.notice = Self.queueActionRefusal(error)
         }
     }
@@ -118,7 +120,7 @@ extension AppState {
     /// turn runs to send it into; it stays queued in each.
     static func queueActionRefusal(_ error: Error) -> String {
         guard let refusal = error as? RpcError else {
-            return AppLocalization.string("Hermes couldn't be reached, so nothing changed. Try again.")
+            return AppLocalization.string("Hermes couldn't be reached. Check the queue before you try again.")
         }
         switch refusal.reason ?? refusal.message {
         case "steer_unavailable":
