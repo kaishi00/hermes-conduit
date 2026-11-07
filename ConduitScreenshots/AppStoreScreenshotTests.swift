@@ -192,8 +192,10 @@ final class AppStoreScreenshotTests: XCTestCase {
             XCTFail("Conduit Chan's portrait never showed on Bots Home")
             return
         }
-        // The bots' pictures load after the roster: give them time.
+        // The bots' pictures load after the roster: give them time. The
+        // setup card can come in meanwhile (once the plugin is checked).
         settle(12)
+        dismissFinishSetupCard()
         print("PROMO_MARK home \(Date().timeIntervalSince1970)")
         snap("promo-01-bots-home")
         settle(2)
@@ -250,10 +252,13 @@ final class AppStoreScreenshotTests: XCTestCase {
         print("PROMO_MARK needs-you \(Date().timeIntervalSince1970)")
         snap("promo-02-needs-you")
         let approve = app.buttons["Approve"].firstMatch
-        if !approve.isHittable {
-            // The Work panel: both workstreams, and W2's approval card.
+        let panel = app.descendants(matching: .any)["botWork.panel"].firstMatch
+        // The Work panel: both workstreams, and W2's approval card. A tap
+        // while the chat is still settling can miss it, so try again.
+        for _ in 0..<3 where !approve.isHittable {
             needsYou.tap()
             print("PROMO_MARK panel \(Date().timeIntervalSince1970)")
+            if panel.waitForExistence(timeout: 6) { break }
         }
         guard approve.waitForExistence(timeout: 15) else {
             snap("debug-no-approval")
