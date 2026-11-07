@@ -421962,6 +421962,88 @@
         }
       }
     },
+    "This Hermes no longer has this helper model.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Hermes hat dieses Hilfsmodell nicht mehr."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este Hermes ya no tiene este modelo auxiliar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet Hermes n’a plus ce modèle auxiliaire."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes ini tidak lagi punya model pembantu ini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo Hermes non ha più questo modello ausiliario."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このHermesにはこの補助モデルがもうありません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 Hermes에는 더 이상 이 보조 모델이 없습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ten Hermes nie ma już tego modelu pomocniczego."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este Hermes não tem mais este modelo auxiliar."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В этом Hermes больше нет этой вспомогательной модели."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu Hermes'te artık bu yardımcı model yok."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此 Hermes 已不再有这个辅助模型。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此 Hermes 已不再有這個輔助模型。"
+          }
+        }
+      }
+    },
     "This profile has %@ keys for %@. Hermes moves to another when one hits its limit.": {
       "localizations": {
         "de": {

@@ -409,7 +409,8 @@ struct LiveVoiceQuickHint: View {
     private var threadID: String? { jobs.liveThread.map { $0.storedSessionID ?? $0.runtimeSessionID } }
 
     var body: some View {
-        Group {
+        // Held, so the checks below run while it's hidden: they show it.
+        ModifierHost {
             if isShown, let thread {
                 Text(AppLocalization.string("Working in \(thread). Say “quick…” for a fast side job."))
                     .scaledFont(.footnote)
@@ -899,57 +900,18 @@ struct VoiceReplyModelSettingsSection: View {
     @State private var providersRead = 0
 
     var body: some View {
-        Group {
-            if picks.saved != nil {
+        // Held, so the reads below run while nothing is shown yet.
+        ModifierHost {
+            if shown {
                 ConduitSettingsSection(
                     title: helper?.title ?? AppLocalization.string("Voice replies"),
                     symbol: helper?.symbol ?? "waveform.circle",
                     tint: .conduitAura
                 ) {
-                    ConduitMenuPicker(
-                        value: picks.selection,
-                        groups: VoiceJobModelSettingsSection.modelMenuGroups(
-                            defaultTitle: helper?.followTitle ?? AppLocalization.string("Same as chats"),
-                            defaultTag: VoiceReplyModelPicks.sameAsChats,
-                            selection: picks.selection,
-                            providers: providers
-                        ),
-                        onSelect: { picks.selection = $0 }
-                    ) {
-                        Text("Model").foregroundStyle(.secondary)
-                    }
-                    .disabled(pickersWait || !modelsAnswered)
-                    if providersFailed || picks.readFailed {
-                        // What's listed stays up; Hermes didn't answer.
-                        ModelCatalogPlaceholder(state: .failed) { Task { await tryAgain() } }
-                    }
-                    ConduitMenuPicker(
-                        value: picks.reasoning,
-                        choices: reasoningChoices,
-                        onSelect: { picks.reasoning = $0 }
-                    ) {
-                        Text("Reasoning").foregroundStyle(.secondary)
-                    }
-                    .disabled(pickersWait)
-                    if let refusal = picks.refusal {
-                        Text(verbatim: refusal)
-                            .scaledFont(.caption)
-                            .foregroundStyle(picks.confirmable == nil ? .red : .orange)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    if picks.confirmable != nil {
-                        // Hermes' price check asked first: the user can
-                        // choose the model anyway.
-                        Button(AppLocalization.string("Use It Anyway")) { confirm() }
-                            .scaledFont(.subheadline.weight(.semibold))
-                            .tint(.conduitAccent)
-                            .disabled(picks.writing)
-                    }
-                    if let endpoint = picks.endpointCaption {
-                        Text(verbatim: endpoint)
-                            .scaledFont(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                    if picks.saved == nil {
+                        waiting
+                    } else {
+                        pickers
                     }
                     if let helper {
                         Text(verbatim: helper.caption)
@@ -983,6 +945,70 @@ struct VoiceReplyModelSettingsSection: View {
         }
         .onChange(of: picks.selection) { _, _ in save() }
         .onChange(of: picks.reasoning) { _, _ in save() }
+    }
+
+    /// Hidden once Hermes answers without the slot, on Voice settings; a
+    /// helper's page says so instead, as the page is nothing else.
+    private var shown: Bool { picks.saved != nil || !picks.answered || helper != nil }
+
+    /// Nothing kept and no answer yet, or no slot on a helper's page.
+    @ViewBuilder private var waiting: some View {
+        if picks.answered {
+            Text(AppLocalization.string("This Hermes no longer has this helper model."))
+                .scaledFont(.subheadline).foregroundStyle(.secondary)
+        } else if picks.readFailed {
+            ModelCatalogPlaceholder(state: .failed) { Task { await tryAgain() } }
+        } else {
+            ProgressView().frame(maxWidth: .infinity).accessibilityLabel(AppLocalization.string("Loading…"))
+        }
+    }
+
+    @ViewBuilder private var pickers: some View {
+        ConduitMenuPicker(
+            value: picks.selection,
+            groups: VoiceJobModelSettingsSection.modelMenuGroups(
+                defaultTitle: helper?.followTitle ?? AppLocalization.string("Same as chats"),
+                defaultTag: VoiceReplyModelPicks.sameAsChats,
+                selection: picks.selection,
+                providers: providers
+            ),
+            onSelect: { picks.selection = $0 }
+        ) {
+            Text("Model").foregroundStyle(.secondary)
+        }
+        .disabled(pickersWait || !modelsAnswered)
+        if providersFailed || picks.readFailed {
+            // What's listed stays up; Hermes didn't answer.
+            ModelCatalogPlaceholder(state: .failed) { Task { await tryAgain() } }
+        }
+        ConduitMenuPicker(
+            value: picks.reasoning,
+            choices: reasoningChoices,
+            onSelect: { picks.reasoning = $0 }
+        ) {
+            Text("Reasoning").foregroundStyle(.secondary)
+        }
+        .disabled(pickersWait)
+        if let refusal = picks.refusal {
+            Text(verbatim: refusal)
+                .scaledFont(.caption)
+                .foregroundStyle(picks.confirmable == nil ? .red : .orange)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        if picks.confirmable != nil {
+            // Hermes' price check asked first: the user can
+            // choose the model anyway.
+            Button(AppLocalization.string("Use It Anyway")) { confirm() }
+                .scaledFont(.subheadline.weight(.semibold))
+                .tint(.conduitAccent)
+                .disabled(picks.writing)
+        }
+        if let endpoint = picks.endpointCaption {
+            Text(verbatim: endpoint)
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     /// The pickers wait for Hermes' answer and for a save; Try Again

@@ -46,10 +46,17 @@ struct GatewayRestartStatusView: View {
                         GatewayWaitView().padding(.leading, 28)
                     }
                 }
+                // The first step: the change from idle lands before this
+                // row exists to see it.
+                .onAppear {
+                    guard appState.activeGatewayRestart.isInProgress else { return }
+                    AccessibilityNotification.Announcement(row.title).post()
+                }
             }
         }
         // VoiceOver hears each step and the outcome as they land, once per
-        // step: a new log line under the same step isn't announced.
+        // step: a new log line under the same step isn't announced. Held
+        // by the row, so only once it shows.
         .onChange(of: appState.activeGatewayRestart) { previous, state in
             guard let row = Self.row(for: state), row.title != Self.row(for: previous)?.title else { return }
             AccessibilityNotification.Announcement(row.title).post()
