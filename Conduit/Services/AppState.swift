@@ -15009,6 +15009,8 @@ final class AppState: ObservableObject {
         guard profileGlowPicks[profile] != hex else { return }
         profileAppearanceStore.saveGlowColor(hex, for: profile, dashboardID: activeDashboardID)
         profileGlowPicks[profile] = hex
+        // Rooms over Links draw the bot in it on other people's Conduits too.
+        Task { await shareRoomLooksIfNeeded() }
     }
 
     func saveDefaultProfileName(_ name: String) {
