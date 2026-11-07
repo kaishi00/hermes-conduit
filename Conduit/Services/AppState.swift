@@ -9483,12 +9483,11 @@ final class AppState: ObservableObject {
             // Still no row: the stored id learned for a reaped runtime
             // resumes where the runtime id can't.
             let fallback = self.conversationIdentityIndex.durableID(forRuntime: id, profile: self.activeProfile)
-            let opened = await self.requestOpenSession(target ?? fallback ?? id) { [weak self] refused in
+            let opened = await self.requestOpenSession(target ?? fallback ?? id) { [weak self] sessionWasNotFound in
                 guard let self else { return }
                 self.errorMessage = Self.linkedSessionFailureMessage(
                     current: self.errorMessage,
-                    sessionWasNotFound: refused && self.reconciliationSessionWasNotFound,
-                    kanbanWorker: self.reconciliationWasKanbanWorker,
+                    sessionWasNotFound: sessionWasNotFound,
                     unavailable: unavailable
                 )
             }.value
@@ -9513,10 +9512,9 @@ final class AppState: ObservableObject {
     static func linkedSessionFailureMessage(
         current: String?,
         sessionWasNotFound: Bool,
-        kanbanWorker: Bool,
         unavailable: String
     ) -> String {
-        if sessionWasNotFound, !kanbanWorker { return unavailable }
+        if sessionWasNotFound { return unavailable }
         return current ?? AppLocalization.string("Couldn't open that chat. Try again.")
     }
 
@@ -25925,10 +25923,10 @@ final class AppState: ObservableObject {
     }
 
     /// `onFailure` runs when the open failed (not when a newer navigation
-    /// superseded it), told whether Hermes refused this open's own reconcile
-    /// (the reconcile flags then describe this chat).
+    /// superseded it), told whether this open's own reconcile heard the
+    /// resume's not found (4007) for a chat that isn't a Kanban worker.
     @discardableResult
-    func requestOpenSession(_ sessionId: String, onFailure: (@MainActor (_ refused: Bool) -> Void)? = nil) -> Task<Bool, Never> {
+    func requestOpenSession(_ sessionId: String, onFailure: (@MainActor (_ sessionWasNotFound: Bool) -> Void)? = nil) -> Task<Bool, Never> {
         // Tapping the chat already open and settled reads it, and nothing
         // else: it shows Hermes' rows as they stand, streamed in live, so a
         // second open would only read them again and drop rows Load earlier
@@ -25945,8 +25943,9 @@ final class AppState: ObservableObject {
         explicitSessionOpenRequestID = requestID
         let task = Task { @MainActor [weak self] in
             guard let self else { return false }
-            let (outcome, refused) = await self.performSessionOpenNotingRefusal(sessionId, reusing: nil)
-            if outcome == .failed, !Task.isCancelled { onFailure?(refused) }
+            let open = await self.performSessionOpenNotingRefusal(sessionId, reusing: nil)
+            let outcome = open.outcome
+            if outcome == .failed, !Task.isCancelled { onFailure?(open.sessionWasNotFound) }
             let opened = outcome == .opened
             // Tapping a chat reads it, even when it was already the open one
             // (the id didn't change, so activeSessionId's didSet stayed quiet).
@@ -26029,14 +26028,14 @@ final class AppState: ObservableObject {
         conversationProfile: String? = nil,
         preferredTitle: String? = nil,
         widgetLease: WidgetLaunchLease? = nil
-    ) async -> (outcome: SessionOpenOutcome, refused: Bool) {
+    ) async -> (outcome: SessionOpenOutcome, refused: Bool, sessionWasNotFound: Bool) {
         // A failure says what this open found, never what an earlier
         // reconcile of another chat did: the open's own reconcile sets these
         // again, and one that fails before it (no client, another
         // workspace's chat) leaves them clear (#1918).
         reconciliationSessionWasNotFound = false
         reconciliationWasKanbanWorker = false
-        guard let client else { return (.failed, false) }
+        guard let client else { return (.failed, false, false) }
         // From the tap to Hermes' rows, for a device trace (#1533).
         let signposter = ResponsivenessSignposts.signposter
         let opening = signposter.beginInterval("Chat open", id: signposter.makeSignpostID())
@@ -26061,7 +26060,7 @@ final class AppState: ObservableObject {
         if conversationProfile == nil,
            let session = listedSession, !sessionBelongsToProfile(session, profile: activeProfile) {
             errorMessage = AppLocalization.string("That conversation belongs to another workspace. Switch profiles to open it.")
-            return (.failed, true)
+            return (.failed, true, false)
         }
         // Read before the open marks it read: an unread chat lands at the
         // start of its latest reply once its transcript is in (#365).
@@ -26070,14 +26069,14 @@ final class AppState: ObservableObject {
         if let viewportTransitionGeneration {
             guard chatViewportTransitionIsCurrent(
                 generation: viewportTransitionGeneration
-            ) else { return (.superseded, false) }
+            ) else { return (.superseded, false, false) }
             transitionGeneration = viewportTransitionGeneration
         } else {
             transitionGeneration = beginExplicitChatViewportTransition(ownedBy: widgetLease)
         }
-        guard widgetLease?.isCurrent != false else { return (.superseded, false) }
+        guard widgetLease?.isCurrent != false else { return (.superseded, false, false) }
         guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
-            return (.superseded, false)
+            return (.superseded, false, false)
         }
         markChatViewportReplacement()
         // Atomically switch session identity BEFORE clearing the transcript.
@@ -26182,10 +26181,10 @@ final class AppState: ObservableObject {
                 finishChatViewportTransition(generation: transitionGeneration)
                 if turnState == .synchronizing { turnState = .idle }
             }
-            return (.superseded, false)
+            return (.superseded, false, false)
         }
         guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
-            return (.superseded, false)
+            return (.superseded, false, false)
         }
         if !reconciled {
             finishChatViewportTransition(generation: transitionGeneration)
@@ -26198,10 +26197,14 @@ final class AppState: ObservableObject {
             // unless another reconcile (an automatic resume of another chat)
             // began meanwhile and set them for its own chat (#1918).
             let verdictIsOwn = reconciliationToken == token
-            return (.failed, verdictIsOwn && (reconciliationWasIdentityRejected || reconciliationSessionWasNotFound))
+            return (
+                .failed,
+                verdictIsOwn && (reconciliationWasIdentityRejected || reconciliationSessionWasNotFound),
+                verdictIsOwn && reconciliationSessionWasNotFound && !reconciliationWasKanbanWorker
+            )
         }
         if opensUnreadReply, !landsFromSavedRows { chatReplyStartLandingRequest &+= 1 }
-        return (.opened, false)
+        return (.opened, false, false)
     }
 
     /// Whether saved rows end in a turn with no reply yet: the user's latest
@@ -26696,7 +26699,7 @@ final class AppState: ObservableObject {
             )
         }
         traceStage = "session open"
-        let (outcome, refused) = await performSessionOpenNotingRefusal(
+        let (outcome, refused, _) = await performSessionOpenNotingRefusal(
             route.resumeTargetID,
             reusing: transitionGeneration,
             // The push-named runtime id is a PRESENTATION MIGRATION SOURCE,

@@ -598,20 +598,20 @@ extension HermesVoiceGatewayTimeoutTests {
     func testAChatLinkOnlySaysTheChatIsGoneWhenHermesSaysSo() {
         let gone = "That call's transcript is no longer available."
         XCTAssertEqual(
-            AppState.linkedSessionFailureMessage(current: "Failed to restore this conversation: session not found", sessionWasNotFound: true, kanbanWorker: false, unavailable: gone),
+            AppState.linkedSessionFailureMessage(current: "Failed to restore this conversation: session not found", sessionWasNotFound: true, unavailable: gone),
             gone, "Hermes' own not found says the link's words"
         )
         let worker = "This chat is a Kanban task's worker, so only the board can run it."
         XCTAssertEqual(
-            AppState.linkedSessionFailureMessage(current: worker, sessionWasNotFound: true, kanbanWorker: true, unavailable: gone),
+            AppState.linkedSessionFailureMessage(current: worker, sessionWasNotFound: false, unavailable: gone),
             worker, "a Kanban worker keeps its explanation"
         )
         XCTAssertEqual(
-            AppState.linkedSessionFailureMessage(current: "Failed to restore this conversation: The request timed out.", sessionWasNotFound: false, kanbanWorker: false, unavailable: gone),
+            AppState.linkedSessionFailureMessage(current: "Failed to restore this conversation: The request timed out.", sessionWasNotFound: false, unavailable: gone),
             "Failed to restore this conversation: The request timed out.", "another failure keeps its own error"
         )
         XCTAssertEqual(
-            AppState.linkedSessionFailureMessage(current: nil, sessionWasNotFound: false, kanbanWorker: false, unavailable: gone),
+            AppState.linkedSessionFailureMessage(current: nil, sessionWasNotFound: false, unavailable: gone),
             AppLocalization.string("Couldn't open that chat. Try again."),
             "a failure that came with no error (a dropped socket, a replaced client) never calls the chat gone"
         )
