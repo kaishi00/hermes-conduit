@@ -192,7 +192,8 @@ final class AppStoreScreenshotTests: XCTestCase {
             XCTFail("Conduit Chan's portrait never showed on Bots Home")
             return
         }
-        settle(4)
+        // The bots' pictures load after the roster: give them time.
+        settle(12)
         print("PROMO_MARK home \(Date().timeIntervalSince1970)")
         snap("promo-01-bots-home")
         settle(2)
@@ -212,7 +213,7 @@ final class AppStoreScreenshotTests: XCTestCase {
             }
             snap("debug-bot-chat-attempt-\(attempt)")
             print("PROMO_MARK reopen \(Date().timeIntervalSince1970)")
-            backToTabs()
+            leaveBotChat()
             if !portrait.waitForExistence(timeout: 10) { app.buttons["Bots"].firstMatch.tap() }
             settle(8)
         }
@@ -283,10 +284,13 @@ final class AppStoreScreenshotTests: XCTestCase {
         if !done.waitForExistence(timeout: 90) {
             XCTFail("Conduit Chan never wrapped up")
         }
+        // Her last reply in full, not under the jump-to-latest button.
+        let latest = app.buttons["arrow.down"].firstMatch
+        if latest.exists, latest.isHittable { latest.tap() }
         settle(4)
         print("PROMO_MARK done \(Date().timeIntervalSince1970)")
         snap("promo-04-wrapped-up")
-        backToTabs()
+        leaveBotChat()
         let bots = app.buttons["Bots"].firstMatch
         if bots.exists, !portrait.isHittable { bots.tap() }
         settle(4)
@@ -294,6 +298,18 @@ final class AppStoreScreenshotTests: XCTestCase {
         snap("promo-05-bots-home-after")
         settle(2)
         print("PROMO_MARK end \(Date().timeIntervalSince1970)")
+    }
+
+    /// Back from a Bot Chat to Bots Home: its back button (labelled with
+    /// the screen it returns to), tapped where it is.
+    private func leaveBotChat() {
+        let back = app.buttons["BackButton"].firstMatch
+        for _ in 0..<3 {
+            guard back.waitForExistence(timeout: 3) else { return }
+            back.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            if back.waitForNonExistence(timeout: 4) { break }
+        }
+        settle()
     }
 
     /// Opens a seeded chat and waits for its answer. False (and a failed
@@ -400,7 +416,12 @@ final class AppStoreScreenshotTests: XCTestCase {
             settle()
             return
         }
-        let notNow = cards.allElementsBoundByIndex.first { $0.isHittable } ?? cards.firstMatch
+        // The tabs keep their screens in the tree side by side: the card on
+        // screen is the one whose frame is inside the window.
+        let window = app.windows.firstMatch.frame
+        let notNow = cards.allElementsBoundByIndex.first { $0.isHittable }
+            ?? cards.allElementsBoundByIndex.first { window.contains($0.frame) }
+            ?? cards.firstMatch
         do {
             snap("debug-finish-setup")
             // Beside the empty chat column on an iPad, accessibility's hit
