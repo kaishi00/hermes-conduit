@@ -1236,6 +1236,22 @@ final class GroupChatModelsTests: XCTestCase {
         )["zhongli"], .passed)
     }
 
+    func testTheLeadsPillCarriesTheCrownOnlyWhileTheRoomRoutesThroughIt() {
+        let members = roomMembers()
+        XCTAssertEqual(GroupRoomTurns.leadKey(
+            context: GroupRoomContext(routing: .lead, leadMemberID: "Zhongli"), members: members
+        ), members[1].identityKey)
+        XCTAssertNil(GroupRoomTurns.leadKey(context: GroupRoomContext(routing: .everyone), members: members))
+        XCTAssertNil(GroupRoomTurns.leadKey(context: nil, members: members))
+        XCTAssertNil(GroupRoomTurns.leadKey(
+            context: GroupRoomContext(routing: .lead, leadMemberID: "nahida"), members: members
+        ), "a lead who left the room has no pill to crown")
+        let unnamed = [GroupDecoders.member(any(["display_name": "Ghost"]))!]
+        XCTAssertNil(GroupRoomTurns.leadKey(
+            context: GroupRoomContext(routing: .lead, leadMemberID: ""), members: unnamed
+        ), "a lead setting that names nobody crowns nobody")
+    }
+
     func testTheKeptEventsDecideOnlyWhatTheyCanKnow() {
         let members = roomMembers()
         let lead = GroupRoomContext(routing: .lead, leadMemberID: "zhongli")
