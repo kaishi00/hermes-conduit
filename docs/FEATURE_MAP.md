@@ -2053,18 +2053,26 @@ cards) · notifier README.md's Cron jobs delivered to a Bot Chat
 
 ## A cron job's Run history
 
-A scheduled job's sheet lists that job's past runs, newest first, and a tap
-opens the run's chat. A job that hasn't run says so.
+The drawer's Cron list and Tasks › Scheduled identify a job by its name and
+schedule; Tasks also shows its next run. These lines wrap to two lines at
+accessibility text sizes and stay on one line otherwise. A scheduled job's
+sheet lists that job's past runs, newest first, and a tap opens the run's
+chat. A job that hasn't run says so.
 
 **Siblings:** the sheet in both shells (one `CronJobDetailSheet`, from the
 Cron list and from Tasks › Scheduled) · Run now, which reads the history
 again · the dashboard's per-job route and the gateway's `cron.runs`, read
 without a dashboard · the Scheduled filter in the chats list (not needed: it
 lists `cronSessions`, every run, not one job's) · Watch, CarPlay and the
-notifier (not needed: no cron history there)
+notifier (not needed: no cron history there) · the scheduled-job rows in
+both shells (`CronJobRow` and `V2ScheduledList`, done: both wrap name and
+schedule at accessibility sizes, plus next run in Tasks) · the chat list's
+`V2SessionRow` (done: the existing two-line accessibility rule is copied) ·
+the job's detail sheet for row wrapping (not needed: it scrolls and has no
+Dynamic Type cap) · text for row wrapping (none: no captions or strings change)
 
 **Code**
-- App: `Conduit/Services/AppState.swift` (loadCronRuns, cronRunsJobID, cronRunsLoaded, decodeCronRun), `Conduit/Models/Models.swift` (CronRun, isRun(ofJob:)), `Conduit/Services/HermesClient.swift` (cronRuns), `Conduit/Views/SidebarView.swift` (CronJobDetailSheet's Run history), `Conduit/Views/V2/V2TasksView.swift` (the sheet from Tasks)
+- App: `Conduit/Services/AppState.swift` (loadCronRuns, cronRunsJobID, cronRunsLoaded, decodeCronRun), `Conduit/Models/Models.swift` (CronRun, isRun(ofJob:)), `Conduit/Services/HermesClient.swift` (cronRuns), `Conduit/Views/SidebarView.swift` (CronJobDetailSheet's Run history, CronJobRow), `Conduit/Views/V2/V2TasksView.swift` (the sheet from Tasks, V2ScheduledList's row)
 - Test: `ConduitTests/SidebarLayoutTests+CronRunHistory.swift`
 
 **Rulings**
@@ -2072,11 +2080,12 @@ notifier (not needed: no cron history there)
 - Without a dashboard, `cron.runs` keeps only the runs that name the job (`job_id` or `cron_job_id`) or carry Hermes' run session id, `cron_<job id>_<YYYYMMDD>_<HHMMSS>`. A run that says neither is no job's: an empty history beats another job's.
 - The list belongs to one job: opening another job shows a spinner until its answer lands, never the last job's runs or "This job has not run yet." before it knows, and only the newest read's answer is kept. Before the job's first answer, a read that fails, or can't be made offline, says so in the sheet instead; a later refresh that fails keeps the runs shown and reports through the app's error message.
 - Runs that name another profile are left out; a run that names none is kept.
+- At an accessibility text size a job's name and schedule take two lines in both the drawer's Cron list and Tasks › Scheduled, and its next-run line does in Tasks; below those sizes each stays on one line, as a chat's row already does.
 
 **Open gaps**
 - Without a dashboard, a run of Hermes' unified runtime (a `local-*` id) that `cron.runs` doesn't name a job for is left out of every job's history.
 
-**Checked:** 2026-11-03, #1712 (added, fixing #1707).
+**Checked:** 2026-11-08, #1924 (description and Siblings now record both scheduled-job rows, the copied chat-row rule, the scrolling detail sheet and unchanged text); 2026-11-07, #1924 (a job's name and schedule wrap to two lines at accessibility text sizes in the drawer's Cron list and Tasks › Scheduled, its next run too in Tasks, as a chat's row already does; Code now names CronJobRow and V2ScheduledList's row); 2026-11-03, #1712 (added, fixing #1707).
 
 ## Links in messages
 
