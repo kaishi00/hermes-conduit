@@ -9480,13 +9480,20 @@ final class AppState: ObservableObject {
             // resumes where the runtime id can't.
             let fallback = self.conversationIdentityIndex.durableID(forRuntime: id, profile: self.activeProfile)
             let opened = await self.requestOpenSession(target ?? fallback ?? id) { [weak self] in
-                // A failed resume says "session not found"; the link's own
-                // words say what's missing. Other refusals keep their text.
-                guard let self,
-                      self.errorMessage == nil
-                        || (self.reconciliationSessionWasNotFound && !self.reconciliationWasKanbanWorker)
-                else { return }
-                self.errorMessage = unavailable
+                // Hermes answered that the chat is not there: the link's own
+                // words say what is missing, and a Kanban worker keeps its
+                // board's. Any other failure (a socket that dropped, a read
+                // that timed out) proves nothing about the chat: it keeps the
+                // error it came with, and a link that has none of its own
+                // says the chat could not be opened rather than that it is
+                // gone. A link is a one-shot tap, with no retry window behind
+                // it, so staying silent is not an option here.
+                guard let self else { return }
+                if self.reconciliationSessionWasNotFound, !self.reconciliationWasKanbanWorker {
+                    self.errorMessage = unavailable
+                } else if self.errorMessage == nil {
+                    self.errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
+                }
             }.value
             // From outside a chat (a Live Activity, another app) the chat
             // must come forward: V2 keeps the Chats list over it until the
