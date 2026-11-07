@@ -199,7 +199,7 @@ final class AppStoreScreenshotTests: XCTestCase {
         portrait.tap()
         // The Bot Chat is open once its menu is; Bots Home's search field
         // is a text field too, so the composer is looked up after.
-        guard app.buttons["conversation.menu"].waitForExistence(timeout: 30) else {
+        guard app.descendants(matching: .any)["conversation.menu"].firstMatch.waitForExistence(timeout: 30) else {
             snap("debug-no-bot-chat")
             XCTFail("Conduit Chan's Bot Chat never opened")
             return
