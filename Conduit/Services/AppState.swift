@@ -12773,8 +12773,15 @@ final class AppState: ObservableObject {
     }
     @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "") {
         // An agent's new message may have a board kept for it (RoomBoards).
-        didSet { roomReplayChanged(from: oldValue) }
+        didSet {
+            roomReplayRevision &+= 1
+            roomReplayChanged(from: oldValue)
+        }
     }
+    /// Counts every change to `activeRoomReplay`, so the header's kept
+    /// statuses are read again after any replacement, even one that keeps
+    /// the same range and newest event (issue 1968).
+    private var roomReplayRevision = 0
     /// The open room's boards on the host, oldest first (AppState+RoomBoards).
     @Published var activeRoomBoards: [RoomBoard] = []
     var roomBoardsTask: Task<Void, Never>?
@@ -12872,11 +12879,10 @@ final class AppState: ObservableObject {
         return settled
     }
 
-    /// Which log the open room's replay holds: its room, its cursor, and
-    /// its first event and length, which a trim or a fresh tail change
-    /// without moving the cursor.
+    /// Which log the open room's replay holds: its room and how many times
+    /// it has changed, so any append, trim or replacement reads it again.
     private var roomReplayKey: String {
-        "\(activeRoomReplay.roomID)|\(activeRoomReplay.cursor)|\(activeRoomReplay.events.first?.seq ?? -1)|\(activeRoomReplay.events.count)|\(activeRoomReplay.events.last?.eventID ?? "")"
+        "\(activeRoomReplay.roomID)|\(roomReplayRevision)"
     }
 
     private struct RoomMemberStatusInputs: Equatable {
