@@ -6533,7 +6533,7 @@ queue) · the notifier's CHANGELOG
 - The user's queued rows and the lost-reply check: `Conduit/Services/AppState.swift` (applyRuntime's queue, holdQueuedSendRow, takeQueuedSendRow, noteOwnSend, adoptOwnQueuedSends, moveQueuedSendToDock, noteQueuedTurnStarted, heldInAuthorityQueue in reconcileAmbiguousPromptSubmission)
 - The buttons: `Conduit/Services/AppState+AuthorityQueue.swift`, `Conduit/Views/Components/AuthorityQueueDock.swift`, `Conduit/Views/ChatView.swift` (the bottom bar)
 - The plugin's own cut-off turns: `notifier/gateway_chats.py` (OWN_SUBMISSION_PREFIX, _note_pending, _settle_lost)
-- Tests: `ConduitTests/HermesClientTests.swift` (the queue tests), `notifier/tests/test_gateway_chats.py`, `notifier/upstream/test_gateway_queue.py` (a real listener killed and restarted)
+- Tests: `ConduitTests/HermesClientTests.swift` (the queue tests), `ConduitTests/AuthorityQueueAppStateTests.swift` (the user's own message in the dock and back), `notifier/tests/test_gateway_chats.py`, `notifier/upstream/test_gateway_queue.py` (a real listener killed and restarted)
 
 **Rulings**
 - Full queue support on the listener only: a cut-off turn's Discard and Resend, a queued message's Cancel, Edit and Send now, the receipt check for a lost send, and the plugin's own chats (Eric, 2026-11-07, #1978, notifier #612).
