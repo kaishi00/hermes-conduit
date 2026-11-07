@@ -57,6 +57,9 @@ final class HTMLPreviewDocumentsTests: XCTestCase {
             XCTFail("the shared read never started")
             return
         }
+        // Any fetch from here on answers at once: a second one would show
+        // in `reads` rather than hang.
+        gaveUp = true
         release.resume()
         let answers = await [first, second]
         XCTAssertEqual(answers, ["<p>shared</p>", "<p>shared</p>"])
