@@ -1071,6 +1071,8 @@ struct SelectableTextView: UIViewRepresentable {
 /// Bot Chat closed under the finger (issue 1948). A selection inside one
 /// text view shows while that view is first responder; one across blocks,
 /// which the coordinator draws itself, while its coordinator holds it.
+/// Only the key window's count, the one being swiped: a selection left in
+/// another of an iPad's windows doesn't hold this one's swipe.
 @MainActor
 enum ChatTextSelection {
     /// The text views whose last selection change left text selected,
@@ -1087,12 +1089,12 @@ enum ChatTextSelection {
     }
 
     static var isShowing: Bool {
-        if MarkdownSelectionCoordinator.activeCoordinator?.hasActiveSelection == true { return true }
+        if MarkdownSelectionCoordinator.activeCoordinator?.showsSelectionInKeyWindow == true { return true }
         return selecting.allObjects.contains(where: showsSelection)
     }
 
     static func showsSelection(_ textView: UITextView) -> Bool {
-        textView.window != nil && textView.isFirstResponder && textView.selectedRange.length > 0
+        textView.window?.isKeyWindow == true && textView.isFirstResponder && textView.selectedRange.length > 0
     }
 }
 

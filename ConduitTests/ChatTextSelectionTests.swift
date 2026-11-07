@@ -508,7 +508,8 @@ final class ChatTextSelectionTests: XCTestCase {
 
     /// A Bot Chat's swipe home waits while text in the chat is selected:
     /// a handle dragged toward the trailing edge read as the swipe and
-    /// closed the chat (issue 1948).
+    /// closed the chat (issue 1948). Only a selection that still shows, in
+    /// the key window, counts.
     @MainActor
     func testASelectionInTheChatHoldsTheSwipeHome() {
         let selectionCoordinator = MarkdownSelectionCoordinator()
@@ -516,7 +517,8 @@ final class ChatTextSelectionTests: XCTestCase {
         selectionCoordinator.replaceSegments([segment], revision: "swipe-hold-v1")
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 240, height: 180))
         window.addSubview(UIView(frame: window.bounds))
-        window.isHidden = false
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
         let host = mountedSelectionHost(
             text: "Drag my handle",
             segment: segment,
@@ -527,21 +529,39 @@ final class ChatTextSelectionTests: XCTestCase {
         XCTAssertFalse(ChatTextSelection.isShowing)
 
         // A reply's words selected: the coordinator holds the selection.
-        host.mountedTextView.selectedRange = NSRange(location: 0, length: 4)
-        selectionCoordinator.updateNativeSelection(
-            segmentID: segment.id,
-            selectedRange: NSRange(location: 0, length: 4),
-            lowerWindowPoint: CGPoint(x: 12, y: 20),
-            upperWindowPoint: CGPoint(x: 40, y: 20)
-        )
+        func selectFourLetters() {
+            host.mountedTextView.selectedRange = NSRange(location: 0, length: 4)
+            selectionCoordinator.updateNativeSelection(
+                segmentID: segment.id,
+                selectedRange: NSRange(location: 0, length: 4),
+                lowerWindowPoint: CGPoint(x: 12, y: 20),
+                upperWindowPoint: CGPoint(x: 40, y: 20)
+            )
+        }
+        selectFourLetters()
         XCTAssertTrue(ChatTextSelection.isShowing)
 
+        // In a window that isn't the one being touched, it doesn't count.
+        let otherWindow = UIWindow(frame: window.bounds)
+        otherWindow.makeKeyAndVisible()
+        XCTAssertFalse(ChatTextSelection.isShowing, "another window's selection")
+        otherWindow.isHidden = true
+        window.makeKey()
+        XCTAssertTrue(ChatTextSelection.isShowing)
+
+        // One handle dragged onto the other: the coordinator keeps its
+        // state, but nothing shows.
+        host.mountedTextView.selectedRange = NSRange(location: 2, length: 0)
+        XCTAssertTrue(selectionCoordinator.hasActiveSelection)
+        XCTAssertFalse(ChatTextSelection.isShowing, "a selection collapsed to nothing")
+
+        selectFourLetters()
         selectionCoordinator.clearSelection()
         XCTAssertFalse(ChatTextSelection.isShowing)
 
         // A text view without a coordinator (a tool result, your own
         // message) shows its selection only while it's first responder in
-        // a window.
+        // the key window.
         let plain = SelectableTextView.makeTextView()
         plain.attributedText = NSAttributedString(string: "Plain words")
         plain.selectedRange = NSRange(location: 0, length: 5)
@@ -550,13 +570,11 @@ final class ChatTextSelectionTests: XCTestCase {
         window.subviews.first?.addSubview(plain)
         XCTAssertFalse(ChatTextSelection.showsSelection(plain), "not first responder")
         XCTAssertFalse(ChatTextSelection.isShowing)
-        window.makeKey()
-        if plain.becomeFirstResponder() {
-            XCTAssertTrue(ChatTextSelection.isShowing)
-            plain.selectedRange = NSRange(location: 0, length: 0)
-            XCTAssertFalse(ChatTextSelection.isShowing, "a range cleared in code")
-            plain.resignFirstResponder()
-        }
+        XCTAssertTrue(plain.becomeFirstResponder())
+        XCTAssertTrue(ChatTextSelection.isShowing)
+        plain.selectedRange = NSRange(location: 0, length: 0)
+        XCTAssertFalse(ChatTextSelection.isShowing, "a range cleared in code")
+        plain.resignFirstResponder()
     }
 
     @MainActor
