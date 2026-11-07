@@ -224,6 +224,11 @@ final class RichCardTapMemory: ObservableObject {
         taps = taps.filter { Date.now.timeIntervalSince($0.value.at) < Self.holdSeconds }
         if let state {
             taps[key] = (state: state, at: .now)
+            // Nothing else may redraw the button when the hold passes.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(Self.holdSeconds + 0.5))
+                self?.objectWillChange.send()
+            }
         } else {
             taps[key] = nil
         }

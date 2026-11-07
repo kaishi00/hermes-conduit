@@ -72,7 +72,9 @@ private struct RichComposedSection: View {
             if !shown.isEmpty {
                 if section.row {
                     ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .firstTextBaseline, spacing: 12) { elements(shown) }
+                        // In the row the elements keep their own widths, so a row
+                        // too wide for the card measures so and stacks instead.
+                        HStack(alignment: .firstTextBaseline, spacing: 12) { elements(shown, inRow: true) }
                         VStack(alignment: .leading, spacing: 8) { elements(shown) }
                     }
                 } else {
@@ -86,15 +88,17 @@ private struct RichComposedSection: View {
     }
 
     @ViewBuilder
-    private func elements(_ elements: [RichElement]) -> some View {
+    private func elements(_ elements: [RichElement], inRow: Bool = false) -> some View {
         ForEach(Array(elements.enumerated()), id: \.offset) { _, element in
-            RichElementView(element: element, values: $values)
+            RichElementView(element: element, inRow: inRow, values: $values)
         }
     }
 }
 
 private struct RichElementView: View {
     let element: RichElement
+    /// Side by side in a row: takes its own width rather than the card's.
+    var inRow = false
     @Binding var values: [String: String]
 
     var body: some View {
@@ -104,7 +108,7 @@ private struct RichElementView: View {
                 .scaledFont(font)
                 .foregroundStyle(element.tone == .neutral && element.role == .caption ? Color.secondary : tint)
                 .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: inRow ? nil : .infinity, alignment: .leading)
                 .accessibilityAddTraits(element.role == .heading ? .isHeader : [])
         case .metric:
             VStack(alignment: .leading, spacing: 2) {
@@ -142,6 +146,7 @@ private struct RichElementView: View {
                 .frame(maxHeight: 220)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .accessibilityLabel(Text(verbatim: element.label ?? ""))
+                .accessibilityHidden(element.label?.isEmpty ?? true)
             }
         case .progress:
             VStack(alignment: .leading, spacing: 4) {
@@ -155,7 +160,7 @@ private struct RichElementView: View {
             Divider()
         case .field:
             if let field = element.field {
-                RichFieldView(field: field, value: Binding(
+                RichFieldView(field: field, inRow: inRow, value: Binding(
                     get: { values[field.id] ?? field.startingValue },
                     set: { values[field.id] = $0 }))
             }
@@ -190,6 +195,7 @@ enum RichToneColor {
 
 private struct RichFieldView: View {
     let field: RichField
+    var inRow = false
     @Binding var value: String
 
     var body: some View {
@@ -199,7 +205,7 @@ private struct RichFieldView: View {
             }
             control
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minWidth: inRow ? 140 : nil, maxWidth: inRow ? nil : .infinity, alignment: .leading)
     }
 
     @ViewBuilder
