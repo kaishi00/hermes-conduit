@@ -434,6 +434,8 @@ extension AppState {
             if invites {
                 await refreshLinkedRoomDrafts()
                 await refreshLinkedRoomInvites()
+                // The rooms you joined, as copies, which Group Chats lists.
+                await refreshLinkedRoomCopies()
             }
             if approvals {
                 await refreshLinkedRoomApprovals()
