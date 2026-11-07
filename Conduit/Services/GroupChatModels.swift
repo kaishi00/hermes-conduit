@@ -1074,7 +1074,9 @@ enum GroupRoomTurns {
         guard !id.isEmpty else { return nil }
         let byID = members.filter { $0.memberID?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == id }
         if !byID.isEmpty { return byID.count == 1 ? byID[0] : nil }
-        let byProfile = members.filter { $0.profile?.caseInsensitiveCompare(id) == .orderedSame }
+        let byProfile = members.filter {
+            $0.profile?.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(id) == .orderedSame
+        }
         return byProfile.count == 1 ? byProfile[0] : nil
     }
 

@@ -682,7 +682,7 @@ struct GroupEventRow: View {
             }
         } else if event.isMemberMessage {
             GroupMemberBubble(
-                member: GroupRoomTurns.member(for: event, members: members),
+                member: GroupRoomTurns.speaker(of: event, members: members),
                 name: speakerLabel,
                 text: event.messageText ?? "",
                 members: members,

@@ -849,8 +849,8 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertNil(GroupRoomTurns.localProfile(of: nil))
     }
 
-    func testAMessagesSpeakerIsFoundByItsActorWithoutAMemberID() {
-        let furina = GroupDecoders.member(any(["member_id": "m1", "profile": "furina", "handle": "furina"]))!
+    func testAMessagesSpeakerIsFoundByItsActorWithoutAMemberID() throws {
+        let furina = try XCTUnwrap(GroupDecoders.member(any(["member_id": "m1", "profile": "furina", "handle": "furina"])))
         let message = GroupEvent(
             roomID: "room", seq: 1, eventID: "e1", kind: "message.member",
             actor: GroupActor(kind: "member", id: "furina", profile: "furina", displayName: "Furina", connectionID: nil),
@@ -863,10 +863,10 @@ final class GroupChatModelsTests: XCTestCase {
             authorityEpoch: nil, payload: ["text": .string("Hi")], createdAt: 0
         )
         XCTAssertNil(GroupRoomTurns.speaker(of: user, members: [furina]), "only a member's actor names a member")
-        let peer = GroupDecoders.member(any(["member_id": "m2", "profile": "furina", "target": ["kind": "peer"]]))!
+        let peer = try XCTUnwrap(GroupDecoders.member(any(["member_id": "m2", "profile": "furina", "target": ["kind": "peer"]])))
         XCTAssertNil(GroupRoomTurns.speaker(of: message, members: [furina, peer]),
                      "a profile two members share names neither")
-        let unnamed = GroupDecoders.member(any(["profile": "furina", "handle": "furina"]))!
+        let unnamed = try XCTUnwrap(GroupDecoders.member(any(["profile": "furina", "handle": "furina"])))
         XCTAssertNil(GroupRoomTurns.speaker(of: message, members: [unnamed, peer]),
                      "a member without a member id doesn't take a shared profile as its own id")
         let named = GroupEvent(
