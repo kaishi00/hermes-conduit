@@ -225,7 +225,9 @@ final class RichCardFieldMemory {
 
     func keep(card: RichCard, values: [String: String], open: Bool) {
         let key = card.normalizedJSON
-        if cards[key] == nil { order.append(key) }
+        // Least recently kept goes first, so the card being typed in stays.
+        order.removeAll { $0 == key }
+        order.append(key)
         cards[key] = (values, open)
         while order.count > Self.maxCards { cards[order.removeFirst()] = nil }
     }
