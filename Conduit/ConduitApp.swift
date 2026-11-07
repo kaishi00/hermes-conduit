@@ -140,6 +140,16 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let request = response.notification.request
+        // Ask Which Dashboard at Launch (#1908): whatever a tapped
+        // notification or its button does next needs Hermes, so a launch
+        // waiting for a dashboard pick signs in for it. Not for a dismissal,
+        // or directions that only open Maps.
+        if response.actionIdentifier != UNNotificationDismissActionIdentifier,
+           request.identifier != MapsNavigator.notificationIdentifier {
+            Task { @MainActor in
+                AppStateRuntimeRegistry.shared.appState.releaseLaunchDashboardChoice(for: "a notification")
+            }
+        }
         // Quiet for today on a Pulse push: done in the background, on the
         // dashboard the push came from. One that couldn't be done there (no
         // connection in time, or the push is from another dashboard) says

@@ -4973,7 +4973,8 @@ dashboards saved, a plain open keeps the dashboard list up for a tap instead of
 signing in to the last dashboard used.
 
 **Siblings:** the plain open (the phone's dashboard list) · the Settings toggle
-and its caption · a notification tap (a call from Hermes answered included) · a
+and its caption · a notification tap or button (a call from Hermes answered, a
+phone change to review and Pulse's retry included) · a
 link from another app · Pulse's Quiet for Today (the notification action and its retry) · a widget · a shared draft · Siri · Send to Hermes
 shortcuts · CarPlay · the Apple Watch · a call from Hermes ringing · launches in
 the background (Health, places, phone sync, pushes) · the on-screen retry of a
@@ -4981,7 +4982,7 @@ sign-in that failed off screen · README.md
 
 **Code**
 - Launch: `Conduit/Services/AppState.swift` (beginLaunchSignIn, releaseLaunchDashboardChoice, holdLaunchDashboardChoiceOnScreen, runDashboardSwitch, handleScenePhase, setWatchVoiceCallActive)
-- Releases: `Conduit/ConduitApp.swift` (the notification, link and Siri routes), `Conduit/CarPlay/CarPlayVoiceSceneDelegate.swift`, `Conduit/Services/AppState+HermesCalls.swift` (setNativeHermesCallActive), `Conduit/Services/AppState+ShortcutSend.swift`, `Conduit/Services/AppState+Pulse.swift` (quietPulseForToday)
+- Releases: `Conduit/ConduitApp.swift` (userNotificationCenter didReceive for every tap but a dismissal or Maps directions; the notification, link and Siri routes), `Conduit/CarPlay/CarPlayVoiceSceneDelegate.swift`, `Conduit/Services/AppState+HermesCalls.swift` (setNativeHermesCallActive), `Conduit/Services/AppState+ShortcutSend.swift`, `Conduit/Services/AppState+Pulse.swift` (quietPulseForToday)
 - Setting: `Conduit/Views/SavedDashboardsView.swift`
 - Tests: `ConduitTests/AppStateLaunchDashboardChoiceTests.swift`
 
