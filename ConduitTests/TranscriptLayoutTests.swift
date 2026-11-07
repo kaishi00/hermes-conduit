@@ -322,12 +322,14 @@ final class TranscriptLayoutTests: XCTestCase {
         func guess(_ row: GroupRoomRow) -> CGFloat {
             TranscriptLayout.estimatedHeight(of: TranscriptRow(id: "r", kind: .room(row)), width: width)
         }
-        func event(_ kind: String, _ text: String?, boards: [RichBoard] = []) -> GroupRoomRow {
+        func event(_ kind: String, _ text: String?, boards: [RichBoard] = [],
+                   actor: GroupActor = GroupActor(kind: "member", id: "furina", profile: "furina",
+                                                  displayName: nil, connectionID: nil)) -> GroupRoomRow {
             var payload: [String: AnyCodable] = [:]
             if let text { payload["text"] = .string(text) }
             let event = GroupEvent(
                 roomID: "room-1", seq: 1, eventID: "e1", kind: kind,
-                actor: GroupActor(kind: "member", id: "furina", profile: "furina", displayName: nil, connectionID: nil),
+                actor: actor,
                 authorityEpoch: nil, payload: payload, createdAt: 1
             )
             return .event(event, members: [], continuesRun: false, boards: boards)
@@ -345,5 +347,16 @@ final class TranscriptLayoutTests: XCTestCase {
             guess(event("message.user", long)),
             "the message on its way is guessed as its event"
         )
+        func job(_ id: String) -> GroupActor {
+            GroupActor(kind: "user", id: id, profile: nil, displayName: "Nightly", connectionID: nil)
+        }
+        XCTAssertGreaterThan(guess(event("message.user", long, actor: job("cron:job42"))), guess(event("message.user", long)),
+                             "a scheduled post is guessed on the members' side, under its name")
+        XCTAssertGreaterThan(guess(event("message.user", nil, actor: job("cron:job42"))), TranscriptLayout.rowGap + 24 + 44,
+                             "a scheduled post with no text is still a member bubble, not a caption")
+        let update = "@Furina Work update.\n" + long + "\n- W1 finished.\nTell the room."
+        XCTAssertEqual(guess(event("message.user", update, actor: job("cron:conduit-work-default-W1"))),
+                       guess(event("message.member", "W1 finished.")),
+                       "a work update is guessed from its \"- \" lines, not the whole post")
     }
 }

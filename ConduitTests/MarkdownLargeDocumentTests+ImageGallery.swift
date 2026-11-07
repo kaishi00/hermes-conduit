@@ -103,6 +103,21 @@ extension MarkdownLargeDocumentTests {
     }
 
     @MainActor
+    func testRoomGalleryListsOnlyTheWorkUpdatePicturesItsBubbleShows() {
+        let work = GroupEvent(
+            roomID: "room", seq: 1, eventID: "e1", kind: "message.user",
+            actor: GroupActor(kind: "user", id: "cron:conduit-work-default-W1", profile: nil,
+                              displayName: "Furina's work", connectionID: nil),
+            authorityEpoch: nil,
+            payload: ["text": .string("![hidden](https://example.com/hidden.png)\n- W1 finished.\n- ![shown](https://example.com/shown.png)")],
+            createdAt: 0
+        )
+        XCTAssertEqual(GroupRoomImageGallery.items(in: [work]).map(\.id), [
+            ImageGalleryItem.webID("https://example.com/shown.png"),
+        ], "a picture the bubble hides doesn't page")
+    }
+
+    @MainActor
     func testRoomGalleryListsAMembersMediaPicturesThroughItsResolver() throws {
         let appState = try galleryAppState()
         let resolver = GatewayMediaDataURLResolver(appState: appState, profile: "furina")
