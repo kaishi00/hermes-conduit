@@ -2869,6 +2869,9 @@ final class AppState: ObservableObject {
     /// with their bubble's id: one Hermes then lists as waiting behind
     /// another client's turn moves to the dock too. Cleared when it starts.
     var ownSendRowIDs: [String: String] = [:]
+    /// Admissions whose turn this socket saw start, so a reply that comes
+    /// after its start never holds that bubble back.
+    var startedAdmissionIDs: Set<String> = []
     /// What the row asks the composer to do: send, edit or insert a guess.
     @Published private(set) var predictiveComposerRequest: PredictiveComposerRequest?
     /// The reply suggested replies were last asked for (asked once each).
@@ -12540,6 +12543,7 @@ final class AppState: ObservableObject {
         activeSessionTitle = AppLocalization.string("New conversation")
         keepDelegateAgents(of: [])
         messages = []
+        clearAuthorityQueueState()
         persistedTranscriptWindow = nil
         resetTranscriptLifecycleEvidence()
         clearStreamingText()
@@ -15969,6 +15973,7 @@ final class AppState: ObservableObject {
         sessionCatalogLoadState.reset()
         pinnedSessionIDs = []
         messages = []
+        clearAuthorityQueueState()
         persistedTranscriptWindow = nil
         setActiveSessionState(id: nil, title: AppLocalization.string("New conversation"))
         keepDelegateAgents(of: [])
@@ -32252,8 +32257,24 @@ final class AppState: ObservableObject {
         cacheMessagePresentation()
     }
 
-    /// Keeps a queued message's bubble for when its turn starts.
+    /// Another connection or a sign-out: no queue, and no held bubble,
+    /// carries over to the next account's chats.
+    func clearAuthorityQueueState() {
+        authorityQueue.clear()
+        queuedSendRows = [:]
+        queuedSendOrder = []
+        ownSendRowIDs = [:]
+        startedAdmissionIDs = []
+    }
+
+    /// Keeps a queued message's bubble for when its turn starts. One whose
+    /// turn already started (its start came before this send's reply)
+    /// stays in the transcript.
     func holdQueuedSendRow(_ row: ChatMessage, admissionID: String) {
+        guard !startedAdmissionIDs.contains(admissionID) else {
+            if !messages.contains(where: { $0.id == row.id }) { messages.append(row) }
+            return
+        }
         queuedSendRows[admissionID] = row
         queuedSendOrder.removeAll { $0 == admissionID }
         queuedSendOrder.append(admissionID)
@@ -32274,6 +32295,7 @@ final class AppState: ObservableObject {
         var moved = false
         for row in rows where (row.status == .queued && !row.steering) || row.status == .unknown {
             guard let rowID = ownSendRowIDs.removeValue(forKey: row.admissionID),
+                  !startedAdmissionIDs.contains(row.admissionID),
                   let index = messages.firstIndex(where: { $0.id == rowID }) else { continue }
             holdQueuedSendRow(messages.remove(at: index), admissionID: row.admissionID)
             moved = true
@@ -32291,6 +32313,7 @@ final class AppState: ObservableObject {
     /// be cancelled, edited or sent now, and comes back when its turn starts.
     func moveQueuedSendToDock(rowID: String, sessionID: String) {
         guard let admissionID = HermesClient.admittedAdmissionID(for: sessionID),
+              !startedAdmissionIDs.contains(admissionID),
               let index = messages.firstIndex(where: { $0.id == rowID }) else { return }
         holdQueuedSendRow(messages.remove(at: index), admissionID: admissionID)
         cacheMessagePresentation()
@@ -32302,6 +32325,8 @@ final class AppState: ObservableObject {
     /// reply. Another client's queued message shows as other turns do.
     func noteQueuedTurnStarted(sessionID: String, admissionID: String) {
         ownSendRowIDs.removeValue(forKey: admissionID)
+        if startedAdmissionIDs.count >= 64 { startedAdmissionIDs.removeAll() }
+        startedAdmissionIDs.insert(admissionID)
         guard let row = takeQueuedSendRow(admissionID: admissionID) else { return }
         authorityQueue.drop(admissionID)
         guard eventBelongsToActiveSession(sessionID) else { return }

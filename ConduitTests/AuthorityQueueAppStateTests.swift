@@ -46,6 +46,26 @@ final class AuthorityQueueAppStateTests: XCTestCase {
         XCTAssertEqual(appState.messages.map(\.id), ["local-1"])
     }
 
+    func testATurnThatStartedBeforeItsReplyKeepsItsBubbleInTheTranscript() {
+        let appState = makeAppState()
+        appState.activeSessionId = "sess-q"
+        appState.messages = [ChatMessage(id: "local-1", role: .user, content: "quick", timestamp: "1")]
+        appState.noteQueuedTurnStarted(sessionID: "sess-q", admissionID: "adm-1")
+        appState.noteOwnSend(admissionID: "adm-1", rowID: "local-1")
+        appState.adoptOwnQueuedSends([QueuedPrompt(admissionID: "adm-1", text: "quick", status: .queued, sequence: 1)])
+        XCTAssertEqual(appState.messages.map(\.id), ["local-1"], "Its turn already runs: it never goes back to the dock")
+    }
+
+    func testAnotherConnectionCarriesNoQueueOrHeldBubble() {
+        let appState = makeAppState()
+        appState.authorityQueue.apply([QueuedPrompt(admissionID: "adm-1", text: "mine", status: .queued)], for: "sess-q")
+        appState.holdQueuedSendRow(ChatMessage(id: "local-1", role: .user, content: "mine", timestamp: "1"), admissionID: "adm-1")
+        appState.clearAuthorityQueueState()
+        XCTAssertTrue(appState.authorityQueue.rows.isEmpty)
+        XCTAssertNil(appState.authorityQueue.sessionID)
+        XCTAssertNil(appState.takeQueuedSendRow(admissionID: "adm-1"))
+    }
+
     private func makeAppState() -> AppState {
         let suite = "AuthorityQueueAppStateTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else { fatalError("Failed to create test UserDefaults suite") }
