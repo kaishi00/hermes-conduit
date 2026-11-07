@@ -6240,6 +6240,31 @@ background (no poll)
 
 **Checked:** 2026-11-05, #1793 (the reassign sheet built from Settings' cards, see Sheets in Settings' look); 2026-11-04, #1734 (seeded; issue 1728; a failed read doesn't count as unchanged, from CodeRabbit's review).
 
+## What opening Tasks reads
+
+Scheduled draws the dashboard's cron jobs and their notifications, so opening
+the tab reads those. The sessions catalogue the legacy drawer's Cron tab also
+fills is not read: the tab shows no cron-session rows.
+
+**Siblings:** the board beside it (its own polls, see How often Tasks reads
+Hermes) · the legacy drawer's Cron tab, which keeps the fuller read because it
+shows the cron-session history · pull to refresh on Scheduled (the same two
+reads) · not needed: Project pages, Pulse, Bots Home and Needs you (their own
+reads, already gated on what shows) · text: none (no Settings caption or doc
+gives this cadence)
+
+**Code**
+- The read: `Conduit/Services/AppState.swift` (refreshScheduledContent: loadCronJobs, refreshCronNotifications), `Conduit/Views/V2/V2TasksView.swift` (the tab's task and its refreshable)
+- The drawer's fuller read: `Conduit/Services/AppState.swift` (refreshCronContent, which also refreshes the sessions catalogue), `Conduit/Views/SidebarView.swift` (its Cron tab)
+
+**Rulings**
+- Opening Scheduled reads the jobs and their notifications, never the sessions catalogue: the tab draws no sessions, and the catalogue read was a full list read and cache bypass on every switch to it (2026-11-07, #1921).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-07, #1921 (Scheduled's opening read narrowed to the jobs it draws; the drawer's Cron tab keeps its catalogue read; Code)
+
 ## Two Hermes servers
 
 Hermes serves the chat socket (`/api/ws`) twice: `hermes dashboard` answers
