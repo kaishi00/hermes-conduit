@@ -36468,6 +36468,49 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// The subagents' own fallbacks (`delegation.fallback_providers`), or
+    /// nil when the config couldn't load. Unset (null) means a subagent on
+    /// the chat's model takes the chat's fallbacks.
+    func loadDelegateFallbackModels() async -> ProfileFallbackChain? {
+        let profile = activeProfile
+        guard let owner = currentDashboardRuntimeOwner() else { return nil }
+        do {
+            let config = try await readKeepingAnswer(KeptRoute.config, profile: profile, owner: owner)
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
+            return ProfileFallbackChain(delegationIn: config)
+        } catch {
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
+            errorMessage = AppLocalization.string("Could not load profile settings: \(UserFacingError.message(for: error))")
+            return nil
+        }
+    }
+
+    func keptDelegateFallbackModels() -> ProfileFallbackChain? {
+        keptAnswer(KeptRoute.config).map(ProfileFallbackChain.init(delegationIn:))
+    }
+
+    /// Saves the subagents' fallbacks: null for the chat's, else the
+    /// complete entries in order (none listed turns fallback off).
+    func setDelegateFallbackModels(_ chain: ProfileFallbackChain) async -> Bool {
+        let profile = activeProfile
+        guard let owner = currentDashboardRuntimeOwner() else { return false }
+        let value: Any = chain.inherits ? NSNull() : chain.entries.filter(\.isComplete).map(\.jsonObject)
+        do {
+            try await updateProfileConfig(profile: profile) { config in
+                var delegation = config["delegation"] as? [String: Any] ?? [:]
+                delegation["fallback_providers"] = value
+                config["delegation"] = delegation
+            }
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
+            errorMessage = AppLocalization.string("Could not save fallback models: \(UserFacingError.message(for: error))")
+            return false
+        }
+    }
+
     func setProfileSetting(_ key: String, value: ProfileSettingValue) async -> Bool {
         let profile = activeProfile
         guard let owner = currentDashboardRuntimeOwner() else { return false }
