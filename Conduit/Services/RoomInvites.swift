@@ -439,17 +439,22 @@ extension AppState {
     func followLinkedRoomInvites() {
         linkedRoomInviteFollow?.cancel()
         let dashboard = activeDashboardID
+        // Until a time, not a count: ticks that came due while iOS held the
+        // app suspended are one read on return, not a burst of them. Ticks in
+        // the background are skipped; the return to the foreground reads.
+        let end = Date().addingTimeInterval(Self.linkedRoomInviteFollowSeconds)
         linkedRoomInviteFollow = Task { [weak self] in
-            for _ in 0..<Self.linkedRoomInviteFollowReads {
+            while Date() < end {
                 try? await Task.sleep(for: Self.linkedRoomInviteFollowInterval)
                 guard !Task.isCancelled, let self, self.activeDashboardID == dashboard else { return }
+                guard self.isSceneActive else { continue }
                 await self.refreshLinkedRoomDrafts()
                 await self.refreshLinkedRoomInvites()
             }
         }
     }
 
-    nonisolated static let linkedRoomInviteFollowReads = 18
+    nonisolated static let linkedRoomInviteFollowSeconds: TimeInterval = 180
     nonisolated static let linkedRoomInviteFollowInterval: Duration = .seconds(10)
 
     /// Whether the invites were read now and kept.
