@@ -246,6 +246,12 @@ extension AppState {
     func readActiveRoomLooks(epoch: Int) async {
         guard canShareRoomLooks, let surface = activeRoomSurface,
               let room = DashboardPath.encodedQueryComponent(surface.room.roomID) else { return }
+        // One read at a time for a room: the people read and the poll both
+        // start one, and a slow one can outlast the 30 s between polls.
+        let reading = "\(epoch)|\(surface.room.roomID)"
+        guard activeRoomLooksReading != reading else { return }
+        activeRoomLooksReading = reading
+        defer { if activeRoomLooksReading == reading { activeRoomLooksReading = nil } }
         let dashboard = activeDashboardID
         activeRoomLooksReadAt = Date()
         let response = try? await roomRouteJSON(

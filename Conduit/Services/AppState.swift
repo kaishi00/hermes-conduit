@@ -12795,6 +12795,8 @@ final class AppState: ObservableObject {
     /// else hosts (`GET /rooms/people`'s `home`).
     @Published var activeRoomHomeName: String?
     var activeRoomLooksReadAt: Date?
+    /// The room (epoch and id) whose looks are being read now.
+    var activeRoomLooksReading: String?
     /// What was last given each dashboard's Hermes (`PUT /rooms/looks`).
     var sharedRoomLooks: [UUID: String] = [:]
     /// Each bot's picture as sent, by the image it was made from.
