@@ -112,7 +112,7 @@ final class AuthorityQueueStore: ObservableObject {
     @Published private(set) var rows: [QueuedPrompt] = []
     /// Rows with an action on its way: their buttons wait.
     @Published private(set) var working: Set<String> = []
-    /// Why the last action didn't go, until the next change.
+    /// Why the last action didn't go, until the next action or another chat.
     @Published var notice: String?
 
     /// Messages waiting their turn.

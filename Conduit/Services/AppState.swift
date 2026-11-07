@@ -20476,8 +20476,9 @@ final class AppState: ObservableObject {
         // pushes it on every change; a snapshot without it says nothing.
         if let queued = snapshot.queuedPrompts, let requestedSessionID {
             // Waiting behind a running turn (another client's, which this
-            // socket didn't see start): the user's own send moves to the dock.
-            if snapshot.running == true { adoptOwnQueuedSends(queued) }
+            // socket didn't see start) or a turn a restart cut off: the
+            // user's own send moves to the dock.
+            adoptOwnQueuedSends(queued)
             authorityQueue.apply(queued, for: requestedSessionID)
         }
     }
@@ -29463,6 +29464,14 @@ final class AppState: ObservableObject {
                 case .accepted:
                     if client.speaksSessionAuthority, let admission = HermesClient.admittedAdmissionID(for: sessionId) {
                         noteOwnSend(admissionID: admission, rowID: userMessage.id)
+                        // A turn a restart cut off holds the chat: the send
+                        // waits behind it in the dock, and no turn starts.
+                        if !authorityQueue.lost.isEmpty, let queueChat = authorityQueue.sessionID,
+                           queueChat == sessionId || knownSessionIDs(for: sessionId).contains(queueChat) {
+                            locallyOwnedInFlightTurn = nil
+                            moveQueuedSendToDock(rowID: userMessage.id, sessionID: sessionId)
+                            break
+                        }
                     }
                     // The turn in flight is now provably Conduit's own: record
                     // the optimistic user row so a later foreground freshness
@@ -30018,7 +30027,9 @@ final class AppState: ObservableObject {
               let rows = try? await client.queuedPrompts(requestedSessionID, profile: profile),
               let row = rows.first(where: { $0.inputID == submissionID }) else { return nil }
         switch row.status {
-        case .queued:
+        case .queued, .unknown:
+            // Waiting, or cut off: the dock shows it (a cut-off one on its
+            // card, whose Resend sends the words again), never the transcript too.
             if let optimisticRowID, let index = messages.firstIndex(where: { $0.id == optimisticRowID }) {
                 holdQueuedSendRow(messages.remove(at: index), admissionID: row.admissionID)
                 cacheMessagePresentation()
@@ -30027,7 +30038,7 @@ final class AppState: ObservableObject {
                 authorityQueue.apply(rows, for: requestedSessionID)
             }
             return .acceptedRunning
-        case .started, .unknown:
+        case .started:
             if activeSessionId == requestedSessionID || eventBelongsToActiveSession(requestedSessionID) {
                 authorityQueue.apply(rows, for: requestedSessionID)
             }
@@ -32244,11 +32255,11 @@ final class AppState: ObservableObject {
         ownSendRowIDs[admissionID] = rowID
     }
 
-    /// The user's sends a running chat's queue lists as waiting: their
-    /// bubbles go to the dock until their turn starts.
+    /// The user's sends the chat's queue lists as waiting (or cut off by a
+    /// restart): their bubbles go to the dock until their turn starts.
     func adoptOwnQueuedSends(_ rows: [QueuedPrompt]) {
         var moved = false
-        for row in rows where row.status == .queued && !row.steering {
+        for row in rows where (row.status == .queued && !row.steering) || row.status == .unknown {
             guard let rowID = ownSendRowIDs.removeValue(forKey: row.admissionID),
                   let index = messages.firstIndex(where: { $0.id == rowID }) else { continue }
             holdQueuedSendRow(messages.remove(at: index), admissionID: row.admissionID)

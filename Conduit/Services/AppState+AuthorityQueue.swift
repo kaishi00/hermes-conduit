@@ -31,11 +31,8 @@ extension AppState {
     /// of the line in place of the old one.
     func editQueuedPrompt(_ row: QueuedPrompt, text: String) async {
         let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !words.isEmpty else {
-            await cancelQueuedPrompt(row)
-            return
-        }
-        guard words != row.text.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+        // Emptied is no edit: Remove from queue is the way to withdraw it.
+        guard !words.isEmpty, words != row.text.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
         // One id for the edit: a retry after a lost reply is the same edit.
         let submissionID = UUID().uuidString.lowercased()
         await queueAction(row) { client, sessionID in
@@ -78,6 +75,7 @@ extension AppState {
         }
         await queueAction(row) { client, sessionID in
             _ = try await client.discardLostPrompt(sessionID, admissionID: row.admissionID, generation: generation)
+            _ = self.takeQueuedSendRow(admissionID: row.admissionID)
             self.authorityQueue.drop(row.admissionID)
         }
     }
