@@ -185,7 +185,7 @@ final class AppStoreScreenshotTests: XCTestCase {
     func testRecordPromo() throws {
         signInIfNeeded()
         // The setup card would push the portraits down Bots Home.
-        dismissFinishSetupCard()
+        dismissVisibleSetupCard()
         let portrait = app.buttons["Conduit Chan"].firstMatch
         guard portrait.waitForExistence(timeout: 30) else {
             snap("debug-no-conduit-chan")
@@ -195,7 +195,7 @@ final class AppStoreScreenshotTests: XCTestCase {
         // The bots' pictures load after the roster: give them time. The
         // setup card can come in meanwhile (once the plugin is checked).
         settle(12)
-        dismissFinishSetupCard()
+        dismissVisibleSetupCard()
         print("PROMO_MARK home \(Date().timeIntervalSince1970)")
         snap("promo-01-bots-home")
         settle(2)
@@ -306,6 +306,18 @@ final class AppStoreScreenshotTests: XCTestCase {
         snap("promo-05-bots-home-after")
         settle(2)
         print("PROMO_MARK end \(Date().timeIntervalSince1970)")
+    }
+
+    /// The setup card's Not now, only where it's on screen. The Sessions
+    /// tab keeps its own copy in the tree, so a card already gone from Bots
+    /// Home still matches; tapping where that copy sits would land on a
+    /// portrait instead.
+    private func dismissVisibleSetupCard() {
+        let visible = app.buttons.matching(identifier: "finish-setup.not-now")
+            .allElementsBoundByIndex.first { $0.isHittable }
+        guard let visible else { return }
+        visible.tap()
+        settle(2)
     }
 
     /// Back from a Bot Chat to Bots Home: its back button (labelled with
@@ -424,12 +436,7 @@ final class AppStoreScreenshotTests: XCTestCase {
             settle()
             return
         }
-        // The tabs keep their screens in the tree side by side: the card on
-        // screen is the one whose frame is inside the window.
-        let window = app.windows.firstMatch.frame
-        let notNow = cards.allElementsBoundByIndex.first { $0.isHittable }
-            ?? cards.allElementsBoundByIndex.first { window.contains($0.frame) }
-            ?? cards.firstMatch
+        let notNow = cards.allElementsBoundByIndex.first { $0.isHittable } ?? cards.firstMatch
         do {
             snap("debug-finish-setup")
             // Beside the empty chat column on an iPad, accessibility's hit
