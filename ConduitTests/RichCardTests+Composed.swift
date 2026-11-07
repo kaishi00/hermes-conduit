@@ -189,11 +189,11 @@ extension AppStateVoiceCapabilityTests {
         let card = try XCTUnwrap(RichCard.cards(raw: [emailCard], schema: schema).first)
         let memory = RichCardTapMemory()
         let key = RichCardTapMemory.key(card: card, button: "send")
-        memory.set(key, .sent)
-        XCTAssertEqual(memory.state(key), .sent)
-        XCTAssertNil(memory.state(key, now: Date().addingTimeInterval(RichCardTapMemory.holdSeconds + 1)))
-        memory.set(key, nil)
-        XCTAssertNil(memory.state(key))
+        memory.set(key, .sent, chat: [])
+        XCTAssertEqual(memory.state(key, chat: []), .sent)
+        XCTAssertNil(memory.state(key, chat: [], now: Date().addingTimeInterval(RichCardTapMemory.holdSeconds + 1)))
+        memory.set(key, nil, chat: [])
+        XCTAssertNil(memory.state(key, chat: []))
     }
 
     func testAFieldsDateReadsAndWritesAsTheSchemaDoes() throws {
