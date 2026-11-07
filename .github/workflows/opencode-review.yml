@@ -429,6 +429,9 @@ jobs:
                 limit=$((left < review_seconds ? left : review_seconds))
               fi
               say "Reviewing with $what."
+              # On a fork's PR opencode adds a "fork" remote and fails if it's
+              # already there, as it is after an earlier attempt in the chain.
+              git remote remove fork >/dev/null 2>&1 || true
               status=0
               env "$var=$value" MODEL="$model" PROMPT="${PROMPT//'{reviewer}'/$name}" \
                 GITHUB_EVENT_PATH="${DISPATCH_EVENT_PATH:-$GITHUB_EVENT_PATH}" GITHUB_EVENT_NAME=pull_request \
