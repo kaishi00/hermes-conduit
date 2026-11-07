@@ -2209,7 +2209,7 @@ iPad · selection across the reply · Copy response · links in cells (a cell wi
 - Selection: `Conduit/Views/Components/MarkdownSelectionCoordinator.swift` (deferRegistration, which mounts a waiting table when a selection begins; tableMountKey); test `ConduitTests/MarkdownSelectionCoordinatorTests.swift` (testTableMountAndItsFirstCellsMountBothWait)
 - Selectable cells, drawn until touched in the chat: `Conduit/Views/Components/SelectableTextView.swift`
 - Which cells draw as text: `Conduit/Views/Components/MarkdownText.swift` (MarkdownTableRowView.cellDrawsAsText)
-- Tests: `ConduitTests/MarkdownTableLayoutTests.swift` (plain cells, link cells), `ConduitTests/MarkdownLargeDocumentTests.swift` (testLargeChatTableDrawsOnlyLinkCellsAsText), `ConduitUITests/SelectionObserverUITests.swift` (testTapOnLinkInChatTableCellOpensIt, on `Conduit/Views/SelectionFixtureView.swift`'s chat table)
+- Tests: `ConduitTests/MarkdownTableLayoutTests.swift` (plain cells, link cells), `ConduitTests/MarkdownLargeDocumentTests.swift` (testLargeChatTableDrawsOnlyLinkCellsAsText), `ConduitUITests/SelectionObserverUITests.swift` (testTapOnLinkInChatTableCellOpensIt, testInlineCodeInChatTableCellIsNotALink, on `Conduit/Views/SelectionFixtureView.swift`'s chat table)
 
 **Rulings**
 - The chat draws table cells without a link as plain text, the cheapest to build as rows scroll in (#693). A long press offers Copy Table and Select Text; Select Text draws the cells as selectable text until the row is taken down.
@@ -2228,7 +2228,7 @@ iPad · selection across the reply · Copy response · links in cells (a cell wi
 - The pointer's Copy Table button covers the corner of the last header cell while the pointer is over the table.
 - A big table mounts its rows in batches (`LargeMarkdownTable`), and a selection copies only mounted cells, so a selection across a table past its first batch leaves the rest out until Show more; Copy Table copies every row.
 
-**Checked:** 2026-11-04, #1743 (each cell's width is measured once); 2026-11-04, #1734 (a streaming table is never sliced between its rows, now that slicing starts at 16 KB; the other surfaces don't stream in slices); 2026-11-01, #1621 (the UI test finds a link cell as a Link or a TextView: a cell that's all link reads as a Link to accessibility); 2026-10-31, #1596 (a cell with a link draws as a selectable cell, so its link opens; Links in messages' Siblings); 2026-10-30, #1540 (the pointer's Copy Table button); #1535 (a selection in the message mounts the cells; VoiceOver's Copy Table kept).
+**Checked:** 2026-11-07, #1950 (the chat table fixture names a repository and a site in code, which draw as code; the link test taps the link's words, since a wider column leaves blank space beside it); 2026-11-04, #1743 (each cell's width is measured once); 2026-11-04, #1734 (a streaming table is never sliced between its rows, now that slicing starts at 16 KB; the other surfaces don't stream in slices); 2026-11-01, #1621 (the UI test finds a link cell as a Link or a TextView: a cell that's all link reads as a Link to accessibility); 2026-10-31, #1596 (a cell with a link draws as a selectable cell, so its link opens; Links in messages' Siblings); 2026-10-30, #1540 (the pointer's Copy Table button); #1535 (a selection in the message mounts the cells; VoiceOver's Copy Table kept).
 
 ## Attaching files
 
