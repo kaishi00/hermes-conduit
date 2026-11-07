@@ -132,6 +132,17 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("CI Gate", text)
         self.assertNotIn("Build & Test", text)
 
+    def test_ci_runs_for_main_and_linked_rooms(self):
+        """linked-rooms' copy runs on that branch's pushes and the PRs into
+        it as on main's, as pulse's copy does for pulse (docs/CI.md). Only
+        this branch has the test: main's copy runs for main alone and never
+        gets it, so neither does pulse."""
+        text = self._workflow_text()
+        triggers = text[text.index("\non:\n"):text.index("\nconcurrency:")]
+        self.assertIn("\n  push:\n    branches: [main, linked-rooms]\n  pull_request:\n", triggers)
+        self.assertRegex(triggers.split("\n  pull_request:\n", 1)[1],
+                         r"\A(    #.*\n)*    branches: \[main, linked-rooms\]\n")
+
     def test_one_macos_job_per_run(self):
         """Runner queueing (5 concurrent macOS jobs per account) was CI v4's
         bottleneck: a PR or push run gets exactly one macOS job."""

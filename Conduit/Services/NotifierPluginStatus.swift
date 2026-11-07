@@ -291,6 +291,12 @@ struct NotifierPluginStatus: Equatable {
         servesDashboardProfiles ? DashboardPath.conduitProfileParameter : "profile"
     }
 
+    /// The query parameter that names the profile on Linked Rooms' new
+    /// drafts and room setup (DashboardPath.roomDashboardProfilesCapability).
+    var roomDashboardProfileParameter: String {
+        reports(DashboardPath.roomDashboardProfilesCapability) ? DashboardPath.conduitProfileParameter : "profile"
+    }
+
     /// True only when the plugin reported this capability.
     func reports(_ capability: String) -> Bool {
         if case .reported(_, let capabilities) = state { return capabilities.contains(capability) }

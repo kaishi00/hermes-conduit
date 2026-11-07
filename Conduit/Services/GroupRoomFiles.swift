@@ -99,9 +99,10 @@ final class GroupRoomFilesClient {
 }
 
 extension AppState {
-    /// The room composer offers files only when the host can store them.
+    /// The room composer offers files only when the host can store them,
+    /// and not in a room someone else hosts, whose home can't open them.
     var canAttachRoomFiles: Bool {
-        notifierPlugin.reports(GroupRoomFilesClient.capability)
+        notifierPlugin.reports(GroupRoomFilesClient.capability) && activeRoomSurface?.copy == nil
     }
 
     /// Uploads a room message's files and returns the text the room gets:

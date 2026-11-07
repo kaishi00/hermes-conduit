@@ -137,6 +137,38 @@ final class NotificationCopyTests: XCTestCase {
                        "Host", "an unknown label keeps the host's title")
     }
 
+    /// An invite to a room from someone you've linked (Linked Rooms,
+    /// notifier 0.105): who invited you to which room, from the room the
+    /// host sealed, over the line that says what to do, in the App Language.
+    func testRoomInviteNotificationCopy() {
+        let generic = NotificationCopy.generic(for: "room.invite")
+        XCTAssertEqual(generic.title, "Room invite", "the relay's generic copy for it")
+        XCTAssertEqual(generic.body, "Someone you've linked with invited you to a room.")
+        let room: [String: Any] = ["link": "lk1a2b3c4d5e6f", "id": "conduit-7f3e9a", "name": "Zoo trip", "from": "Furina"]
+        let content: [String: Any] = [
+            "title": "Furina invited you to Zoo trip", "title_label": "room.invite",
+            "body": "Choose which of your agents join, or decline.", "room": room,
+        ]
+        XCTAssertEqual(NotificationCopy.preview(content).title, "Furina invited you to Zoo trip")
+        XCTAssertEqual(NotificationCopy.preview(content).body, "Choose which of your agents join, or decline.")
+        // A Link without a name: the host leaves `from` out.
+        var unnamed = room
+        unnamed.removeValue(forKey: "from")
+        XCTAssertEqual(NotificationCopy.preview([
+            "title": "Someone invited you to Zoo trip", "title_label": "room.invite", "room": unnamed,
+        ]).title, "Someone invited you to Zoo trip")
+        // No room's name to say: the host's title.
+        XCTAssertEqual(NotificationCopy.preview([
+            "title": "Furina invited you to Zoo trip", "title_label": "room.invite",
+        ]).title, "Furina invited you to Zoo trip")
+
+        standardDefaults.set("zh-Hans", forKey: AppLanguageStore.defaultsKey)
+        XCTAssertEqual(NotificationCopy.generic(for: "room.invite").title, "群聊邀请")
+        let chinese = NotificationCopy.preview(content)
+        XCTAssertEqual(chinese.title, "Furina 邀请你加入 Zoo trip")
+        XCTAssertEqual(chinese.body, "选择让你的哪些智能体加入，或者拒绝。")
+    }
+
     func testCallLineComposesFromTheCall() {
         func line(_ call: [String: Any]) -> String? {
             NotificationCopy.preview([

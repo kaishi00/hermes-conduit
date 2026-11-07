@@ -43,6 +43,23 @@ struct RootView: View {
             ConnectLinkSheet(link: link)
                 .environmentObject(appState)
         }
+        // A Link invite, the same way: it waits there for Conduit to
+        // connect when it opened Conduit.
+        .sheet(item: $appState.pendingRoomLink) { invite in
+            RoomLinkOpenedSheet(invite: invite)
+                .environmentObject(appState)
+        }
+        // An invite to a room whose notification was tapped: its join card.
+        .sheet(item: $appState.presentedRoomInvite) { invite in
+            RoomInviteSheet(invite: invite)
+                .environmentObject(appState)
+        }
+        // An approval in a room hosted elsewhere whose notification was
+        // tapped: its card.
+        .sheet(item: $appState.presentedRoomApproval) { approval in
+            RoomApprovalSheet(approval: approval)
+                .environmentObject(appState)
+        }
         // A draft shared from another app before Conduit listed any chats,
         // with more than one dashboard it could be for (#812). An alert, so
         // it shows the same on iPad, where a dialog would need an anchor.
@@ -746,6 +763,10 @@ struct MainView: View {
             },
             onEdit: inCall ? nil : { prompt in
                 Task { await appState.editPresentedConfirm(prompt) }
+            },
+            // Typed on the panel, so it stays open over a call too.
+            onSayInstead: { prompt, text in
+                Task { await appState.answerPresentedConfirm(prompt, outcome: .edit, via: .tap, editText: text) }
             }
         )
     }
