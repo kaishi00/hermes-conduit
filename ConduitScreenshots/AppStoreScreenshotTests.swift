@@ -263,10 +263,23 @@ final class AppStoreScreenshotTests: XCTestCase {
         let panel = app.descendants(matching: .any)["botWork.panel"].firstMatch
         // The Work panel: both workstreams, and W2's approval card. A tap
         // while the chat is still settling can miss it, so try again.
-        for _ in 0..<3 where !approve.isHittable {
+        for _ in 0..<2 where !approve.isHittable {
             needsYou.tap()
             print("PROMO_MARK panel \(Date().timeIntervalSince1970)")
-            if panel.waitForExistence(timeout: 6) { break }
+            if panel.waitForExistence(timeout: 6) || approve.waitForExistence(timeout: 2) { break }
+        }
+        // On the hosted Mac the status line's tap sometimes opens nothing.
+        // The same panel is the bot's overview on Bots Home (its ⓘ), with
+        // Chat with Conduit Chan to come back.
+        var fromOverview = false
+        if !approve.waitForExistence(timeout: 4) {
+            leaveBotChat()
+            let overview = app.buttons["bots.overview.conduit-chan"].firstMatch
+            if overview.waitForExistence(timeout: 10) {
+                overview.tap()
+                fromOverview = true
+                print("PROMO_MARK overview \(Date().timeIntervalSince1970)")
+            }
         }
         guard approve.waitForExistence(timeout: 15) else {
             snap("debug-no-approval")
@@ -283,7 +296,12 @@ final class AppStoreScreenshotTests: XCTestCase {
             .matching(NSPredicate(format: "label CONTAINS[c] '214 duplicates deleted'")).firstMatch
             .waitForExistence(timeout: 30)
         settle(2.5)
-        if app.otherElements["botWork.panel"].exists {
+        if fromOverview {
+            // Back into her Bot Chat for the wrap-up.
+            let chat = app.descendants(matching: .any)["botOverview.chat"].firstMatch
+            if chat.waitForExistence(timeout: 5) { chat.tap() }
+            print("PROMO_MARK back-to-chat \(Date().timeIntervalSince1970)")
+        } else if app.otherElements["botWork.panel"].exists {
             let close = app.otherElements["botWork.panel"].buttons["Close"].firstMatch
             if close.exists, close.isHittable {
                 close.tap()
