@@ -581,10 +581,42 @@ final class SessionContentSearchTests: XCTestCase {
         }
         model.update(query: "recycling", context: context)
         await model.waitForPendingSearch()
-        XCTAssertEqual(stub.paths, [path("recycling"), path("recycling", profile: "atlas"), path("recycling", profile: "nova")])
+        XCTAssertEqual(Set(stub.paths), [path("recycling"), path("recycling", profile: "atlas"), path("recycling", profile: "nova")])
+        XCTAssertEqual(stub.paths.count, 3)
         // A profile whose search failed is left out; the others still show.
         XCTAssertEqual(model.hits.map(\.sessionID), ["own", "theirs"])
         XCTAssertEqual(model.hits.map(\.profile), [nil, "atlas"])
+        XCTAssertFalse(model.isSearching)
+    }
+
+    /// The other profiles are asked together with the one in use, and its
+    /// hits show without waiting for a slow one; the rest follow in
+    /// profile order (issue 1965).
+    func testAllProfilesSearchShowsOwnHitsBeforeASlowProfileAnswers() async {
+        let stub = StubSearchRequester()
+        stub.responses[path("recycling")] = .success(["results": [result("own")]])
+        stub.responses[path("recycling", profile: "atlas")] = .success(["results": [result("atlas")]])
+        stub.responses[path("recycling", profile: "nova")] = .success(["results": [result("nova")]])
+        stub.held = [path("recycling", profile: "atlas")]
+        let model = SessionContentSearchModel(support: SessionContentSearchSupport(), debounce: .zero)
+        let context = SessionContentSearchModel.Context(
+            scope: scope,
+            profile: "default",
+            otherProfiles: ["atlas", "nova"]
+        ) { path in
+            try await stub.request(path)
+        }
+        model.update(query: "recycling", context: context)
+        for _ in 0..<200 where !(stub.isWaiting(path("recycling", profile: "atlas")) && model.hits.count == 1) {
+            await Task.yield()
+        }
+        XCTAssertTrue(stub.isWaiting(path("recycling", profile: "atlas")))
+        XCTAssertEqual(stub.paths.count, 3, "every profile asked at once, not one after another")
+        XCTAssertEqual(model.hits.map(\.sessionID), ["own"], "the profile in use shows before a slow one answers")
+        XCTAssertTrue(model.isSearching, "still searching the slow profile")
+        stub.release(path("recycling", profile: "atlas"))
+        await model.waitForPendingSearch()
+        XCTAssertEqual(model.hits.map(\.sessionID), ["own", "atlas", "nova"], "profile order, whatever answered first")
         XCTAssertFalse(model.isSearching)
     }
 }

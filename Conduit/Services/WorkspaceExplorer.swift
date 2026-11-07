@@ -87,8 +87,11 @@ final class WorkspaceExplorer: ObservableObject {
         showsKeptRoot = kept != nil
         recent = client.keptRecent(root: root, in: answers) ?? []
         askPluginIfUnanswered()
-        await load(root)
-        await loadRecent()
+        // Two independent reads: together, not one after the other
+        // (issue 1964).
+        async let listed = load(root)
+        async let recentRead: Void = loadRecent()
+        _ = await (listed, recentRead)
     }
 
     /// Clears everything: no folder to show (a chat Hermes hasn't given a
@@ -296,8 +299,14 @@ final class WorkspaceExplorer: ObservableObject {
         previewError = nil
         previewLoading = true
         defer { if previewRequest == request { previewLoading = false } }
+        let early = takePrefetchedText(entry.path, profile: profile)
         do {
-            let text = try await appState.readWorkspaceText(entry.path, profile: profile)
+            let text: WorkspaceFilePreview
+            if let early {
+                text = try await early.value
+            } else {
+                text = try await appState.readWorkspaceText(entry.path, profile: profile)
+            }
             guard previewRequest == request, ticket == generation,
                   owner.map(appState.ownsDashboardRuntime) ?? true else { return }
             preview = text
@@ -308,6 +317,30 @@ final class WorkspaceExplorer: ObservableObject {
                   owner.map(appState.ownsDashboardRuntime) ?? true else { return }
             previewError = UserFacingError.message(for: error)
         }
+    }
+
+    /// A file a reply named, read while its folders are still listed: the
+    /// text read starts with the tap instead of after the folder listings
+    /// it doesn't need (issue 1964). `view` takes it up for the same file.
+    /// A read left behind (its tap replaced, or the file never opened) is
+    /// no use after this: a later open reads the file again.
+    private var prefetchedText: (path: String, profile: String, dashboard: UUID?, at: Date, read: Task<WorkspaceFilePreview, Error>)?
+    static let prefetchedTextLifetime: TimeInterval = 30
+
+    func prefetchText(_ path: String, profile: String) {
+        guard let appState else { return }
+        prefetchedText = (path, profile, appState.activeDashboardID, Date(), Task {
+            try await appState.readWorkspaceText(path, profile: profile)
+        })
+    }
+
+    private func takePrefetchedText(_ path: String, profile: String) -> Task<WorkspaceFilePreview, Error>? {
+        guard let kept = prefetchedText else { return nil }
+        prefetchedText = nil
+        guard kept.path == path, kept.profile == profile,
+              kept.dashboard == appState?.activeDashboardID,
+              Date().timeIntervalSince(kept.at) < Self.prefetchedTextLifetime else { return nil }
+        return kept.read
     }
 
     func closeFile() {
@@ -331,12 +364,23 @@ final class WorkspaceExplorer: ObservableObject {
             folders.insert(folder, at: 0)
             folder = (folder as NSString).deletingLastPathComponent
         }
-        for folder in folders where !expanded.contains(folder) {
-            expanded.insert(folder)
-            if entries[folder] == nil, !(await load(folder)) {
-                expanded.remove(folder)
-                break
+        // Every unlisted folder on the way is read at once, not one after
+        // another (issue 1964). A folder that fails stays closed, and so do
+        // the ones inside it, as the walk used to stop there.
+        let opening = folders.filter { !expanded.contains($0) }
+        expanded.formUnion(opening)
+        let reads = opening.filter { entries[$0] == nil }.map { folder in
+            (folder, Task { await self.load(folder) })
+        }
+        var failedAt: Int?
+        for (folder, read) in reads {
+            let listed = await read.value
+            if !listed, let index = folders.firstIndex(of: folder) {
+                failedAt = min(failedAt ?? index, index)
             }
+        }
+        if let failedAt {
+            expanded.subtract(folders[failedAt...].filter(opening.contains))
         }
         let parent = (path as NSString).deletingLastPathComponent
         if let listed = entries[parent == AppState.normalizedWorkspacePath(root) ? root : parent]?.first(where: { $0.path == path }) {

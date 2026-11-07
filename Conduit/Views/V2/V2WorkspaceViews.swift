@@ -854,7 +854,15 @@ struct WorkspaceFolderView: View {
     private func show(_ reveal: WorkspaceReveal) async {
         // The folder holding it, the chat's first: a file in none of them
         // opens to read, outside the tree, with nothing to change.
-        if let holder = roots.first(where: { Self.path(reveal.path, isIn: $0.path) }) {
+        let holder = roots.first(where: { Self.path(reveal.path, isIn: $0.path) })
+        // A file to read starts reading now, while its folders are listed,
+        // in the profile `explorer.view` will read it in (issue 1964).
+        let kind = WorkspaceFileKind(name: (reveal.path as NSString).lastPathComponent)
+        if kind == .text || kind == .markdown, !(reveal.path as NSString).pathExtension.isEmpty {
+            let profile = holder == nil ? (explorer.scope?.profile ?? appState.workspaceProfile) : appState.workspaceProfile
+            explorer.prefetchText(reveal.path, profile: profile)
+        }
+        if let holder {
             if root?.path != holder.path { rootPath = holder.path }
             // Also when the picker already names it but the explorer hasn't
             // opened it yet (the first appearance); opening it again is free.
