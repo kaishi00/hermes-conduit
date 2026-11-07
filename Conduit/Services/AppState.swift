@@ -36623,11 +36623,18 @@ final class AppState: ObservableObject {
         // Shown while Hermes answers, and kept if it can't.
         restoreBusyInputMode()
         let revision = busyInputModeWriteRevision
+        // The profile this answer is for. Profile discovery can re-home the
+        // connection onto a fallback while the read is out, and the profile
+        // that takes over restores the mode it last had: an answer for the one
+        // that just went must not replace it. The connect tail sends this read
+        // beside the profile list (issue 1727), so that can happen mid-read.
+        let profile = activeProfile
         do {
             let mode = try await client.busyInputMode()
             // A switch away while this was out reads its own, and a mode
             // picked meanwhile is newer.
-            guard self.client === client, revision == busyInputModeWriteRevision else { return }
+            guard self.client === client, revision == busyInputModeWriteRevision,
+                  profile == activeProfile else { return }
             busyInputMode = mode
             defaults.set(mode.rawValue, forKey: key)
         } catch {}
