@@ -115,6 +115,14 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(GroupRoomImageGallery.items(in: [work]).map(\.id), [
             ImageGalleryItem.webID("https://example.com/shown.png"),
         ], "a picture the bubble hides doesn't page")
+        let nightly = GroupEvent(
+            roomID: "room", seq: 2, eventID: "e2", kind: "message.user",
+            actor: GroupActor(kind: "user", id: "cron:job42", profile: nil, displayName: "Nightly", connectionID: nil),
+            authorityEpoch: nil, payload: ["text": .string("![chart](https://example.com/chart.png)")], createdAt: 0
+        )
+        XCTAssertEqual(GroupRoomImageGallery.items(in: [nightly]).map(\.id), [
+            ImageGalleryItem.webID("https://example.com/chart.png"),
+        ], "any other scheduled post pages its whole post's pictures")
     }
 
     @MainActor

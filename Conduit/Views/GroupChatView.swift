@@ -729,7 +729,9 @@ struct GroupEventRow: View {
         // Unnamed jobs stay told apart by their job id (the actor after "cron:").
         let job = event.actor.id.split(separator: ":", maxSplits: 1).last.map(String.init) ?? ""
         let label = AppLocalization.string("Scheduled job")
-        return job.isEmpty ? label : "\(label) · \(job.prefix(12))"
+        // Its end, where jobs that share a prefix differ.
+        let shown: String = job.count > 12 ? "…" + String(job.suffix(12)) : job
+        return job.isEmpty ? label : "\(label) · \(shown)"
     }
 
     private var speakerLabel: String {
