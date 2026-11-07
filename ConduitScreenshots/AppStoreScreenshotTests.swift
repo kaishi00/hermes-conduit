@@ -187,7 +187,15 @@ final class AppStoreScreenshotTests: XCTestCase {
         // The setup card would push the portraits down Bots Home.
         dismissVisibleSetupCard()
         let portrait = app.buttons["Conduit Chan"].firstMatch
-        guard portrait.waitForExistence(timeout: 30) else {
+        // The hosted Mac can sit on "Loading bots…" well past its first
+        // read; a relaunch (the sign-in is kept) reads the roster again.
+        if !portrait.waitForExistence(timeout: 90) {
+            snap("debug-bots-still-loading")
+            app.terminate()
+            app.launch()
+            dismissVisibleSetupCard()
+        }
+        guard portrait.waitForExistence(timeout: 90) else {
             snap("debug-no-conduit-chan")
             XCTFail("Conduit Chan's portrait never showed on Bots Home")
             return
