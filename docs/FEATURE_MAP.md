@@ -4065,7 +4065,7 @@ their results come back, and when Hermes stops them. Settings > Memory &
 delegation (`delegation.*` in the profile's config).
 
 **Siblings:** the Delegation section's rows (done: every `delegation.*`
-setting a chat uses, #NUM) · Delegate model (provider, model and effort,
+setting a chat uses, #1951) · Delegate model (provider, model and effort,
 unchanged) · Pause delegation (unchanged) · Hermes Desktop's Model >
 Subagents page (upstream, the reference) · delegation routing, Desktop's
 mode picker with model and profile routes from the advanced-delegation
@@ -4082,13 +4082,13 @@ caption (done); README and docs don't describe these settings
 - Delegate model and Pause delegation: `Conduit/Views/AuxiliaryViews.swift` (DelegationModelSettings, DelegationPauseSettings)
 
 **Rulings**
-- Each new row shows only when the gateway's config schema has its key, so an older Hermes isn't offered a setting it would ignore. Concurrent delegate agents shows Hermes' own default, 10, when the config has none (#NUM).
-- Left out on purpose: `oneshot_max_children` (only `hermes chat -q` one-shot runs read it), and `base_url`, `api_key`, `api_mode` and `request_overrides` (an endpoint of the subagents' own, which Delegate model's provider covers; a key is never shown) (#NUM).
+- Each new row shows only when the gateway's config schema has its key, so an older Hermes isn't offered a setting it would ignore. Concurrent delegate agents shows Hermes' own default, 10, when the config has none (#1951).
+- Left out on purpose: `oneshot_max_children` (only `hermes chat -q` one-shot runs read it), and `base_url`, `api_key`, `api_mode` and `request_overrides` (an endpoint of the subagents' own, which Delegate model's provider covers; a key is never shown) (#1951).
 
 **Open gaps**
 - Delegation routing (Default, Model map, Profile routes) and the subagents' fallback models aren't in Conduit yet.
 
-**Checked:** 2026-11-07, #NUM (the Delegation section has every setting a chat reads)
+**Checked:** 2026-11-07, #1951 (the Delegation section has every setting a chat reads)
 
 ## Profile config saves
 
