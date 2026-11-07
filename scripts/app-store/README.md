@@ -59,7 +59,9 @@ Results:
 ## Changing what's shown
 
 - Chats, bots, tasks and scheduled jobs: edit `demo-script.json`. A chat with
-  `"seed": false` is only sent live by the preview recording.
+  `"seed": false` is only sent live by the preview recording; a bot's turn
+  with `"seed": false` is only answered live (the promo's message and its
+  work updates).
 - A new screen: add a `snap("NN-name")` step to the test. Wait for real
   content before snapping; the hosted Mac is slow.
 - Message times read just before the 9:41 status bar because the test runs

@@ -66,6 +66,8 @@ async def seed(script_path, base, user, password):
 
         async def run_turns(sid, turns):
             for turn in turns:
+                if turn.get("seed") is False:
+                    continue  # answered live (a recording's message, a work update)
                 while not events.empty():
                     events.get_nowait()
                 await rpc("prompt.submit", {"session_id": sid, "text": turn.get("prompt", turn["match"])}, timeout=120)

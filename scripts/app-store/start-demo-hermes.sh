@@ -173,6 +173,14 @@ PY
     kill -0 "$GATEWAY_PID" 2>/dev/null || kill -0 "$DASHBOARD_PID" 2>/dev/null || break
     sleep 1
   done
+  kill -9 "$GATEWAY_PID" "$DASHBOARD_PID" 2>/dev/null || true
+  sleep 2
+  # The old dashboard must be gone, or the status check below would pass
+  # against it while the new one fails to bind the port.
+  if kill -0 "$GATEWAY_PID" 2>/dev/null || kill -0 "$DASHBOARD_PID" 2>/dev/null \
+      || curl -sf "$BASE/api/status" >/dev/null; then
+    echo "::error::Hermes did not stop for its restart"; exit 1
+  fi
   start_hermes
 fi
 

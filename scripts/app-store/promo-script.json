@@ -257,7 +257,8 @@
               "delay": 0.03,
               "content": "Photos are tidy: 214 duplicates gone and 3.1 GB back. Your Kyoto weekend is all set!"
             }
-          ]
+          ],
+          "seed": false
         },
         {
           "match": "three picks near gion",
@@ -266,7 +267,8 @@
               "delay": 0.03,
               "content": "The ryokan shortlist is in. Hanami-tei is the best value at $240 a night. Want me to hold a room?"
             }
-          ]
+          ],
+          "seed": false
         },
         {
           "match": "work update from your workstreams",
@@ -275,7 +277,8 @@
               "delay": 0.03,
               "content": "The photo cleanup needs your OK before it deletes anything."
             }
-          ]
+          ],
+          "seed": false
         },
         {
           "match": "plan our kyoto weekend",
@@ -310,7 +313,8 @@
               "delay": 0.03,
               "content": "On it! I'll tell you the moment they're back."
             }
-          ]
+          ],
+          "seed": false
         },
         {
           "match": "what's on today",
