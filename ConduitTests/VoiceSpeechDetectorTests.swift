@@ -71,6 +71,79 @@ final class VoiceSpeechDetectorTests: XCTestCase {
         XCTAssertEqual(seeded.observe(0.012), .none)
     }
 
+    // MARK: The room under an active utterance (notifier issue 596)
+
+    func testAnUtteranceStartedBeforeTheFloorEndsOverSteadyRoomNoise() {
+        var detector = VoiceSpeechDetector()
+        var date = Date()
+        XCTAssertEqual(detector.observe(0.2, at: date), .started)
+
+        // Only the room is left, over the minimum floor's continuation
+        // level: it continues the utterance until it has held steady for
+        // longer than a voice does, then is silence.
+        var detections: [VoiceSpeechDetection] = []
+        for index in 0..<100 {
+            date = date.addingTimeInterval(0.02)
+            detections.append(detector.observe(index.isMultiple(of: 3) ? 0.011 : 0.009, at: date))
+        }
+        XCTAssertEqual(detections.first, .continued, "the room noise first reads as more speech")
+        XCTAssertEqual(detections.last, VoiceSpeechDetection.none, "a steady room ends the utterance")
+        XCTAssertFalse(detector.isSpeechActive)
+        XCTAssertEqual(detector.noiseFloor, 0.009, accuracy: 0.0005, "the room's quietest level is the floor")
+
+        // The room never starts another utterance; the user's next words do.
+        for _ in 0..<100 {
+            date = date.addingTimeInterval(0.02)
+            XCTAssertEqual(detector.observe(0.011, at: date), .none)
+        }
+        date = date.addingTimeInterval(0.02)
+        XCTAssertEqual(detector.observe(0.04, at: date), .none)
+        date = date.addingTimeInterval(0.02)
+        XCTAssertEqual(detector.observe(0.05, at: date), .started)
+    }
+
+    func testAVoiceNeverReadsAsTheRoom() {
+        var detector = VoiceSpeechDetector()
+        var date = Date()
+        XCTAssertEqual(detector.observe(0.2, at: date), .started)
+
+        // Four seconds of quiet words: syllables over the gaps between them.
+        let words: [Float] = [0.03, 0.045, 0.024, 0.012, 0.009, 0.035, 0.05, 0.02, 0.01]
+        for index in 0..<200 {
+            date = date.addingTimeInterval(0.02)
+            _ = detector.observe(words[index % words.count], at: date)
+            XCTAssertTrue(detector.isSpeechActive, "the user is still talking")
+        }
+    }
+
+    func testWordsJustAboveALoudRoomNeverReadAsTheRoom() {
+        var detector = VoiceSpeechDetector()
+        var date = Date()
+        XCTAssertEqual(detector.observe(0.2, at: date), .started)
+
+        // Three seconds of words peaking at 0.05 whose dips fall only to a
+        // room around 0.03.
+        let words: [Float] = [0.05, 0.045, 0.035, 0.03, 0.032, 0.048]
+        for index in 0..<150 {
+            date = date.addingTimeInterval(0.02)
+            _ = detector.observe(words[index % words.count], at: date)
+            XCTAssertTrue(detector.isSpeechActive, "the user is still talking")
+        }
+    }
+
+    func testUnheardLevelsDoNotHoldSteady() {
+        var detector = VoiceSpeechDetector()
+        let start = Date()
+        XCTAssertEqual(detector.observe(0.2, at: start), .started)
+        XCTAssertEqual(detector.observe(0.01, at: start.addingTimeInterval(0.02)), .continued)
+        XCTAssertEqual(detector.observe(0.01, at: start.addingTimeInterval(1.0)), .continued)
+        XCTAssertEqual(
+            detector.observe(0.01, at: start.addingTimeInterval(1.6)), .continued,
+            "levels with gaps between them were never heard holding steady"
+        )
+        XCTAssertTrue(detector.isSpeechActive)
+    }
+
     func testGarbageLearnedFloorKeepsTheColdStart() {
         var detector = VoiceSpeechDetector()
         detector.reset(learnedNoiseFloor: .nan)

@@ -60,6 +60,16 @@ struct VoiceSpeechDetectorConstants: Equatable {
     var minimumNoiseFloor: Float = 0.003
     /// Sanity ceiling for the noise floor estimate.
     var maximumNoiseFloor: Float = 0.5
+    /// How long an active utterance's level has to hold steady before it
+    /// is taken for the room rather than a voice: speech dips between
+    /// words; a fan, traffic or a TV holds. A steady stretch shorter than
+    /// this is still speech.
+    var steadyRoomDuringSpeechDuration: TimeInterval = 1.5
+    /// The smallest spread between an active run's quietest and loudest
+    /// level that reads as a voice; a spread of a third of the loudest
+    /// does too (the speech-rise factor), so words only a little above a
+    /// loud room still break the run.
+    var steadyRoomDuringSpeechRange: Float = 0.006
 }
 
 enum VoiceSpeechDetection: Equatable {
@@ -81,6 +91,12 @@ struct VoiceSpeechDetector {
     private var coldStartWindow: [Float] = []
     private var candidateSamples = 0
     private(set) var isSpeechActive = false
+    /// The steady run an active utterance has heard since its level last
+    /// moved like a voice (notifier issue 596).
+    private var activeRunStartedAt: Date?
+    private var activeRunLastSampleAt: Date?
+    private var activeRunQuietest: Float = 0
+    private var activeRunLoudest: Float = 0
 
     init(constants: VoiceSpeechDetectorConstants = .init()) {
         self.constants = constants
@@ -115,7 +131,7 @@ struct VoiceSpeechDetector {
         )
     }
 
-    mutating func observe(_ level: Float) -> VoiceSpeechDetection {
+    mutating func observe(_ level: Float, at date: Date = Date()) -> VoiceSpeechDetection {
         // Garbage samples (NaN, negative) must not poison the noise floor
         // or wedge threshold comparisons; treat them as silence.
         guard level.isFinite, level >= 0 else {
@@ -123,6 +139,29 @@ struct VoiceSpeechDetector {
             return .none
         }
         if isSpeechActive {
+            if activeRunHeldSteady(level, at: date) {
+                // The level has held steady for longer than a voice does:
+                // the user stopped and this is the room, louder than the
+                // floor the utterance started on (it started before the
+                // floor was learned, or the room got louder). Left alone it
+                // would hold the turn open until the utterance cap. The
+                // utterance is over, and the room's quietest level becomes
+                // the floor, so the room can't start another one while the
+                // user's next words still can.
+                isSpeechActive = false
+                adaptNoiseFloor(
+                    max(noiseFloor, activeRunQuietest),
+                    alpha: 1,
+                    ceiling: constants.maximumNoiseFloor
+                )
+                // The floor is learned now: a cold start the utterance cut
+                // short is over.
+                coldStartRemaining = 0
+                coldStartWindow.removeAll()
+                candidateSamples = 0
+                endActiveRun()
+                return .none
+            }
             // Hysteresis: an active utterance survives level dips via the
             // lower continuation threshold; trailing-silence timing stays
             // with the controller.
@@ -214,6 +253,41 @@ struct VoiceSpeechDetector {
         coldStartWindow.removeAll()
         candidateSamples = 0
         isSpeechActive = false
+        endActiveRun()
+    }
+
+    /// Whether an active utterance's levels, every one of them, dips
+    /// included, have stayed within a narrow band for
+    /// `steadyRoomDuringSpeechDuration`. A voice breaks the band: its
+    /// syllables rise well above the gaps between words, which fall back
+    /// to the room.
+    private mutating func activeRunHeldSteady(_ level: Float, at date: Date) -> Bool {
+        // The tap delivers a level about every 20 ms: a longer gap than the
+        // room floor allows means levels went unheard, and a run doesn't
+        // span it.
+        if let startedAt = activeRunStartedAt, let last = activeRunLastSampleAt,
+           date.timeIntervalSince(last) <= VoiceRoomNoiseFloor.maximumRunGap {
+            let quietest = min(activeRunQuietest, level)
+            let loudest = max(activeRunLoudest, level)
+            if loudest - quietest < max(constants.steadyRoomDuringSpeechRange, loudest / constants.noiseFloorSpeechRiseFactor) {
+                activeRunQuietest = quietest
+                activeRunLoudest = loudest
+                activeRunLastSampleAt = date
+                return date.timeIntervalSince(startedAt) >= constants.steadyRoomDuringSpeechDuration
+            }
+        }
+        activeRunStartedAt = date
+        activeRunLastSampleAt = date
+        activeRunQuietest = level
+        activeRunLoudest = level
+        return false
+    }
+
+    private mutating func endActiveRun() {
+        activeRunStartedAt = nil
+        activeRunLastSampleAt = nil
+        activeRunQuietest = 0
+        activeRunLoudest = 0
     }
 
     /// Clears speech state like `reset()`, but starts from a floor learned
