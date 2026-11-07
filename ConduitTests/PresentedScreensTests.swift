@@ -173,7 +173,7 @@ extension AppStateVoiceCapabilityTests {
             sent = body
             return ["ok": true, "prompts": []]
         }
-        XCTAssertEqual(sent["features"] as? [String], ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards", "text-drafts", "board-cards", "room-boards", "diff-cards"])
+        XCTAssertEqual(sent["features"] as? [String], ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards", "text-drafts", "board-cards", "room-boards", "diff-cards", "composed-cards"])
     }
 
     func testMapsOpensWithDirectionsFromALinkOnlyItMade() throws {
