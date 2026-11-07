@@ -195,7 +195,7 @@ struct GatewayWaitView: View {
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
                                 if let restartsBy = work.restartsBy {
-                                    Text(verbatim: AppLocalization.string("Restarts on its own by \(restartsBy.formatted(date: .omitted, time: .shortened))"))
+                                    Text(verbatim: AppLocalization.string("Restarts on its own by \(restartsBy.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(AppLocalization.formattingLocale)))"))
                                         .scaledFont(.footnote)
                                         .foregroundStyle(.secondary)
                                 }

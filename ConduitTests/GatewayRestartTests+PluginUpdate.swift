@@ -1098,7 +1098,6 @@ extension GatewayRestartTests {
         XCTAssertTrue(work.draining)
         XCTAssertEqual(work.restartsBy, Date(timeIntervalSince1970: 1_800_000_600))
         XCTAssertEqual(work.units.map(\.canStop), [true, false, false, false])
-        XCTAssertTrue(work.hasWorkConduitCantStop)
         let lines = work.lines(now: now)
         XCTAssertEqual(lines.count, 4)
         XCTAssertTrue(lines[0].hasPrefix("Rei: New mail arrived, running 26"), lines[0])
@@ -1112,7 +1111,6 @@ extension GatewayRestartTests {
         XCTAssertEqual(work.count, 2)
         XCTAssertNil(work.restartsBy)
         XCTAssertEqual(work.lines(now: Date()), ["Hermes doesn't say what's running."])
-        XCTAssertTrue(work.hasWorkConduitCantStop)
         XCTAssertNil(GatewayWork(json: ["count": 1]))
     }
 }

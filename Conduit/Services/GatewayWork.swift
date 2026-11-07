@@ -71,11 +71,6 @@ struct GatewayWork: Equatable {
         restartsBy = (json["restarts_by"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
     }
 
-    /// Whether any of it is left that Conduit can't stop itself.
-    var hasWorkConduitCantStop: Bool {
-        count > units.filter(\.canStop).count
-    }
-
     /// One line per unit: whose chat and which, or the job, and how long it
     /// has run.
     func lines(now: Date) -> [String] {
