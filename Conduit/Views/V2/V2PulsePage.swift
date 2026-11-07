@@ -28,6 +28,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 /// The Chats bar's Pulse button: a dot while cards are unseen.
 struct V2PulseButton: View {
@@ -268,7 +269,7 @@ struct V2PulsePage: View {
             try? await Task.sleep(for: .seconds(6))
             // A newer undo restarted this task: that one clears its own bar.
             guard !Task.isCancelled else { return }
-            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { undo = nil }
+            withAnimation(ConduitMotion.ease(reduceMotion: UIAccessibility.isReduceMotionEnabled)) { undo = nil }
         }
         .onAppear { isShown = true }
         .onDisappear {
@@ -814,7 +815,8 @@ struct V2PulsePage: View {
             // Put off until a time: the one the plugin set, as the cleared row says it.
             if let back { message = PulseRest.returning(back).undoMessage }
         }
-        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { undo = PulseUndo(card: card, action: action, message: message) }
+        // Called after the plugin answers: read the setting at animation time.
+        withAnimation(ConduitMotion.ease(reduceMotion: UIAccessibility.isReduceMotionEnabled)) { undo = PulseUndo(card: card, action: action, message: message) }
         AccessibilityNotification.Announcement(message).post()
     }
 
@@ -1329,7 +1331,7 @@ struct V2PulsePage: View {
                 }
                 if !up, reason == .wrongTime, let back = rated.restUntil {
                     // Wrong time put it away until a better time: it moves as Not now's does, with Undo.
-                    withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                    withAnimation(ConduitMotion.ease(reduceMotion: UIAccessibility.isReduceMotionEnabled)) {
                         if let index = page?.cards.firstIndex(where: { $0.id == card.id }) {
                             page?.cards[index].dismissedAt = now
                             page?.cards[index].restUntil = back
@@ -1384,7 +1386,7 @@ struct V2PulsePage: View {
                 let answer = try await client.dismiss(card: card.id, dismissed: dismissed, until: until)
                 guard appState.activeDashboardID == dashboard else { return }
                 guard answer.changed else { return await load() }
-                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                withAnimation(ConduitMotion.ease(reduceMotion: UIAccessibility.isReduceMotionEnabled)) {
                     if let index = page?.cards.firstIndex(where: { $0.id == card.id }) {
                         page?.cards[index].dismissedAt = dismissed ? Date() : nil
                         page?.cards[index].restUntil = dismissed ? answer.restUntil : nil
@@ -1508,7 +1510,7 @@ struct V2PulsePage: View {
             do {
                 let answer = try await client.dismissProposal(proposal.id)
                 guard appState.activeDashboardID == dashboard else { return }
-                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                withAnimation(ConduitMotion.ease(reduceMotion: UIAccessibility.isReduceMotionEnabled)) {
                     setProposal(answer, on: card.id)
                     if let index = page?.cards.firstIndex(where: { $0.id == card.id }) {
                         page?.cards[index].dismissedAt = Date()
