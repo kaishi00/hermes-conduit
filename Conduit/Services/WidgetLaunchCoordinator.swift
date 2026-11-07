@@ -49,7 +49,8 @@ final class WidgetLaunchLease {
 }
 
 /// A one-shot bridge from a pending widget launch to the voice controller.
-/// It remains revocable until the input actually starts. After that point the
+/// It remains revocable until the input actually starts, or, under push to
+/// talk, until the call settles to wait for the press. After that point the
 /// established conversation and its ordinary resume controls are independent
 /// of the launch deadline.
 @MainActor
@@ -70,6 +71,11 @@ final class WidgetInitialCaptureAuthorization {
         captureStarted = true
         lease.consumeInitialCapture()
     }
+
+    /// Push to talk: the launched call is open and waits for the user's
+    /// press, which is all the launch could do. It ends the launch as a
+    /// started capture does, so a press after the deadline still listens.
+    func conversationDidSettle() { captureDidStart() }
 }
 
 /// A process-local, foreground router. Duplicate delivery is coalesced only

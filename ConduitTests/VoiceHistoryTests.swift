@@ -1469,4 +1469,42 @@ extension HermesVoiceGatewayTimeoutTests {
         let decoded = try JSONDecoder().decode(VoiceTranscriptTurn.self, from: JSONEncoder().encode(turn))
         XCTAssertEqual(decoded, turn)
     }
+
+    /// Issue 1936: a queued call whose row is gone is kept as a new row, its
+    /// live model's cards with it.
+    func testOutboxKeepsCardsWhenItRebuildsACallWhoseRowIsGone() async throws {
+        let normalized: [[String: Any]] = [["type": "place", "places": [["name": "Tartine"]]]]
+        let cards = try JSONSerialization.data(withJSONObject: normalized)
+        let request = VoiceTranscriptSaveRequest(
+            callID: "call-1", engine: .geminiLive, sessionID: "row-1", title: "Breakfast",
+            turns: [
+                VoiceTranscriptTurn(index: 0, role: .user, text: "Where for breakfast?", at: Date()),
+                VoiceTranscriptTurn(index: 1, role: .assistant, text: "Breakfast", at: Date(), cards: cards),
+            ]
+        )
+        let defaults = makeScratchDefaults("VoiceOutboxRowGoneCards")
+        defaults.set("default", forKey: "conduit.activeProfile")
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
+        let script = ScriptedVoiceHistoryRequests()
+        appState.voiceHistoryClient = VoiceHistoryClient(request: script.request)
+        var outbox = VoiceTranscriptOutbox()
+        outbox.add(.init(
+            dashboard: appState.activeDashboardID?.uuidString ?? "-", profile: appState.activeProfile,
+            request: request, queuedAt: Date()
+        ))
+        outbox.store(in: defaults)
+
+        script.responses = [.failure(DashboardTicketBridgeError.http(status: 422, detail: ""))]
+        await appState.saveQueuedVoiceCallsNow()
+        let kept = try XCTUnwrap(VoiceTranscriptOutbox.load(from: defaults).entries.first?.request)
+        XCTAssertNil(kept.sessionID, "kept as a new row")
+        XCTAssertEqual(kept.turns.map(\.cards), [nil, cards], "the rebuilt turns keep their cards")
+
+        script.responses = [.success(["ok": true, "session_id": "row-2", "written": 2])]
+        await appState.saveQueuedVoiceCallsNow()
+        let turns = try XCTUnwrap(script.calls.last?.body?["turns"] as? [[String: Any]])
+        let sent = try XCTUnwrap(turns.last?["cards"] as? [[String: Any]])
+        XCTAssertEqual((sent.first?["places"] as? [[String: Any]])?.first?["name"] as? String, "Tartine")
+    }
 }

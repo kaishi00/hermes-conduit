@@ -549,6 +549,10 @@ final class VoiceConversationController: ObservableObject {
         // relisten (after a reply, an empty transcript, a spoken Stop, the
         // voice screen opening) settles to wait for the next press instead.
         if isPushToTalkActive, !isPushToTalkHeld {
+            // A widget's or Shortcut's Talk has done its part once the call
+            // waits for the press: the launch ends here, so its deadline
+            // never reports it expired over a call the user is in (#1934).
+            widgetAuthorization?.conversationDidSettle()
             if isSteeringTurn {
                 resumeTurnAfterSteer()
             } else if isVoiceSessionActive {
