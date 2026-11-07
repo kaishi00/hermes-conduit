@@ -658,6 +658,24 @@ struct ChatView: View {
                 // In the background iOS still lays this view out for
                 // app-switcher snapshots, and a backgrounded app gets little
                 // CPU; the scroller leaves the offset alone until it is back.
+                if phase != .background {
+                    // Leaving the background, or coming back from an overlay
+                    // dip: hand the scroller the chat's rows again before the
+                    // unpause below, so its catch up runs against them. A
+                    // resume that lands while the phone is locked can leave
+                    // its target cache empty while the chat has rows, and
+                    // nothing else asks it again, so the transcript draws no
+                    // rows at all (title and composer only) until the chat is
+                    // opened afresh. Rows it already holds cost a compare: the
+                    // target cache returns `.unchanged` for them.
+                    scroller.transcriptChanged(
+                        messages: appState.chatRowsOnScreen,
+                        transcriptRevision: appState.chatTranscriptRevision,
+                        viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
+                        isProvisional: showsOfflineCopy,
+                        activeSessionKey: drawnScrollSessionKey
+                    )
+                }
                 scroller.setPaused(phase == .background)
             }
     }
