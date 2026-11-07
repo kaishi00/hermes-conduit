@@ -114,6 +114,9 @@ struct V2TasksView: View {
 /// opens its detail with Run now and its run history; touch and hold or a
 /// swipe gives the same actions as a chat row (Pin, Run now, Pause/Resume).
 struct V2ScheduledList: View {
+    // Bigger text gets the room to say what a job is and when it runs, as a
+    // chat's own row does: a name cut to one line is no use at that size.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -385,19 +388,19 @@ struct V2ScheduledList: View {
                         Text(job.displayName)
                             .scaledFont(.body.weight(.semibold))
                             .foregroundStyle(.primary)
-                            .lineLimit(1)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     }
                     Text(CronScheduleText.describe(job, zoneLabel: scheduleZoneLabel) ?? AppLocalization.string("No schedule"))
                         .scaledFont(.subheadline)
                         .foregroundStyle(Color.primary.opacity(0.58))
-                        .lineLimit(1)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     HStack(spacing: 5) {
                         Image(systemName: "clock")
                             .scaledFont(.caption.weight(.semibold))
                             .conduitFixedGlyph()
                             .accessibilityHidden(true)
                         Text(nextRunLine(job))
-                            .lineLimit(1)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     }
                     .scaledFont(.footnote)
                     .foregroundStyle(job.isActive ? Color.conduitScheduled : Color.primary.opacity(0.45))
