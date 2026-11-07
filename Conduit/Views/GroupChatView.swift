@@ -658,7 +658,19 @@ struct GroupEventRow: View {
     var boards: [RichBoard] = []
 
     var body: some View {
-        if event.isUserMessage {
+        if event.isScheduledPost {
+            // A job's post: on the members' side under its job's name, never
+            // as the user's own bubble. A bot's work update shows its lines.
+            GroupMemberBubble(
+                member: nil,
+                name: scheduledName,
+                text: event.workUpdateText ?? event.messageText ?? "",
+                members: members,
+                timestamp: event.createdAt,
+                roomEventID: event.id,
+                roomThreadID: event.threadID
+            )
+        } else if event.isUserMessage {
             GroupUserBubble(text: event.messageText ?? "", members: members, timestamp: event.createdAt, eventID: event.id) {
                 EmptyView()
             }
@@ -679,6 +691,11 @@ struct GroupEventRow: View {
         }
     }
 
+    private var scheduledName: String {
+        let name = (event.actor.displayName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? AppLocalization.string("Scheduled job") : name
+    }
+
     private var speakerLabel: String {
         let label = event.actor.displayLabel(members: members)
         return label.isEmpty ? AppLocalization.string("Member") : label
@@ -686,6 +703,9 @@ struct GroupEventRow: View {
 
     /// Two rows in a row from one member (or both from the user).
     nonisolated static func sameSpeaker(_ previous: GroupEvent, _ next: GroupEvent) -> Bool {
+        if previous.isScheduledPost || next.isScheduledPost {
+            return previous.isScheduledPost && next.isScheduledPost && previous.actor.id == next.actor.id
+        }
         if previous.isUserMessage && next.isUserMessage { return true }
         guard previous.isMemberMessage, next.isMemberMessage else { return false }
         let key = previous.actor.id.trimmingCharacters(in: .whitespacesAndNewlines)

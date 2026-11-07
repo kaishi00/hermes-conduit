@@ -947,6 +947,28 @@ final class GroupChatModelsTests: XCTestCase {
         ]
     }
 
+    /// A scheduled job's post is never the user's own message, and a bot's
+    /// work update posted back into its room shows only its lines.
+    func testAScheduledPostIsNotTheUsersAndAWorkUpdateShowsItsLines() {
+        let work = turnEvent(eventJSON(
+            seq: 4, kind: "message.user",
+            actor: ["kind": "user", "id": "cron:conduit-work-default-W1-ab12", "display_name": "Furina's work"],
+            payload: ["text": "@Furina Work update from your workstreams, for this room.\n- W1 “Wallpaper” finished.\nTell the room in a line or two.",
+                      "thread_id": "cron-1"]))
+        XCTAssertTrue(work.isScheduledPost)
+        XCTAssertEqual(work.workUpdateText, "W1 “Wallpaper” finished.")
+        let nightly = turnEvent(eventJSON(
+            seq: 5, kind: "message.user", actor: ["kind": "user", "id": "cron:job42", "display_name": "Nightly"],
+            payload: ["text": "All backups OK", "thread_id": "cron-2"]))
+        XCTAssertTrue(nightly.isScheduledPost)
+        XCTAssertNil(nightly.workUpdateText)
+        let mine = userMessage(seq: 6, text: "- not a work update")
+        XCTAssertFalse(mine.isScheduledPost)
+        XCTAssertNil(mine.workUpdateText)
+        XCTAssertFalse(GroupEventRow.sameSpeaker(mine, work))
+        XCTAssertFalse(GroupEventRow.sameSpeaker(work, nightly))
+    }
+
     private func turnEvent(_ json: [String: Any]) -> GroupEvent {
         GroupDecoders.event(any(json))!
     }

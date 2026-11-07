@@ -615,6 +615,9 @@ private struct BotWorkRow: View {
                 if item.kind == .workstream, !item.sessionID.isEmpty {
                     openChatButton
                 }
+                if roomName != nil {
+                    openRoomButton
+                }
                 if !item.branch.isEmpty {
                     branchLine
                 }
@@ -722,6 +725,8 @@ private struct BotWorkRow: View {
                     .lineLimit(expanded ? nil : 1)
                 if !item.call.isEmpty {
                     fromCallLine
+                } else if !item.room.isEmpty {
+                    fromRoomLine
                 }
                 if !item.result.isEmpty {
                     Text(BotWorkLook.rendered(item.result))
@@ -752,6 +757,39 @@ private struct BotWorkRow: View {
             .scaledFont(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// Work a bot started from a group room: what it reports is posted
+    /// back there, so the line names the room, by its name when Hermes
+    /// lists it.
+    private var fromRoomLine: some View {
+        Label(roomName.map { AppLocalization.string("From the group chat “\($0)”") }
+                  ?? AppLocalization.string("From a group chat"),
+              systemImage: "person.3")
+            .scaledFont(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var roomName: String? {
+        let name = appState.groupRooms.first(where: { $0.roomID == item.room })?.name
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? nil : name
+    }
+
+    /// Opens the room it reports to, which Hermes still lists.
+    private var openRoomButton: some View {
+        Button {
+            guard let room = appState.groupRooms.first(where: { $0.roomID == item.room }) else { return }
+            Haptics.light()
+            willOpen?()
+            Task { await appState.openGroupRoom(room) }
+        } label: {
+            Label(AppLocalization.string("Open the group chat"), systemImage: "person.3")
+                .frame(maxWidth: .infinity, minHeight: 36)
+        }
+        .buttonStyle(.settings)
+        .accessibilityIdentifier("botWork.openRoom.\(item.ref)")
     }
 
     /// The branch its own worktree is on, to merge once it's done. The
