@@ -95,7 +95,10 @@ struct PresentedConfirmPanel: View {
     /// A Link's question has nothing to share: it's not answered.
     private var declineLabel: String {
         if !prompt.canConfirm { return AppLocalization.string("Don't answer") }
-        if prompt.room?.work == true { return AppLocalization.string("Don't start") }
+        // A send to running work isn't a start.
+        if prompt.room?.work == true {
+            return prompt.actionLabel == "Send" ? AppLocalization.string("Not now") : AppLocalization.string("Don't start")
+        }
         return prompt.isAsk ? AppLocalization.string("Don't share") : AppLocalization.string("Not now")
     }
 

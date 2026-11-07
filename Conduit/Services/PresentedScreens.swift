@@ -491,6 +491,8 @@ enum PresentVoiceTool {
         if let room = prompt.room {
             // Run work: it asks before it starts work for that room (confirm starts it).
             entry[room.work ? "starts_work_for_room" : "room"] = room.name.isEmpty ? "a room" : room.name
+            // Work never starts on a plain yes, which may have answered something else.
+            if room.work { entry["plain_yes_counts"] = false }
         }
         // A linked person's Hermes asks; a question has nothing to confirm.
         if let link = prompt.link {
@@ -540,7 +542,8 @@ enum PresentVoiceTool {
                 let turn = lastUserTurn()
                 // A turn from before the panel appeared answers something else.
                 if let shownAfter, turn.id == shownAfter { return false }
-                return prompt.isConfirmed(by: turn.text)
+                // Room work takes only its phrase ("start it"), never a bare yes.
+                return prompt.isConfirmed(by: turn.text, bareYes: prompt.room?.work != true)
             }
             while !saidYes() {
                 guard stillWaiting() else { return alreadyAnswered }

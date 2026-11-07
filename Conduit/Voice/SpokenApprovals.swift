@@ -80,8 +80,9 @@ enum SpokenApprovals {
             target = .presented(id: prompt.id)
             // A yes, or one of the phrases Hermes gave ("send it"). A
             // Link's ask, which goes to another person's Hermes and isn't
-            // said aloud here, takes only its phrase ("share it").
-            approves = prompt.isConfirmed(by: words, bareYes: prompt.link == nil)
+            // said aloud here, takes only its phrase ("share it"), and so
+            // does a room's work ask ("start it", "send it").
+            approves = prompt.isConfirmed(by: words, bareYes: prompt.link == nil && prompt.room?.work != true)
         } else if let messageID = waiting.chatApprovals.first {
             target = .chatApproval(messageID: messageID)
             approves = VoiceCallDecisionOutcome.isYes(words)

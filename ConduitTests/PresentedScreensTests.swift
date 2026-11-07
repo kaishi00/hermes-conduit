@@ -188,6 +188,35 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNil(PresentVoiceTool.describe(prompt)["room"])
         XCTAssertEqual(PresentedConfirm(json: ["id": "p", "title": "Share?", "room": ["id": "r", "work": "yes"]])?.room?.work,
                        false, "only a true work flag")
+        XCTAssertEqual(PresentVoiceTool.describe(prompt)["plain_yes_counts"] as? Bool, false)
+        // A plain yes may have answered something else: work starts only on its phrase.
+        XCTAssertFalse(prompt.isConfirmed(by: "yes", bareYes: false))
+        XCTAssertTrue(prompt.isConfirmed(by: "Yes, start it"))
+        XCTAssertEqual(SpokenApprovals.answer("Yes", waiting: SpokenApprovals.Waiting(presented: [prompt]))?.approve, nil)
+        XCTAssertEqual(SpokenApprovals.answer("Start it", waiting: SpokenApprovals.Waiting(presented: [prompt]))?.approve, true)
+    }
+
+    func testAVoiceConfirmOfRoomWorkNeedsItsPhrase() async throws {
+        let suite = "present-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let sync = PresentedScreensSync(defaults: defaults)
+        await sync.sync(scope: "host|default", profile: "default", installationID: "install-1") { _, _ in
+            ["ok": true, "prompts": [["id": "w1", "title": "Start “Compare flights”?", "preview": "Compare them.",
+                                      "action_label": "Start", "spoken_yes": ["start it"], "session_id": "room_abc",
+                                      "room": ["id": "zoo-trip", "name": "Zoo trip", "work": true]]]]
+        }
+        let prompt = try XCTUnwrap(sync.prompts.first)
+        sync.noteShown(prompt.id, userTurn: UUID())
+        var outcome: PresentedConfirmOutcome?
+        let plain = await PresentVoiceTool.run(["action": "confirm", "id": prompt.id], sync: sync,
+                                               lastUserTurn: { (UUID(), "yes") }) { _, answer in outcome = answer }
+        XCTAssertNotNil(plain["error"], "a plain yes never starts work")
+        XCTAssertNil(outcome)
+        let said = await PresentVoiceTool.run(["action": "confirm", "id": prompt.id], sync: sync,
+                                              lastUserTurn: { (UUID(), "start it") }) { _, answer in outcome = answer }
+        XCTAssertNil(said["error"])
+        XCTAssertEqual(outcome, .confirmed)
     }
 
     func testARoomsAskNamesItsRoomAndSaysInsteadWithTheWords() async throws {

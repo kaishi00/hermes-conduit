@@ -299,6 +299,9 @@ extension GroupChatModelsTests {
         ]), roomID: "conduit-1")
         XCTAssertEqual(runs.runWork, true)
         XCTAssertEqual(runs.body["run_work"] as? Bool, true)
+        var stopped = runs
+        stopped.runWork = false
+        XCTAssertEqual(stopped.body["run_work"] as? Bool, false, "off is sent, never left out")
         // An answer without what the page shows is refused.
         XCTAssertThrowsError(try RoomChoicesClient.parse(["ok": true], roomID: "conduit-1"))
         XCTAssertThrowsError(try RoomChoicesClient.parse(
