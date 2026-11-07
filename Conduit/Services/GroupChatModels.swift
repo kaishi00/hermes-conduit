@@ -1065,15 +1065,15 @@ enum GroupRoomTurns {
     }
 
     /// The member who said a message: the one its payload names, else, when
-    /// the payload names none, the one member its actor's id (a member id,
-    /// else a profile) matches. An ambiguous or unknown id finds nobody.
+    /// the payload names none, the one member its actor's id (an explicit member id,
+    /// else a profile no other member shares) matches. An ambiguous or unknown id finds nobody.
     static func speaker(of event: GroupEvent, members: [GroupMember]) -> GroupMember? {
         if event.payload["member_id"]?.stringValue != nil { return member(for: event, members: members) }
         guard event.actor.kind == "member" else { return nil }
         let id = event.actor.id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !id.isEmpty else { return nil }
-        let byRoute = members.filter { routingID(of: $0) == id }
-        if !byRoute.isEmpty { return byRoute.count == 1 ? byRoute[0] : nil }
+        let byID = members.filter { $0.memberID?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == id }
+        if !byID.isEmpty { return byID.count == 1 ? byID[0] : nil }
         let byProfile = members.filter { $0.profile?.caseInsensitiveCompare(id) == .orderedSame }
         return byProfile.count == 1 ? byProfile[0] : nil
     }
