@@ -1,0 +1,237 @@
+Command line invocation:
+    /Applications/Xcode_26.6.app/Contents/Developer/usr/bin/xcodebuild test-without-building -project Conduit.xcodeproj -scheme Conduit -destination id=5277349A-B219-4ED4-853A-8AE666B9F5B1 -derivedDataPath dd "-only-testing:ConduitScreenshots/AppStoreScreenshotTests/testRecordPromo" -resultBundlePath results/promo.xcresult
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  WebRTC: https://github.com/stasel/WebRTC @ 153.0.0
+
+2026-11-07 02:46:13.870 xcodebuild[53687:143650] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+Writing result bundle at path:
+	/Users/runner/work/hermes-conduit/hermes-conduit/results/promo.xcresult
+
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:iOS Simulator, arch:arm64, id:5277349A-B219-4ED4-853A-8AE666B9F5B1, OS:26.5, name:iPhone 17 Pro Max }
+{ platform:iOS Simulator, arch:x86_64, id:5277349A-B219-4ED4-853A-8AE666B9F5B1, OS:26.5, name:iPhone 17 Pro Max }
+2026-11-07 02:46:54.573899+0000 ConduitScreenshots-Runner[55661:148535] [Default] Running tests...
+2026-11-07 02:46:54.628112+0000 ConduitScreenshots-Runner[55661:148974] [General] Failed to send CA Event for app launch measurements for ca_event_type: 0 event_name: com.apple.app_launch_measurement.FirstFramePresentationMetric
+2026-11-07 02:46:54.671915+0000 ConduitScreenshots-Runner[55661:148974] [General] Failed to send CA Event for app launch measurements for ca_event_type: 1 event_name: com.apple.app_launch_measurement.ExtendedLaunchMetrics
+objc[55661]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x105e0c310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x105ea0398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-11-07 02:47:02.510.
+Test Suite 'ConduitScreenshots.xctest' started at 2026-11-07 02:47:02.511.
+Test Suite 'AppStoreScreenshotTests' started at 2026-11-07 02:47:02.512.
+Test Case '-[ConduitScreenshots.AppStoreScreenshotTests testRecordPromo]' started.
+    t =     0.00s Start Test at 2026-11-07 02:47:02.514
+    t =     0.08s Set Up
+    t =     0.09s     Open com.milim.relay
+    t =     0.09s         Launch com.milim.relay
+2026-11-07 02:47:04.068 xcodebuild[53687:143650] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-11-07 02:47:04.068 xcodebuild[53687:143650] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     8.21s             Setting up automation session
+    t =    19.74s             Wait for com.milim.relay to idle
+    t =    28.12s Waiting 15.0s for "login.server-url" TextField to exist
+    t =    29.22s     Checking `Expect predicate `existsNoRetry == 1` for object "login.server-url" TextField`
+    t =    29.22s         Checking existence of `"login.server-url" TextField`
+    t =    29.53s Tap "login.server-url" TextField
+    t =    29.53s     Wait for com.milim.relay to idle
+    t =    29.54s     Find the "login.server-url" TextField
+    t =    29.92s     Check for interrupting elements affecting "login.server-url" TextField
+    t =    30.14s     Synthesize event
+    t =    30.58s     Wait for com.milim.relay to idle
+    t =    33.01s Type 'http://hermes.tail...' into "login.server-url" TextField
+    t =    33.01s     Wait for com.milim.relay to idle
+    t =    33.17s     Find the "login.server-url" TextField
+    t =    34.79s     Check for interrupting elements affecting "login.server-url" TextField
+    t =    34.98s     Synthesize event
+    t =    35.79s     Wait for com.milim.relay to idle
+    t =    36.19s Added attachment named 'debug-login-address'
+    t =    36.20s Type '
+' into "login.server-url" TextField
+    t =    36.20s     Wait for com.milim.relay to idle
+    t =    36.20s     Find the "login.server-url" TextField
+    t =    36.29s     Check for interrupting elements affecting "login.server-url" TextField
+    t =    36.41s     Synthesize event
+    t =    36.74s     Wait for com.milim.relay to idle
+    t =    37.08s Waiting 30.0s for "login.username" TextField to exist
+    t =    38.14s     Checking `Expect predicate `existsNoRetry == 1` for object "login.username" TextField`
+    t =    38.14s         Checking existence of `"login.username" TextField`
+    t =    38.36s         Capturing element debug description
+    t =    39.12s     Checking `Expect predicate `existsNoRetry == 1` for object "login.username" TextField`
+    t =    39.12s         Checking existence of `"login.username" TextField`
+    t =    39.58s         Capturing element debug description
+    t =    40.09s     Checking `Expect predicate `existsNoRetry == 1` for object "login.username" TextField`
+    t =    40.09s         Checking existence of `"login.username" TextField`
+    t =    47.43s Added attachment named 'debug-login-password-step'
+    t =    47.43s Tap "login.username" TextField
+    t =    47.43s     Wait for com.milim.relay to idle
+    t =    47.44s     Find the "login.username" TextField
+    t =    47.56s     Check for interrupting elements affecting "login.username" TextField
+    t =    47.65s     Synthesize event
+    t =    47.97s     Wait for com.milim.relay to idle
+    t =    48.55s Find the "login.username" TextField
+    t =    48.65s Type 'demo' into "login.username" TextField
+    t =    48.65s     Wait for com.milim.relay to idle
+    t =    48.66s     Find the "login.username" TextField
+    t =    48.75s     Check for interrupting elements affecting "login.username" TextField
+    t =    48.82s     Synthesize event
+    t =    49.09s     Wait for com.milim.relay to idle
+    t =    49.36s Tap "login.password" SecureTextField
+    t =    49.36s     Wait for com.milim.relay to idle
+    t =    49.36s     Find the "login.password" SecureTextField
+    t =    49.45s     Check for interrupting elements affecting "login.password" SecureTextField
+    t =    49.49s     Synthesize event
+    t =    49.79s     Wait for com.milim.relay to idle
+    t =    51.12s Type '<redacted>' into "login.password" SecureTextField
+    t =    51.12s     Wait for com.milim.relay to idle
+    t =    51.57s     Find the "login.password" SecureTextField
+    t =    52.01s     Check for interrupting elements affecting "login.password" SecureTextField
+    t =    52.10s     Synthesize event
+    t =    52.62s     Wait for com.milim.relay to idle
+    t =    53.30s Added attachment named 'debug-after-sign-in'
+    t =    53.31s Waiting 2.0s for "Allow" Button to exist
+    t =    54.37s     Checking `Expect predicate `existsNoRetry == 1` for object "Allow" Button`
+    t =    54.37s         Checking existence of `"Allow" Button`
+    t =    55.69s             Requesting snapshot of accessibility hierarchy for app with pid 21296
+    t =    55.72s         Capturing element debug description
+    t =    55.73s     Checking existence of `"Allow" Button`
+    t =    55.98s         Requesting snapshot of accessibility hierarchy for app with pid 21296
+    t =    56.71s         Find: Descendants matching type Button
+    t =    56.72s Collecting debug information to assist test failure triage
+    t =    56.72s     Requesting snapshot of accessibility hierarchy for app with pid 21296
+    t =    56.90s Waiting 2.0s for "Don’t Allow" Button to exist
+    t =    57.92s     Checking `Expect predicate `existsNoRetry == 1` for object "Don’t Allow" Button`
+    t =    57.93s         Checking existence of `"Don’t Allow" Button`
+    t =    57.95s             Requesting snapshot of accessibility hierarchy for app with pid 21296
+    t =    59.07s             Find: Descendants matching type Button
+    t =    59.15s         Capturing element debug description
+    t =    59.66s     Checking existence of `"Don’t Allow" Button`
+    t =    59.66s         Requesting snapshot of accessibility hierarchy for app with pid 21296
+    t =    59.76s         Find: Descendants matching type Button
+    t =    59.83s Collecting debug information to assist test failure triage
+    t =    60.49s     Requesting snapshot of accessibility hierarchy for app with pid 21296
+    t =    61.73s Waiting 2.0s for "Not Now" Button to exist
+    t =    62.83s     Checking `Expect predicate `existsNoRetry == 1` for object "Not Now" Button`
+    t =    62.83s         Checking existence of `"Not Now" Button`
+    t =    62.84s             Requesting snapshot of accessibility hierarchy for app with pid 21296
+    t =    62.98s             Find: Descendants matching type Button
+    t =    63.03s         Capturing element debug description
+    t =    63.74s     Checking `Expect predicate `existsNoRetry == 1` for object "Not Now" Button`
+    t =    63.74s         Checking existence of `"Not Now" Button`
+    t =    64.65s             Requesting snapshot of accessibility hierarchy for app with pid 21296
+    t =    64.66s         Capturing element debug description
+    t =    64.66s     Checking existence of `"Not Now" Button`
+    t =    64.66s         Requesting snapshot of accessibility hierarchy for app with pid 21296
+    t =    64.76s         Find: Descendants matching type Button
+    t =    64.77s Collecting debug information to assist test failure triage
+    t =    64.77s     Requesting snapshot of accessibility hierarchy for app with pid 21296
+    t =    65.00s Waiting 2.0s for "OK" Button to exist
+    t =    66.02s     Checking `Expect predicate `existsNoRetry == 1` for object "OK" Button`
+    t =    66.02s         Checking existence of `"OK" Button`
+    t =    66.02s             Requesting snapshot of accessibility hierarchy for app with pid 21296
+    t =    66.07s             Find: Descendants matching type Button
+    t =    66.08s         Capturing element debug description
+    t =    67.00s     Checking `Expect predicate `existsNoRetry == 1` for object "OK" Button`
+    t =    67.00s         Checking existence of `"OK" Button`
+    t =    67.00s             Requesting snapshot of accessibility hierarchy for app with pid 21296
+    t =    67.04s             Find: Descendants matching type Button
+    t =    67.05s         Capturing element debug description
+    t =    67.05s     Checking existence of `"OK" Button`
+    t =    67.05s         Requesting snapshot of accessibility hierarchy for app with pid 21296
+    t =    67.08s         Find: Descendants matching type Button
+    t =    67.08s Collecting debug information to assist test failure triage
+    t =    67.09s     Requesting snapshot of accessibility hierarchy for app with pid 21296
+    t =    67.16s Waiting 30.0s for "Conduit Chan" Button to exist
+    t =    68.20s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    68.20s         Checking existence of `"Conduit Chan" Button`
+    t =    72.03s         Capturing element debug description
+    t =    72.24s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    72.24s         Checking existence of `"Conduit Chan" Button`
+    t =    72.88s         Capturing element debug description
+    t =    73.25s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    73.26s         Checking existence of `"Conduit Chan" Button`
+    t =    75.40s         Capturing element debug description
+    t =    76.16s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    76.17s         Checking existence of `"Conduit Chan" Button`
+    t =    76.93s         Capturing element debug description
+    t =    77.24s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    77.25s         Checking existence of `"Conduit Chan" Button`
+    t =    78.45s         Capturing element debug description
+    t =    79.17s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    79.17s         Checking existence of `"Conduit Chan" Button`
+    t =    79.88s         Capturing element debug description
+    t =    80.19s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    80.19s         Checking existence of `"Conduit Chan" Button`
+    t =    80.74s         Capturing element debug description
+    t =    81.17s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    81.17s         Checking existence of `"Conduit Chan" Button`
+    t =    81.47s         Capturing element debug description
+    t =    82.21s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    82.21s         Checking existence of `"Conduit Chan" Button`
+    t =    82.58s         Capturing element debug description
+    t =    83.21s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    83.21s         Checking existence of `"Conduit Chan" Button`
+PROMO_MARK home 1794019712.874969
+    t =    97.13s Added attachment named 'promo-01-bots-home'
+    t =    99.20s Tap "Conduit Chan" Button
+    t =    99.26s     Wait for com.milim.relay to idle
+    t =    99.33s     Find the "Conduit Chan" Button
+    t =   100.73s     Check for interrupting elements affecting "Conduit Chan" Button
+    t =   101.02s     Synthesize event
+    t =   101.41s     Wait for com.milim.relay to idle
+    t =   101.42s Checking existence of `TextView (First Match)`
+    t =   101.79s Waiting 15.0s for TextField (First Match) to exist
+    t =   102.84s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   102.84s         Checking existence of `TextField (First Match)`
+PROMO_MARK botchat 1794019728.2312078
+    t =   105.72s Tap TextField (First Match)
+    t =   105.72s     Wait for com.milim.relay to idle
+    t =   105.73s     Find the TextField (First Match)
+    t =   111.81s     Check for interrupting elements affecting "Search Hermes" TextField
+    t =   112.16s     Synthesize event
+    t =   112.20s         Scroll element to visible
+    t =   128.50s         Find the "Search Hermes" TextField
+    t =   128.98s         Computed hit point {-1, -1} after scrolling to visible
+    t =   128.98s         Failed: Not hittable: TextField, {{56.0, 185.0}, {362.0, 22.0}}
+    t =   129.99s     Retrying `Tap TextField (First Match)` (attempt #2)
+    t =   129.99s         Wait for com.milim.relay to idle
+    t =   130.01s         Find the "Search Hermes" TextField
+    t =   130.22s         Check for interrupting elements affecting "Search Hermes" TextField
+    t =   138.32s         Synthesize event
+    t =   138.39s             Scroll element to visible
+    t =   138.40s             Find the "Search Hermes" TextField
+    t =   139.11s             Computed hit point {-1, -1} after scrolling to visible
+    t =   139.11s             Failed: Not hittable: TextField, {{56.0, 185.0}, {362.0, 22.0}}
+    t =   140.14s     Retrying `Tap TextField (First Match)` (attempt #3)
+    t =   140.14s         Wait for com.milim.relay to idle
+    t =   140.20s         Find the "Search Hermes" TextField
+    t =   142.58s         Check for interrupting elements affecting "Search Hermes" TextField
+    t =   143.23s         Synthesize event
+    t =   143.31s             Scroll element to visible
+    t =   143.32s             Find the "Search Hermes" TextField
+    t =   144.44s             Computed hit point {-1, -1} after scrolling to visible
+    t =   144.44s             Failed: Not hittable: TextField, {{56.0, 185.0}, {362.0, 22.0}}
+    t =   144.47s Requesting snapshot of accessibility hierarchy for app with pid 56101
+/Users/runner/work/hermes-conduit/hermes-conduit/ConduitScreenshots/AppStoreScreenshotTests.swift:207: error: -[ConduitScreenshots.AppStoreScreenshotTests testRecordPromo] : Failed to not hittable: TextField, {{56.0, 185.0}, {362.0, 22.0}}
+    t =   145.89s Tear Down
+Test Case '-[ConduitScreenshots.AppStoreScreenshotTests testRecordPromo]' failed (148.626 seconds).
+Test Suite 'AppStoreScreenshotTests' failed at 2026-11-07 02:49:31.142.
+	 Executed 1 test, with 1 failure (0 unexpected) in 148.626 (148.631) seconds
+Test Suite 'ConduitScreenshots.xctest' failed at 2026-11-07 02:49:31.143.
+	 Executed 1 test, with 1 failure (0 unexpected) in 148.626 (148.632) seconds
+Test Suite 'Selected tests' failed at 2026-11-07 02:49:31.144.
+	 Executed 1 test, with 1 failure (0 unexpected) in 148.626 (148.634) seconds
+2026-11-07 02:50:11.402 xcodebuild[53687:143650] [MT] IDETestOperationsObserverDebug: 233.741 elapsed -- Testing started completed.
+2026-11-07 02:50:11.403 xcodebuild[53687:143650] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-11-07 02:50:11.403 xcodebuild[53687:143650] [MT] IDETestOperationsObserverDebug: 233.741 sec, +233.741 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/runner/work/hermes-conduit/hermes-conduit/results/promo.xcresult
+
+Failing tests:
+	AppStoreScreenshotTests.testRecordPromo()
+
+** TEST EXECUTE FAILED **
+
+Testing started
