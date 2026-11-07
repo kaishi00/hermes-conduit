@@ -9480,8 +9480,6 @@ final class AppState: ObservableObject {
                 guard self.activeSessionId == openBefore else { return }
                 target = self.linkedSessionTarget(id)
             }
-            // Only this open's own "not found" may be reworded.
-            self.reconciliationSessionWasNotFound = false
             // Still no row: the stored id learned for a reaped runtime
             // resumes where the runtime id can't.
             let fallback = self.conversationIdentityIndex.durableID(forRuntime: id, profile: self.activeProfile)
@@ -9505,8 +9503,8 @@ final class AppState: ObservableObject {
     }
 
     /// What a link's failed open says. Only Hermes' own answer that the
-    /// chat isn't there (the resume's 4007 on the dashboard, 4001 not_found
-    /// on the authority, never a history read's 404) says the link's words,
+    /// chat isn't there (the resume's 4007, never a history read's 404),
+    /// from this open's reconcile, says the link's words,
     /// that the chat is gone; a Kanban worker's refusal keeps its own
     /// explanation. Any other failure (a socket that dropped, a client a
     /// reconnect replaced mid-open, no connection yet) proves nothing about
@@ -26031,6 +26029,12 @@ final class AppState: ObservableObject {
         preferredTitle: String? = nil,
         widgetLease: WidgetLaunchLease? = nil
     ) async -> (outcome: SessionOpenOutcome, refused: Bool) {
+        // A failure says what this open found, never what an earlier
+        // reconcile of another chat did: the open's own reconcile sets these
+        // again, and one that fails before it (no client, another
+        // workspace's chat) leaves them clear (#1918).
+        reconciliationSessionWasNotFound = false
+        reconciliationWasKanbanWorker = false
         guard let client else { return (.failed, false) }
         // From the tap to Hermes' rows, for a device trace (#1533).
         let signposter = ResponsivenessSignposts.signposter
