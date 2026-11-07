@@ -938,6 +938,69 @@ final class HermesClientTests: XCTestCase {
         XCTAssertFalse(state)
     }
 
+    func testCredentialVaultCallsSendWhatHermesTakesAndReadItsMetadata() async throws {
+        let (listRequest, items) = try await capturedCall(result: ["items": [
+            ["id": "a1", "kind": "login", "label": "github.com", "origin": "https://github.com", "created_at": "2026-11-07T19:22:43.888123+00:00", "identifier": "me@example.com", "identifier_type": "email", "has_otp": true, "backend": "local"],
+            ["id": "b2", "kind": "payment", "label": "Visa", "origin": NSNull(), "created_at": "2026-11-06T08:00:00+00:00", "backend": "bitwarden"],
+            ["kind": "login", "label": "no id"],
+        ] as [[String: Any]]]) {
+            try await $0.vaultItems()
+        }
+        XCTAssertEqual(listRequest["method"] as? String, "vault.list")
+        XCTAssertEqual(items.map(\.id), ["a1", "b2"], "A row without an id can't be removed and is left out")
+        XCTAssertEqual(items[0].identifier, "me@example.com")
+        XCTAssertTrue(items[0].hasOTP)
+        XCTAssertTrue(items[0].isLocal)
+        XCTAssertNotNil(items[0].createdAt, "Python's microseconds still parse")
+        XCTAssertNil(items[0].shownOrigin, "A login named for its host doesn't repeat it")
+        XCTAssertFalse(items[1].isLocal)
+        XCTAssertNil(items[1].origin)
+
+        let (sourcesRequest, sources) = try await capturedCall(result: ["sources": [
+            ["name": "local", "display_name": "Hermes vault", "enabled": true, "needs_unlock": false, "unlocked": true, "installed": true],
+            ["name": "bitwarden", "display_name": "Bitwarden", "enabled": true, "needs_unlock": true, "unlocked": false, "installed": true],
+        ] as [[String: Any]]]) {
+            try await $0.vaultSources()
+        }
+        XCTAssertEqual(sourcesRequest["method"] as? String, "vault.sources")
+        XCTAssertEqual(CredentialVaultSnapshot(items: [], sources: sources).managers.map(\.name), ["bitwarden"])
+
+        let (addRequest, id) = try await capturedCall(result: ["id": "c3"]) {
+            try await $0.addVaultItem(kind: "login", label: "GitHub", origin: "https://github.com", secret: ["identifier_type": "email", "identifier": "me@example.com", "password": "hunter2"])
+        }
+        XCTAssertEqual(addRequest["method"] as? String, "vault.add")
+        let addParams = try XCTUnwrap(addRequest["params"] as? [String: Any])
+        XCTAssertEqual(addParams["kind"] as? String, "login")
+        XCTAssertEqual(addParams["origin"] as? String, "https://github.com")
+        XCTAssertEqual((addParams["secret"] as? [String: Any])?["password"] as? String, "hunter2")
+        XCTAssertEqual(id, "c3")
+
+        let (removeRequest, removed) = try await capturedCall(result: ["removed": true]) {
+            try await $0.removeVaultItem(id: "a1")
+        }
+        XCTAssertEqual(removeRequest["method"] as? String, "vault.remove")
+        XCTAssertEqual((removeRequest["params"] as? [String: Any])?["id"] as? String, "a1")
+        XCTAssertTrue(removed)
+
+        let (setRequest, _) = try await capturedCall(result: ["name": "bitwarden", "enabled": false]) {
+            try await $0.setVaultSource("bitwarden", enabled: false)
+        }
+        XCTAssertEqual(setRequest["method"] as? String, "vault.source.set")
+        XCTAssertEqual((setRequest["params"] as? [String: Any])?["enabled"] as? Bool, false)
+
+        let (unlockRequest, _) = try await capturedCall(result: ["name": "bitwarden", "unlocked": true]) {
+            try await $0.unlockVaultSource("bitwarden", password: "master")
+        }
+        XCTAssertEqual(unlockRequest["method"] as? String, "vault.unlock")
+        XCTAssertEqual((unlockRequest["params"] as? [String: Any])?["password"] as? String, "master")
+
+        let (lockRequest, _) = try await capturedCall(result: ["locked": true]) {
+            try await $0.lockVaultSource("bitwarden")
+        }
+        XCTAssertEqual(lockRequest["method"] as? String, "vault.lock")
+        XCTAssertEqual((lockRequest["params"] as? [String: Any])?["name"] as? String, "bitwarden")
+    }
+
     // MARK: - prompt.submit outcome + session.active_list probe
 
     func testSendPromptReturnsTypedOutcomeFromGatewayStatus() async throws {

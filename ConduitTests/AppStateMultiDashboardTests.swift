@@ -2082,6 +2082,31 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(appState.keptDelegationPaused(), "Another dashboard's page doesn't")
     }
 
+    /// Settings > Passwords & logins opens on the list kept for the
+    /// dashboard and profile: never another profile's vault, or another
+    /// dashboard's.
+    func testThePasswordsPageOpensOnTheProfilesKeptVault() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let snapshot = CredentialVaultSnapshot(
+            items: [VaultItem(id: "a1", kind: "login", label: "GitHub", origin: "https://github.com", identifier: "me@example.com", identifierType: "email", hasOTP: true)],
+            sources: [VaultSource(name: "bitwarden", displayName: "Bitwarden", enabled: true, needsUnlock: true, unlocked: false, installed: true)]
+        )
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
+        appState.offlineChatCacheForTesting.recordAnswer(
+            json, route: AppState.credentialVaultRoute, dashboardID: mac, profile: appState.activeProfile
+        )
+
+        XCTAssertEqual(appState.keptCredentialVault(), snapshot)
+        let profile = appState.activeProfile
+        appState.setActiveProfileForTesting("work")
+        XCTAssertNil(appState.keptCredentialVault(), "Another profile has a vault of its own")
+        appState.setActiveProfileForTesting(profile)
+        XCTAssertEqual(appState.keptCredentialVault(), snapshot)
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertNil(appState.keptCredentialVault(), "Another dashboard's page doesn't")
+    }
+
     /// A config save is what the settings pages open on next, without
     /// another read.
     func testAConfigSaveIsWhatTheSettingsPagesOpenOnNext() async throws {
