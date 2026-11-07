@@ -2074,7 +2074,7 @@ notifier (not needed: no cron history there)
 **Open gaps**
 - Without a dashboard, a run of Hermes' unified runtime (a `local-*` id) that `cron.runs` doesn't name a job for is left out of every job's history.
 
-**Checked:** 2026-11-03, #1712 (added, fixing #1707).
+**Checked:** 2026-11-07, #1924 (a job's name, schedule and next run wrap to two lines at accessibility text sizes, as a chat's row already does; Code); 2026-11-03, #1712 (added, fixing #1707).
 
 ## Links in messages
 
