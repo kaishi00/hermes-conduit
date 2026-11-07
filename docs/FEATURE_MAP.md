@@ -4168,7 +4168,7 @@ routing's lines (done); README and docs don't describe these settings
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-07, #1979 (Subagent routing with model and profile routes, and the subagents' own fallback models, closing both gaps); 2026-11-07, #1951 (the Delegation section has every setting a chat reads)
+**Checked:** 2026-11-07, #NUM (from #1979's reviews: a routing save is kept at once, a failed read says so over the routing shown, a route line typed during another save waits for it); 2026-11-07, #1979 (Subagent routing with model and profile routes, and the subagents' own fallback models, closing both gaps); 2026-11-07, #1951 (the Delegation section has every setting a chat reads)
 
 ## Profile config saves
 
