@@ -638,8 +638,9 @@ struct V2Shell: View {
             let split = V2SplitLayout.isSplit(width: proxy.size.width, showsList: chatListBeside)
             let list = V2SplitLayout.ListColumn(window: proxy.size.width, stored: storedListWidth, dragged: draggedListWidth)
             let strip = V2StatusStrip(insets: proxy.safeAreaInsets, isPhone: UIDevice.current.userInterfaceIdiom == .phone)
-            tabs(split: split, canSplit: canSplit, list: list, strip: strip)
-                // The screens' clearance under the bar follows where it is.
+            tabs(split: split, canSplit: canSplit, list: list)
+                // The bars and the screens' clearance under them read it
+                // from here together, so they change in the same pass.
                 .onChange(of: strip, initial: true) { _, strip in
                     if statusStrip != strip { statusStrip = strip }
                 }
@@ -844,7 +845,8 @@ struct V2Shell: View {
     /// under the clock and wifi, the main button at their foot
     /// (`V2StatusStrip`, Eric 2026-11-07): the screens beside it keep
     /// their whole height, nothing floating over their last rows.
-    private func tabs(split: Bool, canSplit: Bool, list: V2SplitLayout.ListColumn, strip: V2StatusStrip?) -> some View {
+    private func tabs(split: Bool, canSplit: Bool, list: V2SplitLayout.ListColumn) -> some View {
+        let strip = statusStrip
         let settingsBeside = V2SplitLayout.settingsBesideList(split: split)
         let underList = V2SplitLayout.tabBarUnderList(split: split, tab: selectedTab)
         return ZStack {
@@ -965,12 +967,19 @@ struct V2Shell: View {
     /// the screen under it.
     /// The clearance is a bar to the lists, so they fade out under the
     /// floating bar (`v2EdgeBar`): the system's soft edge on iOS 26.
+    /// With the tabs in a Duo's status strip there's no bar to clear, and
+    /// no bottom edge either, as Settings' pages (`V2TabBarClearance`).
+    @ViewBuilder
     private func tabBarClearance<Content: View>(_ content: Content) -> some View {
-        content.v2EdgeBar(.bottom) {
-            Color.clear
-                .frame(height: barClearance)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+        if barClearance > 0 {
+            content.v2EdgeBar(.bottom) {
+                Color.clear
+                    .frame(height: barClearance)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        } else {
+            content
         }
     }
 
