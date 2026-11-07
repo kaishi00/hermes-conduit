@@ -370,9 +370,10 @@ extension GroupChatModelsTests {
         let members = copy.room.members
         let name = "Laifu"
         let owner = "Mona"
-        XCTAssertEqual(GroupRoomTurns.ownedName(name, of: members[2]), AppLocalization.string("\(name) · \(owner)'s"))
-        XCTAssertEqual(GroupRoomTurns.ownedName("Kuro", of: members[1]), "Kuro", "your own agent is just its name")
-        XCTAssertEqual(GroupRoomTurns.ownedName("Laifu", of: nil), "Laifu")
+        XCTAssertEqual(members[2].displayName, name)
+        XCTAssertEqual(GroupRoomTurns.shownOwner(of: members[2]), owner)
+        XCTAssertNil(GroupRoomTurns.shownOwner(of: members[1]), "your own agent shows no owner")
+        XCTAssertNil(GroupRoomTurns.shownOwner(of: nil))
         XCTAssertEqual(GroupRoomTurns.ownerLine(of: members[0]), AppLocalization.string("Furina's agent"))
         XCTAssertEqual(GroupRoomTurns.ownerLine(of: members[1]), AppLocalization.string("Your agent"))
         let unnamed = try XCTUnwrap(RoomCopiesClient.copy(copiesCopy(from: ""))).room.members[0]

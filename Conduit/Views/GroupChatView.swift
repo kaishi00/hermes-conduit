@@ -755,6 +755,7 @@ struct GroupApprovalCard: View {
 /// every other (or unknown future) kind is a compact system caption — a room
 /// this client predates still renders, never crashes.
 struct GroupEventRow: View {
+    @EnvironmentObject private var appState: AppState
     let event: GroupEvent
     let members: [GroupMember]
     /// The previous row is the same speaker's: no picture or name again.
@@ -791,7 +792,8 @@ struct GroupEventRow: View {
                 timestamp: event.createdAt,
                 continuesRun: continuesRun,
                 roomEventID: event.id,
-                roomThreadID: event.threadID
+                roomThreadID: event.threadID,
+                personLook: appState.roomPersonLook(named: name)
             )
         } else if event.isUserMessage, attribution.poster(of: event) == nil, let host {
             GroupMemberBubble(
@@ -802,7 +804,8 @@ struct GroupEventRow: View {
                 timestamp: event.createdAt,
                 continuesRun: continuesRun,
                 roomEventID: event.id,
-                roomThreadID: event.threadID
+                roomThreadID: event.threadID,
+                personLook: appState.activeRoomLooks.home
             )
         } else if event.isUserMessage {
             GroupUserBubble(text: attribution.text(of: event), members: members, timestamp: event.createdAt, eventID: event.id) {
@@ -843,13 +846,11 @@ struct GroupEventRow: View {
         return job.isEmpty ? label : "\(label) · \(shown)"
     }
 
-    /// Another person's agent is named with its owner.
+    /// The member's name; another person's agent shows its owner in a
+    /// chip beside it (GroupMemberOwnerChip).
     private var speakerLabel: String {
         let label = event.actor.displayLabel(members: members)
-        return GroupRoomTurns.ownedName(
-            label.isEmpty ? AppLocalization.string("Member") : label,
-            of: GroupRoomTurns.member(for: event, members: members)
-        )
+        return label.isEmpty ? AppLocalization.string("Member") : label
     }
 
     /// Two rows in a row from one member (or both from the user, or both
@@ -1018,6 +1019,10 @@ struct GroupMemberBubble: View {
     /// the connected Hermes, as a Bot Chat's reply does. Nil (a Desktop
     /// group, another gateway's bot) leaves the tags as text.
     var mediaResolver: GatewayMediaDataURLResolver? = nil
+    /// A person's look (RoomLooks), for one of the room's people: their
+    /// picture and color, as their own Conduit gave them.
+    var personLook: RoomLook? = nil
+    @EnvironmentObject private var appState: AppState
     @Environment(\.groupMemberTints) private var tints
     /// The room's resolver, which a Desktop card in a message without one
     /// of its own still reads (#1522).
@@ -1030,7 +1035,11 @@ struct GroupMemberBubble: View {
     /// tinted bubble already say who is talking.
     static let trailingRoom: CGFloat = 8
 
-    private var tint: CustomAccentColor? { member.flatMap { tints[$0.identityKey] } }
+    private var tint: CustomAccentColor? { member.flatMap { tints[$0.identityKey] } ?? personLook?.tint }
+
+    /// Whose agent it is, when it's another person's: their name, beside
+    /// the agent's (Eric, 2026-11-07: "Bot · Owner's" read oddly).
+    private var owner: String? { GroupRoomTurns.shownOwner(of: member) }
 
     /// The member's tag, when the room can be addressed to it.
     private var handle: String? {
@@ -1054,6 +1063,10 @@ struct GroupMemberBubble: View {
                             .scaledFont(.caption.weight(.semibold))
                             .foregroundStyle(tint.map { Color(uiColor: $0.readableColor) } ?? .secondary)
                             .lineLimit(1)
+                            .layoutPriority(1)
+                        if let owner {
+                            GroupMemberOwnerChip(owner: owner, look: appState.roomPersonLook(named: owner))
+                        }
                         if let timestamp {
                             Text(GroupBubbleTime.text(timestamp))
                                 .scaledFont(.caption2)
@@ -1102,7 +1115,30 @@ struct GroupMemberBubble: View {
     }
 
     private var avatar: some View {
-        GroupMemberHeaderAvatar(member: member, name: name, handle: handle)
+        GroupMemberHeaderAvatar(member: member, name: name, handle: handle, look: personLook)
+    }
+}
+
+/// Whose another person's agent is, after its name: their picture and name
+/// in a small capsule, as their own Conduit gives the picture.
+struct GroupMemberOwnerChip: View {
+    let owner: String
+    let look: RoomLook?
+
+    var body: some View {
+        HStack(spacing: 4) {
+            BotAvatarView(name: owner, label: owner, colorString: look?.color, image: look?.image, size: 14)
+            Text(verbatim: owner)
+                .scaledFont(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(.leading, 2)
+        .padding(.trailing, 7)
+        .padding(.vertical, 2)
+        .background(Color.primary.opacity(0.07), in: Capsule())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(AppLocalization.string("\(owner)'s agent")))
     }
 }
 
@@ -1221,19 +1257,20 @@ struct GroupMemberHeaderAvatar: View {
     let member: GroupMember?
     let name: String
     let handle: String?
+    var look: RoomLook? = nil
 
     var body: some View {
         let size = GroupMemberBubble.avatarSize
         Group {
             if let handle {
                 GroupMemberMentionButton(handle: handle, name: name) {
-                    GroupMemberAvatar(member: member, name: name, size: size)
+                    GroupMemberAvatar(member: member, name: name, size: size, look: look)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .padding(-(44 - size) / 2)
             } else {
-                GroupMemberAvatar(member: member, name: name, size: size)
+                GroupMemberAvatar(member: member, name: name, size: size, look: look)
             }
         }
         .frame(width: size, height: size)
@@ -1442,6 +1479,8 @@ struct GroupMemberAvatar: View {
     let member: GroupMember?
     let name: String
     let size: CGFloat
+    /// A person's look, for a bubble that isn't a member's.
+    var look: RoomLook? = nil
 
     /// The roster bot this member is.
     private var bot: BotProfile? { appState.groupMemberBot(member, name: name) }
@@ -1461,7 +1500,9 @@ struct GroupMemberAvatar: View {
             }
             .accessibilityHidden(true)
         } else {
-            BotAvatarView(name: name, label: name, colorString: nil, image: nil, size: size)
+            // Another person's agent, or a person: as their own Conduit draws them.
+            let look = self.look ?? appState.roomLook(for: member)
+            BotAvatarView(name: name, label: name, colorString: look?.color, image: look?.image, size: size)
                 .accessibilityHidden(true)
         }
     }
