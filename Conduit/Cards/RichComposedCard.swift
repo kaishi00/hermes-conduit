@@ -208,6 +208,29 @@ extension EnvironmentValues {
     }
 }
 
+/// What the user typed in a card's fields and whether it was opened, kept
+/// for the session while the card is drawn again (a board's tab switched
+/// back to), by the card's normalized JSON: a changed card starts over.
+@MainActor
+final class RichCardFieldMemory {
+    static let shared = RichCardFieldMemory()
+    static let maxCards = 50
+
+    private var cards: [String: (values: [String: String], open: Bool)] = [:]
+    private var order: [String] = []
+
+    func kept(card: RichCard) -> (values: [String: String], open: Bool)? {
+        cards[card.normalizedJSON]
+    }
+
+    func keep(card: RichCard, values: [String: String], open: Bool) {
+        let key = card.normalizedJSON
+        if cards[key] == nil { order.append(key) }
+        cards[key] = (values, open)
+        while order.count > Self.maxCards { cards[order.removeFirst()] = nil }
+    }
+}
+
 /// The taps on their way or sent, so a button shows it went until Hermes
 /// shows the card again (a new card is new buttons) or two minutes pass.
 @MainActor

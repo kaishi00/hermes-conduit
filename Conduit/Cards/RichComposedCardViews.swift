@@ -43,8 +43,13 @@ struct RichComposedCard: View {
         .onAppear(perform: startValues)
         .onChange(of: card.normalizedJSON) { _, _ in
             values = [:]
+            open = false
             startValues()
         }
+        // A board's tabs draw one card at a time, so a tab switch remounts
+        // this view: what was typed and folded is kept for when it's back.
+        .onChange(of: values) { _, new in RichCardFieldMemory.shared.keep(card: card, values: new, open: open) }
+        .onChange(of: open) { _, new in RichCardFieldMemory.shared.keep(card: card, values: values, open: new) }
     }
 
     private var shownSections: [RichSection] {
@@ -52,6 +57,10 @@ struct RichComposedCard: View {
     }
 
     private func startValues() {
+        if let kept = RichCardFieldMemory.shared.kept(card: card) {
+            values = kept.values
+            open = kept.open
+        }
         for section in card.sections {
             for element in section.elements {
                 if let field = element.field, values[field.id] == nil { values[field.id] = field.startingValue }

@@ -61,6 +61,20 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(reset.actions.map(\.label), ["Go"], "a tap sends its label, so it must be a plain message")
     }
 
+    @MainActor
+    func testFieldValuesAreKeptForACardDrawnAgain() throws {
+        let schema = try XCTUnwrap(RichCardSchema.bundled)
+        let card = try XCTUnwrap(RichCard.cards(raw: [[
+            "type": "composed", "title": "Kept", "sections": [["items": [
+                ["kind": "field", "id": "note", "input": "text"]]]],
+        ]], schema: schema).first)
+        let memory = RichCardFieldMemory()
+        XCTAssertNil(memory.kept(card: card))
+        memory.keep(card: card, values: ["note": "typed"], open: true)
+        XCTAssertEqual(memory.kept(card: card)?.values, ["note": "typed"])
+        XCTAssertEqual(memory.kept(card: card)?.open, true)
+    }
+
     func testAFieldWhosePlaceholderAsksForASecretIsDropped() throws {
         let schema = try XCTUnwrap(RichCardSchema.bundled)
         let card = try XCTUnwrap(RichCard.cards(raw: [[
