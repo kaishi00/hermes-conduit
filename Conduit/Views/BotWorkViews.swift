@@ -615,7 +615,7 @@ private struct BotWorkRow: View {
                 if item.kind == .workstream, !item.sessionID.isEmpty {
                     openChatButton
                 }
-                if roomName != nil {
+                if listedRoom != nil {
                     openRoomButton
                 }
                 if !item.branch.isEmpty {
@@ -772,15 +772,21 @@ private struct BotWorkRow: View {
     }
 
     private var roomName: String? {
-        let name = appState.groupRooms.first(where: { $0.roomID == item.room })?.name
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let name = listedRoom?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return name.isEmpty ? nil : name
+    }
+
+    /// The room as the rooms list shows it (kept from last time until Hermes
+    /// lists them); a disbanded one never opens, so it's left out.
+    private var listedRoom: GroupRoom? {
+        guard !item.room.isEmpty else { return nil }
+        return appState.shownGroupRooms.first(where: { $0.roomID == item.room && $0.disbandedAt == nil })
     }
 
     /// Opens the room it reports to, which Hermes still lists.
     private var openRoomButton: some View {
         Button {
-            guard let room = appState.groupRooms.first(where: { $0.roomID == item.room }) else { return }
+            guard let room = listedRoom else { return }
             Haptics.light()
             willOpen?()
             Task { await appState.openGroupRoom(room) }
