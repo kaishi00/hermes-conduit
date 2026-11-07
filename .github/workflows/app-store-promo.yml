@@ -117,6 +117,21 @@ jobs:
             -pix_fmt yuv420p -movflags +faststart shots/promo.mp4 || echo "promo.mp4 not made" >> failures.txt
           mkdir -p shots/stills
           xcrun xcresulttool export attachments --path results/promo.xcresult --output-path shots/stills || true
+          # Named after their attachments (promo-01-bots-home.png and on).
+          if [ -f shots/stills/manifest.json ]; then
+            python3 - shots/stills <<'PY'
+          import json, os, sys
+          root = sys.argv[1]
+          for test in json.load(open(os.path.join(root, "manifest.json"))):
+              for a in test.get("attachments", []):
+                  src = os.path.join(root, a["exportedFileName"])
+                  name = a.get("suggestedHumanReadableName") or a["exportedFileName"]
+                  base = name.split("_")[0] if name.count("_") >= 2 else os.path.splitext(name)[0]
+                  base = "".join(c if c.isalnum() or c in "-_. " else "_" for c in base)
+                  if os.path.exists(src):
+                      os.rename(src, os.path.join(root, base + os.path.splitext(src)[1]))
+          PY
+          fi
           # What the app logged, and the bot's routes from the runner itself,
           # for a walk that didn't finish.
           xcrun simctl spawn "$udid" log show --last 20m --style compact \
@@ -141,7 +156,7 @@ jobs:
           mkdir -p "$out"
           cp -R shots "$out/" 2>/dev/null || true
           # GitHub refuses a file over 100 MB, and one would sink the whole ref.
-          find "$out" \( -name '*.mov' -o -name '*.mp4' \) -size +90M -print -delete
+          find "$out" \( -name '*.mov' -o -name 'promo-full-*.mp4' \) -size +90M -print -delete
           mkdir -p "$out/logs"
           for f in demo-hermes/*.log results-*.log record-*.log app-log.txt probe-bots-before.txt probe-bots.txt; do
             if [ -f "$f" ]; then tail -c 400000 "$f" > "$out/logs/$(basename "$f")"; fi
