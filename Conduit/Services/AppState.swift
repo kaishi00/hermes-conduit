@@ -5997,11 +5997,12 @@ final class AppState: ObservableObject {
     private(set) var openChatCatalogCheck: Task<Void, Never>?
     private var latestActiveList: (rows: [LiveSessionStatus], profile: String, client: ObjectIdentifier, at: Date)?
     private(set) var openChatSyncRead: Task<Void, Never>?
-    /// Why the notification route's last attempt failed, kept while
-    /// another attempt is still due: the chat that opens on the retry
-    /// should not have been told, in the meantime, that it is gone or
-    /// that it could not be restored (#1919).
-    private(set) var notificationRouteFailure: String?
+    /// Why the notification route's last attempt failed, and which tap's
+    /// route said it, kept while another attempt is still due: the chat that
+    /// opens on the retry should not have been told, in the meantime, that it
+    /// is gone or that it could not be restored (#1919). The tap is kept so a
+    /// route that was replaced meanwhile never wears this one's words.
+    private(set) var notificationRouteFailure: (target: ConduitNotificationTarget, message: String)?
     private var openChatSyncReadID: UUID?
     /// Another device is getting the reply of a turn in the open chat; its
     /// working line says so.
@@ -26876,19 +26877,23 @@ final class AppState: ObservableObject {
             transitionGeneration: transitionGeneration
         ) else { return .retry }
         if opened {
-            notificationRouteFailure = nil
+            discardNotificationRouteFailure(for: target)
             return .opened
         }
         // Hermes answered that the conversation is gone, or is another one:
         // the same open would get the same answer.
         if refused {
-            notificationRouteFailure = nil
+            discardNotificationRouteFailure(for: target)
             return .failed
         }
-        // Another attempt is due: keep this failure's words for the
-        // window's end, and put back whatever the chat had said before,
-        // so a retry that opens the chat never leaves it wearing an error.
-        notificationRouteFailure = chatSyncErrorMessage
+        // Another attempt is due: keep this attempt's words for the window's
+        // end, and put back whatever the chat had said before, so a retry
+        // that opens the chat never leaves it wearing an error. An attempt
+        // that lost its answer without a message of its own leaves the
+        // earlier one standing, since that is still the last thing known.
+        if let failure = chatSyncErrorMessage, failure != routeErrorBeforeOpen {
+            notificationRouteFailure = (target, failure)
+        }
         chatSyncErrorMessage = routeErrorBeforeOpen
         return .retry
     }
@@ -27043,11 +27048,20 @@ final class AppState: ObservableObject {
     }
 
     /// The route has no attempt left: say why the last one failed, if it had
-    /// anything to say. A retry that opened the chat cleared it already.
-    func publishNotificationRouteFailure() {
-        guard let reason = notificationRouteFailure else { return }
+    /// anything to say. A retry that opened the chat cleared it already, and
+    /// a failure another tap's route left behind is not this route's to say.
+    func publishNotificationRouteFailure(for target: ConduitNotificationTarget) {
+        guard let failure = notificationRouteFailure, failure.target == target else { return }
         notificationRouteFailure = nil
-        chatSyncErrorMessage = reason
+        chatSyncErrorMessage = failure.message
+    }
+
+    /// The route ended somewhere that explained itself (`unverified`'s own
+    /// message): an earlier attempt's failure is older news than that, and
+    /// saying both would leave the newer explanation under an older one.
+    func discardNotificationRouteFailure(for target: ConduitNotificationTarget) {
+        guard let failure = notificationRouteFailure, failure.target == target else { return }
+        notificationRouteFailure = nil
     }
 
     private func finishNotificationOpenAttempt(id: UUID) {
