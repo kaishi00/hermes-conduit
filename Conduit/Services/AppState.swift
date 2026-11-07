@@ -3401,8 +3401,11 @@ final class AppState: ObservableObject {
     /// switch from the call's menu or a live start from the car does.
     /// Otherwise the car followed the new mode while the classic call went
     /// on listening behind it, on no surface that showed or ended it (#1935).
+    /// A call screen under push to talk waiting for its first press counts
+    /// too: it has no session yet, and its press would open Classic's mic.
     private func closeClassicConversationForLiveMode() {
-        guard voiceConversationController.hasConversationSession else { return }
+        let waitsForFirstPress = showVoiceSheet && voiceConversationController.isPushToTalkActive
+        guard voiceConversationController.hasConversationSession || waitsForFirstPress else { return }
         closeVoiceConversation()
     }
 

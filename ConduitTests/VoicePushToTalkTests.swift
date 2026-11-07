@@ -112,6 +112,24 @@ extension ContinuousConversationPreferenceTests {
         XCTAssertEqual(consumed, 1)
     }
 
+    /// Issue 1935: a push to talk call screen still waiting for its first
+    /// press has no session yet; turning a live mode on still closes it, so
+    /// the press can't open Classic's microphone under the new mode.
+    func testTurningOnALiveModeClosesAPushToTalkScreenWaitingForItsFirstPress() {
+        let defaults = makeScratchDefaults("PushToTalkLiveModeSwitch")
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        var preferences = VoiceProfilePreferences()
+        preferences.pushToTalk = true
+        appState.voiceConversationController.setProfilePreferences(preferences)
+        appState.showVoiceSheet = true
+        XCTAssertTrue(appState.voiceConversationController.isPushToTalkActive)
+        XCTAssertFalse(appState.voiceConversationController.hasConversationSession, "no session before the first press")
+
+        appState.setGeminiLiveEnabled(true)
+
+        XCTAssertFalse(appState.showVoiceSheet, "the Classic call screen closes with the switch")
+    }
+
     func testPushToTalkDoesNotListenAgainAfterAReply() async {
         let capture = MockCapture(permissionGranted: true)
         let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
