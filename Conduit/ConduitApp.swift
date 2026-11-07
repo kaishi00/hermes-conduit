@@ -458,7 +458,10 @@ struct ConduitApp: App {
                     return
                 }
                 guard notifications.beginNotificationRoute(target) else {
-                    // Its window ran out while the app was offline.
+                    // Its window ran out while the app was offline: the
+                    // attempts it did make held their last failure, and this
+                    // is where the user would have been told.
+                    appState.publishNotificationRouteFailure(for: target)
                     if target.call != nil {
                         HermesNativeCalls.shared.routedAnswerFailed(target)
                     }
@@ -485,7 +488,15 @@ struct ConduitApp: App {
                         // The window ran out: the last failure says why, if
                         // it has something to say.
                         if case .unverified(let message) = outcome {
+                            // This message is the route's last word: an
+                            // earlier attempt's failure would be older news,
+                            // and would sit under it on the chat's line.
                             appState.errorMessage = message
+                            appState.discardNotificationRouteFailure(for: target)
+                        } else {
+                            // The last attempt's failure had words of its
+                            // own: they were held back while a retry was due.
+                            appState.publishNotificationRouteFailure(for: target)
                         }
                         if target.call != nil {
                             HermesNativeCalls.shared.routedAnswerFailed(target)
