@@ -42,17 +42,15 @@ struct RoomApprovalSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            // Settings' backdrop, as Bots Home's sheets have (Sheets in Settings' look).
+            SettingsDetailContainer {
                 if appState.linkedRoomApprovalIsGone(approval.id), answer != .submitting {
-                    VStack(alignment: .leading, spacing: 6) {
+                    SettingsCard {
                         Text(verbatim: RoomApprovalText.line(for: approval))
                             .scaledFont(.subheadline.weight(.semibold))
                         Text(AppLocalization.string("This approval isn't waiting any more."))
-                            .scaledFont(.footnote)
-                            .foregroundStyle(.secondary)
+                            .settingsCaption()
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
                 } else {
                     GroupApprovalCard(
                         approval: approval.card,
@@ -60,7 +58,6 @@ struct RoomApprovalSheet: View {
                         answer: answer,
                         respond: respond
                     )
-                    .padding()
                 }
             }
             .refreshable { await appState.refreshLinkedRoomApprovals() }

@@ -92,32 +92,34 @@ struct RoomDraftSheet: View {
     var body: some View {
         let draft = self.draft
         NavigationStack {
-            List {
+            // Settings' own pieces, as Bots Home's sheets are (Sheets in Settings' look).
+            SettingsDetailContainer {
                 if let actionError {
-                    Text(actionError)
+                    Label(actionError, systemImage: "exclamationmark.triangle.fill")
                         .scaledFont(.footnote)
                         .foregroundStyle(.red)
-                        .listRowBackground(Color.clear)
                 }
-                Section {
+                ConduitSettingsSection(title: AppLocalization.string("Room"), symbol: "bubble.left.and.bubble.right", tint: .conduitAccent) {
                     Text(verbatim: line(for: draft))
+                        .scaledFont(.body)
+                        .fixedSize(horizontal: false, vertical: true)
                     if draft.status == "waiting", let expiresAt = draft.expiresAt {
                         Text(AppLocalization.string("Invites work until \(RoomDraftText.until(expiresAt))"))
-                            .scaledFont(.footnote)
-                            .foregroundStyle(.secondary)
+                            .settingsCaption()
                     }
                 }
                 if !draft.people.isEmpty {
-                    Section(AppLocalization.string("People")) {
+                    ConduitSettingsSection(title: AppLocalization.string("People"), symbol: "person.2", tint: .conduitAccent) {
                         ForEach(draft.people) { person in
                             personRow(person)
                         }
                     }
                 }
                 if !draft.agents.isEmpty {
-                    Section(AppLocalization.string("Your bots")) {
+                    ConduitSettingsSection(title: AppLocalization.string("Your bots"), symbol: "person.crop.square", tint: .conduitAccent) {
                         ForEach(Array(draft.agents.enumerated()), id: \.offset) { _, agent in
                             Text(verbatim: agent)
+                                .frame(minHeight: 32, alignment: .leading)
                         }
                     }
                 }
@@ -177,28 +179,31 @@ struct RoomDraftSheet: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            Spacer(minLength: 0)
         }
+        .frame(minHeight: 44)
         .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
     private func actions(_ draft: RoomDraft) -> some View {
         if draft.status == "waiting" {
-            Section {
+            VStack(spacing: 10) {
                 if !startRequested, draft.canStartNow {
                     Button(AppLocalization.string("Start now")) { confirmingStart = true }
+                        .buttonStyle(.settingsPrimary)
                         .disabled(busy)
                 }
                 Button(AppLocalization.string("Take back"), role: .destructive) { confirmingTakeBack = true }
+                    .buttonStyle(.settingsDestructive)
                     .disabled(busy)
             }
         } else if draft.status == "ended" {
-            Section {
-                Button(AppLocalization.string("Remove"), role: .destructive) {
-                    appState.dismissRoomDraft(draft.id)
-                    dismiss()
-                }
+            Button(AppLocalization.string("Remove"), role: .destructive) {
+                appState.dismissRoomDraft(draft.id)
+                dismiss()
             }
+            .buttonStyle(.settingsDestructive)
         }
     }
 

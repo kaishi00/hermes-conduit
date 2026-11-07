@@ -156,17 +156,12 @@ struct RoomLinkInviteSheet: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                ConduitBackdrop()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        if let shown {
-                            invite(shown.invite)
-                        } else {
-                            ask
-                        }
-                    }
-                    .padding(16)
+            // Settings' own pieces, as Bots Home's sheets are (Sheets in Settings' look).
+            SettingsDetailContainer {
+                if let shown {
+                    invite(shown.invite)
+                } else {
+                    ask
                 }
             }
             .navigationTitle(Text(AppLocalization.string("Link with someone")))
@@ -344,14 +339,8 @@ struct RoomLinkOpenedSheet: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                ConduitBackdrop()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        content
-                    }
-                    .padding(16)
-                }
+            SettingsDetailContainer {
+                content
             }
             .navigationTitle(Text(AppLocalization.string("Link invite")))
             .navigationBarTitleDisplayMode(.inline)
