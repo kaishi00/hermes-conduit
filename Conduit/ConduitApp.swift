@@ -487,6 +487,9 @@ struct ConduitApp: App {
                         if case .unverified(let message) = outcome {
                             appState.errorMessage = message
                         }
+                        // The last attempt's failure had words of its own:
+                        // they were held back while a retry was still due.
+                        appState.publishNotificationRouteFailure()
                         if target.call != nil {
                             HermesNativeCalls.shared.routedAnswerFailed(target)
                         }

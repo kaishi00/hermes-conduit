@@ -5997,6 +5997,11 @@ final class AppState: ObservableObject {
     private(set) var openChatCatalogCheck: Task<Void, Never>?
     private var latestActiveList: (rows: [LiveSessionStatus], profile: String, client: ObjectIdentifier, at: Date)?
     private(set) var openChatSyncRead: Task<Void, Never>?
+    /// Why the notification route's last attempt failed, kept while
+    /// another attempt is still due: the chat that opens on the retry
+    /// should not have been told, in the meantime, that it is gone or
+    /// that it could not be restored (#1919).
+    private(set) var notificationRouteFailure: String?
     private var openChatSyncReadID: UUID?
     /// Another device is getting the reply of a turn in the open chat; its
     /// working line says so.
@@ -26816,6 +26821,10 @@ final class AppState: ObservableObject {
             )
         }
         traceStage = "session open"
+        // A failure that isn't a refusal is retried with backoff, so the
+        // error it sets is not the last word: it is put back below and
+        // shown only if the window runs out with no chat opened.
+        let routeErrorBeforeOpen = chatSyncErrorMessage
         let (outcome, refused, _) = await performSessionOpenNotingRefusal(
             route.resumeTargetID,
             reusing: transitionGeneration,
@@ -26866,10 +26875,22 @@ final class AppState: ObservableObject {
             id: notificationAttemptID,
             transitionGeneration: transitionGeneration
         ) else { return .retry }
-        if opened { return .opened }
+        if opened {
+            notificationRouteFailure = nil
+            return .opened
+        }
         // Hermes answered that the conversation is gone, or is another one:
         // the same open would get the same answer.
-        return refused ? .failed : .retry
+        if refused {
+            notificationRouteFailure = nil
+            return .failed
+        }
+        // Another attempt is due: keep this failure's words for the
+        // window's end, and put back whatever the chat had said before,
+        // so a retry that opens the chat never leaves it wearing an error.
+        notificationRouteFailure = chatSyncErrorMessage
+        chatSyncErrorMessage = routeErrorBeforeOpen
+        return .retry
     }
 
     /// The stable decision key a push-delivered card was recorded under
@@ -27019,6 +27040,14 @@ final class AppState: ObservableObject {
             )
         }
         return current
+    }
+
+    /// The route has no attempt left: say why the last one failed, if it had
+    /// anything to say. A retry that opened the chat cleared it already.
+    func publishNotificationRouteFailure() {
+        guard let reason = notificationRouteFailure else { return }
+        notificationRouteFailure = nil
+        chatSyncErrorMessage = reason
     }
 
     private func finishNotificationOpenAttempt(id: UUID) {
