@@ -388,9 +388,12 @@ final class HTMLPreviewDocuments {
     }
 
     /// The file's page from `fetch`'s data URL, decoded off the main
-    /// thread. A read already running for `key` is joined, not repeated.
+    /// thread. A read already running for `key` is joined, not repeated,
+    /// and a page read within `freshFor` is answered as kept.
     func read(_ key: String, fetch: @escaping () async -> String?) async -> String? {
         if let running = inFlight[key] { return await running.task.value }
+        // A row that asks just after another's read finished takes its page.
+        if let page = pages[key], isFresh(page) { return page.html }
         if let failed = failedAt[key], now().timeIntervalSince(failed) < Self.freshFor { return nil }
         let id = UUID()
         let task = Task { () -> String? in
