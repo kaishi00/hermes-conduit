@@ -552,6 +552,7 @@ struct V2ChatsView: View, Equatable {
         .environmentObject(updates)
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.chats.title)
+        .background { searchCommand }
         .onChange(of: shell.hasChatBeside, initial: true) { _, beside in
             updates.coalesces = beside
         }
@@ -863,6 +864,29 @@ struct V2ChatsView: View, Equatable {
                 searchFocused = true
             }
         }
+    }
+
+    /// ⌘F, on an iPad keyboard or a Mac: open the list's search and put the
+    /// cursor in it, whichever way the bar is laid out. A hidden tab's list
+    /// stays mounted, so the action checks that the list is the screen before
+    /// it does anything; a chat pushed over it keeps the key to itself.
+    private var searchCommand: some View {
+        Button(AppLocalization.string("Search")) { focusSearchFromKeyboard() }
+            .keyboardShortcut("f", modifiers: .command)
+            .frame(width: 1, height: 1)
+            .opacity(0.001)
+            .accessibilityHidden(true)
+    }
+
+    private func focusSearchFromKeyboard() {
+        guard isShown else { return }
+        if showsBarSearch {
+            searchFocused = true
+        } else {
+            barSearchFocusPending = true
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { barSearchOpen = true }
+        }
+        appState.noteChatListInteraction()
     }
 
     /// The filter menu's button where the bar stacks: what the list shows,
