@@ -548,6 +548,13 @@ enum PresentVoiceTool {
             while !saidYes() {
                 guard stillWaiting() else { return alreadyAnswered }
                 guard ContinuousClock.now < deadline else {
+                    // Room work takes only its phrase, so asking for a yes wouldn't do.
+                    if prompt.room?.work == true {
+                        guard let phrase = prompt.spokenYes.first else {
+                            return ["error": "Not confirmed. Ask the user to answer it on the screen."]
+                        }
+                        return ["error": "Not confirmed: a plain yes doesn't start work. Ask the user to say \"\(phrase)\", and confirm only after they do."]
+                    }
                     return ["error": "Not confirmed: the user's own words weren't a yes. Ask them, and confirm only after they say yes."]
                 }
                 do { try await Task.sleep(for: .milliseconds(250)) } catch { return ["error": "Not confirmed."] }

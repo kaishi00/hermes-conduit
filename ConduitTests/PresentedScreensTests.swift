@@ -211,7 +211,8 @@ extension AppStateVoiceCapabilityTests {
         var outcome: PresentedConfirmOutcome?
         let plain = await PresentVoiceTool.run(["action": "confirm", "id": prompt.id], sync: sync,
                                                lastUserTurn: { (UUID(), "yes") }) { _, answer in outcome = answer }
-        XCTAssertNotNil(plain["error"], "a plain yes never starts work")
+        XCTAssertEqual(plain["error"], "Not confirmed: a plain yes doesn't start work. Ask the user to say \"start it\", and confirm only after they do.",
+                       "a plain yes never starts work")
         XCTAssertNil(outcome)
         let said = await PresentVoiceTool.run(["action": "confirm", "id": prompt.id], sync: sync,
                                               lastUserTurn: { (UUID(), "start it") }) { _, answer in outcome = answer }
