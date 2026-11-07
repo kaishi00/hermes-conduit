@@ -1,0 +1,10 @@
+seeded bot: conduit-chan
+seeded bot: piko
+seeded bot: mira
+seeded bot: riri
+seeded: Kyoto packing list
+✓ Set approvals.mode = manual in /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/profiles/conduit-chan/config.yaml
+profile conduit-chan: linked to the main install (0.134.10)
+profile mira: linked to the main install (0.134.10)
+profile piko: linked to the main install (0.134.10)
+profile riri: linked to the main install (0.134.10)

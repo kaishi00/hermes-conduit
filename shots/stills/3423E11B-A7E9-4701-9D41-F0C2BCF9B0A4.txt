@@ -1,0 +1,37 @@
+Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x10a41c190>.
+Sparse tree of matches:
+→Application, pid: 30496, label: 'Conduit'
+  ↳Window (Main)
+    ↳Other
+      ↳Other
+        ↳Other
+          ↳Other
+            ↳Other
+            ⋅ ↳Other
+            ⋅   ↳Other
+            ⋅     ↳Other
+            ⋅       ↳Other
+            ⋅         ↳ScrollView
+            ⋅           ↳Other
+            ⋅             ↳Other, identifier: 'finish-setup.card'
+            ⋅               ↳Button, identifier: 'finish-setup.not-now', label: 'Not now'
+            ↳Other
+              ↳Other
+                ↳Other
+                  ↳Other
+                    ↳Other
+                      ↳CollectionView
+                        ↳Cell
+                          ↳Other
+                            ↳Other
+                              ↳Other
+                                ↳Other, identifier: 'finish-setup.card'
+                                  ↳Button, identifier: 'finish-setup.not-now', label: 'Not now'
+Possibly caused by runtime issues:
+Automation type mismatch: computed Button from legacy attributes vs PopUpButton from modern attribute. Input attributes and values: {
+    "XC_kAXXCAttributeAutomationType" = 14;
+    "XC_kAXXCAttributeElementBaseType" = UIResponder;
+    "XC_kAXXCAttributeElementType" = "SwiftUI.AccessibilityNode";
+    "XC_kAXXCAttributeTraits" = 1108101562369;
+}
+See test report attachments for more detail.
