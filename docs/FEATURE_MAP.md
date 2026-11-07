@@ -2209,7 +2209,7 @@ iPad · selection across the reply · Copy response · links in cells (a cell wi
 - Selection: `Conduit/Views/Components/MarkdownSelectionCoordinator.swift` (deferRegistration, which mounts a waiting table when a selection begins; tableMountKey); test `ConduitTests/MarkdownSelectionCoordinatorTests.swift` (testTableMountAndItsFirstCellsMountBothWait)
 - Selectable cells, drawn until touched in the chat: `Conduit/Views/Components/SelectableTextView.swift`
 - Which cells draw as text: `Conduit/Views/Components/MarkdownText.swift` (MarkdownTableRowView.cellDrawsAsText)
-- Tests: `ConduitTests/MarkdownTableLayoutTests.swift` (plain cells, link cells), `ConduitTests/MarkdownLargeDocumentTests.swift` (testLargeChatTableDrawsOnlyLinkCellsAsText), `ConduitUITests/SelectionObserverUITests.swift` (testTapOnLinkInChatTableCellOpensIt, on `Conduit/Views/SelectionFixtureView.swift`'s chat table)
+- Tests: `ConduitTests/MarkdownTableLayoutTests.swift` (plain cells, link cells), `ConduitTests/MarkdownLargeDocumentTests.swift` (testLargeChatTableDrawsOnlyLinkCellsAsText), `ConduitUITests/SelectionObserverUITests.swift` (testTapOnLinkInChatTableCellOpensIt, testInlineCodeInChatTableCellIsNotALink, on `Conduit/Views/SelectionFixtureView.swift`'s chat table)
 
 **Rulings**
 - The chat draws table cells without a link as plain text, the cheapest to build as rows scroll in (#693). A long press offers Copy Table and Select Text; Select Text draws the cells as selectable text until the row is taken down.
