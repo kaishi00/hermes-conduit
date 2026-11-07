@@ -2318,6 +2318,9 @@ final class AppState: ObservableObject {
     /// to (AppState+GatewayRestart.swift).
     @Published var gatewayRestart = GatewayRestartSlot()
     var gatewayRestartTask: Task<Void, Never>?
+    /// Restart now is under way (restartGatewayNow): one at a time, however
+    /// many places show the wait.
+    @Published var gatewayRestartingNow = false
     /// The Conduit plugin update's progress and outcome, and the dashboard
     /// it belongs to (AppState+NotifierPluginUpdate.swift).
     @Published var notifierPluginUpdate = NotifierPluginUpdateSlot()

@@ -98,9 +98,12 @@ extension AppState {
     /// restart through the gateway's service manager. Returns why it
     /// couldn't, or nil.
     func restartGatewayNow() async -> String? {
+        guard !gatewayRestartingNow else { return nil }
         guard let bridge = dashboardTicketBridge else {
             return AppLocalization.string("Connect to this dashboard first.")
         }
+        gatewayRestartingNow = true
+        defer { gatewayRestartingNow = false }
         do {
             _ = try await bridge.requestJSON(path: GatewayWork.restartNowPath, method: "POST")
         } catch {
@@ -114,20 +117,24 @@ extension AppState {
             }
         }
         // Stopped chats end within a few seconds; an update still waiting
-        // sends its restart once the flag lands.
+        // sends its restart once the flag lands. A read that fails proves
+        // nothing, so only an answer with no work skips the force.
         for _ in 0..<5 {
             try? await Task.sleep(for: .seconds(2))
-            guard let work = await gatewayWork() else { return nil }
-            if work.count == 0 { return nil }
+            if let work = await gatewayWork(), work.count == 0 { return nil }
         }
-        guard let work = await gatewayWork(), work.count > 0 else { return nil }
         do {
             _ = try await bridge.requestJSON(path: GatewayWork.forceRestartPath, method: "POST", timeoutMilliseconds: 40_000)
         } catch {
             // The restart can take this dashboard down with the gateway
-            // before it answers: no answer is how a forced restart looks.
-            if let refusal = error as? DashboardTicketBridgeError, case .http = refusal {
-                return UserFacingError.message(for: error)
+            // before it answers, so a request that went out and got no
+            // answer is how a forced restart looks. Anything the dashboard
+            // answered, or that never went out (signed out), is a failure.
+            if let refusal = error as? DashboardTicketBridgeError {
+                switch refusal {
+                case .notReady, .answeredAfterSwitch: break
+                default: return UserFacingError.message(for: error)
+                }
             }
         }
         return nil

@@ -177,7 +177,6 @@ struct GatewayWaitView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @State private var work: GatewayWork?
-    @State private var restarting = false
     @State private var failure: String?
 
     static let pollInterval: Duration = .seconds(5)
@@ -211,20 +210,16 @@ struct GatewayWaitView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Button {
-                        restarting = true
                         failure = nil
-                        Task {
-                            failure = await appState.restartGatewayNow()
-                            restarting = false
-                        }
+                        Task { failure = await appState.restartGatewayNow() }
                     } label: {
-                        Text(verbatim: restarting ? AppLocalization.string("Stopping running tasks…") : AppLocalization.string("Restart Now"))
+                        Text(verbatim: appState.gatewayRestartingNow ? AppLocalization.string("Stopping running tasks…") : AppLocalization.string("Restart Now"))
                             .scaledFont(.subheadline.weight(.semibold))
                             .frame(minHeight: 44)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.borderless)
-                    .disabled(restarting)
+                    .disabled(appState.gatewayRestartingNow)
                     .accessibilityHint(Text(AppLocalization.string("Stops the running tasks and restarts the gateway now.")))
                     .accessibilityIdentifier("gatewayRestart.restartNow")
                 }
