@@ -1862,11 +1862,7 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
             { (appState: AppState) in appState.setGPTLiveEnabled(true) },
             { (appState: AppState) in appState.setGrokLiveEnabled(true) },
         ] {
-            // The setters tell the shared coordinator.
-            let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
-            addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
-                defaults.removePersistentDomain(forName: suite)
-            }
+            let harness = makeHarness()
             harness.coordinator.handleConnect(harness.spy)
             harness.openVoice(session: "session-1")
             await harness.controller.startListening()
@@ -1874,6 +1870,9 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
             XCTAssertEqual(harness.coordinator.observedVoiceMode, .classic)
 
             enable(harness.appState)
+            // The setters tell `CarPlayVoiceCoordinator.shared`; the
+            // harness's own coordinator gets the same notice here.
+            harness.coordinator.voiceModeChanged(in: harness.appState)
 
             XCTAssertFalse(harness.controller.hasLiveVoiceSession, "the classic call ends with the switch")
             XCTAssertFalse(harness.appState.showVoiceSheet)
