@@ -548,6 +548,10 @@ struct SessionRuntimeSnapshot {
     /// The agent's plan (Hermes 0.21+ `todo_state`), worked out by the
     /// gateway from the whole stored history; nil when the chat has none.
     let todoState: AgentPlan?
+    /// The chat's queue on the session authority (`pending`): messages
+    /// waiting their turn and turns a restart cut off. Nil when the snapshot
+    /// lists none (the dashboard's, or a `session.info` about something else).
+    let queuedPrompts: [QueuedPrompt]?
 
     /// `session.resume` may include an in-flight or queued projection that is
     /// newer than the persisted database transcript. Keep that projection for
@@ -613,6 +617,7 @@ struct SessionRuntimeSnapshot {
         pendingApprovalPayload = object["pending_approval"]?.objectValue
         pendingInputPrompts = InputPromptActivity.pending(inOpenRequests: object["open_requests"])
         todoState = (object["todo_state"]?.anyValue as? [String: Any]).flatMap { AgentPlan(snapshot: $0) }
+        queuedPrompts = QueuedPrompt.list(from: object["pending"])
         self.inflight = inflight
         self.queued = queued
     }
@@ -1907,8 +1912,10 @@ final class HermesClient: ObservableObject {
             }
             if let event = frame.event {
                 deliveringEventGeneration = Self.exactIntValue(eventObject?["execution_generation"])
+                deliveringEventAdmissionID = speaksSessionAuthority ? eventObject?["admission_id"]?.stringValue : nil
                 onEvent?(event)
                 deliveringEventGeneration = nil
+                deliveringEventAdmissionID = nil
             }
         } else {
             logger.debug("Received non-event WebSocket notification without an RPC id")
@@ -2372,6 +2379,11 @@ final class HermesClient: ObservableObject {
     /// `execution_generation` it names: nil when it names none, as
     /// `hermes dashboard`'s events don't. Read while `onEvent` runs.
     private(set) var deliveringEventGeneration: Int?
+
+    /// The queued message the stream event `onEvent` is delivering ran from
+    /// (the authority's `admission_id`, on a turn's `message.start`): nil
+    /// when it names none. Read while `onEvent` runs.
+    private(set) var deliveringEventAdmissionID: String?
 
     /// The turn running in a chat, by its execution generation, as this
     /// socket last saw it: nil when none runs, or the server numbers none.
@@ -3083,7 +3095,7 @@ final class HermesClient: ObservableObject {
         // Pending decisions and the plan ride the resume response top level.
         // Hoist them so the snapshot parser sees the same contract as
         // session.info.
-        for key in ["pending_clarify", "pending_approval", "todo_state"] {
+        for key in ["pending_clarify", "pending_approval", "todo_state", "pending"] {
             if let value = object[key] {
                 snapshotObject[key] = value
             }
@@ -3400,7 +3412,10 @@ final class HermesClient: ObservableObject {
             $0.text == text && Date().timeIntervalSince($0.at) < Self.unansweredSubmissionWindow
         } == true
         let submissionID = reuses ? unanswered!.id : UUID().uuidString.lowercased()
-        if !hidden { Self.unansweredSubmissions[sessionId] = (text: text, id: submissionID, at: reuses ? unanswered!.at : Date()) }
+        if !hidden {
+            Self.unansweredSubmissions[sessionId] = (text: text, id: submissionID, at: reuses ? unanswered!.at : Date())
+            Self.admittedAdmissions.removeValue(forKey: sessionId)
+        }
         // The chat's staged images go with its next message, as the
         // dashboard sends its own held ones; a hidden turn isn't the
         // user's message.
@@ -3452,6 +3467,10 @@ final class HermesClient: ObservableObject {
         if !hidden, Self.unansweredSubmissions[sessionId]?.id == submissionID {
             Self.unansweredSubmissions.removeValue(forKey: sessionId)
         }
+        if !hidden, sentToAuthority || speaksSessionAuthority,
+           let admission = result.objectValue?["admission_id"]?.stringValue, !admission.isEmpty {
+            Self.admittedAdmissions[sessionId] = admission
+        }
         // Read by the server that answered: a send built before the ready was
         // read but taken by the authority is still its admission receipt.
         if sentToAuthority || speaksSessionAuthority {
@@ -3475,6 +3494,77 @@ final class HermesClient: ObservableObject {
     /// Set once this gateway refused `prompt.submit`'s `voice_turn` key
     /// (a Hermes from before `auxiliary.voice_chat`).
     private var gatewayRefusesVoiceTurn = false
+
+    // MARK: - The session authority's queue
+
+    /// A queue verb asked of a server that keeps no queue (`hermes dashboard`).
+    struct QueueVerbsUnsupportedError: Error {}
+
+    /// Withdraws a queued message: it never runs. One whose turn started
+    /// meanwhile is stopped in the same call.
+    func cancelQueuedPrompt(_ sessionId: String, admissionID: String) async throws -> QueuedPromptReceipt {
+        try await queueVerb("prompt.cancel", ["session_id": sessionId, "admission_id": admissionID])
+    }
+
+    /// Replaces a queued message's words: Hermes withdraws it and queues the
+    /// edit as a new message at the back of the line, in one write.
+    /// `submissionID` is the edit's own: a retry of one whose reply was lost
+    /// sends the same, and Hermes answers the edit it already made.
+    func replaceQueuedPrompt(
+        _ sessionId: String, admissionID: String, text: String, submissionID: String
+    ) async throws -> QueuedPromptReceipt {
+        try await queueVerb("prompt.replace_queued", [
+            "session_id": sessionId, "admission_id": admissionID,
+            "submission_id": submissionID, "text": text
+        ])
+    }
+
+    /// Sends a queued message into the running turn now, as a steer: it
+    /// never also runs as its own. Refused (`steer_unavailable`,
+    /// `admission_started`, `session_idle`), it stays queued.
+    func sendQueuedPromptNow(_ sessionId: String, admissionID: String) async throws -> QueuedPromptReceipt {
+        try await queueVerb("prompt.steer_queued", ["session_id": sessionId, "admission_id": admissionID])
+    }
+
+    /// Discards a turn a gateway restart cut off (`unknown`), by the turn it
+    /// ran as: Hermes settles it as interrupted, never runs it again, and the
+    /// messages waiting behind it go on.
+    func discardLostPrompt(_ sessionId: String, admissionID: String, generation: Int) async throws -> QueuedPromptReceipt {
+        try await queueVerb("prompt.resolve_unknown", [
+            "session_id": sessionId, "admission_id": admissionID, "execution_generation": generation
+        ])
+    }
+
+    /// The chat's queue as Hermes holds it now (a resume, no rows): nil on a
+    /// server without one.
+    func queuedPrompts(_ sessionId: String, profile: String? = nil) async throws -> [QueuedPrompt]? {
+        guard speaksSessionAuthority else { return nil }
+        let object = try await resumeSessionObject(sessionId, omitMessages: true, profile: profile)
+        return QueuedPrompt.list(from: object["pending"])
+    }
+
+    /// The submission id of the chat's last send whose reply never came
+    /// back (a timeout, a dropped socket), while it may still be resent as
+    /// the same message: what its row in the chat's queue is named by.
+    static func unansweredSubmissionID(for sessionId: String) -> String? {
+        unansweredSubmissions[sessionId]?.id
+    }
+
+    /// The admission id of the chat's last send the authority admitted,
+    /// from its receipt: what its row in the chat's queue, and its turn's
+    /// `message.start`, name.
+    static func admittedAdmissionID(for sessionId: String) -> String? {
+        admittedAdmissions[sessionId]
+    }
+
+    @MainActor private static var admittedAdmissions: [String: String] = [:]
+
+    /// Hermes' queue verbs take a closed set of params (never `profile`).
+    private func queueVerb(_ method: String, _ params: [String: Any]) async throws -> QueuedPromptReceipt {
+        guard speaksSessionAuthority else { throw QueueVerbsUnsupportedError() }
+        let result = try await rpc(method, params: params)
+        return QueuedPromptReceipt(object: result.objectValue ?? [:])
+    }
 
     /// Set once this gateway refused `prompt.submit`'s `title_preview` key.
     private var gatewayRefusesTitlePreview = false
