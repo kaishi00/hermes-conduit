@@ -196,12 +196,28 @@ final class AppStoreScreenshotTests: XCTestCase {
         print("PROMO_MARK home \(Date().timeIntervalSince1970)")
         snap("promo-01-bots-home")
         settle(2)
-        portrait.tap()
-        // The Bot Chat is open once its menu is; Bots Home's search field
-        // is a text field too, so the composer is looked up after.
-        guard app.descendants(matching: .any)["conversation.menu"].firstMatch.waitForExistence(timeout: 30) else {
-            snap("debug-no-bot-chat")
-            XCTFail("Conduit Chan's Bot Chat never opened")
+        // The Bot Chat is ready once its history shows (her morning reply).
+        // On the hosted Mac its first read can fail; back out and open it
+        // again rather than film a chat that can't send.
+        let history = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS 'dentist is at 2'")).firstMatch
+        let restoreFailed = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS 'Failed to restore'")).firstMatch
+        var opened = false
+        for attempt in 1...4 {
+            portrait.tap()
+            if history.waitForExistence(timeout: 30), !restoreFailed.exists {
+                opened = true
+                break
+            }
+            snap("debug-bot-chat-attempt-\(attempt)")
+            print("PROMO_MARK reopen \(Date().timeIntervalSince1970)")
+            backToTabs()
+            if !portrait.waitForExistence(timeout: 10) { app.buttons["Bots"].firstMatch.tap() }
+            settle(8)
+        }
+        guard opened else {
+            XCTFail("Conduit Chan's Bot Chat never opened with its history")
             return
         }
         let composer = app.textViews.firstMatch.exists

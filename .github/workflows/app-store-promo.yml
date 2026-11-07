@@ -85,6 +85,10 @@ jobs:
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
             DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" > results-build.log 2>&1 \
             || { grep -E "error:" results-build.log | head -20; exit 1; }
+          # The bot's routes once before the walk, so its first reads aren't
+          # the app's (and their answers are kept).
+          python3 scripts/app-store/probe_bot_routes.py "http://$DEMO_HOST:$DEMO_PORT" "$DEMO_USER" "$DEMO_PASSWORD" conduit-chan \
+            > probe-bots-before.txt 2>&1 || true
           # The walk, recorded whole; PROMO_MARK lines date its parts.
           xcrun simctl io "$udid" recordVideo --codec h264 --force shots/promo.mov > record-promo.log 2>&1 &
           recorder=$!
@@ -116,7 +120,7 @@ jobs:
           # What the app logged, and the bot's routes from the runner itself,
           # for a walk that didn't finish.
           xcrun simctl spawn "$udid" log show --last 20m --style compact \
-            --predicate 'process == "Conduit" OR subsystem BEGINSWITH "com.milim"' > app-log.txt 2>&1 || true
+            --predicate 'process == "Conduit" AND NOT (subsystem IN {"com.apple.network", "com.apple.securityd", "com.apple.CFNetwork", "com.apple.dt.xctest"}) AND NOT (category == "Security")' > app-log.txt 2>&1 || true
           python3 scripts/app-store/probe_bot_routes.py "http://$DEMO_HOST:$DEMO_PORT" "$DEMO_USER" "$DEMO_PASSWORD" conduit-chan \
             > probe-bots.txt 2>&1 || true
           # Full resolution in parts the git ref can carry.
@@ -139,7 +143,7 @@ jobs:
           # GitHub refuses a file over 100 MB, and one would sink the whole ref.
           find "$out" \( -name '*.mov' -o -name '*.mp4' \) -size +90M -print -delete
           mkdir -p "$out/logs"
-          for f in demo-hermes/*.log results-*.log record-*.log app-log.txt probe-bots.txt; do
+          for f in demo-hermes/*.log results-*.log record-*.log app-log.txt probe-bots-before.txt probe-bots.txt; do
             if [ -f "$f" ]; then tail -c 400000 "$f" > "$out/logs/$(basename "$f")"; fi
           done
 
