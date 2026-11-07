@@ -26,10 +26,13 @@ struct CredentialVaultSettingsPage: View {
     @State private var removing: VaultItem?
     /// A source or item a call is out for: its controls wait.
     @State private var busy: Set<String> = []
+    /// A manager switched here while Hermes takes it: the switch shows the
+    /// new state until the list is read again.
+    @State private var switching: [String: Bool] = [:]
 
     var body: some View {
         SettingsDetailContainer(compact: true) {
-            Text(AppLocalization.string("For the \(appState.activeProfile) profile. Ask Hermes to sign in to a site and it asks you for the login once, on the spot, then signs in by itself. Passwords stay encrypted on the Hermes computer and go straight into the page: the model never sees them, and Conduit never shows them."))
+            Text(AppLocalization.string("For the \(appState.profileDisplayName(appState.activeProfile)) profile. Ask Hermes to sign in to a site and it asks you for the login once, on the spot, then signs in by itself. Passwords stay encrypted on the Hermes computer and go straight into the page: the model never sees them, and Conduit never shows them."))
                 .scaledFont(.footnote).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if let problem, snapshot == nil {
@@ -153,7 +156,7 @@ struct CredentialVaultSettingsPage: View {
                 badge(source.status)
                 Spacer(minLength: 8)
                 if source.installed {
-                    Toggle(source.displayName, isOn: Binding(get: { source.enabled }, set: { setEnabled(source, $0) }))
+                    Toggle(source.displayName, isOn: Binding(get: { switching[source.name] ?? source.enabled }, set: { setEnabled(source, $0) }))
                         .labelsHidden()
                         .tint(.conduitAccent)
                         .disabled(busy.contains(source.name))
@@ -250,6 +253,10 @@ struct CredentialVaultSettingsPage: View {
             problem = failure
             // Over a kept list, the line under it says why it isn't fresh.
             error = failure.errorDescription
+        } catch is CancellationError {
+            // The page went away mid-read; the next one asks again.
+            if read == readCount { loading = false }
+            return
         } catch let failure {
             guard read == readCount else { return }
             // A read that fails keeps what's shown.
@@ -258,7 +265,10 @@ struct CredentialVaultSettingsPage: View {
         loading = false
     }
 
-    private func run(_ id: String, _ call: @escaping () async throws -> Void) {
+    /// Runs a change, then reads the vault again; `after` runs once that
+    /// read is in, so a switch shows Hermes' state, or the old one when the
+    /// change failed.
+    private func run(_ id: String, after: @escaping () -> Void = {}, _ call: @escaping () async throws -> Void) {
         guard !busy.contains(id) else { return }
         busy.insert(id)
         Task {
@@ -268,8 +278,9 @@ struct CredentialVaultSettingsPage: View {
             } catch let failure {
                 error = UserFacingError.message(for: failure)
             }
-            busy.remove(id)
             await reload()
+            after()
+            busy.remove(id)
         }
     }
 
@@ -278,7 +289,11 @@ struct CredentialVaultSettingsPage: View {
     }
 
     private func setEnabled(_ source: VaultSource, _ enabled: Bool) {
-        run(source.name) { try await appState.setCredentialVaultSource(source.name, enabled: enabled) }
+        guard !busy.contains(source.name) else { return }
+        switching[source.name] = enabled
+        run(source.name, after: { switching[source.name] = nil }) {
+            try await appState.setCredentialVaultSource(source.name, enabled: enabled)
+        }
     }
 
     private func lock(_ source: VaultSource) {

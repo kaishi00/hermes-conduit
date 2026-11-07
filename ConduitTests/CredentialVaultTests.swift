@@ -34,7 +34,7 @@ final class CredentialVaultTests: XCTestCase {
         XCTAssertEqual(request.origin, "https://github.com")
         XCTAssertEqual(request.secret, ["identifier_type": "email", "identifier": "me@example.com", "password": " p@ss word "], "The password goes as typed")
 
-        draft.otpSecret = " JBSWY3DPEHPK3PXP "
+        draft.otpSecret = " JBSW Y3DP-EHPK 3PXP "
         draft.label = "Work"
         guard case .success(let withCode) = draft.request() else { return XCTFail("A login with a key saves") }
         XCTAssertEqual(withCode.label, "Work")
@@ -71,6 +71,21 @@ final class CredentialVaultTests: XCTestCase {
         XCTAssertEqual(request.secret, ["address_line1": "1 Main St", "city": "Springfield", "postal_code": "12345", "country": "US"])
         draft.origin = "shop example"
         XCTAssertEqual(draft.request(), .failure(.origin), "A site typed wrong isn't dropped")
+    }
+
+    func testTheKeptListSurvivesTheStoresCredentialFilter() throws {
+        // The page opens on the list kept as Conduit's own JSON, which the
+        // store filters for credential-shaped names: none of its fields may
+        // be dropped, or the kept list would reopen without them.
+        let snapshot = CredentialVaultSnapshot(
+            items: [VaultItem(id: "a1", kind: "login", label: "GitHub", origin: "https://github.com", identifier: "me@example.com", identifierType: "email", created: "2026-11-07T19:22:43.888123+00:00", hasOTP: true)],
+            sources: [VaultSource(name: "bitwarden", displayName: "Bitwarden", enabled: true, needsUnlock: true, unlocked: false, installed: true)]
+        )
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
+        let kept = OfflineChatCacheStore.withoutCredentials(json)
+        let decoded = try JSONDecoder().decode(CredentialVaultSnapshot.self, from: JSONSerialization.data(withJSONObject: kept))
+        XCTAssertEqual(decoded, snapshot)
+        XCTAssertEqual(AppState.credentialVaultRoute, "rpc:vault.list")
     }
 
     func testAPasswordManagerSaysWhatItsStateMeans() {

@@ -232,7 +232,10 @@ struct VaultItemDraft: Equatable {
             secret["identifier_type"] = identifierType.rawValue
             secret["identifier"] = id
             secret["password"] = password
-            put("otp_secret", otpSecret)
+            // Sites show the key in groups; Hermes takes it without the
+            // spaces and dashes (an otpauth:// link has neither).
+            let key = otpSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+            put("otp_secret", key.lowercased().hasPrefix("otpauth://") ? key : key.filter { !$0.isWhitespace && $0 != "-" })
         case .payment:
             let digits = cardNumber.filter { !$0.isWhitespace && $0 != "-" }
             guard !digits.isEmpty, digits.allSatisfy(\.isNumber) else { return .failure(.cardNumber) }
