@@ -256,6 +256,7 @@ private struct RichFieldView: View {
                 Text(verbatim: field.label ?? field.id)
             }
             .labelsHidden()
+            .accessibilityLabel(Text(verbatim: field.label ?? field.id))
         }
     }
 }
@@ -340,7 +341,9 @@ struct RichCardButtonRow: View {
 
     private func rows(_ shown: [RichButton], draftEmpty: Bool) -> some View {
         ViewThatFits(in: .horizontal) {
+            // Ideal widths, so long labels stack rather than truncate side by side.
             HStack(spacing: 8) { row(shown, draftEmpty: draftEmpty) }
+                .fixedSize(horizontal: true, vertical: false)
             VStack(alignment: .leading, spacing: 8) { row(shown, draftEmpty: draftEmpty) }
         }
     }
