@@ -493,6 +493,16 @@ extension BotModeTests {
             "See [an earlier chat](conduit://session/old) @session:old and [Open W3](conduit://session/c) @session:furina/other"))
         XCTAssertEqual(unrelated.text,
                        "See [an earlier chat](conduit://session/old) @session:old and @session:furina/other")
+        // A bot that words the link with its title (Zhongli 2026-11-07) still gets the card, Desktop's reference
+        // going with it; a title that only mentions a ref further in stays a link.
+        let titled = try XCTUnwrap(BotWorkLinks.split(
+            "The build is commissioned — [W7: Provision OmniRoute LXC on seele](conduit://session/20261107_w7?profile=zhongli) "
+                + "@session:zhongli/20261107_w7. The rite as ordered."))
+        XCTAssertEqual(titled.text, "The build is commissioned —. The rite as ordered.")
+        XCTAssertEqual(titled.links.map(\.ref), ["W7"])
+        XCTAssertEqual(titled.links.first?.profile, "zhongli")
+        XCTAssertEqual(try XCTUnwrap(BotWorkLinks.split("Done: [W8 — Rotate keys](conduit://session/w8)")).links.map(\.ref), ["W8"])
+        XCTAssertNil(BotWorkLinks.split("See [the notes from W7](conduit://session/w7)"))
     }
 
     /// A read asked for after an action, while one was under way, makes

@@ -766,8 +766,12 @@ enum BotWorkLinks {
         let url: URL
     }
 
+    /// The link's words: "Open W3" as the plugin writes it, or the ref
+    /// with the bot's own title after it ("W7: Provision the LXC", Zhongli
+    /// 2026-11-07; the plugin puts those back too, from notifier 0.137.3).
+    private static let label = #"(?:Open )?(W\d+)(?:(?::|\s+[—–-])[^\]\n]*)?"#
     private static let pattern = try! NSRegularExpression(
-        pattern: #"\[(?:Open )?(W\d+)\]\((conduit://session/[^)\s]+)\)"#)
+        pattern: #"\["# + label + #"\]\((conduit://session/[^)\s]+)\)"#)
 
     /// Hermes Desktop's session reference the plugin puts right after each
     /// work link ("[Open W3](conduit://session/…) @session:<profile>/<id>"),
@@ -777,7 +781,7 @@ enum BotWorkLinks {
     /// own session; any other reference stays a chat link
     /// (HermesSessionReference). Group 1 is the work link, group 2 its id.
     private static let desktopRef = try! NSRegularExpression(
-        pattern: #"(\[(?:Open )?W\d+\]\(conduit://session/([^)?\s]+)[^)\s]*\))[ \t]*"#
+        pattern: #"(\[(?:Open )?W\d+(?:(?::|\s+[—–-])[^\]\n]*)?\]\(conduit://session/([^)?\s]+)[^)\s]*\))[ \t]*"#
             + #"(?<![\w/`@])@session:(?:[A-Za-z0-9][A-Za-z0-9_-]{0,63}/)?\2(?![A-Za-z0-9_]|[.:-][A-Za-z0-9_])"#)
 
     /// The reply's text without those links (and Desktop's references to
