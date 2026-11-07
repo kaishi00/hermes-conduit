@@ -178,13 +178,30 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testCodeThatNamesAPathLinksToTheFile() throws {
-        for path in ["docs/guide.md", "/srv/app/main.py", "~/notes.txt", "README.md", "src/app/", "./run.sh"] {
+        for path in ["docs/guide.md", "/srv/app/main.py", "~/notes.txt", "README.md", "src/app/", "./run.sh",
+                     "src/app/models", "~/projects", "./out"] {
             let url = try XCTUnwrap(WorkspacePathLinks.url(forCode: path), path)
             XCTAssertEqual(ConduitAppLink(url: url), .file(path: path))
         }
         for code in ["let x = 1", "https://example.com/a.md", "--flag", "@bot", "1/2", "v1.2", "e.g.", "/"] {
             XCTAssertNil(WorkspacePathLinks.url(forCode: code), code)
         }
+    }
+
+    /// A repository, image or model named in code isn't a file on the host:
+    /// drawn as a link, a click opened the Folder on a file the host never
+    /// had (issue 1585, a table of GitHub skills). Nor is a site written
+    /// without its scheme.
+    func testCodeThatNamesARepositoryOrASiteIsNotAFileLink() {
+        for code in [
+            "coleam00/excalidraw-diagram-skill", "github/awesome-copilot", "meta-llama/Llama-3.1-8B",
+            "library/nginx", "my-app.vercel.app/docs", "example.com/a.html", "ghcr.io/owner/image",
+        ] {
+            XCTAssertNil(WorkspacePathLinks.url(forCode: code), code)
+        }
+        let text = "See example.com/guide.html or docs/guide.md."
+        let found = WorkspacePathLinks.links(inText: text).map { (text as NSString).substring(with: $0.range) }
+        XCTAssertEqual(found, ["docs/guide.md"])
     }
 
     func testPlainTextLinksOnlyPathsWithAFolderAndAFileType() {
