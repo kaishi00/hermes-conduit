@@ -2852,6 +2852,8 @@ final class AppState: ObservableObject {
     var stepSummaryEarlyAnswers: [String: String] = [:]
     /// Runs asked about and not answered yet, with when they were asked.
     @Published var stepSummaryRequested: [ChatStepSummaries.Run: Date] = [:]
+    /// Test seam: answers `POST /side-question` in place of the dashboard.
+    var stepSummarySender: (([String: Any]) async throws -> [String: Any])?
     /// The suggestion row's guesses (AppState+Predictive.swift).
     let predictive = PredictiveStore()
     /// What the row asks the composer to do: send, edit or insert a guess.
