@@ -122,10 +122,10 @@ struct MainView: View {
     @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var availableWindowWidth: CGFloat = 0
-    /// The window's safe area across, read here outside every navigation
-    /// stack: the drawer shell's screens keep to it in place of what UIKit
+    /// The window's side safe area, read here outside every navigation
+    /// stack: the drawer shell's screens take it in place of what UIKit
     /// hands their stack (`windowSideContent`, #1900). V2 reads its own.
-    @State private var windowSafeSpan: WindowSafeSpan?
+    @State private var windowSideInsets: WindowSideInsets?
     @State private var settingsPresentation: SettingsSnapshot?
     @State private var shouldPresentSettingsAfterSidebarDismissal = false
     /// The page Settings opens at next, for an in-app settings link.
@@ -514,7 +514,8 @@ struct MainView: View {
                     presentation: .persistent
                 )
                 .frame(width: persistentSidebarWidth)
-                .environment(\.windowSafeSpan, windowSafeSpan)
+                // The leading column's share of the window's side insets.
+                .environment(\.windowSideInsets, windowSideInsets?.reaching(.leading, width: persistentSidebarWidth))
 
                 // Drags the sidebar's width, as V2's list (#1487).
                 ColumnDivider(
@@ -528,11 +529,11 @@ struct MainView: View {
                 )
 
                 chatNavigationContent
-                    .environment(\.windowSafeSpan, windowSafeSpan)
+                    .environment(\.windowSideInsets, windowSideInsets?.reaching(.trailing, width: availableWindowWidth - persistentSidebarWidth - 1))
             }
         } else {
             chatNavigationContent
-                .environment(\.windowSafeSpan, windowSafeSpan)
+                .environment(\.windowSideInsets, windowSideInsets)
         }
     }
 
@@ -752,8 +753,8 @@ struct MainView: View {
     private var windowWidthReader: some View {
         GeometryReader { proxy in
             Color.clear.preference(key: MainViewWindowWidthKey.self, value: proxy.size.width)
-                .onGeometryChange(for: WindowSafeSpan.self) { WindowSafeSpan($0.frame(in: .global)) } action: { span in
-                    if windowSafeSpan != span { windowSafeSpan = span }
+                .onGeometryChange(for: WindowSideInsets.self) { WindowSideInsets($0.safeAreaInsets, width: $0.size.width) } action: { insets in
+                    if windowSideInsets != insets { windowSideInsets = insets }
                 }
         }
     }

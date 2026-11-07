@@ -643,11 +643,12 @@ struct V2Shell: View {
                 .onChange(of: strip, initial: true) { _, strip in
                     if statusStrip != strip { statusStrip = strip }
                 }
-                // The window's safe area across, as the shell has it
-                // outside every stack: each tab's screens keep to it where
-                // they reach past it, in place of what UIKit hands their
-                // stack (`windowSideContent`, #1900).
-                .environment(\.windowSafeSpan, WindowSafeSpan(proxy.frame(in: .global)))
+                // The window's side safe area as the shell has it, outside
+                // every stack: each tab's screens take it, or their
+                // column's share of it, in place of what UIKit hands their
+                // stack, and never grow past the column's width
+                // (`windowSideContent`, #1900).
+                .environment(\.windowSideInsets, WindowSideInsets(proxy.safeAreaInsets, width: proxy.size.width))
                 .environment(\.v2Shell, V2ShellContext(pickProfile: { pickProfile($0) }, dropQueuedProfilePick: { queuedProfilePick = V2QueuedProfilePick() }, showScheduledRuns: showScheduledRuns, values: .init(contentFaded: contentFaded, contentShift: contentShift, isSplit: split, canSplit: canSplit, isPickingProfile: isPickingProfile)))
         }
     }
@@ -1083,6 +1084,10 @@ struct V2Shell: View {
                     }
             }
             .frame(width: column.width)
+            // The list's screens take the window's leading inset, never
+            // its trailing one (`leadingColumnContent`), and keep to the
+            // column's width.
+            .transformEnvironment(\.windowSideInsets) { $0 = $0?.reaching(.leading, width: column.width) }
             // Each column's backdrop stays in its own column.
             .v2ClippedToColumn(outerEdge: .leading)
             ColumnDivider(
@@ -1131,6 +1136,12 @@ struct V2Shell: View {
                 }
             }
             .animation(nil, value: selectedTab)
+            // The chat's column (and Settings in it) takes the window's
+            // trailing inset, never its leading one, and keeps to the room
+            // the list and the line between them leave.
+            .transformEnvironment(\.windowSideInsets) { insets in
+                insets = insets?.reaching(.trailing, width: insets?.width.map { $0 - column.width - 1 })
+            }
             .v2ClippedToColumn(outerEdge: .trailing)
         }
     }
@@ -1394,8 +1405,8 @@ extension View {
     /// 375 pt list its 84 pt side status bar, the list's bar no longer fit
     /// in what was left, and centering the overflow cut the profile pill,
     /// section headers and row icons off on the left (#1765). The screen
-    /// keeps to the window's safe area only where it reaches past it (its
-    /// leading side, `windowSideContent`), and keeps to the column's
+    /// takes the column's share of the window's safe area, the leading
+    /// side's only (`windowSideContent`), and keeps to the column's
     /// leading edge. Where no shell read the window's (nil), it still
     /// drops the trailing inset.
     func leadingColumnContent() -> some View {
@@ -1404,12 +1415,12 @@ extension View {
 }
 
 private struct LeadingColumnContent: ViewModifier {
-    @Environment(\.windowSafeSpan) private var span
+    @Environment(\.windowSideInsets) private var insets
 
     func body(content: Content) -> some View {
         content
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-            .ignoresSafeArea(.container, edges: span == nil ? Edge.Set.trailing : Edge.Set())
+            .ignoresSafeArea(.container, edges: insets == nil ? Edge.Set.trailing : Edge.Set())
             .windowSideContent()
     }
 }

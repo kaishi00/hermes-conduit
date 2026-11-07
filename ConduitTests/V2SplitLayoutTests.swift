@@ -209,34 +209,24 @@ extension SidebarLayoutTests {
         XCTAssertEqual(V2SplitLayout.tabRoutes(listing: [.artifacts], keepsConversation: false), [.artifacts])
     }
 
-    func testScreensKeepToTheWindowsSafeAreaOnlyWhereTheyReachPastIt() {
-        func sides(_ span: WindowSafeSpan, _ screen: WindowSafeSpan) -> [CGFloat] {
-            let insets = span.insets(of: screen)
-            return [insets.left, insets.right]
-        }
-        // An iPhone Duo's outer screen: 466 pt, its side status bar 84 pt
-        // on the right, so the shell reads 0...382.
-        let outer = WindowSafeSpan(minX: 0, maxX: 382)
-        // A stack that hands its screen the whole window keeps the bar's 84.
-        XCTAssertEqual(sides(outer, WindowSafeSpan(minX: 0, maxX: 466)), [0, 84])
-        // Build 258: the Chats stack grew to 436 pt and centered itself,
-        // its screen spilling 27 pt off the left. It keeps in by what
-        // spills on each side, so the rows stay in 0...382.
-        XCTAssertEqual(sides(outer, WindowSafeSpan(minX: -27, maxX: 466)), [27, 84])
-        // A stack laid out inside the safe area already takes nothing.
-        XCTAssertEqual(sides(outer, WindowSafeSpan(minX: 0, maxX: 382)), [0, 0])
-        // The inner screen in landscape: the list column beside a chat
-        // never reaches the side status bar (#1765); the chat's column does.
-        let inner = WindowSafeSpan(minX: 0, maxX: 867)
-        XCTAssertEqual(sides(inner, WindowSafeSpan(minX: 0, maxX: 375)), [0, 0])
-        XCTAssertEqual(sides(inner, WindowSafeSpan(minX: 376, maxX: 951)), [0, 84])
-        // The left half of a split screen, a phantom leading inset on the
-        // stack (#1900): the screen starts at the window's edge, so none.
-        XCTAssertEqual(sides(WindowSafeSpan(minX: 0, maxX: 469), WindowSafeSpan(minX: 0, maxX: 469)), [0, 0])
-        // A landscape iPhone keeps its sensor's side on both sides.
-        XCTAssertEqual(sides(WindowSafeSpan(minX: 62, maxX: 870), WindowSafeSpan(minX: 0, maxX: 932)), [62, 62])
-        // A measure's last digits settle to half points.
-        XCTAssertEqual(sides(outer, WindowSafeSpan(minX: -0.1, maxX: 466.33)), [0, 84.5])
+    func testColumnsTakeTheWindowSideInsetsOnlyOnTheSidesTheyReach() {
+        // An iPhone Duo's inner screen in landscape: its side status bar.
+        let window = WindowSideInsets(EdgeInsets(top: 24, leading: 0, bottom: 20, trailing: 84), width: 867)
+        XCTAssertEqual(window, WindowSideInsets(leading: 0, trailing: 84, width: 867))
+        // The list beside a chat never reaches the trailing edge (#1765),
+        // and its screens keep to the column's width.
+        XCTAssertEqual(window.reaching(.leading, width: 375), WindowSideInsets(leading: 0, trailing: 0, width: 375))
+        XCTAssertEqual(window.reaching(.trailing, width: 491), WindowSideInsets(leading: 0, trailing: 84, width: 491))
+        // One column reaches both; a landscape iPhone keeps its sensor's side.
+        let phone = WindowSideInsets(leading: 62, trailing: 62)
+        XCTAssertEqual(phone.reaching([.leading, .trailing]), phone)
+        XCTAssertEqual(phone.reaching(.leading), WindowSideInsets(leading: 62, trailing: 0))
+        // A column never gets a negative width to keep to.
+        XCTAssertEqual(window.reaching(.trailing, width: -4).width, 0)
+        // The Duo's outer screen: the shell's 382 pt beside the 84 pt strip
+        // caps every screen, so a stack can't grow past it (build 258).
+        let outer = WindowSideInsets(EdgeInsets(top: 0, leading: 0, bottom: 34, trailing: 84), width: 382)
+        XCTAssertEqual(outer.width, 382)
     }
 
     func testTheTabsStandInADuosStatusStripOnly() {
