@@ -30,7 +30,7 @@ enum ChatStepSummaries {
 
     /// The route's answer; nil when it has none (the run keeps its count).
     static func sideQuestionAnswer(_ response: [String: Any]) -> String? {
-        guard let text = response["text"] as? String,
+        guard response["ok"] as? Bool == true, let text = response["text"] as? String,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return text
     }

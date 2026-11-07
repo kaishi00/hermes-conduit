@@ -5603,7 +5603,7 @@ a turn Hermes takes on its own while the chat sits on screen.
 **Siblings:** chats, project chats and Bot Chat (one row above the composer) ·
 group rooms · the Apple Watch · voice modes and CarPlay · Hermes Desktop and
 the TUI on the same chat · the reply push while the chat is on screen · step
-summaries' /btw · the composer's draft and Send · the plugin's `/predict`
+summaries' `/side-question` (the hidden /btw on older plugins) · the composer's draft and Send · the plugin's `/predict`
 route, its README section and the CHANGELOG · the Predictive page's captions ·
 Helper models (the fast model is the Conduit predictions slot) · a board's
 follow-ups (the same chip, see Cards Hermes shows)
@@ -6192,7 +6192,7 @@ socket) · Classic voice listening on a speech server · Grok Live's relay
 socket · Watch calls (tool grant, revoke, audio status and prepare) · chat
 takeover (claims are judged by the dashboard's pid) · Desktop views (the
 hook watches the dashboard's gateway) · predictions (they fork the gateway's
-chat) · the plugin update nudge (the `dashboard-profiles` capability) · Local
+chat) · step summaries' side question (it forks the gateway's chat too) · the plugin update nudge (the `dashboard-profiles` capability) · Local
 Live's reason when it runs in a plugin host · Linked Rooms' new drafts and
 room setup (their own capability, `room-dashboard-profiles`), and the setup's
 restart, which a plugin host never starts · the notifier README and
@@ -6204,7 +6204,7 @@ profile, so it already reaches the dashboard)
 
 **Code**
 - App: `Conduit/Services/DashboardPath.swift` (conduitProfileParameter), `Conduit/Services/NotifierPluginStatus.swift` (dashboardProfileParameter, usedCapabilities), `Conduit/Voice/LocalLive/LocalLiveClient.swift`, `Conduit/Voice/GrokLive/GrokLiveClient.swift`, `Conduit/Voice/HermesVoiceGateway.swift` (profileParameter, rebuilt by AppState's read-aloud currency check when it changes), `Conduit/Voice/SpeechServerTranscription.swift`, `Conduit/Voice/SpeechServerSpeech.swift`, `Conduit/Voice/HermesVoiceConfigurationService.swift`, `Conduit/Watch/WatchToolGrantClient.swift`, `Conduit/Services/ChatTakeover.swift`, `Conduit/Services/AppState+Predictive.swift`, `Conduit/Services/AppState.swift` (the Desktop views read), `Shared/LocalLive/LocalLiveProtocol.swift`
-- Notifier: `notifier/dashboard/api/core.py` (_conduit_route_profile), `notifier/dashboard/api/local_live.py` (LOCAL_LIVE_PLUGIN_HOST_REASON), `notifier/dashboard/api/capabilities.py` (ROUTE_CAPABILITIES), `notifier/dashboard/api/linked_rooms.py` (post_room_draft, get_room_setup, post_room_setup and _restart_room_gateway's plugin host guard), `notifier/README.md`, `notifier/CHANGELOG.md`, `notifier/upstream/contract.yml` (the notes on these routes and the plugin host flag)
+- Notifier: `notifier/dashboard/api/core.py` (_conduit_route_profile), `notifier/dashboard/api/local_live.py` (LOCAL_LIVE_PLUGIN_HOST_REASON), `notifier/dashboard/api/capabilities.py` (ROUTE_CAPABILITIES), `notifier/dashboard/api/chats.py` (post_side_question), `Conduit/Services/AppState+StepSummaries.swift` (askStepSummaryOfPlugin), `notifier/dashboard/api/linked_rooms.py` (post_room_draft, get_room_setup, post_room_setup and _restart_room_gateway's plugin host guard), `notifier/README.md`, `notifier/CHANGELOG.md`, `notifier/upstream/contract.yml` (the notes on these routes and the plugin host flag)
 - Tests: `ConduitTests/HermesVoiceGatewayTimeoutTests+LocalLive.swift`, `ConduitTests/ChatTakeoverTests.swift`, `notifier/tests/test_local_live.py`, `notifier/tests/test_grok_live.py`, `notifier/tests/test_room_setup.py`, `notifier/tests/test_room_invites.py`
 
 **Rulings**
@@ -6219,7 +6219,7 @@ profile, so it already reaches the dashboard)
 - Pulse's app side is on its branch, not main: when it calls its routes for such a profile, check them against this entry.
 - Linked Rooms' app side, on the `linked-rooms` branch, sends `?profile=` to the setup until C3, which sends `?conduit_profile=` to it and to new drafts when the plugin lists `room-dashboard-profiles`. Until then the branch's setup for such a profile saves without restarting the gateway and says to restart it. Of the rooms routes, only a draft starts Linked Rooms' loops, so one made with `?profile=` (an older plugin) starts them in the plugin host too, where they wait on the lease the dashboard holds.
 
-**Checked:** 2026-11-02, #1675 (each live voice, the speech server and takeover on a profile that turned the plugin off say how to turn it on there, not to update (issue 1671)); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1360 with notifier #419 (Linked Rooms' drafts and setup); #1344 with notifier #412 (every plugin route checked for the dashboard process's state).
+**Checked:** 2026-11-07, #1954 (step summaries' `/side-question` takes `?conduit_profile=` through `_conduit_route_profile`, notifier #604); 2026-11-02, #1675 (each live voice, the speech server and takeover on a profile that turned the plugin off say how to turn it on there, not to update (issue 1671)); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1360 with notifier #419 (Linked Rooms' drafts and setup); #1344 with notifier #412 (every plugin route checked for the dashboard process's state).
 
 ## Running and Needs approval in the chats list
 
