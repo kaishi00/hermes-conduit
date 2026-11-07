@@ -377,8 +377,15 @@ final class AppStoreScreenshotTests: XCTestCase {
     }
 
     private func dismissFinishSetupCard() {
-        let notNow = app.buttons["finish-setup.not-now"]
-        if notNow.waitForExistence(timeout: 10) {
+        // Bots Home and the Sessions tab can both hold the card: the one on
+        // screen is the one to dismiss.
+        let cards = app.buttons.matching(identifier: "finish-setup.not-now")
+        guard cards.firstMatch.waitForExistence(timeout: 10) else {
+            settle()
+            return
+        }
+        let notNow = cards.allElementsBoundByIndex.first { $0.isHittable } ?? cards.firstMatch
+        do {
             snap("debug-finish-setup")
             // Beside the empty chat column on an iPad, accessibility's hit
             // test misses the button though a touch lands; tap its point.

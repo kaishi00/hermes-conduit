@@ -31,6 +31,7 @@ REPO_ROOT = os.path.dirname(SCRIPTS_DIR)
 WORKFLOW = os.path.join(REPO_ROOT, ".github", "workflows", "ci.yml")
 NIGHTLY = os.path.join(REPO_ROOT, ".github", "workflows", "nightly.yml")
 SCREENSHOTS = os.path.join(REPO_ROOT, ".github", "workflows", "app-store-screenshots.yml")
+PROMO = os.path.join(REPO_ROOT, ".github", "workflows", "app-store-promo.yml")
 SMOKE_SUITE = os.path.join(SCRIPTS_DIR, "smoke-suite.json")
 
 CACHE_PATH = ("          path: |\n"
@@ -626,10 +627,12 @@ class ScreenshotWorkflowTests(unittest.TestCase):
     Homebrew packages; none of that may share a job with a token that can
     write to the repository."""
 
+    path = SCREENSHOTS
+
     def setUp(self):
-        if not os.path.exists(SCREENSHOTS):
-            self.skipTest("app-store-screenshots.yml not present")
-        self.text = _read(SCREENSHOTS)
+        if not os.path.exists(self.path):
+            self.skipTest(f"{os.path.basename(self.path)} not present")
+        self.text = _read(self.path)
 
     def test_the_workflow_only_reads_by_default(self):
         self.assertTrue("\npermissions:\n  contents: read\n" in self.text,
@@ -637,21 +640,27 @@ class ScreenshotWorkflowTests(unittest.TestCase):
 
     def test_only_a_job_that_runs_nothing_it_checked_out_or_installed_writes(self):
         default_writes = "\npermissions:\n  contents: write\n" in self.text
-        writers = [key for key in _job_keys(SCREENSHOTS)
-                   if "contents: write" in _job_text(SCREENSHOTS, key)
-                   or (default_writes and "permissions:" not in _job_text(SCREENSHOTS, key))]
+        writers = [key for key in _job_keys(self.path)
+                   if "contents: write" in _job_text(self.path, key)
+                   or (default_writes and "permissions:" not in _job_text(self.path, key))]
         self.assertTrue(writers, "nothing publishes the screenshot refs")
         for key in writers:
-            text = _job_text(SCREENSHOTS, key)
+            text = _job_text(self.path, key)
             for runs_code in ("actions/checkout", "scripts/", "brew install", "pip install"):
                 self.assertFalse(runs_code in text, f"{key} can write and runs {runs_code}")
 
     def test_the_token_is_never_part_of_a_url_or_script(self):
         self.assertFalse("x-access-token:${{" in self.text, "the token is in a push URL")
-        for key in _job_keys(SCREENSHOTS):
-            for line in _job_text(SCREENSHOTS, key).splitlines():
+        for key in _job_keys(self.path):
+            for line in _job_text(self.path, key).splitlines():
                 if "${{ github.token }}" in line:
                     self.assertRegex(line, r"^\s+[A-Z_]+: \$\{\{ github\.token \}\}$", key)
+
+
+class PromoWorkflowTests(ScreenshotWorkflowTests):
+    """app-store-promo.yml runs the same demo Hermes, under the same rule."""
+
+    path = PROMO
 
 
 class WorkflowExpressionTests(unittest.TestCase):

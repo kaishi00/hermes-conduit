@@ -136,7 +136,8 @@ jobs:
           out="$RUNNER_TEMP/shots-ref"
           mkdir -p "$out"
           cp -R shots "$out/" 2>/dev/null || true
-          find "$out" -name '*.mov' -size +90M -delete
+          # GitHub refuses a file over 100 MB, and one would sink the whole ref.
+          find "$out" \( -name '*.mov' -o -name '*.mp4' \) -size +90M -print -delete
           mkdir -p "$out/logs"
           for f in demo-hermes/*.log results-*.log record-*.log app-log.txt probe-bots.txt; do
             if [ -f "$f" ]; then tail -c 400000 "$f" > "$out/logs/$(basename "$f")"; fi
