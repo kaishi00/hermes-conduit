@@ -436,7 +436,8 @@ struct RichCardSchema {
     static let maxFields = 6
     private static let secretParts = ["password", "passcode", "secret", "token", "apikey", "onetime", "privatekey",
                                       "recoverykey", "licensekey", "seedphrase", "verificationcode", "securitycode",
-                                      "authcode", "backupcode", "passphrase", "totp", "masterkey", "credential"]
+                                      "authcode", "backupcode", "passphrase", "totp", "masterkey", "credential",
+                                      "2fa", "twofactor", "logincode"]
     private static let secretWords: Set<String> = ["pin", "otp", "cvv", "cvc"]
     private static let datePattern = try! NSRegularExpression(pattern: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2})?$"#)
     private static let numberPattern = try! NSRegularExpression(pattern: #"^-?[0-9]+(\.[0-9]+)?$"#)

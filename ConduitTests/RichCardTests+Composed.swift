@@ -64,7 +64,8 @@ extension AppStateVoiceCapabilityTests {
     func testFieldsNeverAskForSecrets() {
         for name in ["password", "Your Passcode", "api_key", "apiKey", "OTP", "PIN", "card-cvv", "One time code",
                      "auth token", "client_secret", "SSH private key", "Recovery key", "Verification code", "license_key",
-                     "Passphrase", "TOTP", "Master key", "App credentials"] {
+                     "Passphrase", "TOTP", "Master key", "App credentials",
+                     "2FA code", "Two-factor code", "Login code"] {
             XCTAssertTrue(RichCardSchema.namesSecret(name), name)
         }
         for name in ["Spin class", "Subject", "Opinion", "Pinned note", "to", "Topic", "Key dates", "Zip code"] {
