@@ -441,7 +441,7 @@ struct RoomLinkOpenedSheet: View {
     }
 
     private func acceptForm(_ preview: RoomLinkPreview) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        SettingsCard {
             RoomLinkNameField(name: $name, caption: AppLocalization.string("\(preview.name) sees you by this name."))
             if let acceptError {
                 Label(acceptError, systemImage: "exclamationmark.triangle.fill")
