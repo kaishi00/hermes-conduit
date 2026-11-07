@@ -162,9 +162,9 @@ struct DelegationRoutingSettings: View {
 
     private func modeSummary(_ mode: String, _ routing: DelegationRouting) -> String {
         switch mode {
-        case DelegationRouting.defaultMode: AppLocalization.string("Every subagent runs on the delegate model below.")
-        case DelegationRouting.modelMapMode: AppLocalization.string("Name a few models. The agent picks one for each subagent.")
-        case DelegationRouting.profileRoutesMode: AppLocalization.string("Subagents run as one of your profiles, with its own model, skills and keys.")
+        case DelegationRouting.defaultMode: return AppLocalization.string("Every subagent runs on the delegate model below.")
+        case DelegationRouting.modelMapMode: return AppLocalization.string("Name a few models. The agent picks one for each subagent.")
+        case DelegationRouting.profileRoutesMode: return AppLocalization.string("Subagents run as one of your profiles, with its own model, skills and keys.")
         default:
             let summary = routing.backend(mode)?.summary ?? ""
             return summary.isEmpty ? AppLocalization.string("From a plugin. Its settings live with that plugin.") : summary
