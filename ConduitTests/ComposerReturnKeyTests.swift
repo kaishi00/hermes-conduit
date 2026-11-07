@@ -20,6 +20,14 @@ import XCTest
 
 @MainActor
 final class ComposerReturnKeyTests: XCTestCase {
+
+    func testTheComposerFieldsTurnOffInlinePredictionOnlyOnAMac() {
+        XCTAssertEqual(ReturnKeyTextView.inlinePredictionType(onMac: true), .no)
+        XCTAssertEqual(ReturnKeyTextView.inlinePredictionType(onMac: false), .default)
+        let here = ReturnKeyTextView.inlinePredictionType(onMac: ProcessInfo.processInfo.isiOSAppOnMac)
+        XCTAssertEqual(ImagePasteTextView(frame: .zero, textContainer: nil).inlinePredictionType, here)
+        XCTAssertEqual(ReturnKeyTextView().inlinePredictionType, here)
+    }
     override func setUp() {
         super.setUp()
         UserDefaults.standard.removeObject(forKey: ComposerReturnKey.preferenceKey)
@@ -182,6 +190,162 @@ final class ComposerReturnKeyTests: XCTestCase {
 
         XCTAssertFalse(view.handleReturnKeyPress(shiftPressed: false, hasMarkedText: true))
         XCTAssertEqual(submitCount, 0)
+    }
+
+    // MARK: - Return key command (the route on a Mac)
+
+    func testKeyCommandIsPlainReturnWithPriorityOverTheTextSystem() {
+        // On a Mac the text view's own Return handling runs before
+        // pressesBegan; only a priority key command gets there first.
+        let command = ImagePasteTextView().keyCommands?.first { $0.input == "\r" }
+        XCTAssertNotNil(command)
+        XCTAssertEqual(command?.modifierFlags, [])
+        XCTAssertEqual(command?.wantsPriorityOverSystemBehavior, true)
+    }
+
+    func testKeyCommandTakesReturnOnlyWhenTheComposerWouldSend() {
+        let view = ImagePasteTextView()
+        view.onSubmitFromReturn = { true }
+        view.canSubmitFromReturn = true
+
+        view.returnKeySends = false
+        XCTAssertFalse(view.returnKeyCommandApplies(hasMarkedText: false))
+
+        view.returnKeySends = true
+        XCTAssertTrue(view.returnKeyCommandApplies(hasMarkedText: false))
+        // The IME's Return confirms its candidate.
+        XCTAssertFalse(view.returnKeyCommandApplies(hasMarkedText: true))
+
+        view.canSubmitFromReturn = false
+        XCTAssertFalse(view.returnKeyCommandApplies(hasMarkedText: false))
+
+        view.canSubmitFromReturn = true
+        view.onSubmitFromReturn = nil
+        XCTAssertFalse(view.returnKeyCommandApplies(hasMarkedText: false))
+    }
+
+    func testShiftedKeyCommandNeverSends() {
+        // On a Mac no Shift press may reach the view; the command's own
+        // modifiers keep Shift-Return a newline.
+        let view = ImagePasteTextView()
+        view.returnKeySends = true
+        view.canSubmitFromReturn = true
+        view.onSubmitFromReturn = { true }
+        let shifted = UIKeyCommand(input: "\r", modifierFlags: .shift, action: #selector(ReturnKeyTextView.returnKeyCommandPressed))
+
+        XCTAssertFalse(view.canPerformAction(#selector(ReturnKeyTextView.returnKeyCommandPressed), withSender: shifted))
+    }
+
+    func testKeyCommandSendsThroughTheComposer() {
+        let view = ImagePasteTextView()
+        view.returnKeySends = true
+        view.canSubmitFromReturn = true
+        var submitCount = 0
+        view.onSubmitFromReturn = { submitCount += 1; return true }
+
+        view.returnKeyCommandPressed()
+        XCTAssertEqual(submitCount, 1)
+        XCTAssertEqual(view.text, "")
+    }
+
+    func testDeclinedKeyCommandStillInsertsTheNewline() {
+        let view = ImagePasteTextView()
+        view.returnKeySends = true
+        view.canSubmitFromReturn = true
+        view.onSubmitFromReturn = { false }
+
+        view.returnKeyCommandPressed()
+        XCTAssertEqual(view.text, "\n")
+    }
+
+    func testRoomAndFullEditorFieldsTakeTheShortcut() {
+        // A group room's field and the full editor use the same text view,
+        // so the same Return key command reaches them.
+        let command = ReturnKeyTextView().keyCommands?.first { $0.input == "\r" }
+        XCTAssertEqual(command?.wantsPriorityOverSystemBehavior, true)
+    }
+
+    // MARK: - Room and full editor field: text sync
+
+    private func editorCoordinator(text: Binding<String>) -> ReturnKeyTextEditor.Coordinator {
+        ReturnKeyTextEditor(
+            text: text,
+            isFocused: .constant(true),
+            accessibilityLabel: "Message",
+            canSubmitFromReturn: false,
+            onSubmitFromReturn: { false }
+        ).makeCoordinator()
+    }
+
+    func testFieldTakesAChangeMadeElsewhereWithTheCursorAfterIt() {
+        var stored = ""
+        let coordinator = editorCoordinator(text: Binding(get: { stored }, set: { stored = $0 }))
+        let field = ReturnKeyTextView()
+        field.text = "Hi"
+
+        coordinator.apply(text: "Hi @bot ", to: field, hasMarkedText: false)
+        XCTAssertEqual(field.text, "Hi @bot ")
+        XCTAssertEqual(field.selectedRange, NSRange(location: 8, length: 0))
+    }
+
+    func testTypingReachesTheBinding() {
+        var stored = ""
+        let coordinator = editorCoordinator(text: Binding(get: { stored }, set: { stored = $0 }))
+        let field = ReturnKeyTextView()
+        field.text = "typed"
+
+        coordinator.textDidChange(in: field, hasMarkedText: false)
+        XCTAssertEqual(stored, "typed")
+    }
+
+    func testLaggingBindingNeverRewritesTyping() {
+        // The binding still holds the field's last report while a newer
+        // keystroke is in flight: that's an echo, not a change to apply.
+        var stored = ""
+        let coordinator = editorCoordinator(text: Binding(get: { stored }, set: { stored = $0 }))
+        let field = ReturnKeyTextView()
+        field.text = "Hel"
+        coordinator.textDidChange(in: field, hasMarkedText: false)
+        field.text = "Hell"
+
+        coordinator.apply(text: "Hel", to: field, hasMarkedText: false)
+        XCTAssertEqual(field.text, "Hell")
+    }
+
+    func testChangeAlreadyInPlaceWhenCompositionEndsDoesNotLinger() {
+        var stored = ""
+        let coordinator = editorCoordinator(text: Binding(get: { stored }, set: { stored = $0 }))
+        let field = ReturnKeyTextView()
+        field.text = "にほ"
+        coordinator.apply(text: "日本", to: field, hasMarkedText: true)
+
+        field.text = "日本"
+        coordinator.textDidChange(in: field, hasMarkedText: false)
+        XCTAssertNil(coordinator.pendingText)
+
+        field.text = "日本語"
+        coordinator.textDidChange(in: field, hasMarkedText: false)
+        XCTAssertEqual(field.text, "日本語")
+        XCTAssertEqual(stored, "日本語")
+    }
+
+    func testChangeMadeDuringCompositionLandsWhenItEnds() {
+        // A quote or dictation write while the IME composes isn't dropped:
+        // it waits, then lands once the composition ends.
+        var stored = "にほ"
+        let coordinator = editorCoordinator(text: Binding(get: { stored }, set: { stored = $0 }))
+        let field = ReturnKeyTextView()
+        field.text = "にほ"
+
+        coordinator.apply(text: "> quote\n", to: field, hasMarkedText: true)
+        XCTAssertEqual(field.text, "にほ")
+        XCTAssertEqual(coordinator.pendingText, "> quote\n")
+
+        field.text = "日本"
+        coordinator.textDidChange(in: field, hasMarkedText: false)
+        XCTAssertEqual(field.text, "> quote\n")
+        XCTAssertEqual(stored, "> quote\n")
+        XCTAssertNil(coordinator.pendingText)
     }
 
     func testTextViewDefaultsPreserveLegacyReturnBehavior() {

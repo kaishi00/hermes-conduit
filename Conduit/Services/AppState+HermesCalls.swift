@@ -15,6 +15,17 @@ import OSLog
 private let hermesCallsStateLogger = Logger(subsystem: "com.milim.relay", category: "HermesCalls")
 
 extension AppState {
+    /// The name a bot's contact gets (Settings > Calls from Hermes, #1606):
+    /// the one its calls give (HermesCallerName), so a saved contact names
+    /// the call as the call would itself. An unnamed main profile goes by
+    /// its bot's name rather than "Hermes" (#1257).
+    func hermesCallContactName(_ profile: String) -> String {
+        let id = profile.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = id.isEmpty ? "default" : id
+        let given = profileBotTitles[key] ?? profileHermesNames[key]
+        return HermesCallerName.name(profile: key, mainName: defaultProfileName, profileName: given)
+    }
+
     /// Whether the host holds calls back while the user is in a live call
     /// (plugin 0.14+).
     var supportsHermesCallPresence: Bool {
@@ -141,7 +152,8 @@ extension AppState {
 
     // MARK: Ringing the Watch
 
-    /// Checks each Watch voice for the active profile: calls from Hermes
+    /// Checks each Watch voice for the profile the Watch's calls start on
+    /// (the hands-free profile, #1564): calls from Hermes
     /// ring the Watch only while the voice it answers with can start
     /// (WatchCallVoices; Eric chose "Live only", 2026-10-11). On each
     /// connect and profile switch, and when the Watch first sends its call
@@ -153,7 +165,7 @@ extension AppState {
             shareWatchCallVoices()
             return
         }
-        let scope = hermesCallsKey(profile: activeProfile)
+        let scope = hermesCallsKey(profile: handsFreeProfile)
         rescopeWatchCallVoices()
         guard supportsHermesCalls else {
             shareWatchCallVoices()
@@ -168,7 +180,7 @@ extension AppState {
             (.geminiLive, await gemini), (.qwenLive, await qwen), (.gptLive, await gpt), (.grokLive, await grok), (.localLive, await localLive),
         ]
         // Another server or profile by now: these say nothing about it.
-        guard scope == hermesCallsKey(profile: activeProfile) else { return }
+        guard scope == hermesCallsKey(profile: handsFreeProfile) else { return }
         var voices = PushNotificationService.shared.watchCallVoices
         // A check that failed (the host out of reach) keeps the last answer.
         for case let (voice, ready?) in checks {
@@ -183,14 +195,14 @@ extension AppState {
     func rescopeWatchCallVoices() {
         let notifications = PushNotificationService.shared
         guard notifications.watchVoIPToken != nil else { return }
-        notifications.updateWatchCallVoices(notifications.watchCallVoices.scoped(to: hermesCallsKey(profile: activeProfile)))
+        notifications.updateWatchCallVoices(notifications.watchCallVoices.scoped(to: hermesCallsKey(profile: handsFreeProfile)))
     }
 
     /// The Watch sent its call token or voice: its voices are checked now
     /// if this profile's never were, and it hears what the iPhone knows.
     func watchCallTokenChanged() {
         let voices = PushNotificationService.shared.watchCallVoices
-        if voices.scope != hermesCallsKey(profile: activeProfile) || voices.ready.isEmpty {
+        if voices.scope != hermesCallsKey(profile: handsFreeProfile) || voices.ready.isEmpty {
             Task { await refreshWatchCallVoices() }
         } else {
             shareWatchCallVoices()
@@ -198,23 +210,27 @@ extension AppState {
     }
 
     /// A Watch voice's availability, checked anywhere else (Voice settings,
-    /// a Watch call's start), for the active profile.
-    func noteWatchCallVoice(_ voice: WatchCallVoices.Voice, ready: Bool) {
+    /// a Watch call's start) for `profile` (nil: the active one). Kept only
+    /// for the profile the Watch's calls start on.
+    func noteWatchCallVoice(_ voice: WatchCallVoices.Voice, ready: Bool, profile: String? = nil) {
+        let profile = profile ?? activeProfile
+        guard profilesMatch(profile, handsFreeProfile) else { return }
         var voices = PushNotificationService.shared.watchCallVoices
-        voices.note(voice, ready: ready, scope: hermesCallsKey(profile: activeProfile))
+        voices.note(voice, ready: ready, scope: hermesCallsKey(profile: handsFreeProfile))
         PushNotificationService.shared.updateWatchCallVoices(voices)
         shareWatchCallVoices()
     }
 
     private func watchCallVoiceCheck(_ voice: WatchCallVoices.Voice) async -> Bool? {
+        let profile = handsFreeProfile
         switch voice {
-        case .geminiLive: return (try? await geminiLiveTokenClient.availability())?.isAvailable
-        case .qwenLive: return (try? await qwenLiveTokenClient.availability())?.isAvailable
+        case .geminiLive: return (try? await makeLiveTokenClient(provider: .gemini) { profile }.availability())?.isAvailable
+        case .qwenLive: return (try? await makeLiveTokenClient(provider: .qwen) { profile }.availability())?.isAvailable
         // The Watch's GPT-Live is the subscription's, whatever the phone uses.
-        case .gptLive: return (try? await gptLiveClient.availability(billing: .subscription))?.isAvailable
-        case .grokLive: return (try? await grokLiveClient.availability())?.isAvailable
+        case .gptLive: return (try? await makeGPTLiveClient { profile }.availability(billing: .subscription))?.isAvailable
+        case .grokLive: return (try? await makeGrokLiveClient { profile }.availability())?.isAvailable
         // The phone's Local Live check: the host's speech server and key.
-        case .localLive: return (try? await localLiveClient.status())?.available
+        case .localLive: return (try? await makeLocalLiveClient { profile }.status())?.available
         }
     }
 
@@ -224,11 +240,12 @@ extension AppState {
     /// accent the Watch app draws in, and whether the active dashboard's
     /// notifications are end-to-end encrypted (the Watch's Settings).
     func shareWatchCallVoices() {
+        shareMainProfileNamesWithNotifications()
         let notifications = PushNotificationService.shared
         WatchVoiceLink.shared.share(WatchPhoneContext(
             voices: Self.watchContextVoices(
                 notifications.watchCallVoices,
-                scope: hermesCallsKey(profile: activeProfile),
+                scope: hermesCallsKey(profile: handsFreeProfile),
                 plugin: notifierPlugin.state
             ),
             callsRing: supportsHermesCalls && notifications.voipToken != nil,
@@ -237,6 +254,15 @@ extension AppState {
             accent: UserDefaults.standard.string(forKey: ConduitAccent.storageKey) ?? ConduitAccent.defaultValue.rawValue,
             notificationsEncryption: Self.watchNotificationsEncryption(activeDashboardID.flatMap(notificationsEncryption(of:)))
         ))
+    }
+
+    /// The Notification Service Extension names the main bot's pushes as
+    /// the app does (NotificationCopy.named), from these.
+    func shareMainProfileNamesWithNotifications() {
+        let names = mainProfileNamesByDashboard
+        if NotificationSharedSettings.mainProfileNames != names { NotificationSharedSettings.mainProfileNames = names }
+        let active = activeDashboardID?.uuidString
+        if NotificationSharedSettings.activeDashboardID != active { NotificationSharedSettings.activeDashboardID = active }
     }
 
     /// The Watch's word for a dashboard's notifications encryption: nil
@@ -389,7 +415,8 @@ extension AppState {
             // Local Live outside agent mode has no model of its own to say
             // the call's news: classic voice takes it, as
             // openVoiceConversation does. In agent mode its fast model does.
-            if let engine = self.configuredLiveVoiceEngine(profile: profile), engine != .localLive || self.isLocalLiveAgent {
+            if let engine = self.configuredLiveVoiceEngine(profile: profile),
+               engine != .localLive || self.usesLocalLiveAgent(profile: profile) {
                 HermesCallTrace.shared.note("Opening live voice (\(engine))")
                 self.pendingHermesCall = opening
                 opened = await self.openVoiceConversation(intent)
@@ -713,8 +740,14 @@ extension AppState {
             setNativeHermesCallAnswered(false)
         }
         guard isNativeHermesCallActive != active else { return }
+        if active { releaseLaunchDashboardChoice(for: "a call from Hermes") }
         isNativeHermesCallActive = active
-        if active { recoverTransportForCarPlayIfNeeded(immediately: true) }
+        if active {
+            // A reading still opening holds no audio yet, so CallKit's
+            // activation doesn't interrupt it; it ends here (issue 1770).
+            messageReadAloudController.stop()
+            recoverTransportForCarPlayIfNeeded(immediately: true)
+        }
     }
 
     /// The user answered the call in CallKit: the classic Voice it opens

@@ -59,7 +59,7 @@ struct CapabilityToolsTab: View {
             }
         }
         .task(id: store.profile) {
-            if store.toolCalls == nil { await store.loadToolCalls() }
+            if store.toolCalls == nil || store.showsKept.contains(.toolCalls) { await store.loadToolCalls() }
         }
     }
 
@@ -72,22 +72,27 @@ struct CapabilityToolsTab: View {
                 Text("Sort")
             }
             Divider()
-            Button {
-                setAll(enabled: true)
-            } label: {
-                Label(AppLocalization.string("Turn All On"), systemImage: "checkmark.circle")
+            // They pick their toolsets from the list shown: a kept one waits
+            // for Hermes' answer.
+            Group {
+                Button {
+                    setAll(enabled: true)
+                } label: {
+                    Label(AppLocalization.string("Turn All On"), systemImage: "checkmark.circle")
+                }
+                Button {
+                    setAll(enabled: false)
+                } label: {
+                    Label(AppLocalization.string("Turn All Off"), systemImage: "circle")
+                }
             }
-            Button {
-                setAll(enabled: false)
-            } label: {
-                Label(AppLocalization.string("Turn All Off"), systemImage: "circle")
-            }
+            .disabled(appState.capabilitiesAreKept || !appState.canChangeCapabilities)
         } label: {
             if bulkRunning {
                 ProgressView().controlSize(.small)
             } else {
                 Image(systemName: "ellipsis.circle")
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
         }
@@ -98,7 +103,7 @@ struct CapabilityToolsTab: View {
     /// One switch at a time; a dashboard or profile switch midway stops it.
     private func setAll(enabled: Bool) {
         let targets = visible.filter { $0.enabled != enabled }.map(\.name)
-        guard !bulkRunning, !targets.isEmpty, let rows = appState.capabilitiesOwner else { return }
+        guard !bulkRunning, !appState.capabilitiesAreKept, !targets.isEmpty, let rows = appState.capabilitiesOwner else { return }
         Haptics.selection()
         bulkRunning = true
         Task {
@@ -181,6 +186,7 @@ private struct CapabilityToolsetRow: View {
                 Text(verbatim: CapabilityToolsetOrdering.label(toolset))
             }
             .labelsHidden()
+            .disabled(!appState.canChangeCapabilities)
             .tint(.conduitAccent)
         }
     }
@@ -231,7 +237,7 @@ struct CapabilityToolsetDetailPage: View {
             }
             if appState.capabilitiesAreCurrent, let notice {
                 Text(verbatim: notice)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.orange)
                     .padding(.horizontal, 16)
             }
@@ -247,22 +253,23 @@ struct CapabilityToolsetDetailPage: View {
                 }
             } else if appState.capabilitiesAreCurrent, let configError {
                 Text(verbatim: configError)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
             }
             Text("Changes apply to new sessions.")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 16)
         }
         .navigationTitle(Text(verbatim: toolset.map(CapabilityToolsetOrdering.label) ?? name))
+        // Before the first frame, so the page doesn't open without them.
+        .onAppear { if config == nil, backends == nil { showKept() } }
         // Read again for another dashboard or profile: what the last one
         // answered never stays on screen to be acted on.
         .task(id: detailScope) {
-            config = nil
+            showKept()
             configError = nil
-            backends = nil
             backendsError = nil
             notice = nil
             // A key prompt or backend confirmation still open belongs to
@@ -301,7 +308,7 @@ struct CapabilityToolsetDetailPage: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Text(verbatim: CapabilityToolsetOrdering.label(toolset))
-                    .font(.title3.weight(.semibold))
+                    .scaledFont(.title3.weight(.semibold))
                 if toolset.configured == false {
                     let pill = CapabilityToolsetStyle.needsKeysPill()
                     CapabilityPill(text: pill.text, tint: pill.tint)
@@ -309,14 +316,14 @@ struct CapabilityToolsetDetailPage: View {
             }
             if let description = toolset.description, !description.isEmpty {
                 Text(verbatim: description)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
             }
             if let counts = store.toolCalls {
                 let calls = CapabilityToolsetOrdering.calls(toolset, counts: counts)
                 if calls > 0 {
                     Text(verbatim: CapabilityFormat.uses(calls))
-                        .font(.caption.monospacedDigit())
+                        .scaledFont(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
@@ -325,8 +332,9 @@ struct CapabilityToolsetDetailPage: View {
                 set: { enabled in Task { await appState.toggleToolset(name: toolset.name, enabled: enabled) } }
             )) {
                 Text("Turned on")
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
             }
+            .disabled(!appState.canChangeCapabilities)
             .tint(.conduitAccent)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -337,10 +345,10 @@ struct CapabilityToolsetDetailPage: View {
     private func toolChip(_ tool: String) -> some View {
         HStack(spacing: 4) {
             Text(verbatim: tool)
-                .font(.caption.monospaced())
+                .scaledFont(.caption.monospaced())
             if let count = store.toolCalls?[tool], count > 0 {
                 Text(verbatim: CapabilityFormat.uses(count))
-                    .font(.caption2.monospacedDigit())
+                    .scaledFont(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
         }
@@ -367,17 +375,17 @@ struct CapabilityToolsetDetailPage: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 HStack(spacing: 6) {
                                     Text(verbatim: backend.label)
-                                        .font(.subheadline.weight(.semibold))
+                                        .scaledFont(.subheadline.weight(.semibold))
                                     Self.backendPill(backend.status)
                                 }
                                 if !backend.description.isEmpty {
                                     Text(verbatim: backend.description)
-                                        .font(.caption)
+                                        .scaledFont(.caption)
                                         .foregroundStyle(.secondary)
                                 }
                                 if let detail = backend.detail, backend.status != "ready" {
                                     Text(verbatim: detail)
-                                        .font(.caption)
+                                        .scaledFont(.caption)
                                         .foregroundStyle(.orange)
                                 }
                             }
@@ -386,7 +394,7 @@ struct CapabilityToolsetDetailPage: View {
                                 ProgressView().controlSize(.small)
                             } else if backend.active {
                                 Image(systemName: "checkmark")
-                                    .font(.subheadline.weight(.semibold))
+                                    .scaledFont(.subheadline.weight(.semibold))
                                     .foregroundStyle(Color.conduitAccent)
                             }
                         }
@@ -394,13 +402,14 @@ struct CapabilityToolsetDetailPage: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .disabled(working != nil || backend.status == "unavailable")
+                    // Off with no dashboard to write through, as the switches are.
+                    .disabled(working != nil || backend.status == "unavailable" || !appState.canChangeCapabilities)
                     .accessibilityAddTraits(backend.active ? .isSelected : [])
                 }
             }
         } else if let backendsError {
             Text(verbatim: backendsError)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 16)
         }
@@ -434,7 +443,7 @@ struct CapabilityToolsetDetailPage: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Text(verbatim: provider.name)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                 if !provider.badge.isEmpty {
                     CapabilityPill(text: provider.badge, tint: .conduitAura)
                 }
@@ -448,26 +457,27 @@ struct CapabilityToolsetDetailPage: View {
             }
             if !provider.tag.isEmpty {
                 Text(verbatim: provider.tag)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             ForEach(provider.envVars) { env in
                 HStack(spacing: 8) {
                     Text(verbatim: env.key)
-                        .font(.caption.monospaced())
+                        .scaledFont(.caption.monospaced())
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer(minLength: 4)
                     Text(verbatim: env.isSet ? AppLocalization.string("Set") : AppLocalization.string("Not set"))
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(env.isSet ? Color.green : Color.orange)
                     Button(env.isSet ? AppLocalization.string("Replace") : AppLocalization.string("Add")) {
                         keyValue = ""
                         keyPrompt = env
                     }
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .buttonStyle(.borderless)
                     .tint(.conduitAccent)
+                    .disabled(!appState.canChangeCapabilities)
                     .accessibilityLabel(Text(verbatim: env.isSet ? AppLocalization.string("Replace \(env.key)") : AppLocalization.string("Add \(env.key)")))
                 }
             }
@@ -487,7 +497,7 @@ struct CapabilityToolsetDetailPage: View {
                             capability == "extract" ? AppLocalization.string("Used for Extract") : AppLocalization.string("Used for Search"),
                             systemImage: "checkmark"
                         )
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(Color.conduitAccent)
                     } else {
                         CapabilityRowButton(
@@ -495,20 +505,29 @@ struct CapabilityToolsetDetailPage: View {
                         ) {
                             choose(provider, capability: capability)
                         }
-                        .disabled(working != nil)
+                        .disabled(working != nil || !appState.canChangeCapabilities)
                     }
                 }
             }
         } else if provider.isActive {
             Label(AppLocalization.string("In use"), systemImage: "checkmark")
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(Color.conduitAccent)
         } else {
             CapabilityRowButton(title: AppLocalization.string("Use This Backend")) {
                 choose(provider, capability: nil)
             }
-            .disabled(working != nil)
+            .disabled(working != nil || !appState.canChangeCapabilities)
         }
+    }
+
+    /// The backends, and where the terminal runs, as the page showed them
+    /// last time on this dashboard and profile, while Hermes is asked again
+    /// (#1533); a read that fails keeps them.
+    private func showKept() {
+        let serves = store.serves(appState.currentCapabilitiesOwner)
+        config = serves ? store.keptToolsetConfig(name: name) : nil
+        backends = serves && name == "terminal" ? store.keptTerminalBackends() : nil
     }
 
     private func load() async {
@@ -548,7 +567,9 @@ struct CapabilityToolsetDetailPage: View {
                 if needsNous {
                     notice = AppLocalization.string("Sign in to Nous Portal on your host to use this backend.")
                 }
-                // A failed read keeps what's on screen.
+                // Shown as Hermes now holds it, as the kept answer is, so a
+                // failed read after it keeps the change on screen.
+                config = config?.choosing(provider.name, capability: capability)
                 let fresh = try? await store.toolsetConfig(name: name)
                 guard serves(owner) else { return }
                 if let fresh { config = fresh }
@@ -570,6 +591,8 @@ struct CapabilityToolsetDetailPage: View {
             do {
                 guard serves(owner) else { return }
                 try await store.selectTerminalBackend(backend.name)
+                guard serves(owner) else { return }
+                backends = backends.map { TerminalBackendOption.choosing(backend.name, in: $0) }
                 let fresh = try? await store.terminalBackends()
                 guard serves(owner) else { return }
                 if let fresh { backends = fresh }
@@ -589,9 +612,10 @@ struct CapabilityToolsetDetailPage: View {
         Task {
             do {
                 guard serves(owner) else { return }
-                try await store.saveKey(env.key, value: trimmed)
+                try await store.saveKey(env.key, value: trimmed, toolset: name)
                 Haptics.success()
-                // A failed read keeps what's on screen.
+                guard serves(owner) else { return }
+                config = config?.settingKey(env.key)
                 let fresh = try? await store.toolsetConfig(name: name)
                 guard serves(owner) else { return }
                 if let fresh { config = fresh }

@@ -49,8 +49,14 @@ enum ChatQuote {
     static func excerpt(of markdown: String, limit: Int = 200) -> String {
         var words: [String] = []
         var length = 0
+        // A Desktop card reads as what it is, a preview as its file (#1522).
+        let markdown = TranscriptDirectives.rewriting(
+            markdown,
+            preview: { TranscriptDirectives.fileName($0) },
+            card: { _ in DesktopCardDirective.previewNote }
+        )
         for rawLine in markdown.components(separatedBy: .newlines) {
-            // Enough for the preview; a long reply's tail is never scanned.
+            // Enough for the preview; the rest of a long reply isn't excerpted.
             if length > limit { break }
             var line = rawLine.trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("```") || line.hasPrefix("~~~") { continue }
@@ -124,11 +130,15 @@ struct ComposerReplyReference: Equatable {
     let text: String
     /// Worked out once: the chip re-renders with every composer update.
     let excerpt: String
+    /// A room message's thread: the reply goes in it, so the host reads it
+    /// as part of that conversation. Nil in a chat.
+    let threadID: String?
 
-    init(authorName: String, text: String) {
+    init(authorName: String, text: String, threadID: String? = nil) {
         self.authorName = authorName
         self.text = text
         self.excerpt = ChatQuote.excerpt(of: text)
+        self.threadID = threadID
     }
 
     /// The text to submit for `draft`. A slash command is left alone: the
@@ -165,6 +175,48 @@ struct ComposerQuoteRequest: Equatable {
 
     let id = UUID()
     let content: Content
+}
+
+/// A "Replying to" card's tap: the reply it quoted, for the chat or room
+/// on screen to scroll to. Each tap has its own id, so tapping the same
+/// card again still goes.
+struct QuotedReplyJump: Equatable {
+    let id = UUID()
+    let messageID: String
+}
+
+/// Finds the reply a "Replying to" card quoted and scrolls to it: given the
+/// quote and the message the card heads, false when the transcript doesn't
+/// hold it. A chat and a room each provide one; equal by owner, as
+/// ChatQuoteAction, so rows don't re-render when it is made again.
+struct QuotedReplyJumpAction: Equatable {
+    private let owner: ObjectIdentifier
+    private let handler: @MainActor (String, String) -> Bool
+
+    init(owner: AnyObject, handler: @escaping @MainActor (String, String) -> Bool) {
+        self.owner = ObjectIdentifier(owner)
+        self.handler = handler
+    }
+
+    @MainActor
+    func callAsFunction(quote: String, quotedIn messageID: String) -> Bool {
+        handler(quote, messageID)
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.owner == rhs.owner
+    }
+}
+
+private struct QuotedReplyJumpActionKey: EnvironmentKey {
+    static let defaultValue: QuotedReplyJumpAction? = nil
+}
+
+extension EnvironmentValues {
+    var quotedReplyJump: QuotedReplyJumpAction? {
+        get { self[QuotedReplyJumpActionKey.self] }
+        set { self[QuotedReplyJumpActionKey.self] = newValue }
+    }
 }
 
 /// Puts selected chat text into the composer as a quote. Only the chat
@@ -224,14 +276,44 @@ struct ReplyReferenceQuoteCard: View {
     private let onAccentSurface: Bool
     /// Whose message it quoted, in a group room, where there are several.
     private let authorName: String?
+    private let quote: String
+    /// The message the card heads: in a chat or a room, a tap scrolls to
+    /// the reply it quoted (issue 1420).
+    private let quotedIn: String?
+    @Environment(\.quotedReplyJump) private var jump
 
-    init(quote: String, onAccentSurface: Bool = true, authorName: String? = nil) {
+    init(quote: String, onAccentSurface: Bool = true, authorName: String? = nil, quotedIn: String? = nil) {
         self.excerpt = ChatQuote.excerpt(of: quote)
         self.onAccentSurface = onAccentSurface
         self.authorName = authorName
+        self.quote = quote
+        self.quotedIn = quotedIn
     }
 
     var body: some View {
+        if let quotedIn, let jump {
+            Button {
+                if jump(quote: quote, quotedIn: quotedIn) {
+                    Haptics.selection()
+                } else {
+                    // Taken back, or older than the history loaded.
+                    Haptics.warning()
+                    UIAccessibility.post(
+                        notification: .announcement,
+                        argument: AppLocalization.string("Couldn't find the quoted reply in the loaded chat.")
+                    )
+                }
+            } label: {
+                card
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text(AppLocalization.string("Shows the reply it quoted.")))
+        } else {
+            card
+        }
+    }
+
+    private var card: some View {
         HStack(alignment: .top, spacing: 8) {
             RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                 .fill(primaryColor.opacity(0.7))
@@ -241,10 +323,10 @@ struct ReplyReferenceQuoteCard: View {
                     authorName.map { AppLocalization.string("Replying to \($0)") } ?? AppLocalization.string("Replying to"),
                     systemImage: "quote.bubble"
                 )
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(primaryColor)
                 Text(excerpt)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(primaryColor.opacity(0.82))
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)

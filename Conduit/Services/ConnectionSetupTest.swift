@@ -350,6 +350,9 @@ struct ConnectionSetupTestRecoveryPlan: Equatable {
     let remediationStep: ConnectionSetupStep
     let remediationLabel: String
     let offersRetry: Bool
+    /// A certificate failure also offers the HTTPS & certificates page,
+    /// where Conduit can save the server's root to install.
+    var offersCertificateHelp = false
 
     static func plan(
         for stage: ConnectionSetupTestStage,
@@ -360,7 +363,8 @@ struct ConnectionSetupTestRecoveryPlan: Equatable {
             return ConnectionSetupTestRecoveryPlan(
                 remediationStep: .connectionDetails,
                 remediationLabel: AppLocalization.string("Edit Connection Details"),
-                offersRetry: failure != .rateLimited
+                offersRetry: failure != .rateLimited,
+                offersCertificateHelp: failure.helpDestination == .tls
             )
         case .authentication:
             // Retry is never the primary action after rejected credentials:
@@ -368,7 +372,8 @@ struct ConnectionSetupTestRecoveryPlan: Equatable {
             return ConnectionSetupTestRecoveryPlan(
                 remediationStep: .loginCredentials,
                 remediationLabel: AppLocalization.string("Edit Credentials"),
-                offersRetry: failure != .rateLimited
+                offersRetry: failure != .rateLimited,
+                offersCertificateHelp: failure.helpDestination == .tls
             )
         }
     }

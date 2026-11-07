@@ -23,18 +23,18 @@ struct LiveVoiceJobCard: View {
                     .frame(width: 22, height: 22)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: job.title)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                     Text(verbatim: Self.statusText(for: job))
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.conduitTertiary)
             }
             .padding(.horizontal, 14)
@@ -111,7 +111,7 @@ struct LiveVoiceCallJobStrip: View {
                 }
                 if count > 1 {
                     Text("\(count - 1) more in the transcript")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -133,20 +133,20 @@ struct LiveVoiceScreenCardRow: View {
                     .frame(width: 22, height: 22)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: Self.title(for: card))
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                     if !card.title.isEmpty {
                         Text("On screen")
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.conduitTertiary)
             }
             .padding(.horizontal, 14)
@@ -297,6 +297,8 @@ struct LiveVoiceScreenCardSheet: View {
 
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    /// The card's pictures, which a tapped one pages through.
+    @State private var imageGallery = ImageGallerySource()
 
     var body: some View {
         NavigationStack {
@@ -308,10 +310,15 @@ struct LiveVoiceScreenCardSheet: View {
                     if !markdown.isEmpty {
                         // Hermes' own images (MEDIA: paths) load through the gateway.
                         let profile = appState.activeProfile
+                        let resolver = appState.gatewayMediaResolver
+                        let _ = imageGallery.update { [markdown] in
+                            ChatImageGallery.markdownItems(markdown, resolver: resolver, recognizesGatewayMedia: true)
+                        }
                         MarkdownText(source: markdown, gatewayMediaDataURL: { path in
                             await appState.gatewayMediaDataURL(for: path, profile: profile)
                         })
-                        .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver)
+                        .environment(\.gatewayMediaFiles, resolver)
+                        .environment(\.imageGallery, imageGallery)
                     }
                 }
                 .padding(20)
@@ -340,6 +347,8 @@ struct LiveVoiceJobResultSheet: View {
     /// The job as last seen, so a job the ledger prunes while open (it only
     /// keeps the latest settled ones) stays readable.
     @State private var lastSeen: VoiceBackgroundJob?
+    /// The result's pictures, which a tapped one pages through.
+    @State private var imageGallery = ImageGallerySource()
 
     private var job: VoiceBackgroundJob? { jobs.jobs.first { $0.id == jobID } ?? lastSeen }
 
@@ -386,16 +395,21 @@ struct LiveVoiceJobResultSheet: View {
         } icon: {
             if job.status.isActive { ProgressView().controlSize(.small) }
         }
-        .font(.subheadline)
+        .scaledFont(.subheadline)
         .foregroundStyle(.secondary)
         if let result = job.result, LiveVoiceJobCard.hasResult(job) {
             // Hermes' own images (MEDIA: paths) load through the gateway,
             // from the profile the job ran in.
             let profile = job.profile ?? appState.activeProfile
+            let resolver = appState.gatewayMediaResolver(for: profile)
+            let _ = imageGallery.update {
+                ChatImageGallery.markdownItems(result, resolver: resolver, recognizesGatewayMedia: true)
+            }
             MarkdownText(source: result, gatewayMediaDataURL: { path in
                 await appState.gatewayMediaDataURL(for: path, profile: profile)
             })
-            .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver(for: profile))
+            .environment(\.gatewayMediaFiles, resolver)
+            .environment(\.imageGallery, imageGallery)
         } else if job.status.isActive {
             Text("Hermes is still working on this. The result will show here.")
                 .foregroundStyle(.secondary)
@@ -435,7 +449,8 @@ struct LiveVoiceWaitingPanel: View {
     }
 
     static func waits(_ job: VoiceBackgroundJob) -> Bool {
-        guard job.status == .needsInput else { return false }
+        // One the call let go of (its chat deleted, issue 1797) isn't the call's to answer.
+        guard job.status == .needsInput, !job.isDetachedThreadTurn else { return false }
         return job.waitingApproval != nil || job.waitingQuestion.flatMap { HermesCallWaiting(clarify: $0)?.openQuestion } != nil
     }
 }
@@ -452,20 +467,20 @@ struct LiveVoiceJobWaitingCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(verbatim: job.title)
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .lineLimit(2)
             if let approval = job.waitingApproval {
                 Text("APPROVAL NEEDED")
-                    .font(.caption2.weight(.semibold))
+                    .scaledFont(.caption2.weight(.semibold))
                     .foregroundStyle(.orange)
-                let asked = approval.description.trimmingCharacters(in: .whitespacesAndNewlines)
+                let asked = HermesApprovalText.description(approval.description).trimmingCharacters(in: .whitespacesAndNewlines)
                 if !asked.isEmpty {
                     Text(verbatim: asked)
-                        .font(.callout)
+                        .scaledFont(.callout)
                 }
                 if !approval.command.isEmpty {
-                    Text(verbatim: approval.command)
-                        .font(.caption.monospaced())
+                    Text(verbatim: HermesApprovalText.command(approval.command))
+                        .scaledFont(.caption.monospaced())
                         .foregroundStyle(.secondary)
                         .lineLimit(4)
                 }
@@ -485,10 +500,10 @@ struct LiveVoiceJobWaitingCard: View {
                 }
             } else if let question = job.waitingQuestion.flatMap({ HermesCallWaiting(clarify: $0)?.openQuestion }) {
                 Text(verbatim: question.text)
-                    .font(.callout)
+                    .scaledFont(.callout)
                 if question.choices.isEmpty {
                     Text("Answer in your own words.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
                 ForEach(Array(question.choices.enumerated()), id: \.offset) { index, choice in

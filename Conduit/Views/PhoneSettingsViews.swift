@@ -8,6 +8,7 @@
 //  Hermes wants, and the banner after one went in without asking.
 //
 
+import ContactsUI
 import SwiftUI
 import UIKit
 
@@ -29,6 +30,8 @@ struct PhoneSettingsPage: View {
     @State private var askingVoiceMode: LiveVoiceModeName?
     /// Loaded on appear (loading prunes and saves).
     @State private var voiceUses = HealthVoiceReadLog()
+    /// Limited Contacts access's picker, to let Conduit see picked people.
+    @State private var showsContactAccess = false
 
     private var preferences: PhoneSyncPreferences { engine.preferences }
     private var pluginServes: Bool { appState.notifierPlugin.reports(AppState.phoneSyncCapability) }
@@ -46,13 +49,13 @@ struct PhoneSettingsPage: View {
         SettingsDetailContainer {
             ConduitSettingsSection(title: AppLocalization.string("Calendar & phone for Hermes"), symbol: "calendar", tint: .red) {
                 Text("Share your calendar, reminders, Focus and phone status with Hermes so your agent can plan around your day, keep your reminders and pick good moments to reach you. It goes straight from this iPhone to your Hermes host, sealed end to end, and never through Conduit's notification relay.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 if preferences.isOn {
                     statusRows
                 } else if !pluginServes {
                     Text("Update the Conduit plugin on your Hermes host to share your calendar and phone status.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.orange)
                 }
             }
@@ -110,28 +113,28 @@ struct PhoneSettingsPage: View {
     private var statusRows: some View {
         if let destination = preferences.destination {
             Label(AppLocalization.string("Sharing with \(destination.profile) on \(destination.host)"), systemImage: "checkmark.shield")
-                .font(.subheadline)
+                .scaledFont(.subheadline)
         }
         if engine.isSyncing {
             Label("Syncing…", systemImage: "arrow.triangle.2.circlepath")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         } else if let pause = engine.state.pause {
             Text(pause.message)
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.orange)
         } else if let last = engine.state.lastSync {
             Text(AppLocalization.string("Last synced \(last.formatted(.relative(presentation: .named)))"))
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         } else {
             Text("Not synced yet.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
         if let error = engine.lastError, engine.state.pause == nil {
             Text(error)
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.red)
         }
     }
@@ -149,7 +152,7 @@ struct PhoneSettingsPage: View {
             }
             .accessibilityIdentifier("settings.phone.calendar")
             Text(calendarCaption)
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             if choices.calendar.reads {
                 ConduitMenuPicker(
@@ -166,7 +169,7 @@ struct PhoneSettingsPage: View {
             .accessibilityIdentifier("settings.phone.reminders")
             if choices.reminders {
                 Toggle("Read only", isOn: binding(\.remindersReadOnly))
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .padding(.leading, 28)
                     .accessibilityLabel(Text("Reminders read only"))
                     .accessibilityHint(Text(AppLocalization.string("Hermes reads your reminders but can't add, change, complete or delete any.")))
@@ -174,7 +177,7 @@ struct PhoneSettingsPage: View {
                 Text(choices.remindersReadOnly
                      ? AppLocalization.string("Hermes reads your reminders but can't add, change, complete or delete any.")
                      : AppLocalization.string("Hermes reads your reminders and can ask to add, change or complete them."))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.leading, 28)
             }
@@ -182,11 +185,11 @@ struct PhoneSettingsPage: View {
                 Toggle("Include notes and attendees", isOn: binding(\.details))
                 if choices.details, choices.calendar.reads {
                     Toggle("Include attendees' email addresses", isOn: binding(\.attendeeEmails))
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .padding(.leading, 28)
                 }
                 Text("Without these, Hermes gets titles, times, places and lists, not what's written in notes or who's invited.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             if preferences.isOn, !calendars.isEmpty {
@@ -200,7 +203,7 @@ struct PhoneSettingsPage: View {
                             .foregroundStyle(.primary)
                         Spacer(minLength: 8)
                         Image(systemName: "chevron.right")
-                            .font(.footnote.weight(.semibold))
+                            .scaledFont(.footnote.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .rotationEffect(.degrees(showsCalendars ? 90 : 0))
                             .accessibilityHidden(true)
@@ -215,7 +218,7 @@ struct PhoneSettingsPage: View {
                         Toggle(isOn: calendarBinding(row)) {
                             Text(row.title)
                         }
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                     }
                 }
             }
@@ -249,7 +252,7 @@ struct PhoneSettingsPage: View {
             }
             .accessibilityIdentifier("settings.phone.auto-add")
             Text("Hermes always asks before it changes or deletes anything. Without asking, new items go in when Conduit next runs, with Undo. In a voice call, Hermes asks you out loud.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -261,14 +264,14 @@ struct PhoneSettingsPage: View {
             }
             .accessibilityIdentifier("settings.phone.focus")
             Text("Add Conduit to a Focus in Settings > Focus > Focus Filters, give it a name for Hermes such as Work, and choose whether Hermes holds its calls while it's on.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             Toggle(isOn: binding(\.status)) {
                 Label("Phone status", systemImage: "battery.75percent")
             }
             .accessibilityIdentifier("settings.phone.status")
             Text("Battery and charging, whether CarPlay or headphones are connected, Wi-Fi or cellular, and whether you're walking, driving or still. Only the latest state is kept.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -282,7 +285,7 @@ struct PhoneSettingsPage: View {
             }
             .accessibilityIdentifier("settings.phone.alarms")
             Text("They ring like the Clock app's, even in Silent mode or a Focus. Hermes asks each time unless new items go in without asking, and always asks before cancelling one. Hermes sees only the alarms it set.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -293,15 +296,21 @@ struct PhoneSettingsPage: View {
                 Label("Share the people you pick", systemImage: "person.2")
             }
             .accessibilityIdentifier("settings.phone.contacts")
-            Text("Pick the people Hermes should know, and say who they are to you, such as wife or boss, so \"text my wife\" or \"Mum's birthday\" just works. Hermes gets their name, phone numbers, email addresses and birthday. Conduit doesn't read your contacts: only the people you pick here.")
-                .font(.caption)
+            Text("Pick the people Hermes should know, and say who they are to you, such as wife or boss, so \"text my wife\" or \"Mum's birthday\" just works. Hermes gets their name, phone numbers, email addresses and birthday. Conduit reads only the people you pick here, nothing else in your contacts.")
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             Text("Their nickname and company go too, when the contact has them.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
+            if appState.pulseBringsUpBirthdays {
+                Text("With Pulse and its memory on, it brings up their birthdays two weeks ahead, the day before and on the day.")
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
+            }
             if choices.contacts {
                 ForEach(engine.people) { person in
-                    PhonePersonRow(person: person) { relation in
+                    PhonePersonRow(person: person, problem: engine.peopleProblems[person.id],
+                                   allowAccess: { showsContactAccess = true }) { relation in
                         var people = engine.people
                         guard let index = people.firstIndex(where: { $0.id == person.id }) else { return }
                         people[index].relation = relation.isEmpty ? nil : String(relation.prefix(PhonePerson.relationLength))
@@ -325,7 +334,56 @@ struct PhoneSettingsPage: View {
                 }
                 .disabled(engine.people.count >= PhonePerson.maximum)
                 .accessibilityIdentifier("settings.phone.contacts.add")
+                if !engine.people.isEmpty { peopleUpdates }
             }
+        }
+        .task(id: choices.contacts) {
+            if choices.contacts { await engine.refreshPeople() }
+        }
+        // Back from the Settings app, where access may have changed.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            guard choices.contacts else { return }
+            Task { await engine.refreshPeople() }
+        }
+        .modifier(PhoneContactAccessPicker(isPresented: $showsContactAccess) {
+            Task {
+                await engine.refreshPeople()
+                syncPeople()
+            }
+        })
+    }
+
+    /// Whether edits made in Contacts reach Hermes, and how to let them.
+    @ViewBuilder
+    private var peopleUpdates: some View {
+        switch engine.contactsAccess {
+        case .notAsked:
+            Text("Conduit has what each card said when you picked them. To bring in edits you make in Contacts, let Conduit read the people you pick.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+            Button {
+                Haptics.selection()
+                Task {
+                    await engine.requestContactsAccess()
+                    syncPeople()
+                }
+            } label: {
+                Label("Keep them up to date", systemImage: "arrow.triangle.2.circlepath")
+            }
+            .accessibilityIdentifier("settings.phone.contacts.access")
+        case .denied:
+            Text("Edits you make in Contacts reach Hermes only when you pick the person again. To bring them in at each sync, allow Contacts for Conduit in Settings.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+            Button(AppLocalization.string("Open Settings")) {
+                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(url)
+            }
+            .scaledFont(.subheadline)
+        case .limited, .full:
+            Text("Each sync reads the people you picked again, so edits you make in Contacts reach Hermes.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -347,11 +405,11 @@ struct PhoneSettingsPage: View {
                 .accessibilityIdentifier("settings.phone.voice.\(mode.storageID)")
             }
             Text("Let a live voice call read what you share here when you ask, add events and reminders you ask for, and ask you out loud about Hermes' changes. What it reads goes to the company that runs that voice mode, under its terms. Classic voice is Hermes itself and needs nothing here.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             if !voiceUses.entries.isEmpty {
                 Text("Read by voice in the last 7 days")
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .padding(.top, 4)
                 ForEach(voiceUses.entries.suffix(20).reversed()) { entry in
                     HStack {
@@ -360,7 +418,7 @@ struct PhoneSettingsPage: View {
                         Text(entry.at.formatted(.relative(presentation: .named)))
                             .foregroundStyle(.secondary)
                     }
-                    .font(.caption)
+                    .scaledFont(.caption)
                 }
             }
         }
@@ -429,7 +487,7 @@ struct PhoneSettingsPage: View {
             }
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -532,7 +590,11 @@ struct PhoneSettingsPage: View {
         Task {
             let done = await appState.turnOffPhoneSync(deleteFromHost: delete)
             if !done {
-                errorMessage = AppLocalization.string("Sharing is off. The host couldn't be reached, so Conduit deletes the data there the next time it connects.")
+                // A profile that turned the plugin off was reached and refused:
+                // say how to turn it on (issue 1671).
+                errorMessage = appState.phoneSync.deleteRefusedPluginOff.map {
+                    AppLocalization.string("Sharing is off. \($0) Conduit deletes the data there once it's on.")
+                } ?? AppLocalization.string("Sharing is off. The host couldn't be reached, so Conduit deletes the data there the next time it connects.")
             }
             choices = PhoneSyncPreferences(calendar: .full, reminders: true, status: true, focus: true)
             voiceUses = HealthVoiceReadLog()
@@ -545,6 +607,10 @@ struct PhoneSettingsPage: View {
 /// One picked person in Settings: who they are to the user, editable.
 struct PhonePersonRow: View {
     let person: PhonePerson
+    /// Why the last read from Contacts missed them, if it did.
+    var problem: PhonePersonProblem?
+    /// Opens limited Contacts access's picker.
+    var allowAccess: () -> Void = {}
     let save: (String) -> Void
     let remove: () -> Void
     @State private var relation = ""
@@ -553,13 +619,14 @@ struct PhonePersonRow: View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(person.name)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                 TextField("Who they are to you", text: $relation)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .textInputAutocapitalization(.never)
                     .submitLabel(.done)
                     .accessibilityLabel(Text(AppLocalization.string("Relation to \(person.name)")))
                     .onSubmit { save(relation.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                if let problem { problemNote(problem) }
             }
             Spacer(minLength: 4)
             Button(role: .destructive, action: remove) {
@@ -580,6 +647,47 @@ struct PhonePersonRow: View {
             if typed != (person.relation ?? "") { save(typed) }
         }
     }
+
+    @ViewBuilder
+    private func problemNote(_ problem: PhonePersonProblem) -> some View {
+        switch problem {
+        case .notShared:
+            Label("Conduit can't see this contact, so edits to it don't reach Hermes. Hermes keeps what Conduit last read.",
+                  systemImage: "exclamationmark.triangle.fill")
+                .scaledFont(.caption)
+                .foregroundStyle(.orange)
+            if #available(iOS 18.0, *) {
+                Button("Let Conduit see them", action: allowAccess)
+                    .scaledFont(.caption.weight(.semibold))
+                    .buttonStyle(.borderless)
+            }
+        case .notFound:
+            Label("This contact isn't in Contacts any more. Hermes keeps what Conduit last read.",
+                  systemImage: "exclamationmark.triangle.fill")
+                .scaledFont(.caption)
+                .foregroundStyle(.orange)
+        case .unreadable:
+            Label("Contacts couldn't be read just now. Hermes keeps what Conduit last read.",
+                  systemImage: "exclamationmark.triangle.fill")
+                .scaledFont(.caption)
+                .foregroundStyle(.orange)
+        }
+    }
+}
+
+/// Limited Contacts access's own picker (iOS 18 and later), where the user
+/// adds people Conduit may see.
+private struct PhoneContactAccessPicker: ViewModifier {
+    @Binding var isPresented: Bool
+    let done: () -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.contactAccessPicker(isPresented: $isPresented) { _ in done() }
+        } else {
+            content
+        }
+    }
 }
 
 /// What the user agrees to before anything leaves the phone (App Review 5.1.2(i)).
@@ -598,7 +706,7 @@ struct PhoneSharingConsentSheet: View {
                         .foregroundStyle(.red)
                         .accessibilityHidden(true)
                     Text("Share your calendar and phone with Hermes?")
-                        .font(.title2.weight(.semibold))
+                        .scaledFont(.title2.weight(.semibold))
                     Label(AppLocalization.string("Conduit sends what you chose to the \(profile) profile on \(host), sealed end to end. It never goes through Conduit's notification relay, and Conduit's developer can't see it."), systemImage: "lock.shield")
                     Label("Your agent reads it when you ask, or when a task you set up needs it. Whatever it reads goes to the AI model provider your Hermes uses, under that provider's terms. If your Hermes is hosted by someone else, such as Hermes Cloud, they can read it too.", systemImage: "sparkles")
                     Label("Events can include other people's names. Notes, attendees and email addresses stay on this iPhone unless you turn them on.", systemImage: "person.2")
@@ -606,7 +714,7 @@ struct PhoneSharingConsentSheet: View {
                     Label("Alarms and timers Hermes sets ring even in Silent mode or a Focus. People are shared only if you pick them.", systemImage: "alarm")
                     Label("You can turn sharing off at any time in Settings > Calendar & phone and delete what was sent from the host.", systemImage: "calendar.badge.minus")
                 }
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .padding(20)
             }
             .safeAreaInset(edge: .bottom) {
@@ -742,20 +850,20 @@ struct PhoneChangeCard: View {
         let change = prompt.change
         VStack(alignment: .leading, spacing: 10) {
             Label(PhoneChangeWording.headline(change), systemImage: PhoneChangeWording.symbol(change.kind))
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
             let detail = prompt.alarmTitle ?? PhoneChangeWording.detail(change)
             if !detail.isEmpty {
                 Text(detail)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
             }
             if let calendar = prompt.calendarTitle, change.kind.isAddition {
                 Text(AppLocalization.string("In \(calendar)"))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             if let reason = change.reason, !reason.isEmpty {
                 Text(reason)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             HStack(spacing: 10) {
@@ -783,7 +891,7 @@ struct PhoneChangeCard: View {
             }
             if waiting > 1 {
                 Text(AppLocalization.string("\(Int(waiting - 1)) more waiting"))
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
             }
         }
@@ -816,12 +924,12 @@ struct PhoneAutoAddedBanner: View {
                 Text(added.isAlarm ? AppLocalization.string("Hermes set \(added.title)")
                      : added.calendarTitle.map { AppLocalization.string("Hermes added \(added.title) to \($0)") }
                      ?? AppLocalization.string("Hermes added \(added.title)"))
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .lineLimit(2)
             }
             Spacer(minLength: 4)
             Button("Undo", action: undo)
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
             Button(action: close) {
                 Image(systemName: "xmark")
             }

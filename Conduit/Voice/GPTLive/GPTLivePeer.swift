@@ -41,7 +41,7 @@ protocol GPTLivePeer: AnyObject {
     @discardableResult
     func send(_ text: String) -> Bool
     /// Mute is the local track disabled: the subscription protocol has no
-    /// mute event.
+    /// mute event. Set before `makeOffer`, the track is created disabled.
     func setMicrophoneEnabled(_ enabled: Bool)
     /// Speaker mute (#487) is the model's incoming track disabled: WebRTC
     /// plays silence while the call carries on.
@@ -82,6 +82,7 @@ final class WebRTCGPTLivePeer: NSObject, GPTLivePeer {
     private var connection: RTCPeerConnection?
     private var channel: RTCDataChannel?
     private var microphone: RTCAudioTrack?
+    private var isMicrophoneEnabled = true
     private var isSpeakerEnabled = true
     private var isClosed = false
 
@@ -113,6 +114,8 @@ final class WebRTCGPTLivePeer: NSObject, GPTLivePeer {
         ])
         let source = Self.factory.audioSource(with: audioConstraints)
         let track = Self.factory.audioTrack(with: source, trackId: "conduit-microphone")
+        // A call muted before it connected sends nothing from the start.
+        track.isEnabled = isMicrophoneEnabled
         connection.add(track, streamIds: ["conduit"])
         microphone = track
 
@@ -171,6 +174,7 @@ final class WebRTCGPTLivePeer: NSObject, GPTLivePeer {
     }
 
     func setMicrophoneEnabled(_ enabled: Bool) {
+        isMicrophoneEnabled = enabled
         microphone?.isEnabled = enabled
     }
 

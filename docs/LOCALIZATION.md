@@ -127,14 +127,28 @@ the App Language (#1144), from the app's catalog (`NotificationCopy`,
 mirrors its App Language into the notifications App Group for it. The
 phone writes the chrome and the host sends the content: the title comes
 from the event type, or from the `title_label` the notifier plugin sends,
-joined with the chat's `session_title`; the body is the host's own text
-when Show previews is on, else the generic copy for the type. A plaintext
+joined with the chat's `session_title`, and the subtitle names the
+profile. How much of that shows is Show in notifications: Generic keeps
+the generic title and body for the type; Chat names shows the title
+Conduit writes and the profile over the generic body; Full previews adds
+the host's own text as the body. A plaintext
 push from a pairing without encryption still shows the relay's English
 copy.
 
+## Hermes' approval texts
+
+Hermes writes an approval's explanation in English. The texts it is known
+to write (a flagged command's pattern, the protected-file warning, the
+consent prompts) are keys in both `Conduit/Localizable.xcstrings` and
+`ConduitWatch/Localizable.xcstrings`, and `HermesApprovalText`
+(`Shared/Approvals/`) shows them in the App Language on every card, voice
+line, notification and the Watch (#1589). A text it doesn't know shows as
+Hermes sent it. When Hermes adds or rewords one, add its English as Hermes
+writes it to `HermesApprovalText` and translate it in both catalogs.
+
 ## What CI checks
 
-`check-l10n-coverage.py` runs in the `Plan & validate` job:
+`check-l10n-coverage.py` runs in CI's `Validate & self-test` job:
 
 - every localizable call site resolves to a catalog key whose placeholder
   types (`%@` vs `%lld`) match what the code passes;

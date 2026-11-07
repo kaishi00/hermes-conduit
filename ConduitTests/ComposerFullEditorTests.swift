@@ -17,6 +17,14 @@ final class ComposerFullEditorTests: XCTestCase {
         XCTAssertFalse(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: false, isFocused: true), "the classic layout always shows it")
     }
 
+    /// #1527: on a Mac or an iPad with a hardware keyboard the field keeps focus
+    /// after a send; the bar comes back until words are typed again.
+    func testFocusKeptAfterASendShowsTheMinimisedCallBarUntilTyping() {
+        XCTAssertFalse(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isFocused: true, hasText: false, keepsFocusAfterSend: true))
+        XCTAssertTrue(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isFocused: true, hasText: true, keepsFocusAfterSend: true))
+        XCTAssertTrue(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isFocused: true, hasText: false, keepsFocusAfterSend: false), "the on-screen keyboard still hides it")
+    }
+
     /// #762: V2 keeps Stop in the resting bar, so the big voice button
     /// beside it stays; steering still needs the controls row.
     func testStopAloneKeepsTheV2ComposerResting() {
@@ -45,6 +53,13 @@ final class ComposerFullEditorTests: XCTestCase {
     func testLongDraftsOfferTheFullEditor() {
         XCTAssertTrue(ComposerBar.showsFullEditorButton(measuredHeight: ComposerBar.fullEditorThreshold))
         XCTAssertTrue(ComposerBar.showsFullEditorButton(measuredHeight: ComposerPasteTextView.maximumHeight))
+        // A wide Mac column grows the text: a single line there waits too.
+        let grown = ComposerPasteTextView.minimumHeight(for: ComposerPasteTextView.bodyFont(in: .large, from: ColumnText(base: .large, scale: 2.2)))
+        XCTAssertFalse(ComposerBar.showsFullEditorButton(measuredHeight: grown, restingHeight: grown))
+        XCTAssertTrue(ComposerBar.showsFullEditorButton(measuredHeight: grown + 20, restingHeight: grown))
+        // Before it measures, the field already stands one grown line tall.
+        XCTAssertEqual(ComposerBar.textFrameHeight(measured: ComposerPasteTextView.minimumHeight, resting: grown), grown)
+        XCTAssertEqual(ComposerBar.textFrameHeight(measured: grown + 30, resting: grown), grown + 30)
     }
 
     func testTheFullEditorTellsDictationFromTyping() {

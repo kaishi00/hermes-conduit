@@ -277,6 +277,28 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertTrue(appState.showsComposerVoiceButton)
     }
 
+    /// Settings > Voice shows the saved switch: a reconnect resets
+    /// `isVoiceEnabled`, and a switch shown off then reads as turned off.
+    func testVoiceSettingsShowTheSavedSwitchThroughAReconnectReset() async {
+        let appState = makeAppState(snapshot: readySnapshot, isVoiceEnabled: false)
+        XCTAssertTrue(appState.activeProfileVoiceSwitch, "on out of the box")
+        _ = await appState.setVoiceEnabled(true)
+        appState.installVoiceCapabilityStateForTesting(
+            bridge: DashboardTicketBridge(baseURL: "https://example.com"),
+            snapshot: .unavailable,
+            isVoiceEnabled: false
+        )
+        XCTAssertTrue(appState.activeProfileVoiceSwitch)
+
+        _ = await appState.setVoiceEnabled(false)
+        XCTAssertFalse(appState.activeProfileVoiceSwitch)
+
+        // No server to read the saved switch for: it reads as isVoiceEnabled,
+        // never the default of an unwritten key.
+        appState.connection = nil
+        XCTAssertEqual(appState.activeProfileVoiceSwitch, appState.isVoiceEnabled)
+    }
+
     /// Switching away from a voice-enabled profile must not leak its state
     /// while `isVoiceEnabled` still holds the previous profile's value.
     func testSwitchingToProfileWithVoiceOffHidesVoiceButton() async {

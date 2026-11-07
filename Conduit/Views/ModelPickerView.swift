@@ -191,6 +191,85 @@ enum ModelCatalogState: Equatable {
     }
 }
 
+/// Hermes answers a model picker from its cache of each provider's model
+/// list and fetches a list that is stale or missing in the background, so
+/// a first read can list only a provider's built-in models and miss the
+/// ones only its live list has (issue 1807). Every model picker reads once
+/// more after that fetch has had time to land, while it's still open.
+enum ModelCatalogSettle {
+    static let delay: Duration = .seconds(4)
+
+    /// `read` again after the delay, unless the picker closed meanwhile.
+    static func readAgain(_ read: () async -> Void) async {
+        try? await Task.sleep(for: delay)
+        guard !Task.isCancelled else { return }
+        await read()
+    }
+}
+
+/// Refresh models, in a model picker's toolbar: asks Hermes for every
+/// provider's live list, for a model it hasn't listed yet (issue 1807).
+struct RefreshModelsButton: View {
+    let refreshing: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            if refreshing {
+                ProgressView()
+            } else {
+                Image(systemName: "arrow.clockwise")
+            }
+        }
+        .disabled(refreshing)
+        .tint(.conduitAccent)
+        .macTooltip(AppLocalization.string("Refresh models"))
+        .accessibilityLabel(AppLocalization.string("Refresh models"))
+    }
+}
+
+/// A model picker's catalog (the model sheet's, the bot editor's): the
+/// models kept from Hermes' last answer until it answers again (#1533),
+/// and whether a read failed.
+struct KeptModelCatalog: Equatable {
+    private(set) var providers: [ProviderInfo] = []
+    /// There are rows to show, kept or Hermes'.
+    private(set) var loaded = false
+    /// Hermes answered since the picker opened. Only then can a row be
+    /// picked: a list that didn't load is never picked from.
+    private(set) var answered = false
+    private(set) var failed = false
+
+    var state: ModelCatalogState { .of(providers: loaded ? providers : nil, failed: failed) }
+    /// A read failed under the rows shown, kept or from an earlier answer
+    /// (a Refresh models or the read again that failed): they stay up,
+    /// saying so.
+    var keptRowsFailed: Bool { failed && state == .ready }
+
+    /// The models Hermes gave last, before the first frame. Nothing kept,
+    /// or none, leaves the picker loading.
+    mutating func showKept(_ kept: [ProviderInfo]) {
+        guard !loaded, !kept.isEmpty else { return }
+        providers = kept
+        loaded = true
+    }
+
+    mutating func readStarted() {
+        failed = false
+    }
+
+    mutating func hermesAnswered(_ providers: [ProviderInfo]) {
+        self.providers = providers
+        loaded = true
+        answered = true
+    }
+
+    /// A read that fails keeps the rows shown.
+    mutating func readFailed() {
+        failed = true
+    }
+}
+
 struct ModelPickerSelection: Equatable {
     var model: String
     var provider: String
@@ -208,6 +287,7 @@ struct ModelPickerView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject var appState: AppState
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismiss
     @State private var selectedModel = ""
     @State private var selectedProvider = ""
     /// The runtime's effort word ("none" when off); set on tap.
@@ -218,11 +298,9 @@ struct ModelPickerView: View {
     @State private var writingSpeed: ModelSpeed?
     @State private var writingYolo: Bool?
     @State private var runSettingsError: String?
-    @State private var providers: [ProviderInfo] = []
-    /// Whether the catalog fetch has answered, and whether it failed: an
-    /// empty `providers` alone can't tell loading, failed and none apart.
-    @State private var catalogLoaded = false
-    @State private var catalogFailed = false
+    /// The models, kept from Hermes' last answer until it answers: an
+    /// empty list alone can't tell loading, failed and none apart.
+    @State private var catalog = KeptModelCatalog()
     @State private var expandedProvider: String?
     @State private var editingVisibility = false
     @State private var visibilityQuery = ""
@@ -239,6 +317,30 @@ struct ModelPickerView: View {
     /// The catalog row this sheet last switched Hermes to, so a retry does
     /// not switch to it again while the row id and `runtime.model` differ.
     @State private var switchedRow: ModelPickerSwitchedRow?
+    /// The model search: its text, the row the arrow keys have reached, and
+    /// whether the field has focus.
+    @State private var searchQuery = ""
+    @State private var highlightedMatch = 0
+    @FocusState private var searchFocused: Bool
+    /// On a Mac or with a hardware keyboard: the field takes focus on open,
+    /// a match is highlighted and Return picks it. On touch, Return only
+    /// puts the keyboard away.
+    @State private var keyboardDriven = false
+    /// Whether the search field has had focus since the sheet opened, so
+    /// the focus retry never pulls it back from a user who moved on.
+    @State private var searchWasFocused = false
+    /// The Add a provider sheet is up; the models are read again when it closes.
+    @State private var addingProvider = false
+    /// Refresh models is asking Hermes for every provider's live list.
+    @State private var refreshingModels = false
+    /// Counts the catalog reads, so only the last one asked lands.
+    @State private var catalogRead = 0
+    /// A plain read was asked while Refresh models ran (a provider added
+    /// meanwhile): it runs once the refresh lands.
+    @State private var readAfterRefresh = false
+    /// The read that failed was Refresh models, so Try Again asks for the
+    /// live lists again rather than the cached ones.
+    @State private var refreshFailed = false
 
     var body: some View {
         NavigationStack {
@@ -247,47 +349,87 @@ struct ModelPickerView: View {
                 // quiet card on the open chat's glow (a Bot Chat's bot's).
                 ConduitBackdrop(glowTint: appState.profileGlowTint(appState.conversationIdentityProfile))
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        if editingVisibility {
-                            visibilityEditor
-                        } else {
-                            // Reasoning changes most often and the model
-                            // list can be long, so reasoning comes first.
-                            reasoningSection
-                            modelSection
-                            runSettingsSection
+                ScrollViewReader { scroller in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 24) {
+                            if editingVisibility {
+                                visibilityEditor
+                            } else {
+                                searchField
+                                if searching {
+                                    // The matches lead; reasoning stays
+                                    // below them, still at hand.
+                                    searchResultsSection
+                                    addProviderRow
+                                    reasoningSection
+                                } else {
+                                    // Reasoning changes most often and the model
+                                    // list can be long, so reasoning comes first.
+                                    reasoningSection
+                                    modelSection
+                                    addProviderRow
+                                }
+                                runSettingsSection
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                        .padding(.bottom, 24)
+                    }
+                    .scrollIndicators(.hidden)
+                    .scrollDismissesKeyboard(.interactively)
+                    .modifier(V2SoftTopScrollEdge(isOn: true))
+                    .onChange(of: highlightedMatch) { _, index in
+                        let matches = searchMatches
+                        guard searching, matches.indices.contains(index) else { return }
+                        withAnimation(ConduitMotion.response) {
+                            scroller.scrollTo(matches[index].id)
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 24)
                 }
-                .scrollIndicators(.hidden)
-                .scrollDismissesKeyboard(.interactively)
-                .modifier(V2SoftTopScrollEdge(isOn: true))
             }
             .navigationTitle("Model")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    refreshModelsButton
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(editingVisibility ? AppLocalization.string("Done") : AppLocalization.string("Edit")) {
                         if editingVisibility {
                             appState.saveModelVisibility(visibility)
                             editingVisibility = false
                         } else {
+                            searchFocused = false
                             visibilityQuery = ""
                             expandedVisibilityProvider = selectedProvider
                             editingVisibility = true
                         }
                     }
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .tint(.conduitAccent)
                 }
             }
         }
         .preferredColorScheme(appState.themePreference.colorScheme)
+        .sheet(isPresented: $addingProvider, onDismiss: { Task { await loadModels() } }) {
+            if let bridge = appState.dashboardTicketBridge {
+                AddProviderSheetHost(
+                    bridge: bridge,
+                    profile: appState.conversationIdentityProfile,
+                    profileName: appState.profileDisplayName(appState.conversationIdentityProfile),
+                    answers: appState.screenAnswers(profile: appState.conversationIdentityProfile),
+                    catalog: catalog.loaded ? catalog.providers : nil,
+                    loadCatalog: {
+                        await loadModels()
+                        return catalog.loaded ? catalog.providers : nil
+                    },
+                    profiles: { appState.profiles }
+                )
+                .environmentObject(appState)
+            }
+        }
         .onAppear {
             // Seeded here, not after the catalog loads, so a failed catalog
             // fetch still shows the real level.
@@ -296,8 +438,46 @@ struct ModelPickerView: View {
             // leave it empty for Done to save, and a late one would replace
             // edits already made.
             visibility = appState.modelVisibility
+            // The models Hermes gave last, kept on the phone, with the
+            // chat's model checked, before the first frame; Hermes' answer
+            // follows (#1533).
+            catalog.showKept(appState.keptModelProviders())
+            if switchingRow == nil {
+                selectedModel = appState.runtime.model
+                selectedProvider = appState.runtime.provider
+            }
         }
-        .task { await loadModels() }
+        .task {
+            await loadModels()
+            // Hermes fetches a stale provider list in the background
+            // meanwhile; a Refresh models under way asks for it anyway.
+            await ModelCatalogSettle.readAgain { await loadModels() }
+        }
+        .task {
+            // On a Mac or with a hardware keyboard, typing a model's name
+            // comes first. Asked again once the sheet settles, since a focus
+            // request made while it slides in can be dropped.
+            keyboardDriven = modelSearchFocusesOnOpen()
+            guard keyboardDriven else { return }
+            searchFocused = true
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled, !searchWasFocused, !editingVisibility else { return }
+            searchFocused = true
+        }
+        .onChange(of: searchQuery) { _, _ in highlightedMatch = 0 }
+        // Edit can hide the highlighted match.
+        .onChange(of: editingVisibility) { _, _ in highlightedMatch = 0 }
+        .onChange(of: searchFocused) { _, focused in
+            if focused { searchWasFocused = true }
+        }
+        // Esc closes the sheet, as the picker's taps already applied.
+        .background {
+            Button(AppLocalization.string("Close")) { dismiss() }
+                .keyboardShortcut(.cancelAction)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        }
         .onChange(of: appState.runtime.reasoningEffort) { _, effort in
             // Follow a level changed elsewhere (another device, a chat
             // switch), but not mid-tap, so the tapped pill doesn't flicker.
@@ -327,27 +507,117 @@ struct ModelPickerView: View {
         }
     }
 
+    /// Matches replace the provider list once the catalog is in; until then
+    /// the list's loading or failed state shows as usual.
+    private var searching: Bool {
+        !ModelSearchQuery(searchQuery).isEmpty
+            && catalog.state == .ready
+    }
+
+    private var searchMatches: [ModelSearchMatch] {
+        modelSearchMatches(in: visibleProviders, query: searchQuery)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            TextField(AppLocalization.string("Search providers or models"), text: $searchQuery)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.done)
+                .focused($searchFocused)
+                .onSubmit { pickHighlightedMatch() }
+                .onKeyPress(.downArrow) { moveHighlight(1) }
+                .onKeyPress(.upArrow) { moveHighlight(-1) }
+                .onKeyPress(.escape) {
+                    dismiss()
+                    return .handled
+                }
+            if !searchQuery.isEmpty {
+                Button {
+                    searchQuery = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(AppLocalization.string("Clear"))
+            }
+        }
+        .scaledFont(.subheadline)
+        .padding(11)
+        .background(rowFoundation, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func moveHighlight(_ step: Int) -> KeyPress.Result {
+        guard keyboardDriven, searching else { return .ignored }
+        let matches = searchMatches
+        highlightedMatch = modelSearchHighlight(highlightedMatch, moving: step, count: matches.count)
+        // The highlight is only drawn, so VoiceOver hears which match
+        // Return will pick.
+        if matches.indices.contains(highlightedMatch) {
+            let match = matches[highlightedMatch]
+            let spoken: String = "\(match.model.id), \(match.provider.title)"
+            AccessibilityNotification.Announcement(spoken).post()
+        }
+        return .handled
+    }
+
+    /// Return picks the highlighted match, as a tap would, and keeps the
+    /// field focused for the next search. On touch it puts the keyboard away.
+    private func pickHighlightedMatch() {
+        guard keyboardDriven else {
+            searchFocused = false
+            return
+        }
+        searchFocused = true
+        let matches = searchMatches
+        guard matches.indices.contains(highlightedMatch), !modelRowsLocked else { return }
+        pick(matches[highlightedMatch].model, provider: matches[highlightedMatch].provider)
+    }
+
+    /// Each match names its provider: several providers often serve the
+    /// same model, and the pick switches to that provider's route.
+    private var searchResultsSection: some View {
+        ModelPickerSection(title: AppLocalization.string("Model"), symbol: "cpu", tint: .conduitAccent, flush: true) {
+            let matches = searchMatches
+            if matches.isEmpty {
+                Text(verbatim: AppLocalization.string("Nothing matches “\(searchQuery.trimmingCharacters(in: .whitespacesAndNewlines))”."))
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+            }
+            ForEach(Array(matches.enumerated()), id: \.element.id) { index, match in
+                modelRow(match.model, provider: match.provider, showsProvider: true, isHighlighted: keyboardDriven && index == highlightedMatch)
+                    .id(match.id)
+                if index < matches.count - 1 {
+                    Divider()
+                        .overlay(rowStroke)
+                        .padding(.leading, 16)
+                }
+            }
+            if catalog.keptRowsFailed {
+                catalogFailedRow
+            }
+            modelStatusRows
+        }
+    }
+
     private var modelSection: some View {
         ModelPickerSection(title: AppLocalization.string("Model"), symbol: "cpu", tint: .conduitAccent, flush: true) {
-            switch ModelCatalogState.of(providers: catalogLoaded ? providers : nil, failed: catalogFailed) {
+            switch catalog.state {
             case .loading:
                 ProgressView("Loading models…")
                     .frame(maxWidth: .infinity)
                     .padding(16)
             case .failed:
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(AppLocalization.string("Could not load models."))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Button(AppLocalization.string("Try Again")) { Task { await loadModels() } }
-                        .font(.subheadline.weight(.semibold))
-                        .tint(.conduitAccent)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
+                catalogFailedRow
             case .empty:
                 Text("No models are available from this gateway.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(16)
             case .ready:
@@ -360,27 +630,95 @@ struct ModelPickerView: View {
                 }
                 if shown.isEmpty {
                     Text("All providers are hidden. Tap Edit to restore one.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(16)
                 }
+                if catalog.keptRowsFailed {
+                    // The kept models stay up; Hermes didn't answer.
+                    catalogFailedRow
+                }
             }
 
-            // The composer's error banner sits behind this sheet, so a failed
-            // switch is reported here.
-            if let modelError {
-                Label(modelError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(16)
-            } else if let modelNote {
-                Text(modelNote)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(16)
+            modelStatusRows
+        }
+    }
+
+    /// A model missing from the list may need its provider connected first.
+    @ViewBuilder
+    private var addProviderRow: some View {
+        if appState.dashboardTicketBridge != nil {
+            Button {
+                searchFocused = false
+                addingProvider = true
+            } label: {
+                Label(AppLocalization.string("Add a provider"), systemImage: "plus")
+                    .scaledFont(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.conduitAccent)
+            .background(rowFoundation, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .accessibilityIdentifier("modelPicker.addProvider")
+        }
+    }
+
+    /// A read that fails keeps the models shown, saying so with Try Again.
+    private var refreshModelsButton: some View {
+        RefreshModelsButton(refreshing: refreshingModels) {
+            Task { await refreshModels() }
+        }
+        .accessibilityIdentifier("modelPicker.refreshModels")
+    }
+
+    /// Refresh models, from the toolbar or Try Again after one failed.
+    private func refreshModels() async {
+        guard !refreshingModels else { return }
+        refreshingModels = true
+        await loadModels(refresh: true)
+        refreshingModels = false
+        // A provider added meanwhile isn't in the refresh's answer. A
+        // refresh that failed stays said: Try Again asks again.
+        let readSkipped = readAfterRefresh
+        readAfterRefresh = false
+        if readSkipped, !catalog.failed {
+            await loadModels()
+        }
+    }
+
+    private var catalogFailedRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(AppLocalization.string("Could not load models."))
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+            Button(AppLocalization.string("Try Again")) {
+                Task { if refreshFailed { await refreshModels() } else { await loadModels() } }
+            }
+                .scaledFont(.subheadline.weight(.semibold))
+                .tint(.conduitAccent)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+    }
+
+    /// The composer's error banner sits behind this sheet, so a failed
+    /// switch is reported here.
+    @ViewBuilder
+    private var modelStatusRows: some View {
+        if let modelError {
+            Label(modelError, systemImage: "exclamationmark.triangle.fill")
+                .scaledFont(.footnote)
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+        } else if let modelNote {
+            Text(modelNote)
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
         }
     }
 
@@ -395,18 +733,18 @@ struct ModelPickerView: View {
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "cube.transparent")
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.conduitAccent)
                         .frame(width: 20)
                         .accessibilityHidden(true)
                     Text(provider.name)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                     Spacer(minLength: 12)
                     Text("\(provider.models.count)")
-                        .font(.caption.monospacedDigit())
+                        .scaledFont(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .accessibilityHidden(true)
                 }
@@ -436,27 +774,35 @@ struct ModelPickerView: View {
         }
     }
 
-    private func modelRow(_ model: ModelInfo, provider: ProviderInfo) -> some View {
+    /// `showsProvider` for a search match, which isn't under its provider's
+    /// name; `isHighlighted` for the match the arrow keys have reached.
+    private func modelRow(
+        _ model: ModelInfo,
+        provider: ProviderInfo,
+        showsProvider: Bool = false,
+        isHighlighted: Bool = false
+    ) -> some View {
         // The provider too, by any of its spellings: two providers can list
         // the same model id.
         let isSelected = selectedModel == model.id && provider.matches(selectedProvider)
         let isSwitching = switchingRow.map { $0.model == model.id && provider.matches($0.provider) } ?? false
         return Button {
-            Haptics.selectionChanged(!isSelected)
-            let previous = ModelPickerSelection(model: selectedModel, provider: selectedProvider)
-            let selection = ModelPickerSelection(model: model.id, provider: provider.name)
-            Task { @MainActor in await switchModel(to: selection, from: previous) }
+            pick(model, provider: provider)
         } label: {
             HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(model.id)
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
-                    if let label = model.label {
-                        Text(label)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                if showsProvider {
+                    ModelSearchResultText(title: model.id, detail: model.label, provider: provider.title)
+                } else {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(model.id)
+                            .scaledFont(.subheadline.weight(.medium))
+                            .lineLimit(1)
+                        if let label = model.label {
+                            Text(label)
+                                .scaledFont(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
                     }
                 }
                 Spacer(minLength: 12)
@@ -469,8 +815,8 @@ struct ModelPickerView: View {
                         .accessibilityHidden(true)
                 }
             }
-            // Under the provider's name.
-            .padding(.leading, 42)
+            // Under the provider's name, unless the row names it.
+            .padding(.leading, showsProvider ? 12 : 42)
             .padding(.trailing, 12)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -478,13 +824,33 @@ struct ModelPickerView: View {
                 isSelected ? Color.conduitAccent.opacity(colorScheme == .dark ? 0.14 : 0.08) : .clear,
                 in: RoundedRectangle(cornerRadius: 12, style: .continuous)
             )
+            .overlay {
+                if isHighlighted {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.conduitAccent, lineWidth: 2)
+                }
+            }
             .padding(.horizontal, 4)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        // One switch at a time, and not under another write.
-        .disabled(switchingRow != nil || isApplyingReasoning || writingSpeed != nil || writingYolo != nil)
+        .disabled(modelRowsLocked)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// Rows switch once Hermes answered, one at a time, and not under
+    /// another write.
+    private var modelRowsLocked: Bool {
+        !catalog.answered || switchingRow != nil || isApplyingReasoning || writingSpeed != nil || writingYolo != nil
+    }
+
+    /// A tapped row, or the search match Return picked.
+    private func pick(_ model: ModelInfo, provider: ProviderInfo) {
+        let isSelected = selectedModel == model.id && provider.matches(selectedProvider)
+        Haptics.selectionChanged(!isSelected)
+        let previous = ModelPickerSelection(model: selectedModel, provider: selectedProvider)
+        let selection = ModelPickerSelection(model: model.id, provider: provider.name)
+        Task { @MainActor in await switchModel(to: selection, from: previous) }
     }
 
     private var reasoningSection: some View {
@@ -509,7 +875,7 @@ struct ModelPickerView: View {
 
             if let reasoningError {
                 Label(reasoningError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding([.horizontal, .bottom], 16)
@@ -534,7 +900,7 @@ struct ModelPickerView: View {
     /// dark-mode gold, white on the light-mode brown), the rest quiet.
     private func reasoningPillLabel(_ title: String, isSelected: Bool) -> some View {
         Text(title)
-            .font(.subheadline.weight(isSelected ? .semibold : .regular))
+            .scaledFont(.subheadline.weight(isSelected ? .semibold : .regular))
             .foregroundStyle(isSelected ? selectedPillText : Color.primary)
             .padding(.horizontal, 14)
             .frame(minHeight: 36)
@@ -584,7 +950,7 @@ struct ModelPickerView: View {
                         .tint(.conduitAccent)
                         .disabled(true)
                     Text(yoloHelpText)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
                 // VoiceOver can skim past disabled controls and their separate
@@ -599,12 +965,12 @@ struct ModelPickerView: View {
                 .tint(.conduitAccent)
                 .disabled(writingYolo != nil || switchingRow != nil)
                 Text(yoloHelpText)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
             if let runSettingsError {
                 Label(runSettingsError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -641,7 +1007,7 @@ struct ModelPickerView: View {
     }
 
     private var visibleProviders: [ProviderInfo] {
-        providers.map { provider in
+        catalog.providers.map { provider in
             ProviderInfo(
                 name: provider.name,
                 models: provider.models.filter { !visibility.hiddenModels.contains(modelVisibilityKey(provider: provider.name, model: $0.id)) },
@@ -663,7 +1029,7 @@ struct ModelPickerView: View {
                     .background(rowFoundation, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 Text("Hiding a provider preserves its individual model choices. These filters stay on this device.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
             .padding(16)
@@ -678,8 +1044,8 @@ struct ModelPickerView: View {
 
     private var visibilityProviders: [ProviderInfo] {
         let query = visibilityQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return providers }
-        return providers.filter { provider in
+        guard !query.isEmpty else { return catalog.providers }
+        return catalog.providers.filter { provider in
             provider.name.lowercased().contains(query) || provider.models.contains { $0.id.lowercased().contains(query) }
         }
     }
@@ -700,11 +1066,11 @@ struct ModelPickerView: View {
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                            .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            .scaledFont(.caption.weight(.semibold)).foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(provider.name).font(.subheadline.weight(.semibold))
+                            Text(provider.name).scaledFont(.subheadline.weight(.semibold))
                             Text("\(String(visibleModelCount(in: provider))) of \(String(provider.models.count)) shown")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .scaledFont(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
                     }
@@ -714,7 +1080,7 @@ struct ModelPickerView: View {
                 Button(providerHidden ? AppLocalization.string("Hidden") : AppLocalization.string("Visible")) {
                     toggleProviderVisibility(provider.name)
                 }
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(providerHidden ? Color.secondary : Color.green)
                 .padding(.horizontal, 12).frame(minHeight: 30)
                 .background(providerHidden ? Color.secondary.opacity(0.12) : Color.green.opacity(0.12), in: Capsule())
@@ -732,7 +1098,7 @@ struct ModelPickerView: View {
                     Button("Show all") { setAllModels(in: provider, visible: true) }
                     Button("Hide all") { setAllModels(in: provider, visible: false) }
                 }
-                .font(.caption.weight(.semibold)).tint(.conduitAccent)
+                .scaledFont(.caption.weight(.semibold)).tint(.conduitAccent)
                 .padding(.horizontal, 16).padding(.vertical, 8)
 
                 ForEach(shownModels, id: \.id) { model in
@@ -742,10 +1108,10 @@ struct ModelPickerView: View {
                         toggleModelVisibility(key)
                     } label: {
                         HStack {
-                            Text(model.id).font(.footnote).lineLimit(2)
+                            Text(model.id).scaledFont(.footnote).lineLimit(2)
                             Spacer()
                             Text(hidden ? AppLocalization.string("Hidden") : AppLocalization.string("Visible"))
-                                .font(.caption.weight(.semibold))
+                                .scaledFont(.caption.weight(.semibold))
                                 .foregroundStyle(hidden ? Color.secondary : Color.green)
                         }
                         .padding(.leading, 36).padding(.trailing, 16).padding(.vertical, 10)
@@ -755,7 +1121,7 @@ struct ModelPickerView: View {
                 }
                 if models.count > shownModels.count {
                     Button("Show \(models.count - shownModels.count) more") { showAllModelsFor.insert(provider.name) }
-                        .font(.caption.weight(.semibold)).tint(.conduitAccent)
+                        .scaledFont(.caption.weight(.semibold)).tint(.conduitAccent)
                         .frame(maxWidth: .infinity).padding(.vertical, 10)
                 }
             }
@@ -797,7 +1163,7 @@ struct ModelPickerView: View {
     /// Whether the selected model offers Ultrafast, from the catalog row's
     /// capabilities. Nil until the catalog says.
     private var ultrafastOffered: Bool? {
-        providers.first { $0.matches(selectedProvider) }?.offersUltrafast(selectedModel)
+        catalog.providers.first { $0.matches(selectedProvider) }?.offersUltrafast(selectedModel)
     }
 
     private var rowFoundation: Color {
@@ -808,24 +1174,58 @@ struct ModelPickerView: View {
         Color.primary.opacity(0.07)
     }
 
-    private func loadModels() async {
-        catalogFailed = false
-        guard let client = appState.client else {
-            catalogFailed = true
+    /// Hermes' models for this chat, kept for the sheet to open on next.
+    /// A read that fails keeps the models shown, saying so: model options
+    /// are supplementary to the session's state, but the list says it
+    /// didn't load rather than that there are none.
+    /// `refresh` is Refresh models: Hermes fetches every provider's live
+    /// list first (issue 1807). The search, the open provider and the
+    /// checked row stay as they are.
+    private func loadModels(refresh: Bool = false) async {
+        // A Refresh models under way has the newer answer coming; the
+        // read runs after it, in case something changed meanwhile.
+        guard refresh || !refreshingModels else {
+            readAfterRefresh = true
             return
         }
-        do {
-            let (_, _, provs) = try await client.modelOptions(sessionId: appState.activeSessionId)
-            providers = provs ?? []
-            catalogLoaded = true
-            selectedModel = appState.runtime.model
-            selectedProvider = appState.runtime.provider
-        } catch {
-            // Model options are supplementary to the current session state,
-            // but the list says it didn't load rather than that there are
-            // no models.
-            catalogFailed = true
+        catalogRead += 1
+        let read = catalogRead
+        catalog.readStarted()
+        let loaded = await appState.loadModelProviders(sessionId: appState.activeSessionId, refresh: refresh)
+        // A read asked since has the newer answer.
+        guard read == catalogRead else { return }
+        guard let loaded else {
+            // A plain read that fails after a failed refresh keeps the
+            // refresh owed, so Try Again still asks for the live lists.
+            refreshFailed = refresh || refreshFailed
+            catalog.readFailed()
+            return
         }
+        refreshFailed = false
+        // The highlighted match stays the same model when rows come or go
+        // above it, so Return picks what the highlight showed.
+        let before = searchMatches
+        let held = before.indices.contains(highlightedMatch) ? before[highlightedMatch].id : nil
+        catalog.hermesAnswered(loaded)
+        if let held {
+            highlightedMatch = searchMatches.firstIndex { $0.id == held } ?? 0
+        }
+        // A row being switched to keeps its checkmark.
+        guard switchingRow == nil else { return }
+        // So does a row switched to that Hermes ran under another id, while
+        // the session still runs what it resolved to.
+        if let switchedRow, !modelPickerShouldSwitch(
+            switchedRow.selection,
+            lastSwitched: switchedRow,
+            runtimeModel: appState.runtime.model,
+            runtimeProvider: appState.runtime.provider
+        ) {
+            selectedModel = switchedRow.selection.model
+            selectedProvider = switchedRow.selection.provider
+            return
+        }
+        selectedModel = appState.runtime.model
+        selectedProvider = appState.runtime.provider
     }
 
     /// An error row appears silently; tell VoiceOver what failed.

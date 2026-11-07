@@ -2,7 +2,7 @@
 
 The assertions live in scripts/tests/test_simulator_destination.sh; this
 wrapper makes them part of the standard unittest discovery run (ubuntu CI
-plan job and macOS). Skipped on platforms without bash.
+self-test job and macOS). Skipped on platforms without bash.
 
 The harness exercises scripts/ci-lib.sh's OS-qualified simulator lookup
 (os_version_matches, simruntime_version, simulator_udid) against a fixture

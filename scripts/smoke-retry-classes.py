@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Select one hosted UI retry; uncertain results retain the whole selection."""
+"""Select one hosted UI retry; uncertain results retain the whole selection.
+
+The selection names whole classes or single tests (`Class/testMethod`, as
+scripts/smoke-suite.json pins them); the retry names the failed ones the
+same way."""
 import argparse
 import contextlib
 import importlib.util
@@ -89,6 +93,20 @@ def extract_for_retry(data, label):
     return detail
 
 
+def _entry_for(attempt, selected):
+    """The selected entry an attempt ran for: its class, or its single test."""
+    cls = attempt.get("class")
+    if cls in selected:
+        return cls
+    test = str(attempt.get("test") or "")
+    if test.endswith("()"):
+        test = test[:-2]
+    entry = "{}/{}".format(cls, test)
+    if entry in selected:
+        return entry
+    raise ValueError("unknown, skipped, or synthetic test result")
+
+
 def retry_classes(detail, selected):
     attempts = detail.get("attempts")
     failures = detail.get("failures")
@@ -97,18 +115,19 @@ def retry_classes(detail, selected):
     observed = set()
     failed = set()
     for attempt in attempts:
-        cls = attempt.get("class")
         status = attempt.get("final")
-        if cls not in selected or status not in ("Passed", "Failed"):
+        if status not in ("Passed", "Failed"):
             raise ValueError("unknown, skipped, or synthetic test result")
-        observed.add(cls)
+        entry = _entry_for(attempt, selected)
+        observed.add(entry)
         if status == "Failed":
-            failed.add(cls)
+            failed.add(entry)
     if observed != set(selected):
         raise ValueError("not every selected class produced a result")
-    if {failure.get("class") for failure in failures} != failed or not failed:
+    if ({failure.get("class") for failure in failures}
+            != {entry.split("/")[0] for entry in failed} or not failed):
         raise ValueError("failure attribution is incomplete")
-    return [cls for cls in selected if cls in failed]
+    return [entry for entry in selected if entry in failed]
 
 
 def main():
@@ -118,8 +137,9 @@ def main():
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
     selected = args.classes.split(",")
-    if not selected or any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", cls) for cls in selected):
-        parser.error("classes must be a nonempty CSV of XCTest class names")
+    if not selected or any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(/test[A-Za-z0-9_]*)?", cls)
+                           for cls in selected):
+        parser.error("classes must be a nonempty CSV of XCTest classes or Class/testMethod tests")
     detail = None
     reason = None
     retry = selected

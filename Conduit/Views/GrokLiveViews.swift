@@ -24,6 +24,9 @@ struct GrokLiveSettingsModel {
     /// Talk over the model on the loudspeaker (echo-cancelling audio).
     var speakerBargeIn: Bool = false
     var setSpeakerBargeIn: (Bool) -> Void = { _ in }
+    /// The status line as its last check said, kept on the phone (#1533).
+    var keptStatus: LiveVoiceStatusLine? = nil
+    var keepStatus: (LiveVoiceStatusLine) -> Void = { _ in }
 }
 
 struct GrokLiveSettingsSection: View {
@@ -50,6 +53,8 @@ struct GrokLiveSettingsSection: View {
         _personality = State(initialValue: model.personality)
         _saveCalls = State(initialValue: model.saveCalls)
         _speakerBargeIn = State(initialValue: model.speakerBargeIn)
+        _status = State(initialValue: model.keptStatus?.text)
+        _isAvailable = State(initialValue: model.keptStatus?.isAvailable)
     }
 
     var body: some View {
@@ -65,7 +70,7 @@ struct GrokLiveSettingsSection: View {
                 ))
             }
             Text("Talk with Grok Live, xAI's realtime voice model, instead of the Hermes speech pipeline. Hermes still does the work: Grok hands requests to background jobs on this profile. Your Hermes server connects to xAI with its SuperGrok sign-in (or its XAI_API_KEY), which stays on the server. Turning this on turns Gemini Live and GPT-Live off.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             LiveVoiceSetupLink(mode: .grok)
             LiveVoiceConsentRow(mode: .grokLive)
@@ -76,7 +81,7 @@ struct GrokLiveSettingsSection: View {
                         .frame(width: 8, height: 8)
                         .accessibilityHidden(true)
                     Text(status ?? AppLocalization.string("Not checked yet"))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                     Spacer()
                 }
@@ -90,7 +95,7 @@ struct GrokLiveSettingsSection: View {
                 .disabled(isChecking)
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
                 Text("The voice and model are set on your Hermes server (voice.grok_live in the profile's config).")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Use Hermes memory", isOn: Binding(
                     get: { memory },
@@ -100,7 +105,7 @@ struct GrokLiveSettingsSection: View {
                     }
                 ))
                 Text("Grok Live gets what your Hermes agent remembers about you. That memory is sent to xAI with the conversation. Applies to the next conversation.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Use Hermes personality", isOn: Binding(
                     get: { personality },
@@ -110,7 +115,7 @@ struct GrokLiveSettingsSection: View {
                     }
                 ))
                 Text("Grok Live talks with the personality in this profile's SOUL.md. SOUL.md is sent to xAI with the conversation. Applies to the next conversation.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Talk over it on the speaker", isOn: Binding(
                     get: { speakerBargeIn },
@@ -119,8 +124,8 @@ struct GrokLiveSettingsSection: View {
                         model.setSpeakerBargeIn(requested)
                     }
                 ))
-                Text("Experimental. Keeps the microphone open while Grok talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Grok keeps cutting itself off. Shared by Qwen Live, Gemini Live, Grok Live and Classic voice. Applies to the next conversation.")
-                    .font(.caption)
+                Text(AppLocalization.string("Experimental. Keeps the microphone open while Grok talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Grok keeps cutting itself off. Shared by Qwen Live, Gemini Live, Grok Live and Classic voice. Applies to the next conversation.") + " " + AppLocalization.string("Calls from Hermes don't use it, so their voice starts right away."))
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Save calls to Sessions", isOn: Binding(
                     get: { saveCalls },
@@ -130,7 +135,7 @@ struct GrokLiveSettingsSection: View {
                     }
                 ))
                 Text("Each call's transcript is saved to your Hermes server's history and shows under Voice in Sessions, where you can read it or resume the call. Needs an up-to-date Hermes notifier plugin. Shared by every live voice mode. Applies to the next conversation.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -148,19 +153,22 @@ struct GrokLiveSettingsSection: View {
         defer { isChecking = false }
         switch await model.checkAvailability() {
         case .success(let availability):
-            isAvailable = availability.isAvailable
+            let line: String?
             switch availability {
             case .available(let modelName, let voice, let auth):
                 // Credential names, not prose: never translated.
                 let via = auth == "api_key" ? "XAI_API_KEY" : "SuperGrok"
                 if let voice {
-                    status = AppLocalization.string("Available (\(modelName), voice \(voice), via \(via))")
+                    line = AppLocalization.string("Available (\(modelName), voice \(voice), via \(via))")
                 } else {
-                    status = AppLocalization.string("Available (\(modelName), via \(via))")
+                    line = AppLocalization.string("Available (\(modelName), via \(via))")
                 }
             default:
-                status = availability.userFacingReason
+                line = availability.userFacingReason
             }
+            status = line
+            isAvailable = availability.isAvailable
+            if let line { model.keepStatus(LiveVoiceStatusLine(text: line, isAvailable: availability.isAvailable)) }
         case .failure(let error):
             isAvailable = false
             status = UserFacingError.message(for: error)

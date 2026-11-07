@@ -51,10 +51,10 @@ struct VoiceModeCapsule: View {
                 Text(verbatim: modeSwitch.current.title)
                     .lineLimit(1)
                 Image(systemName: "chevron.down")
-                    .font(.caption2.weight(.bold))
+                    .scaledFont(.caption2.weight(.bold))
                     .accessibilityHidden(true)
             }
-            .font(.footnote.weight(.semibold))
+            .scaledFont(.footnote.weight(.semibold))
             .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 5)

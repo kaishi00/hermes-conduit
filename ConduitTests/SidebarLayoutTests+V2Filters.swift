@@ -322,4 +322,32 @@ extension SidebarLayoutTests {
         )
         XCTAssertEqual(V2ChatsListItem.items(renamed, expanded: ["runtime"]).map(\.id), ["runtime", "nest:runtime"])
     }
+
+    func testVoiceListsTheChatsCallsWereKeptWithOrStartedFrom() {
+        let calls: Set<String> = ["chat-old", "chat-archived", "telegram"]
+        let hasCalls: (SessionSummary) -> Bool = { calls.contains($0.id) }
+        let rows = V2FilterSelection(filters: [.voice]).rows(
+            everything: filterChats.filter { !$0.isArchived },
+            sessions: filterChats,
+            cronSessions: filterRuns,
+            category: \.source,
+            hasVoiceCalls: hasCalls,
+            hasStatus: { _, _ in false }
+        ).map(\.id)
+        XCTAssertEqual(rows, ["voice", "telegram", "chat-old"], "listing order, archived chats still out")
+        let chats = V2FilterSelection(filters: [.source(.chat)]).rows(
+            everything: filterChats,
+            sessions: filterChats,
+            cronSessions: filterRuns,
+            category: \.source,
+            hasVoiceCalls: hasCalls,
+            hasStatus: { _, _ in false }
+        ).map(\.id)
+        XCTAssertEqual(chats, ["chat-new", "chat-old"], "a chat with calls keeps its own source")
+        XCTAssertEqual(
+            SidebarSourceRows.rows(sessions: filterChats, cronSessions: filterRuns, source: .voice,
+                                   category: \.source, isPinned: { _ in false }, hasVoiceCalls: hasCalls).map(\.id),
+            ["voice", "telegram", "chat-old"]
+        )
+    }
 }

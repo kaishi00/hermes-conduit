@@ -496,6 +496,15 @@ struct ConduitBackdrop: View {
     }
 
     var body: some View {
+        backdrop
+            // A bar whose content fades out under it draws a copy behind
+            // that content, so the fade shows the backdrop rather than
+            // cutting through it (`V2LegacyEdgeBar`).
+            .preference(key: ConduitBackdropBehindFade.self,
+                        value: ConduitBackdropBehindFade.Request(drifts: drifts, glowTint: glowTint))
+    }
+
+    private var backdrop: some View {
         // Only the two drifting circles live inside the timeline; the base
         // colour and bottom shade never change between ticks.
         ZStack {
@@ -571,6 +580,22 @@ struct ConduitBackdrop: View {
         colorScheme == .dark
             ? Color(red: 0.045, green: 0.052, blue: 0.072)
             : Color(red: 0.94, green: 0.95, blue: 0.98)
+    }
+}
+
+/// A backdrop inside content that fades out under a bar (`V2LegacyEdgeBar`,
+/// a mask): the fade cuts through it too, so the bar draws the same
+/// backdrop behind the faded content, and the text fades out over it.
+struct ConduitBackdropBehindFade: PreferenceKey {
+    struct Request: Equatable {
+        let drifts: Bool
+        let glowTint: Color?
+    }
+
+    static var defaultValue: Request? = nil
+
+    static func reduce(value: inout Request?, nextValue: () -> Request?) {
+        value = value ?? nextValue()
     }
 }
 
@@ -816,5 +841,38 @@ struct WindowAccentTint: UIViewRepresentable {
             }
             window.tintColor = choice.color(dark: window.traitCollection.userInterfaceStyle == .dark)
         }
+    }
+}
+
+/// V2's + for making something new, as Bots Home's New Bot draws it: a
+/// 44 pt glass circle (New Bot, New Group Chat, the Projects heading's New
+/// Project, a workspace folder's Add), so every + reads as one control.
+struct V2AddGlyph: View {
+    /// A custom button style doesn't dim a disabled label on its own.
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Image(systemName: "plus")
+            .font(.system(size: 17, weight: .semibold))
+            .conduitFixedGlyph()
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+            .conduitGlassControl(cornerRadius: 22, interactive: false)
+            .opacity(isEnabled ? 1 : 0.45)
+    }
+}
+
+/// `V2AddGlyph` as a button, with V2's press feedback.
+struct V2AddButton: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            V2AddGlyph()
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel(Text(title))
+        .macTooltip(title)
     }
 }

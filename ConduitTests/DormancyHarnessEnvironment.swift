@@ -38,7 +38,7 @@ enum DormancyHarnessEnvironment {
     ///
     /// Also pins `\.scenePhase` to `.active`: a harness window belongs to no
     /// Scene, so SwiftUI reports `.background`, and ChatView pauses its
-    /// scroll engine in the background. The transcript then never pins to
+    /// scroller in the background. The transcript then never pins to
     /// the bottom, and an appended row is never mounted. The chat is only
     /// ever on screen in an active scene (production's WindowGroup).
     static func applying<V: View>(

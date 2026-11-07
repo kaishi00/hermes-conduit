@@ -143,7 +143,8 @@ final class ChatResumeCoordinator {
         purpose: ChatResumeSyncPurpose,
         currentSessionID: String?,
         botOwnedSessionIDs: Set<String> = [],
-        savedSelectionIsAuthoritative: Bool = true
+        savedSelectionIsAuthoritative: Bool = true,
+        unlistedSessionIDs: Set<String> = []
     ) -> SessionSummary? {
         let savedSessionID = store.lastSessionID(for: profile)
         let selected = ChatResumeSessionResolver.target(
@@ -154,7 +155,8 @@ final class ChatResumeCoordinator {
             currentSessionID: currentSessionID,
             activeProfile: profile,
             botOwnedSessionIDs: botOwnedSessionIDs,
-            savedSelectionIsAuthoritative: savedSelectionIsAuthoritative
+            savedSelectionIsAuthoritative: savedSelectionIsAuthoritative,
+            unlistedSessionIDs: unlistedSessionIDs
         )
 
         guard purpose == .automaticReturn else { return selected }

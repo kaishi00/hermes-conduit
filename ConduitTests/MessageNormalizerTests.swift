@@ -3,6 +3,56 @@ import XCTest
 
 @MainActor
 final class MessageNormalizerTests: XCTestCase {
+    func testHistoryCommentaryProjectionPreservesOrderToolsAndFinal() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .string("a"), "role": .string("assistant"), "content": .string("Final answer"),
+                "reasoning": .string("private\nChecking\nReading"),
+                "display_reasoning": .string("private"),
+                "display_commentary": .array([.string("Checking"), .string("Reading")]),
+                "codex_message_items": .array([.object(["text": .string("secret sidecar")])]),
+                "tool_calls": .array([.object(["id": .string("call-1"), "name": .string("search")])])
+            ]),
+            .object(["role": .string("tool"), "tool_call_id": .string("call-1"), "content": .string("result")])
+        ])
+        XCTAssertEqual(messages.map(\.role), [.reasoning, .assistant, .assistant, .assistant, .tool])
+        XCTAssertEqual(messages.map(\.content), ["private", "Checking", "Reading", "Final answer", ""])
+        XCTAssertEqual(messages.map(\.id), ["a-reasoning", "a-commentary-0", "a-commentary-1", "a", "a-tool-0"])
+        XCTAssertEqual(messages.last?.tool?.id, "call-1")
+        XCTAssertEqual(messages.last?.tool?.output, "result")
+    }
+
+    func testHistoryEmptyAndMalformedProjectionsNeverFallBackOrPromoteSidecars() {
+        for projection in [AnyCodable.string(""), .null, .object(["text": .string("bad")])] {
+            let messages = MessageNormalizer.normalizeMessages([
+                .object([
+                    "role": .string("assistant"), "content": .string("Answer"),
+                    "reasoning": .string("private and withheld commentary"),
+                    "display_reasoning": projection, "display_commentary": .array([]),
+                    "codex_message_items": .array([.object(["text": .string("withheld")])])
+                ])
+            ])
+            XCTAssertEqual(messages.map(\.content), ["Answer"])
+            XCTAssertEqual(messages.map(\.role), [.assistant])
+        }
+    }
+
+    func testHistoryProjectionAcceptsOnlyAssistantStringCommentaryAndLegacyReasoning() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object(["role": .string("user"), "content": .string("Question"),
+                     "display_commentary": .array([.string("not assistant")])]),
+            .object(["role": .string("assistant"), "content": .string(""),
+                     "reasoning_content": .string("legacy thought"),
+                     "display_commentary": .array([.string("Progress"), .null, .object(["text": .string("unsafe")]), .string(" ")])]),
+            .object(["role": .string("assistant"), "content": .string("Already included"),
+                     "display_commentary": .array([])]),
+            .object(["role": .string("assistant"), "display_kind": .string("hidden"),
+                     "content": .string("hidden"), "display_commentary": .array([.string("hidden progress")])])
+        ])
+        XCTAssertEqual(messages.map(\.role), [.user, .reasoning, .assistant, .assistant])
+        XCTAssertEqual(messages.map(\.content), ["Question", "legacy thought", "Progress", "Already included"])
+    }
+
     func testRuntimeSnapshotReadsLiveAssistantProjection() {
         let snapshot = SessionRuntimeSnapshot(
             object: [:],
@@ -180,18 +230,82 @@ final class MessageNormalizerTests: XCTestCase {
         )
     }
 
-    func testSessionNormalizationLeavesKanbanWorkersOut() {
+    func testGatewayPlatformsAreNamedByTheirHermesSource() {
+        let expected: [(String, SessionSource)] = [
+            ("slack", .slack), ("whatsapp", .whatsapp), ("whatsapp_cloud", .whatsapp),
+            ("signal", .signal), ("bluebubbles", .imessage), ("photon", .imessage),
+            ("matrix", .matrix), ("mattermost", .mattermost), ("teams", .teams),
+            ("google_chat", .googleChat), ("email", .email), ("sms", .sms), ("irc", .irc),
+            ("line", .line), ("simplex", .simplex), ("weixin", .wechat), ("wecom", .wecom),
+            ("wecom_callback", .wecom), ("feishu", .feishu), ("dingtalk", .dingtalk),
+            ("qqbot", .qq), ("yuanbao", .yuanbao), ("buzz", .buzz), ("raft", .raft),
+            ("ntfy", .ntfy), ("a2a", .a2a), ("msgraph_webhook", .webhook),
+            ("api_server", .api), ("Slack", .slack)
+        ]
+        for (source, category) in expected {
+            XCTAssertEqual(MessageNormalizer.classifySource(["source": .string(source)]), category, source)
+        }
+        // The app's own sessions stay chats, and a plugin platform Conduit
+        // doesn't know yet is Other rather than a guess.
+        XCTAssertEqual(MessageNormalizer.classifySource(["source": .string("desktop")]), .chat)
+        XCTAssertEqual(MessageNormalizer.classifySource(["source": .string("relay")]), .other)
+        XCTAssertEqual(MessageNormalizer.classifySource(["source": .string("voice")]), .other)
+        // A handoff files the chat where it went once it completed, not
+        // while it's pending or after it failed.
+        XCTAssertEqual(MessageNormalizer.classifySource([
+            "source": .string("desktop"), "handoff_platform": .string("slack"), "handoff_state": .string("completed")
+        ]), .slack)
+        XCTAssertEqual(MessageNormalizer.classifySource([
+            "source": .string("desktop"), "handoff_platform": .string("slack"), "handoff_state": .string("failed")
+        ]), .chat)
+        XCTAssertEqual(MessageNormalizer.classifySource([
+            "source": .string("desktop"), "handoff_platform": .string("slack"), "handoff_state": .string("pending")
+        ]), .chat)
+        // Every platform has a place in the filter order.
+        XCTAssertTrue(SessionSource.gatewayPlatforms.allSatisfy(AppState.defaultSessionFilterOrder.contains))
+        XCTAssertEqual(Set(AppState.defaultSessionFilterOrder), Set(SessionSource.allCases))
+        XCTAssertEqual(AppState.defaultSessionFilterOrder.count, SessionSource.allCases.count)
+    }
+
+    func testSessionNormalizationLeavesSessionsThatArentChatsOut() {
         let sessions = MessageNormalizer.normalizeSessions(
             .object([
                 "sessions": .array([
                     .object(["id": .string("worker"), "source": .string("kanban")]),
+                    .object(["id": .string("integration"), "source": .string("tool")]),
+                    .object(["id": .string("one-shot"), "source": .string("ONESHOT")]),
                     .object(["id": .string("chat"), "source": .string("desktop")])
                 ])
             ]),
             profile: "default"
         )
 
-        XCTAssertEqual(sessions.map(\.id), ["chat"], "Hermes won't reopen a Kanban worker as a chat (4132)")
+        // Hermes won't reopen a Kanban worker as a chat (4132), and its own
+        // pickers hide tool integrations and one-shot runs.
+        XCTAssertEqual(sessions.map(\.id), ["chat"])
+    }
+
+    func testSessionNormalizationLeavesKanbanWorkersStoredBeforeTheTagOut() {
+        let sessions = MessageNormalizer.normalizeSessions(
+            .object([
+                "sessions": .array([
+                    // A worker Hermes stored as `cli`, titled later or not.
+                    .object(["id": .string("titled"), "source": .string("cli"),
+                             "title": .string("SeaBag 1.7.9 Release"), "preview": .string("work kanban task t_04fbcc18")]),
+                    .object(["id": .string("untitled"), "source": .string("local"),
+                             "preview": .string("Work kanban task t_9a1b2c3d ")]),
+                    // A person's message that only starts the same way stays,
+                    // and so does a chat from elsewhere that reads the same.
+                    .object(["id": .string("chat"), "source": .string("cli"),
+                             "preview": .string("work kanban task t_1 again, it failed")]),
+                    .object(["id": .string("telegram"), "source": .string("telegram"),
+                             "preview": .string("work kanban task t_2")])
+                ])
+            ]),
+            profile: "default"
+        )
+
+        XCTAssertEqual(sessions.map(\.id), ["chat", "telegram"])
     }
 
     func testSessionNormalizationPreservesExplicitProfileOwnership() {
@@ -460,6 +574,28 @@ final class MessageNormalizerTests: XCTestCase {
 
         let decoded = try JSONDecoder().decode(ConduitNotificationPreferences.self, from: data)
         XCTAssertFalse(decoded.decisionCards)
+    }
+
+    func testNotificationDetailMapsToTheRelayFlags() throws {
+        var preferences = ConduitNotificationPreferences()
+        XCTAssertEqual(preferences.detail, .generic, "Notifications stay generic by default")
+
+        preferences.detail = .chatNames
+        XCTAssertFalse(preferences.showPreviews)
+        XCTAssertTrue(preferences.showChatNames)
+        let data = try JSONEncoder().encode(preferences)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        XCTAssertEqual(object?["show_chat_names"] as? Bool, true, "The relay expects the snake_case show_chat_names key")
+        XCTAssertEqual(try JSONDecoder().decode(ConduitNotificationPreferences.self, from: data).detail, .chatNames)
+
+        preferences.detail = .previews
+        XCTAssertTrue(preferences.showPreviews)
+        XCTAssertTrue(preferences.showChatNames, "Full previews names the chat too")
+        preferences.detail = .generic
+        XCTAssertFalse(preferences.showPreviews || preferences.showChatNames)
+
+        let legacy = try JSONDecoder().decode(ConduitNotificationPreferences.self, from: Data(#"{"show_previews": true}"#.utf8))
+        XCTAssertEqual(legacy.detail, .previews, "Show previews on before #1415 is Full previews")
     }
 
     func testNotificationPreferencesRoundTripAttentionSoundKey() throws {
@@ -1232,6 +1368,34 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertNil(service.pendingTarget)
     }
 
+    /// Quiet for today's retry waiting for a call replaces a tap that waits
+    /// too, never one opening (a call's own included); a tap that starts
+    /// waiting replaces the retry, and so does a newer tap. Whichever
+    /// started waiting last owns the call's end, so only one takes the
+    /// screen when it comes.
+    func testQuietRetryWaitingForACallAndTapsReplaceEachOther() {
+        let (service, pending) = makeWindowedService(now: { ContinuousClock.now })
+        guard let opening = pending else { return XCTFail("Expected a pending target") }
+        let quiet = PulseQuietTarget(dashboardID: UUID().uuidString, gatewayID: "gw-2")
+        service.pulseQuietAwaitsCall(quiet)
+        XCTAssertEqual(service.pendingTarget, opening, "a tap opening stays")
+        XCTAssertEqual(service.pendingPulseQuiet, quiet)
+
+        let waiting = service.pulseQuietAttempt
+        service.notificationRouteAwaitsCall(opening)
+        XCTAssertNil(service.pendingPulseQuiet, "the tap's open came back waiting: it replaces the retry")
+        XCTAssertGreaterThan(service.pulseQuietAttempt, waiting, "and ends the wait it left running")
+
+        service.pulseQuietAwaitsCall(quiet)
+        XCTAssertNil(service.pendingTarget, "the newer retry replaces a tap that waits")
+
+        service.receiveNotificationPayload([
+            "conduit": ["session_id": "runtime-456", "type": "response_ready"] as [String: Any]
+        ])
+        XCTAssertNotNil(service.pendingTarget)
+        XCTAssertNil(service.pendingPulseQuiet, "a newer tap replaces the retry")
+    }
+
     /// A newer tap replaces one waiting for a call, and routes as any tap.
     func testNewTapReplacesOneWaitingForACall() {
         let (service, pending) = makeWindowedService(now: { ContinuousClock.now })
@@ -1320,6 +1484,76 @@ final class MessageNormalizerTests: XCTestCase {
         let late = PushNotificationService(retryDelay: .zero, keptTaps: kept, date: { date })
         XCTAssertNil(late.pendingTarget, "too old to switch workspace for")
         XCTAssertNil(kept.data(forKey: PushNotificationService.waitingTapKey))
+    }
+
+    /// Quiet for today's retry waiting for a call waits again after a
+    /// relaunch, as a tap does, but only on the day it was pressed: it was
+    /// Quiet for that day, so a call or a relaunch past midnight drops it.
+    func testQuietRetryWaitingForACallWaitsAgainAfterARelaunchThatDay() {
+        let kept = makeScratchDefaults("WaitingPulseQuiet")
+        guard let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: Date()),
+              let lateEvening = Calendar.current.date(bySettingHour: 23, minute: 30, second: 0, of: noon) else {
+            return XCTFail("Expected today's noon and late evening")
+        }
+        var date = noon
+        let first = PushNotificationService(retryDelay: .zero, keptTaps: kept, date: { date })
+        let quiet = PulseQuietTarget(dashboardID: UUID().uuidString, gatewayID: "gw-2")
+        first.pulseQuietAwaitsCall(quiet)
+
+        date = noon.addingTimeInterval(3600)
+        let relaunched = PushNotificationService(retryDelay: .zero, keptTaps: kept, date: { date })
+        XCTAssertEqual(relaunched.pendingPulseQuiet, quiet)
+        XCTAssertEqual(relaunched.pulseQuietAttempt, 1, "its wait starts again")
+        XCTAssertTrue(relaunched.takePendingPulseQuiet(quiet), "it goes through that day")
+        XCTAssertNil(kept.data(forKey: PushNotificationService.waitingPulseQuietKey), "going through lets it go")
+
+        relaunched.pulseQuietAwaitsCall(quiet)
+        let waiting = relaunched.pulseQuietAttempt
+        relaunched.receiveNotificationPayload([
+            "conduit": ["session_id": "runtime-2", "type": "response.ready"] as [String: Any]
+        ])
+        XCTAssertNil(relaunched.pendingPulseQuiet)
+        XCTAssertNil(kept.data(forKey: PushNotificationService.waitingPulseQuietKey), "a newer tap replaces it")
+        XCTAssertGreaterThan(relaunched.pulseQuietAttempt, waiting, "and ends the wait it left running")
+
+        relaunched.pulseQuietAwaitsCall(quiet)
+        date = date.addingTimeInterval(PushNotificationService.waitingTapLifetime)
+        XCTAssertNil(PushNotificationService(retryDelay: .zero, keptTaps: kept, date: { date }).pendingPulseQuiet,
+                     "too old, as a tap would be")
+        XCTAssertNil(kept.data(forKey: PushNotificationService.waitingPulseQuietKey))
+
+        date = lateEvening
+        relaunched.pulseQuietAwaitsCall(quiet)
+        date = lateEvening.addingTimeInterval(3600)
+        XCTAssertNil(PushNotificationService(retryDelay: .zero, keptTaps: kept, date: { date }).pendingPulseQuiet,
+                     "pressed yesterday: the day it was for has ended")
+        XCTAssertNil(kept.data(forKey: PushNotificationService.waitingPulseQuietKey))
+        XCTAssertFalse(relaunched.takePendingPulseQuiet(quiet), "nor does a call past midnight carry it over")
+        XCTAssertNil(relaunched.pendingPulseQuiet)
+    }
+
+    /// Closed between keeping a tap that starts waiting and dropping the
+    /// retry it replaces, Conduit finds both kept: only the tap, the newer,
+    /// waits again, so the two don't both take the screen when the call ends.
+    func testARelaunchKeepsOnlyTheNewerOfAWaitingTapAndRetry() {
+        let kept = makeScratchDefaults("WaitingTapAndPulseQuiet")
+        let date = Date()
+        let first = PushNotificationService(retryDelay: .zero, keptTaps: kept, date: { date })
+        first.pulseQuietAwaitsCall(PulseQuietTarget(dashboardID: UUID().uuidString, gatewayID: "gw-2"))
+        let keptQuiet = kept.data(forKey: PushNotificationService.waitingPulseQuietKey)
+        XCTAssertNotNil(keptQuiet)
+        first.receiveNotificationPayload([
+            "conduit": ["session_id": "runtime-1", "type": "response.ready"] as [String: Any]
+        ])
+        guard let tap = first.pendingTarget else { return XCTFail("Expected the newer tap") }
+        XCTAssertTrue(first.beginNotificationRoute(tap))
+        first.notificationRouteAwaitsCall(tap)
+        kept.set(keptQuiet, forKey: PushNotificationService.waitingPulseQuietKey)
+
+        let relaunched = PushNotificationService(retryDelay: .zero, keptTaps: kept, date: { date })
+        XCTAssertEqual(relaunched.pendingTarget, tap)
+        XCTAssertNil(relaunched.pendingPulseQuiet, "the older retry stays dropped")
+        XCTAssertNil(kept.data(forKey: PushNotificationService.waitingPulseQuietKey))
     }
 
     func testSessionNormalizationDoesNotInventOwnershipWithoutFallback() {

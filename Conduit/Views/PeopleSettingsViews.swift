@@ -136,7 +136,7 @@ struct PeopleSettingsPage: View {
             } else {
                 ConduitSettingsSection(title: AppLocalization.string("This Hermes"), symbol: "server.rack", tint: .conduitAura) {
                     Text(AppLocalization.string("Update the Conduit plugin on your Hermes host to set it up for rooms from here."))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -194,7 +194,7 @@ struct PeopleSettingsPage: View {
     private var linksSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Linked with"), symbol: "link", tint: .conduitAccent) {
             Text(AppLocalization.string("A Link lets you and someone else bring your agents into rooms together. It grants nothing by itself: in each room, you choose what your agents may do."))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             if let shown {
                 linkActions(shown.identity)
@@ -202,7 +202,7 @@ struct PeopleSettingsPage: View {
                 // Nothing waits in the mailbox without a Link or an invite.
                 if !shown.list.mailboxReading, !shown.list.links.isEmpty || !shown.list.invites.isEmpty {
                     Label(AppLocalization.string("Nothing on your Hermes reads its rooms mailbox right now, so what the other side sends waits there, for up to 7 days."), systemImage: "tray.and.arrow.down")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.orange)
                     Button(AppLocalization.string("Check again")) { Task { await load(key) } }
                         .buttonStyle(.settings)
@@ -210,7 +210,7 @@ struct PeopleSettingsPage: View {
                 }
                 if shown.list.links.isEmpty {
                     Text(AppLocalization.string("No Links yet."))
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(shown.list.links) { link in
@@ -219,7 +219,7 @@ struct PeopleSettingsPage: View {
                 }
             } else if let loadError {
                 Label(loadError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.orange)
                 Button(AppLocalization.string("Try again")) { Task { await load(key) } }
                     .buttonStyle(.settings)
@@ -229,7 +229,7 @@ struct PeopleSettingsPage: View {
             }
             if let refreshError {
                 Label(refreshError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.orange)
                 Button(AppLocalization.string("Try again")) { Task { await load(key) } }
                     .buttonStyle(.settings)
@@ -237,7 +237,7 @@ struct PeopleSettingsPage: View {
             }
             if let actionError {
                 Label(actionError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.orange)
             }
         }
@@ -258,7 +258,7 @@ struct PeopleSettingsPage: View {
         .disabled(!identity.crypto)
         HStack(spacing: 10) {
             Text(AppLocalization.string("Have an invite?"))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
             Button {
@@ -291,7 +291,7 @@ struct PeopleSettingsPage: View {
         .disabled(!identity.crypto)
         if let pasteError {
             Text(verbatim: pasteError)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.orange)
         }
     }
@@ -300,24 +300,24 @@ struct PeopleSettingsPage: View {
     private func yourWords(_ identity: RoomIdentity) -> some View {
         if !identity.crypto {
             Label(AppLocalization.string("This Hermes can't make Links: Linked Rooms needs Python's cryptography package, which it doesn't have. Install it where Hermes runs, then restart Hermes' dashboard."), systemImage: "exclamationmark.triangle.fill")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.orange)
         } else if let words = identity.words {
             VStack(alignment: .leading, spacing: 4) {
                 Text(AppLocalization.string("Your Hermes' words"))
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
                 Text(verbatim: PeopleSettingsText.words(words))
-                    .font(.body.weight(.semibold))
+                    .scaledFont(.body.weight(.semibold))
                     .textSelection(.enabled)
                 Text(AppLocalization.string("Someone opening your invite sees these four words. Read them to each other: if theirs match, the invite is yours."))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
         } else {
             Text(AppLocalization.string("Your Hermes gets its four words when it first makes or accepts an invite."))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
     }
@@ -327,14 +327,14 @@ struct PeopleSettingsPage: View {
         return HStack(alignment: .firstTextBaseline, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(verbatim: link.name)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                 if let status = PeopleSettingsText.status(of: link) {
                     Text(verbatim: status)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(link.status == "unanswered" ? Color.orange : Color.secondary)
                 }
                 Text(verbatim: AppLocalization.string("Words: \(words)"))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -345,7 +345,7 @@ struct PeopleSettingsPage: View {
             } else {
                 Button(AppLocalization.string("Unlink"), role: .destructive) { unlinking = link }
                     .buttonStyle(.borderless)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .disabled(changingID != nil)
                     .accessibilityValue(Text(verbatim: link.name))
             }
@@ -355,7 +355,7 @@ struct PeopleSettingsPage: View {
     private func invitesSection(_ invites: [RoomLinkInvite]) -> some View {
         ConduitSettingsSection(title: AppLocalization.string("Invites waiting"), symbol: "envelope", tint: .conduitAccent) {
             Text(AppLocalization.string("Each invite works once, for whoever opens it first, until it runs out."))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             ForEach(invites) { invite in
                 inviteRow(invite)
@@ -370,9 +370,9 @@ struct PeopleSettingsPage: View {
         return HStack(alignment: .firstTextBaseline, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(verbatim: AppLocalization.string("Shows you as \(invite.name)"))
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                 Text(verbatim: AppLocalization.string("Works until \(until)"))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -383,7 +383,7 @@ struct PeopleSettingsPage: View {
             } else {
                 Button(AppLocalization.string("Cancel invite"), role: .destructive) { cancel(invite) }
                     .buttonStyle(.borderless)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .disabled(changingID != nil)
                     .accessibilityValue(Text(verbatim: [invite.name, until].formatted(.list(type: .and, width: .narrow).locale(AppLocalization.formattingLocale))))
             }
@@ -514,7 +514,7 @@ struct LinkAsksSection: View {
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("What they can ask"), symbol: "questionmark.bubble", tint: .conduitAccent) {
             Text(AppLocalization.string("A linked person's Hermes can ask yours whether you're free on a date, or ask you a question. You choose how each is answered. Nothing else they send is answered."))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             if loaded?.key == key {
                 ForEach(shown) { link in
@@ -523,7 +523,7 @@ struct LinkAsksSection: View {
                 // A read again that failed leaves the rules up and says so.
                 if let loadError {
                     Label(loadError, systemImage: "exclamationmark.triangle.fill")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.orange)
                     Button(AppLocalization.string("Try again")) { Task { await load(key) } }
                         .buttonStyle(.settings)
@@ -531,7 +531,7 @@ struct LinkAsksSection: View {
                 }
             } else if let loadError {
                 Label(loadError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.orange)
                 Button(AppLocalization.string("Try again")) { Task { await load(key) } }
                     .buttonStyle(.settings)
@@ -541,7 +541,7 @@ struct LinkAsksSection: View {
             }
             if let actionError {
                 Label(actionError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.orange)
             }
         }
@@ -553,7 +553,7 @@ struct LinkAsksSection: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(verbatim: AppLocalization.string("What \(link.name)'s Hermes can ask"))
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if changingID == link.id {
                     ProgressView()
@@ -587,7 +587,7 @@ struct LinkAsksSection: View {
             }
             Text(verbatim: LinkAskText.caption(link.rules, name: link.name,
                                                profileName: appState.profileDisplayName(link.rules.profile)))
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
         .disabled(changingID != nil)
@@ -686,7 +686,7 @@ struct RoomSetupSection: View {
                 content(state)
             } else if let loadError {
                 Label(loadError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.orange)
                 Button(AppLocalization.string("Try again")) { Task { await load(key) } }
                     .buttonStyle(.settings)
@@ -696,7 +696,7 @@ struct RoomSetupSection: View {
             }
             if let refreshError {
                 Label(refreshError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.orange)
                 Button(AppLocalization.string("Try again")) { Task { await load(key) } }
                     .buttonStyle(.settings)
@@ -704,7 +704,7 @@ struct RoomSetupSection: View {
             }
             if let outcome {
                 Text(verbatim: outcome.text)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(outcome.trouble ? Color.orange : Color.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if outcome.checksAgain {
@@ -751,10 +751,10 @@ struct RoomSetupSection: View {
     private func content(_ state: RoomSetupState) -> some View {
         if !state.blockers.isEmpty {
             Text(AppLocalization.string("This Hermes can't be set up for rooms yet:"))
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
             ForEach(Array(state.blockers.enumerated()), id: \.offset) { _, blocker in
                 Label(blocker.message, systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.orange)
                     .textSelection(.enabled)
             }
@@ -766,15 +766,15 @@ struct RoomSetupSection: View {
             .disabled(working)
         } else if state.ready && !editing {
             Label(AppLocalization.string("Ready for rooms"), systemImage: "checkmark.circle.fill")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .foregroundStyle(.green)
             SettingsMetricRow(label: AppLocalization.string("API server"), value: state.apiServer.address, statusDot: .green, lineLimit: 1)
             Text(verbatim: PeopleSettingsText.tools(state, profileName: profileName))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             if let servers = PeopleSettingsText.mcpServers(state, profileName: profileName) {
                 Text(verbatim: servers)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
             Button(AppLocalization.string("Change")) {
@@ -789,15 +789,15 @@ struct RoomSetupSection: View {
         } else {
             if !state.ready {
                 Text(AppLocalization.string("Rooms reach your agents through Hermes' API server. For \(profileName), Set up will:"))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                 ForEach(PeopleSettingsText.setupLines(state, profileName: profileName), id: \.self) { line in
                     Label(line, systemImage: "checkmark")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                 }
                 if let error = state.apiServer.error {
                     Text(verbatim: AppLocalization.string("The API server didn't start the last time: \(error)"))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.orange)
                         .textSelection(.enabled)
                 }
@@ -805,7 +805,7 @@ struct RoomSetupSection: View {
             toolChoices(state)
             if state.apiServer.enabled {
                 Text(AppLocalization.string("Hermes' API server is already on, so other apps that use it with \(profileName), such as Open WebUI, get only these tools too."))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
             HStack(spacing: 12) {
@@ -835,7 +835,7 @@ struct RoomSetupSection: View {
     private func toolChoices(_ state: RoomSetupState) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(AppLocalization.string("Tools rooms may let \(profileName) use"))
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
             ForEach(state.choices) { choice in
                 Toggle(isOn: Binding(
                     get: { picked.contains(choice.id) },
@@ -846,10 +846,10 @@ struct RoomSetupSection: View {
                 )) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(verbatim: choice.label)
-                            .font(.subheadline)
+                            .scaledFont(.subheadline)
                         if !choice.description.isEmpty {
                             Text(verbatim: choice.description)
-                                .font(.caption)
+                                .scaledFont(.caption)
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -858,11 +858,11 @@ struct RoomSetupSection: View {
                 .disabled(working)
             }
             Text(AppLocalization.string("Each room's choices work within these. Tools added later, by a plugin, an MCP server or a Hermes update, stay out of rooms until you add them here."))
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             if let servers = state.mcpChoices, !servers.isEmpty {
                 Text(AppLocalization.string("MCP servers rooms may let \(profileName) use"))
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .padding(.top, 6)
                 ForEach(servers, id: \.self) { server in
                     Toggle(isOn: Binding(
@@ -873,13 +873,13 @@ struct RoomSetupSection: View {
                         }
                     )) {
                         Text(verbatim: server)
-                            .font(.subheadline)
+                            .scaledFont(.subheadline)
                     }
                     .tint(.conduitAccent)
                     .disabled(working)
                 }
                 Text(AppLocalization.string("Off unless you turn one on. A server's tools then work only in rooms whose Custom choice names them, and its own approvals still apply."))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
         }

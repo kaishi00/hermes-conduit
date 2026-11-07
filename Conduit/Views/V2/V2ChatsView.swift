@@ -218,6 +218,7 @@ struct V2FilterSelection: Equatable {
         sessions: [SessionSummary],
         cronSessions: [SessionSummary],
         category: (SessionSummary) -> SessionSource,
+        hasVoiceCalls: (SessionSummary) -> Bool = { _ in false },
         hasStatus: (V2SessionFilter, SessionSummary) -> Bool
     ) -> [SessionSummary] {
         let kinds = Set(sources.compactMap(\.sessionSource))
@@ -236,7 +237,9 @@ struct V2FilterSelection: Equatable {
             let chats = sessions.filter { session in
                 guard !session.isArchived else { return false }
                 let source = category(session)
-                return source != .cron && kinds.contains(source)
+                // A chat a call was kept with, or started from, is under
+                // Voice too, so every call is listed there.
+                return source != .cron && (kinds.contains(source) || (kinds.contains(.voice) && hasVoiceCalls(session)))
             }
             listed = kinds.contains(.cron)
                 ? Self.mergedByRecency(chats, cronSessions.filter { !$0.isArchived })
@@ -279,9 +282,13 @@ struct V2ChatsView: View, Equatable {
     private let appState: AppState
     @StateObject private var updates: V2ShownUpdates
     @Environment(\.v2Shell) private var shell
+    @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @State private var searchText = ""
+    /// The nest tree the list last showed, reused while its inputs stand
+    /// still (see `nestedSections`).
+    @State private var nestingCache = V2SessionsNestingCache()
     @FocusState private var searchFocused: Bool
     /// The bar is stacked (profiles on their own row): search is a button
     /// in the controls and opens over the filter row, so the list doesn't
@@ -304,6 +311,11 @@ struct V2ChatsView: View, Equatable {
     @State private var showArchivedSessions = false
     /// Every pinned reply of the profile (#918).
     @State private var showPinnedReplies = false
+    /// Every profile's chats waiting on the user (issue 1705).
+    @State private var showNeedsYou = false
+    /// Reorder pinned chats, from a pinned row's menu or the Pinned header
+    /// (issue 1354).
+    @State private var pinnedOrderTarget: PinnedChatsOrderTarget?
     @State private var showProjectCreator = false
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingRename: SessionSummary?
@@ -414,6 +426,9 @@ struct V2ChatsView: View, Equatable {
         (UserDefaults.standard.string(forKey: V2ChatsView.collapsedProfilesKey) ?? "")
             .split(separator: "\n").map(String.init)
     )
+    /// All grouped by profile: the sections showing every chat after
+    /// "Show more", by name, until the app closes.
+    @State private var profilesShowingAll = Set<String>()
 
     init(appState: AppState) {
         self.appState = appState
@@ -434,6 +449,11 @@ struct V2ChatsView: View, Equatable {
     /// No chat covers the list: none is open, or a wide window shows the
     /// list beside it.
     private var listInView: Bool { appState.showSidebar || shell.isSplit }
+
+    /// The list, or a project's page pushed over it, shows on the selected
+    /// tab: their rows' Running and Needs approval follow the live
+    /// registry. Split, a project's page stays beside the open chat.
+    private var showsLiveRows: Bool { shell.isTabActive && shell.showsChatRows && listInView }
 
     /// Projects belong to one profile, so All shows chats only.
     private var showingProjects: Bool { sessionPresentationRaw == "projects" && !appState.isAllProfilesChatsOn }
@@ -462,7 +482,12 @@ struct V2ChatsView: View, Equatable {
     /// The listed chats and cron runs: the profile in use's, or in All
     /// every included profile's. Worked out once per render.
     private var listed: (sessions: [SessionSummary], cron: [SessionSummary]) {
-        renderMemo.listed { (appState.chatListSessions, appState.chatListCronSessions) }
+        renderMemo.listed {
+            // Pulse's own chat stays behind the Pulse screen, in All too.
+            let sessions = appState.chatListSessions
+            let chats = appState.pulseHomeChat == nil ? sessions : sessions.filter { !appState.isPulseHomeChat($0) }
+            return (chats, appState.chatListCronSessions)
+        }
     }
 
     private var savedSelection: V2FilterSelection {
@@ -520,8 +545,6 @@ struct V2ChatsView: View, Equatable {
                 }
             }
                 .withAllProfilesChip()
-                .withoutScrollEdge()
-                .modifier(V2LegacyScrollEdge())
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MinimisedLiveVoiceBar()
@@ -553,6 +576,16 @@ struct V2ChatsView: View, Equatable {
             PinnedRepliesSheet()
                 .environmentObject(appState)
         }
+        .sheet(isPresented: $showNeedsYou) {
+            NeedsYouSheet(store: appState.needsYou)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .environmentObject(appState)
+        }
+        .sheet(item: $pinnedOrderTarget) { target in
+            PinnedChatsOrderSheet(profile: target.profile)
+                .environmentObject(appState)
+        }
         .sheet(item: $repairContext) { context in
             ConnectionRepairSetupSheet(context: context)
                 .environmentObject(appState)
@@ -580,12 +613,12 @@ struct V2ChatsView: View, Equatable {
             await appState.loadSessionCatalogIfNeeded()
         }
         // Running and Needs approval follow the gateway's live registry
-        // while the list is on screen; a hidden tab or a conversation
-        // pushed over the list stops polling. The poll slows down while
-        // nothing on the list changes (PollCadence). Split, the list stays
-        // on screen beside the open chat.
-        .task(id: "\(appState.activeProfile)|\(isShown)|\(listInView)") {
-            guard isShown, listInView else { return }
+        // while the list or a project's page is on screen; a hidden tab or
+        // a conversation pushed over them stops polling. The poll slows
+        // down while nothing on the list changes (PollCadence). Split, the
+        // list column stays on screen beside the open chat (#1353).
+        .task(id: "\(appState.activeProfile)|\(showsLiveRows)") {
+            guard showsLiveRows else { return }
             await appState.runChatListPolling()
         }
         // All reads every profile's chats on its own, slower poll.
@@ -602,7 +635,13 @@ struct V2ChatsView: View, Equatable {
         .onChange(of: scenePhase) { _, phase in
             // Off screen, a scroll may never report coming to rest.
             if phase != .active { updates.endScrolling() }
-            if phase == .active, isShown, listInView { appState.chatListBecameActive() }
+            if phase == .active, isShown, listInView {
+                appState.chatListBecameActive()
+                // All's poll skips its reads while the app is away: back on
+                // the list, the other profiles' rows are read now, not on
+                // the next 20 s tick.
+                appState.refreshAllProfilesCatalog()
+            }
         }
         .sheet(item: $projectPendingRename) { project in
             RenameSheet(
@@ -678,6 +717,10 @@ struct V2ChatsView: View, Equatable {
             .disabled(appState.isAllProfilesChatsOn)
             .accessibilityLabel(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
             .macTooltip(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
+
+            if appState.showsPulseScreen {
+                V2PulseButton()
+            }
 
             NavigationLink(value: V2Route.artifacts) {
                 V2CapsuleIcon(systemImage: "square.grid.2x2")
@@ -806,7 +849,7 @@ struct V2ChatsView: View, Equatable {
                 searchFocused = false
                 withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { barSearchOpen = false }
             }
-            .font(.subheadline.weight(.medium))
+            .scaledFont(.subheadline.weight(.medium))
             .foregroundStyle(Color.conduitAccent)
             .buttonStyle(.plain)
             .frame(minHeight: 44)
@@ -832,7 +875,7 @@ struct V2ChatsView: View, Equatable {
                     .font(.system(size: 14, weight: .semibold))
                     .conduitFixedGlyph()
                 Text(showingProjects ? AppLocalization.string("Projects") : selectionTitles(separator: ", "))
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.down")
@@ -872,10 +915,18 @@ struct V2ChatsView: View, Equatable {
                 } label: {
                     Label("New project", systemImage: "folder.badge.plus")
                 }
-                // Projects shown from the saved list say nothing yet about
-                // whether this Hermes takes new ones.
-                .disabled(!appState.supportsProjects || appState.projectsSeededFromSavedList)
+                .disabled(!canCreateProject)
             } else {
+                if appState.servesNeedsYou {
+                    // Every profile's waiting chats, beside the filters
+                    // that narrow this list to its own.
+                    Button {
+                        Haptics.selection()
+                        showNeedsYou = true
+                    } label: {
+                        Label(AppLocalization.string("Needs you"), systemImage: "exclamationmark.bubble")
+                    }
+                }
                 filterToggle(.all)
                 filterToggle(.starred)
 
@@ -1066,7 +1117,8 @@ struct V2ChatsView: View, Equatable {
                 cronSessions: listed.cron,
                 source: source,
                 category: category,
-                isPinned: appState.isSessionPinned
+                isPinned: appState.isSessionPinned,
+                hasVoiceCalls: hasVoiceCalls
             )
         }
     }
@@ -1075,6 +1127,13 @@ struct V2ChatsView: View, Equatable {
     /// the voice tags and voice jobs by every id the row answers to.
     private func category(_ session: SessionSummary) -> SessionSource {
         renderMemo.category(session.nestingIDs.joined(separator: "\u{1F}")) { appState.sessionCategory(for: session) }
+    }
+
+    /// A chat with calls, listed under Voice; the calls' chats are worked
+    /// out once per render.
+    private func hasVoiceCalls(_ session: SessionSummary) -> Bool {
+        let filter = renderMemo.voiceCallChats { appState.voiceCallChatFilter() }
+        return filter(session)
     }
 
     private func filterRows(_ selection: V2FilterSelection, searching: Bool) -> [SessionSummary] {
@@ -1099,6 +1158,7 @@ struct V2ChatsView: View, Equatable {
                 sessions: listed.sessions,
                 cronSessions: listed.cron,
                 category: category,
+                hasVoiceCalls: hasVoiceCalls,
                 hasStatus: hasStatus
             )
         }
@@ -1207,7 +1267,7 @@ struct V2ChatsView: View, Equatable {
         guard isSearching, !contentSearch.hits.isEmpty else { return [] }
         let known = appState.activeProfileSessions + appState.activeProfileCronSessions
             + (appState.isAllProfilesChatsOn ? listed.sessions.filter(appState.isOtherProfileRow) : [])
-        return SessionContentSearch.rows(
+        let rows = SessionContentSearch.rows(
             hits: contentSearch.hits,
             listed: displayed,
             known: known,
@@ -1215,46 +1275,54 @@ struct V2ChatsView: View, Equatable {
             activeProfile: appState.isAllProfilesChatsOn ? appState.activeProfile : "",
             owner: { session in appState.isAllProfilesChatsOn ? appState.rowProfile(session) : "" }
         )
+        // A bot's workstreams belong to its Work panel, as its Bot Chat does.
+        let shown = rows.filter { row in
+            !(row.session.map(appState.isWorkstreamRow) ?? appState.isWorkstreamSession(row.hit.sessionID))
+        }
+        // Pulse's chat stays behind the Pulse screen, message matches too.
+        guard appState.showsPulseScreen, let home = appState.pulseHomeChat else { return shown }
+        return shown.filter { row in
+            row.session.map { !appState.isPulseHomeChat($0) }
+                ?? (row.hit.sessionID != home && appState.canonicalSessionID(for: row.hit.sessionID) != home)
+        }
     }
 
+    /// Pinned in the order the person set (issue 1354), then Recent.
+    ///
+    /// Worked out once per set of inputs and kept: the tree walks the whole
+    /// catalog, indexes every id a row answers to and sorts each sibling
+    /// group, and the list asks for it on each render and again whenever it
+    /// reveals the open chat's parents. Which rows are pinned is resolved
+    /// first, so the same answer decides both the tree and whether it can
+    /// be reused.
     private func nestedSections(_ displayed: [SessionSummary]) -> (pinned: [SessionNesting.Node], recent: [SessionNesting.Node]) {
-        SessionNesting.sections(
-            displayed,
+        let pinnedIDs = Set(displayed.lazy.filter { appState.isSessionPinned($0) }.map(\.id))
+        let key = V2SessionsNestingCache.Key(
+            rows: displayed,
             query: searchText,
-            statusFilterActive: selection.flattens,
-            isPinned: appState.isSessionPinned,
-            parentKeyOf: appState.sessionNestingParentKey
+            flattens: selection.flattens,
+            pinnedIDs: pinnedIDs,
+            tags: appState.voiceSessionTagsByKey,
+            linksRevision: appState.voiceCallChatLinksRevision,
+            dashboard: appState.activeDashboardID,
+            profile: appState.activeProfile,
+            profiles: appState.profiles,
+            order: appState.pinnedChatOrder,
+            groupsByProfile: appState.allProfilesGroupsByProfile
         )
+        return nestingCache.sections(for: key) {
+            let sections = SessionNesting.sections(
+                displayed,
+                query: searchText,
+                statusFilterActive: selection.flattens,
+                isPinned: { pinnedIDs.contains($0.id) },
+                parentKeyOf: appState.sessionNestingParentKey
+            )
+            return (appState.arrangePinnedNodes(sections.pinned), sections.recent)
+        }
     }
 
     // MARK: - Sessions list
-
-    private var connectionRepairCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if let error = appState.errorMessage, !error.isEmpty {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Button {
-                Haptics.light()
-                repairContext = appState.beginConnectionRepair()
-            } label: {
-                Label("Repair Connection", systemImage: "wrench.and.screwdriver")
-                    .font(.footnote.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 44)
-            }
-            .buttonStyle(.bordered)
-            .tint(.conduitAccent)
-            .accessibilityIdentifier("chats.repair-connection")
-            .accessibilityLabel("Repair Connection")
-            .accessibilityHint("Test and fix the failed connection, then reconnect")
-        }
-        .padding(14)
-        .settingsCard()
-    }
 
     private var sessionsList: some View {
         // Worked out once per render: the rows walk the whole catalog.
@@ -1287,7 +1355,7 @@ struct V2ChatsView: View, Equatable {
             // so the composer's Repair Connection is offered here too,
             // searching or not.
             if appState.showsConnectionRepair {
-                connectionRepairCard
+                V2ConnectionRepairCard(identifier: "chats.repair-connection") { repairContext = $0 }
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 12, trailing: 16))
@@ -1419,10 +1487,17 @@ struct V2ChatsView: View, Equatable {
     ) -> some View {
         Section {
             if !isCollapsed(section) {
-                listRows(V2ChatsListItem.items(nodes, expanded: expanded, scope: rowScope))
+                listRows(
+                    V2ChatsListItem.items(nodes, expanded: expanded, scope: rowScope),
+                    movesPinned: section == .pinned && dragsPinned
+                )
             }
         } header: {
-            collapsibleHeader(section, count: nodes.count)
+            if section == .pinned {
+                pinnedHeader(nodes.map(\.session))
+            } else {
+                collapsibleHeader(section, count: nodes.count)
+            }
         }
     }
 
@@ -1463,11 +1538,72 @@ struct V2ChatsView: View, Equatable {
     ) -> some View {
         Section {
             if !isProfileCollapsed(profile) {
-                listRows(V2ChatsListItem.items(nodes, expanded: expanded, scope: rowScope))
+                // Its pinned chats lead it, and move among themselves; then
+                // its newest few until "Show more", unless a search or a
+                // status filter is looking through all of them (a source
+                // filter is still a browse, so it keeps the cap).
+                let preview = AllProfilesChats.preview(
+                    nodes,
+                    showsAll: !sectionsCollapsible,
+                    isPinned: { appState.isSessionPinned($0.session) },
+                    isOpen: holdsOpenChat,
+                    activity: ChatListSection.latestActivity(in:)
+                )
+                let showsAll = profilesShowingAll.contains(profile)
+                listRows(
+                    V2ChatsListItem.items(showsAll ? nodes : preview.shown, expanded: expanded, scope: rowScope),
+                    movesPinned: dragsPinned
+                )
+                // Only while the cap hides something: a profile that shrank
+                // to five gets no "Show fewer" that changes nothing.
+                if preview.hidden > 0 {
+                    profileShowMoreRow(profile, hiddenCount: preview.hidden)
+                }
             }
         } header: {
             profileSectionHeader(profile, count: nodes.count)
+                .reorderPinnedChatsMenu(isOn: nodes.filter { appState.isSessionPinned($0.session) }.count > 1) {
+                    pinnedOrderTarget = PinnedChatsOrderTarget(profile: profile)
+                }
         }
+    }
+
+    /// The open chat, or one nested under it, stays listed past the
+    /// preview, so a wide window never highlights a hidden row.
+    private func holdsOpenChat(_ node: SessionNesting.Node) -> Bool {
+        AllProfilesChats.holdsOpen(node, isOpen: { appState.isOpenChatRow($0) })
+    }
+
+    /// "Show 12 more" under a profile's newest chats, "Show fewer" once
+    /// they're all listed.
+    private func profileShowMoreRow(_ profile: String, hiddenCount: Int) -> some View {
+        let showsAll = profilesShowingAll.contains(profile)
+        return Button {
+            Haptics.selection()
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                if showsAll { profilesShowingAll.remove(profile) } else { profilesShowingAll.insert(profile) }
+            }
+        } label: {
+            Label(
+                showsAll
+                    ? AppLocalization.string("Show fewer")
+                    : AppLocalization.string("Show \(hiddenCount) more"),
+                systemImage: showsAll ? "chevron.up" : "chevron.down"
+            )
+            .scaledFont(.subheadline.weight(.medium))
+            .foregroundStyle(Color.conduitAccent)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .moveDisabled(true)
+        .accessibilityHint(AppLocalization.string(showsAll
+            ? "Lists only this profile's newest chats."
+            : "Lists every chat of this profile."))
     }
 
     private func profileSectionHeader(_ profile: String, count: Int) -> some View {
@@ -1488,7 +1624,7 @@ struct V2ChatsView: View, Equatable {
                     .lineLimit(1)
                 if collapsible {
                     Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.bold))
+                        .scaledFont(.caption2.weight(.bold))
                         .conduitFixedGlyph()
                         .rotationEffect(.degrees(collapsed ? 0 : 90))
                 }
@@ -1498,7 +1634,7 @@ struct V2ChatsView: View, Equatable {
                         .monospacedDigit()
                 }
             }
-            .font(.footnote.weight(.semibold))
+            .scaledFont(.footnote.weight(.semibold))
             .foregroundStyle(.secondary)
             .textCase(nil)
             .padding(.horizontal, 16)
@@ -1532,7 +1668,7 @@ struct V2ChatsView: View, Equatable {
                 HStack(spacing: 6) {
                     Text(section.title)
                     Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.bold))
+                        .scaledFont(.caption2.weight(.bold))
                         .conduitFixedGlyph()
                         .rotationEffect(.degrees(collapsed ? 0 : 90))
                     Spacer(minLength: 6)
@@ -1541,7 +1677,7 @@ struct V2ChatsView: View, Equatable {
                             .monospacedDigit()
                     }
                 }
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .textCase(nil)
                 .padding(.leading, 16)
@@ -1565,6 +1701,17 @@ struct V2ChatsView: View, Equatable {
         } else {
             sectionHeader(section.title)
         }
+    }
+
+    /// The Pinned header, whose touch-and-hold menu (and VoiceOver action)
+    /// reorders the profile in use's pinned chats; in All's mixed section
+    /// it offers that once the profile in use has two pins there.
+    private func pinnedHeader(_ pinned: [SessionSummary]) -> some View {
+        let own = pinned.filter { !appState.isOtherProfileRow($0) }.count
+        return collapsibleHeader(.pinned, count: pinned.count)
+            .reorderPinnedChatsMenu(isOn: own > 1) {
+                pinnedOrderTarget = PinnedChatsOrderTarget(profile: appState.activeProfile)
+            }
     }
 
     /// Opens the section holding a conversation opened from elsewhere (a
@@ -1601,7 +1748,7 @@ struct V2ChatsView: View, Equatable {
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(.footnote.weight(.semibold))
+            .scaledFont(.footnote.weight(.semibold))
             .foregroundStyle(.secondary)
             .textCase(nil)
             .padding(.leading, 16)
@@ -1652,13 +1799,17 @@ struct V2ChatsView: View, Equatable {
                 snippet: row.hit.snippet,
                 isUnread: row.session.map { appState.isSessionUnread($0) } ?? false,
                 isStarred: row.session.map { appState.isSessionStarred($0) } ?? false,
-                isSelected: row.openID == appState.activeSessionId && row.hit.profile == nil
-                    && !(row.session.map(appState.isOtherProfileRow) ?? false)
+                selection: .chat(
+                    isActive: row.openID == appState.activeSessionId && row.hit.profile == nil
+                        && !(row.session.map(appState.isOtherProfileRow) ?? false),
+                    beside: openBeside
+                )
             )
         }
         .buttonStyle(.plain)
         if let session = row.session {
             button
+                .onAppear { appState.warmSavedCopy(of: session) }
                 .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
                 .v2ListRow()
                 .sessionActions(
@@ -1702,7 +1853,7 @@ struct V2ChatsView: View, Equatable {
                     searchText = ""
                     searchFocused = false
                 }
-                .font(.subheadline.weight(.medium))
+                .scaledFont(.subheadline.weight(.medium))
                 .foregroundStyle(Color.conduitAccent)
                 .buttonStyle(.plain)
                 .frame(minHeight: 44)
@@ -1715,7 +1866,7 @@ struct V2ChatsView: View, Equatable {
     private func searchCapsule(minHeight: CGFloat) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             if narrowsList {
@@ -1726,10 +1877,10 @@ struct V2ChatsView: View, Equatable {
                 } label: {
                     HStack(spacing: 4) {
                         Text(selectionTitles(separator: " · "))
-                            .font(.footnote.weight(.semibold))
+                            .scaledFont(.footnote.weight(.semibold))
                             .lineLimit(1)
                         Image(systemName: "xmark")
-                            .font(.caption2.weight(.bold))
+                            .scaledFont(.caption2.weight(.bold))
                     }
                     .foregroundStyle(Color.black.opacity(0.85))
                     .padding(.horizontal, 9)
@@ -1742,7 +1893,7 @@ struct V2ChatsView: View, Equatable {
             }
             TextField(searchPrompt, text: $searchText)
                 .textFieldStyle(.plain)
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .submitLabel(.search)
                 .autocorrectionDisabled()
                 .focused($searchFocused)
@@ -1791,10 +1942,33 @@ struct V2ChatsView: View, Equatable {
     }
 
     /// One List row per item, so the List builds only the rows on screen.
-    private func listRows(_ items: [V2ChatsListItem]) -> some View {
+    /// `movesPinned`: the section's pinned chats move by dragging, a hold
+    /// then a move (issue 1354); a hold that stays still opens the menu,
+    /// and a swipe starts before either.
+    private func listRows(_ items: [V2ChatsListItem], movesPinned: Bool = false) -> some View {
         // Read once, not once per row. A search or a filter looks through
         // project chats whatever the setting, so it names them too.
         let namesProjects = isSearching || !selection.isEmpty || projectChats != .hidden
+        let pinned: [Bool] = movesPinned ? items.map { item in
+            guard case .session(let node) = item.kind else { return false }
+            return appState.isSessionPinned(node.session)
+        } : []
+        let movable: [Bool] = zip(items, pinned).map { item, isPinned in
+            guard isPinned, case .session(let node) = item.kind else { return false }
+            return !appState.isSavedChatRow(node.session)
+        }
+        let movableIDs = Set(zip(items, movable).compactMap { item, canMove in canMove ? item.id : nil })
+        // Counted among every pinned chat shown, so one that can't move
+        // keeps its place.
+        let shown = zip(items, pinned).compactMap { item, isPinned -> SessionSummary? in
+            guard isPinned, case .session(let node) = item.kind else { return nil }
+            return node.session
+        }
+        let move: ((IndexSet, Int) -> Void)? = movableIDs.count > 1 ? { source, destination in
+            guard source.allSatisfy({ movable.indices.contains($0) && movable[$0] }),
+                  let offsets = PinnedChatOrder.movableOffsets(fromOffsets: source, toOffset: destination, movable: pinned) else { return }
+            appState.movePinnedChats(shown, fromOffsets: offsets.source, toOffset: offsets.destination)
+        } : nil
         return ForEach(items) { item in
             V2ChatsRow(
                 item: item,
@@ -1802,9 +1976,18 @@ struct V2ChatsView: View, Equatable {
                 profileBadge: profileBadge(for:),
                 onRename: { sessionPendingRename = $0 },
                 onDelete: { sessionPendingDeletion = $0 },
+                onReorderPinned: { pinnedOrderTarget = PinnedChatsOrderTarget(profile: appState.rowProfile($0)) },
                 setExpanded: setExpanded
             )
+            .moveDisabled(!movableIDs.contains(item.id))
         }
+        .onMove(perform: move)
+    }
+
+    /// Pinned chats move by dragging while the list shows all of them: not
+    /// during a search or under a filter, whose rows are a lookup.
+    private var dragsPinned: Bool {
+        !isSearching && (showingProjects || selection.isEmpty)
     }
 
     /// "3 jobs · 1 running · 1 to approve": the count names jobs when every
@@ -1859,12 +2042,13 @@ struct V2ChatsView: View, Equatable {
     }
 
     private var projectsList: some View {
-        let pinned = SidebarPinnedSessions.forProjectsView(
+        let pinned = appState.arrangePinned(SidebarPinnedSessions.forProjectsView(
             sourceRows(nil),
             query: searchText,
             isPinned: appState.isSessionPinned,
             matches: sessionMatches
-        )
+        ), session: { $0 })
+        let unreadProjects = appState.projectsWithUnread()
         return List {
             if barStacked == false {
                 searchField
@@ -1876,10 +2060,10 @@ struct V2ChatsView: View, Equatable {
             if !pinned.isEmpty {
                 Section {
                     if !isCollapsed(.pinned) {
-                        listRows(pinned.map(V2ChatsListItem.leaf))
+                        listRows(pinned.map(V2ChatsListItem.leaf), movesPinned: dragsPinned)
                     }
                 } header: {
-                    collapsibleHeader(.pinned, count: pinned.count)
+                    pinnedHeader(pinned)
                 }
             }
 
@@ -1903,22 +2087,31 @@ struct V2ChatsView: View, Equatable {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             } else if displayedProjects.isEmpty && !(isSearching && !pinned.isEmpty) {
-                ContentUnavailableView(
-                    isSearching ? AppLocalization.string("No Matching Projects") : AppLocalization.string("No Projects"),
-                    systemImage: "folder",
-                    description: Text(!isSearching
-                        ? AppLocalization.string("Projects created in Hermes Desktop will appear here.")
+                ContentUnavailableView {
+                    Label(isSearching ? AppLocalization.string("No Matching Projects") : AppLocalization.string("No Projects"),
+                          systemImage: "folder")
+                } description: {
+                    Text(!isSearching
+                        ? AppLocalization.string("Projects you make here or in Hermes Desktop show here.")
                         : AppLocalization.string("Try a different search."))
-                )
+                } actions: {
+                    if !isSearching {
+                        Button(AppLocalization.string("New Project")) {
+                            Haptics.selection()
+                            showProjectCreator = true
+                        }
+                        .disabled(!canCreateProject)
+                    }
+                }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             } else if !displayedProjects.isEmpty {
                 Section {
                     ForEach(displayedProjects) { project in
-                        projectRow(project)
+                        projectRow(project, isUnread: unreadProjects.contains(project.id))
                     }
                 } header: {
-                    sectionHeader(AppLocalization.string("Projects"))
+                    projectsHeader
                 }
             }
         }
@@ -1933,9 +2126,32 @@ struct V2ChatsView: View, Equatable {
         }
     }
 
-    private func projectRow(_ project: ProjectSummary) -> some View {
+    /// Projects shown from the saved list say nothing yet about whether
+    /// this Hermes takes new ones.
+    private var canCreateProject: Bool {
+        appState.supportsProjects && !appState.projectsSeededFromSavedList
+    }
+
+    /// The Projects heading, with New Project at its end (issue 1661): the
+    /// project goes to the profile whose projects this lists.
+    private var projectsHeader: some View {
+        HStack(spacing: 0) {
+            sectionHeader(AppLocalization.string("Projects"))
+            // Bots Home's glass +, as New Group Chat's heading has it.
+            V2AddButton(title: AppLocalization.string("New Project")) {
+                Haptics.selection()
+                showProjectCreator = true
+            }
+            .disabled(!canCreateProject)
+            .padding(.trailing, 16)
+            .padding(.vertical, 4)
+        }
+        .listRowInsets(EdgeInsets())
+    }
+
+    private func projectRow(_ project: ProjectSummary, isUnread: Bool) -> some View {
         NavigationLink(value: V2Route.project(project)) {
-            V2ProjectRow(project: project, runningCount: runningCount(project))
+            V2ProjectRow(project: project, runningCount: runningCount(project), isUnread: isUnread)
         }
         .accessibilityHint(appState.isProjectEditable(project)
             ? AppLocalization.string("Opens the conversations in this project. Swipe or touch and hold to rename or delete it.")
@@ -1947,12 +2163,15 @@ struct V2ChatsView: View, Equatable {
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if appState.isProjectEditable(project) {
-                Button(role: .destructive) {
+                // Not a destructive role: that removes the row before the
+                // confirmation is answered, and on a Mac it can blank the list (#1364).
+                Button {
                     Haptics.warning()
                     projectPendingDeletion = project
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
+                .tint(.red)
                 .disabled(appState.isProjectMutationInFlight)
                 Button {
                     Haptics.selection()
@@ -2070,6 +2289,7 @@ private struct V2ChatsRow: View {
     @EnvironmentObject private var updates: V2ShownUpdates
     private var appState: AppState { updates.appState }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.v2OpenBeside) private var openBeside
     let item: V2ChatsListItem
     /// The project a listed project chat sits in, named before its preview.
     let projectTitle: String?
@@ -2077,6 +2297,8 @@ private struct V2ChatsRow: View {
     let profileBadge: (SessionSummary) -> V2ProfileBadge?
     let onRename: (SessionSummary) -> Void
     let onDelete: (SessionSummary) -> Void
+    /// Opens Reorder pinned chats from a pinned row's menu.
+    let onReorderPinned: (SessionSummary) -> Void
     /// Opens or closes the nest with this key.
     let setExpanded: (String, Bool) -> Void
 
@@ -2125,14 +2347,18 @@ private struct V2ChatsRow: View {
                 status: appState.v2RowStatus(for: session),
                 isUnread: signals.isUnread,
                 isStarred: appState.isSessionStarred(session),
-                isSelected: session.id == appState.activeSessionId && !appState.isOtherProfileRow(session),
+                selection: selection(session),
                 icon: appState.sessionCategory(for: session),
                 hasNestBelow: hasChildren,
                 profileBadge: profileBadge(session)
             )
         }
         .buttonStyle(.plain)
+        // Its saved copy comes into memory as it shows, so a tap opens on it
+        // without a read on the main thread.
+        .onAppear { appState.warmSavedCopy(of: session) }
         .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
+        .v2SelectedTrait(selection(session))
         .v2ListRow(divider: !hasChildren, dividerInset: V2SessionRow.iconTextInset)
         .sessionActions(
             appState: appState,
@@ -2140,7 +2366,8 @@ private struct V2ChatsRow: View {
             nest: SessionNesting.readToggleInputs(for: node, aggregateIsUnread: signals.isUnread),
             isSavedRow: appState.isSavedChatRow(session),
             onRename: { onRename(session) },
-            onDelete: { onDelete(session) }
+            onDelete: { onDelete(session) },
+            onReorderPinned: { onReorderPinned(session) }
         )
     }
 
@@ -2159,11 +2386,11 @@ private struct V2ChatsRow: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.bold))
+                    .scaledFont(.caption2.weight(.bold))
                     .conduitFixedGlyph()
                     .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 Text(summary)
-                    .font(.footnote.weight(.medium))
+                    .scaledFont(.footnote.weight(.medium))
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
@@ -2185,6 +2412,7 @@ private struct V2ChatsRow: View {
         let status = appState.v2RowStatus(for: session)
         let isUnread = appState.isSessionUnread(session)
         let isStarred = appState.isSessionStarred(session)
+        let rowSelection = selection(session, faintAlone: false)
         return Button {
             Haptics.light()
             appState.dismissSidebarDrawer()
@@ -2198,26 +2426,28 @@ private struct V2ChatsRow: View {
                     .padding(.trailing, 6)
                 V2StatusGlyph(status: status == .none ? .source(appState.sessionCategory(for: session)) : status)
                 Text(session.title)
-                    .font(.subheadline.weight(isUnread ? .semibold : .regular))
+                    .scaledFont(.subheadline.weight(isUnread ? .semibold : .regular))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Spacer(minLength: 6)
                 if isStarred {
                     Image(systemName: "star.fill")
-                        .font(.caption2)
+                        .scaledFont(.caption2)
                         .foregroundStyle(Color.conduitAccent)
                         .accessibilityHidden(true)
                 }
                 Text(status.actionWord ?? session.updatedLabel)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(status.actionWord == nil ? Color.primary.opacity(0.45) : status.color)
                     .lineLimit(1)
             }
             .padding(.trailing, 16)
             .frame(minHeight: 36)
+            .v2RowSelection(rowSelection)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onAppear { appState.warmSavedCopy(of: session) }
         .dynamicTypeSize(...DynamicTypeSize.listRowCap)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(session.title))
@@ -2230,6 +2460,18 @@ private struct V2ChatsRow: View {
         ].compactMap { $0 }.joined(separator: ", ")))
         .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
         .accessibilityAddTraits(.isButton)
+        .v2SelectedTrait(rowSelection)
+    }
+
+    /// The open chat's mark: a phone's faint shade, or beside the chat on a
+    /// split window the highlight. Another profile's row in All is never
+    /// the open chat, whatever its id.
+    private func selection(_ session: SessionSummary, faintAlone: Bool = true) -> V2RowSelection {
+        .chat(
+            isActive: appState.isOpenChatRow(session),
+            beside: openBeside,
+            faintAlone: faintAlone
+        )
     }
 }
 
@@ -2249,7 +2491,8 @@ extension View {
         isSavedRow: Bool = false,
         onRename: @escaping () -> Void,
         onDelete: @escaping () -> Void,
-        onChanged: @escaping () -> Void = {}
+        onChanged: @escaping () -> Void = {},
+        onReorderPinned: (() -> Void)? = nil
     ) -> some View {
         modifier(V2SessionActions(
             appState: appState,
@@ -2259,7 +2502,8 @@ extension View {
             isSavedRow: isSavedRow,
             onRename: onRename,
             onDelete: onDelete,
-            onChanged: onChanged
+            onChanged: onChanged,
+            onReorderPinned: onReorderPinned
         ))
     }
 }
@@ -2275,6 +2519,7 @@ private struct V2SessionActions: ViewModifier {
     let onRename: () -> Void
     let onDelete: () -> Void
     let onChanged: () -> Void
+    let onReorderPinned: (() -> Void)?
 
     func body(content: Content) -> some View {
         content
@@ -2286,7 +2531,8 @@ private struct V2SessionActions: ViewModifier {
                         nest: nest,
                         onRename: onRename,
                         onDelete: onDelete,
-                        onChanged: onChanged
+                        onChanged: onChanged,
+                        onReorderPinned: onReorderPinned
                     )
                 }
             }
@@ -2332,12 +2578,15 @@ private struct V2SessionActions: ViewModifier {
                     .tint(.orange)
                     .disabled(appState.isSessionMutationInFlight(session))
 
-                    Button(role: .destructive) {
+                    // Not a destructive role: that removes the row before the
+                    // confirmation is answered, and on a Mac it can blank the list (#1364).
+                    Button {
                         Haptics.warning()
                         onDelete()
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
+                    .tint(.red)
                     .disabled(appState.isSessionMutationInFlight(session))
                 }
             }
@@ -2348,22 +2597,32 @@ private struct V2SessionActions: ViewModifier {
 
 /// A project in the Projects view: colored folder tile, title, path in
 /// monospace, conversation count, a running line, and "Discovered" for a
-/// repo Hermes found on its own.
+/// repo Hermes found on its own. The gold unread dot on the tile's corner
+/// says a chat in it has a reply the user hasn't seen, apart from Running.
 struct V2ProjectRow: View {
     let project: ProjectSummary
     let runningCount: Int
+    var isUnread = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
             V2ProjectTile(project: project, size: 44)
+                .overlay(alignment: .topTrailing) {
+                    if isUnread {
+                        Circle()
+                            .fill(Color.conduitAccent)
+                            .frame(width: 12, height: 12)
+                            .offset(x: 3, y: -3)
+                    }
+                }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
                     Text(project.title)
-                        .font(.body.weight(.semibold))
+                        .scaledFont(.body.weight(.semibold))
                         .lineLimit(1)
                     if project.isAuto {
                         Text("Discovered")
-                            .font(.caption.weight(.medium))
+                            .scaledFont(.caption.weight(.medium))
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 1)
@@ -2372,7 +2631,7 @@ struct V2ProjectRow: View {
                 }
                 if let path = project.primaryPath, !path.isEmpty {
                     Text(path)
-                        .font(.footnote.monospaced())
+                        .scaledFont(.footnote.monospaced())
                         .foregroundStyle(Color.primary.opacity(0.58))
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -2381,21 +2640,30 @@ struct V2ProjectRow: View {
                     HStack(spacing: 5) {
                         V2StatusGlyph(status: .running)
                         Text("\(runningCount) running")
-                            .font(.footnote.weight(.semibold))
+                            .scaledFont(.footnote.weight(.semibold))
                             .foregroundStyle(Color.conduitAccent)
                     }
                 }
             }
             Spacer(minLength: 6)
             Text(String(project.sessionCount))
-                .font(.subheadline.monospacedDigit())
+                .scaledFont(.subheadline.monospacedDigit())
                 .foregroundStyle(Color.primary.opacity(0.45))
         }
         .padding(.vertical, 12)
         .contentShape(Rectangle())
         .dynamicTypeSize(...DynamicTypeSize.listRowCap)
         .accessibilityElement(children: .combine)
-        .accessibilityValue(Text(AppLocalization.string("\(project.sessionCount) conversations")))
+        .accessibilityValue(Text(accessibilityValue))
+    }
+
+    private var accessibilityValue: String {
+        [
+            isUnread ? AppLocalization.string("Unread") : nil,
+            AppLocalization.string("\(project.sessionCount) conversations"),
+        ]
+        .compactMap { $0 }
+        .joined(separator: ", ")
     }
 }
 
@@ -2443,6 +2711,46 @@ final class V2NestExpansionCache {
     }
 }
 
+/// The Sessions nest tree, kept between renders while the things it is
+/// built from stand still. Its key is every input the tree reads: the rows
+/// the list shows, the search and filter, which of those rows are pinned,
+/// the voice tags and call links that decide a row's parent, the dashboard
+/// and profile those tags are read for,
+/// the person's pinned order and whether profiles are grouped. An equal
+/// key is the same tree, so nothing outlives the state it was read from.
+@MainActor
+final class V2SessionsNestingCache {
+    struct Key: Equatable {
+        var rows: [SessionSummary]
+        var query: String
+        var flattens: Bool
+        var pinnedIDs: Set<String>
+        var tags: [String: [String: VoiceSessionTag]]
+        var linksRevision: Int
+        /// Voice tags are read by dashboard and profile, and profile names
+        /// repeat across Hermes servers.
+        var dashboard: UUID?
+        var profile: String
+        var profiles: [String]
+        var order: PinnedChatOrder
+        var groupsByProfile: Bool
+    }
+
+    private var key: Key?
+    private var value: (pinned: [SessionNesting.Node], recent: [SessionNesting.Node])?
+
+    func sections(
+        for key: Key,
+        build: () -> (pinned: [SessionNesting.Node], recent: [SessionNesting.Node])
+    ) -> (pinned: [SessionNesting.Node], recent: [SessionNesting.Node]) {
+        if key == self.key, let value { return value }
+        let built = build()
+        self.key = key
+        self.value = built
+        return built
+    }
+}
+
 /// What one render of the Chats list works out from the catalog, shared
 /// by the list, the filter menu and the menu's counts. Right after launch
 /// the catalog publishes many times a second, and each render used to walk
@@ -2454,9 +2762,11 @@ final class V2ChatsRenderMemo {
     private var categories: [String: SessionSource] = [:]
     private var filtered: [String: [SessionSummary]] = [:]
     private var listed: (sessions: [SessionSummary], cron: [SessionSummary])?
+    private var voiceCallChats: ((SessionSummary) -> Bool)?
 
     func reset() {
         listed = nil
+        voiceCallChats = nil
         sources.removeAll(keepingCapacity: true)
         categories.removeAll(keepingCapacity: true)
         filtered.removeAll(keepingCapacity: true)
@@ -2476,6 +2786,13 @@ final class V2ChatsRenderMemo {
         return made
     }
 
+    func voiceCallChats(_ make: () -> (SessionSummary) -> Bool) -> (SessionSummary) -> Bool {
+        if let voiceCallChats { return voiceCallChats }
+        let made = make()
+        voiceCallChats = made
+        return made
+    }
+
     func category(_ key: String, _ make: () -> SessionSource) -> SessionSource {
         if let category = categories[key] { return category }
         let category = make()
@@ -2489,5 +2806,43 @@ final class V2ChatsRenderMemo {
         let rows = make()
         filtered[key] = rows
         return rows
+    }
+}
+
+/// A failed connection's Repair Connection, at the top of the screens the
+/// app opens on (Bots Home and Sessions) rather than only on a composer.
+struct V2ConnectionRepairCard: View {
+    @EnvironmentObject private var appState: AppState
+    /// Each screen's own, for UI tests.
+    let identifier: String
+    /// Opens the repair, on the screen's own sheet: it outlives the card,
+    /// which goes once the connection is back.
+    let onRepair: (ConnectionRepairContext?) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let error = appState.errorMessage, !error.isEmpty {
+                Text(error)
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Button {
+                Haptics.light()
+                onRepair(appState.beginConnectionRepair())
+            } label: {
+                Label("Repair Connection", systemImage: "wrench.and.screwdriver")
+                    .scaledFont(.footnote.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .tint(.conduitAccent)
+            .accessibilityIdentifier(identifier)
+            .accessibilityLabel("Repair Connection")
+            .accessibilityHint("Test and fix the failed connection, then reconnect")
+        }
+        .padding(14)
+        .settingsCard()
     }
 }

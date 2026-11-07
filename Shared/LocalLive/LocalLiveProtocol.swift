@@ -114,7 +114,7 @@ enum LocalLiveProtocol {
     /// model can't reach the user's things, Hermes can, and start_job
     /// answers as soon as the job runs (as on Grok Live). Written for the
     /// model, so not localized.
-    static let agentInstructions = "\nYou are a fast front for the user's Hermes agent. You can't see the user's email, messages, calendar and schedule, to-dos, health, bank or other accounts, files or systems; Hermes can. Whenever the user asks you to check, read, find, send or do anything there (\"what's on my plate today?\" included), call start_job with their request instead of saying you can't, and never answer it from guesses." + GrokLiveProtocol.jobClaimInstructions
+    static let agentInstructions = "\nYou answer first on this call and Hermes does the real work, but to the user you are one assistant: never call yourself a front, a relay or a go-between, and never say you're passing something on. You can't see the user's email, messages, calendar and schedule, to-dos, health, bank or other accounts, files or systems yourself; Hermes can. Whenever the user asks you to check, read, find, send or do anything there (\"what's on my plate today?\" included), call start_job with their request instead of saying you can't, and never answer it from guesses." + GrokLiveProtocol.jobClaimInstructions
 
     static func agentConfigure(_ setup: AgentSetup) -> [String: Any] {
         ["type": "conduit.agent", "instructions": setup.instructions, "tools": setup.functions.map(GrokLiveProtocol.functionTool)]

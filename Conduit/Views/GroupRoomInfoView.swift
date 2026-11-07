@@ -272,11 +272,11 @@ private struct GroupRoomMemberRow: View {
                 Text(name)
                     .lineLimit(1)
                 Text(GroupRoomTurns.ownerLine(of: member))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                 if let trouble {
                     Label(trouble.text, systemImage: trouble.symbol)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.orange)
                 }
             }
@@ -316,7 +316,7 @@ struct RoomAgentChoicesView: View {
                 if !choices.saved {
                     Section {
                         Text(AppLocalization.string("These are \(name)'s defaults. A change here applies to this room only."))
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -331,6 +331,18 @@ struct RoomAgentChoicesView: View {
                 } footer: {
                     Text(AppLocalization.string("It can search your other chats to answer here, other people's messages in them included."))
                 }
+                // A plugin without Run work sends no run_work.
+                if choices.runWork != nil {
+                    Section {
+                        Toggle(AppLocalization.string("Run work"), isOn: Binding(
+                            get: { self.choices?.runWork ?? false },
+                            set: { on in change("run_work", to: on) { $0.runWork = on } }
+                        ))
+                        .tint(.conduitAccent)
+                    } footer: {
+                        Text(AppLocalization.string("It can start work for this room, like research or code. Before each start, and before it sends the work more, it asks you on your phone: Start, Change it or Don't start. What the work finds reaches the room only as your share choices allow."))
+                    }
+                }
                 noteSection(choices)
             } else if error == nil {
                 ProgressView()
@@ -339,7 +351,7 @@ struct RoomAgentChoicesView: View {
             if let error {
                 Section {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.red)
                     if loadedKey != key {
                         Button(AppLocalization.string("Try again")) {

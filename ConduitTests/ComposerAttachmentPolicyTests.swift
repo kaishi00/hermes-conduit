@@ -9,6 +9,7 @@
 //
 
 import ImageIO
+import UIKit
 import UniformTypeIdentifiers
 import XCTest
 @testable import Conduit
@@ -162,5 +163,185 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
     func testAPictureAModelTakesGoesUnchanged() throws {
         XCTAssertNil(PictureUpload.resized(try pngData(width: 2048, height: 1024), filename: "small.png"))
         XCTAssertNil(PictureUpload.resized(Data("not a picture".utf8), filename: "broken.jpg"))
+    }
+
+    // MARK: - Dropped files (#1408)
+
+    func testADroppedFileIsStagedAsItsRichestFileType() {
+        XCTAssertEqual(
+            AttachmentDrop.fileType(registeredTypeIdentifiers: [UTType.pdf.identifier, UTType.fileURL.identifier]),
+            .pdf
+        )
+        XCTAssertEqual(
+            AttachmentDrop.fileType(registeredTypeIdentifiers: [UTType.fileURL.identifier, UTType.heic.identifier]),
+            .heic,
+            "A link to the file is not its content"
+        )
+        XCTAssertNil(AttachmentDrop.fileType(registeredTypeIdentifiers: [UTType.url.identifier]))
+        XCTAssertNil(AttachmentDrop.fileType(registeredTypeIdentifiers: [UTType.folder.identifier]))
+        XCTAssertEqual(
+            AttachmentDrop.fileType(registeredTypeIdentifiers: [UTType.data.identifier, UTType.pdf.identifier]),
+            .pdf,
+            "Plain data loses the file's kind when something more specific is offered"
+        )
+    }
+
+    func testDraggedWordsStayTextAndNamedTextFilesAttach() {
+        let plainText = [UTType.utf8PlainText.identifier]
+        XCTAssertFalse(AttachmentDrop.isFile(registeredTypeIdentifiers: plainText, suggestedName: nil))
+        XCTAssertFalse(AttachmentDrop.isFile(registeredTypeIdentifiers: plainText, suggestedName: "  "))
+        XCTAssertTrue(AttachmentDrop.isFile(registeredTypeIdentifiers: plainText, suggestedName: "notes.txt"))
+        XCTAssertTrue(AttachmentDrop.isFile(registeredTypeIdentifiers: [UTType.pdf.identifier], suggestedName: nil))
+        XCTAssertFalse(AttachmentDrop.isFile(registeredTypeIdentifiers: [UTType.url.identifier], suggestedName: "Example"))
+        XCTAssertFalse(
+            AttachmentDrop.isFile(registeredTypeIdentifiers: [UTType.url.identifier, UTType.html.identifier], suggestedName: "Example"),
+            "A browser link that also offers its page stays a link"
+        )
+        XCTAssertTrue(
+            AttachmentDrop.isFile(registeredTypeIdentifiers: [UTType.fileURL.identifier, UTType.jpeg.identifier], suggestedName: "2T3A8639.JPG"),
+            "A file from Finder is still a file"
+        )
+        XCTAssertTrue(
+            AttachmentDrop.isFile(registeredTypeIdentifiers: [UTType.url.identifier, UTType.jpeg.identifier], suggestedName: "photo.jpg"),
+            "A picture dragged from a page, with its address, is still a file"
+        )
+    }
+
+    func testADroppedFolderIsTakenSoTheComposerCanSayWhy() {
+        let folder = [UTType.folder.identifier, UTType.fileURL.identifier]
+        XCTAssertTrue(AttachmentDrop.isFolder(registeredTypeIdentifiers: folder))
+        XCTAssertFalse(AttachmentDrop.isFile(registeredTypeIdentifiers: folder, suggestedName: "Photos"))
+        XCTAssertTrue(AttachmentDrop.takes(registeredTypeIdentifiers: folder, suggestedName: "Photos"))
+        XCTAssertFalse(AttachmentDrop.isFolder(registeredTypeIdentifiers: [UTType.pdf.identifier]))
+        XCTAssertFalse(AttachmentDrop.isFolder(registeredTypeIdentifiers: [UTType.url.identifier]))
+        XCTAssertTrue(
+            AttachmentDrop.stagesAsFiles(registeredTypeIdentifiers: [folder], suggestedNames: ["Photos"]),
+            "A folder on the field goes to the composer, which says it wasn't attached"
+        )
+    }
+
+    func testTheFolderNoticeNamesTheFolders() {
+        XCTAssertTrue(AttachmentDrop.folderMessage(names: ["Photos"]).contains("Photos"))
+        let several = AttachmentDrop.folderMessage(names: ["Photos", "Scans"])
+        XCTAssertTrue(several.contains("Photos, Scans"))
+        XCTAssertFalse(AttachmentDrop.folderMessage(names: []).isEmpty)
+    }
+
+    func testOnlyALoneImageKeepsTheImagePasteOnTheTextField() {
+        let png = [UTType.png.identifier]
+        let pdf = [UTType.pdf.identifier]
+        XCTAssertFalse(AttachmentDrop.stagesAsFiles(registeredTypeIdentifiers: [png], suggestedNames: [nil]))
+        XCTAssertTrue(AttachmentDrop.stagesAsFiles(registeredTypeIdentifiers: [png, png], suggestedNames: [nil, nil]))
+        XCTAssertTrue(AttachmentDrop.stagesAsFiles(registeredTypeIdentifiers: [pdf], suggestedNames: ["report"]))
+        XCTAssertTrue(
+            AttachmentDrop.stagesAsFiles(registeredTypeIdentifiers: [png, [UTType.utf8PlainText.identifier]], suggestedNames: [nil, nil]),
+            "An image dropped with words is staged as a file, the words stay text"
+        )
+        XCTAssertFalse(
+            AttachmentDrop.stagesAsFiles(registeredTypeIdentifiers: [[UTType.utf8PlainText.identifier]], suggestedNames: [nil]),
+            "Dragged words go into the draft"
+        )
+    }
+
+    func testADroppedFileIsCopiedUnderItsOwnName() async throws {
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString)-report.pdf")
+        try Data("%PDF-1.4 dropped".utf8).write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+        let provider = try XCTUnwrap(NSItemProvider(contentsOf: source))
+        provider.suggestedName = "report"
+
+        let outcome = await AttachmentDrop.stage(provider, ordinal: 1, limitMegabytes: 16)
+        guard case .staged(let attachment) = outcome else {
+            return XCTFail("Expected the file to be staged, got \(outcome)")
+        }
+        XCTAssertEqual(attachment.name, "report.pdf")
+        XCTAssertEqual(attachment.mimeType, "application/pdf")
+        XCTAssertEqual(attachment.kind, .document)
+        let staged = try XCTUnwrap(URL(string: attachment.uri))
+        XCTAssertEqual(try Data(contentsOf: staged), Data("%PDF-1.4 dropped".utf8))
+        try? FileManager.default.removeItem(at: staged)
+    }
+
+    private func droppedPictureWhoseFileFails(named name: String) -> NSItemProvider {
+        let provider = NSItemProvider()
+        provider.registerFileRepresentation(forTypeIdentifier: UTType.png.identifier, fileOptions: [], visibility: .all) { completion in
+            completion(nil, false, CocoaError(.fileReadUnknown))
+            return nil
+        }
+        provider.suggestedName = name
+        return provider
+    }
+
+    /// A dropped picture whose file can't be read is taken as the image
+    /// object it also offers, as the share sheet does (issue 1747).
+    func testADroppedPictureWhoseFileFailsIsTakenAsItsImageObject() async throws {
+        let provider = droppedPictureWhoseFileFails(named: "shot.jpg")
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+        let archived = try NSKeyedArchiver.archivedData(withRootObject: image, requiringSecureCoding: true)
+        provider.registerDataRepresentation(forTypeIdentifier: ShareDraftCollector.imageObjectType, visibility: .all) { completion in
+            completion(archived, nil)
+            return nil
+        }
+
+        let outcome = await AttachmentDrop.stage(provider, ordinal: 1, limitMegabytes: 16)
+        guard case .staged(let attachment) = outcome else {
+            return XCTFail("Expected the picture to be staged, got \(outcome)")
+        }
+        XCTAssertEqual(attachment.name, "shot.png", "written as PNG, so the name's own extension goes")
+        XCTAssertEqual(attachment.kind, .image)
+        let staged = try XCTUnwrap(URL(string: attachment.uri))
+        XCTAssertEqual(Array(try Data(contentsOf: staged).prefix(4)), [0x89, 0x50, 0x4E, 0x47])
+        try? FileManager.default.removeItem(at: staged)
+    }
+
+    /// The PNG made from the image object is held to the limit before it
+    /// is written.
+    func testADroppedPictureObjectOverTheLimitIsTooLarge() async throws {
+        let provider = droppedPictureWhoseFileFails(named: "noise.jpg")
+        // Noise doesn't compress: 1024 x 1024 random pixels are about
+        // 3 MB as PNG.
+        let side = 1024
+        var generator = SystemRandomNumberGenerator()
+        let bytes = (0..<(side * side * 4)).map { _ in UInt8.random(in: 0...255, using: &generator) }
+        let pixels = try XCTUnwrap(CGDataProvider(data: Data(bytes) as CFData))
+        let cgImage = try XCTUnwrap(CGImage(
+            width: side, height: side, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: side * 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+            provider: pixels, decode: nil, shouldInterpolate: false, intent: .defaultIntent
+        ))
+        let image = UIImage(cgImage: cgImage)
+        XCTAssertGreaterThan(try XCTUnwrap(image.pngData()).count, 1024 * 1024)
+        let archived = try NSKeyedArchiver.archivedData(withRootObject: image, requiringSecureCoding: true)
+        provider.registerDataRepresentation(forTypeIdentifier: ShareDraftCollector.imageObjectType, visibility: .all) { completion in
+            completion(archived, nil)
+            return nil
+        }
+
+        let outcome = await AttachmentDrop.stage(provider, ordinal: 1, limitMegabytes: 1)
+        guard case .tooLarge(let name) = outcome else {
+            return XCTFail("Expected the PNG to be refused under a 1 MB limit, got \(outcome)")
+        }
+        XCTAssertEqual(name, "noise.png")
+    }
+
+    func testADroppedPictureNoWayReadsStillFails() async {
+        let outcome = await AttachmentDrop.stage(droppedPictureWhoseFileFails(named: "shot.png"), ordinal: 1, limitMegabytes: 16)
+        guard case .failed(let name) = outcome else {
+            return XCTFail("Expected the drop to fail, got \(outcome)")
+        }
+        XCTAssertEqual(name, "shot.png")
+    }
+
+    func testADroppedFileOverTheLimitIsNotCopied() throws {
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString)-big.bin")
+        try Data(count: 9 * 1024 * 1024).write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+        guard case .tooLarge(let name) = AttachmentStaging.stageCopy(of: source, name: "big.bin", type: .data, limitMegabytes: 8) else {
+            return XCTFail("Expected the 9 MB file to be refused under an 8 MB limit")
+        }
+        XCTAssertEqual(name, "big.bin")
     }
 }

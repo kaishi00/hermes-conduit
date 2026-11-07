@@ -242,4 +242,83 @@ extension AppStateDecisionFenceTests {
         XCTAssertEqual(appState.knownProjectID(for: liveSession()), "p2")
         client.disconnect()
     }
+
+    // MARK: - New Project across a reconnect (issue 1688)
+
+    private var treeWithAtlas: [String: Any] {
+        var tree = projectTree
+        tree["projects"] = (tree["projects"] as? [[String: Any]] ?? [])
+            + [["id": "p_2", "label": "Atlas", "path": "/work/atlas", "session_count": 0]]
+        return tree
+    }
+
+    /// Starts a create on the first client, answers its check read, and
+    /// returns the task with the `projects.create` request it sent.
+    private func startCreate(
+        _ appState: AppState,
+        socket: ClarifyFakeSocket
+    ) async throws -> (Task<AppState.ProjectCreateOutcome, Never>, [String: Any]) {
+        var create: Task<AppState.ProjectCreateOutcome, Never>?
+        let check = try await nextRequest(on: socket, "the check read before the create") {
+            create = Task { await appState.createProject(name: "Atlas", folders: ["/work/atlas"], idea: "") }
+        }
+        XCTAssertEqual(check["method"] as? String, "projects.tree")
+        let request = try await nextRequest(on: socket, "the projects.create request") {
+            try? respond(on: socket, to: check, with: ["result": projectTree])
+        }
+        XCTAssertEqual(request["method"] as? String, "projects.create")
+        return (try XCTUnwrap(create), request)
+    }
+
+    func testACreateHermesAnsweredStaysMadeWhenAReconnectReplacesTheClient() async throws {
+        let appState = makeMoveAppState()
+        let socket = ClarifyFakeSocket()
+        let first = try await installMoveClient(appState, socket: socket, transport: ClarifyFakeTransport())
+        try await loadMoveProjects(appState, socket: socket)
+        let (create, request) = try await startCreate(appState, socket: socket)
+
+        // A quiet reconnect lands while the create is in flight.
+        let newSocket = ClarifyFakeSocket()
+        let second = try await installMoveClient(appState, socket: newSocket, transport: ClarifyFakeTransport())
+        let reload = try await nextRequest(on: newSocket, "the list read through the new client") {
+            try? respond(on: socket, to: request, with: ["result": [
+                "project": ["id": "p_2", "label": "Atlas", "path": "/work/atlas", "session_count": 0]
+            ]])
+        }
+        XCTAssertEqual(reload["method"] as? String, "projects.tree")
+        try respond(on: newSocket, to: reload, with: ["result": treeWithAtlas])
+
+        let outcome = await create.value
+        XCTAssertEqual(outcome, .created, "Hermes answered the create, so it was made")
+        XCTAssertTrue(appState.projects.contains { $0.id == "p_2" })
+        first.disconnect()
+        second.disconnect()
+    }
+
+    func testAFailedCreateIsFoundThroughTheClientAReconnectInstalled() async throws {
+        let appState = makeMoveAppState()
+        let socket = ClarifyFakeSocket()
+        let first = try await installMoveClient(appState, socket: socket, transport: ClarifyFakeTransport())
+        try await loadMoveProjects(appState, socket: socket)
+        let (create, request) = try await startCreate(appState, socket: socket)
+
+        let newSocket = ClarifyFakeSocket()
+        let second = try await installMoveClient(appState, socket: newSocket, transport: ClarifyFakeTransport())
+        let reload = try await nextRequest(on: newSocket, "the list read through the new client") {
+            try? respond(on: socket, to: request, with: ["error": ["code": -32000, "message": "connection lost"]])
+        }
+        XCTAssertEqual(reload["method"] as? String, "projects.tree")
+        // The made one is found, and finishing it reads the list again
+        // through the same new client.
+        let finishRead = try await nextRequest(on: newSocket, "the list read that finishes the found project") {
+            try? respond(on: newSocket, to: reload, with: ["result": treeWithAtlas])
+        }
+        XCTAssertEqual(finishRead["method"] as? String, "projects.tree")
+        try respond(on: newSocket, to: finishRead, with: ["result": treeWithAtlas])
+
+        let outcome = await create.value
+        XCTAssertEqual(outcome, .created, "the project Hermes made anyway is this one")
+        first.disconnect()
+        second.disconnect()
+    }
 }

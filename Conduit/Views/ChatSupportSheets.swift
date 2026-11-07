@@ -12,14 +12,26 @@ import SwiftUI
 struct GatewayDiagnosticsSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
     /// The report copied last, so "Copied" clears once a newer step lands.
     @State private var copiedTimelineReport: String?
     @State private var confirmingRestart = false
-    /// Pushed inside Settings > Connection rather than shown as its own sheet.
-    var embedded = false
+    var placement: Placement = .chat
+
+    /// Where the page opens. What this device keeps (the last connection,
+    /// device reports, chat traces) shows in each, connected or not: that is
+    /// when they're needed most.
+    enum Placement {
+        /// The chat's Gateway sheet (the header's menu or status dot).
+        case chat
+        /// Pushed inside Settings > Connection.
+        case settings
+        /// A sheet from the sign-in screen, which has no gateway to read.
+        case signIn
+    }
 
     var body: some View {
-        if embedded {
+        if placement == .settings {
             page
         } else {
             NavigationStack { page }
@@ -31,46 +43,79 @@ struct GatewayDiagnosticsSheet: View {
             ConduitBackdrop()
             ScrollView {
                 VStack(spacing: 22) {
-                    summary
+                    if placement != .signIn { summary }
                     lastConnection
                     DeviceReportsSection()
-                    connectors
-                    logs
+                    ChatTracesSection()
+                    if showsGatewayReports {
+                        connectors
+                        logs
+                    }
                 }
                 .padding(16)
             }
         }
-        .navigationTitle(embedded ? AppLocalization.string("Diagnostics & logs") : AppLocalization.string("Gateway"))
+        .navigationTitle(placement == .chat ? AppLocalization.string("Gateway") : AppLocalization.string("Diagnostics & logs"))
         .navigationBarTitleDisplayMode(.inline)
         // Pushed, it keeps the Settings pages' bar.
-        .toolbarBackground(embedded ? .automatic : .hidden, for: .navigationBar)
+        .toolbarBackground(placement == .settings ? .automatic : .hidden, for: .navigationBar)
         .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button { confirmingRestart = true } label: {
-                    Image(systemName: "restart")
+            if placement != .settings {
+                // A sheet on a Mac has no swipe to close it.
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(AppLocalization.string("Done")) { dismiss() }
+                        .accessibilityIdentifier("diagnostics.done")
                 }
-                .disabled(!appState.canRestartGateway)
-                .accessibilityLabel(AppLocalization.string("Restart Gateway"))
-                .accessibilityIdentifier("gateway.restart")
-                Button { Task { await appState.refreshGatewayDiagnostics() } } label: {
-                    if appState.gatewayDiagnosticsLoading {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
+            }
+            if placement != .signIn {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button { confirmingRestart = true } label: {
+                        Image(systemName: "restart")
                     }
+                    .disabled(!appState.canRestartGateway)
+                    .accessibilityLabel(AppLocalization.string("Restart Gateway"))
+                    .accessibilityIdentifier("gateway.restart")
+                    Button { Task { await appState.refreshGatewayDiagnostics() } } label: {
+                        if appState.gatewayDiagnosticsLoading {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                    }
+                    .accessibilityLabel(AppLocalization.string("Refresh gateway diagnostics"))
                 }
-                .accessibilityLabel(AppLocalization.string("Refresh gateway diagnostics"))
             }
         }
         .gatewayRestartConfirmation(isPresented: $confirmingRestart)
-        // Pushed from Settings it only reloads; loading also raises the sheet.
+        // Opening only reloads: the chat's sheet is already up, and the
+        // sign-in screen has no gateway to ask.
         .task {
-            if embedded {
-                await appState.refreshGatewayDiagnostics()
-            } else {
-                await appState.loadGatewayDiagnostics()
-            }
+            guard placement != .signIn else { return }
+            await appState.refreshGatewayDiagnostics()
         }
+        // A reconnect (Retry, or a gateway restart coming back) or a drop
+        // while the page is open reads the gateway again, so the summary
+        // and the sections under it agree.
+        .onChange(of: appState.isConnected) { _, _ in
+            guard placement != .signIn else { return }
+            Task { await appState.refreshGatewayDiagnostics() }
+        }
+        // A restart that ends while the page is open, from here or from
+        // Settings > Connection, reads what the gateway did: the socket goes
+        // through the dashboard and usually stays up, so the line above
+        // rarely fires for one.
+        .onChange(of: appState.activeGatewayRestart.isInProgress) { _, inProgress in
+            guard placement != .signIn, !inProgress else { return }
+            Task { await appState.refreshGatewayDiagnostics() }
+        }
+    }
+
+    /// Connectors and gateway logs come from the gateway: shown while
+    /// connected, or while an answer from before still has some.
+    private var showsGatewayReports: Bool {
+        guard placement != .signIn else { return false }
+        let diagnostics = appState.gatewayDiagnostics
+        return appState.isConnected || !(diagnostics?.connectors.isEmpty ?? true) || !(diagnostics?.logs.isEmpty ?? true)
     }
 
     private var summary: some View {
@@ -81,13 +126,13 @@ struct GatewayDiagnosticsSheet: View {
             if let version = diagnostics?.version { SettingsMetricRow(label: AppLocalization.string("Version"), value: version) }
             if let pid = diagnostics?.pid { SettingsMetricRow(label: AppLocalization.string("Process"), value: AppLocalization.string("PID \(String(pid))")) }
             if let error = diagnostics?.error {
-                Text(error).font(.footnote).foregroundStyle(.red)
+                Text(error).scaledFont(.footnote).foregroundStyle(.red)
             }
             GatewayRestartStatusView()
             if !running && !appState.activeGatewayRestart.isInProgress {
                 Button { Task { await appState.reconnect() } } label: {
                     Label(AppLocalization.string("Retry connection"), systemImage: "arrow.clockwise")
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 44)
                 }
@@ -114,7 +159,7 @@ struct GatewayDiagnosticsSheet: View {
     }
 
     /// The connection timeline, then the last call from Hermes (#449) and
-    /// the last Grok Live call's tool steps, so one Copy takes them all.
+    /// the last Grok Live, Qwen Live or Local Live call's steps, so one Copy takes them all.
     private var lastConnectionReport: String? {
         let reports = [appState.connectionTimeline?.report, HermesCallTrace.shared.timeline?.report, LiveCallTrace.shared.report].compactMap { $0 }
         return reports.isEmpty ? nil : reports.joined(separator: "\n\n")
@@ -125,7 +170,7 @@ struct GatewayDiagnosticsSheet: View {
         if let report = lastConnectionReport {
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(verbatim: report)
-                    .font(.caption.monospaced())
+                    .scaledFont(.caption.monospaced())
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -141,14 +186,14 @@ struct GatewayDiagnosticsSheet: View {
                 .accessibilityValue(copiedTimelineReport == report ? AppLocalization.string("Copied") : "")
                 if copiedTimelineReport == report {
                     Text("Copied")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
             }
         } else {
             Text("No connection has been timed since Conduit opened.")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
     }
@@ -157,15 +202,15 @@ struct GatewayDiagnosticsSheet: View {
         let configuredConnectors = (appState.gatewayDiagnostics?.connectors ?? []).filter { $0.configured != false }
         return ConduitSettingsSection(title: AppLocalization.string("Connectors"), symbol: "point.3.connected.trianglepath.dotted", tint: .conduitAura) {
             if configuredConnectors.isEmpty {
-                Text("No configured connectors were reported.").font(.footnote).foregroundStyle(.secondary)
+                Text("No configured connectors were reported.").scaledFont(.footnote).foregroundStyle(.secondary)
             } else {
                 ForEach(configuredConnectors) { connector in
                     HStack(spacing: 10) {
                         Circle().fill(connectorColor(connector.state)).frame(width: 9, height: 9)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(connector.name).font(.subheadline.weight(.medium))
+                            Text(connector.name).scaledFont(.subheadline.weight(.medium))
                             Text([connector.state, connector.error].compactMap { $0 }.joined(separator: " · "))
-                                .font(.caption).foregroundStyle(.secondary)
+                                .scaledFont(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
                     }
@@ -178,11 +223,11 @@ struct GatewayDiagnosticsSheet: View {
         ConduitSettingsSection(title: AppLocalization.string("Recent gateway logs"), symbol: "text.alignleft", tint: .conduitAccent) {
             let lines = appState.gatewayDiagnostics?.logs ?? []
             if lines.isEmpty {
-                Text("No gateway log lines were returned.").font(.footnote).foregroundStyle(.secondary)
+                Text("No gateway log lines were returned.").scaledFont(.footnote).foregroundStyle(.secondary)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     Text(lines.joined(separator: "\n"))
-                        .font(.caption.monospaced())
+                        .scaledFont(.caption.monospaced())
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -199,168 +244,28 @@ struct GatewayDiagnosticsSheet: View {
     }
 }
 
-struct WorkspaceBrowserSheet: View {
+/// The drawer shell's + › Workspace (V2 off), which has no Artifacts: the
+/// Folder tab on its own, at the chat's folder (#1389).
+struct WorkspaceSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
-    @State private var previewOpen = false
-
-    private var rows: [(entry: WorkspaceEntry, depth: Int)] {
-        flatten(appState.workspaceEntries[appState.workspaceRoot] ?? [], depth: 0)
-    }
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             ZStack {
                 ConduitBackdrop()
-                Group {
-                    if appState.workspaceRoot.isEmpty {
-                        ContentUnavailableView("Workspace unavailable", systemImage: "folder.badge.questionmark", description: Text("Hermes has not reported a working directory for this session yet."))
-                    } else {
-                        List(rows, id: \.entry.id) { row in
-                            Button {
-                                if row.entry.isDirectory {
-                                    Task { await appState.toggleWorkspaceFolder(row.entry) }
-                                } else {
-                                    previewOpen = true
-                                    Task { await appState.previewWorkspaceFile(row.entry) }
-                                }
-                            } label: {
-                                HStack(spacing: 10) {
-                                    Image(systemName: row.entry.isDirectory ? "folder.fill" : "doc.text")
-                                        .foregroundStyle(row.entry.isDirectory ? .conduitAccent : .secondary)
-                                    Text(row.entry.name).lineLimit(1)
-                                    Spacer()
-                                    if row.entry.isDirectory {
-                                        Image(systemName: appState.expandedWorkspacePaths.contains(row.entry.path) ? "chevron.down" : "chevron.right")
-                                            .font(.caption.weight(.semibold)).foregroundStyle(.conduitTertiary)
-                                    }
-                                }
-                                .padding(.leading, CGFloat(row.depth) * 18)
-                            }
-                            .tint(.primary)
-                        }
-                        .scrollContentBackground(.hidden)
-                    }
-                }
+                WorkspaceFolderView(includesChat: true, handlesReveals: true)
             }
-            .navigationTitle(workspaceTitle)
+            .navigationTitle(Text("Folder"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { Task { await appState.refreshWorkspace() } } label: {
-                        if appState.workspaceLoadingPath == appState.workspaceRoot { ProgressView().controlSize(.small) }
-                        else { Image(systemName: "arrow.clockwise") }
-                    }
-                    .accessibilityLabel("Refresh workspace")
+                    Button("Done") { dismiss() }
                 }
             }
         }
-        .sheet(isPresented: $previewOpen) {
-            WorkspaceFilePreviewSheet()
-                .presentationDetents([.medium, .large])
-                .environmentObject(appState)
-        }
-    }
-
-    private var workspaceTitle: String {
-        let name = URL(fileURLWithPath: appState.workspaceRoot).lastPathComponent
-        return name.isEmpty ? AppLocalization.string("Workspace") : name
-    }
-
-    private func flatten(_ entries: [WorkspaceEntry], depth: Int) -> [(entry: WorkspaceEntry, depth: Int)] {
-        entries.flatMap { entry in
-            var result = [(entry: entry, depth: depth)]
-            if entry.isDirectory, appState.expandedWorkspacePaths.contains(entry.path) {
-                result += flatten(appState.workspaceEntries[entry.path] ?? [], depth: depth + 1)
-            }
-            return result
-        }
-    }
-}
-
-private struct WorkspaceFilePreviewSheet: View {
-    @ObservedObject var appLanguage = AppLanguageStore.shared
-    @EnvironmentObject private var appState: AppState
-    @State private var download: WorkspaceDownload?
-    @State private var downloadTask: Task<Void, Never>?
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                ConduitBackdrop()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
-                        if appState.workspaceFileLoading {
-                            ProgressView("Loading preview…").frame(maxWidth: .infinity, minHeight: 180)
-                        } else if let error = appState.workspaceFileError {
-                            ContentUnavailableView("Couldn’t preview file", systemImage: "exclamationmark.triangle", description: Text(error))
-                        } else if let preview = appState.workspacePreview {
-                            fileMetadata(preview)
-                            if preview.binary {
-                                ContentUnavailableView("Binary file", systemImage: "doc.fill", description: Text("Use Save to Files to download this file."))
-                            } else {
-                                Text(preview.text.isEmpty ? AppLocalization.string("This file is empty.") : preview.text)
-                                    .font(.caption.monospaced())
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(12)
-                                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            }
-                        } else {
-                            ContentUnavailableView("Select a file", systemImage: "doc.text")
-                        }
-                    }
-                    .padding(16)
-                }
-            }
-            .navigationTitle(appState.workspaceSelectedFile?.name ?? AppLocalization.string("File"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    if let download {
-                        ShareLink(item: download.file, preview: SharePreview(appState.workspaceSelectedFile?.name ?? AppLocalization.string("Workspace file"))) {
-                            Label("Save to Files", systemImage: "square.and.arrow.up")
-                        }
-                    } else {
-                        Button { prepareDownload() } label: { Image(systemName: "arrow.down.circle") }
-                            .accessibilityLabel("Prepare file for download")
-                    }
-                }
-            }
-        }
-        // The prepared copy lives as long as this preview of this file.
-        .onChange(of: appState.workspaceSelectedFile?.path) { _, _ in discardDownload() }
-        .onDisappear { discardDownload() }
-    }
-
-    private func fileMetadata(_ preview: WorkspaceFilePreview) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("File"), symbol: "doc", tint: .conduitAccent) {
-            SettingsMetricRow(label: AppLocalization.string("Type"), value: preview.language)
-            SettingsMetricRow(label: AppLocalization.string("Size"), value: ByteCountFormatter.string(fromByteCount: Int64(preview.byteSize), countStyle: .file))
-            if preview.truncated { Text("Preview is truncated; save the file for its full contents.").font(.footnote).foregroundStyle(.secondary) }
-        }
-    }
-
-    private func prepareDownload() {
-        guard let entry = appState.workspaceSelectedFile, downloadTask == nil else { return }
-        downloadTask = Task {
-            let prepared = await appState.workspaceDownload(for: entry)
-            // Closed, or another file, while it was being prepared.
-            guard !Task.isCancelled, appState.workspaceSelectedFile?.path == entry.path else {
-                WorkspaceDownloads.remove(prepared)
-                return
-            }
-            downloadTask = nil
-            download = prepared
-        }
-    }
-
-    private func discardDownload() {
-        downloadTask?.cancel()
-        downloadTask = nil
-        WorkspaceDownloads.remove(download)
-        download = nil
     }
 }
 
@@ -375,7 +280,7 @@ struct DelegateAgentsSheet: View {
                 ScrollView {
                     VStack(spacing: 22) {
                         ConduitSettingsSection(title: AppLocalization.string("Delegate agents"), symbol: "person.2", tint: .conduitAccent) {
-                            Text(activeSummary).font(.footnote).foregroundStyle(.secondary)
+                            Text(activeSummary).scaledFont(.footnote).foregroundStyle(.secondary)
                         }
                         if appState.delegateAgents.isEmpty {
                             ContentUnavailableView("No delegate agents", systemImage: "person.2.slash", description: Text("Delegate activity for this conversation will appear here."))
@@ -425,12 +330,12 @@ private struct DelegateAgentCard: View {
                     HStack(spacing: 10) {
                         Circle().fill(statusColor).frame(width: 9, height: 9)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(agent.goal.isEmpty ? AppLocalization.string("Delegate agent") : agent.goal).font(.subheadline.weight(.semibold)).lineLimit(2)
+                            Text(agent.goal.isEmpty ? AppLocalization.string("Delegate agent") : agent.goal).scaledFont(.subheadline.weight(.semibold)).lineLimit(2)
                             Text([agent.model, agent.currentTool, agent.status.label].compactMap { $0 }.joined(separator: " · "))
-                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                .scaledFont(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                         Spacer()
-                        Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.caption).foregroundStyle(.secondary)
+                        Image(systemName: expanded ? "chevron.up" : "chevron.down").scaledFont(.caption).foregroundStyle(.secondary)
                     }
                 }
                 .tint(.primary)
@@ -440,17 +345,17 @@ private struct DelegateAgentCard: View {
                 }
             }
             if let note {
-                Text(note.text).font(.caption).foregroundStyle(note.isError ? .red : .secondary)
+                Text(note.text).scaledFont(.caption).foregroundStyle(note.isError ? .red : .secondary)
             }
             if expanded {
                 if agent.stream.isEmpty {
                     Text(agent.summary ?? (agent.status.isActive ? AppLocalization.string("Waiting for activity…") : AppLocalization.string("No stream output returned.")))
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .scaledFont(.footnote).foregroundStyle(.secondary)
                 } else {
                     ForEach(agent.stream.suffix(10)) { line in
                         HStack(alignment: .top, spacing: 8) {
                             Text(line.kind == .tool ? "›" : "•").foregroundStyle(line.isError ? .red : .conduitAccent)
-                            Text(line.text).font(.footnote).foregroundStyle(line.isError ? .red : .secondary)
+                            Text(line.text).scaledFont(.footnote).foregroundStyle(line.isError ? .red : .secondary)
                         }
                     }
                 }
@@ -490,7 +395,7 @@ private struct DelegateAgentCard: View {
                 if working {
                     ProgressView().controlSize(.small)
                 } else {
-                    Image(systemName: "ellipsis.circle").font(.body).foregroundStyle(.secondary)
+                    Image(systemName: "ellipsis.circle").scaledFont(.body).foregroundStyle(.secondary)
                 }
             }
             .frame(width: 32, height: 32)
@@ -568,10 +473,10 @@ private struct DelegateAgentTailSheet: View {
                         VStack(alignment: .leading, spacing: 10) {
                             if let tail, tail.available, !tail.text.isEmpty {
                                 if tail.truncated {
-                                    Text("Showing the latest output only.").font(.caption).foregroundStyle(.secondary)
+                                    Text("Showing the latest output only.").scaledFont(.caption).foregroundStyle(.secondary)
                                 }
                                 Text(verbatim: tail.text)
-                                    .font(.caption.monospaced())
+                                    .scaledFont(.caption.monospaced())
                                     .textSelection(.enabled)
                                     .fixedSize(horizontal: false, vertical: true)
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -630,7 +535,8 @@ private struct DelegateAgentTailSheet: View {
 
 /// iOS's own MetricKit reports for Conduit (MetricKitReports): a short
 /// English summary of the latest day and a file to share, for battery and
-/// data questions. Nothing here is uploaded.
+/// data questions. Nothing here is uploaded; a new crash or hang is
+/// offered once on its own card (CrashReportOffer).
 private struct DeviceReportsSection: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @State private var loaded: MetricKitReports.Loaded?
@@ -640,12 +546,15 @@ private struct DeviceReportsSection: View {
         ConduitSettingsSection(title: AppLocalization.string("Device reports"), symbol: "chart.bar.doc.horizontal", tint: .conduitAccent) {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Usage, network and hang reports iOS makes about once a day. They stay on this device until you share them.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+                Text("After a crash or freeze, Conduit asks once whether to send that report to its developer.")
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                 if let summary = loaded?.summary, !summary.isEmpty {
                     // A summary, so it wraps rather than scrolling sideways.
                     Text(verbatim: summary.text)
-                        .font(.caption.monospaced())
+                        .scaledFont(.caption.monospaced())
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -663,7 +572,7 @@ private struct DeviceReportsSection: View {
                     // Reports are stored but the file to share isn't: say so
                     // rather than leave the page looking empty.
                     Text("Couldn't write the device reports file.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.red)
                     Button { Task { await load() } } label: {
                         Label("Try again", systemImage: "arrow.clockwise")
@@ -682,5 +591,73 @@ private struct DeviceReportsSection: View {
         loading = true
         loaded = await MetricKitReports.shared.load()
         loading = false
+    }
+}
+
+/// Chat traces (#1533): what the chat recorder saved when a chat jumped,
+/// stalled or stopped scrolling, and what it holds now, to send to
+/// Conduit's developer or share.
+private struct ChatTracesSection: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @State private var exportURL: URL?
+    @State private var canSend = false
+    @State private var sending = false
+    @State private var result: ChatTraceUpload.Result?
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Chat traces"), symbol: "waveform.path.ecg", tint: .conduitAccent) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Conduit notes how the open chat scrolls and lays out: row counts, sizes and timings, never what the messages say. When a chat jumps, freezes or stops scrolling, it saves the last few minutes on this device.")
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+                Text("If a chat jumped or got stuck, send its traces right after, while they still hold that moment.")
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+                if sending {
+                    ProgressView().controlSize(.small)
+                        .accessibilityLabel(Text(AppLocalization.string("Sending…")))
+                } else if let result, result != .nothing {
+                    Text(verbatim: result == .sent ? AppLocalization.string("Report sent. Thank you!") : AppLocalization.string("Couldn't send the report"))
+                        .scaledFont(.footnote)
+                        .foregroundStyle(result == .sent ? Color.secondary : Color.red)
+                }
+                Button { Task { await send() } } label: {
+                    Label("Send to Conduit's developer", systemImage: "paperplane")
+                }
+                .buttonStyle(.settings)
+                .disabled(!canSend || sending)
+                .accessibilityLabel(AppLocalization.string("Send to Conduit's developer"))
+                .accessibilityIdentifier("diagnostics.sendChatTraces")
+                if let exportURL {
+                    ShareLink(item: exportURL) {
+                        Label("Share chat traces", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.settings)
+                    .accessibilityLabel(AppLocalization.string("Share chat traces"))
+                    .accessibilityIdentifier("diagnostics.shareChatTraces")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .task { await load() }
+    }
+
+    /// The share file and whether there's anything to send, off the main
+    /// thread: up to five traces of a few hundred kilobytes.
+    private func load() async {
+        let current = ChatViewportTrace.shared.lines(last: ChatTraceStore.maxRingLines)
+        let (url, saved) = await Task.detached(priority: .utility) { () -> (URL?, Int) in
+            let store = ChatTraceStore()
+            return (store.writeExport(current: current), store.traces().count)
+        }.value
+        exportURL = url
+        canSend = !current.isEmpty || saved > 0
+    }
+
+    private func send() async {
+        sending = true
+        result = await ChatTraceUpload.sendAll()
+        sending = false
+        await load()
     }
 }

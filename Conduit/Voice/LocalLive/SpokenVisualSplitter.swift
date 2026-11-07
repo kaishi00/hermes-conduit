@@ -6,8 +6,9 @@
 //  table, code, an image, links) without showing it with `conduit_show`:
 //  those parts are kept out of what the speech server says and collected
 //  for the call's screen instead. A link is said by its title and listed on
-//  the screen; a bare address isn't said at all. The chat keeps the whole
-//  reply.
+//  the screen; a bare address isn't said at all. A `MEDIA:` file tag isn't
+//  said either (SpokenMediaTagFilter): its file goes on the screen, as the
+//  chat shows it. The chat keeps the whole reply.
 //
 
 import Foundation
@@ -18,6 +19,9 @@ import Foundation
 struct SpokenVisualSplitter {
     /// The Markdown collected for the screen so far.
     private(set) var visual: [String] = []
+    /// The files a reply's tags attached, also in `visual`: they go on the
+    /// screen even when the model showed its own card.
+    private(set) var files: [String] = []
 
     /// The current line's text not released yet.
     private var pending = ""
@@ -28,31 +32,47 @@ struct SpokenVisualSplitter {
     /// The kind of block the last collected line belongs to, so blocks of
     /// different kinds are kept apart on screen.
     private var lastBlock: Block?
+    /// What's said, without file tags, whose files go on the screen.
+    private var mediaTags = SpokenMediaTagFilter()
 
-    private enum Block { case code, table, image, link }
-
-    /// Whether anything was collected for the screen.
-    var hasVisual: Bool { !visual.isEmpty }
+    private enum Block { case code, table, image, link, file }
 
     /// The collected Markdown.
     var visualMarkdown: String { visual.joined(separator: "\n") }
 
+    /// The attached files' Markdown alone.
+    var fileMarkdown: String { files.joined(separator: "\n") }
+
     mutating func reset() {
         self = SpokenVisualSplitter()
+    }
+
+    /// Drops what the reply still had to say, when the call says its own
+    /// line instead; the files it attached still go on the screen.
+    mutating func dropSpeech() {
+        _ = finish()
+        let files = self.files
+        self = SpokenVisualSplitter()
+        guard !files.isEmpty else { return }
+        visual = files
+        self.files = files
+        lastBlock = .file
     }
 
     /// Speakable text that can be released now.
     mutating func feed(_ text: String) -> String {
         pending += text
         var spoken = ""
-        while let newline = pending.firstIndex(of: "\n") {
+        while let newline = pending.firstIndex(where: \.isNewline) {
+            // A "\r" may be the start of a "\r\n" still to come.
+            if pending[newline] == "\r", pending.index(after: newline) == pending.endIndex { break }
             let line = String(pending[..<newline])
             pending = String(pending[pending.index(after: newline)...])
             spoken += take(line, ended: true)
             lineIsProse = false
         }
         spoken += releaseProse()
-        return spoken
+        return withoutTags(mediaTags.feed(spoken))
     }
 
     /// Everything still held, at the end of the reply.
@@ -67,6 +87,18 @@ struct SpokenVisualSplitter {
             // A block the reply never closed still shows as code.
             visual.append(open)
             fence = nil
+        }
+        return withoutTags(mediaTags.feed(spoken) + mediaTags.finish())
+    }
+
+    /// `spoken`, after the files its tags named went on the screen.
+    private mutating func withoutTags(_ spoken: String) -> String {
+        let files = mediaTags.takeFiles()
+        if !files.isEmpty {
+            if lastBlock != nil, lastBlock != .file { visual.append("") }
+            lastBlock = .file
+            visual.append(contentsOf: files)
+            self.files += files
         }
         return spoken
     }
@@ -98,11 +130,19 @@ struct SpokenVisualSplitter {
             if let marker = open.first, trimmed.hasPrefix(open), trimmed.allSatisfy({ $0 == marker }) { fence = nil }
             return ""
         }
-        if !lineIsProse, let kind = Self.blockKind(line.trimmingCharacters(in: .whitespaces)) {
+        if !lineIsProse, let kind = Self.blockKind(line.trimmingCharacters(in: .whitespaces)),
+           // An image of Hermes' own with words after it is said: the tag
+           // filter puts its file on the screen.
+           !(kind == .image && GatewayMediaTags.soleMediaPath(line) == nil
+             && line.range(of: "MEDIA:", options: .caseInsensitive) != nil) {
             if lastBlock != nil, lastBlock != kind || kind == .code { visual.append("") }
             lastBlock = kind
             // A bare address is listed like the links said in a sentence.
             visual.append(kind == .link ? "- " + line.trimmingCharacters(in: .whitespaces) : line)
+            // An image of Hermes' own (`![x](MEDIA:…)`) is an attached file too.
+            if kind == .image, let path = GatewayMediaTags.soleMediaPath(line) {
+                files.append(path.contains(where: \.isWhitespace) ? "MEDIA:`\(path)`" : "MEDIA:\(path)")
+            }
             if kind == .code {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
                 fence = String(trimmed.prefix { $0 == "`" || $0 == "~" })
@@ -125,7 +165,8 @@ struct SpokenVisualSplitter {
     /// a bare address still being written, or what may begin one; the end
     /// when there's none.
     private static func heldFrom(_ text: String) -> String.Index {
-        var held = text.endIndex
+        // A "\r" waits for the "\n" that may follow it.
+        var held = text.last == "\r" ? text.index(before: text.endIndex) : text.endIndex
         if let open = text.lastIndex(of: "["), !text[open...].contains(")") {
             held = open > text.startIndex && text[text.index(before: open)] == "!" ? text.index(before: open) : open
         }
@@ -161,7 +202,8 @@ struct SpokenVisualSplitter {
 
     /// `text` with its links said by their titles and its images and bare
     /// addresses taken out, and what was taken, in order.
-    private static let link = try? NSRegularExpression(pattern: #"(!?)\[([^\]]*)\]\(([^)\s]+)\)"#)
+    /// A `MEDIA:` target is a file, which the tag filter puts on the screen.
+    private static let link = try? NSRegularExpression(pattern: #"(!?)\[([^\]]*)\]\((?![^\S\n]*(?i:MEDIA):)([^)\s]+)\)"#, options: [])
     // An address's closing full stop or comma is the sentence's.
     private static let bareAddress = try? NSRegularExpression(pattern: #"https?://[^\s)]*[^\s).,;:!?]"#)
 

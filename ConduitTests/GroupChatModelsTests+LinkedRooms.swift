@@ -292,6 +292,16 @@ extension GroupChatModelsTests {
         XCTAssertEqual(choices, RoomChoices(
             tools: "talk", customTools: [], share: "ask", searchChats: false, note: "", saved: false
         ))
+        XCTAssertNil(choices.runWork, "a plugin without Run work")
+        XCTAssertNil(choices.body["run_work"], "never sent to a plugin that doesn't know it")
+        let runs = try RoomChoicesClient.parse(linkedRoomChoices([
+            "tools": "talk", "share": "ask", "search_chats": false, "run_work": true,
+        ]), roomID: "conduit-1")
+        XCTAssertEqual(runs.runWork, true)
+        XCTAssertEqual(runs.body["run_work"] as? Bool, true)
+        var stopped = runs
+        stopped.runWork = false
+        XCTAssertEqual(stopped.body["run_work"] as? Bool, false, "off is sent, never left out")
         // An answer without what the page shows is refused.
         XCTAssertThrowsError(try RoomChoicesClient.parse(["ok": true], roomID: "conduit-1"))
         XCTAssertThrowsError(try RoomChoicesClient.parse(

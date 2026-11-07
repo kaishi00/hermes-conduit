@@ -34,7 +34,7 @@ struct CapabilityPill: View {
 
     var body: some View {
         Text(verbatim: text)
-            .font(.caption2.weight(.semibold))
+            .scaledFont(.caption2.weight(.semibold))
             .foregroundStyle(tint)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
@@ -67,7 +67,7 @@ struct CapabilityRowLabel: View {
     var body: some View {
         HStack(alignment: .center, spacing: 11) {
             Image(systemName: symbol)
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .conduitFixedGlyph()
                 .foregroundStyle(active ? Color.conduitAccent : Color.secondary)
                 .frame(width: 30, height: 30)
@@ -75,14 +75,14 @@ struct CapabilityRowLabel: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 Text(verbatim: title)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                 if subtitle != nil || !pills.isEmpty {
                     HStack(spacing: 6) {
                         if let subtitle {
                             Text(verbatim: subtitle)
-                                .font(.caption)
+                                .scaledFont(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
@@ -93,7 +93,7 @@ struct CapabilityRowLabel: View {
                 }
                 if let detail, !detail.isEmpty {
                     Text(verbatim: detail)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                 }
@@ -107,13 +107,13 @@ struct CapabilityRowLabel: View {
             }
             if let meta {
                 Text(verbatim: meta)
-                    .font(.caption.monospacedDigit())
+                    .scaledFont(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             if chevron {
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.conduitTertiary)
                     .accessibilityHidden(true)
             }
@@ -192,7 +192,7 @@ struct CapabilitySection<Content: View, Accessory: View>: View {
             .settingsCard()
             if let footer {
                 Text(verbatim: footer)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
             }
@@ -245,7 +245,7 @@ struct CapabilityRefreshBanner: View {
 
     var body: some View {
         Text(verbatim: AppLocalization.string("Refresh failed: \(message)"))
-            .font(.caption)
+            .scaledFont(.caption)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
             .padding(.horizontal, 12)
@@ -265,15 +265,15 @@ struct CapabilityEmptyState: View {
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: symbol)
-                .font(.title2)
+                .scaledFont(.title2)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text(verbatim: title)
-                .font(.headline)
+                .scaledFont(.headline)
                 .multilineTextAlignment(.center)
             if let message {
                 Text(verbatim: message)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -304,7 +304,7 @@ struct CapabilityRowButton: View {
                     .frame(minWidth: 44)
             } else {
                 Text(verbatim: title)
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .lineLimit(1)
             }
         }

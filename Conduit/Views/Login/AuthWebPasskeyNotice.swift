@@ -223,7 +223,7 @@ struct AuthWebPasskeyNotice: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "person.badge.key.fill")
-                .font(.callout)
+                .scaledFont(.callout)
                 .foregroundStyle(Color.conduitAccent)
                 .padding(.top, 1)
                 .accessibilityHidden(true)
@@ -236,7 +236,7 @@ struct AuthWebPasskeyNotice: View {
                 onDismiss()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 28, height: 28)
                     .background(Color.primary.opacity(0.08), in: Circle())
@@ -263,10 +263,10 @@ struct AuthWebPasskeyNotice: View {
     private var text: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(verbatim: Self.title)
-                .font(.callout.weight(.semibold))
+                .scaledFont(.callout.weight(.semibold))
                 .accessibilityAddTraits(.isHeader)
             Text(verbatim: Self.message)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

@@ -45,6 +45,8 @@ final class ComposerDictationService: ObservableObject {
     var onFailure: ((String) -> Void)?
 
     private let audioCoordinator: VoiceAudioSessionCoordinator
+    /// Where a Hermes dictation keeps its recording until its words land.
+    private let clipInbox: DictationClipInbox
     private let audioSink = DictationAudioSink()
     private var engine: AVAudioEngine?
     private var lease: VoiceAudioLease?
@@ -69,8 +71,13 @@ final class ComposerDictationService: ObservableObject {
 
     private let maximumDuration: Duration
 
-    init(audioCoordinator: VoiceAudioSessionCoordinator? = nil, maximumDuration: Duration = ComposerDictationService.maximumDuration) {
+    init(
+        audioCoordinator: VoiceAudioSessionCoordinator? = nil,
+        clipInbox: DictationClipInbox? = nil,
+        maximumDuration: Duration = ComposerDictationService.maximumDuration
+    ) {
         self.audioCoordinator = audioCoordinator ?? .shared
+        self.clipInbox = clipInbox ?? .shared
         self.maximumDuration = maximumDuration
     }
 
@@ -101,7 +108,7 @@ final class ComposerDictationService: ObservableObject {
         defer { if startToken == token { isStarting = false } }
         let recognizer: any DictationRecognizer
         do {
-            recognizer = try await Self.makeRecognizer(choice, words: words, hermesGateway: hermesGateway)
+            recognizer = try await Self.makeRecognizer(choice, words: words, hermesGateway: hermesGateway, clips: clipInbox)
         } catch {
             // Cancelled (the composer went away) meanwhile: cancel()
             // already cleared the callbacks.
@@ -161,11 +168,13 @@ final class ComposerDictationService: ObservableObject {
     }
 
     /// Permission, language and the model, before the microphone opens.
-    /// Voice messages transcribe with the same engine.
+    /// Voice messages transcribe with the same engine; they send their own
+    /// recording, so only dictation passes `clips` to keep Hermes' one.
     static func makeRecognizer(
         _ choice: DictationEngine,
         words: [String],
-        hermesGateway: () -> HermesVoiceGateway?
+        hermesGateway: () -> HermesVoiceGateway?,
+        clips: DictationClipInbox? = nil
     ) async throws -> any DictationRecognizer {
         switch choice {
         case .hermes:
@@ -178,7 +187,7 @@ final class ComposerDictationService: ObservableObject {
             guard let gateway = hermesGateway() else {
                 throw DictationError.message(AppLocalization.string("Dictation with Hermes needs a connection to Hermes."))
             }
-            return HermesDictationRecognizer(gateway: gateway)
+            return HermesDictationRecognizer(gateway: gateway, clips: clips)
         case .apple, .appleSpeechAnalyzer:
             guard await AppleSpeechWakeWordService.requestPermissions() else {
                 throw DictationError.message(AppLocalization.string("Dictation needs microphone and speech recognition access. You can allow them in Settings."))

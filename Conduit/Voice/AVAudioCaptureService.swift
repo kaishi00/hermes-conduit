@@ -645,6 +645,16 @@ enum VoicePCMEncoding {
         let data = pcm.withUnsafeBytes { Data($0) }
         return (data, peak)
     }
+
+    /// Splits streamed PCM16 into its whole samples and the odd byte that
+    /// waits for the next chunk. The leftover gets storage of its own, never
+    /// an emptied slice of the stream: Foundation traps clearing an empty
+    /// Data slice with a nonzero start whose storage a copy shares, which a
+    /// live call's route change restart did (29 crash reports, build 244).
+    static func splitPCM16(_ bytes: Data) -> (samples: Data, leftover: Data) {
+        let aligned = bytes.count - bytes.count % 2
+        return (bytes.prefix(aligned), Data(bytes.dropFirst(aligned)))
+    }
 }
 
 private extension FixedWidthInteger {

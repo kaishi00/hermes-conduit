@@ -36,6 +36,8 @@ struct VoiceConversationSheet: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showsTranscript = false
+    /// Speaker, during a call from Hermes.
+    @ObservedObject private var callSpeaker = VoiceAudioSessionCoordinator.shared.nativeCallSpeaker
     /// When the sheet opened, for V2's call clock.
     @State private var openedAt = Date()
     /// The job whose result V2 shows over the conversation.
@@ -77,7 +79,7 @@ struct VoiceConversationSheet: View {
                         backgroundJobsCard
                         controlsCard
                         Text("Your conversation also continues in chat. Close ends this voice session.")
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 18)
@@ -110,8 +112,8 @@ struct VoiceConversationSheet: View {
                     .background(stateTint.opacity(0.13), in: Circle())
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(statusTitle).font(.headline)
-                    Text(statusDetail).font(.footnote).foregroundStyle(.secondary)
+                    Text(statusTitle).scaledFont(.headline)
+                    Text(statusDetail).scaledFont(.footnote).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
             }
@@ -119,7 +121,7 @@ struct VoiceConversationSheet: View {
             .accessibilityLabel("Voice status: \(statusTitle). \(statusDetail)")
             HStack(spacing: 8) {
                 Text("Mic input")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 VoiceInputLevelMeter(level: inputMeterLevel, isActive: isInputMeterActive)
                     .frame(height: 20)
@@ -135,7 +137,7 @@ struct VoiceConversationSheet: View {
         ConduitSettingsSection(title: AppLocalization.string("Conversation"), symbol: "text.bubble", tint: .conduitAura) {
             if controller.conversationTranscript.isEmpty, controller.liveTranscript.isEmpty {
                 Text("Your spoken words and Hermes' replies will appear here.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
                     .accessibilityLabel("No voice conversation messages yet")
@@ -162,7 +164,7 @@ struct VoiceConversationSheet: View {
         ConduitSettingsSection(title: AppLocalization.string("Background jobs"), symbol: "square.stack.3d.up", tint: .conduitAccent) {
             if backgroundJobs.backgroundJobs.isEmpty {
                 Text("Say “background job” and then a task to run it as its own chat while you keep talking.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
@@ -175,10 +177,10 @@ struct VoiceConversationSheet: View {
                                 .accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(job.title)
-                                    .font(.subheadline)
+                                    .scaledFont(.subheadline)
                                     .lineLimit(2)
                                 Text(Self.jobStatusLabel(job.status))
-                                    .font(.caption)
+                                    .scaledFont(.caption)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer(minLength: 0)
@@ -187,7 +189,7 @@ struct VoiceConversationSheet: View {
                     }
                 }
                 Text("Each job is its own chat in your session list. Say “job status” or “cancel background jobs” at any time.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -246,17 +248,28 @@ struct VoiceConversationSheet: View {
                 }
 
                 Button { controller.setOutputMuted(!controller.isOutputMuted) } label: {
-                    Label(controller.isOutputMuted ? AppLocalization.string("Unmute") : AppLocalization.string("Mute"), systemImage: controller.isOutputMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    Label(controller.isOutputMuted ? AppLocalization.string("Unmute") : AppLocalization.string("Mute"), systemImage: controller.isOutputMuted ? LiveVoiceCallButton.silencedSymbol : LiveVoiceCallButton.silenceSymbol)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 48)
                 }
                 .conduitGlassControl(cornerRadius: 17, tint: controller.isOutputMuted ? .orange.opacity(0.18) : .conduitAura.opacity(0.14))
                 .accessibilityHint("Mutes assistant audio without changing chat messages")
+
+                if callSpeaker.isShown {
+                    Button { VoiceAudioSessionCoordinator.shared.setNativeCallSpeaker(!callSpeaker.isOn) } label: {
+                        Label(AppLocalization.string("Speaker"), systemImage: "speaker.wave.3.fill")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6).frame(minHeight: 48)
+                    }
+                    .conduitGlassControl(cornerRadius: 17, tint: callSpeaker.isOn ? .conduitAccent.opacity(0.4) : .conduitAura.opacity(0.14))
+                    .accessibilityValue(callSpeaker.isOn ? Text("On") : Text("Off"))
+                    .accessibilityHint(Text("Plays the call on the loudspeaker"))
+                }
             }
             Text(controller.isPushToTalkActive
                 ? AppLocalization.string("Hold to talk, let go to send. Close ends the voice session.")
                 : AppLocalization.string("Pause only affects the microphone. Close ends the voice session."))
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -524,7 +537,7 @@ extension VoiceConversationSheet {
         HStack(spacing: 12) {
             Button(action: close) {
                 Image(systemName: "xmark")
-                    .font(.body.weight(.semibold))
+                    .scaledFont(.body.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 44, height: 44)
                     .contentShape(Circle())
@@ -538,13 +551,13 @@ extension VoiceConversationSheet {
             VStack(spacing: 6) {
                 VStack(spacing: 2) {
                     Text(verbatim: v2Title)
-                        .font(.headline)
+                        .scaledFont(.headline)
                         .lineLimit(1)
                         // VoiceOver hears the profile and mode, not the clock.
                         .accessibilityValue(Text(verbatim: "\(profileDisplayName), \(modeSwitch?.current.title ?? AppLocalization.string("Classic voice"))"))
                     TimelineView(.animation(minimumInterval: 1)) { context in
                         Text(verbatim: v2Subtitle(at: context.date))
-                            .font(.footnote.monospacedDigit())
+                            .scaledFont(.footnote.monospacedDigit())
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
@@ -598,10 +611,10 @@ extension VoiceConversationSheet {
             .accessibilityHidden(true)
             VStack(spacing: 6) {
                 Text(statusTitle)
-                    .font(.headline)
+                    .scaledFont(.headline)
                     .foregroundStyle(.secondary)
                 Text(statusDetail)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
             .multilineTextAlignment(.center)
@@ -625,7 +638,7 @@ extension VoiceConversationSheet {
                 LiveVoiceJobCard(job: latest) { selectJob(latest.id) }
                 if jobs.count > 1 {
                     Text("\(jobs.count - 1) more in the transcript")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -648,7 +661,7 @@ extension VoiceConversationSheet {
             LazyVStack(spacing: 10) {
                 if controller.conversationTranscript.isEmpty, controller.liveTranscript.isEmpty {
                     Text("What you and the assistant say will appear here.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
@@ -695,8 +708,11 @@ extension VoiceConversationSheet {
                 )
                 .disabled(controller.state == .transcribing)
             }
+            if callSpeaker.isShown {
+                NativeCallSpeakerButton(speaker: callSpeaker)
+            }
             LiveVoiceCallButton(
-                symbol: controller.isOutputMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                symbol: controller.isOutputMuted ? LiveVoiceCallButton.silencedSymbol : LiveVoiceCallButton.silenceSymbol,
                 title: controller.isOutputMuted ? AppLocalization.string("Sound on") : AppLocalization.string("Silence"),
                 style: controller.isOutputMuted ? .selected : .normal,
                 voiceOverLabel: controller.isOutputMuted
@@ -721,6 +737,8 @@ extension VoiceConversationSheet {
             )
         }
         .frame(maxWidth: .infinity)
+        // Microphone, Silence, Transcript, End, and Speaker in a call.
+        .modifier(LiveVoiceCallButtonRowFit(slots: callSpeaker.isShown ? 5 : 4))
         .padding(.horizontal, 12)
         .padding(.top, 14)
         .padding(.bottom, 12)
@@ -862,10 +880,10 @@ private struct VoiceConversationTranscriptBubble: View {
     var body: some View {
         VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
             Text(isUser ? AppLocalization.string("You") : AppLocalization.string("Hermes"))
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             Text(shownText)
-                .font(.body)
+                .scaledFont(.body)
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)
                 .multilineTextAlignment(isUser ? .trailing : .leading)

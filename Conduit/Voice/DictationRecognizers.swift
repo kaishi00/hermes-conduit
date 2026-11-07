@@ -301,7 +301,10 @@ private final class AnalyzerAudioInput: DictationAudioInput, @unchecked Sendable
 
 /// Hermes' own speech to text: live words over the transcribe-stream
 /// socket when the host streams them, and the whole recording uploaded
-/// when you stop otherwise (or when the live words fail).
+/// when you stop otherwise (or when the live words fail). With `clips`
+/// (composer dictation) the recording is kept on disk before it goes up,
+/// the upload is tried again on a brief network gap, and a recording
+/// whose words never came stays there for Retry.
 @MainActor
 final class HermesDictationRecognizer: DictationRecognizer {
     nonisolated static let sampleRate = VoiceAudioSessionConfiguration.capture.outputSampleRate
@@ -309,7 +312,9 @@ final class HermesDictationRecognizer: DictationRecognizer {
     /// so later dictations there go straight to the upload until relaunch.
     private static var liveUnavailable = Set<String>()
     /// A watchdog only: the upload has the gateway's own request budget,
-    /// sized for long recordings and remote providers.
+    /// sized for long recordings and remote providers. It isn't stretched
+    /// to cover every retry: it bounds how long Send waits, and a dictation
+    /// it ends keeps its recording for Retry.
     let settleTimeout: Duration = .milliseconds(HermesVoiceGateway.transcriptionMaximumRequestTimeoutMilliseconds + 10_000)
     let holdsWordsWhileSettling = true
     private let gateway: HermesVoiceGateway
@@ -326,9 +331,13 @@ final class HermesDictationRecognizer: DictationRecognizer {
     static let maximumRecordedBytes = Int(sampleRate) * 2 * Int(VoiceMessageRecorder.maximumDuration + 1)
     private var sentBytes = 0
     private var partial = ""
+    private let clips: DictationClipInbox?
+    /// This dictation's recording on disk, until its words are delivered.
+    private var clip: DictationClip?
 
-    init(gateway: HermesVoiceGateway) {
+    init(gateway: HermesVoiceGateway, clips: DictationClipInbox? = nil) {
         self.gateway = gateway
+        self.clips = clips
     }
 
     func begin(
@@ -366,13 +375,18 @@ final class HermesDictationRecognizer: DictationRecognizer {
     func endAudio() {
         finishing = Task { [weak self] in
             guard let self else { return }
+            // The microphone is closed: the recording is whole. On disk
+            // first, so nothing below can lose it.
+            self.pump()
+            await self.keepRecording()
+            guard !Task.isCancelled else { return }
             // The live socket may still be opening: give it the recording.
             await self.opening?.value
             guard !Task.isCancelled else { return }
             self.pump()
             if let live = self.live, let text = await live.finish(), !text.isEmpty {
                 guard !Task.isCancelled else { return }
-                self.onUpdate?(.text(text, isFinal: true))
+                self.deliver(text)
                 return
             }
             guard !Task.isCancelled else { return }
@@ -381,11 +395,30 @@ final class HermesDictationRecognizer: DictationRecognizer {
     }
 
     func cancel() {
+        // Ended while still listening (a call took the microphone, the
+        // composer went away) with no words from the live socket: what was
+        // said is only in the recording, so it is kept for Retry.
+        if clips != nil, finishing == nil, partial.isEmpty, let pcm = input?.drain() {
+            recorded.append(pcm.prefix(max(0, Self.maximumRecordedBytes - recorded.count)))
+        }
+        let unheard = finishing == nil && partial.isEmpty
+            && Double(recorded.count) / 2 / Self.sampleRate >= DictationClipInbox.shortestKept
         onUpdate = nil
         opening?.cancel()
         finishing?.cancel()
         live?.cancel()
         live = nil
+        // Stopped before its words came (the settle ran out, or the
+        // composer went away): the recording stays for Retry.
+        releaseClip()
+        if unheard, let clips {
+            let recording = recorded
+            let identity = gateway.identity
+            Task {
+                guard let clip = await clips.keep(pcm16: recording, sampleRate: Self.sampleRate, identity: identity) else { return }
+                clips.release(clip.id)
+            }
+        }
     }
 
     /// Takes what the microphone recorded since last time, in order, and
@@ -408,23 +441,73 @@ final class HermesDictationRecognizer: DictationRecognizer {
 
     private func upload() async {
         guard !recorded.isEmpty else {
-            onUpdate?(.text(partial, isFinal: true))
+            deliver(partial)
             return
         }
-        let audio = VoiceCapturedAudio(
-            wavData: AVAudioCaptureService.wavWrapping(pcm16: recorded, sampleRate: Int(Self.sampleRate)),
-            pcm16Data: recorded,
-            sampleRate: Self.sampleRate,
-            duration: Double(recorded.count) / 2 / Self.sampleRate
-        )
+        let audio = VoiceCapturedAudio.dictation(pcm16: recorded, sampleRate: Self.sampleRate)
         do {
-            let text = try await gateway.transcribe(audio)
+            let text: String
+            if let clips, let clip {
+                text = try await DictationUploadRetry.run(
+                    attempt: { [gateway] in try await gateway.transcribe(audio) },
+                    onFailedAttempt: { error in clips.attemptFailed(clip.id, error: error) }
+                )
+            } else {
+                text = try await gateway.transcribe(audio)
+            }
             guard !Task.isCancelled else { return }
-            onUpdate?(.text(text.isEmpty ? partial : text, isFinal: true))
+            if text.isEmpty, let clip, clip.duration >= DictationClipInbox.quietClipLimit {
+                // Nothing heard in a long recording: keep it for Retry
+                // rather than trust the silence.
+                releaseClip()
+                onUpdate?(.text(partial, isFinal: true))
+                return
+            }
+            deliver(text.isEmpty ? partial : text)
         } catch {
             guard !Task.isCancelled else { return }
+            releaseClip()
             onUpdate?(.failed(AppLocalization.string("Hermes couldn't transcribe that: \(UserFacingError.message(for: error))")))
         }
+    }
+
+    /// Writes the whole recording to disk (composer dictation only).
+    private func keepRecording() async {
+        guard let clips, clip == nil, !recorded.isEmpty else { return }
+        let kept = await clips.keep(pcm16: recorded, sampleRate: Self.sampleRate, identity: gateway.identity)
+        clip = kept
+        // Cancelled while it was written: cancel() found nothing to let go.
+        if Task.isCancelled { releaseClip() }
+    }
+
+    /// The final words, and the recording they came from is no longer needed.
+    private func deliver(_ text: String) {
+        guard let onUpdate else { return }
+        if let clip {
+            self.clip = nil
+            clips?.delivered(clip.id)
+        }
+        onUpdate(.text(text, isFinal: true))
+    }
+
+    private func releaseClip() {
+        guard let clip else { return }
+        self.clip = nil
+        clips?.release(clip.id)
+    }
+}
+
+extension VoiceCapturedAudio {
+    /// A Hermes dictation's recording (16 kHz mono PCM16) as the upload
+    /// sends it.
+    @MainActor
+    static func dictation(pcm16: Data, sampleRate: Double) -> VoiceCapturedAudio {
+        VoiceCapturedAudio(
+            wavData: AVAudioCaptureService.wavWrapping(pcm16: pcm16, sampleRate: Int(sampleRate)),
+            pcm16Data: pcm16,
+            sampleRate: sampleRate,
+            duration: Double(pcm16.count) / 2 / sampleRate
+        )
     }
 }
 

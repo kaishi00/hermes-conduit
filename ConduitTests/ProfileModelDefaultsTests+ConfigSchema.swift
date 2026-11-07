@@ -101,6 +101,40 @@ extension ProfileModelDefaultsTests {
         XCTAssertNil(ProfileSettingValue.parseNumber("1e999"))
     }
 
+    /// Hermes' answer changes only what it changed: never a field changed
+    /// on the page since it was asked, nor the text being typed (#1533).
+    func testAnAnswerChangesOnlyWhatHermesChanged() {
+        let values: [String: ProfileSettingValue] = [
+            "same": .text("kept"), "flag": .bool(true), "mine": .text("mine"), "typing": .text("old"), "gone": .number(1),
+        ]
+        let drafts = ["same": "kept", "flag": "true", "mine": "mine", "typing": "half-typed", "gone": "1"]
+        let answered: [String: ProfileSettingValue] = [
+            "same": .text("kept"), "flag": .bool(false), "mine": .text("theirs"), "typing": .text("new"),
+        ]
+
+        let changes = ProfileConfigSettingsPage.answerChanges(
+            answered, keys: ["same", "flag", "mine", "typing", "gone"], changedHere: ["mine"], typingIn: "typing",
+            values: values, drafts: drafts
+        )
+
+        XCTAssertEqual(Set(changes.values.keys), ["flag", "typing", "gone"], "Only what Hermes changed")
+        XCTAssertEqual(changes.values["flag"], .some(.bool(false)))
+        XCTAssertEqual(changes.values["typing"], .some(.text("new")), "The field being typed in still takes Hermes' value")
+        XCTAssertEqual(changes.values["gone"], .some(nil), "A value Hermes no longer has goes")
+        XCTAssertEqual(Set(changes.drafts.keys), ["flag", "gone"], "but keeps its text, and a field changed here keeps both")
+        XCTAssertEqual(changes.drafts["flag"], .some("false"))
+        XCTAssertEqual(changes.drafts["gone"], .some(nil))
+    }
+
+    /// A page showing what it kept saves several values or a whole list
+    /// only once Hermes has answered, one save at a time (#1533).
+    func testASaveOfAKeptPageWaitsForHermesAnswer() {
+        XCTAssertFalse(KeptAnswerGate.canSave(answered: false, saving: false), "The kept answer may be stale")
+        XCTAssertFalse(KeptAnswerGate.canSave(answered: true, saving: true), "A save is already on its way")
+        XCTAssertFalse(KeptAnswerGate.canSave(answered: true, saving: false, ready: false), "What it writes isn't complete")
+        XCTAssertTrue(KeptAnswerGate.canSave(answered: true, saving: false))
+    }
+
     func testListEditorDropsBlankLines() {
         XCTAssertEqual(ProfileConfigSettingsPage.listEntries("  git status \n\n ls -la\n"), ["git status", "ls -la"])
         XCTAssertEqual(ProfileConfigSettingsPage.listEntries(""), [])

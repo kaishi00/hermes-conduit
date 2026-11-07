@@ -139,7 +139,9 @@ extension AppState {
             if status == .error { throw HermesError.notConnected }
             return status == .approved || status == .rejected
         }
-        guard let client else { throw HermesError.notConnected }
+        // A call's request like any other: a socket off screen is checked
+        // first, and a drop is waited out (#1060, #1362).
+        let client = try await clientForVoiceRequest()
         return try await client.respondToApproval(sessionId: approval.sessionId, requestId: approval.requestId,
                                                   choice: choice, profile: profile)
     }
@@ -148,7 +150,13 @@ extension AppState {
     /// through its card when the chat is on screen, else straight to
     /// Hermes; nil `answer` leaves a form's question blank. The card as it
     /// stands after; nil once Hermes stopped waiting.
-    func respondToClarifyByVoice(_ clarify: ClarifyActivity, questionID: String?, answer: String?) async throws -> ClarifyActivity? {
+    func respondToClarifyByVoice(
+        _ clarify: ClarifyActivity,
+        questionID: String?,
+        answer: String?,
+        sessionID: String? = nil,
+        profile: String? = nil
+    ) async throws -> ClarifyActivity? {
         if messages.contains(where: { $0.clarify?.requestId == clarify.requestId }) {
             await respondToClarify(requestId: clarify.requestId, questionId: questionID, answer: answer)
             guard let after = messages.first(where: { $0.clarify?.requestId == clarify.requestId })?.clarify,
@@ -159,7 +167,7 @@ extension AppState {
             if target?.status == .error { throw HermesError.notConnected }
             return after
         }
-        guard let client else { throw HermesError.notConnected }
+        let client = try await clientForVoiceRequest()
         guard let index = questionID.flatMap({ id in clarify.questions.firstIndex { $0.id == id } })
                 ?? clarify.questions.firstIndex(where: { $0.status == .pending || $0.status == .error }) else { return nil }
         let question = clarify.questions[index]
@@ -172,7 +180,11 @@ extension AppState {
         let outcome = try await client.respondToClarification(
             requestId: clarify.requestId,
             answer: wire,
-            questionId: question.isSyntheticID ? nil : question.id
+            questionId: question.isSyntheticID ? nil : question.id,
+            // On the session authority, a question this socket never saw
+            // asked (one from before a relaunch) is read from its chat.
+            sessionId: sessionID,
+            profile: profile
         )
         guard case .accepted(let remaining) = outcome else { return nil }
         var after = clarify

@@ -221,6 +221,8 @@ final class WatchDirectCallModel: ObservableObject {
     private var sessionAt: TimeInterval?
     private var connectStartedAt: TimeInterval?
     private var firstReadyAt: TimeInterval?
+    /// Sockets watchOS gave no network (#1346).
+    private var noNetwork = WatchNoNetwork()
 
     // Connection
     private var reconnectStartedAt: TimeInterval?
@@ -627,7 +629,9 @@ final class WatchDirectCallModel: ObservableObject {
         audio.stopPlayback()
         // Local Live's server is told, so its microphone opens again (#1325).
         session?.cancelResponse()
-        suppressingModelTurn = true
+        // Only a turn still arriving is dropped: pressed while a finished
+        // turn's tail plays, the next turn must be heard (issue 1790).
+        suppressingModelTurn = modelTurnActive
         modelTurnActive = false
         lastModelTurnEndedAt = now
         lastPlaybackEndedAt = now
@@ -1360,6 +1364,7 @@ final class WatchDirectCallModel: ObservableObject {
     /// Each socket's states or callbacks, timed from the audio session's
     /// activation like the path changes.
     private func socketEvent(_ api: WatchSocketAPI, number: Int, kind: String, _ fields: [String: Any]) {
+        defer { endIfNoNetwork(kind, fields) }
         socketNotes += 1
         guard socketNotes <= 150 else { return }
         var fields = fields
@@ -1372,6 +1377,20 @@ final class WatchDirectCallModel: ObservableObject {
         fields["screen"] = "\(scenePhase)"
         fields["phase"] = "\(phase)"
         WatchCallLog.shared.note("directSocket", fields)
+    }
+
+    /// A call none of whose sockets ever opened ends once watchOS has
+    /// refused them the network twice (WatchNoNetwork), instead of the
+    /// session's own retries ending on "Couldn't connect".
+    private func endIfNoNetwork(_ kind: String, _ fields: [String: Any]) {
+        guard isActive else { return }
+        if kind == "open" {
+            noNetwork.socketOpened()
+            return
+        }
+        guard firstReadyAt == nil, endRequestedAt == nil, noNetwork.socketEnded(fields) else { return }
+        WatchCallLog.shared.note("directNoNetwork", ["refusals": noNetwork.refusals, "screen": "\(scenePhase)"])
+        finish(WatchCallEnd.noNetwork)
     }
 
     private func startPathMonitor() {
@@ -3323,6 +3342,7 @@ final class WatchDirectCallModel: ObservableObject {
     }
 
     private func reset() {
+        noNetwork = WatchNoNetwork()
         grokStreams = 0
         streamsSpent = false
         localLiveChatID = nil

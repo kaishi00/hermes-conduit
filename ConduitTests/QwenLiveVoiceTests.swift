@@ -209,6 +209,32 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(fake.sent.last?["audio"] as? String, audio.base64EncodedString())
     }
 
+    /// Qwen's turn detection, speech start and end and the audio sent
+    /// reach the call's trace (#1418), as Grok Live's and Local Live's do.
+    @MainActor
+    func testQwenTracesTurnDetectionAndTheUsersTurns() async throws {
+        let fake = QwenTestSocket()
+        fake.frames = [
+            ["type": "session.updated", "session": ["turn_detection": ["type": "server_vad", "threshold": 0.5, "silence_duration_ms": 800]]],
+            ["type": "input_audio_buffer.speech_started"],
+            ["type": "input_audio_buffer.speech_stopped"],
+            ["type": "response.created"],
+            ["type": "response.done"],
+        ]
+        var trace: [String] = []
+        let socket = QwenLiveSocket(upstream: fake, onTrace: { trace.append($0) })
+        _ = try await socket.receive()
+        try await socket.send(GeminiLiveProtocol.encode(GeminiLiveProtocol.audioMessage(pcm16: Data(count: 3_200))))
+        _ = try await socket.receive()
+        _ = try await socket.receive()
+        XCTAssertEqual(trace, [
+            "Turn detection: server_vad, threshold 0.5, silence ms 800",
+            "Speech start heard (before it: microphone loudest -96 dBFS, quietest -96 dBFS)",
+            "Speech end heard after 0.0 s (no microphone audio)",
+            "Reply started",
+        ])
+    }
+
     @MainActor
     func testQwenToolOutputWaitsForResponseToFinish() async throws {
         let fake = QwenTestSocket()

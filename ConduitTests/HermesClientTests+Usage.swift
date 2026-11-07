@@ -36,6 +36,8 @@ extension HermesClientTests {
         XCTAssertEqual(report.totals.output, 300)
         XCTAssertEqual(report.totals.cacheRead, 50)
         XCTAssertEqual(report.totals.reasoning, 0)
+        // Input, output and cache reads; reasoning is inside output already.
+        XCTAssertEqual(report.totals.allTokens, 2350)
         XCTAssertEqual(report.totals.sessions, 3)
         XCTAssertEqual(report.totals.apiCalls, 7)
         XCTAssertEqual(report.totals.cost, 0.03, accuracy: 0.0001)
@@ -45,6 +47,19 @@ extension HermesClientTests {
         XCTAssertEqual(report.daily.first?.usage.total, 800)
         // A repeated day keeps its first row, so the chart's ids stay unique.
         XCTAssertEqual(report.daily.last?.usage.total, 1500)
+    }
+
+    func testUsageCountsAreCappedSoTheirSumNeverOverflows() {
+        let huge: [String: Any] = ["totals": [
+            "total_input": Double(Int.max), "total_output": "\(Int.max)", "total_cache_read": 1e300,
+        ] as [String: Any]]
+        let totals = UsageReport.parse(usage: huge, models: nil, days: 7).totals
+        XCTAssertEqual(totals.input, UsageReport.countCap)
+        XCTAssertEqual(totals.output, UsageReport.countCap)
+        XCTAssertEqual(totals.cacheRead, UsageReport.countCap)
+        // Three capped counts add up without trapping.
+        XCTAssertEqual(totals.allTokens, UsageReport.countCap * 3)
+        XCTAssertEqual(UsageReport.int("-5"), 0)
     }
 
     func testUsageReportPrefersTheModelsRouteAndFallsBackToByModel() {
@@ -78,8 +93,10 @@ extension HermesClientTests {
     }
 
     func testUsageReportPathCarriesPeriodAndProfile() {
-        XCTAssertEqual(UsageReport.path(UsageReport.usagePath, days: 30, profile: "default"), "/api/analytics/usage?days=30")
-        XCTAssertEqual(UsageReport.path(UsageReport.modelsPath, days: 7, profile: "work"), "/api/analytics/models?days=7&profile=work")
+        // The route the page keeps its answers under, and the profile the request adds.
+        XCTAssertEqual(UsageReport.route(UsageReport.usagePath, days: 30), "/api/analytics/usage?days=30")
+        XCTAssertEqual(DashboardPath.withProfile(UsageReport.route(UsageReport.usagePath, days: 30), profile: "default"), "/api/analytics/usage?days=30")
+        XCTAssertEqual(DashboardPath.withProfile(UsageReport.route(UsageReport.modelsPath, days: 7), profile: "work"), "/api/analytics/models?days=7&profile=work")
     }
 
     func testProviderQuotaReadsWindowsAccountsAndLimits() {

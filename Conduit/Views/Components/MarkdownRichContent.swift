@@ -160,7 +160,7 @@ enum MarkdownRichContentPolicy {
         case .htmlPreview:
             return diagramUnits
         case .heading, .paragraph, .quote, .unorderedList, .orderedList,
-             .callout, .columns, .divider:
+             .callout, .columns, .divider, .desktopCard:
             return 0
         }
     }
@@ -483,6 +483,7 @@ struct RichBudgetedMarkdownBody: View {
         // the footer exists IFF a strictly positive hidden interval
         // remains between the prefix and the tail.
         let plan = mountedPlan
+        let pictures = MarkdownProseRun.pictureRanges(in: blocks)
         #if DEBUG
         let productionIndices = MarkdownRichContentPolicy.mountedIndices(
             plan: plan,
@@ -499,15 +500,15 @@ struct RichBudgetedMarkdownBody: View {
             switch plan {
             case .contiguous(let end):
                 ForEach(0..<end, id: \.self) { index in
-                    blockView(index)
+                    slotView(index, shown: 0..<end, pictures: pictures)
                 }
             case .split(let prefixEnd, let tailStart):
                 ForEach(0..<prefixEnd, id: \.self) { index in
-                    blockView(index)
+                    slotView(index, shown: 0..<prefixEnd, pictures: pictures)
                 }
                 revealFooter(remainingBlocks: tailStart - prefixEnd)
                 ForEach(tailStart..<blocks.count, id: \.self) { index in
-                    blockView(index)
+                    slotView(index, shown: tailStart..<blocks.count, pictures: pictures)
                 }
             }
         }
@@ -549,6 +550,20 @@ struct RichBudgetedMarkdownBody: View {
         )
     }
 
+    /// Two or more pictures in a row draw as one grid of the ones mounted
+    /// (issue 1801), at the first of them; the rest draw nothing.
+    @ViewBuilder
+    private func slotView(_ index: Int, shown: Range<Int>, pictures: [Range<Int>]) -> some View {
+        switch MarkdownProseRun.pictureSlot(at: index, in: pictures, shown: shown) {
+        case .single:
+            blockView(index)
+        case .grid(let range):
+            MarkdownPictureGrid(blocks: Array(blocks[range]), gatewayMediaDataURL: gatewayMediaDataURL)
+        case .covered:
+            EmptyView()
+        }
+    }
+
     private func blockView(_ index: Int) -> some View {
         MarkdownBlockView(
             block: blocks[index],
@@ -578,7 +593,7 @@ struct RichBudgetedMarkdownBody: View {
                 "Continue reading (\(Int(remainingBlocks)) sections left)",
                 systemImage: "chevron.down"
             )
-            .font(.footnote.weight(.semibold))
+            .scaledFont(.footnote.weight(.semibold))
         }
         .tint(usesAccentSurface ? .white : .conduitAccent)
         .frame(maxWidth: .infinity, alignment: .leading)

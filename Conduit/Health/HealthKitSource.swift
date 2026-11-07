@@ -30,6 +30,9 @@ protocol HealthDataSource: AnyObject {
     func changes(_ stream: HealthEventStream, since: Date, anchor: Data?, limit: Int) async throws -> HealthEventChanges
     /// The earliest date Health keeps, for "All history".
     func earliestDate() -> Date
+    /// When the oldest reading the history walk would send for these
+    /// categories (their metrics and sleep) starts; nil when there is none.
+    func oldestReading(in categories: Set<HealthCategory>) async throws -> Date?
     /// Wakes Conduit in the background when these streams change.
     func observe(_ categories: Set<HealthCategory>, onChange: @escaping (_ done: @escaping () -> Void) -> Void) async
     func stopObserving() async
@@ -249,6 +252,19 @@ final class HealthKitDataSource: HealthDataSource {
     }
 
     func earliestDate() -> Date { store.earliestPermittedSampleDate() }
+
+    func oldestReading(in categories: Set<HealthCategory>) async throws -> Date? {
+        var predicates: [HKSamplePredicate<HKSample>] = categories.flatMap(\.metrics).map { .sample(type: Self.quantityType($0)) }
+        if categories.contains(.sleep) { predicates.append(.sample(type: HKCategoryType(.sleepAnalysis))) }
+        guard !predicates.isEmpty else { return nil }
+        // One query across the types, sorted, so only the oldest comes back.
+        let descriptor = HKSampleQueryDescriptor(predicates: predicates, sortDescriptors: [SortDescriptor(\.startDate)], limit: 1)
+        do {
+            return try await descriptor.result(for: store).first?.startDate
+        } catch {
+            throw Self.mapped(error)
+        }
+    }
 
     func observe(_ categories: Set<HealthCategory>, onChange: @escaping (_ done: @escaping () -> Void) -> Void) async {
         let mine = await stopAll()

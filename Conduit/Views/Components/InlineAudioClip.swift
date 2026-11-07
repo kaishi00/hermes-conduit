@@ -159,7 +159,12 @@ final class ChatAudioClipPlayer: NSObject, ObservableObject {
         if lease == nil {
             // Playback still starts if the session can't be claimed: the
             // clip then plays under whatever category is already active.
-            lease = try? coordinator.acquire(.standalonePlayback)
+            // Dictation or a voice message taking the microphone pauses it,
+            // so the recording never hears it (issue 1770).
+            lease = try? coordinator.acquire(.standalonePlayback) { [weak self] in
+                guard self?.clip?.phase == .playing else { return }
+                self?.pause()
+            }
         }
         guard player.play() else {
             releaseLease()
@@ -282,7 +287,7 @@ struct InlineAudioClipView: View {
             playButton
             VStack(alignment: .leading, spacing: 3) {
                 Text(verbatim: name)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(primary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -311,7 +316,7 @@ struct InlineAudioClipView: View {
                     ProgressView().tint(secondary)
                 } else {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                 }
             }
             .foregroundStyle(secondary)
@@ -349,7 +354,7 @@ struct InlineAudioClipView: View {
                     ProgressView().tint(tint)
                 } else {
                     Image(systemName: clip?.phase == .playing ? "pause.fill" : "play.fill")
-                        .font(.body.weight(.semibold))
+                        .scaledFont(.body.weight(.semibold))
                         .foregroundStyle(tint)
                 }
             }
@@ -372,7 +377,7 @@ struct InlineAudioClipView: View {
             )
         } else {
             Text(verbatim: detailText)
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(secondary)
                 .lineLimit(2)
         }
@@ -411,7 +416,7 @@ private struct AudioClipScrubber: View {
             .accessibilityLabel(Text("Playback position"))
             .accessibilityValue(Text(verbatim: timeText))
             Text(verbatim: timeText)
-                .font(.caption2.monospacedDigit())
+                .scaledFont(.caption2.monospacedDigit())
                 .foregroundStyle(secondary)
                 .fixedSize()
         }

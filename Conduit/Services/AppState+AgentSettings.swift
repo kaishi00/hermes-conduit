@@ -165,6 +165,15 @@ extension AppState {
                 }
             ))
         }
+        // Local Live has no memory switch: its fast model is the user's own.
+        let localTitle = "Local Live"
+        catalog.append(boolDescriptor(
+            key: "voice.local.personality", section: localTitle, title: "\(localTitle) personality",
+            description: "Makes Local Live's fast model (agent mode) speak as this Hermes profile's persona (SOUL.md). This sends SOUL.md to the fast model's server.",
+            tier: .ask, displayTitle: { AppLocalization.string("\(localTitle) personality") },
+            read: { self.localLivePersonalityEnabled },
+            write: { self.setLocalLivePersonalityEnabled($0) }
+        ))
         catalog.append(boolDescriptor(
             key: "voice.live.save_calls", section: "Live voice", title: "Save live calls",
             description: "Saves each live voice call (Gemini Live, Qwen Live, GPT-Live, Grok Live, Local Live) to Hermes' chat history. Off means calls aren't kept.",

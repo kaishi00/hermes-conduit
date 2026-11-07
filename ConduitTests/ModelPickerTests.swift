@@ -15,6 +15,45 @@ final class ModelPickerTests: XCTestCase {
         XCTAssertEqual(ModelCatalogState.of(providers: [row], failed: true), .ready)
     }
 
+    /// A picker opens on the models kept from Hermes' last answer (#1533):
+    /// a read that fails keeps them up and says so, Hermes' answer replaces
+    /// them, and with nothing kept it loads, fails and empties as before.
+    func testAPickerOpensOnTheKeptModels() {
+        let kept = ProviderInfo(name: "openai", models: [ModelInfo(id: "gpt-5", label: nil, reasoningCapable: false)])
+        let answer = ProviderInfo(name: "anthropic", models: [ModelInfo(id: "opus", label: nil, reasoningCapable: true)])
+        var catalog = KeptModelCatalog()
+        catalog.showKept([kept])
+        XCTAssertEqual(catalog.state, .ready)
+        XCTAssertFalse(catalog.answered, "The kept models can't be picked until Hermes answers")
+        catalog.readStarted()
+        catalog.readFailed()
+        XCTAssertEqual(catalog.providers, [kept])
+        XCTAssertTrue(catalog.keptRowsFailed, "The kept models stay, saying the read failed")
+        XCTAssertFalse(catalog.answered, "A list that didn't load is never picked from")
+        catalog.readStarted()
+        XCTAssertFalse(catalog.keptRowsFailed, "Try Again asks again")
+        catalog.hermesAnswered([answer])
+        XCTAssertEqual(catalog.providers, [answer])
+        XCTAssertTrue(catalog.answered)
+        catalog.showKept([kept])
+        XCTAssertEqual(catalog.providers, [answer], "Kept models never replace Hermes' answer")
+        catalog.readStarted()
+        catalog.readFailed()
+        XCTAssertEqual(catalog.providers, [answer])
+        XCTAssertTrue(catalog.keptRowsFailed, "A Refresh models that fails after an answer says so too (issue 1807)")
+        XCTAssertTrue(catalog.answered, "Rows Hermes gave can still be picked")
+
+        var fresh = KeptModelCatalog()
+        fresh.showKept([])
+        XCTAssertEqual(fresh.state, .loading, "Nothing kept")
+        fresh.readFailed()
+        XCTAssertEqual(fresh.state, .failed)
+        XCTAssertFalse(fresh.keptRowsFailed, "The failed state says it, with no rows")
+        fresh.readStarted()
+        fresh.hermesAnswered([])
+        XCTAssertEqual(fresh.state, .empty)
+    }
+
     // MARK: - Model switch
 
     func testTapOnlySwitchesModelWhenTheSelectionDiffers() {
@@ -292,5 +331,58 @@ final class ModelPickerTests: XCTestCase {
         XCTAssertTrue(modelPickerShouldSwitch(
             sonnetRow, lastSwitched: nil,
             runtimeModel: "anthropic/claude-sonnet", runtimeProvider: "anthropic"))
+    }
+
+    // MARK: - Search (#1388)
+
+    private let searchCatalog = [
+        ProviderInfo(
+            name: "openrouter",
+            models: [
+                ModelInfo(id: "anthropic/claude-sonnet-4.5", label: nil, reasoningCapable: true),
+                ModelInfo(id: "openai/gpt-5", label: nil, reasoningCapable: true),
+            ],
+            displayName: "OpenRouter"
+        ),
+        ProviderInfo(
+            name: "anthropic",
+            models: [ModelInfo(id: "claude-sonnet-4-5", label: "Claude Sonnet 4.5", reasoningCapable: true)]
+        ),
+    ]
+
+    /// The same model from two providers comes back twice, each match
+    /// carrying the provider that serves it.
+    func testSearchKeepsEachProviderOfTheSameModel() {
+        let matches = modelSearchMatches(in: searchCatalog, query: "sonnet")
+        XCTAssertEqual(matches.map(\.provider.name), ["openrouter", "anthropic"])
+        XCTAssertEqual(matches.map(\.model.id), ["anthropic/claude-sonnet-4.5", "claude-sonnet-4-5"])
+        XCTAssertEqual(matches.map(\.provider.title), ["OpenRouter", "anthropic"])
+        XCTAssertEqual(Set(matches.map(\.id)).count, 2)
+    }
+
+    /// Every word must match the model or its provider, so a provider's
+    /// name narrows a model several serve down to one of them.
+    func testSearchWordsCanNameTheProvider() {
+        XCTAssertEqual(modelSearchMatches(in: searchCatalog, query: "Sonnet  openrouter").map(\.provider.name), ["openrouter"])
+        XCTAssertEqual(modelSearchMatches(in: searchCatalog, query: "OPENROUTER").count, 2)
+        // A label matches too.
+        XCTAssertEqual(modelSearchMatches(in: searchCatalog, query: "sonnet 4.5").count, 2)
+        XCTAssertTrue(modelSearchMatches(in: searchCatalog, query: "luna").isEmpty)
+        XCTAssertTrue(modelSearchMatches(in: searchCatalog, query: "   ").isEmpty)
+    }
+
+    func testArrowKeysStayOnTheResults() {
+        XCTAssertEqual(modelSearchHighlight(0, moving: 1, count: 3), 1)
+        XCTAssertEqual(modelSearchHighlight(2, moving: 1, count: 3), 2)
+        XCTAssertEqual(modelSearchHighlight(0, moving: -1, count: 3), 0)
+        XCTAssertEqual(modelSearchHighlight(4, moving: 0, count: 0), 0)
+    }
+
+    /// Only a Mac or a hardware keyboard opens the sheet typing; a touch
+    /// phone keeps its keyboard down.
+    func testSearchTakesFocusOnlyWithAKeyboard() {
+        XCTAssertTrue(modelSearchFocusesOnOpen(onMac: true, hardwareKeyboard: false))
+        XCTAssertTrue(modelSearchFocusesOnOpen(onMac: false, hardwareKeyboard: true))
+        XCTAssertFalse(modelSearchFocusesOnOpen(onMac: false, hardwareKeyboard: false))
     }
 }

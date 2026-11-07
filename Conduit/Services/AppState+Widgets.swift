@@ -48,7 +48,7 @@ extension AppState {
             )
         }
 
-        for bot in botRoster where !bot.isHiddenByMeta {
+        for bot in orderedBots(botRoster) where !bot.isHiddenByMeta {
             guard let canonical = bot.canonicalSession,
                   !canonical.id.isEmpty else { continue }
             let reference = SessionReference.bot(botName: bot.name, label: bot.displayLabel, sessionID: canonical.id)
@@ -63,10 +63,23 @@ extension AppState {
         }
         if let lastReference,
            lastReference.kind == .bot,
-           !choices.contains(where: { $0.reference == Self.widgetReference(from: lastReference) }) {
+           // By chat, not label: a label saved earlier (the main bot's
+           // "Default" before #1457) mustn't list the same chat twice.
+           !choices.contains(where: {
+               $0.reference.kind == .bot && $0.reference.sessionID == lastReference.sessionID
+                   && $0.reference.botName == lastReference.botName
+           }) {
+            // Labelled as titled, so a label saved earlier (the main bot's
+            // "Default") reads as the bot does now.
+            let title = Self.botConversationTitle(for: lastReference, mainName: profileDisplayName("default"))
+            let saved = Self.widgetReference(from: lastReference)
+            let labelled = WidgetConversationReference(
+                kind: saved.kind, scopeProfile: saved.scopeProfile, botName: saved.botName,
+                botLabel: title, sessionID: saved.sessionID, isUnverified: saved.isUnverified
+            )
             choices.append(WidgetConversationChoice(
-                reference: Self.widgetReference(from: lastReference),
-                title: lastReference.botLabel ?? lastReference.botName ?? lastReference.scopeProfile,
+                reference: labelled,
+                title: title,
                 isPinned: false,
                 recency: 0
             ))

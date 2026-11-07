@@ -23,6 +23,10 @@ settings:
     # signed for its own relay sets an https URL, e.g.
     # xcodebuild CONDUIT_DEFAULT_RELAY_URL=https://push.example.com
     CONDUIT_DEFAULT_RELAY_URL: ""
+    # The app's link scheme (Info.plist CFBundleURLSchemes, ConduitAppLink).
+    # Conduit Dev (scripts/mac-dev) registers its own, so conduit:// links
+    # keep opening the installed Conduit.
+    CONDUIT_URL_SCHEME: conduit
 packages:
   # GPT-Live voice runs over WebRTC; Apple ships no WebRTC stack. Prebuilt
   # Google WebRTC as a binary xcframework, pinned to an exact release.
@@ -67,6 +71,15 @@ targets:
         ENABLE_USER_SCRIPT_SANDBOXING: NO
     dependencies:
       - package: WebRTC
+      # Image Playground makes bot, profile and group pictures on iOS 18.1+
+      # (ImagePlaygroundPicture.swift); weak, since iOS 17 has no framework.
+      - sdk: ImagePlayground.framework
+        weak: true
+      # Lock Screen progress (LiveTurnActivities.swift); weak, since macOS
+      # 14 has no ActivityKit for iPhone and iPad apps and Conduit didn't
+      # launch there (issue 1877). Never touched on a Mac.
+      - sdk: ActivityKit.framework
+        weak: true
       - target: ConduitWatch
       # Embedded as Conduit.app/PlugIns/ConduitNotificationService.appex.
       - target: ConduitNotificationService
@@ -88,8 +101,8 @@ targets:
             --info-plist "$SRCROOT/$INFOPLIST_FILE" \
             --bundle "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH" \
             --development-language "$DEVELOPMENT_LANGUAGE"
-      # An archive records the plugin version on notifier main: the version
-      # App Store builds ask hosts to update to (NotifierPluginStatus).
+      # An archive records the plugin version on notifier main: the stable
+      # version the build asks hosts to update to (NotifierPluginStatus).
       - name: Stamp plugin version
         basedOnDependencyAnalysis: false
         script: |
@@ -119,9 +132,21 @@ targets:
       # The iPhone's Local Live session, which a Watch call to the user's
       # own speech server runs through the host's audio bridge.
       - path: Shared/LocalLive
+      # Hermes' approval texts in the user's language (#1589), for the
+      # Watch's approval card.
+      - path: Shared/Approvals
+      # Date's <= and >= without Foundation's back-deployed ones
+      # (Shared/DateOrder/DateOrder.swift); in every shipped target.
+      - path: Shared/DateOrder
       # GPT-Live's events, which the Watch reads and answers through the
       # host's audio bridge (designs/apple-watch-gpt-live.md).
       - path: Conduit/Voice/GPTLive/GPTLiveProtocol.swift
+      # Hermes' file tags, which job results and chats read into a call
+      # name as files rather than paths.
+      - path: Conduit/Views/Components/GatewayMediaTags.swift
+      # Hermes Desktop's directives, which the same names read as a file
+      # or a card for Hermes Desktop.
+      - path: Conduit/Views/Components/TranscriptDirectives.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay.watchkitapp
@@ -156,6 +181,7 @@ targets:
           - "Info.plist"
       # The control's intent runs in the app, so both build it.
       - path: ConduitWatch/TalkToHermesIntent.swift
+      - path: Shared/DateOrder
       - path: ConduitWatch/Localizable.xcstrings
         buildPhase: resources
     settings:
@@ -234,6 +260,7 @@ targets:
           - "Widgets/**"
           - "ShareDraft/**"
           - "Notifications/**"
+          - "Approvals/**"
     # Maps lookups the host asks this iPhone for run on MapKit
     # (Shared/Location/MapsEngine.swift, designs/maps-v1-contract.md).
     dependencies:
@@ -262,6 +289,7 @@ targets:
       - path: ConduitWidgets/Resources/Assets.xcassets
         buildPhase: resources
       - path: Shared/Widgets
+      - path: Shared/DateOrder
       - path: Conduit/Localizable.xcstrings
         buildPhase: resources
     settings:
@@ -277,6 +305,11 @@ targets:
         SKIP_INSTALL: YES
         TARGETED_DEVICE_FAMILY: "1,2"
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+    dependencies:
+      # The Live Activity's views; weak, so the launcher widgets still load
+      # on macOS 14, which has no ActivityKit for iPhone apps (issue 1877).
+      - sdk: ActivityKit.framework
+        weak: true
     postBuildScripts:
       - name: Strip draft localizations
         basedOnDependencyAnalysis: false
@@ -300,6 +333,7 @@ targets:
           - "Info.plist"
           - "ConduitShareExtension.entitlements"
       - path: Shared/ShareDraft
+      - path: Shared/DateOrder
       # The widgets' chat index, read only.
       - path: Shared/Widgets/WidgetSnapshot.swift
       - path: Shared/Widgets/WidgetSnapshotStore.swift

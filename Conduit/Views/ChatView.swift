@@ -26,37 +26,40 @@ struct ChatView: View {
     @EnvironmentObject var appState: AppState
     @State private var viewportSnapshotProviderID = UUID()
     /// V2: someone is typing in the composer, which hides the minimised
-    /// call's bar.
+    /// call's bar (on a Mac or an iPad's keyboard, only while the
+    /// field holds words, since it keeps focus after a send).
     @State private var composerTyping = false
     @Environment(\.accessibilityReduceMotion) private var composerReduceMotion
     /// V2: the composer floats over the transcript, which scrolls on under
     /// it and fades, instead of ending at a hard edge above it.
     @Environment(\.v2ComposerRests) private var composerFloats
     /// Owns the viewport: follows the latest message, holds the reader's
-    /// place while browsing, restores saved positions. It reads and sets the
-    /// transcript's UIScrollView directly (ChatScrollSurfaceLocator), so
+    /// place while browsing, restores saved positions (#1533). It reads and
+    /// sets the transcript's collection view directly (TranscriptView), so
     /// scroll ticks never reach SwiftUI state; it publishes only when a value
     /// the body renders from (`renderInputs`) changes. The jump buttons
-    /// observe `scrollEngine.chrome` on their own (ChatJumpControls).
-    @StateObject private var scrollEngine = ChatScrollEngine()
+    /// observe `scroller.chrome` on their own (ChatJumpControls).
+    @StateObject private var scroller = TranscriptScroller()
     /// Not observable on purpose: one stable instance rows read when built
     /// and write when tapped (see ChatRowDisclosure).
     @State private var rowDisclosure = ChatRowDisclosure()
     /// A run of steps opened or closed: its rows join or leave the stack.
     @State private var stepToggleRevision: UInt64 = 0
-    /// The transcript scroll view's identity; a new one builds it again
-    /// (ChatScrollEngineEvent.rebuildTranscript).
-    @State private var transcriptScrollID = 0
-    /// Carries the engine's requests to AppState and ScrollViewProxy. Holds
-    /// both weakly, so the engine never retains this view.
+    /// Decides the transcript's rows (TranscriptModel), updated in the body.
+    @State private var transcriptModel = TranscriptModelBox()
+    /// The live turn's rows coming or going re-run the body; it reads the
+    /// projection's own shape, which is right on the first frame too.
+    @State private var liveShape = LiveTurnShape()
+    /// Carries the scroller's requests to AppState. Holds both weakly, so
+    /// the scroller never retains this view.
     @State private var scrollEventRouter = ChatScrollEventRouter()
     @Environment(\.scenePhase) private var scenePhase
-    /// Lifecycle-aware backfill task: cancelled when the view disappears so
-    /// a late response cannot mutate viewport state after teardown. (The
+    /// The V2 shell keeps a tab's screens mounted while another tab shows.
+    @Environment(\.v2Shell) private var shell
+    /// Load earlier's fetch, cancelled when the view disappears. (The
     /// session/profile staleness of the response itself is AppState's
     /// concern — this is view-lifetime only.)
-    @State private var backfillViewportTask: Task<Void, Never>?
-    @State private var latestAnimationTask: Task<Void, Never>?
+    @State private var backfillTask: Task<Void, Never>?
     /// The overview of every pinned reply, from the pinned bar (#918).
     @State private var showsPinnedReplies = false
     /// The pin whose label is being edited from the bar (#1147).
@@ -67,19 +70,61 @@ struct ChatView: View {
     /// The reveal that fallback is for; another reveal replaces it.
     @State private var pinnedRevealFallbackReveal: PinnedReplyReveal?
 
-    private var viewportInputs: ChatScrollRenderInputs { scrollEngine.renderInputs }
+    private var viewportInputs: ChatScrollRenderInputs { scroller.renderInputs }
 
-    /// The saved copy is on screen: over an empty transcript, or over any
-    /// transcript for a chat picked in the saved list.
+    /// The saved copy is the chat on screen, drawn as its rows: in place of
+    /// an empty transcript, or of any transcript for a chat picked in the
+    /// saved list.
     private var showsOfflineCopy: Bool {
         appState.showsOfflineChatCopy
     }
 
-    /// A message sent while this live chat was on its way, waiting below
-    /// its rows. The saved copy and a New Chat show their own.
+    /// Only a real offline state says the chat on screen is a saved copy.
+    /// While Hermes is on its way, between retries too, the copy reads as
+    /// the chat itself, and the header and the composer say Conduit is
+    /// connecting.
+    private var showsOfflineBanner: Bool {
+        showsOfflineCopy && !appState.isConnected && !appState.isRecoveringConnection
+    }
+
+    /// A message sent while this chat was on its way, waiting below its
+    /// rows, the saved copy's too. A New Chat shows its own.
     private var livePendingComposerSend: PendingComposerSend? {
-        guard !showsOfflineCopy, !appState.showsPendingNewChat else { return nil }
+        Self.pendingSendOnScreen(in: appState)
+    }
+
+    @MainActor
+    static func pendingSendOnScreen(in appState: AppState) -> PendingComposerSend? {
+        guard !appState.showsPendingNewChat else { return nil }
         return appState.pendingComposerSendOnScreen
+    }
+
+    /// The running turn as the transcript draws it, from AppState now.
+    @MainActor
+    static func liveTurn(in appState: AppState, working: TranscriptWorkingLine = TranscriptWorkingLine()) -> TranscriptModel.LiveTurn {
+        TranscriptModel.LiveTurn(
+            shape: appState.liveTurn.shape,
+            isBusy: appState.isBusy,
+            repliesElsewhere: appState.activeChatRepliesElsewhere,
+            isShown: appState.savedCopyScrollSessionKey == nil,
+            working: working
+        )
+    }
+
+    /// The conversation the scroll view draws: a saved copy's that isn't
+    /// the live chat's (a chat picked in the saved list before it opens),
+    /// else the live chat's.
+    private var drawnScrollSessionKey: ChatScrollSessionKey? {
+        appState.savedCopyScrollSessionKey ?? activeScrollSessionKey
+    }
+
+    /// A "Replying to" card's tap scrolls to the reply it quoted, once the
+    /// rows are Hermes': not on the saved copy's.
+    private var quotedReplyJump: QuotedReplyJumpAction? {
+        guard !showsOfflineCopy else { return nil }
+        return QuotedReplyJumpAction(owner: appState) { [weak appState = appState] quote, messageID in
+            appState?.showQuotedReply(quote, quotedIn: messageID) ?? false
+        }
     }
 
     private var renderedScrollSessionKey: ChatScrollSessionKey? { viewportInputs.renderedSessionKey }
@@ -88,8 +133,8 @@ struct ChatView: View {
         Self.activeScrollSessionKey(in: appState)
     }
 
-    private var activeOrFallbackScrollSessionKey: ChatScrollSessionKey {
-        Self.activeOrFallbackScrollSessionKey(in: appState)
+    private var drawnOrFallbackScrollSessionKey: ChatScrollSessionKey {
+        Self.drawnOrFallbackScrollSessionKey(in: appState)
     }
 
     @MainActor
@@ -105,70 +150,69 @@ struct ChatView: View {
         return fallback.isValid ? fallback : nil
     }
 
+    /// The conversation the transcript draws: a chat picked in the saved
+    /// list, while its copy stands in, else the live chat, else a New Chat.
     @MainActor
-    static func activeOrFallbackScrollSessionKey(in appState: AppState) -> ChatScrollSessionKey {
-        activeScrollSessionKey(in: appState) ?? ChatScrollSessionKey(
+    static func drawnOrFallbackScrollSessionKey(in appState: AppState) -> ChatScrollSessionKey {
+        appState.savedCopyScrollSessionKey ?? activeScrollSessionKey(in: appState) ?? ChatScrollSessionKey(
             profile: appState.activeProfile,
             sessionID: "new"
         )
     }
 
-    static func bottomAnchorID(for key: ChatScrollSessionKey) -> String {
-        "chat-latest-\(key.profile)-\(key.sessionID)"
+    /// The conversation the transcript draws, which its kept row heights
+    /// go by: row ids repeat across conversations (Load earlier, the live
+    /// rows) and dashboards.
+    private var drawnConversation: String {
+        let key = drawnOrFallbackScrollSessionKey
+        return "\(appState.activeDashboardID?.uuidString ?? "")|\(key.profile)|\(key.sessionID)"
     }
 
-    private var topAnchor: String {
-        ChatTitleScrollAnchor.id(for: activeOrFallbackScrollSessionKey)
+    /// What decides the transcript's rows now. The scroller's targets are
+    /// the chat's rows; the cache's own revision stands for them (the
+    /// scroller publishes it, so a change re-runs this body).
+    private var transcriptInput: TranscriptModel.Input {
+        _ = liveShape
+        return TranscriptModel.Input(
+            targetsRevision: scroller.targetCache.renderingRevision,
+            conversation: appState.activeChatScrollSessionIdentity,
+            displayPreferences: appState.displayPreferences,
+            isBusy: appState.chatOnScreenIsBusy,
+            disclosureRevision: stepToggleRevision,
+            live: Self.liveTurn(in: appState, working: workingLine),
+            pendingSend: livePendingComposerSend,
+            loadsEarlier: transcriptBackfillAvailable,
+            isLoadingEarlier: transcriptBackfillIsLoading,
+            rowsOnTheirWay: scroller.targets.isEmpty && !appState.chatRowsOnScreen.isEmpty,
+            showsSavedCopy: showsOfflineCopy,
+            hasSavedCopy: appState.offlineChatPresentation != nil,
+            savedCopyIsOpening: appState.offlineChatPresentation?.isPickedChat == true && !showsOfflineBanner
+        )
     }
 
-    /// Read from the engine; `viewportInputs.targetsRevision` is the cache's
-    /// rendering revision, so any target change re-runs the body (with or
-    /// without a rendered session).
-    private var chatMessageScrollTargets: [ChatMessageScrollTarget] {
-        _ = viewportInputs.targetsRevision
-        return scrollEngine.targets
+    /// What the working line says: the tool running in this turn and when
+    /// the turn began. The body reads it on every AppState change, so the
+    /// turn's rows are looked through once (issue 1722).
+    private var workingLine: TranscriptWorkingLine {
+        let tool = appState.isBusy ? Self.runningTool(in: appState.messages) : nil
+        return TranscriptWorkingLine(
+            toolName: tool?.name,
+            // Its input, so a Tool Search batch names what it runs.
+            toolInput: tool?.input,
+            toolTitle: tool.flatMap(runningToolTitle(for:)),
+            startedAt: turnStartedAt
+        )
     }
 
-    /// The rows the transcript lays out: a step that draws nothing (hidden,
-    /// or inside a collapsed run) is left out, or the stack would space it
-    /// like any row (ChatStepPlacement.drawsRow). Its scroll target stays.
-    /// Without such a step, the targets themselves, uncopied.
-    private var drawnMessageScrollTargets: [ChatMessageScrollTarget] {
-        let targets = chatMessageScrollTargets
-        _ = stepToggleRevision
-        let preferences = appState.displayPreferences
-        let isBusy = appState.isBusy
-        let draws: (ChatMessageScrollTarget) -> Bool = { target in
-            target.drawsRow(preferences: preferences, isBusy: isBusy, disclosure: rowDisclosure)
+    /// "Messaging Atlas…" while a delivery to a teammate runs, "Starting
+    /// work…" while a work tool does, as their steps say; nil for any other
+    /// tool.
+    private func runningToolTitle(for tool: ToolActivity) -> String? {
+        if let key = BotTeammateMessages.deliveryTarget(toolName: tool.name, input: tool.input) {
+            let name = BotTeammateMessages.displayName(for: key, in: appState.shownBotRoster)
+            return AppLocalization.string("Messaging \(name)…")
         }
-        guard targets.contains(where: { !draws($0) }) else { return targets }
-        return targets.filter(draws)
-    }
-
-    private var bottomAnchor: String {
-        Self.bottomAnchorID(for: activeOrFallbackScrollSessionKey)
-    }
-
-    /// The tool running in this turn, for the working line. Looks back only
-    /// to the turn's own rows.
-    private var runningToolName: String? {
-        guard appState.isBusy else { return nil }
-        return Self.runningToolName(in: appState.messages)
-    }
-
-    /// Its input, so a Tool Search batch names what it runs.
-    private var runningToolInput: String? {
-        guard appState.isBusy else { return nil }
-        return Self.runningTool(in: appState.messages)?.input
-    }
-
-    /// "Messaging Atlas…" while a delivery to a teammate runs, as its step
-    /// says; nil for any other tool.
-    private var runningToolTitle: String? {
-        guard appState.isBusy, let tool = Self.runningTool(in: appState.messages),
-              let key = BotTeammateMessages.deliveryTarget(toolName: tool.name, input: tool.input) else { return nil }
-        let name = BotTeammateMessages.displayName(for: key, in: appState.botRoster)
-        return AppLocalization.string("Messaging \(name)…")
+        return BotWorkCall.parse(toolName: tool.name, input: tool.input, output: nil)?.title(running: true)
     }
 
     static func runningToolName(in messages: [ChatMessage]) -> String? {
@@ -203,8 +247,10 @@ struct ChatView: View {
     /// active-conversation ownership — the exact predicate
     /// `loadEarlierMessages` enforces, so the control can never render for
     /// a window the action would silently reject.
+    /// Not while saved rows stand in: Load earlier pages Hermes' transcript,
+    /// another chat's under a chat picked in the saved list.
     private var transcriptBackfillAvailable: Bool {
-        appState.canLoadEarlierMessagesForActiveConversation
+        !showsOfflineCopy && appState.canLoadEarlierMessagesForActiveConversation
     }
 
     private var transcriptBackfillIsLoading: Bool {
@@ -212,19 +258,18 @@ struct ChatView: View {
     }
 
     /// Transcript-top affordance for bounded history: fetches the next older
-    /// page and prepends it. The currently visible row is captured as the
-    /// viewport anchor before the fetch so the prepend lands without moving
-    /// the user's position. Label-exposed for accessibility — never
-    /// icon-only — and the loading state is announced by the combined
-    /// progress row.
-    private var transcriptTopBackfillControl: some View {
+    /// page and prepends it. The page lands above the reader, who stays on
+    /// the message they were reading (TranscriptScroller). Label-exposed for
+    /// accessibility — never icon-only — and the loading state is announced
+    /// by the combined progress row.
+    private func transcriptTopBackfillControl(isLoading: Bool) -> some View {
         Group {
-            if transcriptBackfillIsLoading {
+            if isLoading {
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
                     Text("Loading earlier messages")
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
                 .accessibilityElement(children: .combine)
@@ -232,31 +277,15 @@ struct ChatView: View {
                 .padding(.vertical, 4)
             } else {
                 Button {
-                    // A second tap while the first backfill is in flight
-                    // must not overwrite the armed anchor (the single-flight
-                    // guard in AppState would then discard nothing and the
-                    // discharge below would kill the first request's anchor).
+                    // One page at a time (AppState drops a second request).
                     guard !transcriptBackfillIsLoading else { return }
-                    ChatViewportTrace.shared.log("event loadEarlier")
-                    let armedKey = renderedScrollSessionKey ?? activeScrollSessionKey
-                    scrollEngine.olderPageBackfillRequested(sessionKey: armedKey)
-                    backfillViewportTask?.cancel()
-                    backfillViewportTask = Task { @MainActor in
-                        let didPrepend = await appState.loadEarlierMessages()
-                        guard !Task.isCancelled else { return }
-                        if !didPrepend {
-                            // Nothing landed (short page, transient failure,
-                            // all-duplicate page): discharge the anchor so it
-                            // can never re-pin on a later unrelated change.
-                            // Scoped to the session this tap armed — a stale
-                            // task must not clobber a newer conversation's
-                            // anchor.
-                            scrollEngine.prependAnchorDischarged(matching: armedKey)
-                        }
+                    ChatViewportWatch.shared.command("loadEarlier")
+                    backfillTask = Task { @MainActor in
+                        _ = await appState.loadEarlierMessages()
                     }
                 } label: {
                     Label("Load earlier messages", systemImage: "clock.arrow.circlepath")
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                         .labelStyle(.titleAndIcon)
                 }
                 .buttonStyle(.plain)
@@ -308,49 +337,53 @@ struct ChatView: View {
     /// typography, while non-chat subtrees keep the `.default` environment
     /// value and today's appearance.
     @AppStorage(ChatTypography.preferenceKey) private var chatTextSizeRaw = ChatTypography.defaultSize.rawValue
+    /// Settings > Chat's Long replies switch, so the scroller hears a
+    /// change while the chat is open (its reply room).
+    @AppStorage(ChatReplyStartPreference.key) private var stopsAtReplyStart = ChatReplyStartPreference.defaultOn
     /// The chat text style (typeface), stored and injected beside the size.
     @AppStorage(ChatTypography.fontStylePreferenceKey) private var chatFontStyleRaw = ChatFontStyle.standard.rawValue
+
+    /// A wide window's column steps its text up (`readableChatColumn`).
+    @Environment(\.chatWidthTextSteps) private var chatWidthTextSteps
+    @Environment(\.columnText) private var columnText
 
     private var chatTextSize: ChatTextAppearance {
         ChatTextAppearance(
             size: chatTextSizeOverride ?? ChatTypography.resolve(rawValue: chatTextSizeRaw),
             style: chatTextSizeOverride == nil ? ChatTypography.resolveStyle(rawValue: chatFontStyleRaw) : .standard
         )
+        .widened(steps: chatWidthTextSteps, in: chatTextSizeOverride == nil ? columnText : nil)
     }
 
     var body: some View {
         let _ = TranscriptPerf.note(.chatViewBody)
+        // Before anything reads them: the transcript draws these rows, and
+        // they read these facts, from the same update.
+        let transcript = transcriptModel.update(
+            transcriptInput,
+            targets: scroller.targets,
+            disclosure: rowDisclosure
+        )
         VStack(spacing: 0) {
             // Message list
-            ScrollViewReader { proxy in
-                sessionObservers(
-                    proxy: proxy,
-                    content: transcriptObservers(
-                        proxy: proxy,
-                        content: lifecycleObservers(
-                            proxy: proxy,
-                            content: chatScrollView(proxy: proxy)
-                        )
+            sessionObservers(
+                content: transcriptObservers(
+                    content: lifecycleObservers(
+                        content: chatTranscript(rows: transcript.rows)
                     )
                 )
-            }
-            // VoiceOver reads only the saved copy while it is up.
-            .accessibilityHidden(showsOfflineCopy || appState.showsPendingNewChat)
-            // A chat picked in the saved list covers a transcript still up
-            // from before (a profile switch): that one is hidden, not drawn
-            // under it. It stays laid out, so its scroll position holds.
-            .opacity(showsOfflineCopy || appState.showsPendingNewChat ? 0 : 1)
-            // The read-only saved copy (#99) sits OVER the live scroll view
-            // instead of feeding it: the live view stays mounted with the
-            // same empty transcript a cold launch always had, so its viewport
-            // ownership, restoration, and follow logic are untouched. The
-            // first real transcript clears the copy in the same update.
-            // A New Chat on its way covers both, as the empty chat it will be.
+            )
+            // VoiceOver reads only a New Chat on its way while it is up.
+            .accessibilityHidden(appState.showsPendingNewChat)
+            // A New Chat on its way covers the transcript, as the empty chat
+            // it will be. The saved copy (#99) covers nothing: the
+            // transcript draws its rows as the chat's (`chatRowsOnScreen`),
+            // and Hermes' rows replace them by id in the same update, so the
+            // chat isn't laid out again when they land (#1533).
+            .opacity(appState.showsPendingNewChat ? 0 : 1)
             .overlay {
                 if appState.showsPendingNewChat {
                     PendingNewChatView()
-                } else if showsOfflineCopy, let offline = appState.offlineChatPresentation {
-                    OfflineChatTranscriptView(presentation: offline)
                 }
             }
 
@@ -361,7 +394,6 @@ struct ChatView: View {
         .v2EdgeBar(.bottom) {
             if composerFloats {
                 bottomBar
-                    .modifier(V2LegacyScrollEdge(edge: .bottom))
             }
         }
         .onPreferenceChange(V2ComposerTypingKey.self) { typing in
@@ -377,14 +409,21 @@ struct ChatView: View {
         .environment(\.selectableTextDrawsUntilTouched, true)
         // Gateway videos, audio and documents open from a download (#569).
         .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver)
+        // A tapped picture pages through the chat's pictures.
+        .environment(\.imageGallery, appState.chatImageGallery)
         // Pictures' sizes from earlier launches, read once off the main
         // thread, so rows above take their final height (#1238).
         .task { await TranscriptPictureMemory.loadKeptSizes() }
         .background(Color.clear)
+        // Files dragged onto the chat (Finder on a Mac, Files on an iPad)
+        // are staged in the composer for the user to send (#1408).
+        .attachmentDropTarget(isEnabled: appState.composerIsEnabled) { providers in
+            appState.dropIntoComposer(providers)
+        }
         .overlay(alignment: .top) {
             if appState.isOpeningNotificationSession {
                 Label("Opening conversation…", systemImage: "arrow.down.message")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.12))
@@ -412,8 +451,9 @@ struct ChatView: View {
                 handler: appState.quoteIntoComposer
             )
         )
+        .environment(\.quotedReplyJump, quotedReplyJump)
         // The rows show AppState through this, not by observing it.
-        .chatRows()
+        .chatRows(facts: transcript.facts)
         .sheet(isPresented: $showsPinnedReplies) {
             PinnedRepliesSheet(fromOpenChat: true)
                 .environmentObject(appState)
@@ -423,127 +463,55 @@ struct ChatView: View {
         }
     }
 
-    // MARK: - Scroll construction (layered so the type-checker can cope)
+    // MARK: - Transcript (layered so the type-checker can cope)
 
-    private func chatScrollView(proxy: ScrollViewProxy) -> some View {
-        ScrollView {
-            LazyVStack(spacing: ChatStepStyle.transcriptRowSpacing) {
-                Color.clear
-                    .frame(height: 1)
-                    .id(topAnchor)
-
-                if transcriptBackfillAvailable {
-                    transcriptTopBackfillControl
-                }
-
-                if appState.messages.isEmpty && appState.offlineChatPresentation == nil
-                    && livePendingComposerSend == nil {
-                    EmptyChatState().padding(.top, 60)
-                }
-
-                // Iterate the targets collection directly: wrapping it in
-                // Array(enumerated()) copied the entire transcript into a
-                // fresh tuple array on EVERY body evaluation — O(message
-                // count) allocation churn at streaming/reasoning cadence in
-                // deep sessions. Row identity (target.id) and the transcript
-                // order needed by row geometry (target.order, maintained by
-                // the scroll-target cache) are unchanged.
-                ForEach(drawnMessageScrollTargets) { target in
-                    MessageBubble(
-                        message: target.message,
-                        gatewayResolver: appState.gatewayMediaResolver,
-                        step: target.step,
-                        stepsAbove: target.stepsAbove
-                    )
-                        .equatable()
-                        .id(target.id)
-                        .background {
-                            // Measured in the stack's own coordinate space,
-                            // so the value changes only when layout does,
-                            // never on a scroll tick.
-                            GeometryReader { geometry in
-                                let frame = geometry.frame(
-                                    in: CoordinateSpace.named(ChatScrollEngine.coordinateSpaceName)
-                                )
-                                Color.clear.preference(
-                                    key: ChatScrollRowFramesPreferenceKey.self,
-                                    value: [
-                                        target.id: ChatScrollRowFrame(
-                                            minY: frame.minY,
-                                            maxY: frame.maxY,
-                                            order: target.order
-                                        ),
-                                    ]
-                                )
-                            }
-                        }
-                }
-
-                // The running turn's live tail observes only the live
-                // projection, so a streaming tick re-renders these rows and
-                // never this body, the composer, or an open sheet.
-                ChatLiveTurnRows(
-                    projection: appState.liveTurn,
-                    isBusy: appState.isBusy,
-                    author: appState.activeProfile,
-                    currentToolName: runningToolName,
-                    currentToolInput: runningToolInput,
-                    currentToolTitle: runningToolTitle,
-                    turnStartedAt: turnStartedAt,
-                    repliesElsewhere: appState.activeChatRepliesElsewhere
-                )
-
-                if let pending = livePendingComposerSend {
-                    PendingComposerSendBubble(pending: pending)
-                }
-
-                // Fallback target for ScrollViewProxy before the engine has
-                // found the scroll view. The composer is a bar the scroll
-                // view already insets for (V2's safe-area bar, or the
-                // stack below it), so the latest row ends one row spacing
-                // (plus this row's 1 pt) above it; extra padding here was
-                // empty space over the composer. OfflineChatTranscriptView
-                // ends with the same row.
-                Color.clear
-                    .frame(height: 1)
-                    .id(bottomAnchor)
-            }
-            .coordinateSpace(.named(ChatScrollEngine.coordinateSpaceName))
-            .environment(\.chatRowDisclosure, rowDisclosure)
-            .onReceive(rowDisclosure.groupToggles.$revision) { stepToggleRevision = $0 }
-            .background {
-                ChatScrollSurfaceLocator(engine: scrollEngine)
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 18)
-            .background {
-                GeometryReader { _ in
-                    Color.clear.preference(
-                        key: ChatRenderedScrollContentPreferenceKey.self,
-                        value: renderedScrollScope.map(ChatRenderedScrollContent.init(scope:))
+    /// The transcript (#1533): it fills the area under the bars around it
+    /// and the keyboard, and keeps its rows clear of them with the safe
+    /// area's insets, which a change SwiftUI animates (the keyboard coming
+    /// up) moves in the same animation.
+    private func chatTranscript(rows: [TranscriptRow]) -> some View {
+        GeometryReader { proxy in
+            TranscriptView(
+                appState: appState,
+                scroller: scroller,
+                rows: rows,
+                rowContent: { row in AnyView(transcriptRow(row)) },
+                disclosure: rowDisclosure,
+                insets: proxy.safeAreaInsets,
+                conversation: drawnConversation,
+                composerFloats: composerFloats,
+                renderedScope: renderedScrollScope,
+                layoutSettled: { [weak appState = appState] scope in
+                    appState?.chatViewportLayoutDidSettle(
+                        sessionKey: scope.sessionKey,
+                        transitionGeneration: scope.viewportTransitionGeneration,
+                        transcriptRevision: scope.transcriptRevision,
+                        renderRevision: scope.cacheRevision,
+                        receivedScopedPreference: true
                     )
                 }
-            }
-        }
-        .scrollDismissesKeyboard(.interactively)
-        .id(transcriptScrollID)
-        // The open chat's pinned replies (#918), over the transcript's top.
-        .safeAreaInset(edge: .top, spacing: 0) { pinnedReplyBar }
-        .modifier(V2SoftTopScrollEdge(isOn: composerFloats))
-        .onTapGesture {
-            UIApplication.shared.sendAction(
-                #selector(UIResponder.resignFirstResponder),
-                to: nil,
-                from: nil,
-                for: nil
             )
+            .ignoresSafeArea()
         }
-        .overlay(alignment: .bottomTrailing) {
+        .onReceive(rowDisclosure.groupToggles.$revision) { stepToggleRevision = $0 }
+        .onReceive(appState.liveTurn.$shape) { liveShape = $0 }
+        // Inside the pinned replies' inset: before iOS 26 the transcript's
+        // fade is a mask, which would fade their card too.
+        .modifier(V2SoftTopScrollEdge(isOn: composerFloats, underChatHeader: true, setsOwnEdge: true))
+        // The open chat's pinned replies (#918), over the transcript's top,
+        // or the offline banner while the saved copy is up. Only the bar
+        // animates: rows changing in the same update don't.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            transcriptTopBar
+                .animation(.easeInOut(duration: 0.2), value: showsOfflineBanner)
+        }
+        // Centered over the composer, so either thumb reaches it.
+        .overlay(alignment: .bottom) {
             ChatJumpControls(
-                chrome: scrollEngine.chrome,
+                chrome: scroller.chrome,
                 pendingClarifyMessageID: appState.pendingClarifyMessageID,
                 pendingKind: appState.pendingDecisionKind,
-                jumpToQuestion: { id in scrollEngine.explicitMessageRequested(id: id) },
+                jumpToQuestion: { id in scroller.explicitMessageRequested(id: id) },
                 jumpToLatest: { requestLatest(animated: true) },
                 followingChanged: {
                     scrollEventRouter.saveChatScrollPosition(for: renderedScrollSessionKey)
@@ -552,54 +520,108 @@ struct ChatView: View {
         }
     }
 
+    /// One of the transcript's rows.
+    @ViewBuilder
+    private func transcriptRow(_ row: TranscriptRow) -> some View {
+        switch row.kind {
+        case .loadEarlier(let isLoading):
+            transcriptTopBackfillControl(isLoading: isLoading)
+        case .savedCopyStatus(let isOpening):
+            savedCopyStatus(isOpening: isOpening)
+        case .empty:
+            EmptyChatState().padding(.top, 60)
+        case .message(let target):
+            messageRow(target)
+        // The running turn's live rows observe only the live projection
+        // for their text, so a streaming tick re-renders that row and never
+        // this body, the composer, or an open sheet.
+        case .thinking:
+            ChatLiveThinkingRow(projection: appState.liveTurn, author: appState.activeProfile)
+        case .streaming(let isActive):
+            ChatLiveStreamingRow(projection: appState.liveTurn, isActive: isActive)
+        case .working(let line):
+            ChatWorkingLine(
+                currentToolName: line.toolName,
+                currentToolInput: line.toolInput,
+                currentToolTitle: line.toolTitle,
+                isThinking: line.isThinking,
+                startedAt: line.startedAt,
+                repliesElsewhere: line.repliesElsewhere
+            )
+        case .pendingSend(let pending):
+            PendingComposerSendBubble(pending: pending)
+        case .room:
+            // A group room's (GroupChatView); a chat has none.
+            EmptyView()
+        }
+    }
+
+    private func messageRow(_ target: ChatMessageScrollTarget) -> some View {
+        MessageBubble(
+            message: target.message,
+            gatewayResolver: appState.gatewayMediaResolver,
+            step: target.step,
+            stepsAbove: target.stepsAbove,
+            reviewRun: target.reviewRun
+        )
+            .equatable()
+    }
+
     /// The open chat's plan, docked above the composer (ChatCards.swift).
     /// It is in the composer's stack, so the transcript's bottom inset
     /// grows by its height rather than the plan covering messages.
     @ViewBuilder
     private var planDock: some View {
         if appState.showsChatCards {
-            ChatPlanDock(cards: appState.chatCards, isCompact: composerTyping)
+            // composerTyping is V2's composer-typing flag
+            // (ComposerBar.hidesMinimisedCallBar); the classic shell never
+            // sets it, so there the plan never keeps to its line.
+            ChatPlanDock(
+                cards: appState.chatCards,
+                isCompact: ChatPlanDock.keepsToLine(composerFocused: composerTyping)
+            )
         }
     }
 
-    private func lifecycleObservers(proxy: ScrollViewProxy, content: some View) -> some View {
+    private func lifecycleObservers(content: some View) -> some View {
         content
             .onChange(of: appState.chatTranscriptRevision) { appState.refreshChatCards() }
             .onChange(of: appState.activeSessionId) { appState.refreshChatCards() }
             .onAppear {
                 appState.refreshChatCards()
-                installScrollEngineCallbacks(proxy: proxy)
-                scrollEngine.setPaused(scenePhase == .background)
-                scrollEngine.renderedSessionChanged(
-                    to: activeScrollSessionKey,
+                installScrollerCallbacks()
+                // A new chat view's scroller says where the reader is from
+                // here; the last one's word went with it (a room, a sheet).
+                appState.chatReaderIsUpInOlderRows = scroller.mode == .browsing
+                scroller.setPaused(scenePhase == .background)
+                scroller.renderedSessionChanged(
+                    to: drawnScrollSessionKey,
                     identity: appState.activeChatScrollSessionIdentity,
                     viaNotification: false,
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration
                 )
-                scrollEngine.transcriptChanged(
-                    messages: appState.messages,
+                scroller.transcriptChanged(
+                    messages: appState.chatRowsOnScreen,
                     transcriptRevision: appState.chatTranscriptRevision,
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
-                    isInitialSync: true
+                    isInitialSync: true,
+                    isProvisional: showsOfflineCopy
                 )
-                scrollEngine.trackMessageVisibility(of: appState.pendingClarifyMessageID)
+                scroller.trackMessageVisibility(of: appState.pendingClarifyMessageID)
                 // An unread open that finished before this view was up.
                 takeReplyStartLanding()
                 appState.installChatViewportSnapshotProvider(
                     id: viewportSnapshotProviderID,
-                    capture: { [weak engine = scrollEngine] in
-                        engine?.renderedViewportSnapshot()
+                    capture: { [weak scroller = scroller] in
+                        scroller?.renderedViewportSnapshot()
                     }
                 )
             }
             .onDisappear {
-                scrollEngine.viewDisappeared()
+                scroller.viewDisappeared()
                 // Reinstalled on appear; late events go nowhere meanwhile.
-                scrollEngine.onEvent = nil
-                scrollEventRouter.proxy = nil
-                scrollEventRouter.rebuildTranscript = nil
-                backfillViewportTask?.cancel()
-                latestAnimationTask?.cancel()
+                scroller.onEvent = nil
+                backfillTask?.cancel()
                 pinnedRevealFallbackTask?.cancel()
                 pinnedRevealFallbackTask = nil
                 pinnedRevealFallbackReveal = nil
@@ -609,76 +631,98 @@ struct ChatView: View {
             .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(appState.activeProfile)|\(appState.dashboardTicketBridge != nil)") {
                 await appState.loadToolCatalogIfNeeded()
             }
+            // A saved place to put the reader back at: the scroller places
+            // it once its rows are drawn, or gives up at its deadline.
             .task(id: appState.chatResumeRestorationRequest?.generation) {
                 guard let request = appState.chatResumeRestorationRequest else { return }
-                await runViewportRestoration(request)
+                scroller.restorationRequested(request, transcriptRevision: appState.chatTranscriptRevision)
             }
             // The same chat open on another device: a turn that went quiet
             // here, or one the other device ran, is checked against the
             // live registry while this chat shows. Each turn edge checks at
-            // once.
-            .task(id: "\(appState.activeSessionId ?? "")|\(appState.isBusy)|\(scenePhase == .active)|\(appState.showSidebar)") {
-                guard scenePhase == .active, !appState.showSidebar else { return }
+            // once. A tab hiding it stops the check (#1827), and showing
+            // it again checks at once.
+            .task(id: "\(appState.activeSessionId ?? "")|\(appState.isBusy)|\(scenePhase == .active)|\(appState.showSidebar && !shell.hasChatBeside)|\(shell.isTabActive)") {
+                // Split, a page in the list column (Pulse) leaves it showing.
+                guard scenePhase == .active, !appState.showSidebar || shell.hasChatBeside, shell.isTabActive else { return }
                 appState.openChatSyncBecameVisible()
                 while !Task.isCancelled {
                     await appState.openChatSyncTick()
                     try? await Task.sleep(for: .seconds(5))
                 }
             }
-            .onPreferenceChange(ChatRenderedScrollContentPreferenceKey.self) { value in
-                guard let value else { return }
-                appState.chatViewportLayoutDidSettle(
-                    sessionKey: value.scope.sessionKey,
-                    transitionGeneration: value.scope.viewportTransitionGeneration,
-                    transcriptRevision: value.scope.transcriptRevision,
-                    renderRevision: value.scope.cacheRevision,
-                    receivedScopedPreference: true
-                )
-            }
-            .onPreferenceChange(ChatScrollRowFramesPreferenceKey.self) { frames in
-                scrollEngine.rowFramesChanged(frames)
+            .onChange(of: stopsAtReplyStart) { _, _ in
+                scroller.replyStartPreferenceChanged()
             }
             .onChange(of: scenePhase) { _, phase in
                 // In the background iOS still lays this view out for
                 // app-switcher snapshots, and a backgrounded app gets little
-                // CPU; the engine leaves the offset alone until it is back.
-                scrollEngine.setPaused(phase == .background)
+                // CPU; the scroller leaves the offset alone until it is back.
+                scroller.setPaused(phase == .background)
             }
     }
 
-    private func transcriptObservers(proxy: ScrollViewProxy, content: some View) -> some View {
+    private func transcriptObservers(content: some View) -> some View {
         content
-            .onChange(of: appState.messages) { _, _ in
-                scrollEngine.transcriptChanged(
-                    messages: appState.messages,
+            .onChange(of: appState.chatRowsOnScreen) { _, _ in
+                scroller.transcriptChanged(
+                    messages: appState.chatRowsOnScreen,
                     transcriptRevision: appState.chatTranscriptRevision,
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
-                    activeSessionKey: activeScrollSessionKey
+                    isProvisional: showsOfflineCopy,
+                    activeSessionKey: drawnScrollSessionKey
+                )
+            }
+            // Saved rows Hermes' matched leave without the rows drawn
+            // changing; the scroller still learns they're the chat's now, so
+            // the next turn arms the hold. Either order with the rows'
+            // change works: the second call finds them unchanged.
+            .onChange(of: showsOfflineCopy) { _, _ in
+                scroller.transcriptChanged(
+                    messages: appState.chatRowsOnScreen,
+                    transcriptRevision: appState.chatTranscriptRevision,
+                    viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
+                    isProvisional: showsOfflineCopy,
+                    activeSessionKey: drawnScrollSessionKey
                 )
             }
             .onChange(of: appState.pendingClarifyMessageID) { _, id in
-                scrollEngine.trackMessageVisibility(of: id)
+                scroller.trackMessageVisibility(of: id)
+                revealPendingNeedsYou()
             }
             // An Artifacts screen's "Show in chat": once the row is in and
             // any restore is done.
             .onChange(of: appState.chatTranscriptRevision) { _, _ in
                 revealPendingArtifact()
                 revealPendingPinnedReply()
+                revealPendingNeedsYou()
                 appState.refreshOpenChatPinnedReplies()
             }
             .onChange(of: appState.pendingArtifactReveal) { _, _ in revealPendingArtifact() }
             .onChange(of: appState.pendingPinnedReplyReveal) { _, _ in revealPendingPinnedReply() }
+            // The Needs you list's or banner's Open: the chat's waiting card.
+            .onChange(of: appState.pendingNeedsYouReveal) { _, _ in revealPendingNeedsYou() }
+            // A "Replying to" card's tap (issue 1420): the reply it quoted.
+            .onChange(of: appState.pendingQuotedReplyJump) { _, jump in
+                guard let jump else { return }
+                appState.pendingQuotedReplyJump = nil
+                scroller.explicitMessageRequested(id: jump.messageID)
+            }
             .onAppear {
                 revealPendingArtifact()
                 revealPendingPinnedReply()
+                revealPendingNeedsYou()
             }
             .onChange(of: appState.chatResumeRestorationRequest) { oldRequest, newRequest in
                 guard oldRequest != nil, newRequest == nil else { return }
                 // The published request disappeared on the AppState side
                 // (completed/abandoned/cancelled elsewhere).
-                scrollEngine.restorationSystemCancelled()
-                // A pinned reply waiting on the restore goes now.
+                scroller.restorationSystemCancelled()
+                // A pinned reply, artifact, Pulse card or waiting card
+                // waiting on the restore goes now.
+                revealPendingArtifact()
                 revealPendingPinnedReply()
+                revealPendingNeedsYou()
             }
     }
 
@@ -691,8 +735,24 @@ struct ChatView: View {
         guard appState.chatResumeRestorationRequest == nil, appState.isShowingChat(for: reveal),
               let id = ArtifactReveal.rowID(for: reveal.messageID, in: appState.messages) else { return }
         appState.pendingArtifactReveal = nil
-        // After this update's layout, so the engine knows the row.
-        DispatchQueue.main.async { scrollEngine.explicitMessageRequested(id: id) }
+        // After this update's layout, so the scroller knows the row.
+        DispatchQueue.main.async { scroller.explicitMessageRequested(id: id) }
+    }
+
+    /// A waiting chat opened from the Needs you list or banner: its newest
+    /// question, approval or input card, the one the jump button goes to,
+    /// once its chat shows and has the card.
+    private func revealPendingNeedsYou() {
+        guard let reveal = appState.pendingNeedsYouReveal else { return }
+        guard reveal.expires > Date() else {
+            appState.pendingNeedsYouReveal = nil
+            return
+        }
+        guard appState.chatResumeRestorationRequest == nil, appState.isShowingChat(for: reveal),
+              let id = appState.pendingClarifyMessageID else { return }
+        appState.pendingNeedsYouReveal = nil
+        // After this update's layout, so the scroller knows the row.
+        DispatchQueue.main.async { scroller.explicitMessageRequested(id: id) }
     }
 
     /// The overview's pinned reply (#918), once its chat shows and has the
@@ -735,8 +795,46 @@ struct ChatView: View {
         appState.pendingPinnedReplyReveal = nil
         let passage = reveal.pin.passage
         DispatchQueue.main.async {
-            scrollEngine.explicitMessageRequested(id: id)
+            scroller.explicitMessageRequested(id: id)
             if let passage { PinnedPassageFlasher.flash(passage, inMessage: id) }
+        }
+    }
+
+    /// The bar over the transcript's top: the offline banner while Hermes
+    /// can't be reached and the saved copy is the chat on screen, else the
+    /// open chat's pinned replies.
+    @ViewBuilder
+    private var transcriptTopBar: some View {
+        if showsOfflineBanner, let offline = appState.offlineChatPresentation {
+            OfflineChatBanner(
+                savedAt: offline.displayedTranscript?.savedAt,
+                showsCopy: !offline.displayedMessages.isEmpty
+            )
+            .padding(.horizontal, 18)
+            .padding(.top, 10)
+            .padding(.bottom, 4)
+            .transition(.opacity)
+        } else {
+            pinnedReplyBar
+        }
+    }
+
+    /// The saved copy on screen with no rows of its own: a chat picked in
+    /// the saved list says it's on its way while Conduit connects; offline,
+    /// or with nothing saved for it, it says there's no copy
+    /// (TranscriptModel.rows).
+    @ViewBuilder
+    private func savedCopyStatus(isOpening: Bool) -> some View {
+        if isOpening {
+            ProgressView("Opening conversation…")
+                .scaledFont(.subheadline)
+                .foregroundStyle(.secondary)
+                .padding(.top, 60)
+        } else {
+            Text("No saved copy of this conversation")
+                .scaledFont(.subheadline)
+                .foregroundStyle(.secondary)
+                .padding(.top, 60)
         }
     }
 
@@ -765,12 +863,12 @@ struct ChatView: View {
     /// as the chat can go.
     private func jumpToPinnedReply(_ pin: PinnedReply) {
         if let id = PinnedReplies.messageID(for: pin, in: appState.messages, among: appState.openChatPinnedReplies) {
-            ChatViewportTrace.shared.log("event explicitPinnedReply (bar)")
-            scrollEngine.explicitMessageRequested(id: id)
+            ChatViewportWatch.shared.command("explicitPinnedReply (bar)")
+            scroller.explicitMessageRequested(id: id)
             if let passage = pin.passage { PinnedPassageFlasher.flash(passage, inMessage: id) }
         } else {
-            ChatViewportTrace.shared.log("event explicitTop (pinned reply not loaded)")
-            scrollEngine.explicitTopRequested()
+            ChatViewportWatch.shared.command("explicitTop (pinned reply not loaded)")
+            scroller.explicitTopRequested()
             UIAccessibility.post(
                 notification: .announcement,
                 argument: AppLocalization.string("This reply is earlier in the chat. Load earlier messages to reach it.")
@@ -778,125 +876,106 @@ struct ChatView: View {
         }
     }
 
-    private func sessionObservers(proxy: ScrollViewProxy, content: some View) -> some View {
+    private func sessionObservers(content: some View) -> some View {
         content
             .onChange(of: appState.chatScrollRequest) { _, _ in
-                ChatViewportTrace.shared.log("event explicitLatest (send pulse)")
+                ChatViewportWatch.shared.command("explicitLatest (send pulse)")
                 requestLatest(animated: false, armsReplyHold: true)
             }
             .onChange(of: appState.chatReplyStartLandingRequest) { _, _ in
                 takeReplyStartLanding()
             }
             .onChange(of: appState.chatScrollToTopRequest) { _, request in
-                ChatViewportTrace.shared.log("event explicitTop request=\(request)")
-                scrollEngine.explicitTopRequested()
+                ChatViewportWatch.shared.command("explicitTop request=\(request)")
+                scroller.explicitTopRequested()
             }
             .onChange(of: appState.activeSessionId) { _, _ in
-                ChatViewportTrace.shared.log(
-                    "event sessionChanged viaNotification=\(appState.isOpeningNotificationSession)"
+                ChatViewportWatch.shared.command(
+                    "sessionChanged viaNotification=\(appState.isOpeningNotificationSession)"
                 )
-                scrollEngine.renderedSessionChanged(
-                    to: activeScrollSessionKey,
+                scroller.renderedSessionChanged(
+                    to: drawnScrollSessionKey,
                     identity: appState.activeChatScrollSessionIdentity,
                     viaNotification: appState.isOpeningNotificationSession,
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration
                 )
             }
-            .onChange(of: appState.activeProfile) { _, _ in
-                ChatViewportTrace.shared.log(
-                    "event profileChanged viaNotification=\(appState.isOpeningNotificationSession)"
+            // A chat picked in the saved list draws as a conversation of its
+            // own until it opens; once the copy is the live chat's, or gone,
+            // the live chat's key takes over, which isn't a switch for the
+            // same chat.
+            .onChange(of: appState.savedCopyScrollSessionKey) { _, _ in
+                scroller.renderedSessionChanged(
+                    to: drawnScrollSessionKey,
+                    identity: appState.activeChatScrollSessionIdentity,
+                    viaNotification: false,
+                    viewportTransitionGeneration: appState.chatViewportTransitionGeneration
                 )
-                scrollEngine.transcriptChanged(
-                    messages: appState.messages,
+            }
+            .onChange(of: appState.activeProfile) { _, _ in
+                ChatViewportWatch.shared.command(
+                    "profileChanged viaNotification=\(appState.isOpeningNotificationSession)"
+                )
+                scroller.transcriptChanged(
+                    messages: appState.chatRowsOnScreen,
                     transcriptRevision: appState.chatTranscriptRevision,
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
                     isInitialSync: true,
-                    activeSessionKey: activeScrollSessionKey
+                    isProvisional: showsOfflineCopy,
+                    activeSessionKey: drawnScrollSessionKey
                 )
-                scrollEngine.renderedSessionChanged(
-                    to: activeScrollSessionKey,
+                scroller.renderedSessionChanged(
+                    to: drawnScrollSessionKey,
                     identity: appState.activeChatScrollSessionIdentity,
                     viaNotification: appState.isOpeningNotificationSession,
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration
                 )
             }
             .onChange(of: appState.activeChatScrollSessionIdentity) { _, _ in
-                scrollEngine.activeIdentityRefreshed(
+                scroller.activeIdentityRefreshed(
                     identity: appState.activeChatScrollSessionIdentity,
-                    key: activeScrollSessionKey
+                    key: drawnScrollSessionKey
                 )
             }
             .onChange(of: appState.isOpeningNotificationSession) { _, isOpening in
                 if isOpening {
-                    ChatViewportTrace.shared.log("event notificationHandoffBegan")
-                    scrollEngine.notificationHandoffBegan()
+                    ChatViewportWatch.shared.command("notificationHandoffBegan")
+                    scroller.notificationHandoffBegan()
                 } else {
-                    scrollEngine.notificationHandoffFinished()
+                    scroller.notificationHandoffFinished()
                 }
             }
     }
 
     private func takeReplyStartLanding() {
         guard appState.takeChatReplyStartLanding() else { return }
-        ChatViewportTrace.shared.log("event replyStartLanding (unread chat opened)")
-        scrollEngine.replyStartLandingRequested()
+        ChatViewportWatch.shared.command("replyStartLanding (unread chat opened)")
+        scroller.replyStartLandingRequested(
+            viewportTransitionGeneration: appState.chatViewportTransitionGeneration
+        )
     }
 
     /// Send and the jump-to-latest button. An animated jump gets one final
-    /// pin once the animation has had time to land.
+    /// pin once it has landed (the scroller's own).
     private func requestLatest(animated: Bool, armsReplyHold: Bool = false) {
-        scrollEngine.explicitLatestRequested(animated: animated, armsReplyHold: armsReplyHold)
-        latestAnimationTask?.cancel()
-        guard animated else { return }
-        latestAnimationTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(ChatScrollEngine.latestAnimationDuration))
-            guard !Task.isCancelled else { return }
-            scrollEngine.latestAnimationFinished()
-        }
+        scroller.explicitLatestRequested(animated: animated, armsReplyHold: armsReplyHold)
     }
 
-    /// Engine-driven restoration: the .task restarts whenever the published
-    /// request generation changes and ticks every 25 ms until the engine has
-    /// placed the saved row, given up, or been cancelled (a drag, a session
-    /// switch, or the request going away). All retries are bounded inside
-    /// the engine.
-    @MainActor
-    private func runViewportRestoration(_ request: ChatResumeRestorationRequest) async {
-        scrollEngine.restorationRequested(request)
-        while !Task.isCancelled,
-              scrollEngine.restorationTick(transcriptRevision: appState.chatTranscriptRevision) {
-            do {
-                try await Task.sleep(for: .milliseconds(25))
-            } catch {
-                return
-            }
-        }
-    }
+    // MARK: - Scroller wiring
 
-    // MARK: - Scroll engine wiring
-
-    private func installScrollEngineCallbacks(proxy: ScrollViewProxy) {
+    private func installScrollerCallbacks() {
         let router = scrollEventRouter
         router.appState = appState
-        router.engine = scrollEngine
-        rowDisclosure.engine = scrollEngine
+        router.scroller = scroller
+        rowDisclosure.scroller = scroller
         rowDisclosure.currentConversation = { [weak appState = appState] in
             appState?.activeChatScrollSessionIdentity ?? .none
         }
-        router.proxy = proxy
-        router.rebuildTranscript = { transcriptScrollID &+= 1 }
-        scrollEngine.holdsRepliesAtStart = { ChatReplyStartPreference.isOn }
-        scrollEngine.liveTailShowing = { [weak appState = appState] in
-            guard let appState else { return false }
-            let live = appState.liveTurn
-            return appState.isBusy || appState.activeChatRepliesElsewhere
-                || !live.streamingText.isEmpty || live.reasoningSegment != nil
-                || appState.pendingComposerSendOnScreen != nil
-        }
-        scrollEngine.onEvent = { [weak engine = scrollEngine, weak router] event in
+        scroller.holdsRepliesAtStart = { ChatReplyStartPreference.isOn }
+        scroller.onEvent = { [weak scroller = scroller, weak router] event in
             // Requests made while handling a UIKit callback can land in the
             // middle of a SwiftUI update; they run on the next turn.
-            if engine?.isHandlingSurfaceCallback == true {
+            if scroller?.isHandlingSurfaceCallback == true {
                 DispatchQueue.main.async { router?.handle(event) }
             } else {
                 router?.handle(event)
@@ -905,19 +984,15 @@ struct ChatView: View {
     }
 }
 
-/// Carries ChatScrollEngine's requests to AppState (persistence,
-/// restoration outcomes) and to ScrollViewProxy (reveals before the engine
-/// has a scroll view). Everything is held weakly, so the engine's callback
-/// cannot keep the chat view or AppState alive.
+/// Carries TranscriptScroller's requests to AppState (persistence,
+/// restoration outcomes). Everything is held weakly, so the scroller's
+/// callback cannot keep the chat view or AppState alive.
 @MainActor
 private final class ChatScrollEventRouter {
     weak var appState: AppState?
-    weak var engine: ChatScrollEngine?
-    var proxy: ScrollViewProxy?
-    /// Builds the transcript's scroll view again (`transcriptScrollID`).
-    var rebuildTranscript: (@MainActor () -> Void)?
+    weak var scroller: TranscriptScroller?
 
-    func handle(_ event: ChatScrollEngineEvent) {
+    func handle(_ event: TranscriptScrollerEvent) {
         guard let appState else { return }
         switch event {
         case .persistSnapshot(let key):
@@ -930,52 +1005,36 @@ private final class ChatScrollEventRouter {
             appState.completeChatResumeRestoration(generation: generation)
         case .abandonRestoration(let generation):
             appState.abandonChatResumeRestoration(generation: generation)
-        case .revealRow(let id):
-            scrollWithoutAnimation { $0.scrollTo(id, anchor: .top) }
-        case .revealLatest:
-            let anchor = ChatView.bottomAnchorID(
-                for: ChatView.activeOrFallbackScrollSessionKey(in: appState)
-            )
-            scrollWithoutAnimation { $0.scrollTo(anchor, anchor: .bottom) }
-        case .revealTop:
-            let anchor = ChatTitleScrollAnchor.id(
-                for: ChatView.activeOrFallbackScrollSessionKey(in: appState)
-            )
-            scrollWithoutAnimation { $0.scrollTo(anchor, anchor: .top) }
-        case .rebuildTranscript:
-            rebuildTranscript?()
+        case .browsingOlderRows(let isUp):
+            appState.chatReaderIsUpInOlderRows = isUp
+        case .reachedLatest:
+            // After the scroller has finished coming back down.
+            DispatchQueue.main.async { [weak appState] in appState?.trimLoadedHistoryIfLong() }
         }
     }
 
     func saveChatScrollPosition(for preferredKey: ChatScrollSessionKey? = nil) {
-        guard let appState, let engine else { return }
+        guard let appState, let scroller else { return }
         let currentKey = preferredKey
-            ?? engine.renderedSessionKey
+            ?? scroller.renderedSessionKey
             ?? ChatView.activeScrollSessionKey(in: appState)
         guard let sessionKey = ChatViewportPersistenceSupport.persistenceSessionKey(
             currentKey: currentKey,
             identity: appState.activeChatScrollSessionIdentity
         ) else { return }
-        guard let snapshot = engine.renderedViewportSnapshot()?.snapshot else { return }
+        guard let snapshot = scroller.renderedViewportSnapshot()?.snapshot else { return }
         // Saved once the reader stops scrolling (recordViewport).
-        appState.recordChatViewport(snapshot, for: sessionKey) { [weak engine] in
-            engine?.isUserScrolling ?? false
+        appState.recordChatViewport(snapshot, for: sessionKey) { [weak scroller] in
+            scroller?.isUserScrolling ?? false
         }
-    }
-
-    private func scrollWithoutAnimation(_ body: (ScrollViewProxy) -> Void) {
-        guard let proxy else { return }
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) { body(proxy) }
     }
 }
 
 /// The jump-to-latest and go-to-what-Hermes-waits-on button. It observes the
-/// engine's chrome on its own, so leaving the latest message, or the button
+/// scroller's chrome on its own, so leaving the latest message, or the button
 /// appearing and going, re-renders this button and not the transcript.
 private struct ChatJumpControls: View {
-    @ObservedObject var chrome: ChatScrollChrome
+    @ObservedObject var chrome: TranscriptScrollChrome
     let pendingClarifyMessageID: String?
     /// What the waiting card is: the button says so.
     let pendingKind: PendingDecisionKind
@@ -1012,17 +1071,17 @@ private struct ChatJumpControls: View {
         let hasPendingClarify = pendingClarifyMessageID != nil
             && inputs.visibilityTrackedMessageID == pendingClarifyMessageID
             && inputs.isVisibilityTrackedMessageOffscreen
-        ZStack(alignment: .bottomTrailing) {
+        ZStack(alignment: .bottom) {
             // Keeps the onChange below in place while no button shows.
             Color.clear.frame(width: 0, height: 0)
             // Both actions share this overlay slot; the offscreen pending
             // question takes priority, and latest reappears when it is visible.
             if inputs.showsJumpToLatest || hasPendingClarify {
                 Button {
-                    ChatViewportTrace.shared.log(
+                    ChatViewportWatch.shared.command(
                         hasPendingClarify
-                            ? "event explicitPendingClarify (button)"
-                            : "event explicitLatest (button)"
+                            ? "explicitPendingClarify (button)"
+                            : "explicitLatest (button)"
                     )
                     if hasPendingClarify, let pendingClarifyMessageID {
                         jumpToQuestion(pendingClarifyMessageID)
@@ -1037,7 +1096,7 @@ private struct ChatJumpControls: View {
                                 .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
                         .frame(minHeight: 44)
@@ -1061,7 +1120,7 @@ private struct ChatJumpControls: View {
                         ? AppLocalization.string("Scrolls to the pending question in the conversation")
                         : nil
                 ))
-                .padding(.trailing, 18)
+                .padding(.horizontal, 18)
                 .padding(.bottom, 14)
             }
         }
@@ -1115,27 +1174,6 @@ enum ChatTitleScrollViewportSnapshot {
     }
 }
 
-private struct ChatRenderedScrollContentPreferenceKey: PreferenceKey {
-    static var defaultValue: ChatRenderedScrollContent? = nil
-    static func reduce(
-        value: inout ChatRenderedScrollContent?,
-        nextValue: () -> ChatRenderedScrollContent?
-    ) {
-        value = nextValue() ?? value
-    }
-}
-
-/// Frames of the message rows SwiftUI has laid out, keyed by message id.
-private struct ChatScrollRowFramesPreferenceKey: PreferenceKey {
-    static var defaultValue: [String: ChatScrollRowFrame] = [:]
-
-    static func reduce(
-        value: inout [String: ChatScrollRowFrame],
-        nextValue: () -> [String: ChatScrollRowFrame]
-    ) {
-        value.merge(nextValue()) { _, new in new }
-    }
-}
 // MARK: - Message Bubble
 
 /// Routes a transcript row to its presentation. The expensive settled
@@ -1157,16 +1195,43 @@ struct MessageBubble: View, Equatable {
     /// On a reply, the run of steps above it when it has thinking (the
     /// reply's Show thinking). Nil outside the chat transcript.
     var stepsAbove: ChatStepGroup? = nil
+    /// A review's place in its run of reviews, which folds into one line.
+    /// Nil outside the chat transcript.
+    var reviewRun: ChatReviewPlacement? = nil
 
     nonisolated static func == (lhs: MessageBubble, rhs: MessageBubble) -> Bool {
         lhs.message == rhs.message && lhs.gatewayResolver === rhs.gatewayResolver && lhs.step == rhs.step
-            && lhs.stepsAbove == rhs.stepsAbove
+            && lhs.stepsAbove == rhs.stepsAbove && lhs.reviewRun == rhs.reviewRun
     }
     @Environment(\.chatRowState) private var rowState
     @Environment(\.chatRowActions) private var rowActions
     /// Acted on, not observed: what a row shows comes from `rowState`.
     private var appState: AppState { rowActions.required }
     @Environment(\.openURL) private var openURL
+    @Environment(\.chatRowDisclosure) private var rowDisclosure
+
+    /// A reply's bubble; in a Bot Chat, one naming its work ("W50 found …")
+    /// links each ref to that workstream's chat once the bot's work list has it.
+    @ViewBuilder
+    private func botChatReply(_ message: ChatMessage) -> some View {
+        if let profile = appState.activeBotChatProfile, BotWorkLinks.mayNameWork(message.content) {
+            BotChatWorkReply(
+                work: appState.botWork,
+                profile: profile,
+                message: message,
+                readAloudController: appState.messageReadAloudController,
+                gatewayResolver: gatewayResolver,
+                stepsAbove: stepsAbove
+            )
+        } else {
+            AssistantBubble(
+                message: message,
+                readAloudController: appState.messageReadAloudController,
+                gatewayResolver: gatewayResolver,
+                stepsAbove: stepsAbove
+            )
+        }
+    }
 
     var body: some View {
         let _ = TranscriptPerf.note(.settledBubbleBody)
@@ -1174,13 +1239,17 @@ struct MessageBubble: View, Equatable {
         case .user:
             if message.isSteer {
                 SteerBubble(message: message)
+            } else if let brief = WorkstreamBrief.parse(message.content) {
+                // A workstream's brief from the bot coordinating it: a card,
+                // not something the user typed (Bot workstreams).
+                WorkstreamBriefCard(brief: brief, timestamp: message.timestamp, disclosureID: message.id)
             } else if let inbound = BotTeammateMessages.inbound(message.content) {
                 // A teammate bot's delivery is an event in the chat, not
                 // something the user said (Desktop's agent message note).
                 VStack(spacing: 4) {
                     TeammateMessageNote(
                         inbound: inbound,
-                        roster: appState.botRoster,
+                        roster: appState.shownBotRoster,
                         appState: appState,
                         disclosureID: message.id
                     )
@@ -1212,7 +1281,7 @@ struct MessageBubble: View, Equatable {
                 // The bot answering a teammate, not the user: folded, as on
                 // Desktop ("Replied to Atlas", the reply a tap away).
                 TeammateReplyNote(
-                    name: BotTeammateMessages.displayName(for: sender, in: appState.botRoster),
+                    name: BotTeammateMessages.displayName(for: sender, in: appState.shownBotRoster),
                     disclosureID: message.id
                 ) {
                     AssistantBubble(
@@ -1221,24 +1290,32 @@ struct MessageBubble: View, Equatable {
                         gatewayResolver: gatewayResolver
                     )
                 }
+            } else if let split = BotWorkLinks.split(message.content) {
+                // A Bot Chat reply's links to its work: cards under the
+                // reply, not plain links among its words.
+                VStack(alignment: .leading, spacing: 8) {
+                    if let why = rowState.followUpReasons[message.id] {
+                        PredictiveFollowUpTag(why: why)
+                    }
+                    if !split.text.isEmpty {
+                        botChatReply(message.withContent(split.text))
+                    }
+                    ForEach(split.links, id: \.ref) { link in
+                        BotWorkLinkCard(work: appState.botWork, link: link,
+                                        profile: link.profile ?? appState.activeProfile) {
+                            openURL(link.url)
+                        }
+                        .frame(maxWidth: 560, alignment: .leading)
+                    }
+                }
             } else if let why = rowState.followUpReasons[message.id] {
                 // A reply Hermes wrote on its own (Predictive follow-ups).
                 VStack(alignment: .leading, spacing: 4) {
                     PredictiveFollowUpTag(why: why)
-                    AssistantBubble(
-                        message: message,
-                        readAloudController: appState.messageReadAloudController,
-                        gatewayResolver: gatewayResolver,
-                        stepsAbove: stepsAbove
-                    )
+                    botChatReply(message)
                 }
             } else {
-                AssistantBubble(
-                    message: message,
-                    readAloudController: appState.messageReadAloudController,
-                    gatewayResolver: gatewayResolver,
-                    stepsAbove: stepsAbove
-                )
+                botChatReply(message)
             }
         case .reasoning:
             if let step {
@@ -1254,19 +1331,29 @@ struct MessageBubble: View, Equatable {
             if let tool = message.tool,
                let clarify = ClarifyActivity.historyRecord(for: tool, rowID: message.id) {
                 ClarifyCard(message: message.presenting(clarify))
-            } else if let tool = message.tool, case let cards = RichCard.cards(for: tool), !cards.isEmpty {
-                // Maps and places Hermes showed (conduit_show): drawn from
-                // the call's saved answer, so they come back with the chat,
+            } else if let tool = message.tool, let board = RichBoard.board(for: tool) {
+                // The board Hermes showed (conduit_show): drawn from the
+                // call's saved answer, so it comes back with the chat,
                 // whatever the tool-progress setting. A live card shows
-                // only where it was last brought up to date.
-                let current = RichCard.current(cards, row: message.id, latestLiveRows: rowState.latestLiveRows)
-                Group {
-                    if current.isEmpty {
-                        RichLiveUpdatedLine(title: cards.first?.title)
+                // only where it was last brought up to date. A board this
+                // Conduit can't draw every card of shows as its Markdown.
+                let current = RichCard.current(board.cards, row: message.id, latestLiveRows: rowState.latestLiveRows)
+                VStack(alignment: .leading, spacing: 10) {
+                    if board.cards.isEmpty, let markdown = board.markdown {
+                        RichBoardMarkdown(markdown: markdown)
+                    } else if current.isEmpty {
+                        RichLiveUpdatedLine(title: board.cards.first?.title)
                     } else {
-                        RichCardsView(cards: current)
+                        RichCardsView(cards: current, tabs: board.tabs && current.count > 1)
+                    }
+                    if message.id == rowState.followUpBoardRowID, !board.followUps.isEmpty {
+                        RichBoardFollowUps(followUps: board.followUps, composer: appState.predictive,
+                                           send: { appState.requestBoardFollowUp(.send, text: $0) },
+                                           edit: { appState.requestBoardFollowUp(.edit, text: $0) })
                     }
                 }
+                .environment(\.richChecklistContext, appState.richChecklistContext)
+                .environment(\.richChecklistInChat, true)
                 .frame(maxWidth: 560, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else if let step {
@@ -1292,8 +1379,18 @@ struct MessageBubble: View, Equatable {
                 VoiceCallMarkerCard(link: link, origin: true) {
                     appState.openVoiceCallChat(markerID: link.originMarkerID)
                 }
+            } else if let report = CronBotChatReport.parse(message.content) {
+                // A cron job's report the bot wasn't asked to act on: the
+                // report itself, not a system line (cron_bot_chat).
+                CronReportCard(report: report, timestamp: message.timestamp, disclosureID: message.id)
             } else if let review = message.review ?? MessageNormalizer.reviewActivity(fromText: message.content) {
-                ReviewSummaryCard(activity: review, timestamp: message.timestamp)
+                if let reviewRun, reviewRun.run.count >= 2, reviewRun.index == 0, let disclosure = rowDisclosure {
+                    ReviewRunCard(run: reviewRun.run, disclosure: disclosure, toggles: disclosure.groupToggles) {
+                        ReviewSummaryCard(activity: review, timestamp: message.timestamp)
+                    }
+                } else {
+                    ReviewSummaryCard(activity: review, timestamp: message.timestamp)
+                }
             } else if let modelChange = MessageNormalizer.modelChangeActivity(
                 fromText: message.rawContent ?? message.content
             ) {
@@ -1348,6 +1445,7 @@ struct UserBubble: View {
                     Spacer(minLength: 0)
                     MessageTimestampLabel(timestamp: message.timestamp)
                     UserMessageCopyButton(message: message)
+                    UserMessageMoreMenu(message: message)
                 }
             }
         }
@@ -1358,9 +1456,10 @@ struct UserBubble: View {
 /// centered and quiet, with what it said one tap away.
 struct TeammateMessageNote: View {
     let inbound: BotTeammateMessages.Inbound
-    /// Resolved from the roster, and again when it changes: the row's
-    /// equality leaves the roster out, so a roster that lands after the row
-    /// would otherwise leave the signed name.
+    /// Resolved from the bots shown (the kept ones until Hermes answers),
+    /// and again when they change: the row's equality leaves the roster
+    /// out, so a roster that lands after the row would otherwise leave the
+    /// signed name.
     @State private var bot: BotProfile?
     @State private var name: String
     /// Loads the face; held, not observed, like the rows' AppState.
@@ -1394,7 +1493,7 @@ struct TeammateMessageNote: View {
             Button {
                 Haptics.selection()
                 let opens = !expanded
-                // Tells the scroll engine first, as every row that opens
+                // Tells the scroller first, as every row that opens
                 // does: following the running turn would pin the growing
                 // row's bottom instead of keeping it where it was tapped.
                 disclosure?.willToggle(disclosureID, to: opens)
@@ -1409,12 +1508,12 @@ struct TeammateMessageNote: View {
                         size: faceSize
                     )
                     Text(AppLocalization.string("Message from \(name)"))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                     if !inbound.body.isEmpty {
                         Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                            .font(.caption2)
+                            .scaledFont(.caption2)
                             .foregroundStyle(.tertiary)
                             .accessibilityHidden(true)
                     }
@@ -1437,7 +1536,7 @@ struct TeammateMessageNote: View {
             if expanded {
                 // Bots write Markdown; it reads as a reply does.
                 MarkdownText(source: inbound.body)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 9)
@@ -1450,8 +1549,8 @@ struct TeammateMessageNote: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .onReceive(appState.$botRoster) { roster in
-            let resolved = Self.resolve(inbound, in: roster)
+        .onReceive(appState.shownBotRosterChanged) { _ in
+            let resolved = Self.resolve(inbound, in: appState.shownBotRoster)
             guard resolved != bot else { return }
             bot = resolved
             name = resolved?.displayLabel ?? inbound.sender
@@ -1498,13 +1597,13 @@ struct TeammateReplyNote<Reply: View>: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "arrowshape.turn.up.right")
-                        .font(.caption2)
+                        .scaledFont(.caption2)
                         .accessibilityHidden(true)
                     Text(AppLocalization.string("Replied to \(name)"))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .multilineTextAlignment(.center)
                     Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                        .font(.caption2)
+                        .scaledFont(.caption2)
                         .foregroundStyle(.tertiary)
                         .accessibilityHidden(true)
                 }
@@ -1553,6 +1652,85 @@ struct UserMessageCopyButton: View {
     }
 }
 
+/// The ⋯ beside a sent message's Copy (issue 1420): Quote puts its words
+/// in the draft, and Edit and resend takes it back, with everything after
+/// it, to change and send again.
+struct UserMessageMoreMenu: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    let message: ChatMessage
+    @Environment(\.chatRowState) private var rowState
+    @Environment(\.chatRowActions) private var rowActions
+    /// Acted on, not observed: what a row shows comes from `rowState`.
+    private var appState: AppState { rowActions.required }
+    @State private var confirmsEdit = false
+    /// Worked out once, not on each re-render of the row.
+    private let hasText: Bool
+    /// Only typed words come back: a message with pictures, files or a
+    /// recording can't be put back as it was.
+    private let canEdit: Bool
+
+    init(message: ChatMessage) {
+        self.message = message
+        hasText = UserMessageCopyButton.copyText(for: message).contains(where: { !$0.isWhitespace })
+        canEdit = hasText && (message.attachments ?? []).isEmpty && VoiceMessage.parse(message.content) == nil
+    }
+
+    var body: some View {
+        Menu {
+            Button {
+                appState.quoteOwnMessageIntoComposer(message)
+            } label: {
+                Label(AppLocalization.string("Quote"), systemImage: "text.quote")
+            }
+            .disabled(!rowState.canQuoteIntoComposer || !hasText)
+
+            if canEdit {
+                Button {
+                    let messages = appState.messages
+                    let later = messages.firstIndex { $0.id == message.id }.map { index in
+                        messages[(index + 1)...].contains { $0.role == .user }
+                    } ?? false
+                    if later {
+                        confirmsEdit = true
+                    } else {
+                        editAndResend(confirmedLaterTurns: false)
+                    }
+                } label: {
+                    Label(AppLocalization.string("Edit and resend"), systemImage: "pencil")
+                }
+                .disabled(rowState.isBusy || rowState.isOffline || !rowState.canQuoteIntoComposer)
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .scaledFont(.footnote.weight(.semibold))
+                // A full-size tap target in the footer, as Copy's.
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+                .padding(-6)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .accessibilityLabel(AppLocalization.string("More"))
+        .accessibilityIdentifier("chat.messageMoreMenu")
+        .confirmationDialog(
+            AppLocalization.string("Edit and resend this message?"),
+            isPresented: $confirmsEdit,
+            titleVisibility: .visible
+        ) {
+            Button(AppLocalization.string("Edit and resend"), role: .destructive) {
+                editAndResend(confirmedLaterTurns: true)
+            }
+        } message: {
+            Text(AppLocalization.string("Your later messages and the replies to them leave the chat, and this one goes back in the composer to change and send again."))
+        }
+    }
+
+    private func editAndResend(confirmedLaterTurns: Bool) {
+        Haptics.medium()
+        Task { await appState.editAndResend(message, confirmedLaterTurns: confirmedLaterTurns) }
+    }
+}
+
 /// A message steered into a running turn (issue #337). Right-aligned like
 /// the user's own bubble, but a lighter outlined surface with the steering
 /// glyph, so it reads as guidance delivered mid-turn rather than a new prompt.
@@ -1590,13 +1768,7 @@ struct SteerMessageContent: View, Equatable {
 
     /// One line of the reply's body text, for the icon's box.
     private var bodyLineHeight: CGFloat {
-        ChatTypography.font(
-            for: .body,
-            appearance: chatTextSize,
-            compatibleWith: UITraitCollection(
-                preferredContentSizeCategory: UIContentSizeCategory(sizeCategory)
-            )
-        ).lineHeight
+        ChatTypography.font(for: .body, appearance: chatTextSize, environmentCategory: sizeCategory).lineHeight
     }
 
     var body: some View {
@@ -1605,13 +1777,13 @@ struct SteerMessageContent: View, Equatable {
         // baseline: top-align the icon in a box one body line tall.
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: BusyInputMode.steer.symbol)
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.conduitAura)
                 .frame(height: bodyLineHeight)
                 .accessibilityHidden(true)
             if let reply {
                 VStack(alignment: .leading, spacing: 8) {
-                    ReplyReferenceQuoteCard(quote: reply.quote, onAccentSurface: false)
+                    ReplyReferenceQuoteCard(quote: reply.quote, onAccentSurface: false, quotedIn: message.id)
                     MarkdownText(source: reply.message)
                 }
             } else {
@@ -1670,11 +1842,26 @@ struct UserMessageContent: View, Equatable {
         return equal
     }
 
+    /// One picture shows whole; two or more go side by side as tiles
+    /// (issue 1801), then the files.
     @ViewBuilder private var attachmentViews: some View {
         if let attachments = message.attachments {
+            let pictures = attachments.filter { $0.kind == .image }
+            if pictures.count > 1 {
+                let shown = PictureGrid.shownCount(pictures.count)
+                let more = PictureGrid.moreCount(total: pictures.count)
+                PictureGridLayout {
+                    ForEach(Array(pictures.prefix(shown).enumerated()), id: \.element.id) { index, picture in
+                        UserImageAttachmentPreview(attachment: picture, gatewayResolver: gatewayResolver, isTile: true)
+                            .modifier(PictureGridMoreBadge(more: index == shown - 1 ? more : nil))
+                    }
+                }
+            }
             ForEach(attachments) { attachment in
                 if attachment.kind == .image {
-                    UserImageAttachmentPreview(attachment: attachment, gatewayResolver: gatewayResolver)
+                    if pictures.count == 1 {
+                        UserImageAttachmentPreview(attachment: attachment, gatewayResolver: gatewayResolver)
+                    }
                 } else {
                     UserDocumentAttachmentChip(attachment: attachment, gatewayResolver: gatewayResolver)
                 }
@@ -1691,7 +1878,7 @@ struct UserMessageContent: View, Equatable {
         let voice = VoiceMessage.parse(text)
         VStack(alignment: .leading, spacing: 9) {
             if let reply {
-                ReplyReferenceQuoteCard(quote: reply.quote)
+                ReplyReferenceQuoteCard(quote: reply.quote, quotedIn: message.id)
             }
 
             if let voice {
@@ -1699,7 +1886,7 @@ struct UserMessageContent: View, Equatable {
                 if !voice.transcript.isEmpty {
                     HugsIdealWidth {
                         Text(verbatim: voice.transcript)
-                            .font(.subheadline)
+                            .scaledFont(.subheadline)
                             .foregroundStyle(.white.opacity(0.88))
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -1791,37 +1978,26 @@ private struct UserImageAttachmentPreview: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let attachment: Attachment
     let gatewayResolver: GatewayMediaDataURLResolver?
+    /// A square tile of a message's picture grid, filling the size it is
+    /// proposed, instead of the picture at its own shape (issue 1801).
+    var isTile = false
     @State private var gatewayImage: UIImage?
     /// The cache key `gatewayImage` was loaded for, so a reused view never
     /// shows the picture it held before.
     @State private var gatewayImageKey: String?
-    @State private var opening = false
-    @State private var openTask: Task<Void, Never>?
+    /// The chat's pictures, which the viewer pages through.
+    @Environment(\.imageGallery) private var imageGallery
     /// The cache key a load from Hermes failed for.
     @State private var gatewayFailedKey: String?
     @State private var localPreview: UIImage?
     @State private var localPreviewPath: String?
     @State private var localPreviewFailedPath: String?
-    /// The chat's scroll engine, which says when a picture that will grow
-    /// its row shows (#1238).
-    @Environment(\.chatRowDisclosure) private var disclosure
-    /// The row's frame, and the picture waiting to show in it.
-    @StateObject private var arrival = ChatRowArrival()
 
     /// Cache-only lookup (no decode) so a hit renders on the first frame.
     /// Misses are filled asynchronously — see the `.task` in `body`.
     private var cachedLocalImage: UIImage? {
         guard let key = memoryCacheKey else { return nil }
         return TranscriptPictureMemory.previews.object(forKey: key as NSString)
-    }
-
-    /// A cache hit as the row shows it: on its first frame, or where the
-    /// row has its height already. A row laid out with its loading line
-    /// (another row of the same picture decoded it since) takes it
-    /// through the task, which asks the scroll engine (#1238).
-    private var shownCachedImage: UIImage? {
-        guard let cached = cachedLocalImage, arrival.holds(previewHeight(for: cached.size)) else { return nil }
-        return cached
     }
 
     /// Which picture the row loads.
@@ -1888,7 +2064,9 @@ private struct UserImageAttachmentPreview: View {
 
     var body: some View {
         Group {
-            if let image = shownCachedImage ?? currentLocalPreview ?? currentGatewayImage {
+            if isTile {
+                tileContent
+            } else if let image = cachedLocalImage ?? currentLocalPreview ?? currentGatewayImage {
                 imagePreview(image)
             } else if loadsFromHermes && localFileURL == nil && !gatewayLoadFailed {
                 placeholder
@@ -1904,7 +2082,7 @@ private struct UserImageAttachmentPreview: View {
                     (gatewayLoadFailed || localPreviewFailed) ? AppLocalization.string("Image unavailable") : AppLocalization.string("Image attached"),
                     systemImage: (gatewayLoadFailed || localPreviewFailed) ? "photo.badge.exclamationmark" : "photo"
                 )
-                .font(.caption.weight(.medium))
+                .scaledFont(.caption.weight(.medium))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
@@ -1913,27 +2091,12 @@ private struct UserImageAttachmentPreview: View {
                 .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
             }
         }
-        .chatRowFrame(arrival)
-        // A picture still waiting to show is dropped with the row; the task
-        // loads it again when the row is back.
-        .onDisappear { arrival.rowDisappeared() }
-        // Handed another picture: whatever still waits was the last one's.
-        .onChange(of: loadIdentity) { arrival.rowDisappeared() }
         .task(id: loadIdentity) {
             // Local file: cache hits show in `body` on the first frame via
-            // `shownCachedImage`, and one decoded since by another row of
-            // it arrives here. Misses decode off the MainActor so a large
-            // photo can't hitch scrolling.
+            // `cachedLocalImage` (#1238). Misses decode off the MainActor so
+            // a large photo can't hitch scrolling.
             if let url = localFileURL {
-                guard currentLocalPreview == nil, shownCachedImage == nil else { return }
-                if let cached = cachedLocalImage {
-                    let path = url.path
-                    arrival.arrive(rowHeight: previewHeight(for: cached.size), engine: disclosure?.engine) {
-                        localPreview = cached
-                        localPreviewPath = path
-                    }
-                    return
-                }
+                guard currentLocalPreview == nil, cachedLocalImage == nil else { return }
                 let generation = TranscriptImageCache.generation
                 let image = await Task.detached(priority: .userInitiated) { () -> UIImage? in
                     Self.downsampledPreview(url: url)
@@ -1944,21 +2107,16 @@ private struct UserImageAttachmentPreview: View {
                     // Its label shows already when the task restarts as
                     // the row comes back.
                     if localPreviewFailedPath != path {
-                        placeFailure { localPreviewFailedPath = path }
+                        localPreviewFailedPath = path
                     }
                     return
                 }
-                // Shows once the reader's scrolling allows, kept and its
-                // size remembered then: either would resize the loading
-                // line on its own first.
-                arrival.arrive(rowHeight: previewHeight(for: image.size), engine: disclosure?.engine) {
-                    if generation == TranscriptImageCache.generation {
-                        TranscriptPictureMemory.previews.setObject(image, forKey: url.path as NSString, cost: TranscriptPictureMemory.bitmapCost(of: image))
-                        TranscriptPictureMemory.rememberSize(image.size, for: url.path)
-                    }
-                    localPreview = image
-                    localPreviewPath = url.path
+                if generation == TranscriptImageCache.generation {
+                    TranscriptPictureMemory.previews.setObject(image, forKey: url.path as NSString, cost: TranscriptPictureMemory.bitmapCost(of: image))
+                    TranscriptPictureMemory.rememberSize(image.size, for: url.path)
                 }
+                localPreview = image
+                localPreviewPath = url.path
                 // A picture from Hermes. The local-file branch returns above,
                 // so a local URI never reaches here — which also removes the
                 // old `localImage == nil` check that decoded local files on
@@ -1966,8 +2124,7 @@ private struct UserImageAttachmentPreview: View {
             } else if loadsFromHermes, let gatewayResolver,
                       let cacheKey = gatewayResolver.imageCacheKey(for: attachment) {
                 // Held by the view too, so the picture stays when the
-                // shared cache evicts it while this row is on screen; one
-                // decoded since by another row of it arrives like a load.
+                // shared cache evicts it while this row is on screen.
                 if let cached = cachedLocalImage {
                     place(cached, as: cacheKey, generation: TranscriptImageCache.generation)
                     return
@@ -1998,7 +2155,7 @@ private struct UserImageAttachmentPreview: View {
                 guard !Task.isCancelled else { return }
                 guard let dataURL, let image = await Self.keep(dataURL, as: cacheKey, generation: generation) else {
                     if gatewayFailedKey != cacheKey {
-                        placeFailure { gatewayFailedKey = cacheKey }
+                        gatewayFailedKey = cacheKey
                     }
                     return
                 }
@@ -2008,25 +2165,14 @@ private struct UserImageAttachmentPreview: View {
         }
     }
 
-    /// A picture that won't load gives its place to the label once the
-    /// reader's scrolling allows (ChatRowArrival), a height only the
-    /// label's layout tells.
-    private func placeFailure(_ mark: @escaping () -> Void) {
-        arrival.arrive(rowHeight: nil, engine: disclosure?.engine, show: mark)
-    }
-
-    /// Puts a picture from Hermes in the row once the reader's scrolling
-    /// allows (ChatRowArrival), remembering it then: remembered first,
-    /// its size would resize the loading line on its own. After a sign-out
-    /// it shows, but isn't remembered.
+    /// Puts a picture from Hermes in the row, remembering it. After a
+    /// sign-out it shows, but isn't remembered.
     private func place(_ image: UIImage, as key: String, generation: Int) {
-        arrival.arrive(rowHeight: previewHeight(for: image.size), engine: disclosure?.engine) {
-            if generation == TranscriptImageCache.generation {
-                remember(image, as: key)
-            } else {
-                gatewayImage = image
-                gatewayImageKey = key
-            }
+        if generation == TranscriptImageCache.generation {
+            remember(image, as: key)
+        } else {
+            gatewayImage = image
+            gatewayImageKey = key
         }
     }
 
@@ -2075,12 +2221,10 @@ private struct UserImageAttachmentPreview: View {
         memoryCacheKey.flatMap(TranscriptPictureMemory.size(for:))
     }
 
-    /// At the reserved size when it was known as the row was first laid
-    /// out: one remembered after (another row of the same picture, or a
-    /// cold launch's kept sizes loading) would resize the loading line on
-    /// its own.
+    /// At the reserved size when it's known, so the row doesn't change
+    /// height when the picture arrives.
     @ViewBuilder private var placeholder: some View {
-        if let size = reservedSize, arrival.holds(previewHeight(for: size)) {
+        if let size = reservedSize {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.white.opacity(0.13))
                 .frame(width: 224, height: previewHeight(for: size))
@@ -2098,7 +2242,7 @@ private struct UserImageAttachmentPreview: View {
                 .tint(.white)
             Text("Loading image…")
         }
-        .font(.caption.weight(.medium))
+        .scaledFont(.caption.weight(.medium))
         .foregroundStyle(.white)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -2115,6 +2259,37 @@ private struct UserImageAttachmentPreview: View {
         isGatewayImage || attachment.inlineImage != nil
     }
 
+    /// The tile: the picture cropped to its square, else its place with a
+    /// spinner while it loads or a symbol when it won't. Every state takes
+    /// the same square, so the row never changes height as it loads.
+    @ViewBuilder private var tileContent: some View {
+        if let image = cachedLocalImage ?? currentLocalPreview ?? currentGatewayImage {
+            PictureTileImage(image: image, onAccent: true)
+                .opensMediaPreview { openPreview(showing: image) }
+                .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
+                .accessibilityLabel("Attached image: \(attachment.imageDescription ?? attachment.name)")
+                .accessibilityAddTraits(.isImage)
+        } else {
+            // `localPreviewFailed` compares paths, so without a local file
+            // it would say a picture from Hermes still loading had failed.
+            let failed = gatewayLoadFailed || (localFileURL != nil && localPreviewFailed)
+            let loading = !failed && (loadsFromHermes || localFileURL != nil)
+            // A tile still loading, or one that won't, opens the viewer too:
+            // the viewer fetches the picture itself, and the "+N" tile is
+            // the only way to the pictures without a tile.
+            // One element first, so VoiceOver keeps the tap's button trait.
+            PictureTilePlaceholder(state: loading ? .loading : failed ? .unavailable : .attached, onAccent: true)
+                .accessibilityElement()
+                .accessibilityLabel(
+                    loading ? AppLocalization.string("Loading image…")
+                        : failed ? AppLocalization.string("Image unavailable") : AppLocalization.string("Image attached")
+                )
+                .opensMediaPreview { openPreview(showing: nil) }
+                .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
+                .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
+        }
+    }
+
     private func imagePreview(_ image: UIImage) -> some View {
         Image(uiImage: image)
                 .resizable()
@@ -2125,55 +2300,20 @@ private struct UserImageAttachmentPreview: View {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
                 }
-                .overlay { if opening { ProgressView().tint(.white) } }
-                .opensMediaPreview(openPreview)
-                .onDisappear {
-                    openTask?.cancel()
-                    openTask = nil
-                    opening = false
-                }
+                .opensMediaPreview { openPreview(showing: image) }
                 .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
                 .accessibilityLabel("Attached image: \(attachment.imageDescription ?? attachment.name)")
                 .accessibilityAddTraits(.isImage)
     }
 
-    /// Opens the full-resolution original: the local file when the photo
-    /// is still on this device, otherwise the bytes re-fetched from Hermes.
+    /// Opens the full-resolution original among the chat's pictures: the
+    /// local file when the photo is still on this device, otherwise the
+    /// bytes re-fetched from Hermes, with the row's copy shown meanwhile.
     /// The row keeps only the downsampled/decoded image, never the original
     /// bytes, so an image-heavy transcript doesn't pin them all in memory.
-    private func openPreview() {
-        guard !opening else { return }
-        if let localFileURL, MediaPreviewPresenter.shared.present(fileURL: localFileURL, title: attachment.name) {
-            return
-        }
-        // The original kept on the phone (#652).
-        if let key = gatewayResolver?.imageCacheKey(for: attachment),
-           let kept = TranscriptImageCache.cachedFile(for: key, touch: true),
-           MediaPreviewPresenter.shared.present(fileURL: kept, title: attachment.name) {
-            return
-        }
-        guard loadsFromHermes, let gatewayResolver else { return }
-        let uri = attachment.uri
-        let inlineImage = attachment.inlineImage
-        let hasServerFile = isGatewayImage
-        let filename = AttachmentPreviewFilename.make(name: attachment.name, uri: uri)
-        opening = true
-        openTask = Task {
-            var dataURL = hasServerFile ? await gatewayResolver.dataURL(for: uri) : nil
-            if dataURL == nil, !Task.isCancelled, let inlineImage {
-                dataURL = await gatewayResolver.inlineImageDataURL(inlineImage)
-            }
-            if let dataURL, !Task.isCancelled {
-                // A picture known only from its message has no file name to
-                // borrow an extension from; Quick Look needs one.
-                let named = (filename as NSString).pathExtension.isEmpty
-                    ? "\(filename).\(TranscriptImageCache.fileExtension(forDataURL: dataURL))"
-                    : filename
-                await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: named)
-            }
-            guard !Task.isCancelled else { return }
-            opening = false
-        }
+    private func openPreview(showing image: UIImage?) {
+        guard let item = ImageGalleryItem.attachment(attachment, resolver: gatewayResolver) else { return }
+        ImageGallery.open(item, in: imageGallery, placeholder: image)
     }
 
     private func previewHeight(for size: CGSize) -> CGFloat {
@@ -2253,7 +2393,7 @@ private struct UserDocumentAttachmentChip: View {
 
     private var chip: some View {
         HStack(spacing: 6) {
-            Label(attachment.name, systemImage: AttachmentTypePolicy.symbolName(for: attachment))
+            Label(AttachmentTypePolicy.displayName(for: attachment), systemImage: AttachmentTypePolicy.symbolName(for: attachment))
                 .lineLimit(1)
             if loading {
                 ProgressView()
@@ -2261,7 +2401,7 @@ private struct UserDocumentAttachmentChip: View {
                     .tint(.white)
             }
         }
-        .font(.caption.weight(.medium))
+        .scaledFont(.caption.weight(.medium))
         .foregroundStyle(.white)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -2286,7 +2426,7 @@ private struct UserDocumentAttachmentChip: View {
 
     private func open() {
         if let localFileURL {
-            failed = !MediaPreviewPresenter.shared.present(fileURL: localFileURL, title: attachment.name)
+            failed = !MediaPreviewPresenter.shared.present(fileURL: localFileURL, title: AttachmentTypePolicy.displayName(for: attachment))
             return
         }
         guard !loading, attachment.uri.hasPrefix("/"), let gatewayResolver else { return }
@@ -2372,7 +2512,7 @@ struct SettledAssistantMessageContent: View, Equatable {
                 ConduitAgentMark(identity: identity)
 
                 Text(identity.name)
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
                 MessageTimestampLabel(timestamp: message.timestamp)
@@ -2415,7 +2555,7 @@ struct AssistantMessageActions: View {
             copyResponse()
         } label: {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .frame(width: 34, height: 34)
         }
         .buttonStyle(.plain)
@@ -2448,6 +2588,8 @@ struct AssistantMessageMoreMenu: View {
     /// Acted on, not observed: what a row shows comes from `rowState`.
     private var appState: AppState { rowActions.required }
 
+    @State private var confirmsRetry = false
+
     private var hasText: Bool {
         message.content.contains(where: { !$0.isWhitespace })
     }
@@ -2471,6 +2613,21 @@ struct AssistantMessageMoreMenu: View {
             }
             .disabled(rowState.isBusy || rowState.isBranchingChat || rowState.isOffline)
 
+            // The newest reply only, while it answers the last message sent:
+            // /retry sends that message again (issue 1420).
+            if message.id == rowState.retryableReplyID {
+                Button {
+                    if AppState.latestTurnRanTools(in: appState.messages) {
+                        confirmsRetry = true
+                    } else {
+                        retry()
+                    }
+                } label: {
+                    Label(AppLocalization.string("Retry"), systemImage: "arrow.clockwise")
+                }
+                .disabled(rowState.isBusy || rowState.isOffline || !rowState.canQuoteIntoComposer)
+            }
+
             // The whole reply; a selection's menu pins a passage.
             if rowState.canPinReplies {
                 let isPinned = rowState.pinnedMessageIDs.contains(message.id)
@@ -2493,7 +2650,7 @@ struct AssistantMessageMoreMenu: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .frame(width: 34, height: 34)
                 .contentShape(Rectangle())
         }
@@ -2501,6 +2658,24 @@ struct AssistantMessageMoreMenu: View {
         .foregroundStyle(.secondary)
         .accessibilityLabel(AppLocalization.string("More"))
         .accessibilityIdentifier("chat.replyMoreMenu")
+        // Steps run again: a file written, a message sent, twice.
+        .confirmationDialog(
+            AppLocalization.string("Retry this reply?"),
+            isPresented: $confirmsRetry,
+            titleVisibility: .visible
+        ) {
+            Button(AppLocalization.string("Retry")) {
+                retry()
+            }
+        } message: {
+            Text(AppLocalization.string("Steps ran for this reply, and retrying runs them again."))
+        }
+    }
+
+    /// As typing /retry: the reply goes and your last message is sent again.
+    private func retry() {
+        Haptics.medium()
+        Task { _ = await appState.submitComposer(text: "/retry") }
     }
 }
 
@@ -2569,7 +2744,7 @@ struct ReadAloudButton: View {
                     Image(systemName: isPaused ? "play.fill" : isActive ? "stop.fill" : "speaker.wave.2")
                 }
             }
-            .font(.subheadline.weight(.semibold))
+            .scaledFont(.subheadline.weight(.semibold))
             .frame(width: 34, height: 34)
         }
         .buttonStyle(.plain)
@@ -2584,6 +2759,33 @@ struct ReadAloudButton: View {
     }
 }
 
+/// A Bot Chat reply whose words name the bot's workstreams: each ref a
+/// link to its chat. It watches the bot's work list, so a ref links once
+/// the list that has it is read.
+struct BotChatWorkReply: View {
+    @ObservedObject var work: BotWorkStore
+    let profile: String
+    let message: ChatMessage
+    let readAloudController: MessageReadAloudController
+    let gatewayResolver: GatewayMediaDataURLResolver?
+    var stepsAbove: ChatStepGroup? = nil
+
+    var body: some View {
+        let items = (work.snapshot(profile)?.items ?? []) + (work.resolvedList(profile)?.items ?? [])
+        let shown = BotWorkLinks.linkingNamedRefs(message.content) { ref in
+            guard let item = items.first(where: { $0.ref == ref && !$0.sessionID.isEmpty }) else { return nil }
+            return ConduitAppLink.session(id: item.sessionID, profile: profile).url
+        }
+        AssistantBubble(
+            message: message,
+            readAloudController: readAloudController,
+            gatewayResolver: gatewayResolver,
+            stepsAbove: stepsAbove,
+            shownContent: shown == message.content ? nil : shown
+        )
+    }
+}
+
 struct AssistantBubble: View {
     let message: ChatMessage
     /// Held as a plain reference (not @ObservedObject): forwarding a
@@ -2593,6 +2795,9 @@ struct AssistantBubble: View {
     let gatewayResolver: GatewayMediaDataURLResolver?
     /// The run of steps above the reply, when it has thinking.
     var stepsAbove: ChatStepGroup? = nil
+    /// Other words to draw (a Bot Chat reply with its work refs linked);
+    /// Copy, Read Aloud and the rest keep the reply's own.
+    var shownContent: String? = nil
     @Environment(\.chatRowState) private var rowState
     @Environment(\.chatRowActions) private var rowActions
     @Environment(\.chatRowDisclosure) private var disclosure
@@ -2612,7 +2817,7 @@ struct AssistantBubble: View {
         let identity = rowState.agentIdentity
         VStack(alignment: .leading, spacing: 6) {
             SettledAssistantMessageContent(
-                message: message,
+                message: shownContent.map(message.withContent) ?? message,
                 identity: identity,
                 gatewayResolver: gatewayResolver,
                 sizeCategory: sizeCategory,
@@ -2635,6 +2840,10 @@ struct AssistantBubble: View {
             }
 
             HStack(spacing: 4) {
+                // Pulse follows up on what Hermes promised here: opens its card.
+                if let rowID = message.rowId, let card = rowState.pulseCards[rowID] {
+                    PulseMessageMark { appState.openPulse(card: card) }
+                }
                 Spacer(minLength: 0)
                 if message.role == .assistant {
                     MessageReactButton(message: message, isPresented: $showsTapback)
@@ -2682,14 +2891,14 @@ struct SystemBubble: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: isRuntimeNotice ? "info.circle" : "terminal")
-                .font(.footnote.weight(.medium))
+                .scaledFont(.footnote.weight(.medium))
                 .foregroundStyle(.conduitAccent)
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(isRuntimeNotice ? AppLocalization.string("System") : AppLocalization.string("Command"))
-                        .font(.caption2.weight(.semibold))
+                        .scaledFont(.caption2.weight(.semibold))
                         .foregroundStyle(.conduitAccent)
                         .textCase(.uppercase)
                         .tracking(0.5)
@@ -2722,6 +2931,8 @@ struct SystemBubble: View {
 /// (Of the system-message surfaces, only `SystemBubble`'s Markdown body
 /// follows `ChatTypography`.)
 private struct ReviewSummaryCard: View {
+    @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.columnText) private var columnText
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let activity: ReviewActivity
     let timestamp: String
@@ -2740,32 +2951,32 @@ private struct ReviewSummaryCard: View {
                 disclosure?.willToggle(nil, to: !expanded)
                 withAnimation(ConduitMotion.response) { expanded.toggle() }
             } label: {
-                HStack(alignment: .center, spacing: 10) {
-                    Image(systemName: "internaldrive.fill")
-                        .foregroundStyle(.conduitAura)
-                        .frame(width: 28, height: 28)
-                        .background(Color.conduitAura.opacity(0.14), in: Circle())
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("SELF-IMPROVEMENT REVIEW")
-                            .font(.caption2.weight(.bold))
-                            .tracking(0.6)
-                            .foregroundStyle(.secondary)
-                        SelectableTextView(
-                            text: activity.summary,
-                            font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
-                            textColor: .label
-                        )
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    Spacer(minLength: 8)
-                    MessageTimestampLabel(timestamp: timestamp, tone: .supporting)
-                    if !details.isEmpty {
-                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                            .font(.caption.weight(.semibold))
-                            .conduitFixedGlyph()
-                            .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .center, spacing: 10) {
+                        Image(systemName: "internaldrive.fill")
+                            .foregroundStyle(.conduitAura)
                             .frame(width: 28, height: 28)
+                            .background(Color.conduitAura.opacity(0.14), in: Circle())
+                        CardHeaderCaption(timestamp: timestamp) {
+                            Text("SELF-IMPROVEMENT REVIEW")
+                                .scaledFont(.caption2.weight(.bold))
+                                .tracking(0.6)
+                                .foregroundStyle(.secondary)
+                        }
+                        if !details.isEmpty {
+                            Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                                .scaledFont(.caption.weight(.semibold))
+                                .conduitFixedGlyph()
+                                .foregroundStyle(.secondary)
+                                .frame(width: 28, height: 28)
+                        }
                     }
+                    SelectableTextView(
+                        text: activity.summary,
+                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnText).withTraits(.traitBold),
+                        textColor: .label
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .contentShape(Rectangle())
             }
@@ -2778,7 +2989,7 @@ private struct ReviewSummaryCard: View {
                     ForEach(Array(details.enumerated()), id: \.offset) { _, detail in
                         SelectableTextView(
                             text: detail,
-                            font: .preferredFont(forTextStyle: .callout),
+                            font: .preferredFont(forTextStyle: .callout, in: sizeCategory, from: columnText),
                             textColor: .secondaryLabel
                         )
                     }
@@ -2791,7 +3002,7 @@ private struct ReviewSummaryCard: View {
                     appState.requestOpenSession(fullSessionId)
                 } label: {
                     Label("Open full review", systemImage: "arrow.up.forward.square")
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 42)
                 }
@@ -2807,37 +3018,92 @@ private struct ReviewSummaryCard: View {
     }
 }
 
+/// A run of two or more reviews (ChatReviewRun): one line with the count
+/// and the last one's time, and the first review's card under it while
+/// open (the run's other rows draw theirs). Like ReviewSummaryCard, outside
+/// the chat text-size preference.
+private struct ReviewRunCard<FirstCard: View>: View {
+    let run: ChatReviewRun
+    let disclosure: ChatRowDisclosure
+    @ObservedObject var toggles: ChatStepGroupToggles
+    @ViewBuilder let firstCard: FirstCard
+
+    var body: some View {
+        let expanded = disclosure.isGroupExpanded(run.id, default: false)
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation(ConduitMotion.response) {
+                    Haptics.light()
+                    disclosure.willToggleGroup(run.id, to: !expanded)
+                }
+            } label: {
+                HStack(alignment: .center, spacing: 10) {
+                    Image(systemName: "internaldrive.fill")
+                        .foregroundStyle(.conduitAura)
+                        .frame(width: 28, height: 28)
+                        .background(Color.conduitAura.opacity(0.14), in: Circle())
+                    CardHeaderCaption(timestamp: run.lastTimestamp) {
+                        Text("\(run.count) self-improvement reviews")
+                            .scaledFont(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                    }
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                        .scaledFont(.caption.weight(.semibold))
+                        .conduitFixedGlyph()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
+                .chatCard(cornerRadius: 18, tint: .conduitAura.opacity(0.09))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Color.conduitAura.opacity(0.18), lineWidth: 1)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityValue(expanded ? Text("Expanded") : Text("Collapsed"))
+
+            if expanded {
+                firstCard
+            }
+        }
+    }
+}
+
 /// Model-change summary. Intentionally OUTSIDE the chat text-size
 /// preference (issue #85) — a status/activity card with fixed typography;
 /// see ReviewSummaryCard.
 private struct ModelChangeSummaryCard: View {
+    @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.columnText) private var columnText
     let model: String
     let provider: String
     let timestamp: String
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.conduitAccent)
-                .frame(width: 28, height: 28)
-                .background(Color.conduitAccent.opacity(0.14), in: Circle())
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("MODEL UPDATED")
-                    .font(.caption2.weight(.bold))
-                    .tracking(0.6)
-                    .foregroundStyle(.secondary)
-                SelectableTextView(
-                    text: AppLocalization.string("Model has been changed to \(provider)/\(model)"),
-                    font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
-                    textColor: .label
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.conduitAccent)
+                    .frame(width: 28, height: 28)
+                    .background(Color.conduitAccent.opacity(0.14), in: Circle())
+                CardHeaderCaption(timestamp: timestamp) {
+                    Text("MODEL UPDATED")
+                        .scaledFont(.caption2.weight(.bold))
+                        .tracking(0.6)
+                        .foregroundStyle(.secondary)
+                }
             }
-
-            Spacer(minLength: 8)
-            MessageTimestampLabel(timestamp: timestamp, tone: .supporting)
+            SelectableTextView(
+                text: AppLocalization.string("Model has been changed to \(provider)/\(model)"),
+                font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnText).withTraits(.traitBold),
+                textColor: .label
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(14)
         .chatCard(cornerRadius: 18, tint: .conduitAccent.opacity(0.07))
@@ -2902,24 +3168,31 @@ private struct VoiceCallMarkerCard: View {
                     .frame(width: 28, height: 28)
                     .background(Color.conduitAccent.opacity(0.14), in: Circle())
                     .accessibilityHidden(true)
+                // The start time on the short detail line, so a long title
+                // ("Started from" a chat) keeps the row's width (#1440).
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(2)
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 8)
-                if let started {
-                    Text(started)
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(Color.conduitAccent.opacity(0.78))
-                        .monospacedDigit()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 8) {
+                        Text(detail)
+                            .scaledFont(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if let started {
+                            Text(started)
+                                .scaledFont(.caption2.weight(.medium))
+                                .foregroundStyle(Color.conduitAccent.opacity(0.78))
+                                .monospacedDigit()
+                                .lineLimit(1)
+                                .layoutPriority(1)
+                        }
+                    }
                 }
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.conduitTertiary)
                     .accessibilityHidden(true)
             }
@@ -2983,13 +3256,13 @@ struct SettledThinkingCardContent: View, Equatable {
                     ChatStepIcon(symbol: ChatStepStyle.thinking.symbol, tint: ChatStepStyle.thinking.tint)
                     AdaptiveStack(spacing: 6) {
                         Text(AppLocalization.string("Thinking"))
-                            .font(.body)
+                            .scaledFont(.body)
                             .foregroundStyle(.secondary)
                         ChatStepTimeLabel(timestamp: message.timestamp, duration: message.stepDuration, grouped: grouped)
                     }
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.down")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(.conduitTertiary)
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
                         .accessibilityHidden(true)
@@ -3054,10 +3327,36 @@ private struct MessageTimestampLabel: View {
     var body: some View {
         if let label = MessageTimestampFormatter.displayString(for: timestamp) {
             Text(label)
-                .font(.caption2.weight(.medium))
+                .scaledFont(.caption2.weight(.medium))
                 .foregroundStyle(tone == .supporting ? Color.conduitAccent.opacity(0.78) : Color.conduitAccent.opacity(0.70))
                 .monospacedDigit()
                 .accessibilityLabel(AppLocalization.string("Sent \(label)"))
+        }
+    }
+}
+
+/// An activity card's caption with its time on the right (#1440); the
+/// card's text runs the full width below the row. The time keeps its one
+/// line and is laid out first, so a long caption wraps beside it (a raw
+/// time that doesn't parse truncates only past the row's width), and at
+/// the accessibility text
+/// sizes the time goes under the caption, as on VoiceJobLinkCard.
+private struct CardHeaderCaption<Caption: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let timestamp: String
+    @ViewBuilder let caption: Caption
+
+    var body: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+            : AnyLayout(HStackLayout(spacing: 8))
+        layout {
+            caption
+                .frame(maxWidth: .infinity, alignment: .leading)
+            MessageTimestampLabel(timestamp: timestamp, tone: .supporting)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .layoutPriority(1)
         }
     }
 }
@@ -3073,7 +3372,7 @@ private struct ChatStepTimeLabel: View {
     var body: some View {
         if let text = ChatStepTiming.text(duration) {
             Text(text)
-                .font(.caption2.weight(.medium))
+                .scaledFont(.caption2.weight(.medium))
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
                 .accessibilityLabel(ChatStepTiming.spokenText(duration) ?? text)
@@ -3096,6 +3395,19 @@ enum MessageTimestampFormatter {
             return date.formatted(date: .omitted, time: .shortened)
         }
         return date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+    }
+
+    /// Whether two rows' times can be the same message's: true when either
+    /// doesn't say one, or they're within a couple of seconds (Hermes'
+    /// stored rows and a resume's spell the same time differently). Times
+    /// this can't read match only when spelled the same. The same text at
+    /// another time is another message (#1648).
+    static func sameMoment(_ lhs: String, _ rhs: String) -> Bool {
+        let left = lhs.trimmingCharacters(in: .whitespacesAndNewlines)
+        let right = rhs.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !left.isEmpty, !right.isEmpty else { return true }
+        guard let leftDate = date(from: left), let rightDate = date(from: right) else { return left == right }
+        return abs(leftDate.timeIntervalSince(rightDate)) <= 2
     }
 
     static func date(from rawTimestamp: String) -> Date? {
@@ -3174,15 +3486,18 @@ private struct SettledToolCardContent: View, Equatable {
 
     private func teammateName(_ key: String) -> String {
         let _ = rowState.botLabels
-        return BotTeammateMessages.displayName(for: key, in: rowActions?.appState.botRoster ?? [])
+        return BotTeammateMessages.displayName(for: key, in: rowActions?.appState.shownBotRoster ?? [])
     }
 
     /// "Messaged Atlas" for a delivery to a teammate bot, as Desktop shows
     /// it; otherwise the step's own words.
     private func stepTitle(
         _ delivery: BotTeammateMessages.Delivery?,
+        work: BotWorkCall? = nil,
         running: Bool
     ) -> String {
+        // A Bot Chat's work tools draw as work cards ("Started W3: Login bug").
+        if let title = work?.title(running: running) { return title }
         guard let delivery else { return running ? label.runningTitle : label.doneTitle }
         let name = teammateName(delivery.target)
         return running
@@ -3201,6 +3516,7 @@ private struct SettledToolCardContent: View, Equatable {
             let style = ChatStepStyle(toolName: tool.name)
             let running = tool.status == .running
             let delivery = delivery(tool)
+            let work = BotWorkCall.parse(toolName: tool.name, input: tool.input, output: tool.output)
             VStack(alignment: .leading, spacing: 0) {
                 Button {
                     let opens = !expanded
@@ -3220,8 +3536,8 @@ private struct SettledToolCardContent: View, Equatable {
                             // Large text: the time goes under the words
                             // instead of squeezing them.
                             AdaptiveStack(spacing: 6) {
-                                Text(stepTitle(delivery, running: running))
-                                    .font(.body)
+                                Text(stepTitle(delivery, work: work, running: running))
+                                    .scaledFont(.body)
                                     .foregroundStyle(running ? Color.conduitAccent : Color.primary)
                                     .lineLimit(sizeCategory.isAccessibilityCategory ? nil : 1)
                                 ChatStepTimeLabel(
@@ -3231,14 +3547,20 @@ private struct SettledToolCardContent: View, Equatable {
                                     tone: .supporting
                                 )
                             }
-                            // A delivery's subject is what was said, not the
-                            // command that sent it.
-                            if !expanded, let subject = delivery?.message.flatMap({ ChatStepSubject.line(from: $0) })
+                            // A started workstream's card says where it is
+                            // now ("Working · Running df -h /", "Done ·
+                            // 7.6G free"), so its answer needn't repeat it.
+                            if !expanded, !running, work?.tool == .start, let ref = work?.ref,
+                               let appState = rowActions?.appState,
+                               let profile = work?.profile ?? appState.activeBotChatProfile {
+                                WorkStartStatusLine(work: appState.botWork, profile: profile, ref: ref,
+                                                    fallback: label.action ?? ChatStepSubject.line(from: tool.input))
+                            } else if !expanded, let subject = delivery?.message.flatMap({ ChatStepSubject.line(from: $0) })
                                 ?? label.action
                                 ?? ChatStepSubject.line(from: tool.input)
                                 ?? ChatStepSubject.line(from: tool.output) {
                                 Text(subject)
-                                    .font(.subheadline)
+                                    .scaledFont(.subheadline)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
@@ -3255,7 +3577,7 @@ private struct SettledToolCardContent: View, Equatable {
                         }
 
                         Image(systemName: "chevron.down")
-                            .font(.caption.weight(.semibold))
+                            .scaledFont(.caption.weight(.semibold))
                             .foregroundStyle(.conduitTertiary)
                             .rotationEffect(.degrees(expanded ? 180 : 0))
                             .accessibilityHidden(true)
@@ -3270,11 +3592,23 @@ private struct SettledToolCardContent: View, Equatable {
                 if expanded {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(tool.name)
-                            .font(.system(.caption2, design: .monospaced).weight(.semibold))
+                            .scaledFont(.caption2.monospaced().weight(.semibold))
                             .foregroundStyle(.conduitTertiary)
+                        if let work, let session = work.sessionID, let ref = work.ref {
+                            // The workstream it started or reached, opened on its bot's profile.
+                            Button {
+                                Haptics.light()
+                                rowActions?.appState.openAppLink(.session(id: session, profile: work.profile))
+                            } label: {
+                                Label(AppLocalization.string("Open \(ref)"), systemImage: "arrow.up.right.square")
+                                    .scaledFont(.caption.weight(.semibold))
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
                         if let detail = label.detail {
                             Text(detail)
-                                .font(.caption)
+                                .scaledFont(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
                         }
@@ -3316,7 +3650,7 @@ private struct SettledToolCardContent: View, Equatable {
                             handle: delivery.target,
                             body: reply
                         ),
-                        roster: appState.botRoster,
+                        roster: appState.shownBotRoster,
                         appState: appState,
                         disclosureID: message.id + "#teammate-reply"
                     )
@@ -3369,17 +3703,19 @@ struct ToolCard: View {
 
 /// One labeled block of a tool's raw input or result, in monospace.
 private struct ToolRawTextSection: View {
+    @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.columnText) private var columnText
     let title: String
     let text: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.caption2.bold())
+                .scaledFont(.caption2.bold())
                 .foregroundStyle(.conduitTertiary)
             SelectableTextView(
                 text: ToolCard.truncateForDisplay(text, maxLines: ToolResultPresentation.displayLineLimit),
-                font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
+                font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnText).pointSize, weight: .regular),
                 textColor: .secondaryLabel,
                 maximumNumberOfLines: 0
             )
@@ -3426,6 +3762,8 @@ enum ClarifyCardLayout {
 }
 
 struct ClarifyCard: View {
+    @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.columnText) private var columnText
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
     @Environment(\.chatRowActions) private var rowActions
@@ -3449,38 +3787,38 @@ struct ClarifyCard: View {
             // them still waits.
             let showsForm = clarify.isForm && clarify.hasPendingDecision
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Image(systemName: "questionmark.bubble")
-                        .foregroundStyle(.orange)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(statusTitle(for: displayStatus))
-                            .font(.caption2.weight(.bold))
-                            .tracking(0.5)
-                            .foregroundStyle(statusColor(for: displayStatus))
-                        SelectableTextView(
-                            text: layout.headerText(for: clarify),
-                            font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
-                            textColor: .label
-                        )
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "questionmark.bubble")
+                            .foregroundStyle(.orange)
+                        CardHeaderCaption(timestamp: message.timestamp) {
+                            Text(statusTitle(for: displayStatus))
+                                .scaledFont(.caption2.weight(.bold))
+                                .tracking(0.5)
+                                .foregroundStyle(statusColor(for: displayStatus))
+                        }
+                        if displayStatus == .submitting {
+                            ProgressView().controlSize(.small)
+                        } else if displayStatus == .answered,
+                                  clarify.questions.contains(where: { $0.answer != nil }) {
+                            // Only an answer this device holds earns the check;
+                            // an answered-elsewhere settle renders no checkmark so
+                            // the header agrees with the body copy.
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        }
                     }
-                    Spacer(minLength: 8)
-                    if displayStatus == .submitting {
-                        ProgressView().controlSize(.small)
-                    } else if displayStatus == .answered,
-                              clarify.questions.contains(where: { $0.answer != nil }) {
-                        // Only an answer this device holds earns the check;
-                        // an answered-elsewhere settle renders no checkmark so
-                        // the header agrees with the body copy.
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    }
-                    MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
+                    SelectableTextView(
+                        text: layout.headerText(for: clarify),
+                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnText).withTraits(.traitBold),
+                        textColor: .label
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 if showsForm {
                     Text("Fill in what you know, and leave the rest blank.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
 
@@ -3504,7 +3842,7 @@ struct ClarifyCard: View {
                     } label: {
                         HStack {
                             Text("Send")
-                                .font(.subheadline.weight(.semibold))
+                                .scaledFont(.subheadline.weight(.semibold))
                             Spacer()
                             Image(systemName: "arrow.up")
                         }
@@ -3520,7 +3858,7 @@ struct ClarifyCard: View {
 
                 if let error = clarify.error, !error.isEmpty {
                     Label(error, systemImage: "exclamationmark.circle")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.red)
                 }
             }
@@ -3627,6 +3965,8 @@ struct ClarifyCard: View {
 /// the legacy flat layout (the card header already carries the title). A
 /// form's row is a field instead, sent with the card's one Send.
 struct ClarifyQuestionRow: View {
+    @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.columnText) private var columnText
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let question: ClarifyQuestion
     var showsTitle: Bool = true
@@ -3646,7 +3986,7 @@ struct ClarifyQuestionRow: View {
                 HStack(alignment: .top, spacing: 6) {
                     SelectableTextView(
                         text: question.question,
-                        font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
+                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnText).withTraits(.traitBold),
                         textColor: .label
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -3661,20 +4001,20 @@ struct ClarifyQuestionRow: View {
                 answeredBlock
             case .expired:
                 Text("No longer active")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             case .submitting:
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
                     Text("Locking your answer…")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             case .pending, .error:
                 controls
                 if let error = question.error, !error.isEmpty {
                     Label(error, systemImage: "exclamationmark.circle")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.red)
                 }
             }
@@ -3695,16 +4035,16 @@ struct ClarifyQuestionRow: View {
             // A field left blank says Skipped below instead.
             if !question.isSkipped {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.green)
             }
         case .error:
             Image(systemName: "exclamationmark.circle.fill")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.red)
         case .expired:
             Image(systemName: "clock.badge.xmark")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         case .pending, .submitting:
             EmptyView()
@@ -3716,17 +4056,17 @@ struct ClarifyQuestionRow: View {
         if question.isSkipped {
             // A form's field left blank: Hermes read it as skipped.
             Label(AppLocalization.string("Skipped"), systemImage: "forward")
-                .font(.subheadline.weight(.medium))
+                .scaledFont(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
         } else if let answer = question.resolvedAnswer, !answer.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 Text("YOUR ANSWER")
-                    .font(.caption2.weight(.bold))
+                    .scaledFont(.caption2.weight(.bold))
                     .tracking(0.5)
                     .foregroundStyle(.green)
                 SelectableTextView(
                     text: answer,
-                    font: .preferredFont(forTextStyle: .subheadline),
+                    font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnText),
                     textColor: .label
                 )
             }
@@ -3737,7 +4077,7 @@ struct ClarifyQuestionRow: View {
             // Answered elsewhere (relay 409): settled, but this device's
             // rejected text must not display as what Hermes received.
             Text("Answered on another device")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -3793,12 +4133,12 @@ struct ClarifyQuestionRow: View {
             } label: {
                 HStack(spacing: 8) {
                     Text(formMenuTitle)
-                        .font(.body)
+                        .scaledFont(.body)
                         .foregroundStyle(hasFormPick ? Color.primary : Color.secondary)
                         .multilineTextAlignment(.leading)
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 14)
@@ -3874,10 +4214,10 @@ struct ClarifyQuestionRow: View {
             } label: {
                 HStack {
                     Text(choice.label)
-                        .font(.body)
+                        .scaledFont(.body)
                     Spacer()
                     Image(systemName: "chevron.right")
-                        .font(.caption)
+                        .scaledFont(.caption)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
@@ -3902,7 +4242,7 @@ struct ClarifyQuestionRow: View {
                 submitCustomAnswer()
             } label: {
                 Image(systemName: "arrow.up")
-                    .font(.subheadline.weight(.bold))
+                    .scaledFont(.subheadline.weight(.bold))
                     .conduitFixedGlyph()
                     .frame(width: 36, height: 36)
             }
@@ -3928,7 +4268,7 @@ struct ClarifyQuestionRow: View {
                             .foregroundStyle(selection.contains(choice.value) ? Color.orange : Color.secondary)
                             .accessibilityHidden(true)
                         Text(choice.label)
-                            .font(.body)
+                            .scaledFont(.body)
                             .foregroundStyle(.primary)
                         Spacer()
                     }
@@ -3953,7 +4293,7 @@ struct ClarifyQuestionRow: View {
             } label: {
                 HStack {
                     Text(confirmTitle)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                     Spacer()
                     Image(systemName: "arrow.up")
                 }
@@ -3980,7 +4320,7 @@ struct ClarifyQuestionRow: View {
                     submitCustomAnswer()
                 } label: {
                     Image(systemName: "arrow.up")
-                        .font(.subheadline.weight(.bold))
+                        .scaledFont(.subheadline.weight(.bold))
                         .conduitFixedGlyph()
                         .frame(width: 36, height: 36)
                 }
@@ -4076,6 +4416,8 @@ private struct ApprovalCommandHeightLayout: Layout {
 }
 
 struct ApprovalCard: View {
+    @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.columnText) private var columnText
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
     @Environment(\.chatRowActions) private var rowActions
@@ -4089,41 +4431,41 @@ struct ApprovalCard: View {
     var body: some View {
         if let approval = message.approval {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.shield")
-                        .foregroundStyle(statusColor(for: approval.status))
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(statusTitle(for: approval.status))
-                            .font(.caption2.weight(.bold))
-                            .tracking(0.5)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.shield")
                             .foregroundStyle(statusColor(for: approval.status))
-                        SelectableTextView(
-                            text: ApprovalDisplayText.revealingHidden(approval.description),
-                            font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
-                            textColor: .label
-                        )
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    Spacer(minLength: 8)
-                    if approval.status == .submitting {
-                        ProgressView().controlSize(.small)
-                    } else if approval.status == .approved || approval.status == .rejected {
-                        Image(systemName: approval.status == .approved ? "checkmark.circle.fill" : "xmark.circle.fill")
-                            .foregroundStyle(statusColor(for: approval.status))
-                    } else if approval.status == .expired {
-                        Image(systemName: "clock.badge.xmark")
-                            .foregroundStyle(.secondary)
                             .accessibilityHidden(true)
+                        CardHeaderCaption(timestamp: message.timestamp) {
+                            Text(statusTitle(for: approval.status))
+                                .scaledFont(.caption2.weight(.bold))
+                                .tracking(0.5)
+                                .foregroundStyle(statusColor(for: approval.status))
+                        }
+                        if approval.status == .submitting {
+                            ProgressView().controlSize(.small)
+                        } else if approval.status == .approved || approval.status == .rejected {
+                            Image(systemName: approval.status == .approved ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .foregroundStyle(statusColor(for: approval.status))
+                        } else if approval.status == .expired {
+                            Image(systemName: "clock.badge.xmark")
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+                        }
                     }
-                    MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
+                    SelectableTextView(
+                        text: ApprovalDisplayText.revealingHidden(HermesApprovalText.description(approval.description)),
+                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnText).withTraits(.traitBold),
+                        textColor: .label
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 if !approval.command.isEmpty {
-                    let commandFont = UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular)
+                    let commandFont = UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnText).pointSize, weight: .regular)
                     ApprovalCommandBox(maxHeight: ApprovalCommandBox<EmptyView>.maxLines * commandFont.lineHeight) {
                         SelectableTextView(
-                            text: ApprovalDisplayText.revealingHidden(approval.command),
+                            text: ApprovalDisplayText.revealingHidden(HermesApprovalText.command(approval.command)),
                             font: commandFont,
                             textColor: .label
                         )
@@ -4136,7 +4478,7 @@ struct ApprovalCard: View {
                 if approval.status == .approved || approval.status == .rejected {
                     let text = approval.choice.map { decisionTitle($0) } ?? statusTitle(for: approval.status)
                     Label(text, systemImage: approval.status == .approved ? "checkmark" : "xmark")
-                        .font(.subheadline.weight(.medium))
+                        .scaledFont(.subheadline.weight(.medium))
                         .foregroundStyle(statusColor(for: approval.status))
                 } else if approval.status == .expired {
                     let explanation = approval.error?.isEmpty == false
@@ -4145,7 +4487,7 @@ struct ApprovalCard: View {
                     // The gateway's text can carry the same hidden marks
                     // as the command.
                     Text(verbatim: ApprovalDisplayText.revealingHidden(explanation))
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 } else {
                     // Longer translations (German, Russian, French) don't fit
@@ -4178,12 +4520,12 @@ struct ApprovalCard: View {
                             rejectButton(approval)
                         }
                     }
-                    .font(.subheadline.weight(.medium))
+                    .scaledFont(.subheadline.weight(.medium))
                 }
 
                 if approval.status != .expired, let error = approval.error, !error.isEmpty {
                     Label(ApprovalDisplayText.revealingHidden(error), systemImage: "exclamationmark.circle")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.red)
                 }
             }
@@ -4292,6 +4634,8 @@ struct ApprovalCard: View {
 /// only in this view's state: it is handed to AppState once on submit and
 /// cleared, never stored on the message.
 struct InputPromptCard: View {
+    @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.columnText) private var columnText
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
     @Environment(\.chatRowActions) private var rowActions
@@ -4310,33 +4654,33 @@ struct InputPromptCard: View {
     var body: some View {
         if let prompt = message.inputPrompt {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Image(systemName: iconName(for: prompt.kind))
-                        .foregroundStyle(statusColor(for: prompt.status))
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(statusTitle(for: prompt.status))
-                            .font(.caption2.weight(.bold))
-                            .tracking(0.5)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: iconName(for: prompt.kind))
                             .foregroundStyle(statusColor(for: prompt.status))
-                        Text(prompt.title)
-                            .font(.subheadline.weight(.bold))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    Spacer(minLength: 8)
-                    if prompt.status == .submitting {
-                        ProgressView().controlSize(.small)
-                    } else if prompt.status == .expired {
-                        Image(systemName: "clock.badge.xmark")
-                            .foregroundStyle(.secondary)
                             .accessibilityHidden(true)
+                        CardHeaderCaption(timestamp: message.timestamp) {
+                            Text(statusTitle(for: prompt.status))
+                                .scaledFont(.caption2.weight(.bold))
+                                .tracking(0.5)
+                                .foregroundStyle(statusColor(for: prompt.status))
+                        }
+                        if prompt.status == .submitting {
+                            ProgressView().controlSize(.small)
+                        } else if prompt.status == .expired {
+                            Image(systemName: "clock.badge.xmark")
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+                        }
                     }
-                    MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
+                    Text(prompt.title)
+                        .scaledFont(.subheadline.weight(.bold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 if let note = explanation(for: prompt) {
                     Text(note)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -4344,7 +4688,7 @@ struct InputPromptCard: View {
                 if let detail = detail(for: prompt), !detail.isEmpty {
                     SelectableTextView(
                         text: detail,
-                        font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
+                        font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnText).pointSize, weight: .regular),
                         textColor: .label,
                         maximumNumberOfLines: 5
                     )
@@ -4356,16 +4700,16 @@ struct InputPromptCard: View {
                 switch prompt.status {
                 case .submitted:
                     Label(AppLocalization.string("Sent"), systemImage: "checkmark")
-                        .font(.subheadline.weight(.medium))
+                        .scaledFont(.subheadline.weight(.medium))
                         .foregroundStyle(.green)
                 case .skipped:
                     Label(AppLocalization.string("Skipped"), systemImage: "forward")
-                        .font(.subheadline.weight(.medium))
+                        .scaledFont(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
                 case .expired:
                     Text(prompt.error.flatMap { $0.isEmpty ? nil : $0 }
                          ?? AppLocalization.string("This request is no longer active."))
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 case .pending, .submitting, .error:
                     fields(for: prompt)
@@ -4387,12 +4731,12 @@ struct InputPromptCard: View {
                         .buttonStyle(.bordered)
                         .disabled(!prompt.isAnswerable)
                     }
-                    .font(.subheadline.weight(.medium))
+                    .scaledFont(.subheadline.weight(.medium))
                 }
 
                 if prompt.status == .error, let error = prompt.error, !error.isEmpty {
                     Label(error, systemImage: "exclamationmark.circle")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.red)
                 }
             }
@@ -4593,32 +4937,16 @@ private extension View {
 
 // MARK: - Live Turn Rows
 
-/// The running turn's live tail at the end of the transcript: the open
-/// thinking card, the streaming reply, or the working indicator. It observes
-/// `LiveTurnProjection` directly, which publishes at streaming cadence, so
-/// those ticks stop here instead of re-running ChatView's body. The rows sit
-/// in the transcript's LazyVStack as its own children, as they did inline.
-struct ChatLiveTurnRows: View {
+/// The running turn's open thinking card, at the end of the transcript.
+/// TranscriptModel decides that it shows; its text comes from
+/// `LiveTurnProjection`, which publishes at streaming cadence, so those
+/// ticks re-render this row instead of ChatView's body. Chronology matches
+/// the settled transcript: thinking streams at the tail, before the answer.
+struct ChatLiveThinkingRow: View {
     @ObservedObject var projection: LiveTurnProjection
-    let isBusy: Bool
     let author: String
-    /// The tool running now, named on the working line.
-    var currentToolName: String?
-    /// Its input, for a batch's names.
-    var currentToolInput: String?
-    /// Its own words for it, when it has them ("Messaging Atlas…").
-    var currentToolTitle: String?
-    /// When the turn began, for the working line's timer.
-    var turnStartedAt: Date?
-    /// Another device is getting this chat's reply.
-    var repliesElsewhere = false
 
     var body: some View {
-        // Live reasoning renders from the projection, not the settled
-        // transcript: per-publish reasoning changes re-render only this
-        // card, never the ForEach data or the scroll-target cache.
-        // Chronology matches the pre-projection transcript — thinking
-        // streams at the tail, before the assistant answer.
         if let segment = projection.reasoningSegment {
             ThinkingCard(
                 message: ChatMessage(
@@ -4629,27 +4957,19 @@ struct ChatLiveTurnRows: View {
                     author: author
                 )
             )
-            .id(segment.id)
         }
+    }
+}
 
+/// The reply streaming in, its text from the live projection likewise.
+struct ChatLiveStreamingRow: View {
+    @ObservedObject var projection: LiveTurnProjection
+    /// Still being written ("Responding", not "Finishing").
+    let isActive: Bool
+
+    var body: some View {
         if !projection.streamingText.isEmpty {
-            StreamingBubble(
-                text: projection.streamingText,
-                active: isBusy
-            )
-            .id("streaming")
-        }
-
-        if (isBusy && projection.streamingText.isEmpty) || repliesElsewhere {
-            ChatWorkingLine(
-                currentToolName: currentToolName,
-                currentToolInput: currentToolInput,
-                currentToolTitle: currentToolTitle,
-                isThinking: projection.reasoningSegment != nil,
-                startedAt: turnStartedAt,
-                repliesElsewhere: repliesElsewhere
-            )
-            .id("typing")
+            StreamingBubble(text: projection.streamingText, active: isActive)
         }
     }
 }
@@ -4677,11 +4997,11 @@ struct StreamingBubble: View {
                 )
 
                 Text(identity.name)
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
                 Text(active ? AppLocalization.string("Responding") : AppLocalization.string("Finishing"))
-                    .font(.caption2.weight(.medium))
+                    .scaledFont(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
 
                 Spacer(minLength: 8)
@@ -4727,7 +5047,7 @@ private struct PendingNewChatView: View {
             .padding(.horizontal, 18)
             .padding(.top, 18)
         }
-        .modifier(V2SoftTopScrollEdge(isOn: composerFloats))
+        .modifier(V2SoftTopScrollEdge(isOn: composerFloats, underChatHeader: true))
         .accessibilityIdentifier("pending-new-chat")
     }
 }
@@ -4743,9 +5063,9 @@ struct EmptyChatState: View {
             )
             VStack(spacing: 6) {
                 Text("Start a conversation")
-                    .font(.title3.weight(.semibold))
+                    .scaledFont(.title3.weight(.semibold))
                 Text("Conduit is ready when you are.")
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
             }
         }
@@ -4865,15 +5185,53 @@ private struct ConduitBreathingTimeline<Content: View>: View {
 
 /// V2 (iOS 26): the transcript (or a pushed page's list) fades out under the
 /// header instead of the navigation bar's edge ending it at a line.
+/// A chat's transcript (`underChatHeader`) fades out under the chat's header
+/// before iOS 26 too: its text turns transparent across the navigation bar,
+/// as under a bar's fade (`V2LegacyEdgeBar`), rather than a material
+/// drawn behind the header.
 struct V2SoftTopScrollEdge: ViewModifier {
     let isOn: Bool
+    var underChatHeader = false
+    /// A chat's or a group room's transcript, a collection view that sets
+    /// its iOS 26 soft edge itself (TranscriptViewController's
+    /// applyEdgeEffect): on it, only the fade before iOS 26 is this
+    /// modifier's.
+    var setsOwnEdge = false
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *), isOn {
-            content.scrollEdgeEffectStyle(.soft, for: .top)
+        if #available(iOS 26.0, *) {
+            if isOn && !setsOwnEdge {
+                content.scrollEdgeEffectStyle(.soft, for: .top)
+            } else {
+                content
+            }
         } else {
-            content
+            if isOn && underChatHeader {
+                content.mask { headerFade }
+            } else {
+                content
+            }
+        }
+    }
+
+    /// Opaque below the navigation bar, fading out to clear across it.
+    private var headerFade: some View {
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .black.opacity(0.15), location: 0.45),
+                        .init(color: .black, location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: proxy.safeAreaInsets.top)
+                Color.black
+            }
+            .ignoresSafeArea()
         }
     }
 }

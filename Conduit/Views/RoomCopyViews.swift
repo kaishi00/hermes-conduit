@@ -120,7 +120,7 @@ struct RoomCopyBottomBar: View {
                             Image(systemName: "eye")
                                 .accessibilityHidden(true)
                         }
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 14)
@@ -180,7 +180,7 @@ struct RoomCopyHostSection: View {
                 Text(verbatim: RoomCopyText.host(for: copy))
                 if copy.isOver {
                     Text(verbatim: RoomCopyText.line(for: copy))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -206,19 +206,19 @@ struct RoomCopyPostFooter: View {
         switch state {
         case .sending:
             Text(AppLocalization.string("Sending…"))
-                .font(.caption2)
+                .scaledFont(.caption2)
                 .foregroundStyle(.secondary)
         case .notDelivered:
             Button(action: retry) {
                 Label(AppLocalization.string("Not delivered — retry"), systemImage: "arrow.clockwise")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
             }
             .buttonStyle(.plain)
             .foregroundStyle(Color.conduitAccent)
         case .refused(let why, let canRetry):
             VStack(alignment: .trailing, spacing: 4) {
                 Text(verbatim: why)
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.trailing)
                     .fixedSize(horizontal: false, vertical: true)
@@ -228,14 +228,14 @@ struct RoomCopyPostFooter: View {
                     }
                     Button(AppLocalization.string("Edit"), action: edit)
                 }
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.conduitAccent)
             }
         case .closed(let why):
             VStack(alignment: .trailing, spacing: 4) {
                 Text(verbatim: why)
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.trailing)
                     .fixedSize(horizontal: false, vertical: true)
@@ -243,7 +243,7 @@ struct RoomCopyPostFooter: View {
                     Button(AppLocalization.string("Copy"), action: copy)
                     Button(AppLocalization.string("Dismiss"), action: dismiss)
                 }
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.conduitAccent)
             }

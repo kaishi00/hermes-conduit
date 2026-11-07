@@ -44,6 +44,10 @@ struct ShareDraftSheet: View {
             form
         case .saved:
             saved
+        case .failed where model.collection.isEmpty && !model.collection.problems.isEmpty:
+            // Nothing could be added: what was left out, and why, as a
+            // list that scrolls however many there are (#1747).
+            Form { leftOut }
         case .failed(let message):
             ContentUnavailableView {
                 Label {
@@ -88,6 +92,24 @@ struct ShareDraftSheet: View {
 
     // MARK: The draft
 
+    /// What the share left out, and why.
+    private var leftOut: some View {
+        Section {
+            ForEach(Array(model.collection.problems.enumerated()), id: \.offset) { _, problem in
+                Label {
+                    Text(verbatim: problem.message(composerLimitMegabytes: model.composerLimitMegabytes))
+                        .font(.footnote)
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
+            }
+        } header: {
+            Text("Left out")
+        }
+    }
+
     private var form: some View {
         Form {
             Section {
@@ -105,20 +127,7 @@ struct ShareDraftSheet: View {
             }
 
             if !model.collection.problems.isEmpty {
-                Section {
-                    ForEach(Array(model.collection.problems.enumerated()), id: \.offset) { _, problem in
-                        Label {
-                            Text(verbatim: problem.message(composerLimitMegabytes: model.composerLimitMegabytes))
-                                .font(.footnote)
-                                .fixedSize(horizontal: false, vertical: true)
-                        } icon: {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                } header: {
-                    Text("Left out")
-                }
+                leftOut
             }
 
             if model.workspaces.count > 1 {

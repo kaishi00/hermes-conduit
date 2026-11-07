@@ -14,7 +14,8 @@ import Foundation
 @MainActor
 extension AppState {
     func sendFromShortcut(_ request: ShortcutSendRequest, deadline: Date) async throws -> ShortcutSendOutcome {
-        try await ShortcutSender(backend: makeShortcutSendBackend()).send(request, deadline: deadline)
+        releaseLaunchDashboardChoice(for: "a shortcut")
+        return try await ShortcutSender(backend: makeShortcutSendBackend()).send(request, deadline: deadline)
     }
 
     func makeShortcutSendBackend() -> ShortcutSendBackend {
@@ -84,7 +85,12 @@ extension AppState {
                 // take it (still synchronizing): Hermes takes it, queues it or
                 // joins the turn running.
                 await self.reportTurnSurface(.shortcut, runtimeSessionID: runtimeID, text: text)?.value
-                return try await self.sendShortcutPrompt(runtimeID, text: text)
+                do {
+                    return try await self.sendShortcutPrompt(runtimeID, text: text)
+                } catch {
+                    self.discardTurnSurface(runtimeSessionID: runtimeID, text: text, after: error)
+                    throw error
+                }
             },
             liveSessions: { [weak self] profile in
                 guard let self, let client = self.client else { throw HermesError.notConnected }

@@ -57,7 +57,10 @@ extension AppState {
     /// `.notice(...)` presentations are not proof of login-required and must
     /// not synthesize stable failure.
     func voiceLaunchConnectionSnapshot() -> VoiceLaunchConnectionSnapshot {
+        // A failed renewal the header keeps quiet still fails a waiting
+        // Siri launch at once, as before #1624.
         let fallbackFailure = pendingLoginFailure?.classifiedFailure
+            ?? quietReconnectFailureClass
         return VoiceLaunchConnectionSnapshot(
             isConnected: isConnected,
             isConnecting: isConnecting,

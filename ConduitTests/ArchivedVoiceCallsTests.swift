@@ -46,7 +46,7 @@ extension ChatReadStateTests {
         XCTAssertEqual(sessions.filter { AppState.isArchivedVoiceChat($0, tags: [:]) }.map(\.id), ["call"])
     }
 
-    func testAClassicVoiceChatArchivedAtCallEndStaysListedByItsTag() {
+    func testAClassicVoiceChatOrVoiceJobThePluginArchivedStaysListedByItsTag() {
         let sessions = archivedCallRows([
             ["id": "classic", "title": "Voice chat", "message_count": 4, "archived": true, "auto_archived": 1,
              "profile": "default"],
@@ -60,7 +60,9 @@ extension ChatReadStateTests {
             "job": VoiceSessionTag(kind: .job),
             "kept-away": VoiceSessionTag(kind: .classic),
         ]
-        XCTAssertEqual(sessions.filter { AppState.isArchivedVoiceChat($0, tags: tags) }.map(\.id), ["classic"])
+        // A voice job's chat is archived once Hermes answered it.
+        XCTAssertEqual(sessions.filter { AppState.isArchivedVoiceChat($0, tags: tags) }.map(\.id), ["classic", "job"])
+        XCTAssertFalse(AppState.isArchivedVoiceChat(sessions[1], tags: [:]), "untagged, it's Hermes' own sweep")
     }
 
     func testArchivedCallsMergeIntoTheListByRecency() {

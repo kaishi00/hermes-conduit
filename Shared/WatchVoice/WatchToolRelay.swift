@@ -9,7 +9,7 @@
 //  runs it as /web-search or /memory/recall would, and seals the answer
 //  back. The relay carries bytes it can neither read nor forge.
 //
-//  The sealing mirrors conduit_push's dashboard/plugin_api.py, checked by
+//  The sealing mirrors conduit_push's dashboard/api/watch_tools.py, checked by
 //  shared test vectors. The answers mirror what the iPhone's tool bridge
 //  hands the model for the same host response, checked by a parity test.
 //

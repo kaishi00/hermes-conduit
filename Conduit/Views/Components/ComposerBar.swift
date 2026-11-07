@@ -25,6 +25,10 @@ struct ComposerBar: View, Equatable {
     private var appState: AppState { updates.appState }
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The text view's own size, which a wide column grows
+    /// (`ComposerPasteTextView.bodyFont`).
+    @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.columnText) private var columnText
     @State private var text = ""
     @State private var composerTextHeight = ComposerPasteTextView.minimumHeight
     @State private var attachments: [Attachment] = []
@@ -79,6 +83,8 @@ struct ComposerBar: View, Equatable {
     @Namespace private var glassNamespace
     /// The dictate button types into the draft (#290, #335).
     @StateObject private var dictation = ComposerDictationService()
+    /// Hermes dictations whose words never came, kept for Retry.
+    @ObservedObject private var dictationClips = DictationClipInbox.shared
     /// The draft as it was when dictation began; dictated text goes after it.
     @State private var dictationPrefix = ""
     /// The draft as dictation last wrote it, so the full editor, which
@@ -86,8 +92,14 @@ struct ComposerBar: View, Equatable {
     @State private var dictatedDraft: String?
     /// The full-screen editor for long drafts (#335).
     @State private var isShowingFullEditor = false
+    /// A send or Stop from the full editor kept focus: the field takes it
+    /// once the sheet has gone.
+    @State private var focusesAfterFullEditor = false
     /// V2's conversation: rest as a slim bar until the composer is used.
     @Environment(\.v2ComposerRests) private var restsWhenIdle
+    /// A Mac, or an iPad with the room: V2's composer keeps its controls
+    /// showing, the big voice button beside it (#1483).
+    @Environment(\.composerStaysExpanded) private var staysExpanded
     /// Kept expanded a moment after use ends, so a tap on a control (which
     /// can take focus from the field) doesn't collapse it under the finger.
     @State private var holdsExpanded = false
@@ -116,10 +128,24 @@ struct ComposerBar: View, Equatable {
     /// to read in place, so the expand icon stays out of the way.
     static let fullEditorThreshold: CGFloat = 80
 
-    static func showsFullEditorButton(measuredHeight: CGFloat) -> Bool {
-        // At large Text Sizes one line alone can reach 80 pt; the icon still
-        // waits for more than a line.
-        measuredHeight >= max(fullEditorThreshold, ComposerPasteTextView.minimumHeight + 20)
+    static func showsFullEditorButton(measuredHeight: CGFloat, restingHeight: CGFloat = ComposerPasteTextView.minimumHeight) -> Bool {
+        // At large Text Sizes, or in a wide column that grows its text, one
+        // line alone can reach 80 pt; the icon still waits for more than a
+        // line.
+        measuredHeight >= max(fullEditorThreshold, restingHeight + 20)
+    }
+
+    /// The text field's height: what it measured, never under one line of
+    /// its own font. The state starts at the system's line, and a wide Mac
+    /// column's is taller, so its first frame doesn't jump once it measures.
+    static func textFrameHeight(measured: CGFloat, resting: CGFloat) -> CGFloat {
+        max(measured, resting)
+    }
+
+    /// One line of the text view's own font: what the composer goes back
+    /// to after a send.
+    private var restingTextHeight: CGFloat {
+        ComposerPasteTextView.minimumHeight(for: ComposerPasteTextView.bodyFont(in: sizeCategory, from: columnText))
     }
 
     static func composerDraftKey(for sessionID: String?, profile: String) -> ComposerDraftKey {
@@ -365,8 +391,23 @@ struct ComposerBar: View, Equatable {
         case .interrupt: return BusyInputMode.interrupt.symbol
         case .queue: return BusyInputMode.queue.symbol
         case .send: return "arrow.up"
-        case .unavailable: return "lock"
+        case .unavailable: return showsEmptyDraftSend ? "arrow.up" : "lock"
         }
+    }
+
+    /// Beside the big voice button, an empty draft in a chat that takes
+    /// messages (not an offline copy or a chat still being made) shows Send dimmed, not the lock of a composer that can't
+    /// send at all.
+    private var showsEmptyDraftSend: Bool {
+        Self.showsEmptyDraftSend(
+            action: action,
+            voiceButtonBeside: keepsVoiceButtonBeside,
+            composerIsEnabled: appState.composerIsEnabled
+        )
+    }
+
+    static func showsEmptyDraftSend(action: ComposerAction, voiceButtonBeside: Bool, composerIsEnabled: Bool) -> Bool {
+        voiceButtonBeside && action == .unavailable && composerIsEnabled
     }
 
     private var actionTitle: String? {
@@ -412,15 +453,27 @@ struct ComposerBar: View, Equatable {
                 composerContent
             }
         }
-        // Resting, the voice button keeps its spot on the trailing side.
-        .padding(.leading, rests ? 16 : (restsWhenIdle ? 12 : 14))
+        // The voice button beside the resting bar centres on it.
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(key: V2RestingComposerHeightKey.self, value: rests ? proxy.size.height : 0)
+            }
+        }
+        // Resting, or staying expanded, the voice button keeps its spot on
+        // the trailing side.
+        .padding(.leading, rests || keepsVoiceButtonBeside ? 16 : (restsWhenIdle ? 12 : 14))
         // A voice message recorded while the button is held keeps it too.
-        .padding(.trailing, rests || voiceMessages.isHeld ? 84 : (restsWhenIdle ? 12 : 14))
+        .padding(.trailing, rests || keepsVoiceButtonBeside || voiceMessages.isHeld ? 84 : (restsWhenIdle ? 12 : 14))
         .padding(.top, 8)
         .padding(.bottom, 10)
-        .animation(restsWhenIdle ? ConduitMotion.ease(reduceMotion: reduceMotion) : nil, value: rests)
-        .preference(key: V2ComposerExpandedKey.self, value: restsWhenIdle && !rests)
-        .preference(key: V2ComposerTypingKey.self, value: Self.hidesMinimisedCallBar(restsWhenIdle: restsWhenIdle, isFocused: isFocused))
+        .animation(restsWhenIdle ? ConduitMotion.ease(reduceMotion: reduceMotion) : nil, value: inUseOrHeld)
+        .preference(key: V2ComposerExpandedKey.self, value: restsWhenIdle && !keepsVoiceButtonBeside && !rests)
+        .preference(key: V2ComposerTypingKey.self, value: Self.hidesMinimisedCallBar(
+            restsWhenIdle: restsWhenIdle,
+            isFocused: isFocused,
+            hasText: hasText,
+            keepsFocusAfterSend: ComposerLayout.keepsFocusAfterSend()
+        ))
         .onChange(of: composerInUse, initial: true) { _, inUse in
             guard restsWhenIdle else { return }
             composerUseChanged(inUse)
@@ -440,7 +493,7 @@ struct ComposerBar: View, Equatable {
             suppressNextTextChangeSuggestions = false
             composerErrorMessage = nil
             if newValue.isEmpty {
-                composerTextHeight = ComposerPasteTextView.minimumHeight
+                composerTextHeight = restingTextHeight
             }
             // Show suggestions when actively typing a slash command prefix
             withAnimation(ConduitMotion.response) {
@@ -457,6 +510,10 @@ struct ComposerBar: View, Equatable {
         }
         .onChange(of: updates.inputs.quoteRequest) { _, request in
             applyQuoteRequest(request)
+        }
+        .onChange(of: updates.inputs.dropRequest) { _, request in
+            guard let request, appState.consumeComposerDropRequest(request.id) else { return }
+            handleDroppedFiles(request.providers)
         }
         .onChange(of: updates.inputs.predictiveRequest) { _, request in
             applyPredictiveRequest(request)
@@ -597,8 +654,19 @@ struct ComposerBar: View, Equatable {
                 composerNoticeLine(notice)
             }
 
+            UndeliveredDictationNotice(
+                inbox: dictationClips,
+                identity: dictationClipIdentity,
+                delivering: appState.dictationClipsOnTheirWay,
+                onRetry: retryDictationClip
+            )
+
             if appState.isCompressingActiveSession {
                 compressingNotice
+            }
+
+            if updates.inputs.isCheckingSend {
+                sendingNotice
             }
 
             if let takeover = appState.activeChatTakeover {
@@ -655,7 +723,11 @@ struct ComposerBar: View, Equatable {
                 // row waits.
                 HStack(spacing: 2) {
                     if rests {
+                        // Capped as in the controls row: at accessibility
+                        // sizes its button chrome grew and left the field
+                        // a few letters a line.
                         attachmentButton
+                            .conduitFixedGlyph()
                             .padding(.leading, 6)
                             .transition(.opacity)
                     }
@@ -667,12 +739,14 @@ struct ComposerBar: View, Equatable {
                         // Spaced like the controls row, so its widened hit
                         // shape stays clear of the field and Stop.
                         dictateButton
+                            .conduitFixedGlyph()
                             .padding(.leading, 6)
                             .padding(.trailing, stopOnly ? 6 : 4)
                             .transition(.opacity)
                     }
                     if rests && stopOnly {
                         trailingSlot
+                            .conduitFixedGlyph()
                             .padding(.trailing, 4)
                             .transition(.opacity)
                     }
@@ -707,7 +781,10 @@ struct ComposerBar: View, Equatable {
         ZStack(alignment: .topLeading) {
             let currentEditorIdentity = editorIdentity
             if text.isEmpty {
-                Text(appState.composerPlaceholder)
+                ComposerPlaceholderText(
+                    text: appState.composerPlaceholder,
+                    short: appState.composerShortPlaceholder
+                )
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
@@ -728,6 +805,16 @@ struct ComposerBar: View, Equatable {
                     handlePastedImageError(message, editorIdentity: currentEditorIdentity)
                 },
                 editorIdentity: editorIdentity,
+                // A locked composer takes no drop, as its Attach menu is
+                // off then (the chat around it doesn't either).
+                onDroppedFiles: appState.composerIsEnabled ? { providers in
+                    guard currentEditorIdentity == editorIdentity else { return }
+                    handleDroppedFiles(providers)
+                } : nil,
+                onLongTextPaste: { pasted in
+                    guard currentEditorIdentity == editorIdentity else { return false }
+                    return attachLongPaste(pasted)
+                },
                 programmaticRevision: composerRevision,
                 programmaticCursorAtEnd: composerCursorAtEnd,
                 returnKeySends: returnKeySends,
@@ -751,7 +838,7 @@ struct ComposerBar: View, Equatable {
             .padding(.leading, 5)
             // Room for the expand icon, so the text wraps before it.
             .padding(.trailing, showsFullEditorButton ? 40 : 5)
-            .frame(height: composerTextHeight)
+            .frame(height: Self.textFrameHeight(measured: composerTextHeight, resting: restingTextHeight))
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .overlay(alignment: .topTrailing) {
@@ -786,6 +873,10 @@ struct ComposerBar: View, Equatable {
             // Typing a slash command in the sheet arms suggestions the sheet
             // never shows; they'd pop up over the unfocused inline field.
             isShowingSlashSuggestions = false
+            if focusesAfterFullEditor {
+                focusesAfterFullEditor = false
+                isFocused = true
+            }
         }) {
             ComposerFullEditor(
                 text: $text,
@@ -803,7 +894,17 @@ struct ComposerBar: View, Equatable {
                     dictation.yieldToTyping()
                 },
                 onCollapse: { isShowingFullEditor = false },
+                canSubmitFromReturn: ComposerReturnKey.canSubmit(action: action) || dictationHoldsSendSlot,
+                onSubmitFromReturn: { submitFromReturnKey() },
+                // Off while the composer is locked, as on the chat itself.
+                onDropFiles: appState.composerIsEnabled ? { providers in handleDroppedFiles(providers) } : nil,
+                onLongTextPaste: { pasted in attachLongPaste(pasted) },
                 attachments: {
+                    // A drop on the editor that left files out says so here,
+                    // not only behind the sheet.
+                    if let composerErrorMessage, !composerErrorMessage.isEmpty {
+                        pasteErrorNotice(composerErrorMessage)
+                    }
                     if let replyReference {
                         replyReferenceChip(replyReference)
                             .padding(.horizontal, 12)
@@ -829,7 +930,7 @@ struct ComposerBar: View, Equatable {
     }
 
     private var showsFullEditorButton: Bool {
-        Self.showsFullEditorButton(measuredHeight: composerTextHeight)
+        Self.showsFullEditorButton(measuredHeight: composerTextHeight, restingHeight: restingTextHeight)
     }
 
     /// Anything that needs the full composer: focus, a draft, an
@@ -841,7 +942,9 @@ struct ComposerBar: View, Equatable {
         let isDictating = dictation.isDictating || dictation.isStarting || dictation.isTranscribing
         let turnControl = Self.turnControlExpandsComposer(action: action, restsWhenIdle: restsWhenIdle)
         let hasNotice = showsStateNotice || appState.composerNotice != nil || appState.isCompressingActiveSession
+            || updates.inputs.isCheckingSend
             || appState.activeChatTakeover != nil || composerErrorMessage != nil
+            || !dictationClips.offered(for: dictationClipIdentity, delivering: appState.dictationClipsOnTheirWay).isEmpty
         let pickerUp = showAttachmentMenu || showDocumentPicker || showCamera
         let sheetUp = appState.showModelPicker || appState.showContextSheet || appState.showAgentsSheet
         return hasDraft || isDictating || turnControl || hasNotice || pickerUp || sheetUp || showsVoiceMessage
@@ -866,13 +969,33 @@ struct ComposerBar: View, Equatable {
     /// The minimised call bar above a V2 composer hides only while someone
     /// types. A running turn, a notice or a draft left unfocused keeps it,
     /// so a call minimised in a chat can always be brought back (#695).
-    static func hidesMinimisedCallBar(restsWhenIdle: Bool, isFocused: Bool) -> Bool {
-        restsWhenIdle && isFocused
+    /// Where the field keeps focus after a send (a Mac, an iPad's
+    /// keyboard: `ComposerLayout.keepsFocusAfterSend`), focus alone isn't
+    /// typing: the bar hides only while the field holds words.
+    static func hidesMinimisedCallBar(
+        restsWhenIdle: Bool,
+        isFocused: Bool,
+        hasText: Bool = true,
+        keepsFocusAfterSend: Bool = false
+    ) -> Bool {
+        restsWhenIdle && isFocused && (hasText || !keepsFocusAfterSend)
     }
 
     /// V2's resting composer: attach and the placeholder in a slim bar.
     private var rests: Bool {
-        restsWhenIdle && !composerInUse && !holdsExpanded
+        restsWhenIdle && !staysExpanded && !inUseOrHeld
+    }
+
+    /// What animates the bar open and closed. The layout rule changing (a
+    /// chat's first measured width, a window resized) switches it at once.
+    private var inUseOrHeld: Bool {
+        composerInUse || holdsExpanded
+    }
+
+    /// V2's composer that stays expanded: the big voice button stays
+    /// beside it, so its own voice and dictate buttons give way to it.
+    private var keepsVoiceButtonBeside: Bool {
+        restsWhenIdle && staysExpanded
     }
 
     private func composerUseChanged(_ inUse: Bool) {
@@ -937,7 +1060,7 @@ struct ComposerBar: View, Equatable {
                     appState.showAgentsSheet = true
                 } label: {
                     Label("\(appState.activeAgents)", systemImage: "person.2")
-                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .scaledFont(.caption.weight(.semibold).monospacedDigit())
                         .foregroundStyle(.conduitAccent)
                         .frame(minWidth: Self.controlSize, minHeight: Self.controlSize)
                         .contentShape(Self.controlHitShape)
@@ -952,7 +1075,11 @@ struct ComposerBar: View, Equatable {
                 .accessibilityLabel(AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active"))
             }
 
-            if !dictationHoldsSendSlot {
+            if Self.controlsRowShowsDictate(
+                holdsSendSlot: dictationHoldsSendSlot,
+                voiceButtonBeside: keepsVoiceButtonBeside,
+                showsRestingDictateButton: showsRestingDictateButton
+            ) {
                 dictateButton
             }
 
@@ -995,7 +1122,7 @@ struct ComposerBar: View, Equatable {
                 Text(appState.turnState == .unsupportedGateway
                      ? AppLocalization.string("Update this Hermes gateway to recover active turns safely.")
                      : AppLocalization.string("Synchronizing with Hermes before enabling chat controls"))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     Spacer(minLength: 0)
                 }
@@ -1003,7 +1130,7 @@ struct ComposerBar: View, Equatable {
 
             if let error = appState.errorMessage, !error.isEmpty {
                 Text(error)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -1017,7 +1144,7 @@ struct ComposerBar: View, Equatable {
                     repairContext = appState.beginConnectionRepair()
                 } label: {
                     Label("Repair Connection", systemImage: "wrench.and.screwdriver")
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 34)
                 }
@@ -1052,7 +1179,7 @@ struct ComposerBar: View, Equatable {
                         .foregroundStyle(.secondary)
                 }
                 Text(Self.chatTakeoverMessage(takeover))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
@@ -1061,7 +1188,7 @@ struct ComposerBar: View, Equatable {
                     appState.dismissChatTakeover()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
@@ -1078,7 +1205,7 @@ struct ComposerBar: View, Equatable {
                     appState.takeOverChat()
                 } label: {
                     Label("Take over this chat", systemImage: "arrow.down.to.line")
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 34)
                 }
@@ -1138,7 +1265,7 @@ struct ComposerBar: View, Equatable {
             ProgressView()
                 .controlSize(.small)
             Text(AppLocalization.string("Compressing…"))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
         }
@@ -1147,12 +1274,32 @@ struct ComposerBar: View, Equatable {
         .padding(.bottom, 2)
     }
 
+    /// A sent message checking Hermes before it shows (#1401): the field
+    /// is empty, so this says it's on its way.
+    private var sendingNotice: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityHidden(true)
+            Text(AppLocalization.string("Sending…"))
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        .padding(.bottom, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.updatesFrequently)
+        .accessibilityIdentifier("composer.sending")
+    }
+
     private func pasteErrorNotice(_ message: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
             Text(message)
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.red)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -1162,7 +1309,7 @@ struct ComposerBar: View, Equatable {
                     guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
                     UIApplication.shared.open(url)
                 }
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
             }
         }
         .padding(.horizontal, 14)
@@ -1189,7 +1336,8 @@ struct ComposerBar: View, Equatable {
                 ForEach(attachments) { attachment in
                     ComposerAttachmentChip(
                         attachment: attachment,
-                        canRemove: appState.composerIsEnabled
+                        canRemove: appState.composerIsEnabled,
+                        pastedText: appState.composerIsEnabled ? pastedTextActions(for: attachment.id) : nil
                     ) {
                         attachments.removeAll { $0.id == attachment.id }
                         Self.discardStagedFile(attachment)
@@ -1223,11 +1371,15 @@ struct ComposerBar: View, Equatable {
             } label: {
                 Label("Document", systemImage: "doc")
             }
-            Button {
-                Haptics.selection()
-                Task { await appState.openWorkspace() }
-            } label: {
-                Label("Workspace", systemImage: "folder")
+            // V2 keeps the chat's folder in ⋯ › Artifacts (#1389); the
+            // drawer shell has no Artifacts, so it stays here.
+            if !V2ShellPreference.isOn {
+                Button {
+                    Haptics.selection()
+                    appState.openWorkspace()
+                } label: {
+                    Label("Workspace", systemImage: "folder")
+                }
             }
             // The other bots, for a tag without typing `@` (the same tag
             // the @ list inserts; the chat's own bot is left out).
@@ -1290,7 +1442,7 @@ struct ComposerBar: View, Equatable {
     private var trailingSlot: some View {
         let control = Self.trailingControl(
             action: action,
-            showsVoiceButton: appState.showsComposerVoiceButton,
+            showsVoiceButton: appState.showsComposerVoiceButton && !keepsVoiceButtonBeside,
             holdsDictation: dictationHoldsSendSlot
         )
         if #available(iOS 26.0, *) {
@@ -1370,10 +1522,10 @@ struct ComposerBar: View, Equatable {
 
     private func performComposerAction() {
         if stopOnly {
-            dismissComposer()
+            endInput(keepingFocus: isFocused || isShowingFullEditor, fromFullEditor: isShowingFullEditor)
             isShowingFullEditor = false
             Haptics.warning()
-            Task { await appState.cancelCurrent() }
+            Task { await appState.cancelCurrent(stopsWorkstream: true) }
         } else {
             submit()
         }
@@ -1386,7 +1538,7 @@ struct ComposerBar: View, Equatable {
                 .contentTransition(.symbolEffect(.replace))
             if let actionTitle {
                 Text(actionTitle)
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
         }
@@ -1425,7 +1577,7 @@ struct ComposerBar: View, Equatable {
                         .truncationMode(.tail)
                     if appState.runtime.yolo {
                         Image(systemName: "shield.slash.fill")
-                            .font(.caption2.weight(.bold))
+                            .scaledFont(.caption2.weight(.bold))
                             .foregroundStyle(Color.orange)
                     }
                 }
@@ -1445,7 +1597,7 @@ struct ComposerBar: View, Equatable {
                     .layoutPriority(1)
             }
         }
-        .font(.footnote.weight(.semibold))
+        .scaledFont(.footnote.weight(.semibold))
         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         // The rest of the chip's width still opens the sheet.
         .background {
@@ -1556,6 +1708,8 @@ struct ComposerBar: View, Equatable {
             dictation.onFinish = nil
             dictation.cancel()
         }
+        let fromFullEditor = isShowingFullEditor
+        let wasTyping = isFocused || fromFullEditor
         isShowingFullEditor = false
         let submittedText = text
         let submittedAttachments = attachments
@@ -1575,9 +1729,15 @@ struct ComposerBar: View, Equatable {
         let submittedDraftKey = loadedDraftKey ?? activeDraftKey
         let submittedDraftBucket = draftStore.submissionBucket(for: submittedDraftKey)
         let submittedClearCount = draftStore.clearCount
+        let submittedDashboardID = appState.activeDashboardID
+        let submittedChatTitle = appState.displayedChatTitle
+        // The words may come back after the chat's runtime id has moved on:
+        // they go back by its durable id, as a waiting message's do.
+        let submittedRestoreKey = submittedDraftKey == activeDraftKey
+            ? appState.durableComposerDraftKeyOnScreen : submittedDraftKey
         let submissionContext = appState.composerSubmissionContext()
         rotateAttachmentGeneration()
-        collapseSubmittedDraft(clearingReply: submittedReply != nil)
+        collapseSubmittedDraft(clearingReply: submittedReply != nil, keepingFocus: wasTyping, fromFullEditor: fromFullEditor)
 
         switch submittedAction {
         case .send: Haptics.medium()
@@ -1599,6 +1759,10 @@ struct ComposerBar: View, Equatable {
                     attachments: submittedAttachments,
                     replyReference: submittedReply,
                     for: submittedDraftKey,
+                    restoringTo: submittedRestoreKey,
+                    dashboardID: submittedDashboardID,
+                    chatTitle: submittedChatTitle,
+                    stoppedQuietly: appState.composerSubmissionStoppedQuietly(submissionContext),
                     clearCount: submittedClearCount
                 )
                 Haptics.error()
@@ -1629,8 +1793,10 @@ struct ComposerBar: View, Equatable {
             dictation.onFinish = nil
             dictation.cancel()
         }
+        let fromFullEditor = isShowingFullEditor
+        let wasTyping = isFocused || fromFullEditor
         isShowingFullEditor = false
-        collapseSubmittedDraft(clearingReply: submittedReply != nil)
+        collapseSubmittedDraft(clearingReply: submittedReply != nil, keepingFocus: wasTyping, fromFullEditor: fromFullEditor)
         draftStore.removeDraft(for: submittedDraftKey)
         Haptics.medium()
     }
@@ -1676,7 +1842,7 @@ struct ComposerBar: View, Equatable {
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text(notice)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -1684,7 +1850,7 @@ struct ComposerBar: View, Equatable {
                 appState.dismissComposerNotice()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
@@ -1715,7 +1881,7 @@ struct ComposerBar: View, Equatable {
                     Image(systemName: "phone.arrow.up.right")
                 }
             }
-            .font(.subheadline.weight(.semibold))
+            .scaledFont(.subheadline.weight(.semibold))
             .foregroundStyle(Color.conduitAccent)
             .frame(width: Self.controlSize, height: Self.controlSize)
             .contentShape(Self.controlHitShape)
@@ -1889,16 +2055,52 @@ struct ComposerBar: View, Equatable {
         }
     }
 
+    /// Where this composer's dictations keep their recordings: none while
+    /// it takes no text, so a locked composer offers nothing to retry.
+    private var dictationClipIdentity: String? {
+        appState.composerTakesText ? appState.dictationClipIdentity : nil
+    }
+
+    /// Retry on a dictation whose words never came: one more upload of
+    /// its kept recording. The words go to the draft that was on screen
+    /// when it was tapped, even if another chat opened meanwhile.
+    private func retryDictationClip(_ clip: DictationClip) {
+        guard let gateway = appState.makeVoiceGateway(), let dashboardID = appState.activeDashboardID else {
+            composerErrorMessage = AppLocalization.string("Dictation with Hermes needs a connection to Hermes.")
+            return
+        }
+        let key = appState.durableComposerDraftKeyOnScreen
+        composerErrorMessage = nil
+        Task {
+            do {
+                let words = try await dictationClips.retry(clip, transcribe: gateway.transcribe)
+                guard !words.isEmpty else {
+                    composerErrorMessage = AppLocalization.string("No speech was captured.")
+                    return
+                }
+                appState.restoreRetriedDictation(words, clipID: clip.id, dashboardID: dashboardID, key: key)
+            } catch is CancellationError {
+                return
+            } catch is DictationClipUnreadable {
+                composerErrorMessage = AppLocalization.string("The recording couldn't be read. Try again in a moment.")
+            } catch {
+                composerErrorMessage = AppLocalization.string("Hermes couldn't transcribe that: \(UserFacingError.message(for: error))")
+            }
+        }
+    }
+
     /// Collapse the draft in the same transaction that dismisses the keyboard.
     /// Waiting for the gateway RPC leaves the side controls aligned to the old
     /// multiline field while the keyboard's safe area is already animating.
-    private func collapseSubmittedDraft(clearingReply: Bool) {
-        dismissComposer()
+    /// `keepingFocus`: the user was typing (in the field or the full
+    /// editor), which on a Mac or an iPad's keyboard carries on.
+    private func collapseSubmittedDraft(clearingReply: Bool, keepingFocus: Bool, fromFullEditor: Bool) {
+        endInput(keepingFocus: keepingFocus, fromFullEditor: fromFullEditor)
         let updates = {
             replaceComposerText("")
             attachments = []
             if clearingReply { replyReference = nil }
-            composerTextHeight = ComposerPasteTextView.minimumHeight
+            composerTextHeight = restingTextHeight
         }
         if reduceMotion {
             updates()
@@ -1914,6 +2116,10 @@ struct ComposerBar: View, Equatable {
         attachments submittedAttachments: [Attachment],
         replyReference submittedReply: ComposerReplyReference?,
         for key: ComposerDraftKey,
+        restoringTo durableKey: ComposerDraftKey,
+        dashboardID: UUID?,
+        chatTitle: String,
+        stoppedQuietly: Bool,
         clearCount: UInt64
     ) {
         // A sign-out or server switch cleared the drafts while it was on
@@ -1926,6 +2132,20 @@ struct ComposerBar: View, Equatable {
             attachments: submittedAttachments,
             replyReference: submittedReply
         )
+        // AppState hands them to the composer on screen, which may not be
+        // this one: leaving the chat mid-send replaces it, and words put in
+        // this one's field then were lost (#1401). Words typed meanwhile
+        // stay, below the message that didn't go.
+        if let dashboardID {
+            appState.returnFailedComposerSubmission(
+                failed,
+                key: durableKey,
+                dashboardID: dashboardID,
+                title: chatTitle,
+                stoppedQuietly: stoppedQuietly
+            )
+            return
+        }
         let restorationKey: ComposerDraftKey
         if Self.draftKeysAreEquivalent(
             key,
@@ -1941,8 +2161,6 @@ struct ComposerBar: View, Equatable {
             draftStore.restoreFailedSubmission(failed, for: restorationKey)
             return
         }
-        // Words typed while the failed request was in flight stay, below
-        // the message that didn't go.
         let restored = ComposerDraft(text: text, attachments: attachments, replyReference: replyReference)
             .restoring(failed)
         // Put back, not typed: a failed "/cmd" opens no suggestions.
@@ -2005,6 +2223,13 @@ struct ComposerBar: View, Equatable {
 
     static func showsRestingDictateButton(chatVoiceButton: ChatVoiceButtonAction) -> Bool {
         chatVoiceButton != .dictation
+    }
+
+    /// The controls row's mic, unless dictation's Stop holds its slot, or
+    /// the big button beside a composer that stays expanded dictates
+    /// already, as beside the resting bar.
+    static func controlsRowShowsDictate(holdsSendSlot: Bool, voiceButtonBeside: Bool, showsRestingDictateButton: Bool) -> Bool {
+        !holdsSendSlot && (!voiceButtonBeside || showsRestingDictateButton)
     }
 
     /// A quote from the transcript (#385): selected text joins the draft as
@@ -2078,16 +2303,16 @@ struct ComposerBar: View, Equatable {
     private func replyReferenceChip(_ reference: ComposerReplyReference) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "quote.bubble")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(Color.conduitAccent)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(AppLocalization.string("Replying to \(reference.authorName)"))
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Text(reference.excerpt)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -2101,7 +2326,7 @@ struct ComposerBar: View, Equatable {
                 }
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.body)
+                    .scaledFont(.body)
                     .foregroundStyle(.secondary)
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
@@ -2115,12 +2340,37 @@ struct ComposerBar: View, Equatable {
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
-    /// Sending, steering, and stopping all move attention back to the live
-    /// conversation. The UIKit text view observes this binding and resigns
-    /// first responder, which dismisses the software keyboard.
+    /// Opening a call, and a send or Stop where the field gives up focus
+    /// (`endInput`), move attention back to the live conversation. The
+    /// UIKit text view observes this binding and resigns first responder,
+    /// which dismisses the software keyboard.
     private func dismissComposer() {
         isFocused = false
         isShowingSlashSuggestions = false
+    }
+
+    /// A send or Stop: on a Mac or an iPad's keyboard the field keeps
+    /// focus for the next message, as a desktop client's does, when the
+    /// user was typing; otherwise the keyboard goes (`dismissComposer`).
+    private func endInput(keepingFocus wasTyping: Bool, fromFullEditor: Bool = false) {
+        guard wasTyping, ComposerLayout.keepsFocusAfterSend() else {
+            dismissComposer()
+            return
+        }
+        isShowingSlashSuggestions = false
+        // From the full editor, once its sheet has gone: focus asked for
+        // while it's still dismissing leaves the keyboard down.
+        if fromFullEditor {
+            focusesAfterFullEditor = true
+            return
+        }
+        // After this update: the send rebuilds the field (a new editor
+        // identity). A chat opened meanwhile has a field of its own.
+        let focusEditorIdentity = editorIdentity
+        Task { @MainActor in
+            guard editorIdentity == focusEditorIdentity else { return }
+            isFocused = true
+        }
     }
 
     private func composerDraftKey(for sessionID: String?) -> ComposerDraftKey {
@@ -2218,7 +2468,7 @@ struct ComposerBar: View, Equatable {
         replyReference = draft.replyReference
         loadedDraftKey = key
         loadedDraftClearCount = draftStore.clearCount
-        composerTextHeight = ComposerPasteTextView.minimumHeight
+        composerTextHeight = restingTextHeight
         isFocused = false
         isShowingSlashSuggestions = false
     }
@@ -2246,6 +2496,9 @@ struct ComposerBar: View, Equatable {
         // editor to the chat it was opened in.
         dictation.cancel()
         isShowingFullEditor = false
+        // A send from the sheet kept focus for the chat it was in, not the
+        // one loading now.
+        focusesAfterFullEditor = false
         if let loadedDraftKey = keptKey {
             saveDraft(for: loadedDraftKey)
             if Self.draftKeysAreEquivalent(
@@ -2262,7 +2515,7 @@ struct ComposerBar: View, Equatable {
         rotateAttachmentGeneration()
         editorIdentity = UUID()
         loadDraft(for: destinationKey)
-        composerTextHeight = ComposerPasteTextView.minimumHeight
+        composerTextHeight = restingTextHeight
         isFocused = false
         // A prefill for this chat goes in over its draft; one for a chat
         // left behind is dropped.
@@ -2312,6 +2565,89 @@ struct ComposerBar: View, Equatable {
             name: metadata.name,
             mimeType: metadata.mimeType,
             kind: .image
+        )
+    }
+
+    /// A paste past `PastedText.characterThreshold` goes in as a text
+    /// attachment, written off the main actor. Where the composer can't
+    /// take files it stays in the field as before
+    /// (`PastedText.chatComposerTakesPaste`). False leaves the paste to the
+    /// field.
+    private func attachLongPaste(_ pasted: String) -> Bool {
+        guard PastedText.chatComposerTakesPaste(
+            enabled: appState.composerIsEnabled,
+            waitsForChat: appState.composerWaitsForChat
+        ) else { return false }
+        let limitMegabytes = attachmentLimitMegabytes
+        // Past the attachment limit it can't go as a file: the words go in
+        // the field, as every paste did before.
+        guard PastedText.fits(pasted, limitMegabytes: limitMegabytes) else { return false }
+        composerErrorMessage = nil
+        let origin = asyncAttachmentContext
+        Task {
+            let outcome = await Task.detached(priority: .userInitiated) {
+                PastedText.stage(pasted, limitMegabytes: limitMegabytes)
+            }.value
+            guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else {
+                if case .staged(let attachment) = outcome { Self.discardStagedFile(attachment) }
+                return
+            }
+            if case .staged(let attachment) = outcome {
+                attachments.append(attachment)
+                Haptics.light()
+            } else {
+                // The file couldn't be written: the words go in the field
+                // after all, so the paste isn't lost.
+                replaceComposerText(PastedText.joined(text, with: pasted), cursorAtEnd: true)
+            }
+        }
+        return true
+    }
+
+    /// The sheet behind a pasted text's chip: edits replace its file, and
+    /// Paste as text moves it into the field, after what was typed. Clearing
+    /// all its text removes it, as × does.
+    private func pastedTextActions(for id: String) -> PastedTextActions {
+        PastedTextActions(
+            save: { edited in
+                guard let old = attachments.first(where: { $0.id == id }) else { return }
+                guard !edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    attachments.removeAll { $0.id == id }
+                    Self.discardStagedFile(old)
+                    return
+                }
+                let limitMegabytes = attachmentLimitMegabytes
+                guard PastedText.fits(edited, limitMegabytes: limitMegabytes) else {
+                    reportImportProblems(oversized: [PastedText.displayName], failed: [], limitMegabytes: limitMegabytes)
+                    return
+                }
+                Task {
+                    let outcome = await Task.detached(priority: .userInitiated) {
+                        PastedText.restage(old, with: edited, limitMegabytes: limitMegabytes)
+                    }.value
+                    switch outcome {
+                    case .staged(let updated):
+                        // Removed or sent meanwhile: the edit has nothing
+                        // left to replace.
+                        guard let index = attachments.firstIndex(where: { $0.id == id && $0.uri == old.uri }) else {
+                            Self.discardStagedFile(updated)
+                            return
+                        }
+                        attachments[index] = updated
+                        Self.discardStagedFile(old)
+                    case .tooLarge(let name):
+                        reportImportProblems(oversized: [name], failed: [], limitMegabytes: limitMegabytes)
+                    case .failed(let name):
+                        reportImportProblems(oversized: [], failed: [name], limitMegabytes: limitMegabytes)
+                    }
+                }
+            },
+            insertAsText: { pasted in
+                guard let attachment = attachments.first(where: { $0.id == id }) else { return }
+                attachments.removeAll { $0.id == id }
+                Self.discardStagedFile(attachment)
+                replaceComposerText(PastedText.joined(text, with: pasted), cursorAtEnd: true)
+            }
         )
     }
 
@@ -2365,6 +2701,7 @@ struct ComposerBar: View, Equatable {
         var stagedAny = false
         var oversized: [String] = []
         var failed: [String] = []
+        var folders: [String]?
     }
 
     private func record(_ outcome: StagedImport, in tally: inout ImportTally) {
@@ -2382,11 +2719,16 @@ struct ComposerBar: View, Equatable {
     /// One cue per selection: the error haptic and message when anything
     /// was left out, otherwise a light tap if something was staged.
     private func finishImport(_ tally: ImportTally, limitMegabytes: Int) {
-        if tally.oversized.isEmpty && tally.failed.isEmpty {
+        if tally.oversized.isEmpty && tally.failed.isEmpty && tally.folders == nil {
             if tally.stagedAny { Haptics.light() }
             return
         }
-        reportImportProblems(oversized: tally.oversized, failed: tally.failed, limitMegabytes: limitMegabytes)
+        reportImportProblems(
+            oversized: tally.oversized,
+            failed: tally.failed,
+            folders: tally.folders,
+            limitMegabytes: limitMegabytes
+        )
     }
 
     /// Copies one picked item into the staging folder under its real name
@@ -2420,7 +2762,7 @@ struct ComposerBar: View, Equatable {
         try? FileManager.default.removeItem(at: url)
     }
 
-    private func reportImportProblems(oversized: [String], failed: [String], limitMegabytes: Int) {
+    private func reportImportProblems(oversized: [String], failed: [String], folders: [String]? = nil, limitMegabytes: Int) {
         var messages: [String] = []
         if !oversized.isEmpty {
             messages.append(AttachmentSizeLimit.tooLargeMessage(names: oversized, megabytes: limitMegabytes))
@@ -2428,6 +2770,9 @@ struct ComposerBar: View, Equatable {
         if !failed.isEmpty {
             let list = failed.joined(separator: ", ")
             messages.append(AppLocalization.string("Could not prepare \(list) for upload."))
+        }
+        if let folders {
+            messages.append(AttachmentDrop.folderMessage(names: folders))
         }
         guard !messages.isEmpty else { return }
         composerErrorMessage = messages.joined(separator: "\n")
@@ -2485,28 +2830,48 @@ struct ComposerBar: View, Equatable {
         }
     }
 
+    /// Files dropped on the chat or its text field (#1408), staged one by
+    /// one like picked documents. A locked composer takes none, as its
+    /// Attach menu is off then. A folder isn't attached; the notice names
+    /// it and says to drop the files inside.
+    private func handleDroppedFiles(_ providers: [NSItemProvider]) {
+        guard appState.composerIsEnabled, !providers.isEmpty else { return }
+        composerErrorMessage = nil
+        let origin = asyncAttachmentContext
+        let limitMegabytes = attachmentLimitMegabytes
+        let files = providers.filter { !AttachmentDrop.isFolder($0) }
+        let hasFolders = files.count < providers.count
+        let folderNames = AttachmentDrop.folderNames(in: providers)
+        Task {
+            var tally = ImportTally()
+            if hasFolders { tally.folders = folderNames }
+            for (index, provider) in files.enumerated() {
+                guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else { break }
+                let outcome = await AttachmentDrop.stage(provider, ordinal: index + 1, limitMegabytes: limitMegabytes)
+                guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else {
+                    if case .staged(let attachment) = outcome { Self.discardStagedFile(attachment) }
+                    break
+                }
+                record(outcome, in: &tally)
+            }
+            if shouldAcceptAsyncAttachmentCompletion(startedIn: origin) {
+                finishImport(tally, limitMegabytes: limitMegabytes)
+            }
+        }
+    }
+
     /// Stages a file from the document picker the same way as a picked
     /// photo: size checked before it is read, copied rather than loaded.
     nonisolated static func stageDocument(at url: URL, limitMegabytes: Int) -> StagedImport {
         let name = url.lastPathComponent
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-        if let size = AttachmentSizeLimit.fileSize(at: url),
-           !AttachmentSizeLimit.allows(byteCount: size, megabytes: limitMegabytes) {
-            return .tooLarge(name)
-        }
-        do {
-            let staged = try AttachmentStaging.destination(for: name)
-            try FileManager.default.copyItem(at: url, to: staged)
-            return AttachmentStaging.finishStaging(
-                fileAt: staged,
-                name: name,
-                type: UTType(filenameExtension: url.pathExtension),
-                limitMegabytes: limitMegabytes
-            )
-        } catch {
-            return .failed(name)
-        }
+        return AttachmentStaging.stageCopy(
+            of: url,
+            name: name,
+            type: UTType(filenameExtension: url.pathExtension),
+            limitMegabytes: limitMegabytes
+        )
     }
 
     /// A photo from the Camera item, staged like a picked one: encoded as
@@ -2576,7 +2941,8 @@ struct ComposerBar: View, Equatable {
         case .interrupt: return AppLocalization.string("Interrupt and correct response")
         case .queue: return AppLocalization.string("Queue message")
         case .send: return AppLocalization.string("Send message")
-        case .unavailable: return AppLocalization.string("Composer unavailable")
+        case .unavailable:
+            return showsEmptyDraftSend ? AppLocalization.string("Send message") : AppLocalization.string("Composer unavailable")
         }
     }
 
@@ -2632,13 +2998,13 @@ private struct SlashSuggestionsOverlay: View {
                                 Text(cmd.name)
                                     .foregroundStyle(.primary)
                             }
-                            .font(.system(.subheadline, design: .monospaced).weight(.semibold))
+                            .scaledFont(.subheadline.monospaced().weight(.semibold))
                             .frame(minWidth: 90, alignment: .leading)
 
                             // Description
                             if !cmd.description.isEmpty {
                                 Text(cmd.description)
-                                    .font(.caption)
+                                    .scaledFont(.caption)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }

@@ -85,6 +85,8 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// Conversation playback joins the capture-owned session; standalone
     /// flows (Read Aloud, TTS provider test) claim output-only ownership.
     var ownershipIntent: VoiceAudioIntent = .standalonePlayback
+    /// See SpeechPlaybackService: handed to the coordinator with each lease.
+    var onTakenOverByCapture: (@MainActor () -> Void)?
     /// Speed for the next stream (Read Aloud's speed setting), applied when a
     /// stream or encoded clip starts. At 1.0 the graph is the plain
     /// player→mixer path voice conversations use; any other rate inserts a
@@ -153,7 +155,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
             throw VoiceAudioError.unavailable(AppLocalization.string("The gateway reported an unsupported PCM format."))
         }
-        lease = try coordinator.acquire(ownershipIntent)
+        lease = try coordinator.acquire(ownershipIntent, onTakenOver: onTakenOverByCapture)
         do {
             self.format = format
             try startFreshGraph(format: format, stretchedTo: stretched ? rate : nil)
@@ -193,18 +195,17 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     }
 
     func enqueuePCM16(_ data: Data, sampleRate: Double) throws -> Int {
-        // A configuration change stops the engine before its deferred
-        // settle runs; buffers scheduled onto a stopped player never
-        // complete. Treat that as a stream boundary and restart now.
-        // A paused stream stays paused across that restart (AirPods back in
-        // the case): the fresh player holds its place until resume().
+        // A configuration change can stop the engine before its deferred
+        // handler runs; buffers scheduled onto a stopped player never
+        // complete. The stream carries on from its queued buffers on a
+        // fresh engine now, as it does when the change is seen first
+        // (engineConfigurationChanged), and a paused stream stays paused
+        // there until resume(). A fresh engine that won't start settles.
         let holdPause = isPaused
         if interruptedStandaloneStream { throw CancellationError() }
-        // A conversation carries on from where it was, as it does when the
-        // change is seen first (engineConfigurationChanged).
-        if format != nil, !engine.isRunning,
-           !(Self.resumesOnConfigurationChange(intent: ownershipIntent, streaming: isStreaming) && resumeOnFreshEngine()) {
-            stop()
+        if format != nil, !engine.isRunning, !(isStreaming && resumeOnFreshEngine()) {
+            settleLostEngine(wasStreaming: isStreaming)
+            if interruptedStandaloneStream { throw CancellationError() }
         }
         if format == nil {
             try start(sampleRate: sampleRate)
@@ -218,10 +219,10 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             throw VoiceAudioError.unavailable(AppLocalization.string("The gateway changed PCM sample rates during a stream."))
         }
         remainder.append(data)
-        let alignedBytes = remainder.count - (remainder.count % 2)
+        let (pcm, leftover) = VoicePCMEncoding.splitPCM16(remainder)
+        let alignedBytes = pcm.count
         guard alignedBytes > 0 else { return 0 }
-        let pcm = remainder.prefix(alignedBytes)
-        remainder.removeFirst(alignedBytes)
+        remainder = leftover
         let frames = AVAudioFrameCount(alignedBytes / 2)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { return 0 }
         buffer.frameLength = frames
@@ -262,7 +263,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     func playEncodedAudioData(_ data: Data) throws {
         stop()
         interruptedStandaloneStream = false
-        lease = try coordinator.acquire(ownershipIntent)
+        lease = try coordinator.acquire(ownershipIntent, onTakenOver: onTakenOverByCapture)
         do {
             let player = try AVAudioPlayer(data: data)
             player.delegate = self
@@ -294,10 +295,22 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         }
     }
 
+    /// Drops an odd trailing byte of streamed PCM16 at the end of a reply:
+    /// it is invalid PCM16 and would shift every sample of the next one.
+    /// A live call's stream stays open across replies, so it calls this at
+    /// each reply's end instead of `finish()`.
+    func discardRemainder() {
+        remainder.removeAll(keepingCapacity: true)
+    }
+
     func finish() throws {
         // An odd tail is invalid PCM16 and is intentionally discarded rather
         // than shifted into the next response.
-        remainder.removeAll(keepingCapacity: true)
+        discardRemainder()
+        // Standalone speech that a phone call or a lost route ended after
+        // its last chunk didn't play out: Read Aloud settles as it would on
+        // a refused chunk, and the speech test can't report a pass.
+        if interruptedStandaloneStream { throw CancellationError() }
         isFinishing = true
     }
 
@@ -349,10 +362,12 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         guard !isPaused else { return true }
         if let encodedPlayer, encodedPlayer.isPlaying {
             encodedPlayer.pause()
-        } else if format != nil, engineHasGraph, engine.isRunning {
+        } else if isStreaming {
             // The engine keeps running; only the player holds its place, so
-            // buffers still arriving from the stream queue up behind it.
-            player.pause()
+            // buffers still arriving from the stream queue up behind it. An
+            // engine a route change just stopped (headphones out) has
+            // nothing to pause yet: the fresh engine starts paused.
+            if engineHasGraph, engine.isRunning { player.pause() }
         } else {
             return false
         }
@@ -363,12 +378,16 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
 
     func resume() {
         guard isPaused else { return }
+        endPause()
         if let encodedPlayer {
             encodedPlayer.play()
-        } else {
+        } else if engine.isRunning {
             player.play()
+        } else if isStreaming, !resumeOnFreshEngine() {
+            // The route changed under the pause and the new engine won't
+            // start: playing the dead one would raise.
+            settleLostEngine(wasStreaming: true)
         }
-        endPause()
     }
 
     private func endPause() {
@@ -519,12 +538,14 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
 
     /// A route change can stop the rendering engine under a live lease
     /// (AirPods disconnect, dock/undock, the call screen's Speaker button).
-    /// A conversation's reply carries on from where it was on a fresh
-    /// engine: dropping it cut the assistant off mid-sentence, and Classic
-    /// voice took the empty queue for the end of its reply. Standalone
-    /// speech settles instead of leaving buffers undrained and ownership
-    /// claimed by audio that can never play. Changes from replaced engines
-    /// are not this stream's.
+    /// A stream's speech carries on from where it was on a fresh engine:
+    /// dropping it cut a conversation's assistant off mid-sentence, and
+    /// Classic voice took the empty queue for the end of its reply. Read
+    /// Aloud used to settle here, but its speech stream kept sending, so the
+    /// next chunk started a new stream and the queued middle of the reply
+    /// was never heard (#1641). An encoded clip, or a fresh engine that
+    /// won't start, settles. Changes from replaced engines are not this
+    /// stream's.
     private func engineConfigurationChanged(generation: UInt64) {
         guard Self.settlesOnConfigurationChange(
             from: generation,
@@ -532,22 +553,27 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             holdsLease: lease != nil,
             engineRunning: engine.isRunning
         ) else { return }
-        if Self.resumesOnConfigurationChange(intent: ownershipIntent, streaming: isStreaming),
-           resumeOnFreshEngine() {
+        if isStreaming, resumeOnFreshEngine() {
             return
         }
+        settleLostEngine(wasStreaming: isStreaming)
+    }
+
+    /// Settles a stream whose engine stopped and couldn't come back. Read
+    /// Aloud's speech stream would keep sending, and its next chunk would
+    /// start a new stream past the audio just dropped (#1641), so it ends
+    /// as after a phone call. A conversation's next chunk starts afresh.
+    private func settleLostEngine(wasStreaming: Bool) {
         stop()
+        if wasStreaming, ownershipIntent == .standalonePlayback {
+            interruptedStandaloneStream = true
+        }
     }
 
-    /// A PCM stream is playing, not an encoded clip.
+    /// A PCM stream is playing, not an encoded clip: only a stream plays on
+    /// from a fresh engine. Encoded clips play on AVAudioPlayer, which
+    /// follows the route by itself.
     private var isStreaming: Bool { format != nil && encodedPlayer == nil }
-
-    /// Internal for tests: whether a stopped engine's stream plays on
-    /// instead of settling. Conversations only; encoded clips play on
-    /// AVAudioPlayer, which follows the route by itself.
-    nonisolated static func resumesOnConfigurationChange(intent: VoiceAudioIntent, streaming: Bool) -> Bool {
-        intent == .conversationPlayback && streaming
-    }
 
     /// Rebuilds the stream's graph and schedules what hadn't played yet,
     /// keeping the lease, the drain waiters and a pause. The buffer that was
@@ -562,11 +588,11 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         do {
             try startFreshGraph(format: format, stretchedTo: timePitch.map(\.rate))
         } catch {
-            voicePlaybackLogger.error("Conversation playback couldn't come back after a route change: \(LogRedaction.describing(error), privacy: .public)")
+            voicePlaybackLogger.error("Playback couldn't come back after a route change: \(LogRedaction.describing(error), privacy: .public)")
             return false
         }
-        player.play()
-        if isPaused { player.pause() }
+        // A paused stream doesn't sound on the new route until resume().
+        if !isPaused { player.play() }
         for buffer in unplayed { schedule(buffer) }
         // At most the chunk that was playing is heard twice; allowing the
         // whole queue keeps the drain watchdog from cutting a reply that a
@@ -581,7 +607,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             }
         }
         if !unplayed.isEmpty {
-            voicePlaybackLogger.notice("Conversation playback moved to a new route with \(unplayed.count, privacy: .public) chunks still to play")
+            voicePlaybackLogger.notice("Playback (\(String(describing: self.ownershipIntent), privacy: .public)) moved to a new route with \(unplayed.count, privacy: .public) chunks still to play")
         }
         return true
     }

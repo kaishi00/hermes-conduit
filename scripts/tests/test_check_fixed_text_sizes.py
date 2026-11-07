@@ -82,5 +82,54 @@ class FixedTextSizeTests(unittest.TestCase):
         """), [])
 
 
+def style_problems(text):
+    return check_fixed_text_sizes.find_text_style_fonts({"View.swift": textwrap.dedent(text)})
+
+
+class TextStyleFontTests(unittest.TestCase):
+    def test_text_styles_set_with_font_are_reported(self):
+        found = style_problems("""
+        Text("A")
+            .font(.caption2.weight(.semibold))
+        Text("B").font(isOn ? .body : .subheadline)
+        Text("C").font(Font.footnote)
+        Text("D").font(.system(.largeTitle, design: .rounded))
+        label.font(.body)
+        Text("E").font(flag ? someFont : .caption)
+        Text("F").font(isBold(x) ? .body : .caption)
+        Text("G").font(flag ? .system(size: 12) : .caption)
+        Text("H").font(flag ? Font.custom("X", size: 12) : .caption)
+        Text("I").font(a ? .system(size: 12) : b ? someFont : .title)
+        Text("J").font(customFont ?? .body)
+        Text("https://x").font(.caption)
+        Text("K").font(settings?.emphasized == true ? .body : customFont)
+        Text("L").font(flag ? .body ?? fallback : customFont)
+        Text("M").font((flag ? customFont : (.caption)))
+        Text("N").font(a ? b ? .body : customFont : customFont)
+        Text("O").font(value == ")" ? .body : customFont)
+        """)
+        self.assertEqual([problem.split(":")[1] for problem in found], ["3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19"])
+
+    def test_scaled_fonts_fixed_sizes_and_other_fonts_pass(self):
+        self.assertEqual(style_problems("""
+        Text("A")
+            .scaledFont(.caption2.weight(.semibold))
+        Image(systemName: "plus")
+            .font(.system(size: 16, weight: .medium))
+        Text(line).font(lineFont)
+        let font = ChatTypography.font(for: .body, appearance: chatTextSize)
+        // .font(.caption) in a comment
+        Text("\\\\") // .font(.caption) after an escaped backslash
+        Text("say \\"hi\\"") // .font(.caption) after escaped quotes
+        Text("A").font(flag ? customFont : otherFont).help("a ? .body : b")
+        """), [])
+
+    def test_a_stated_reason_exempts_the_font(self):
+        self.assertEqual(style_problems("""
+        // Text style: joined with + below, so it needs Text's own font.
+        Text("A").font(.caption)
+        """), [])
+
+
 if __name__ == "__main__":
     unittest.main()

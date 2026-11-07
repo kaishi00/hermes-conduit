@@ -547,6 +547,55 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertNil(appState.errorMessage)
     }
 
+    func testPulseQuietForTodayIsOwnedAsATapOnThePushIs() {
+        let savedA = SavedDashboard(id: dashboardA, label: "VPS", normalizedURL: "https://vps.tailnet.ts.net")
+        let savedB = SavedDashboard(id: dashboardB, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [savedA, savedB]))
+        appState.recordRelayGatewayID("gw-1", for: dashboardA, profile: "default")
+        appState.recordRelayGatewayID("gw-2", for: dashboardB, profile: "default")
+        // The host in use, by its gateway, whatever dashboard the pairing was bound to.
+        XCTAssertEqual(appState.pulseQuietOwnership(PulseQuietTarget(dashboardID: dashboardB.uuidString, gatewayID: "gw-1")),
+                       .route)
+        // Another saved dashboard's push switches to it first, which only a tap with Conduit open does.
+        XCTAssertEqual(appState.pulseQuietOwnership(PulseQuietTarget(dashboardID: dashboardB.uuidString, gatewayID: "gw-2")),
+                       .switchFirst(dashboardID: dashboardB))
+        // A dashboard no longer saved, or a push Conduit couldn't place with two saved: nothing goes quiet.
+        XCTAssertEqual(appState.pulseQuietOwnership(PulseQuietTarget(dashboardID: UUID().uuidString, gatewayID: "gw-9")),
+                       .failClosed(.unrecognizedDashboard))
+        XCTAssertEqual(appState.pulseQuietOwnership(nil), .failClosed(.unscopedPush))
+        // The gateways a saved dashboard still pairs through: the extension offers the button for no other.
+        XCTAssertEqual(appState.knownRelayGatewayIDs, ["gw-1", "gw-2"])
+        appState.removeDashboard(dashboardB)
+        XCTAssertEqual(appState.knownRelayGatewayIDs, ["gw-1"])
+    }
+
+    func testPulseQuietForTodayRetryDuringACallWaitsForItToEnd() async {
+        let savedA = SavedDashboard(id: dashboardA, label: "VPS", normalizedURL: "https://vps.tailnet.ts.net")
+        let savedB = SavedDashboard(id: dashboardB, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [savedA, savedB]))
+        appState.recordRelayGatewayID("gw-1", for: dashboardA, profile: "default")
+        appState.recordRelayGatewayID("gw-2", for: dashboardB, profile: "default")
+        appState.showVoiceSheet = true
+        let target = PulseQuietTarget(dashboardID: dashboardB.uuidString, gatewayID: "gw-2")
+        let notifications = PushNotificationService.shared
+        defer { _ = notifications.takePendingPulseQuiet(target) }
+        let attempt = notifications.pulseQuietAttempt
+
+        // Another saved dashboard's push, retried with Conduit open: a call keeps
+        // Conduit where it is, and the retry waits for the call to end, saying
+        // so over the screen (the composer's error line doesn't show during a call).
+        let quieted = await appState.quietPulseForToday(target, switching: true, wait: .zero)
+
+        XCTAssertFalse(quieted)
+        XCTAssertEqual(appState.activeDashboardID, dashboardA)
+        XCTAssertEqual(appState.pinSyncNotice?.message,
+                       AppLocalization.string("Pulse goes quiet in the other workspace when the call ends."))
+        XCTAssertNil(appState.errorMessage, "nothing stale for the composer to show later")
+        XCTAssertTrue(appState.isVoiceCallInProgress)
+        XCTAssertEqual(notifications.pendingPulseQuiet, target)
+        XCTAssertEqual(notifications.pulseQuietAttempt, attempt + 1)
+    }
+
     func testRelayGatewayIDsAreKeptPerDashboardAndForgottenWithIt() {
         let savedA = SavedDashboard(id: dashboardA, label: "VPS", normalizedURL: "https://vps.tailnet.ts.net")
         let savedB = SavedDashboard(id: dashboardB, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
@@ -617,5 +666,60 @@ extension NotificationDashboardOwnershipTests {
 
         XCTAssertTrue(appState.relayGatewayIDs(of: dashboardB).isEmpty)
         XCTAssertEqual(appState.relayGatewayIDs(of: dashboardA), ["gw-1"])
+    }
+}
+
+/// A call from Hermes opens its chat from the list on hand when the list
+/// already holds it, instead of reading the whole list again first.
+extension NotificationDashboardOwnershipTests {
+    private func listedRow(_ id: String, stored: String? = nil, alternates: [String] = []) -> SessionSummary {
+        var row = SessionSummary(
+            id: id,
+            alternateIds: alternates,
+            title: id,
+            model: "Hermes",
+            updatedLabel: "now",
+            profile: "default",
+            source: .chat,
+            isActive: false,
+            isArchived: false,
+            lineageRootId: nil
+        )
+        row.storedSessionId = stored
+        return row
+    }
+
+    func testACallsChatIsFoundInTheListOnHandByAnyIdItsRowAnswersTo() {
+        let catalog = [listedRow("runtime-1", stored: "durable-1", alternates: ["alias-1"]), listedRow("other")]
+        XCTAssertTrue(AppState.catalogListsSession("runtime-1", in: catalog))
+        XCTAssertTrue(AppState.catalogListsSession(" durable-1 ", in: catalog), "ids are trimmed, as the identity index does")
+        XCTAssertTrue(AppState.catalogListsSession("alias-1", in: catalog))
+        XCTAssertFalse(AppState.catalogListsSession("unseen", in: catalog), "a chat the list lacks waits for the full read")
+        XCTAssertFalse(AppState.catalogListsSession("", in: catalog))
+        XCTAssertFalse(AppState.catalogListsSession("runtime-1", in: []))
+    }
+
+    func testANotificationWhoseChatIsListedSkipsTheFullListRead() {
+        let catalog = [listedRow("runtime-1", stored: "durable-1")]
+        let call = HermesCallRequest(id: "call-1", kind: .done, title: nil, sessionIDs: ["durable-1"])
+        func target(_ id: String, durable: String? = nil, call: HermesCallRequest?) -> ConduitNotificationTarget {
+            ConduitNotificationTarget(profile: nil, sessionId: id, durableSessionID: durable, type: call == nil ? nil : HermesCallRequest.type, call: call)
+        }
+        func needsRead(_ target: ConduitNotificationTarget) -> Bool {
+            AppState.notificationOpenNeedsAuthoritativeRead(target: target, catalog: catalog)
+        }
+        XCTAssertFalse(needsRead(target("durable-1", call: call)))
+        XCTAssertTrue(needsRead(target("unseen", call: call)), "a call whose chat the list lacks reads it again")
+        XCTAssertFalse(needsRead(target("durable-1", call: nil)), "a plain notification whose chat is listed opens at once (issue 1724)")
+        XCTAssertTrue(needsRead(target("runtime-1", call: nil)),
+                      "a runtime id alone can name another conversation now, so the list is read first")
+        XCTAssertFalse(needsRead(target("runtime-1", durable: "durable-1", call: nil)), "with its durable id on hand it opens at once")
+        XCTAssertTrue(needsRead(target("unseen", call: nil)), "a chat the list lacks waits for the full read")
+        XCTAssertTrue(needsRead(target("runtime-1", durable: "durable-new", call: call)),
+                      "the route resolves to the payload's durable id, so a list without it is read again")
+        XCTAssertFalse(needsRead(target("runtime-1", durable: "durable-1", call: call)))
+        XCTAssertFalse(AppState.notificationOpenNeedsAuthoritativeRead(
+            target: target("hidden-work", call: nil), catalog: catalog, isWorkstream: true),
+            "a workstream is hidden from the list, so reading it can't find its row")
     }
 }

@@ -90,6 +90,19 @@ enum Predictive {
 
     /// A draft shorter than this says too little to guess from.
     static let minimumDraftCharacters = 3
+
+    /// The plugin takes a draft of at most this many characters, counted
+    /// as Python counts them (Unicode scalars, not the graphemes Swift's
+    /// `count` gives: one family emoji is 1 Character but 7 scalars).
+    static let maximumDraftScalars = 2_000
+
+    /// Whether a draft is short enough to ask about. A longer one isn't
+    /// asked about rather than cut: continuations start where the draft
+    /// stops, so a guess for its first part couldn't follow the rest
+    /// (issue 1670).
+    static func fitsQuestion(_ draft: String) -> Bool {
+        draft.unicodeScalars.count <= maximumDraftScalars
+    }
     /// Follow-up checks for one reply; "not again" ends them sooner.
     static let maximumChecks = 4
     /// The plugin holds "ask again" to this window too (predict.py).
@@ -159,7 +172,7 @@ enum Predictive {
             "model": model.rawValue,
             "wait_s": wait,
         ]
-        if let draft { body["draft"] = String(draft.prefix(2_000)) }
+        if let draft { body["draft"] = draft }
         if let facts {
             var measured: [String: Any] = [
                 "last_reply_s": max(0, facts.lastReplySeconds),
@@ -173,12 +186,17 @@ enum Predictive {
         return body
     }
 
+    /// A guess longer than this is dropped, not shortened: a chip that sends
+    /// shows its whole text, so one this long would fill the screen.
+    static let maxGuessLength = 200
+
     /// A list of guesses from the route's answer, best first.
     static func guesses(_ value: Any?) -> [Guess] {
         guard let items = value as? [[String: Any]] else { return [] }
         let found = items.compactMap { item -> Guess? in
             guard let text = item["text"] as? String,
-                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  text.count <= maxGuessLength else { return nil }
             let p = (item["p"] as? NSNumber)?.doubleValue ?? 0.5
             return Guess(text: text, p: min(1, max(0, p)))
         }
@@ -411,7 +429,8 @@ struct PredictiveFollowUpState {
     /// The reply the checks are for; another reply starts over.
     var anchor: PredictiveStore.Anchor?
     var checks = 0
-    /// Hermes said "not again", the checks ran out, or one failed.
+    /// Hermes said "not again", the checks ran out, or one failed in a way
+    /// that won't change for this reply (a busy host is asked again).
     var stopped = false
     /// When the next check is due, as Hermes asked; nil: the first wait.
     var nextCheck: Date?

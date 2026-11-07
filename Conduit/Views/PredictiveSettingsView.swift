@@ -27,7 +27,7 @@ struct PredictiveSettingsSection: View {
             tint: .conduitAura
         ) {
             Text("Hermes guesses what you'll say next: replies to tap after an answer, words for a draft when you pause, and a follow-up of its own while you look at a chat.")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             NavigationLink {
                 PredictiveSettingsPage()
@@ -57,13 +57,17 @@ struct PredictiveSettingsPage: View {
     @AppStorage(Predictive.followUpDelayKey) private var followUpDelay = Predictive.defaultFollowUpDelay
     @AppStorage(Predictive.modelKey) private var model = Predictive.Model.fast.rawValue
     @State private var status: Predictive.HostStatus?
+    /// Helper models lists Conduit's predictions: only then do the captions
+    /// point there. An older plugin doesn't add the slot. Nil until the
+    /// kept slots or Hermes tell, and the caption waits for it.
+    @State private var predictionsSlotListed: Bool?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
                 Text("Each guess is a short extra request to your agent's model, on a copy of the chat that can't use tools. Nothing is saved to the chat, and only this device sees the guesses.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if !appState.predictiveIsServed {
@@ -72,7 +76,7 @@ struct PredictiveSettingsPage: View {
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                     }
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -91,13 +95,21 @@ struct PredictiveSettingsPage: View {
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: followUp)
         .navigationTitle("Predictive")
         // Again once the plugin's capabilities arrive.
-        .task(id: appState.predictiveIsServed) { status = await appState.loadPredictiveHostStatus() }
+        .task(id: appState.predictiveIsServed) {
+            predictionsSlotListed = appState.keptHelperModelListed(task: HelperModelSlot.predictions)
+            status = await appState.loadPredictiveHostStatus()
+            // A read that fails keeps what the kept slots said; with nothing
+            // kept the caption stays off rather than guess an older plugin.
+            do {
+                predictionsSlotListed = try await appState.loadHelperModel(task: HelperModelSlot.predictions) != nil
+            } catch {}
+        }
     }
 
     private var repliesSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Suggested replies"), symbol: "text.bubble", tint: .conduitAura) {
             Text("After a reply, the messages you'll most likely send next, best first. Tap one to send it; touch and hold to edit it first.")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Toggle("Suggest replies", isOn: $replies)
                 .tint(.conduitAccent)
@@ -116,7 +128,7 @@ struct PredictiveSettingsPage: View {
     private var pauseSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("While I pause"), symbol: "text.cursor", tint: .conduitAura) {
             Text("When you stop typing for a moment, words to finish your message and whole messages you might mean. Your unsent draft goes to your agent's model to make them.")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Toggle("Suggest while I pause", isOn: $pause)
                 .tint(.conduitAccent)
@@ -135,7 +147,7 @@ struct PredictiveSettingsPage: View {
     private var followUpSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Hermes follows up"), symbol: "sparkle", tint: .conduitAura) {
             Text("While a chat is on screen and you aren't writing, Hermes is asked now and then whether it has something useful to add. At most one follow-up per message you send, marked \"Hermes followed up\".")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Toggle("Let Hermes follow up", isOn: $followUp)
                 .tint(.conduitAccent)
@@ -165,15 +177,21 @@ struct PredictiveSettingsPage: View {
             }
             // Said once the host has answered; until then, nothing.
             if let status {
-                if let fast = status.fastModel {
-                    Text("Fast model on your host: \(fast).")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("Your host has no fast model set (auxiliary.conduit_predict), so the chat's own model answers.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                if let predictionsSlotListed { Group {
+                    if let fast = status.fastModel {
+                        if predictionsSlotListed {
+                            Text("Fast model on your host: \(fast). Change it in Models & providers under Helper models.")
+                        } else {
+                            Text("Fast model on your host: \(fast). Update the Conduit plugin to change it here.")
+                        }
+                    } else if predictionsSlotListed {
+                        Text("Your host has no fast model set, so the chat's own model answers. Pick one in Models & providers under Helper models, as Conduit predictions.")
+                    } else {
+                        Text("Your host has no fast model set, so the chat's own model answers. Update the Conduit plugin to pick one here.")
+                    }
                 }
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary) }
                 SettingsMetricRow(label: AppLocalization.string("Predictions today"), value: String(status.today))
             }
         }

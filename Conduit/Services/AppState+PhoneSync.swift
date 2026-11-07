@@ -201,7 +201,9 @@ extension AppState {
                 path: DashboardPath.withProfile("\(PhoneSyncEngine.base)/wipe", profile: pending.profile),
                 method: "POST", body: ["device_id": pending.deviceID])
             pending.clear()
-        } catch DashboardTicketBridgeError.http(let status, _) where status == 404 {
+        } catch DashboardTicketBridgeError.http(let status, let detail)
+                    where status == 404 && !DashboardTicketBridgeError.isPluginOffDetail(detail) {
+            // A profile that turned the plugin off deleted nothing: it waits.
             pending.clear()
         } catch {
             Self.phoneSyncLog.info("Phone data deletion still pending: \(LogRedaction.redactingURLs(PhoneSyncEngine.describe(error)), privacy: .public)")
@@ -216,6 +218,22 @@ extension AppState {
     func answerPhoneChange(_ prompt: PhoneChangePrompt, approve: Bool) async {
         await phoneSync.answer(prompt, approve: approve)
         await runPhoneSync(reason: .answered)
+    }
+
+    /// A change the user approved on a Pulse card (Add on a suggestion, or
+    /// its Undo): this phone applies it without its own card, as it does an
+    /// answered one, and says how it went right away. On another device,
+    /// or after 15 minutes, the phone asks as usual. Returns how the last
+    /// pass went, so the card can say when this phone didn't get it yet.
+    @discardableResult
+    func applyPulseApproval(_ changeID: String) async -> PhoneSyncEngine.Outcome {
+        await phoneSync.approveFromCard(changeID)
+        let outcome = await runPhoneSync(reason: .answered)
+        // Applied when that pass took it from the host: the next one says so.
+        if phoneSync.state.unreported.contains(where: { $0.id == changeID }) {
+            return await runPhoneSync(reason: .answered)
+        }
+        return outcome
     }
 
     /// A push from the host about a change Hermes asked for. Returns once

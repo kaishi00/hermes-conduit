@@ -75,6 +75,10 @@ struct GPTLiveSessionAnswer: Equatable {
     /// The path the host confirmed it billed. The call speaks that path's
     /// protocol (the subscription's Codex events or the public API's).
     var billing: GPTLiveBilling = .subscription
+    /// Who built the session: "hermes" (Hermes' own GPT-Live code) or
+    /// "plugin" (the plugin's). Nil from a host that doesn't say. Read
+    /// only for the call trace (#1611).
+    var source: String? = nil
 }
 
 enum GPTLiveClientError: LocalizedError, Equatable {
@@ -160,6 +164,7 @@ final class GPTLiveClient: GPTLiveSessionProviding {
         do {
             response = try await request(scoped(Self.statusPath), "GET", nil, 12_000)
         } catch let error as DashboardTicketBridgeError {
+            if let remedy = DashboardTicketBridgeError.pluginOffDetail(of: error) { return .unavailable(reason: remedy) }
             if GeminiLiveTokenClient.isMissingRoute(error) { return .pluginMissing }
             throw error
         }
@@ -182,6 +187,7 @@ final class GPTLiveClient: GPTLiveSessionProviding {
         do {
             response = try await request(scoped(Self.sessionPath), "POST", body, Self.sessionTimeoutMilliseconds)
         } catch let error as DashboardTicketBridgeError {
+            if let remedy = DashboardTicketBridgeError.pluginOffDetail(of: error) { throw GPTLiveClientError.unavailable(.unavailable(reason: remedy)) }
             if GeminiLiveTokenClient.isMissingRoute(error) { throw GPTLiveClientError.unavailable(.pluginMissing) }
             // The host's `detail` already names the problem and says no API
             // fallback was used: shown as it is.
@@ -255,7 +261,10 @@ final class GPTLiveClient: GPTLiveSessionProviding {
             voice: voice,
             briefingApplied: response["briefing_applied"] as? Bool == true,
             greetingApplied: response["greeting_applied"] as? Bool == true,
-            billing: billing
+            billing: billing,
+            // Only the two names the plugin sends: nothing else the host
+            // says reaches the trace.
+            source: (response["source"] as? String).flatMap { ["hermes", "plugin"].contains($0) ? $0 : nil }
         )
     }
 }

@@ -224,6 +224,8 @@ enum PhoneSyncPause: Codable, Equatable {
     case signInRequired
     case pluginMissing
     case otherDashboard
+    /// The profile turned the plugin off: how to turn it on (issue 1671).
+    case pluginOff(String)
     case refused(String)
 
     var message: String {
@@ -234,6 +236,8 @@ enum PhoneSyncPause: Codable, Equatable {
             return AppLocalization.string("Paused: update the Conduit plugin on this host to share your calendar and phone status.")
         case .otherDashboard:
             return AppLocalization.string("Waiting: this goes only to the dashboard it was turned on for. Switch back to it to sync.")
+        case .pluginOff(let remedy):
+            return AppLocalization.string("Paused: \(remedy)")
         case .refused(let detail):
             return AppLocalization.string("Paused: the host refused the upload (\(detail)).")
         }
@@ -493,6 +497,6 @@ enum PhoneSyncLimits {
     static let batchItems = 5_000
     /// The JSON one upload carries. Sealed, it grows by a third as base64,
     /// and the notifier refuses bodies over 4 MiB
-    /// (plugin_api PHONE_MAX_INGEST_BODY_BYTES).
+    /// (dashboard/api/phone_data.py PHONE_MAX_INGEST_BODY_BYTES).
     static let batchBytes = 3_000_000
 }

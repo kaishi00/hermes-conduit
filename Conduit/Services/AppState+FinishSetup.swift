@@ -55,6 +55,21 @@ struct FinishSetupStatus: Equatable {
         }
     }
 
+    /// What the plugin row says once it's done.
+    enum PluginDoneNote: Equatable {
+        case upToDate
+        /// Never: a newer version waits in Settings, unasked.
+        case newerVersionWaits
+        /// Never: the plugin lacks a feature Conduit uses, and
+        /// Settings has the update that brings it.
+        case featuresWait
+    }
+
+    static func pluginDoneNote(_ status: NotifierPluginStatus) -> PluginDoneNote {
+        guard !status.asksToUpdate, status.updateAvailable else { return .upToDate }
+        return status.needsUpdate ? .featuresWait : .newerVersionWaits
+    }
+
     /// Turned on in Conduit counts only while iOS allows them. Not asked
     /// yet (or not read yet, or reset by a reinstall that kept the
     /// registration) is off, so the card neither finishes early nor hides

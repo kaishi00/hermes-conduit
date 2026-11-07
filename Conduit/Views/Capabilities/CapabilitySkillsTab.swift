@@ -77,7 +77,7 @@ struct CapabilitySkillsTab: View {
                 } content: {
                     ForEach(Array(installed.enumerated()), id: \.element.name) { index, skill in
                         CapabilityCardRow(divided: index > 0) {
-                            CapabilitySkillRow(skill: skill, store: store) { enabled in
+                            CapabilitySkillRow(skill: skill, store: store, canChange: appState.canChangeCapabilities) { enabled in
                                 Task { await appState.toggleSkill(name: skill.name, enabled: enabled) }
                             }
                         }
@@ -100,7 +100,7 @@ struct CapabilitySkillsTab: View {
             }
         }
         .task(id: store.profile) {
-            if store.officialSkills.isEmpty { await store.loadOfficialSkills() }
+            if store.officialSkills.isEmpty || store.showsKept.contains(.officialSkills) { await store.loadOfficialSkills() }
         }
     }
 
@@ -113,27 +113,32 @@ struct CapabilitySkillsTab: View {
                 Text("Sort")
             }
             Divider()
-            Button {
-                setAll(appState.skills, enabled: true)
-            } label: {
-                Label(AppLocalization.string("Turn All On"), systemImage: "checkmark.circle")
+            // They pick their skills from the list shown: a kept one waits
+            // for Hermes' answer.
+            Group {
+                Button {
+                    setAll(appState.skills, enabled: true)
+                } label: {
+                    Label(AppLocalization.string("Turn All On"), systemImage: "checkmark.circle")
+                }
+                Button {
+                    setAll(appState.skills, enabled: false)
+                } label: {
+                    Label(AppLocalization.string("Turn All Off"), systemImage: "circle")
+                }
+                Button {
+                    setAll(appState.skills.filter { ($0.usage ?? 0) == 0 }, enabled: false)
+                } label: {
+                    Label(AppLocalization.string("Turn Off Unused"), systemImage: "moon.zzz")
+                }
             }
-            Button {
-                setAll(appState.skills, enabled: false)
-            } label: {
-                Label(AppLocalization.string("Turn All Off"), systemImage: "circle")
-            }
-            Button {
-                setAll(appState.skills.filter { ($0.usage ?? 0) == 0 }, enabled: false)
-            } label: {
-                Label(AppLocalization.string("Turn Off Unused"), systemImage: "moon.zzz")
-            }
+            .disabled(appState.capabilitiesAreKept || !appState.canChangeCapabilities)
         } label: {
             if bulkRunning {
                 ProgressView().controlSize(.small)
             } else {
                 Image(systemName: "ellipsis.circle")
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
         }
@@ -146,7 +151,7 @@ struct CapabilitySkillsTab: View {
     /// the rest were this list's, not the next one's.
     private func setAll(_ skills: [CapabilitySkill], enabled: Bool) {
         let targets = skills.filter { $0.enabled != enabled }.map(\.name)
-        guard !bulkRunning, !targets.isEmpty, let rows = appState.capabilitiesOwner else { return }
+        guard !bulkRunning, !appState.capabilitiesAreKept, !targets.isEmpty, let rows = appState.capabilitiesOwner else { return }
         Haptics.selection()
         bulkRunning = true
         Task {
@@ -185,6 +190,8 @@ enum CapabilitySkillStyle {
 private struct CapabilitySkillRow: View {
     let skill: CapabilitySkill
     let store: CapabilitiesStore
+    /// Off with no dashboard to write through (AppState's canChangeCapabilities).
+    let canChange: Bool
     let setEnabled: (Bool) -> Void
 
     var body: some View {
@@ -211,12 +218,14 @@ private struct CapabilitySkillRow: View {
                 Text(verbatim: skill.name)
             }
             .labelsHidden()
+            .disabled(!canChange)
             .tint(.conduitAccent)
         }
     }
 }
 
 private struct OfficialSkillRow: View {
+    @EnvironmentObject private var appState: AppState
     let skill: OfficialSkill
     let store: CapabilitiesStore
     let reload: () async -> Void
@@ -242,11 +251,12 @@ private struct OfficialSkillRow: View {
                 CapabilityRowButton(title: AppLocalization.string("Install"), busy: state == .running) {
                     install()
                 }
+                .disabled(!appState.canChangeCapabilities)
                 .accessibilityLabel(Text("Install \(skill.name)"))
             }
             if case .failed(let reason) = state {
                 Text(verbatim: reason)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.red)
                     .padding(.leading, 41)
                     .padding(.bottom, 8)
@@ -303,8 +313,9 @@ struct CapabilitySkillDetailPage: View {
                         set: { enabled in Task { await appState.toggleSkill(name: skill.name, enabled: enabled) } }
                     )) {
                         Text("Turned on")
-                            .font(.subheadline.weight(.semibold))
+                            .scaledFont(.subheadline.weight(.semibold))
                     }
+                    .disabled(!appState.canChangeCapabilities)
                     .tint(.conduitAccent)
                 }
             }
@@ -312,16 +323,17 @@ struct CapabilitySkillDetailPage: View {
                 CapabilitySkillDocument(document: document, error: loadError)
             }
             Text("Changes apply to new sessions.")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 16)
         }
         .navigationTitle(Text(verbatim: name))
+        // Before the first frame, so the page doesn't open on a spinner.
+        .onAppear { if document == nil { showKept() } }
         // Read again for another dashboard or profile.
         .task(id: detailScope) {
+            showKept()
             let owner = appState.currentCapabilitiesOwner
-            document = nil
-            loadError = nil
             guard store.serves(owner) else { return }
             do {
                 let content = try await store.skillContent(name: name)
@@ -329,9 +341,19 @@ struct CapabilitySkillDetailPage: View {
                 document = SkillFrontmatter.parse(content)
             } catch {
                 guard appState.currentCapabilitiesOwner == owner, store.serves(owner), !Task.isCancelled else { return }
-                loadError = UserFacingError.message(for: error)
+                // A read that fails keeps the SKILL.md shown.
+                if document == nil { loadError = UserFacingError.message(for: error) }
             }
         }
+    }
+
+    /// The SKILL.md as the page showed it last time on this dashboard and
+    /// profile, while Hermes is asked again (#1533).
+    private func showKept() {
+        loadError = nil
+        document = store.serves(appState.currentCapabilitiesOwner)
+            ? store.keptSkillContent(name: name).map(SkillFrontmatter.parse)
+            : nil
     }
 }
 
@@ -348,6 +370,8 @@ struct OfficialSkillDetailPage: View {
     /// state, Install and SKILL.md belong to them, and after a switch the
     /// page shows only the skill's name and description.
     @State private var openedFor: CapabilitySnapshotOwner?
+    /// Hermes answered: the SKILL.md shown is its, not the one kept.
+    @State private var answered = false
 
     private var isCurrent: Bool {
         guard let openedFor else { return false }
@@ -374,7 +398,7 @@ struct OfficialSkillDetailPage: View {
                     EmptyView()
                 } else if installed {
                     Label(AppLocalization.string("Installed"), systemImage: "checkmark.circle.fill")
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.green)
                 } else {
                     Button {
@@ -395,11 +419,12 @@ struct OfficialSkillDetailPage: View {
                         .padding(.vertical, 6)
                         .frame(minHeight: 44)
                     }
-                    .disabled(state == .running)
+                    // Off with no dashboard to write through, as the switches are.
+                    .disabled(state == .running || !appState.canChangeCapabilities)
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
                     if case .failed(let reason) = state {
                         Text(verbatim: reason)
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.red)
                     }
                 }
@@ -409,21 +434,33 @@ struct OfficialSkillDetailPage: View {
             }
         }
         .navigationTitle(Text(verbatim: skill.name))
+        // Before the first frame, so the page doesn't open on a spinner.
+        .onAppear { showKept() }
         // Again on a return to the dashboard and profile it was opened for,
         // in case a switch cut the first read short.
         .task(id: isCurrent) {
-            if openedFor == nil { openedFor = appState.currentCapabilitiesOwner }
-            guard isCurrent, document == nil else { return }
+            showKept()
+            guard isCurrent, !answered else { return }
             do {
                 let content = try await store.skillPreview(identifier: skill.identifier)
                 guard isCurrent, !Task.isCancelled else { return }
                 document = SkillFrontmatter.parse(content)
                 loadError = nil
+                answered = true
             } catch {
                 guard isCurrent, !Task.isCancelled else { return }
-                loadError = UserFacingError.message(for: error)
+                // A read that fails keeps the SKILL.md shown.
+                if document == nil { loadError = UserFacingError.message(for: error) }
             }
         }
+    }
+
+    /// The SKILL.md as the page showed it last time, while Hermes is asked
+    /// again (#1533).
+    private func showKept() {
+        if openedFor == nil { openedFor = appState.currentCapabilitiesOwner }
+        guard isCurrent, document == nil else { return }
+        document = store.keptSkillPreview(identifier: skill.identifier).map(SkillFrontmatter.parse)
     }
 }
 
@@ -439,14 +476,14 @@ private struct CapabilitySkillHeader<Control: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(verbatim: title)
-                .font(.title3.weight(.semibold))
+                .scaledFont(.title3.weight(.semibold))
             if let description, !description.isEmpty {
                 Text(verbatim: description)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
             } else {
                 Text("No description.")
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
             }
             HStack(spacing: 6) {
@@ -455,7 +492,7 @@ private struct CapabilitySkillHeader<Control: View>: View {
                 }
                 if let usage, usage > 0 {
                     Text(verbatim: CapabilityFormat.uses(usage))
-                        .font(.caption.monospacedDigit())
+                        .scaledFont(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
@@ -480,7 +517,7 @@ private struct CapabilitySkillDocument: View {
     var body: some View {
         if let error {
             Text(verbatim: error)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 16)
         } else if let document {
@@ -494,7 +531,7 @@ private struct CapabilitySkillDocument: View {
             if !document.body.isEmpty {
                 ConduitSettingsSection(title: AppLocalization.string("Instructions"), symbol: "doc.text", tint: .conduitAccent) {
                     Text(verbatim: document.body)
-                        .font(.caption.monospaced())
+                        .scaledFont(.caption.monospaced())
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }

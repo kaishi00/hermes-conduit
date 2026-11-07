@@ -137,6 +137,22 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(host.keyRequests, 2)
     }
 
+    func testAWorkoutTheHostCantKeepStaysOffTheBatch() async throws {
+        // Issue 555: one that ends before it starts, or runs past a week,
+        // made an older plugin refuse the whole batch and pause sync.
+        let source = FakeHealthSource()
+        source.withUnusableWorkouts = true
+        let host = FakeHealthHost()
+        let engine = makeHealthEngine(source: source)
+
+        let outcome = await engine.sync(preferences: healthPreferences(history: .days30), deadline: .distantFuture,
+                                        request: host.handle)
+        XCTAssertEqual(outcome, .synced)
+        let sent = host.batches.flatMap { ($0["events"] as? [[String: Any]] ?? []).compactMap { $0["id"] as? String } }
+        XCTAssertEqual(sent, ["W1"])
+        XCTAssertEqual(engine.state.anchors["workouts"], Data("w-anchor".utf8), "Moves past them all the same")
+    }
+
     func testRecentDaysSendOnlyTheWindowsThatChanged() async throws {
         let source = FakeHealthSource()
         let host = FakeHealthHost()
@@ -268,6 +284,75 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart, "The rest once off Low Data")
     }
 
+    func testAllHistoryStartsAfterTheHostsFirstDay() async throws {
+        // Issue 1537: UTC+8, and Health keeping dates from before 2000.
+        var calendar = Self.healthCalendar
+        calendar.timeZone = TimeZone(secondsFromGMT: 8 * 3600)!
+        let source = FakeHealthSource()
+        source.earliest = date("1999-06-01T00:00:00Z")
+        let host = FakeHealthHost()
+        let engine = makeHealthEngine(source: source, calendar: calendar, now: { Self.healthDate("2000-03-01T12:00:00Z") })
+        let outcome = await engine.sync(preferences: healthPreferences(history: .all), deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(outcome, .synced)
+        XCTAssertEqual(engine.state.historyStart, date("2000-01-01T16:00:00Z"), "Its first night's window opens after 2000")
+        XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart, "All of it is in")
+        let windows = host.batches.flatMap { $0["windows"] as? [[String: Any]] ?? [] }
+        XCTAssertFalse(windows.isEmpty)
+        // Each from carries the local offset, so compare instants.
+        let froms = windows.compactMap { ($0["from"] as? String).flatMap(ISO8601DateFormatter().date(from:)) }
+        XCTAssertEqual(froms.count, windows.count)
+        XCTAssertTrue(froms.allSatisfy { $0 >= HealthSyncLimits.hostEarliest })
+    }
+
+    func testASavedStartBeforeTheHostsFirstDayMovesUp() async throws {
+        let source = FakeHealthSource()
+        source.earliest = date("2010-01-01T00:00:00Z")
+        source.oldest = nil
+        let host = FakeHealthHost()
+        let keys = HealthKeyBox()
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("health-sync-\(UUID().uuidString)", isDirectory: true)
+        let preferences = healthPreferences(history: .all)
+        let first = makeHealthEngine(source: source, keys: keys, folder: folder)
+        _ = await first.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        // As a build from before the host's limit saved it (issue 1537).
+        var saved = first.state
+        XCTAssertFalse(saved.anchors.isEmpty)
+        saved.historyStart = date("1999-12-31T16:00:00Z")
+        XCTAssertTrue(HealthSyncStateStore(url: folder.appendingPathComponent("state.json")).save(saved))
+
+        let sent = host.batches.count
+        let second = makeHealthEngine(source: source, keys: keys, folder: folder)
+        _ = await second.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(second.state.historyStart, date("2000-01-02T00:00:00Z"))
+        XCTAssertEqual(second.state.anchors, saved.anchors)
+        let events = host.batches.dropFirst(sent).flatMap { $0["events"] as? [[String: Any]] ?? [] }
+        XCTAssertTrue(events.isEmpty, "Anchors kept: the workout isn't sent again")
+        XCTAssertEqual(host.keyRequests, 1)
+    }
+
+    func testHistoryStopsAtTheOldestReading() async throws {
+        let source = FakeHealthSource()
+        source.earliest = date("2010-01-01T00:00:00Z")
+        source.oldest = date("2026-08-20T09:30:00Z")
+        let host = FakeHealthHost()
+        let engine = makeHealthEngine(source: source)
+        let preferences = healthPreferences(history: .all)
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(engine.state.backfillCursor, date("2026-08-20T00:00:00Z"), "No empty years walked")
+        XCTAssertEqual(engine.state.backfillFloor, engine.state.backfillCursor, "Settings shows the walk as done")
+        let froms = host.batches.flatMap { $0["windows"] as? [[String: Any]] ?? [] }
+            .filter { $0["metric"] as? String == "steps" && $0["grain"] as? String == "day" }
+            .compactMap { $0["from"] as? String }
+        XCTAssertEqual(froms.min(), "2026-08-20T00:00:00Z")
+
+        // An import with older readings: the walk goes on from there.
+        source.oldest = date("2026-06-01T08:00:00Z")
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(engine.state.backfillCursor, date("2026-06-01T00:00:00Z"))
+        XCTAssertEqual(engine.state.backfillFloor, engine.state.backfillCursor)
+        XCTAssertEqual(engine.state.historyStart, date("2010-01-01T00:00:00Z"), "Events still reach back as far as Health")
+    }
+
     func testUnreadableHealthStateKeepsTheDeviceID() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("health-state-\(UUID().uuidString)", isDirectory: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
@@ -360,6 +445,31 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(offlineDeleted)
     }
 
+    /// A profile that turned the plugin off answers the delete with a 404,
+    /// but nothing was deleted: it isn't counted as done, and says how to
+    /// turn the plugin on (issue 1671). A route the host lacks still is.
+    func testTurningOffOnAProfileWithThePluginOffDeletesNothing() async {
+        let host = FakeHealthHost()
+        let engine = makeHealthEngine(source: FakeHealthSource())
+        _ = await engine.sync(preferences: healthPreferences(history: .days30), deadline: .distantFuture, request: host.handle)
+        let deleted = await engine.turnOff(deleteFromHost: { path, _, _ in
+            try await DashboardTicketBridgeError.explainingPluginRefusal(path: path) { () async throws -> [String: Any] in
+                throw DashboardTicketBridgeError.http(status: 404, detail: DashboardTicketBridgeError.pluginRefusedDetail)
+            }
+        })
+        XCTAssertFalse(deleted)
+        XCTAssertNotNil(engine.deleteRefusedPluginOff)
+        XCTAssertEqual(engine.deleteRefusedPluginOff, DashboardTicketBridgeError.pluginOffDetail(path: "\(HealthSyncEngine.base)/wipe"))
+
+        let gone = makeHealthEngine(source: FakeHealthSource())
+        _ = await gone.sync(preferences: healthPreferences(history: .days30), deadline: .distantFuture, request: host.handle)
+        let goneDeleted = await gone.turnOff(deleteFromHost: { _, _, _ in
+            throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found")
+        })
+        XCTAssertTrue(goneDeleted)
+        XCTAssertNil(gone.deleteRefusedPluginOff)
+    }
+
     func testHealthSettingsLinkOpensOnlyInsideTheApp() throws {
         let url = try XCTUnwrap(URL(string: "conduit://settings/health"))
         XCTAssertEqual(ConduitAppLink(url: url), .settings(.health))
@@ -375,13 +485,14 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     private func makeHealthEngine(source: FakeHealthSource, keys box: HealthKeyBox = HealthKeyBox(),
+                                  calendar: Calendar? = nil, folder: URL? = nil,
                                   now: @escaping () -> Date = { HermesVoiceGatewayTimeoutTests.healthDate("2026-10-13T12:00:00Z") })
         -> HealthSyncEngine {
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("health-sync-\(UUID().uuidString)", isDirectory: true)
+        let folder = folder ?? FileManager.default.temporaryDirectory.appendingPathComponent("health-sync-\(UUID().uuidString)", isDirectory: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
         let keys = HealthSyncKeyStore(load: { box.key }, save: { box.key = $0 }, clear: { box.key = nil })
         return HealthSyncEngine(source: source, store: HealthSyncStateStore(url: folder.appendingPathComponent("state.json")),
-                                keys: keys, calendar: Self.healthCalendar, now: now)
+                                keys: keys, calendar: calendar ?? Self.healthCalendar, now: now)
     }
 
     private func healthPreferences(history: HealthHistoryDepth) -> HealthSyncPreferences {
@@ -426,10 +537,24 @@ private final class FakeHealthSource: HealthDataSource {
         guard stream == .workouts, anchor == nil else { return HealthEventChanges(added: [], deleted: [], anchor: anchor ?? Data("\(stream.key)".utf8), more: false) }
         let workout = HealthEvent(id: "W1", kind: .workout, metric: "workout", start: since, end: since.addingTimeInterval(1800),
                                   data: ["activity": .text("running")])
-        return HealthEventChanges(added: [workout], deleted: [], anchor: Data("w-anchor".utf8), more: false)
+        return HealthEventChanges(added: [workout] + unusable(since), deleted: [], anchor: Data("w-anchor".utf8), more: false)
     }
 
-    func earliestDate() -> Date { Date(timeIntervalSince1970: 1_600_000_000) }
+    /// Workouts the host can't keep, as years of Apple Health hold a few of.
+    var withUnusableWorkouts = false
+    private func unusable(_ since: Date) -> [HealthEvent] {
+        guard withUnusableWorkouts else { return [] }
+        return [HealthEvent(id: "W2", kind: .workout, metric: "workout", start: since, end: since.addingTimeInterval(-60),
+                            data: ["activity": .text("running")]),
+                HealthEvent(id: "W3", kind: .workout, metric: "workout", start: since,
+                            end: since.addingTimeInterval(HealthSyncLimits.longestEvent + 1), data: ["activity": .text("walking")])]
+    }
+
+    var earliest = Date(timeIntervalSince1970: 1_600_000_000)
+    func earliestDate() -> Date { earliest }
+    /// Readings back to the start of time unless a test says otherwise.
+    var oldest: Date? = .distantPast
+    func oldestReading(in categories: Set<HealthCategory>) async throws -> Date? { oldest }
     func observe(_ categories: Set<HealthCategory>, onChange: @escaping (_ done: @escaping () -> Void) -> Void) async {}
     func stopObserving() async {}
 }

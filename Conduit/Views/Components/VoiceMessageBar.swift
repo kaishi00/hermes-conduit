@@ -36,7 +36,7 @@ struct VoiceMessageBar: View {
             }
             if recorder.phase == .recorded, let words = recorder.recording?.transcript, !words.isEmpty {
                 Text(verbatim: words)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
                     .padding(.horizontal, 6)
@@ -44,7 +44,7 @@ struct VoiceMessageBar: View {
             }
             if let message = recorder.errorMessage {
                 Text(verbatim: message)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.red)
                     .padding(.horizontal, 6)
             }
@@ -59,7 +59,7 @@ struct VoiceMessageBar: View {
             recorder.cancel()
         } label: {
             Image(systemName: "trash")
-                .font(.body.weight(.semibold))
+                .scaledFont(.body.weight(.semibold))
                 .conduitFixedGlyph()
                 .foregroundStyle(.secondary)
                 .frame(width: Self.controlSize, height: Self.controlSize)
@@ -78,7 +78,7 @@ struct VoiceMessageBar: View {
             Group {
                 if recorder.phase == .recording {
                     Image(systemName: "stop.fill")
-                        .font(.body.weight(.semibold))
+                        .scaledFont(.body.weight(.semibold))
                         .conduitFixedGlyph()
                         .foregroundStyle(.white)
                 } else {
@@ -119,7 +119,7 @@ struct VoiceMessageBar: View {
                     ProgressView().tint(Color.black.opacity(0.82))
                 } else {
                     Image(systemName: "arrow.up")
-                        .font(.body.weight(.bold))
+                        .scaledFont(.body.weight(.bold))
                         .conduitFixedGlyph()
                         .foregroundStyle(Color.black.opacity(0.82))
                 }
@@ -148,16 +148,16 @@ private struct VoiceMessageRecordingRow: View {
                 .frame(width: 8, height: 8)
                 .opacity(phase == .recording ? 1 : 0.4)
             Text(verbatim: VoiceMessage.durationLabel(meter.elapsed))
-                .font(.subheadline.monospacedDigit().weight(.semibold))
+                .scaledFont(.subheadline.monospacedDigit().weight(.semibold))
             if isHeld {
                 Text(AppLocalization.string("Release to send, slide away to cancel"))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             } else if phase == .starting {
                 Text(AppLocalization.string("Starting…"))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             } else {
                 levelBars

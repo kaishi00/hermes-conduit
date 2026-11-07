@@ -9,7 +9,8 @@
 //  Rooms, Ask me first) names its room and offers Say instead, Don't share
 //  and Share, Say instead typed right here. A Link's ask (a linked person's
 //  Hermes asks yours) names them the same way, with Share only when there's
-//  an answer to share.
+//  an answer to share. Run work's ask (your agent starts work for a room)
+//  offers Change it, Don't start and Start.
 //
 
 import SwiftUI
@@ -94,6 +95,10 @@ struct PresentedConfirmPanel: View {
     /// A Link's question has nothing to share: it's not answered.
     private var declineLabel: String {
         if !prompt.canConfirm { return AppLocalization.string("Don't answer") }
+        // A send to running work isn't a start.
+        if prompt.room?.work == true {
+            return prompt.actionLabel == "Send" ? AppLocalization.string("Not now") : AppLocalization.string("Don't start")
+        }
         return prompt.isAsk ? AppLocalization.string("Don't share") : AppLocalization.string("Not now")
     }
 
@@ -109,18 +114,18 @@ struct PresentedConfirmPanel: View {
             } icon: {
                 Image(systemName: askerSymbol)
             }
-            .font(.caption.weight(.semibold))
+            .scaledFont(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
 
             Text(verbatim: prompt.title)
-                .font(.title3.weight(.semibold))
+                .scaledFont(.title3.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
 
             if !prompt.preview.isEmpty {
                 ScrollView {
                     Text(preview)
-                        .font(.body)
+                        .scaledFont(.body)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -130,10 +135,11 @@ struct PresentedConfirmPanel: View {
                 .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
 
-            // A question has nothing to say yes to.
-            if inCall, prompt.canConfirm {
+            // A question has nothing to say yes to, and room work with no
+            // phrase takes no spoken yes at all (only a tap).
+            if inCall, prompt.canConfirm, prompt.room?.work != true || !prompt.spokenYes.isEmpty {
                 Label(spokenHint, systemImage: "waveform")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(Color.conduitAura)
             }
 
@@ -164,7 +170,8 @@ struct PresentedConfirmPanel: View {
     /// instead, typed here.
     private var sayInsteadField: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TextField(AppLocalization.string("What to say instead"), text: $instead, axis: .vertical)
+            TextField(prompt.room?.work == true ? AppLocalization.string("What it should do instead")
+                      : AppLocalization.string("What to say instead"), text: $instead, axis: .vertical)
                 .lineLimit(1...5)
                 .focused($insteadFocused)
                 .padding(12)
@@ -180,7 +187,7 @@ struct PresentedConfirmPanel: View {
                     sayingInstead = false
                 } label: {
                     Text("Cancel")
-                        .font(.body.weight(.semibold))
+                        .scaledFont(.body.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .frame(minHeight: 44)
                         .padding(.horizontal, 8)
@@ -192,7 +199,7 @@ struct PresentedConfirmPanel: View {
                     onSayInstead?(instead)
                 } label: {
                     Text("Send")
-                        .font(.body.weight(.semibold))
+                        .scaledFont(.body.weight(.semibold))
                         .foregroundStyle(Color.conduitBackgroundColor)
                         .frame(minWidth: 96, minHeight: 44)
                         .padding(.horizontal, 12)
@@ -212,8 +219,8 @@ struct PresentedConfirmPanel: View {
                 Haptics.selection()
                 sayingInstead = true
             } label: {
-                Text(AppLocalization.string("Say instead"))
-                    .font(.body.weight(.semibold))
+                Text(prompt.room?.work == true ? AppLocalization.string("Change it") : AppLocalization.string("Say instead"))
+                    .scaledFont(.body.weight(.semibold))
                     .frame(minWidth: 64, minHeight: 44)
                     .padding(.horizontal, 6)
             }
@@ -225,7 +232,7 @@ struct PresentedConfirmPanel: View {
                 onEdit()
             } label: {
                 Text("Edit")
-                    .font(.body.weight(.semibold))
+                    .scaledFont(.body.weight(.semibold))
                     .frame(minWidth: 64, minHeight: 44)
                     .padding(.horizontal, 6)
             }
@@ -237,7 +244,7 @@ struct PresentedConfirmPanel: View {
             onAnswer(.declined)
         } label: {
             Text(declineLabel)
-                .font(.body.weight(.semibold))
+                .scaledFont(.body.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .frame(minHeight: 44)
                 .padding(.horizontal, 8)
@@ -251,7 +258,7 @@ struct PresentedConfirmPanel: View {
                 onAnswer(.confirmed)
             } label: {
                 Text(verbatim: prompt.actionLabel)
-                    .font(.body.weight(.semibold))
+                    .scaledFont(.body.weight(.semibold))
                     .foregroundStyle(Color.conduitBackgroundColor)
                     .frame(minWidth: 96, minHeight: 44)
                     .padding(.horizontal, 12)

@@ -25,7 +25,7 @@ struct ConnectionSetupHeader: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 12) {
                 Image(systemName: symbol)
-                    .font(.title3.weight(.semibold))
+                    .scaledFont(.title3.weight(.semibold))
                     .conduitFixedGlyph()
                     .foregroundStyle(Color.conduitAccent)
                     .frame(width: 48, height: 48)
@@ -38,7 +38,7 @@ struct ConnectionSetupHeader: View {
                 if let progress {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(verbatim: progress)
-                            .font(.footnote.weight(.semibold))
+                            .scaledFont(.footnote.weight(.semibold))
                             .foregroundStyle(Color.conduitAccent)
                             .accessibilityIdentifier("setup.step-label")
                         if let progressStep {
@@ -49,12 +49,12 @@ struct ConnectionSetupHeader: View {
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text(verbatim: title)
-                    .font(.title2.weight(.semibold))
+                    .scaledFont(.title2.weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
                 if let detail {
                     Text(verbatim: detail)
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(Color.primary.opacity(0.62))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -148,7 +148,7 @@ struct ConnectionSetupChoiceRow: View {
             HStack(spacing: 14) {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.body.weight(.medium))
+                        .scaledFont(.body.weight(.medium))
                         .conduitFixedGlyph()
                         .foregroundStyle(Color.conduitAccent)
                         .frame(width: 26)
@@ -156,13 +156,13 @@ struct ConnectionSetupChoiceRow: View {
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(verbatim: title)
-                        .font(.callout.weight(.semibold))
+                        .scaledFont(.callout.weight(.semibold))
                         .foregroundStyle(.primary)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
                     if let badge {
                         Text(verbatim: badge)
-                            .font(.caption.weight(.semibold))
+                            .scaledFont(.caption.weight(.semibold))
                             .foregroundStyle(Color.conduitAccent)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
@@ -171,7 +171,7 @@ struct ConnectionSetupChoiceRow: View {
                     }
                     if let detail {
                         Text(verbatim: detail)
-                            .font(.subheadline)
+                            .scaledFont(.subheadline)
                             .foregroundStyle(Color.primary.opacity(0.58))
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
@@ -202,18 +202,18 @@ struct ConnectionSetupChoiceRow: View {
         switch accessory {
         case .chevron:
             Image(systemName: "chevron.right")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.conduitTertiary)
                 .accessibilityHidden(true)
         case .checkmark(let selected):
             Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                .font(.title3)
+                .scaledFont(.title3)
                 .conduitFixedGlyph()
                 .foregroundStyle(selected ? Color.conduitAccent : Color.primary.opacity(0.25))
                 .accessibilityHidden(true)
         case .disclosure(let expanded):
             Image(systemName: "chevron.down")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.conduitTertiary)
                 .rotationEffect(.degrees(expanded ? 180 : 0))
                 .accessibilityHidden(true)
@@ -237,7 +237,7 @@ struct ConnectionSetupListItem: View {
             markerView
                 .frame(width: 22, alignment: .center)
             Text(verbatim: text)
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
@@ -255,7 +255,7 @@ struct ConnectionSetupListItem: View {
                 .accessibilityHidden(true)
         case .number(let number):
             Text(verbatim: "\(number)")
-                .font(.caption.weight(.bold))
+                .scaledFont(.caption.weight(.bold))
                 .monospacedDigit()
                 .conduitFixedGlyph()
                 .foregroundStyle(Color.conduitAccent)
@@ -263,7 +263,7 @@ struct ConnectionSetupListItem: View {
                 .background(Color.conduitAccent.opacity(0.15), in: Circle())
         case .check:
             Image(systemName: "checkmark.circle")
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .conduitFixedGlyph()
                 .foregroundStyle(Color.conduitAccent)
                 .accessibilityHidden(true)
@@ -279,11 +279,11 @@ struct ConnectionSetupNote: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: symbol)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text(verbatim: text)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -301,7 +301,7 @@ struct ConnectionSetupField<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(verbatim: title)
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
                 .accessibilityHidden(true)
@@ -318,18 +318,18 @@ struct ConnectionSetupAddressCard: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "server.rack")
-                .font(.body.weight(.medium))
+                .scaledFont(.body.weight(.medium))
                 .conduitFixedGlyph()
                 .foregroundStyle(Color.conduitAccent)
                 .frame(width: 26)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: title)
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
                 Text(verbatim: address)
-                    .font(.callout.weight(.medium))
+                    .scaledFont(.callout.weight(.medium))
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("setup.address-preview")
@@ -374,7 +374,7 @@ struct ConnectionSetupBanner<Content: View>: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: tone.symbol)
-                .font(.body)
+                .scaledFont(.body)
                 .foregroundStyle(tone.color)
                 .padding(.top, 1)
                 .accessibilityHidden(true)

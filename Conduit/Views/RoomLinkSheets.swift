@@ -82,7 +82,7 @@ private struct RoomLinkNameField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(AppLocalization.string("Your name"))
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
             TextField(AppLocalization.string("Your name"), text: $name)
                 .textContentType(.name)
                 .textInputAutocapitalization(.words)
@@ -94,7 +94,7 @@ private struct RoomLinkNameField: View {
                     if typed.count > RoomLinkName.maxLength { name = String(typed.prefix(RoomLinkName.maxLength)) }
                 }
             Text(verbatim: caption)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -109,13 +109,13 @@ private struct RoomLinkWordsCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(verbatim: title)
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
             Text(verbatim: PeopleSettingsText.words(words))
-                .font(.title3.weight(.semibold))
+                .scaledFont(.title3.weight(.semibold))
                 .textSelection(.enabled)
             Text(verbatim: caption)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -186,13 +186,13 @@ struct RoomLinkInviteSheet: View {
     private var ask: some View {
         ConduitSettingsSection(title: AppLocalization.string("Invite"), symbol: "link.badge.plus", tint: .conduitAccent) {
             Text(AppLocalization.string("Make an invite for the person you're linking with. They open it in Conduit to link your Hermes with theirs."))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             RoomLinkNameField(name: $name, caption: AppLocalization.string("The invite says it's from this name."))
             if let error {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.orange)
             }
             HStack(spacing: 12) {
@@ -212,13 +212,13 @@ struct RoomLinkInviteSheet: View {
     private func invite(_ made: RoomLinkInviteMade) -> some View {
         if let linkedWith {
             Label(AppLocalization.string("Linked with \(linkedWith.name)"), systemImage: "checkmark.circle.fill")
-                .font(.headline)
+                .scaledFont(.headline)
                 .foregroundStyle(.green)
         }
         ConduitSettingsSection(title: AppLocalization.string("Invite"), symbol: "qrcode", tint: .conduitAccent) {
             RoomLinkQRCodeView(text: made.url.text)
             Text(AppLocalization.string("Ask them to scan this with their iPhone's camera, or send them the invite. It opens in Conduit."))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if let url = URL(string: made.url.text) {
@@ -232,7 +232,7 @@ struct RoomLinkInviteSheet: View {
                 .buttonStyle(.settings)
             }
             Text(verbatim: until(made.invite))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
         ConduitSettingsSection(title: AppLocalization.string("Your Hermes' words"), symbol: "checkmark.shield", tint: .conduitAccent) {
@@ -374,12 +374,12 @@ struct RoomLinkOpenedSheet: View {
                 HStack(spacing: 10) {
                     ProgressView()
                     Text(AppLocalization.string("Conduit opens this invite once it's connected to your Hermes."))
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             } else {
                 Label(AppLocalization.string("Update the Conduit plugin on your Hermes host to link with someone."), systemImage: "exclamationmark.triangle.fill")
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.orange)
             }
         } else if let shown {
@@ -396,14 +396,14 @@ struct RoomLinkOpenedSheet: View {
                 status(link)
             } else if let stop = shown.preview.stop {
                 Label(RoomLinkSheetText.stop(stop, name: shown.preview.name, existing: shown.existing), systemImage: "info.circle")
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
             } else {
                 acceptForm(shown.preview)
             }
         } else if let readError {
             Label(readError, systemImage: "exclamationmark.triangle.fill")
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .foregroundStyle(.orange)
             Button(AppLocalization.string("Try again")) { Task { await load() } }
                 .buttonStyle(.settings)
@@ -422,11 +422,11 @@ struct RoomLinkOpenedSheet: View {
                 .background(Color.conduitAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .accessibilityHidden(true)
             Text(AppLocalization.string("Link with \(preview.name)?"))
-                .font(.title2.weight(.semibold))
+                .scaledFont(.title2.weight(.semibold))
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
             Text(AppLocalization.string("A Link lets you and someone else bring your agents into rooms together. It grants nothing by itself: in each room, you choose what your agents may do."))
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -455,7 +455,7 @@ struct RoomLinkOpenedSheet: View {
             RoomLinkNameField(name: $name, caption: AppLocalization.string("\(preview.name) sees you by this name."))
             if let acceptError {
                 Label(acceptError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.orange)
             }
             HStack(spacing: 12) {
@@ -475,38 +475,38 @@ struct RoomLinkOpenedSheet: View {
     private func status(_ link: RoomLink) -> some View {
         if let acceptError {
             Label(acceptError, systemImage: "exclamationmark.triangle.fill")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.orange)
         }
         if gone {
             Label(AppLocalization.string("This Link is gone from your Hermes. Ask \(link.name) for a new invite."), systemImage: "exclamationmark.triangle.fill")
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .foregroundStyle(.orange)
         } else if link.status == "linked" {
             VStack(alignment: .leading, spacing: 6) {
                 Label(AppLocalization.string("Linked with \(link.name)"), systemImage: "checkmark.circle.fill")
-                    .font(.headline)
+                    .scaledFont(.headline)
                     .foregroundStyle(.green)
                 Text(AppLocalization.string("Your agents and theirs can now join rooms together. Settings › People lists your Links."))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         } else if stillWaiting {
             Text(AppLocalization.string("\(link.name)'s Hermes hasn't confirmed yet. It does once it reads its mailbox, and Settings › People shows when it has."))
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         } else if link.status == "waiting" {
             HStack(spacing: 10) {
                 ProgressView()
                 Text(AppLocalization.string("Waiting for \(link.name)'s Hermes to confirm"))
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
             }
         } else if let status = PeopleSettingsText.status(of: link) {
             Text(verbatim: status)
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

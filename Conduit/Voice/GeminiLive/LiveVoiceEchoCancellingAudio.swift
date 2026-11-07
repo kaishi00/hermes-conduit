@@ -183,15 +183,15 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         }
         guard let format = playerFormat else { return }
         remainder.append(pcm)
-        let alignedBytes = remainder.count - (remainder.count % 2)
-        let frames = AVAudioFrameCount(alignedBytes / 2)
+        let (samples, leftover) = VoicePCMEncoding.splitPCM16(remainder)
+        let frames = AVAudioFrameCount(samples.count / 2)
         guard frames > 0, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames),
               let channel = buffer.floatChannelData?[0] else { return }
         buffer.frameLength = frames
-        remainder.prefix(alignedBytes).withUnsafeBytes { raw in
+        samples.withUnsafeBytes { raw in
             AVSpeechPlaybackService.convertPCM16(raw, into: channel, frames: Int(frames))
         }
-        remainder.removeFirst(alignedBytes)
+        remainder = leftover
         schedule(buffer, on: player)
     }
 
@@ -539,6 +539,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         var isPlaying: Bool { audio.isPlaying }
         func play(_ pcm: Data, sampleRate: Double) throws { try audio.play(pcm, sampleRate: sampleRate) }
         func interrupt() { audio.interrupt() }
+        func endReply() { audio.discardRemainder() }
         func stop() { audio.stopOutput() }
         func setMuted(_ muted: Bool) { audio.isOutputMuted = muted }
     }
@@ -663,6 +664,8 @@ final class LiveVoiceAudioSelector {
 
     fileprivate func interrupt() { current?.output.interrupt() }
 
+    fileprivate func endReply() { current?.output.endReply() }
+
     fileprivate func setOutputMuted(_ muted: Bool) {
         outputMuted = muted
         current?.output.setMuted(muted)
@@ -698,6 +701,7 @@ final class LiveVoiceAudioSelector {
         var isPlaying: Bool { selector.isPlaying }
         func play(_ pcm: Data, sampleRate: Double) throws { try selector.play(pcm, sampleRate: sampleRate) }
         func interrupt() { selector.interrupt() }
+        func endReply() { selector.endReply() }
         func stop() { selector.stopOutput() }
         func setMuted(_ muted: Bool) { selector.setOutputMuted(muted) }
     }
