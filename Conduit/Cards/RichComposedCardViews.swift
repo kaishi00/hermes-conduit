@@ -426,6 +426,8 @@ struct RichCardButtonRow: View {
                 } catch {
                     RichCardTapMemory.shared.set(key, nil)
                     Haptics.error()
+                    UIAccessibility.post(notification: .announcement,
+                                         argument: AppLocalization.string("Failed to send: \(error.localizedDescription)"))
                 }
             }
         }

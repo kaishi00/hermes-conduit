@@ -54,6 +54,11 @@ extension AppStateVoiceCapabilityTests {
                         ["label": "Bad", "action": "open", "target": "javascript:alert(1)"]],
         ]], schema: schema).first)
         XCTAssertEqual(card.actions.map(\.label), ["Call"])
+        let reset = try XCTUnwrap(RichCard.cards(raw: [[
+            "type": "callout", "callout": ["text": "Hi"],
+            "actions": [["label": "/reset", "action": "tap", "id": "r"], ["label": "Go", "action": "tap", "id": "g"]],
+        ]], schema: schema).first)
+        XCTAssertEqual(reset.actions.map(\.label), ["Go"], "a tap sends its label, so it must be a plain message")
     }
 
     func testFieldsNeverAskForSecrets() {
@@ -79,6 +84,8 @@ extension AppStateVoiceCapabilityTests {
     func testATapsMessageNamesTheButtonAndTheCard() {
         XCTAssertEqual(RichCardActionContext.message(label: "Send", title: "Email to Mei"), "Send · Email to Mei")
         XCTAssertEqual(RichCardActionContext.message(label: "Do it", title: nil), "Do it")
+        XCTAssertEqual(RichCardActionContext.message(label: "Open", title: "@notes.md"), "Open",
+                       "a title that would make the message a file reference stays out")
         XCTAssertEqual(RichCardActionContext.tapPath(profile: "work"),
                        "/api/plugins/conduit_push/boards/taps?profile=work")
     }

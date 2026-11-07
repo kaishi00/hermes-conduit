@@ -89,9 +89,15 @@ struct RichField: Equatable, Hashable {
         placeholder = json["placeholder"] as? String
     }
 
-    /// What it starts filled in with: a toggle starts off.
+    /// What it starts filled in with: a toggle starts off, a date today
+    /// (what its picker shows).
     var startingValue: String {
-        value ?? (input == .toggle ? "off" : "")
+        if let value { return value }
+        switch input {
+        case .toggle: return "off"
+        case .date: return RichFieldDates.text(.now, timed: false)
+        case .text, .choice, .number: return ""
+        }
     }
 }
 
@@ -181,8 +187,10 @@ struct RichCardActionContext {
     }
 
     /// The message the user sends with a tap: what they tapped and on what.
+    /// The title goes only while the message stays a plain one (a title
+    /// naming a file would make it a reference).
     static func message(label: String, title: String?) -> String {
-        guard let title, !title.isEmpty else { return label }
+        guard let title, !title.isEmpty, RichCardSchema.isPlainMessage("\(label) · \(title)") else { return label }
         return "\(label) · \(title)"
     }
 }

@@ -54,6 +54,11 @@ extension AppState {
                 body["sessions"] = Array(sessionIDs.prefix(4))
                 let _: [String: Any] = try await bridge.requestJSON(
                     path: RichCardActionContext.tapPath(profile: profile), method: "POST", body: body)
+                // The message goes only to the chat the card was tapped in: after
+                // a switch the tap waits unheard and is forgotten on the host.
+                guard !Set(self.activeChatArtifactSessionIDs).isDisjoint(with: sessionIDs), self.activeProfile == profile else {
+                    throw DashboardTicketBridgeError.notReady
+                }
                 self.requestBoardFollowUp(.send, text: message)
             }
         } else {

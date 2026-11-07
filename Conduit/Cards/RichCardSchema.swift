@@ -546,7 +546,7 @@ struct RichCardSchema {
         guard let action = button["action"] as? String else { return nil }
         var button = button
         if action == "tap" {
-            guard let id = button["id"] as? String else { return nil }
+            guard let id = button["id"] as? String, isPlainMessage(button["label"] as? String ?? "") else { return nil }
             button["target"] = nil
             guard !controls.taps.contains(id) else { return nil }
             controls.taps.insert(id)
