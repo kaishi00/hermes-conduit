@@ -5309,6 +5309,19 @@ files, hunks and lines. The chat shows the files and totals; a tap opens a
 sheet with every file, line numbers, colored lines and the changed words.
 Presenting only: no Git operations.
 
+A composed card (issue 1946, plugin 0.138) is one Hermes builds itself for
+whatever it's doing: up to 8 sections, stacked or as a row, some folded
+under Show more, of text, metrics, badges, icons, pictures, progress bars,
+dividers, fields (text, choice, toggle, date, number) and buttons. Any card
+can carry up to three buttons at its foot: open a safe link, copy, send a
+message as the user, or tap. A tap reaches Hermes through `/boards/taps`
+with the card as the user saw it and the fields as they left them, then
+the user's message ("Send · Email to Mei") goes, and Hermes does it and
+shows the card again under its live name. Hermes can save a card's shape
+as a template (`save_templates`, `{{slot}}` placeholders, repeated
+sections) and show it again by name with only the data; the plugin fills
+it in, so Conduit never sees a template.
+
 **Siblings:** chats, project chats and Bot Chat (the tool row) · the saved-chat
 copy · the call screen (Gemini, Grok, Qwen and Local Live show_on_screen;
 Classic and GPT-Live through Hermes) · saved call transcripts · group rooms ·
@@ -5318,7 +5331,9 @@ Predictions' reply chips (the follow-ups are the same chip) · what models read:
 conduit_show's description and answers, the drawing rule, the
 `conduit_push:drawing-boards` skill (its Showing changes recipe), show_on_screen's description · the
 notifier README and CHANGELOG · for diffs, the full-diff sheet and the kept
-diffs route (`/boards/diffs`)
+diffs route (`/boards/diffs`) · for composed cards, the taps route
+(`/boards/taps`) and its note to the turn, the kept templates, the
+composer's draft (a send or tap waits for an empty one)
 
 **Code**
 - Schema, shared byte for byte: `notifier/cards/card-schema.json`, `notifier/cards/card-vectors.json`, copied to `Conduit/Cards/card-schema.json` and `ConduitTests/Fixtures/card-vectors.json` (`scripts/check-card-schema.py`); normalized the same way in `notifier/card_schema.py` (normalize_cards with notes, normalize_next, normalize_layout, the Markdown) and `Conduit/Cards/RichCardSchema.swift` (prepared, cell, followUps)
@@ -5326,10 +5341,11 @@ diffs route (`/boards/diffs`)
 - Checklist ticks on the host: `notifier/checklist_store.py`, `notifier/dashboard/api/boards.py` (`/boards/checklists`, capability "board-checklists"); in Conduit `Conduit/Cards/RichChecklistMemory.swift`, `Conduit/Services/AppState+Boards.swift`
 - Cards and views: `Conduit/Cards/RichCard.swift`, `Conduit/Cards/RichBoardCard.swift` (RichBoard, RichTable…; FinishedToolMemo keeps each finished row's board and live names, so a row drawn again isn't read again), `Conduit/Cards/RichBoardCardViews.swift` (RichBoardLayout, RichBoardFollowUps, RichBoardMarkdown), `Conduit/Cards/RichCardViews.swift`; the chat row in `Conduit/Views/ChatView.swift`, its follow-ups in `Conduit/Views/ChatRowState.swift` (followUpBoardRowID) and `Conduit/Services/AppState.swift` (requestBoardFollowUp)
 - Diff cards: reading a patch in `notifier/card_schema.py` (read_diff, parse_patch, read_patch_file, answer_diff, `_diff_markdown`, DIFF_FEATURE), the answer in `notifier/show_tool.py` (`_diffs_answered`, keep_diff), kept on the host by `KeptDiffs` in `notifier/room_boards.py` (`_keep_diff` in `notifier/__init__.py`), read from `notifier/dashboard/api/boards.py` (`/boards/diffs`, capability "diff-cards"); the Desktop half's Diff in `notifier/desktop/plugin.js`; in Conduit `Conduit/Cards/RichDiffCard.swift` (RichDiff, RichDiffLine.numbered and changedParts, RichDiffLoader), `Conduit/Cards/RichDiffCardViews.swift` (RichDiffCard, RichDiffSheet), normalizeDiff and the "line" format in `Conduit/Cards/RichCardSchema.swift`, installRichDiffReader in `Conduit/Services/AppState+Boards.swift`, the "diff-cards" feature in `Conduit/Services/PresentedScreens.swift`
-- Live models: `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (showOnScreenDeclaration, invalidCardsNote; RichCardSchema.liveToolParameter leaves diffs out)
+- Composed cards, buttons and taps: the rules in `notifier/card_schema.py` (`_composed_rules`, `_element_rules`, `_field_rules`, `_button_rules`, names_secret, OPEN_SCHEMES, without_actions, COMPOSED_FEATURE, `_composed_markdown`, `_actions_markdown`) and `Conduit/Cards/RichCardSchema.swift` (fieldRules, buttonRules, namesSecret, isOpenable, isPlainMessage); taps kept by `notifier/card_actions.py` (TapStore), posted to `notifier/dashboard/api/boards.py` (`/boards/taps`, capability "card-taps") and heard through `_tap_note` in `notifier/__init__.py`; templates in `notifier/card_templates.py` (TemplateStore, expand_template) and `save_templates` in `notifier/show_tool.py` (also OLD_ACTIONS_NOTE, ROOM_ACTIONS_NOTE, TEMPLATES_RULE); the Desktop half's Composed, Field and Buttons in `notifier/desktop/plugin.js`; in Conduit `Conduit/Cards/RichComposedCard.swift` (RichButton, RichField, RichElement, RichSection, RichCardActionContext, RichCardTapMemory), `Conduit/Cards/RichComposedCardViews.swift` (RichComposedCard, RichFieldView, RichCardButtonRow, RichDraftGate), richCardActionContext in `Conduit/Services/AppState+Boards.swift`, cardsCanSend in `Conduit/Views/ChatRowState.swift`, the environment in `Conduit/Views/ChatView.swift` and `Conduit/Views/TranscriptCellEnvironment.swift`, the "composed-cards" feature in `Conduit/Services/PresentedScreens.swift`
+- Live models: `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (showOnScreenDeclaration, invalidCardsNote; RichCardSchema.liveToolParameter leaves diffs out, and offers composed cards with open and copy buttons only and no fields)
 - Group rooms: `notifier/room_boards.py`, `_save_room_board` in `notifier/__init__.py`, `notifier/dashboard/api/boards.py` (`/boards/rooms`, capability "room-boards"); in Conduit `Conduit/Cards/RoomBoards.swift` (RoomBoard.placed, RoomBoardsView), `Conduit/Services/AppState+RoomBoards.swift`, the row in `Conduit/Views/GroupChatView.swift` (GroupMemberBubble) and `Conduit/Views/TranscriptModel.swift` (GroupRoomRow.event)
 - Hermes Desktop: the half `notifier/desktop/plugin.js` (the `::conduit-board{id="cb-…"}` directive, its cards, the "seen" handshake), `DesktopBoards` in `notifier/room_boards.py`, `_save_desktop_board` and `_desktop_half_live` in `notifier/__init__.py`, the Desktop branch and DESKTOP_BOARD_RULE in `notifier/show_tool.py`, `notifier/dashboard/api/boards.py` (`/boards/desktop`, `/boards/desktop/seen`, capability "desktop-boards"); Conduit hides the line in `Conduit/Views/Components/TranscriptDirectives.swift` (conduitBoardName, removingBoards), and `Conduit/Views/Components/MarkdownText.swift` keeps it hidden (directiveSegments, and parseDocument's empty-blocks fallback, so a reply that is only the line stays empty), as does a pin's excerpt in `Conduit/Models/PinnedReplies.swift`
-- Tests: `ConduitTests/RichCardTests.swift`, `ConduitTests/RichCardTests+Boards.swift`, `ConduitTests/RichCardTests+Diff.swift`, `notifier/tests/test_diff_cards.py`, `ConduitTests/MarkdownLargeDocumentTests+DesktopCard.swift` (testConduitBoard_…), `notifier/tests/test_cards.py`, `notifier/tests/test_show.py`, `notifier/tests/test_checklists.py`, `notifier/tests/test_room_boards.py`, `notifier/tests/test_desktop_boards.py`, `notifier/upstream/test_desktop_half.py` (Hermes' own Desktop lint over the half)
+- Tests: `ConduitTests/RichCardTests.swift`, `ConduitTests/RichCardTests+Boards.swift`, `ConduitTests/RichCardTests+Diff.swift`, `ConduitTests/RichCardTests+Composed.swift`, `notifier/tests/test_diff_cards.py`, `notifier/tests/test_composed_cards.py`, `ConduitTests/MarkdownLargeDocumentTests+DesktopCard.swift` (testConduitBoard_…), `notifier/tests/test_cards.py`, `notifier/tests/test_show.py`, `notifier/tests/test_checklists.py`, `notifier/tests/test_room_boards.py`, `notifier/tests/test_desktop_boards.py`, `notifier/upstream/test_desktop_half.py` (Hermes' own Desktop lint over the half)
 
 **Rulings**
 - One tool: conduit_show grows; there is no second board tool (Eric, 2026-11-03, #1713 with notifier #528).
@@ -5353,7 +5369,17 @@ diffs route (`/boards/diffs`)
 - Card text is untrusted host text: control characters become spaces, and the invisible characters that can make text read differently from what it holds (bidi embeddings, overrides and isolates U+202A to U+202E and U+2066 to U+2069, ZWSP, word joiner, BOM) are dropped from text and shown as U+FFFD in a line (a diff's or code's), so the review and Copy Changes show one was there; a board's Markdown fallback shows them as U+FFFD too, keeping its lines and tabs, in what it draws and copies (2026-11-06, issue 1867, #1872). ZWJ, ZWNJ, LRM, RLM and ALM stay (emoji and scripts need them). The plugin and Conduit clean it the same way, with a shared vector (2026-11-06, issue 1852, #1854 with notifier #576).
 - A Conduit without "diff-cards" gets no diff card and Hermes is told to give what it held in its reply, a group room's board too when its Conduits draw rooms' boards but not diffs; the Markdown fallback is the file list then the first 40 lines in a ```diff block. Live models aren't offered diffs; a diff Hermes shows during a call still reaches the call screen.
 
+- Hermes composes its own cards from building blocks, and saves the shapes it reuses as templates, rather than Conduit adding a fixed card per use (Eric, 2026-11-07, issue 1946, picked option D: blocks, buttons and fields on any card, plus templates now; PR_PLACEHOLDER with notifier #606).
+- Conduit owns the look: Hermes picks roles (heading, body, caption, mono) and tones (neutral, accent, good, warning, bad), never fonts or colors; a card keeps one primary button (PR_PLACEHOLDER).
+- A tap is the user's OK for exactly what the card showed, nothing more: Hermes is told so with the card's Markdown and the fields' values, once, at the turn the tap's message starts, and does it with its own tools. conduit_present stays the approval for calls and for anything outside a chat (Eric, 2026-11-07, PR_PLACEHOLDER with notifier #606).
+- Buttons work on any card in the chat, the latest board's or an earlier one's; a live name shows only its newest card, so a superseded card's buttons can't be tapped. A tapped button shows Sent until Hermes shows the card again or two minutes pass (Eric, 2026-11-07, PR_PLACEHOLDER).
+- A send or tap goes only while Hermes is free and connected and the composer is empty, as a follow-up does; open and copy work everywhere a card is drawn. `confirm` asks first (PR_PLACEHOLDER).
+- Open buttons open only https links and maps:, tel:, sms:, mailto:, calshow: and x-apple-reminderkit:, with no spaces or quotes; a send is a plain message; fields never ask for secrets (a label or id naming a password, passcode, PIN, OTP, CVV, token, key or secret drops the field with a problems line); at most 6 fields and 3 buttons a card (notifier #606).
+- A group room keeps only open and copy buttons and no fields (a tap would speak for the user to the whole room); live models are offered only open and copy buttons and no fields; a Conduit without "composed-cards" gets no composed card (its Markdown instead) and no buttons on other cards (notifier #606).
+- Templates are kept per profile on the host (50, 16 KB each), checked when saved, and filled in by the plugin, so the phone, rooms and Desktop draw the filled card (notifier #606).
+
 **Open gaps**
+- Composed cards: the call screen, the saved copy, a chat on its way and saved call transcripts draw them with open and copy only; live models can't fill a template; Desktop's half leaves icons out (it has no SF Symbols); a tapped card's field values aren't kept if the chat is reopened before Hermes answers.
 - Diffs: no side-by-side view, and the unchanged lines between hunks can't be expanded (only the patch is known); a kept diff can't be opened offline, nor once the host has pruned it.
 - A room's checklists can't be ticked, and a board in a room another host runs (Linked Rooms) goes as text.
 - Desktop's half draws maps, places, weather, media and contacts as their Markdown, not natively.

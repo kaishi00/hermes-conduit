@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "about": "Shared examples for card-schema.json: normalize_cards(input) must equal output, in the plugin (tests/test_cards.py) and in Conduit (RichCardSchemaTests). Regenerate only when the schema changes, and copy both files to Conduit together.",
   "cases": [
     {
@@ -3648,6 +3648,675 @@
         }
       ],
       "output": []
+    },
+    {
+      "name": "A composed card keeps its sections, fields and buttons",
+      "input": [
+        {
+          "type": "composed",
+          "title": "Email to Mei",
+          "live": "email-mei",
+          "source": {
+            "name": "Gmail"
+          },
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "badge",
+                  "text": "Not sent",
+                  "tone": "warning"
+                }
+              ]
+            },
+            {
+              "layout": "row",
+              "items": [
+                {
+                  "kind": "field",
+                  "id": "to",
+                  "input": "text",
+                  "label": "To",
+                  "value": "mei@example.com"
+                },
+                {
+                  "kind": "field",
+                  "id": "subject",
+                  "input": "text",
+                  "label": "Subject",
+                  "value": "Friday"
+                }
+              ]
+            },
+            {
+              "more": true,
+              "items": [
+                {
+                  "kind": "field",
+                  "id": "body",
+                  "input": "text",
+                  "lines": 6,
+                  "placeholder": "Message",
+                  "value": "Hi Mei, see you Friday."
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "kind": "text",
+                  "text": "Nothing is sent until you tap Send.",
+                  "role": "caption"
+                },
+                {
+                  "kind": "divider"
+                },
+                {
+                  "kind": "metric",
+                  "value": "3",
+                  "label": "Attachments",
+                  "change": "+1",
+                  "tone": "accent"
+                },
+                {
+                  "kind": "icon",
+                  "symbol": "paperclip"
+                },
+                {
+                  "kind": "progress",
+                  "progress": 0.5,
+                  "label": "Uploaded"
+                },
+                {
+                  "kind": "image",
+                  "url": "https://a.test/p.png",
+                  "label": "Preview"
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "label": "Send",
+              "action": "tap",
+              "id": "send",
+              "style": "primary",
+              "symbol": "paperplane.fill",
+              "confirm": "Send to Mei?"
+            },
+            {
+              "label": "Discard",
+              "action": "tap",
+              "id": "discard",
+              "style": "destructive"
+            },
+            {
+              "label": "Open Gmail",
+              "action": "open",
+              "target": "https://mail.google.com/"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "composed",
+          "title": "Email to Mei",
+          "live": "email-mei",
+          "source": {
+            "name": "Gmail"
+          },
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "badge",
+                  "text": "Not sent",
+                  "tone": "warning"
+                }
+              ]
+            },
+            {
+              "layout": "row",
+              "items": [
+                {
+                  "kind": "field",
+                  "value": "mei@example.com",
+                  "input": "text",
+                  "label": "To",
+                  "id": "to"
+                },
+                {
+                  "kind": "field",
+                  "value": "Friday",
+                  "input": "text",
+                  "label": "Subject",
+                  "id": "subject"
+                }
+              ]
+            },
+            {
+              "more": true,
+              "items": [
+                {
+                  "kind": "field",
+                  "value": "Hi Mei, see you Friday.",
+                  "input": "text",
+                  "lines": 6,
+                  "placeholder": "Message",
+                  "id": "body"
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "kind": "text",
+                  "text": "Nothing is sent until you tap Send.",
+                  "role": "caption"
+                },
+                {
+                  "kind": "divider"
+                },
+                {
+                  "kind": "metric",
+                  "tone": "accent",
+                  "value": "3",
+                  "change": "+1",
+                  "label": "Attachments"
+                },
+                {
+                  "kind": "icon",
+                  "symbol": "paperclip"
+                },
+                {
+                  "kind": "progress",
+                  "progress": 0.5,
+                  "label": "Uploaded"
+                },
+                {
+                  "kind": "image",
+                  "url": "https://a.test/p.png",
+                  "label": "Preview"
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "label": "Send",
+              "action": "tap",
+              "id": "send",
+              "symbol": "paperplane.fill",
+              "style": "primary",
+              "confirm": "Send to Mei?"
+            },
+            {
+              "label": "Discard",
+              "action": "tap",
+              "id": "discard",
+              "style": "destructive"
+            },
+            {
+              "label": "Open Gmail",
+              "action": "open",
+              "target": "https://mail.google.com/"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "An element keeps only its kind's fields and needs its own",
+      "input": [
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "text",
+                  "text": "Hi",
+                  "url": "https://a.test/",
+                  "progress": 0.3,
+                  "role": "heading"
+                },
+                {
+                  "kind": "metric",
+                  "label": "No value"
+                },
+                {
+                  "kind": "divider",
+                  "text": "x",
+                  "tone": "bad"
+                },
+                {
+                  "kind": "image",
+                  "url": "http://a.test/p.png"
+                },
+                {
+                  "kind": "badge",
+                  "text": "New",
+                  "tone": "good",
+                  "symbol": "star"
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "kind": "icon"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "text",
+                  "text": "Hi",
+                  "role": "heading"
+                },
+                {
+                  "kind": "divider"
+                },
+                {
+                  "kind": "badge",
+                  "text": "New",
+                  "tone": "good"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Fields drop secrets, repeats, extras for other inputs and values they can't hold",
+      "input": [
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "id": "pw",
+                  "input": "text",
+                  "label": "Your Password"
+                },
+                {
+                  "kind": "field",
+                  "id": "api_key",
+                  "input": "text"
+                },
+                {
+                  "kind": "field",
+                  "id": "pin",
+                  "input": "number"
+                },
+                {
+                  "kind": "field",
+                  "id": "spin",
+                  "input": "text",
+                  "label": "Spin class",
+                  "lines": 2,
+                  "options": [
+                    "a",
+                    "b"
+                  ],
+                  "min": 1
+                },
+                {
+                  "kind": "field",
+                  "id": "spin",
+                  "input": "text"
+                },
+                {
+                  "kind": "field",
+                  "id": "when",
+                  "input": "choice",
+                  "options": [
+                    "Now",
+                    "Tonight"
+                  ],
+                  "value": "TONIGHT"
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "id": "remind",
+                  "input": "toggle",
+                  "value": "ON",
+                  "placeholder": "x"
+                },
+                {
+                  "kind": "field",
+                  "id": "day",
+                  "input": "date",
+                  "value": "Friday"
+                },
+                {
+                  "kind": "field",
+                  "id": "at",
+                  "input": "date",
+                  "value": "2026-11-08T09:30"
+                },
+                {
+                  "kind": "field",
+                  "id": "guests",
+                  "input": "number",
+                  "min": 4,
+                  "max": 2,
+                  "value": "3"
+                },
+                {
+                  "kind": "field",
+                  "id": "seats",
+                  "input": "number",
+                  "min": 1,
+                  "max": 8,
+                  "value": "12"
+                },
+                {
+                  "kind": "field",
+                  "id": "extra",
+                  "input": "text"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "input": "text",
+                  "lines": 2,
+                  "label": "Spin class",
+                  "id": "spin"
+                },
+                {
+                  "kind": "field",
+                  "value": "Tonight",
+                  "input": "choice",
+                  "options": [
+                    "Now",
+                    "Tonight"
+                  ],
+                  "id": "when"
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "value": "on",
+                  "input": "toggle",
+                  "id": "remind"
+                },
+                {
+                  "kind": "field",
+                  "input": "date",
+                  "id": "day"
+                },
+                {
+                  "kind": "field",
+                  "value": "2026-11-08T09:30",
+                  "input": "date",
+                  "id": "at"
+                },
+                {
+                  "kind": "field",
+                  "input": "number",
+                  "max": 2,
+                  "id": "guests"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Buttons need their target or id, open only safe links and send only plain messages",
+      "input": [
+        {
+          "type": "callout",
+          "callout": {
+            "text": "Your vet visit is due."
+          },
+          "actions": [
+            {
+              "label": "Book",
+              "action": "tap",
+              "id": "book",
+              "target": "x",
+              "style": "primary"
+            },
+            {
+              "label": "Call",
+              "action": "open",
+              "target": "tel:+14155550100",
+              "id": "call",
+              "style": "primary"
+            },
+            {
+              "label": "Remind",
+              "action": "send",
+              "target": "Remind me tomorrow"
+            }
+          ]
+        },
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "button",
+                  "label": "Do it",
+                  "action": "tap"
+                },
+                {
+                  "kind": "button",
+                  "label": "Bad",
+                  "action": "open",
+                  "target": "javascript:alert(1)"
+                },
+                {
+                  "kind": "button",
+                  "label": "Spaces",
+                  "action": "open",
+                  "target": "https://a.test/a b"
+                },
+                {
+                  "kind": "button",
+                  "label": "Map",
+                  "action": "open",
+                  "target": "MAPS:?q=Vet"
+                },
+                {
+                  "kind": "button",
+                  "label": "Reset",
+                  "action": "send",
+                  "target": "/reset"
+                },
+                {
+                  "kind": "button",
+                  "label": "Copy",
+                  "action": "copy"
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "kind": "button",
+                  "label": "Done",
+                  "action": "tap",
+                  "id": "done"
+                },
+                {
+                  "kind": "text",
+                  "text": "Then"
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "label": "Done again",
+              "action": "tap",
+              "id": "done"
+            },
+            {
+              "label": "Copy",
+              "action": "copy",
+              "target": "VET-2231"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "callout",
+          "callout": {
+            "text": "Your vet visit is due."
+          },
+          "actions": [
+            {
+              "label": "Book",
+              "action": "tap",
+              "id": "book",
+              "style": "primary"
+            },
+            {
+              "label": "Call",
+              "action": "open",
+              "target": "tel:+14155550100",
+              "style": "plain"
+            },
+            {
+              "label": "Remind",
+              "action": "send",
+              "target": "Remind me tomorrow"
+            }
+          ]
+        },
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "button",
+                  "label": "Map",
+                  "action": "open",
+                  "target": "MAPS:?q=Vet"
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "kind": "button",
+                  "label": "Done",
+                  "action": "tap",
+                  "id": "done"
+                },
+                {
+                  "kind": "text",
+                  "text": "Then"
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "label": "Copy",
+              "action": "copy",
+              "target": "VET-2231"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A composed card with no element left is dropped",
+      "input": [
+        {
+          "type": "composed",
+          "title": "Empty",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "image",
+                  "url": "http://a.test/p.png"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "id": "pick",
+                  "input": "choice"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "text",
+                  "text": "Kept"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "text",
+                  "text": "Kept"
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ]
 }
