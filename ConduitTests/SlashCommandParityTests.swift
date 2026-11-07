@@ -139,6 +139,23 @@ extension ComposerDraftStoreTests {
         )
     }
 
+    func testMCPReloadThatConnectedNothingNamesTheServers() {
+        let refusal = RpcError(
+            code: 4001,
+            message: "mcp_servers_unavailable",
+            reason: "mcp_servers_unavailable",
+            detail: "did not connect: airtable, notion"
+        )
+        XCTAssertEqual(
+            AppState.mcpReloadFailureNote(refusal),
+            "Nothing reloaded: these MCP servers didn't connect: airtable, notion"
+        )
+        XCTAssertEqual(
+            AppState.mcpReloadFailureNote(RpcError(code: 4009, message: "session busy")),
+            "⚠️ Command failed: session busy"
+        )
+    }
+
     func testRefusedCommandSaysSoWithHermesHint() {
         let refusal = RpcError(
             code: 4001,

@@ -599,6 +599,88 @@
         }
       }
     },
+    "Nothing reloaded: these MCP servers didn't connect: %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nichts neu geladen: Diese MCP-Server haben sich nicht verbunden: %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se recargó nada: estos servidores MCP no se conectaron: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rien n’a été rechargé : ces serveurs MCP ne se sont pas connectés : %@"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tidak ada yang dimuat ulang: server MCP ini tidak tersambung: %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nulla è stato ricaricato: questi server MCP non si sono connessi: %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再読み込みされませんでした。次の MCP サーバーに接続できませんでした: %@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다시 불러온 항목이 없습니다. 다음 MCP 서버가 연결되지 않았습니다: %@"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nic nie wczytano ponownie: te serwery MCP się nie połączyły: %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada foi recarregado: estes servidores MCP não se conectaram: %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ничего не перезагружено: эти MCP-серверы не подключились: %@"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiçbir şey yeniden yüklenmedi: şu MCP sunucuları bağlanmadı: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未重新加载任何内容：以下 MCP 服务器未能连接：%@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未重新載入任何內容：以下 MCP 伺服器未能連線：%@"
+          }
+        }
+      }
+    },
     "Open the group chat": {
       "localizations": {
         "de": {

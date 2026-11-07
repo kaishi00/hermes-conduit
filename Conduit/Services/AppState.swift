@@ -31065,7 +31065,7 @@ final class AppState: ObservableObject {
         } catch where HermesClient.isMissingRPCMethod(error) {
             return false
         } catch {
-            note = Self.slashFailureNote(command: "reload-mcp", error: error)
+            note = Self.mcpReloadFailureNote(error)
         }
         guard isCurrentComposerSubmission(context) else { return true }
         appendSlashOutput(note, context: context)
@@ -31080,6 +31080,20 @@ final class AppState: ObservableObject {
         guard let message = outcome.message else { return goAhead }
         // Hermes' dashboard already says which words go ahead.
         return message.contains("/reload-mcp now") ? message : message + "\n" + goAhead
+    }
+
+    /// A reload in which nothing took effect because servers didn't connect
+    /// (`mcp_servers_unavailable`, "did not connect: a, b") names them.
+    static func mcpReloadFailureNote(_ error: Error) -> String {
+        if let refusal = error as? RpcError,
+           refusal.reason == "mcp_servers_unavailable" || refusal.message == "mcp_servers_unavailable" {
+            let detail = refusal.detail?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let names = detail.replacingOccurrences(of: "^did not connect:\\s*", with: "", options: .regularExpression)
+            if !names.isEmpty {
+                return AppLocalization.string("Nothing reloaded: these MCP servers didn't connect: \(names)")
+            }
+        }
+        return slashFailureNote(command: "reload-mcp", error: error)
     }
 
     /// `/reload-skills` through `skills.reload`, then the suggestions read
