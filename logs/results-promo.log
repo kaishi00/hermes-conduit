@@ -1,0 +1,738 @@
+Command line invocation:
+    /Applications/Xcode_26.6.app/Contents/Developer/usr/bin/xcodebuild test-without-building -project Conduit.xcodeproj -scheme Conduit -destination id=9E8558CA-F3AF-4CCC-92CD-B7E993A49F8A -derivedDataPath dd "-only-testing:ConduitScreenshots/AppStoreScreenshotTests/testRecordPromo" -resultBundlePath results/promo.xcresult
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  WebRTC: https://github.com/stasel/WebRTC @ 153.0.0
+
+2026-11-07 03:13:36.986 xcodebuild[39437:111659] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+Writing result bundle at path:
+	/Users/runner/work/hermes-conduit/hermes-conduit/results/promo.xcresult
+
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:iOS Simulator, arch:arm64, id:9E8558CA-F3AF-4CCC-92CD-B7E993A49F8A, OS:26.5, name:iPhone 17 Pro Max }
+{ platform:iOS Simulator, arch:x86_64, id:9E8558CA-F3AF-4CCC-92CD-B7E993A49F8A, OS:26.5, name:iPhone 17 Pro Max }
+2026-11-07 03:14:00.579239+0000 ConduitScreenshots-Runner[40112:113563] [Default] Running tests...
+objc[40112]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x106164310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x106990398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-11-07 03:14:09.627.
+Test Suite 'ConduitScreenshots.xctest' started at 2026-11-07 03:14:09.630.
+Test Suite 'AppStoreScreenshotTests' started at 2026-11-07 03:14:09.630.
+Test Case '-[ConduitScreenshots.AppStoreScreenshotTests testRecordPromo]' started.
+    t =     0.01s Start Test at 2026-11-07 03:14:09.636
+    t =     0.11s Set Up
+    t =     0.12s     Open com.milim.relay
+    t =     0.12s         Launch com.milim.relay
+2026-11-07 03:14:10.766 xcodebuild[39437:111659] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-11-07 03:14:10.767 xcodebuild[39437:111659] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     6.71s             Setting up automation session
+    t =    13.12s             Wait for com.milim.relay to idle
+    t =    21.89s Waiting 15.0s for "login.server-url" TextField to exist
+    t =    22.96s     Checking `Expect predicate `existsNoRetry == 1` for object "login.server-url" TextField`
+    t =    22.96s         Checking existence of `"login.server-url" TextField`
+    t =    23.23s Tap "login.server-url" TextField
+    t =    23.23s     Wait for com.milim.relay to idle
+    t =    23.24s     Find the "login.server-url" TextField
+    t =    23.46s     Check for interrupting elements affecting "login.server-url" TextField
+    t =    23.54s     Synthesize event
+    t =    23.99s     Wait for com.milim.relay to idle
+    t =    26.09s Type 'http://hermes.tail...' into "login.server-url" TextField
+    t =    26.14s     Wait for com.milim.relay to idle
+    t =    27.17s     Find the "login.server-url" TextField
+    t =    27.49s     Check for interrupting elements affecting "login.server-url" TextField
+    t =    28.01s     Synthesize event
+    t =    29.20s     Wait for com.milim.relay to idle
+    t =    29.71s Added attachment named 'debug-login-address'
+    t =    29.72s Type '
+' into "login.server-url" TextField
+    t =    29.72s     Wait for com.milim.relay to idle
+    t =    29.74s     Find the "login.server-url" TextField
+    t =    30.27s     Check for interrupting elements affecting "login.server-url" TextField
+    t =    30.52s     Synthesize event
+    t =    30.87s     Wait for com.milim.relay to idle
+    t =    31.17s Waiting 30.0s for "login.username" TextField to exist
+    t =    32.17s     Checking `Expect predicate `existsNoRetry == 1` for object "login.username" TextField`
+    t =    32.17s         Checking existence of `"login.username" TextField`
+    t =    34.23s         Capturing element debug description
+    t =    35.21s     Checking `Expect predicate `existsNoRetry == 1` for object "login.username" TextField`
+    t =    35.21s         Checking existence of `"login.username" TextField`
+    t =    36.55s         Capturing element debug description
+    t =    37.19s     Checking `Expect predicate `existsNoRetry == 1` for object "login.username" TextField`
+    t =    37.21s         Checking existence of `"login.username" TextField`
+    t =    37.45s         Capturing element debug description
+    t =    38.19s     Checking `Expect predicate `existsNoRetry == 1` for object "login.username" TextField`
+    t =    38.19s         Checking existence of `"login.username" TextField`
+    t =    38.27s         Capturing element debug description
+    t =    39.19s     Checking `Expect predicate `existsNoRetry == 1` for object "login.username" TextField`
+    t =    39.20s         Checking existence of `"login.username" TextField`
+    t =    41.00s Added attachment named 'debug-login-password-step'
+    t =    41.00s Tap "login.username" TextField
+    t =    41.00s     Wait for com.milim.relay to idle
+    t =    41.01s     Find the "login.username" TextField
+    t =    41.11s     Check for interrupting elements affecting "login.username" TextField
+    t =    41.18s     Synthesize event
+    t =    41.50s     Wait for com.milim.relay to idle
+    t =    43.37s Find the "login.username" TextField
+    t =    44.19s Type 'demo' into "login.username" TextField
+    t =    44.19s     Wait for com.milim.relay to idle
+    t =    44.22s     Find the "login.username" TextField
+    t =    44.31s     Check for interrupting elements affecting "login.username" TextField
+    t =    44.40s     Synthesize event
+    t =    44.69s     Wait for com.milim.relay to idle
+    t =    44.95s Tap "login.password" SecureTextField
+    t =    44.95s     Wait for com.milim.relay to idle
+    t =    44.95s     Find the "login.password" SecureTextField
+    t =    45.08s     Check for interrupting elements affecting "login.password" SecureTextField
+    t =    45.17s     Synthesize event
+    t =    45.55s     Wait for com.milim.relay to idle
+    t =    45.86s Type '<redacted>' into "login.password" SecureTextField
+    t =    45.86s     Wait for com.milim.relay to idle
+    t =    45.88s     Find the "login.password" SecureTextField
+    t =    46.04s     Check for interrupting elements affecting "login.password" SecureTextField
+    t =    46.28s     Synthesize event
+    t =    46.84s     Wait for com.milim.relay to idle
+    t =    47.28s Added attachment named 'debug-after-sign-in'
+    t =    47.29s Waiting 2.0s for "Allow" Button to exist
+    t =    48.29s     Checking `Expect predicate `existsNoRetry == 1` for object "Allow" Button`
+    t =    48.30s         Checking existence of `"Allow" Button`
+    t =    49.66s             Requesting snapshot of accessibility hierarchy for app with pid 14666
+    t =    49.68s         Capturing element debug description
+    t =    49.70s     Checking existence of `"Allow" Button`
+    t =    49.70s         Requesting snapshot of accessibility hierarchy for app with pid 14666
+    t =    51.23s         Find: Descendants matching type Button
+    t =    51.53s Collecting debug information to assist test failure triage
+    t =    51.53s     Requesting snapshot of accessibility hierarchy for app with pid 14666
+    t =    52.25s Waiting 2.0s for "Don’t Allow" Button to exist
+    t =    53.27s     Checking `Expect predicate `existsNoRetry == 1` for object "Don’t Allow" Button`
+    t =    53.27s         Checking existence of `"Don’t Allow" Button`
+    t =    53.28s             Requesting snapshot of accessibility hierarchy for app with pid 14666
+    t =    53.38s             Find: Descendants matching type Button
+    t =    53.39s         Capturing element debug description
+    t =    54.28s     Checking `Expect predicate `existsNoRetry == 1` for object "Don’t Allow" Button`
+    t =    54.31s         Checking existence of `"Don’t Allow" Button`
+    t =    54.33s             Requesting snapshot of accessibility hierarchy for app with pid 14666
+    t =    54.64s         Capturing element debug description
+    t =    54.65s     Checking existence of `"Don’t Allow" Button`
+    t =    54.68s         Requesting snapshot of accessibility hierarchy for app with pid 14666
+    t =    54.82s         Find: Descendants matching type Button
+    t =    54.87s Collecting debug information to assist test failure triage
+    t =    54.87s     Requesting snapshot of accessibility hierarchy for app with pid 14666
+    t =    55.39s Waiting 2.0s for "Not Now" Button to exist
+    t =    56.40s     Checking `Expect predicate `existsNoRetry == 1` for object "Not Now" Button`
+    t =    56.40s         Checking existence of `"Not Now" Button`
+    t =    56.40s             Requesting snapshot of accessibility hierarchy for app with pid 14666
+    t =    56.47s             Find: Descendants matching type Button
+    t =    56.48s         Capturing element debug description
+    t =    57.40s     Checking `Expect predicate `existsNoRetry == 1` for object "Not Now" Button`
+    t =    57.40s         Checking existence of `"Not Now" Button`
+    t =    57.41s             Requesting snapshot of accessibility hierarchy for app with pid 14666
+    t =    57.47s             Find: Descendants matching type Button
+    t =    57.48s         Capturing element debug description
+    t =    57.48s     Checking existence of `"Not Now" Button`
+    t =    57.49s         Requesting snapshot of accessibility hierarchy for app with pid 14666
+    t =    57.53s         Find: Descendants matching type Button
+    t =    57.53s Collecting debug information to assist test failure triage
+    t =    57.53s     Requesting snapshot of accessibility hierarchy for app with pid 14666
+    t =    57.68s Waiting 2.0s for "OK" Button to exist
+    t =    58.73s     Checking `Expect predicate `existsNoRetry == 1` for object "OK" Button`
+    t =    58.73s         Checking existence of `"OK" Button`
+    t =    58.73s             Requesting snapshot of accessibility hierarchy for app with pid 14666
+    t =    58.79s             Find: Descendants matching type Button
+    t =    58.80s         Capturing element debug description
+    t =    59.75s     Checking `Expect predicate `existsNoRetry == 1` for object "OK" Button`
+    t =    59.75s         Checking existence of `"OK" Button`
+    t =    59.75s             Requesting snapshot of accessibility hierarchy for app with pid 14666
+    t =    59.82s             Find: Descendants matching type Button
+    t =    59.82s         Capturing element debug description
+    t =    59.82s     Checking existence of `"OK" Button`
+    t =    59.82s         Requesting snapshot of accessibility hierarchy for app with pid 14666
+    t =    59.87s         Find: Descendants matching type Button
+    t =    59.88s Collecting debug information to assist test failure triage
+    t =    59.88s     Requesting snapshot of accessibility hierarchy for app with pid 14666
+    t =    59.94s Waiting 10.0s for "finish-setup.not-now" Button to exist
+    t =    60.99s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =    60.99s         Checking existence of `"finish-setup.not-now" Button`
+    t =    61.30s         Capturing element debug description
+    t =    61.99s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =    62.00s         Checking existence of `"finish-setup.not-now" Button`
+    t =    62.33s         Capturing element debug description
+    t =    62.95s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =    62.95s         Checking existence of `"finish-setup.not-now" Button`
+    t =    63.02s         Capturing element debug description
+    t =    63.96s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =    63.96s         Checking existence of `"finish-setup.not-now" Button`
+    t =    64.58s         Capturing element debug description
+    t =    64.99s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =    64.99s         Checking existence of `"finish-setup.not-now" Button`
+    t =    65.28s         Capturing element debug description
+    t =    65.99s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =    65.99s         Checking existence of `"finish-setup.not-now" Button`
+    t =    68.01s         Capturing element debug description
+    t =    68.98s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =    68.98s         Checking existence of `"finish-setup.not-now" Button`
+    t =    69.41s         Capturing element debug description
+    t =    69.95s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =    69.95s         Checking existence of `"finish-setup.not-now" Button`
+    t =    70.06s         Capturing element debug description
+    t =    70.06s     Checking existence of `"finish-setup.not-now" Button`
+    t =    70.32s Collecting debug information to assist test failure triage
+    t =    70.32s     Requesting snapshot of accessibility hierarchy for app with pid 40727
+    t =    72.45s Waiting 30.0s for "Conduit Chan" Button to exist
+    t =    73.49s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    73.49s         Checking existence of `"Conduit Chan" Button`
+    t =    74.37s         Capturing element debug description
+    t =    74.47s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    74.47s         Checking existence of `"Conduit Chan" Button`
+    t =    75.54s         Capturing element debug description
+    t =    76.47s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    76.47s         Checking existence of `"Conduit Chan" Button`
+    t =    77.52s         Capturing element debug description
+    t =    78.48s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    78.49s         Checking existence of `"Conduit Chan" Button`
+    t =    79.28s         Capturing element debug description
+    t =    79.49s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    79.49s         Checking existence of `"Conduit Chan" Button`
+    t =    80.23s         Capturing element debug description
+    t =    80.45s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    80.45s         Checking existence of `"Conduit Chan" Button`
+    t =    81.18s         Capturing element debug description
+    t =    81.49s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    81.49s         Checking existence of `"Conduit Chan" Button`
+    t =    81.98s         Capturing element debug description
+    t =    82.51s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    82.51s         Checking existence of `"Conduit Chan" Button`
+    t =    82.89s         Capturing element debug description
+    t =    83.52s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    83.52s         Checking existence of `"Conduit Chan" Button`
+    t =    83.85s         Capturing element debug description
+    t =    84.48s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    84.48s         Checking existence of `"Conduit Chan" Button`
+    t =    85.11s         Capturing element debug description
+    t =    85.51s     Checking `Expect predicate `existsNoRetry == 1` for object "Conduit Chan" Button`
+    t =    85.51s         Checking existence of `"Conduit Chan" Button`
+PROMO_MARK home 1794021346.806504
+    t =    97.44s Added attachment named 'promo-01-bots-home'
+    t =    99.45s Tap "Conduit Chan" Button
+    t =    99.45s     Wait for com.milim.relay to idle
+    t =    99.45s     Find the "Conduit Chan" Button
+    t =   100.12s     Check for interrupting elements affecting "Conduit Chan" Button
+    t =   100.62s     Synthesize event
+    t =   101.15s     Wait for com.milim.relay to idle
+    t =   110.76s Waiting 30.0s for "conversation.menu" Any to exist
+    t =   111.82s     Checking `Expect predicate `existsNoRetry == 1` for object "conversation.menu" Any`
+    t =   111.82s         Checking existence of `"conversation.menu" Any`
+    t =   112.12s Checking existence of `TextView (First Match)`
+PROMO_MARK botchat 1794021364.4365811
+    t =   114.81s Tap TextView (First Match)
+    t =   114.81s     Wait for com.milim.relay to idle
+    t =   114.82s     Find the TextView (First Match)
+    t =   115.37s     Check for interrupting elements affecting TextView
+    t =   115.79s     Synthesize event
+    t =   116.13s     Wait for com.milim.relay to idle
+    t =   117.79s Waiting 3.0s for Keyboard (First Match) to exist
+    t =   118.81s     Checking `Expect predicate `existsNoRetry == 1` for object Keyboard (First Match)`
+    t =   118.81s         Checking existence of `Keyboard (First Match)`
+    t =   120.15s Type 'Plan our Kyoto wee...' into TextView at {{67.0, 861.7}, {234.0, 44.0}}
+    t =   120.15s     Wait for com.milim.relay to idle
+    t =   120.16s     Find the TextView at {{67.0, 861.7}, {234.0, 44.0}}
+    t =   121.56s     Check for interrupting elements affecting TextView
+    t =   122.24s     Synthesize event
+    t =   124.13s     Wait for com.milim.relay to idle
+    t =   125.19s Tap "Send message" Button
+    t =   125.19s     Wait for com.milim.relay to idle
+    t =   125.20s     Find the "Send message" Button
+    t =   125.69s     Check for interrupting elements affecting "arrow.up" Button
+    t =   125.97s     Synthesize event
+    t =   126.29s     Wait for com.milim.relay to idle
+PROMO_MARK sent 1794021377.209168
+    t =   128.64s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   128.65s     Find the "botWork.titleLine" Button
+    t =   129.47s     Capturing element debug description
+    t =   129.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   129.67s     Find the "botWork.titleLine" Button
+    t =   130.50s     Capturing element debug description
+    t =   130.60s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   130.60s     Find the "botWork.titleLine" Button
+    t =   131.38s     Capturing element debug description
+    t =   131.58s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   131.59s     Find the "botWork.titleLine" Button
+    t =   132.52s     Capturing element debug description
+    t =   132.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   132.62s     Find the "botWork.titleLine" Button
+    t =   133.32s     Capturing element debug description
+    t =   133.64s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   133.64s     Find the "botWork.titleLine" Button
+    t =   134.46s     Capturing element debug description
+    t =   134.66s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   134.66s     Find the "botWork.titleLine" Button
+    t =   135.22s     Capturing element debug description
+    t =   135.64s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   135.64s     Find the "botWork.titleLine" Button
+    t =   136.17s     Capturing element debug description
+    t =   136.58s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   136.59s     Find the "botWork.titleLine" Button
+    t =   137.08s     Capturing element debug description
+    t =   137.60s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   137.60s     Find the "botWork.titleLine" Button
+    t =   138.08s     Capturing element debug description
+    t =   138.60s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   138.60s     Find the "botWork.titleLine" Button
+    t =   139.00s     Capturing element debug description
+    t =   139.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   139.62s     Find the "botWork.titleLine" Button
+    t =   139.98s     Capturing element debug description
+    t =   140.60s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   140.60s     Find the "botWork.titleLine" Button
+    t =   141.40s     Capturing element debug description
+    t =   141.60s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   141.60s     Find the "botWork.titleLine" Button
+    t =   142.12s     Capturing element debug description
+    t =   142.64s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   142.64s     Find the "botWork.titleLine" Button
+    t =   143.08s     Capturing element debug description
+    t =   143.60s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   143.60s     Find the "botWork.titleLine" Button
+    t =   143.98s     Capturing element debug description
+    t =   144.58s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   144.59s     Find the "botWork.titleLine" Button
+    t =   145.01s     Capturing element debug description
+    t =   145.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   145.62s     Find the "botWork.titleLine" Button
+    t =   146.08s     Capturing element debug description
+    t =   146.59s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   146.59s     Find the "botWork.titleLine" Button
+    t =   147.06s     Capturing element debug description
+    t =   147.58s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   147.58s     Find the "botWork.titleLine" Button
+    t =   148.06s     Capturing element debug description
+    t =   148.59s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   148.59s     Find the "botWork.titleLine" Button
+    t =   149.06s     Capturing element debug description
+    t =   149.59s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   149.59s     Find the "botWork.titleLine" Button
+    t =   150.52s     Capturing element debug description
+    t =   150.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   150.62s     Find the "botWork.titleLine" Button
+    t =   151.27s     Capturing element debug description
+    t =   151.58s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   151.59s     Find the "botWork.titleLine" Button
+    t =   152.53s     Capturing element debug description
+    t =   152.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   152.62s     Find the "botWork.titleLine" Button
+    t =   153.78s     Capturing element debug description
+    t =   154.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   154.63s     Find the "botWork.titleLine" Button
+    t =   155.95s     Capturing element debug description
+    t =   156.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   156.67s     Find the "botWork.titleLine" Button
+    t =   157.00s     Capturing element debug description
+    t =   157.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   157.62s     Find the "botWork.titleLine" Button
+    t =   158.01s     Capturing element debug description
+    t =   158.65s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   158.65s     Find the "botWork.titleLine" Button
+    t =   159.57s     Capturing element debug description
+    t =   159.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   159.67s     Find the "botWork.titleLine" Button
+    t =   160.24s     Capturing element debug description
+    t =   160.65s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   160.65s     Find the "botWork.titleLine" Button
+    t =   161.06s     Capturing element debug description
+    t =   161.59s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   161.59s     Find the "botWork.titleLine" Button
+    t =   162.25s     Capturing element debug description
+    t =   162.66s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   162.66s     Find the "botWork.titleLine" Button
+    t =   163.10s     Capturing element debug description
+    t =   163.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   163.62s     Find the "botWork.titleLine" Button
+    t =   164.35s     Capturing element debug description
+    t =   164.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   164.67s     Find the "botWork.titleLine" Button
+    t =   165.53s     Capturing element debug description
+    t =   165.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   165.62s     Find the "botWork.titleLine" Button
+    t =   166.66s     Capturing element debug description
+    t =   167.60s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   167.60s     Find the "botWork.titleLine" Button
+    t =   168.46s     Capturing element debug description
+    t =   168.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   168.67s     Find the "botWork.titleLine" Button
+    t =   169.64s     Capturing element debug description
+    t =   170.59s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   170.59s     Find the "botWork.titleLine" Button
+    t =   171.33s     Capturing element debug description
+    t =   171.64s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   171.64s     Find the "botWork.titleLine" Button
+    t =   172.60s     Capturing element debug description
+    t =   173.65s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   173.65s     Find the "botWork.titleLine" Button
+    t =   174.10s     Capturing element debug description
+    t =   174.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   174.62s     Find the "botWork.titleLine" Button
+    t =   175.11s     Capturing element debug description
+    t =   175.63s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   175.63s     Find the "botWork.titleLine" Button
+    t =   176.03s     Capturing element debug description
+    t =   176.65s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   176.65s     Find the "botWork.titleLine" Button
+    t =   177.01s     Capturing element debug description
+    t =   177.64s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   177.64s     Find the "botWork.titleLine" Button
+    t =   178.02s     Capturing element debug description
+    t =   178.65s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   178.65s     Find the "botWork.titleLine" Button
+    t =   179.06s     Capturing element debug description
+    t =   179.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   179.68s     Find the "botWork.titleLine" Button
+    t =   179.99s     Capturing element debug description
+    t =   180.60s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   180.60s     Find the "botWork.titleLine" Button
+    t =   181.06s     Capturing element debug description
+    t =   181.59s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   181.59s     Find the "botWork.titleLine" Button
+    t =   181.86s     Capturing element debug description
+    t =   182.60s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   182.60s     Find the "botWork.titleLine" Button
+    t =   182.83s     Capturing element debug description
+    t =   183.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   183.67s     Find the "botWork.titleLine" Button
+    t =   183.95s     Capturing element debug description
+    t =   184.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   184.67s     Find the "botWork.titleLine" Button
+    t =   184.93s     Capturing element debug description
+    t =   185.65s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   185.65s     Find the "botWork.titleLine" Button
+    t =   185.92s     Capturing element debug description
+    t =   186.64s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   186.64s     Find the "botWork.titleLine" Button
+    t =   186.99s     Capturing element debug description
+    t =   187.61s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   187.61s     Find the "botWork.titleLine" Button
+    t =   187.85s     Capturing element debug description
+    t =   188.59s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   188.59s     Find the "botWork.titleLine" Button
+    t =   188.83s     Capturing element debug description
+    t =   189.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   189.67s     Find the "botWork.titleLine" Button
+    t =   189.95s     Capturing element debug description
+    t =   190.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   190.67s     Find the "botWork.titleLine" Button
+    t =   190.90s     Capturing element debug description
+    t =   191.63s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   191.63s     Find the "botWork.titleLine" Button
+    t =   191.90s     Capturing element debug description
+    t =   192.64s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   192.64s     Find the "botWork.titleLine" Button
+    t =   192.93s     Capturing element debug description
+    t =   193.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   193.67s     Find the "botWork.titleLine" Button
+    t =   193.90s     Capturing element debug description
+    t =   194.63s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   194.63s     Find the "botWork.titleLine" Button
+    t =   194.92s     Capturing element debug description
+    t =   195.66s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   195.66s     Find the "botWork.titleLine" Button
+    t =   195.88s     Capturing element debug description
+    t =   196.59s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   196.59s     Find the "botWork.titleLine" Button
+    t =   196.83s     Capturing element debug description
+    t =   197.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   197.67s     Find the "botWork.titleLine" Button
+    t =   197.97s     Capturing element debug description
+    t =   198.60s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   198.60s     Find the "botWork.titleLine" Button
+    t =   198.88s     Capturing element debug description
+    t =   199.60s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   199.60s     Find the "botWork.titleLine" Button
+    t =   199.87s     Capturing element debug description
+    t =   200.59s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   200.59s     Find the "botWork.titleLine" Button
+    t =   201.20s     Capturing element debug description
+    t =   201.61s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   201.61s     Find the "botWork.titleLine" Button
+    t =   202.10s     Capturing element debug description
+    t =   202.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   202.62s     Find the "botWork.titleLine" Button
+    t =   202.99s     Capturing element debug description
+    t =   203.64s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   203.64s     Find the "botWork.titleLine" Button
+    t =   203.92s     Capturing element debug description
+    t =   204.65s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   204.65s     Find the "botWork.titleLine" Button
+    t =   204.92s     Capturing element debug description
+    t =   205.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   205.67s     Find the "botWork.titleLine" Button
+    t =   205.92s     Capturing element debug description
+    t =   206.65s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   206.65s     Find the "botWork.titleLine" Button
+    t =   206.91s     Capturing element debug description
+    t =   207.63s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   207.63s     Find the "botWork.titleLine" Button
+    t =   207.95s     Capturing element debug description
+    t =   208.59s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   208.59s     Find the "botWork.titleLine" Button
+    t =   208.85s     Capturing element debug description
+    t =   209.59s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   209.59s     Find the "botWork.titleLine" Button
+    t =   209.82s     Capturing element debug description
+    t =   210.65s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   210.65s     Find the "botWork.titleLine" Button
+    t =   210.92s     Capturing element debug description
+    t =   211.65s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   211.65s     Find the "botWork.titleLine" Button
+    t =   212.00s     Capturing element debug description
+    t =   212.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   212.62s     Find the "botWork.titleLine" Button
+    t =   212.94s     Capturing element debug description
+    t =   213.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   213.67s     Find the "botWork.titleLine" Button
+    t =   214.00s     Capturing element debug description
+    t =   214.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   214.62s     Find the "botWork.titleLine" Button
+    t =   214.93s     Capturing element debug description
+    t =   215.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   215.67s     Find the "botWork.titleLine" Button
+    t =   215.97s     Capturing element debug description
+    t =   216.61s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   216.61s     Find the "botWork.titleLine" Button
+    t =   216.90s     Capturing element debug description
+    t =   217.64s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   217.64s     Find the "botWork.titleLine" Button
+    t =   217.88s     Capturing element debug description
+    t =   218.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   218.62s     Find the "botWork.titleLine" Button
+    t =   218.92s     Capturing element debug description
+    t =   219.64s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   219.64s     Find the "botWork.titleLine" Button
+    t =   219.91s     Capturing element debug description
+    t =   220.65s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   220.65s     Find the "botWork.titleLine" Button
+    t =   220.91s     Capturing element debug description
+    t =   221.64s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   221.64s     Find the "botWork.titleLine" Button
+    t =   221.87s     Capturing element debug description
+    t =   222.58s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   222.58s     Find the "botWork.titleLine" Button
+    t =   222.80s     Capturing element debug description
+    t =   223.63s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   223.63s     Find the "botWork.titleLine" Button
+    t =   223.87s     Capturing element debug description
+    t =   224.61s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   224.61s     Find the "botWork.titleLine" Button
+    t =   224.85s     Capturing element debug description
+    t =   225.59s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   225.59s     Find the "botWork.titleLine" Button
+    t =   225.85s     Capturing element debug description
+    t =   226.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   226.67s     Find the "botWork.titleLine" Button
+    t =   226.93s     Capturing element debug description
+    t =   227.65s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   227.65s     Find the "botWork.titleLine" Button
+    t =   227.96s     Capturing element debug description
+    t =   228.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   228.67s     Find the "botWork.titleLine" Button
+    t =   228.93s     Capturing element debug description
+    t =   229.65s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   229.65s     Find the "botWork.titleLine" Button
+    t =   229.95s     Capturing element debug description
+    t =   230.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   230.67s     Find the "botWork.titleLine" Button
+    t =   230.97s     Capturing element debug description
+    t =   231.61s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   231.61s     Find the "botWork.titleLine" Button
+    t =   231.85s     Capturing element debug description
+    t =   232.59s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   232.59s     Find the "botWork.titleLine" Button
+    t =   232.95s     Capturing element debug description
+    t =   233.67s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   233.67s     Find the "botWork.titleLine" Button
+    t =   233.93s     Capturing element debug description
+    t =   234.65s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   234.65s     Find the "botWork.titleLine" Button
+    t =   234.90s     Capturing element debug description
+    t =   235.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   235.62s     Find the "botWork.titleLine" Button
+    t =   235.89s     Capturing element debug description
+    t =   236.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   236.62s     Find the "botWork.titleLine" Button
+    t =   236.90s     Capturing element debug description
+    t =   237.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   237.62s     Find the "botWork.titleLine" Button
+    t =   238.51s     Capturing element debug description
+    t =   238.61s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   238.61s     Find the "botWork.titleLine" Button
+    t =   238.99s     Capturing element debug description
+    t =   239.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   239.62s     Find the "botWork.titleLine" Button
+    t =   240.09s     Capturing element debug description
+    t =   240.61s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   240.61s     Find the "botWork.titleLine" Button
+    t =   241.37s     Capturing element debug description
+    t =   241.59s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   241.59s     Find the "botWork.titleLine" Button
+    t =   242.29s     Capturing element debug description
+    t =   242.59s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   242.59s     Find the "botWork.titleLine" Button
+    t =   243.23s     Capturing element debug description
+    t =   243.64s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   243.64s     Find the "botWork.titleLine" Button
+    t =   244.27s     Capturing element debug description
+    t =   244.58s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   244.58s     Find the "botWork.titleLine" Button
+    t =   245.36s     Capturing element debug description
+    t =   245.58s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   245.58s     Find the "botWork.titleLine" Button
+    t =   246.31s     Capturing element debug description
+    t =   246.62s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   246.62s     Find the "botWork.titleLine" Button
+    t =   247.35s     Capturing element debug description
+    t =   247.59s Checking `Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button`
+    t =   247.59s     Find the "botWork.titleLine" Button
+    t =   247.90s     Capturing element debug description
+/Users/runner/work/hermes-conduit/hermes-conduit/ConduitScreenshots/AppStoreScreenshotTests.swift:225: error: -[ConduitScreenshots.AppStoreScreenshotTests testRecordPromo] : Asynchronous wait failed: Exceeded timeout of 120 seconds, with unfulfilled expectations: "Expect predicate `label CONTAINS[c] "needs you"` for object "botWork.titleLine" Button".
+    t =   248.43s Added attachment named 'debug-no-needs-you'
+    t =   248.43s Waiting 30.0s for Any (First Match) to exist
+    t =   249.47s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   249.48s         Checking existence of `Any (First Match)`
+    t =   249.83s         Capturing element debug description
+    t =   250.45s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   250.45s         Checking existence of `Any (First Match)`
+    t =   250.75s         Capturing element debug description
+    t =   251.47s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   251.47s         Checking existence of `Any (First Match)`
+    t =   251.83s         Capturing element debug description
+    t =   252.44s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   252.44s         Checking existence of `Any (First Match)`
+    t =   252.71s         Capturing element debug description
+    t =   253.45s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   253.45s         Checking existence of `Any (First Match)`
+    t =   253.74s         Capturing element debug description
+    t =   254.47s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   254.47s         Checking existence of `Any (First Match)`
+    t =   254.76s         Capturing element debug description
+    t =   255.49s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   255.49s         Checking existence of `Any (First Match)`
+    t =   255.79s         Capturing element debug description
+    t =   256.51s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   256.51s         Checking existence of `Any (First Match)`
+    t =   256.79s         Capturing element debug description
+    t =   257.49s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   257.49s         Checking existence of `Any (First Match)`
+    t =   257.74s         Capturing element debug description
+    t =   258.47s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   258.47s         Checking existence of `Any (First Match)`
+    t =   258.78s         Capturing element debug description
+    t =   259.49s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   259.49s         Checking existence of `Any (First Match)`
+    t =   259.79s         Capturing element debug description
+    t =   260.49s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   260.49s         Checking existence of `Any (First Match)`
+    t =   260.80s         Capturing element debug description
+    t =   261.51s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   261.51s         Checking existence of `Any (First Match)`
+    t =   261.84s         Capturing element debug description
+    t =   262.47s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   262.47s         Checking existence of `Any (First Match)`
+    t =   262.80s         Capturing element debug description
+    t =   263.49s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   263.49s         Checking existence of `Any (First Match)`
+    t =   263.77s         Capturing element debug description
+    t =   264.48s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   264.49s         Checking existence of `Any (First Match)`
+    t =   264.75s         Capturing element debug description
+    t =   265.47s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   265.47s         Checking existence of `Any (First Match)`
+    t =   265.74s         Capturing element debug description
+    t =   266.47s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   266.47s         Checking existence of `Any (First Match)`
+    t =   266.74s         Capturing element debug description
+    t =   267.46s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   267.46s         Checking existence of `Any (First Match)`
+    t =   267.75s         Capturing element debug description
+    t =   268.49s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   268.49s         Checking existence of `Any (First Match)`
+    t =   268.76s         Capturing element debug description
+    t =   269.47s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   269.47s         Checking existence of `Any (First Match)`
+    t =   269.74s         Capturing element debug description
+    t =   270.44s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   270.44s         Checking existence of `Any (First Match)`
+    t =   270.70s         Capturing element debug description
+    t =   271.44s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   271.44s         Checking existence of `Any (First Match)`
+    t =   271.72s         Capturing element debug description
+    t =   272.44s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   272.44s         Checking existence of `Any (First Match)`
+    t =   272.86s         Capturing element debug description
+    t =   273.48s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   273.48s         Checking existence of `Any (First Match)`
+    t =   273.80s         Capturing element debug description
+    t =   274.52s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   274.52s         Checking existence of `Any (First Match)`
+    t =   274.85s         Capturing element debug description
+    t =   275.47s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   275.47s         Checking existence of `Any (First Match)`
+    t =   275.85s         Capturing element debug description
+    t =   276.47s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   276.47s         Checking existence of `Any (First Match)`
+    t =   276.76s         Capturing element debug description
+    t =   277.49s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   277.49s         Checking existence of `Any (First Match)`
+    t =   277.75s         Capturing element debug description
+    t =   278.44s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   278.44s         Checking existence of `Any (First Match)`
+    t =   278.74s         Capturing element debug description
+    t =   278.74s     Checking existence of `Any (First Match)`
+    t =   279.03s Collecting debug information to assist test failure triage
+    t =   279.03s     Requesting snapshot of accessibility hierarchy for app with pid 40727
+PROMO_MARK needs-you 1794021531.4714231
+    t =   282.04s Added attachment named 'promo-02-needs-you'
+    t =   282.04s Find the "Approve" Button
+    t =   283.39s     Find the "Approve" Button (retry 1)
+    t =   284.79s     Find the "Approve" Button (retry 2)
+    t =   285.08s Tap "botWork.titleLine" Button
+    t =   285.08s     Wait for com.milim.relay to idle
+    t =   285.09s     Find the "botWork.titleLine" Button
+    t =   286.39s         Find the "botWork.titleLine" Button (retry 1)
+    t =   288.21s         Find the "botWork.titleLine" Button (retry 2)
+    t =   288.59s Requesting snapshot of accessibility hierarchy for app with pid 40727
+/Users/runner/work/hermes-conduit/hermes-conduit/ConduitScreenshots/AppStoreScreenshotTests.swift:238: error: -[ConduitScreenshots.AppStoreScreenshotTests testRecordPromo] : Failed to tap "botWork.titleLine" Button: No matches found for first query match sequence: `Descendants matching type Button` -> `Elements matching predicate '"botWork.titleLine" IN identifiers'`, given input App element pid: 40727
+Possibly caused by runtime issues:
+Automation type mismatch: computed Button from legacy attributes vs PopUpButton from modern attribute. Input attributes and values: {
+    "XC_kAXXCAttributeAutomationType" = 14;
+    "XC_kAXXCAttributeElementBaseType" = UIResponder;
+    "XC_kAXXCAttributeElementType" = "SwiftUI.AccessibilityNode";
+    "XC_kAXXCAttributeTraits" = 1108101562369;
+}
+Automation type mismatch: computed Button from legacy attributes vs PopUpButton from modern attribute. Input attributes and values: {
+    "XC_kAXXCAttributeAutomationType" = 14;
+    "XC_kAXXCAttributeElementBaseType" = UIResponder;
+    "XC_kAXXCAttributeElementType" = "SwiftUI.AccessibilityNode";
+    "XC_kAXXCAttributeTraits" = 1108101562625;
+}
+See test report attachments for more detail.
+    t =   288.72s Tear Down
+Test Case '-[ConduitScreenshots.AppStoreScreenshotTests testRecordPromo]' failed (289.435 seconds).
+Test Suite 'AppStoreScreenshotTests' failed at 2026-11-07 03:18:59.070.
+	 Executed 1 test, with 2 failures (0 unexpected) in 289.435 (289.439) seconds
+Test Suite 'ConduitScreenshots.xctest' failed at 2026-11-07 03:18:59.070.
+	 Executed 1 test, with 2 failures (0 unexpected) in 289.435 (289.440) seconds
+Test Suite 'Selected tests' failed at 2026-11-07 03:18:59.070.
+	 Executed 1 test, with 2 failures (0 unexpected) in 289.435 (289.443) seconds
+2026-11-07 03:19:25.561 xcodebuild[39437:111659] [MT] IDETestOperationsObserverDebug: 346.075 elapsed -- Testing started completed.
+2026-11-07 03:19:25.562 xcodebuild[39437:111659] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-11-07 03:19:25.562 xcodebuild[39437:111659] [MT] IDETestOperationsObserverDebug: 346.075 sec, +346.075 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/runner/work/hermes-conduit/hermes-conduit/results/promo.xcresult
+
+Failing tests:
+	AppStoreScreenshotTests.testRecordPromo()
+	AppStoreScreenshotTests.testRecordPromo()
+
+** TEST EXECUTE FAILED **
+
+Testing started
