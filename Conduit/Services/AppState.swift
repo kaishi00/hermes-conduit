@@ -2318,6 +2318,12 @@ final class AppState: ObservableObject {
     /// to (AppState+GatewayRestart.swift).
     @Published var gatewayRestart = GatewayRestartSlot()
     var gatewayRestartTask: Task<Void, Never>?
+    /// Restart now is under way (restartGatewayNow): one at a time, however
+    /// many places show the wait.
+    @Published var gatewayRestartingNow = false
+    /// Why the last Restart now failed, kept here so a wait view opened
+    /// after it finished still shows it.
+    @Published var gatewayRestartNowFailure: GatewayRestartNow.Failure?
     /// The Conduit plugin update's progress and outcome, and the dashboard
     /// it belongs to (AppState+NotifierPluginUpdate.swift).
     @Published var notifierPluginUpdate = NotifierPluginUpdateSlot()
@@ -15661,6 +15667,8 @@ final class AppState: ObservableObject {
         dashboardSwitchGeneration &+= 1
         // Its waits belong to the signed-out user (issue 1705).
         needsYou.reset(dashboardID: nil)
+        // So does a Restart now that failed.
+        gatewayRestartNowFailure = nil
         // The next sign-in to it asks for Face ID again.
         if let activeDashboardID { faceIDUnlockedDashboards[activeDashboardID] = nil }
         // Its turns' Lock Screen progress has nothing left to follow.

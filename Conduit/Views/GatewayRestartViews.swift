@@ -40,7 +40,12 @@ struct GatewayRestartStatusView: View {
     var body: some View {
         Group {
             if let row = Self.row(for: appState.activeGatewayRestart) {
-                rowView(row)
+                VStack(alignment: .leading, spacing: 4) {
+                    rowView(row)
+                    if case .restarting(.draining, _) = appState.activeGatewayRestart {
+                        GatewayWaitView().padding(.leading, 28)
+                    }
+                }
             }
         }
         // VoiceOver hears each step and the outcome as they land, once per
@@ -161,5 +166,75 @@ struct GatewayRestartStatusView: View {
 
     private static func list(_ names: [String]) -> String {
         names.formatted(.list(type: .and, width: .narrow).locale(AppLocalization.formattingLocale))
+    }
+}
+
+/// Under "Letting running tasks finish…" (Restart Gateway and the plugin
+/// update alike): what the restart waits on, when it goes ahead anyway, and
+/// Restart now. Reads the plugin every few seconds while it shows; with an
+/// older plugin it shows nothing.
+struct GatewayWaitView: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @EnvironmentObject private var appState: AppState
+    @State private var work: GatewayWork?
+
+    static let pollInterval: Duration = .seconds(5)
+
+    var body: some View {
+        Group {
+            if appState.namesGatewayWork {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let work {
+                        TimelineView(.periodic(from: .now, by: 30)) { context in
+                            VStack(alignment: .leading, spacing: 3) {
+                                ForEach(Array(work.lines(now: context.date).enumerated()), id: \.offset) { _, line in
+                                    Text(verbatim: line)
+                                        .scaledFont(.footnote)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                if let restartsBy = work.restartsBy {
+                                    Text(verbatim: AppLocalization.string("Restarts on its own by \(restartsBy.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(AppLocalization.formattingLocale)))"))
+                                        .scaledFont(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
+                    }
+                    if let failure = appState.gatewayRestartNowFailure,
+                       failure.shows(on: appState.activeDashboardID) {
+                        Text(verbatim: failure.message)
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Button {
+                        Task { await appState.restartGatewayNow() }
+                    } label: {
+                        Text(verbatim: appState.gatewayRestartingNow ? AppLocalization.string("Stopping running tasks…") : AppLocalization.string("Restart Now"))
+                            .scaledFont(.subheadline.weight(.semibold))
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(appState.gatewayRestartingNow)
+                    .accessibilityHint(Text(AppLocalization.string("Stops the running tasks and restarts the gateway now.")))
+                    .accessibilityIdentifier("gatewayRestart.restartNow")
+                }
+                // VoiceOver hears a failed Restart now: nothing else on the
+                // screen changes when it fails.
+                .onChange(of: appState.gatewayRestartNowFailure) { _, failure in
+                    guard let failure, failure.shows(on: appState.activeDashboardID) else { return }
+                    AccessibilityNotification.Announcement(failure.message).post()
+                }
+                .task {
+                    while !Task.isCancelled {
+                        if let latest = await appState.gatewayWork() { work = latest }
+                        try? await Task.sleep(for: Self.pollInterval)
+                    }
+                }
+            }
+        }
     }
 }
