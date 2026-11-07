@@ -511,14 +511,25 @@ final class ChatTextSelectionTests: XCTestCase {
     /// closed the chat (issue 1948). Only a selection that still shows, in
     /// the key window, counts.
     @MainActor
-    func testASelectionInTheChatHoldsTheSwipeHome() {
+    func testASelectionInTheChatHoldsTheSwipeHome() throws {
         let selectionCoordinator = MarkdownSelectionCoordinator()
         let segment = MarkdownSelectionSegmentDescriptor(id: "reply", order: 0, separatorBefore: "")
         selectionCoordinator.replaceSegments([segment], revision: "swipe-hold-v1")
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 240, height: 180))
+        // Only a window in the host app's scene becomes key.
+        let scene = try XCTUnwrap(
+            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first,
+            "the test host has a window scene"
+        )
+        let appKeyWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 240, height: 180)
         window.addSubview(UIView(frame: window.bounds))
         window.makeKeyAndVisible()
-        defer { window.isHidden = true }
+        defer {
+            window.isHidden = true
+            appKeyWindow?.makeKey()
+        }
+        XCTAssertTrue(window.isKeyWindow)
         let host = mountedSelectionHost(
             text: "Drag my handle",
             segment: segment,
@@ -542,7 +553,8 @@ final class ChatTextSelectionTests: XCTestCase {
         XCTAssertTrue(ChatTextSelection.isShowing)
 
         // In a window that isn't the one being touched, it doesn't count.
-        let otherWindow = UIWindow(frame: window.bounds)
+        let otherWindow = UIWindow(windowScene: scene)
+        otherWindow.frame = window.bounds
         otherWindow.makeKeyAndVisible()
         XCTAssertFalse(ChatTextSelection.isShowing, "another window's selection")
         otherWindow.isHidden = true
@@ -565,7 +577,9 @@ final class ChatTextSelectionTests: XCTestCase {
         let plain = SelectableTextView.makeTextView()
         plain.attributedText = NSAttributedString(string: "Plain words")
         plain.selectedRange = NSRange(location: 0, length: 5)
-        ChatTextSelection.note(plain)
+        // Noted the way the chat notes it, through the text views' delegate.
+        let bridge = SelectableTextView(text: "Plain words").makeCoordinator()
+        bridge.textViewDidChangeSelection(plain)
         XCTAssertFalse(ChatTextSelection.showsSelection(plain), "not in a window")
         window.subviews.first?.addSubview(plain)
         XCTAssertFalse(ChatTextSelection.showsSelection(plain), "not first responder")
