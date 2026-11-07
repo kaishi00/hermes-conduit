@@ -2108,6 +2108,94 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(harness.appState.messages.last?.content, "Background processes stopped: 2")
     }
 
+    func testReloadMCPAsksFirstThenGoesAheadWithNow() async throws {
+        let recorder = SlashCallRecorder()
+        var calls: [(String, Bool, Bool)] = []
+        var operations = ChatResumeLifecycleOperations()
+        operations.executeSlash = { _, _, command in
+            recorder.recordSlashExec(command: command)
+            return .object([:])
+        }
+        operations.reloadMCP = { _, sessionID, confirm, always in
+            calls.append((sessionID, confirm, always))
+            return confirm
+                ? MCPReloadOutcome(needsConfirmation: false, message: nil)
+                : MCPReloadOutcome(needsConfirmation: true, message: "Reloading MCP refreshes every chat of this profile.")
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/reload-mcp")
+        XCTAssertEqual(
+            harness.appState.messages.last?.content,
+            "Reloading MCP refreshes every chat of this profile.\nSend /reload-mcp now to reload."
+        )
+        _ = await harness.appState.submitComposer(text: "/reload_mcp now")
+        XCTAssertEqual(harness.appState.messages.last?.content, "MCP servers reloaded.")
+        _ = await harness.appState.submitComposer(text: "/reload-mcp always")
+
+        XCTAssertEqual(recorder.slashExecCount, 0)
+        XCTAssertEqual(calls.map(\.0), ["composer-origin", "composer-origin", "composer-origin"])
+        XCTAssertEqual(calls.map(\.1), [false, true, true])
+        XCTAssertEqual(calls.map(\.2), [false, false, true])
+    }
+
+    func testReloadSkillsSaysWhatChangedAndRereadsTheCatalog() async throws {
+        let recorder = SlashCallRecorder()
+        var reloaded: [String] = []
+        var catalogReads = 0
+        var operations = ChatResumeLifecycleOperations()
+        operations.executeSlash = { _, _, command in
+            recorder.recordSlashExec(command: command)
+            return .object([:])
+        }
+        operations.reloadSkills = { _, sessionID in
+            reloaded.append(sessionID)
+            return "Reloading skills...\nAdded skills:\n  - trip-planner\n12 skill(s) available"
+        }
+        operations.loadSlashCommands = { catalogReads += 1 }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+        let readsBefore = catalogReads
+
+        _ = await harness.appState.submitComposer(text: "/reload-skills")
+
+        XCTAssertEqual(recorder.slashExecCount, 0)
+        XCTAssertEqual(reloaded, ["composer-origin"])
+        XCTAssertEqual(
+            harness.appState.messages.last?.content,
+            "Reloading skills...\nAdded skills:\n  - trip-planner\n12 skill(s) available"
+        )
+        XCTAssertEqual(catalogReads, readsBefore + 1, "New skill commands reach the suggestions")
+    }
+
+    func testReloadCommandsFallBackToSlashExecWithoutTheVerbs() async throws {
+        let recorder = SlashCallRecorder()
+        var operations = ChatResumeLifecycleOperations()
+        operations.executeSlash = { _, _, command in
+            recorder.recordSlashExec(command: command)
+            return .object([:])
+        }
+        operations.reloadMCP = { _, _, _, _ in throw RpcError(code: -32601, message: "Method not found") }
+        operations.reloadSkills = { _, _ in throw RpcError(code: -32601, message: "Method not found") }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/reload-mcp")
+        _ = await harness.appState.submitComposer(text: "/reload-skills")
+
+        XCTAssertEqual(recorder.slashExecCount, 2)
+    }
+
     func testRefusedCommandShowsHermesHintNotAFailure() async throws {
         var operations = ChatResumeLifecycleOperations()
         operations.executeSlash = { _, _, _ in

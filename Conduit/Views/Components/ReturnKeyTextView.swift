@@ -270,7 +270,38 @@ class ReturnKeyTextView: UITextView {
     }()
 
     override var keyCommands: [UIKeyCommand]? {
-        (super.keyCommands ?? []) + [Self.returnKeyCommand]
+        (super.keyCommands ?? []) + [Self.returnKeyCommand] + Self.suggestionKeyCommands
+    }
+
+    /// The suggestion list over the field, while one shows: the arrows,
+    /// Tab and Escape are its, and Return picks a highlighted row
+    /// (ComposerSuggestionKeys). Nil gives the keys back to the text.
+    var suggestionKeys: ComposerSuggestionKeys?
+
+    private static let suggestionKeyCommands: [UIKeyCommand] = {
+        let keys: [(input: String, action: Selector)] = [
+            (UIKeyCommand.inputUpArrow, #selector(suggestionUpPressed)),
+            (UIKeyCommand.inputDownArrow, #selector(suggestionDownPressed)),
+            ("\t", #selector(suggestionTabPressed)),
+            (UIKeyCommand.inputEscape, #selector(suggestionEscapePressed))
+        ]
+        return keys.map { key in
+            let command = UIKeyCommand(input: key.input, modifierFlags: [], action: key.action)
+            command.wantsPriorityOverSystemBehavior = true
+            return command
+        }
+    }()
+
+    @objc func suggestionUpPressed() { suggestionKeys?.handle(.up) }
+    @objc func suggestionDownPressed() { suggestionKeys?.handle(.down) }
+    @objc func suggestionTabPressed() {
+        suggestionKeys?.handle(suggestionKeys?.hasHighlight == true ? .choose : .chooseFirst)
+    }
+    @objc func suggestionEscapePressed() { suggestionKeys?.handle(.dismiss) }
+
+    /// Whether Return picks a suggestion row instead of sending.
+    var returnPicksSuggestion: Bool {
+        suggestionKeys?.hasHighlight == true && markedTextRange == nil
     }
 
     /// A paste too long for the field (`PastedText.becomesAttachment`),
@@ -316,7 +347,17 @@ class ReturnKeyTextView: UITextView {
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(suggestionUpPressed) || action == #selector(suggestionDownPressed)
+            || action == #selector(suggestionTabPressed) || action == #selector(suggestionEscapePressed) {
+            // Declining keeps the key's own job: the cursor moves, Tab
+            // types, Escape does what it did. An IME's candidates come first.
+            return suggestionKeys != nil && markedTextRange == nil
+                && (sender as? UIKeyCommand)?.modifierFlags.isEmpty != false
+        }
         if action == #selector(returnKeyCommandPressed) {
+            if returnPicksSuggestion, (sender as? UIKeyCommand)?.modifierFlags.contains(.shift) != true {
+                return true
+            }
             // Declining hands Return back to the text system: a newline,
             // or the IME confirming its candidate. A Shift the key command
             // carries counts even when no Shift press reached this view.
@@ -347,6 +388,10 @@ class ReturnKeyTextView: UITextView {
     @objc func returnKeyCommandPressed() {
         returnTakenByKeyCommand = true
         DispatchQueue.main.async { [weak self] in self?.returnTakenByKeyCommand = false }
+        if returnPicksSuggestion {
+            suggestionKeys?.handle(.choose)
+            return
+        }
         // The composer turned it down after all: the press is still a
         // newline, as it would have been without the shortcut.
         if !(onSubmitFromReturn?() ?? false) {
@@ -359,6 +404,9 @@ class ReturnKeyTextView: UITextView {
         var forwarding = presses
         if let returnPress = presses.first(where: { Self.isReturnKeyPress($0) }) {
             if returnTakenByKeyCommand {
+                forwarding.remove(returnPress)
+            } else if returnPicksSuggestion, !hardwareShiftHeld {
+                suggestionKeys?.handle(.choose)
                 forwarding.remove(returnPress)
             } else {
                 let shiftPressed = hardwareShiftHeld
@@ -509,6 +557,8 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
     var onSubmitFromReturn: () -> Bool
     /// A long paste, offered as an attachment (`ReturnKeyTextView`).
     var onLongTextPaste: ((String) -> Bool)? = nil
+    /// The suggestion list over the field, while one shows.
+    var suggestionKeys: ComposerSuggestionKeys? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -541,6 +591,7 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         uiView.onSubmitFromReturn = nil
         uiView.canSubmitFromReturn = false
         uiView.onLongTextPaste = nil
+        uiView.suggestionKeys = nil
     }
 
     private func configure(_ view: ReturnKeyTextView, context: Context) {
@@ -560,6 +611,7 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         view.canSubmitFromReturn = canSubmitFromReturn
         view.onSubmitFromReturn = onSubmitFromReturn
         view.onLongTextPaste = onLongTextPaste
+        view.suggestionKeys = suggestionKeys
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: ReturnKeyTextView, context: Context) -> CGSize? {

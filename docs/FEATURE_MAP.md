@@ -2773,10 +2773,13 @@ only) · the two default footnotes, Mac on and iPhone/iPad off (not needed,
 each states the default for its device) · the hardware-keyboards caption
 (not needed, shown only off a Mac and already says the on-screen Return key
 is unchanged) · a running dictation (done, #1315: Return stops it; the
-Keyboard caption is unchanged, as it describes the option)
+Keyboard caption is unchanged, as it describes the option) · a suggestion
+list over the field, slash commands and mentions in chats, mentions in rooms
+(done, #1938: the arrows, Tab, Escape and a highlighted Return are the
+list's)
 
 **Code**
-- Policy: `Conduit/Views/Components/ComposerReturnKey.swift` (ComposerReturnKey)
+- Policy: `Conduit/Views/Components/ComposerReturnKey.swift` (ComposerReturnKey), `Conduit/Views/Components/ComposerSuggestionKeys.swift` (a suggestion list's keys)
 - Key handling: `Conduit/Views/Components/ReturnKeyTextView.swift` (ReturnKeyTextView: the Return key command and pressesBegan; ReturnKeyTextEditor, the field rooms and the full editor use)
 - Chat composer: `Conduit/Views/Components/ComposerPasteTextView.swift` (ImagePasteTextView), `Conduit/Views/Components/ComposerBar.swift` (submitFromReturnKey, the full editor's)
 - Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`
@@ -2795,13 +2798,58 @@ Keyboard caption is unchanged, as it describes the option)
 - Every composer takes the option, the full editor included: Return there
   sends like its Send button, and Shift-Return starts a new line (2026-10-27,
   #1394).
+- While a suggestion list shows, Up and Down move a highlight (wrapping),
+  Return or Tab picks the highlighted row, Tab with none the first, and
+  Escape closes the list. Return with nothing highlighted keeps its own job,
+  so `/status` and Return still sends; Shift and an IME's composition keep
+  the keys the text's (2026-11-07, #1938, issue 1576).
 
 **Open gaps**
 - Not yet checked on a Mac or an iPad with a keyboard: the Return key
   command sending, Shift-Return and the IME's Return still reaching the
-  text, in chats, rooms and the full editor.
+  text, in chats, rooms and the full editor; nor the suggestion lists' keys.
 
-**Checked:** 2026-10-30, #1527 (a Return send keeps the field's focus on a Mac or with a hardware keyboard, see Composer focus after a send; ImagePasteTextView takes focus once in the window); 2026-10-29, #1515 (the same fields take a long paste as an attachment, `onLongTextPaste`; Return unchanged); 2026-10-28, #1460 (inline prediction off on a Mac).
+**Checked:** 2026-11-07, #1938 (a suggestion list's keys: arrows, Tab, Escape, a highlighted Return; ComposerSuggestionKeys); 2026-10-30, #1527 (a Return send keeps the field's focus on a Mac or with a hardware keyboard, see Composer focus after a send; ImagePasteTextView takes focus once in the window); 2026-10-29, #1515 (the same fields take a long paste as an attachment, `onLongTextPaste`; Return unchanged); 2026-10-28, #1460 (inline prediction off on a Mac).
+
+## Slash commands
+
+The composer's `/` suggestions and what a sent slash command runs. The list
+is Hermes' live `commands.catalog` for the chat (its profile and folder),
+without the commands Hermes' `slash.exec` refuses for app chats unless
+Conduit runs them itself; picking a row only inserts it.
+
+**Siblings:** commands Hermes runs (`slash.exec`) · skill, plugin and quick
+commands (`command.dispatch` when `slash.exec` turns one down) · commands
+Conduit runs itself (new, branch, model, yolo, help, background, btw, steer,
+queue, stop, undo, retry, compress, reload-mcp and reload-skills, done,
+#1938) · Hermes' two servers, `hermes dashboard` and the gateway's listener
+(see Two Hermes servers; the reload verbs probed on both, notifier #598) ·
+the suggestions after `/reload-skills` (done, #1938: the catalog is read
+again) · the subcommand words (`/fast u`, `/reload-mcp now`) · a hardware
+keyboard on the list (done, #1938: see Composer Return key) · the room
+composer (not needed: rooms take no slash commands) · voice modes, Watch and
+CarPlay (not needed: no slash commands) · Settings' "Confirm connector
+reloads" caption (not needed: it already says Hermes asks first, which
+`/reload-mcp always` turns off on `hermes dashboard`) · README's "slash
+commands" (not needed, still true)
+
+**Code**
+- Catalog, hidden list, routes: `Conduit/Services/AppState.swift` (normalizedSlashCatalog, slashCommandsWithoutConduitRoute, builtInSlashCommands, conduitSlashSubcommands, executeSlashCommand, reloadMCPServers, mcpReloadNote, reloadSkills)
+- Verbs: `Conduit/Services/HermesClient.swift` (commandsCatalog, executeSlash, reloadMCP, reloadSkills, MCPReloadOutcome)
+- Suggestions: `Conduit/Views/Components/ComposerBar.swift` (filteredSlashCommands, slashArgumentSuggestions, SlashSuggestionsOverlay)
+- Drift check: `scripts/check-hermes-slash-parity.py`, `.github/workflows/hermes-parity.yml`
+- Contract: `notifier/upstream/test_gateway_listener.py` (the reload tests)
+- Tests: `ConduitTests/SlashCommandParityTests.swift`, `ConduitTests/AppStateSessionCompressTests.swift` (the slash tests)
+
+**Rulings**
+- A command Hermes refuses for app chats is hidden, not shown as unavailable, unless Conduit has a route of its own; typed anyway it goes to Hermes, whose refusal says what to use (2026-10-21, #1082).
+- Picking a suggestion only inserts it; sending runs it. `/reload-mcp` asks before it reloads, as Hermes' own clients do: Hermes' words plus "Send /reload-mcp now to reload."; now, yes, once, approve and always go ahead, always also turning the question off where Hermes keeps that setting (`hermes dashboard`; the listener refuses the key, so it isn't sent there) (Eric picked building both reload routes, 2026-11-07, #1938).
+- A Hermes without `reload.mcp` or `skills.reload` gets the command through `slash.exec`, as before (2026-11-07, #1938).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-07, #1938 (added: reload-mcp and reload-skills routed, keyboard selection on the list; Hermes' new terminal-only `/rewind` hidden, the parity check clean against Hermes canary a08f2418).
 
 ## Composer at rest and expanded
 

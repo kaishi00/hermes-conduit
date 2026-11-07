@@ -143,6 +143,11 @@ struct ChatResumeLifecycleOperations {
     /// `/stop`'s `process.stop`: how many background processes stopped.
     /// Not an init parameter: tests set it on the value.
     var stopProcesses: (@MainActor (HermesClient, String) async throws -> Int)?
+    /// `/reload-mcp`'s `reload.mcp` (session, confirm, always) and
+    /// `/reload-skills`'s `skills.reload`. Not init parameters: tests set
+    /// them on the value.
+    var reloadMCP: (@MainActor (HermesClient, String, Bool, Bool) async throws -> MCPReloadOutcome)?
+    var reloadSkills: (@MainActor (HermesClient, String) async throws -> String)?
     /// `/undo` and `/retry`: the rewind snapshot, then the rewind itself.
     /// Not init parameters: tests set them on the value.
     var rewindSnapshot: (@MainActor (HermesClient, String) async throws -> SessionRewindSnapshot)?
@@ -2829,7 +2834,7 @@ final class AppState: ObservableObject {
     @Published var slashCommands: [SlashCommand] = AppState.builtInSlashCommands
     /// Hermes' argument words for each command (`commands.catalog` `sub`),
     /// by command name: `fast` → normal, fast, ultrafast, …
-    @Published var slashSubcommands: [String: [String]] = [:]
+    @Published var slashSubcommands: [String: [String]] = AppState.conduitSlashSubcommands
     @Published var skills: [CapabilitySkill] = []
     @Published var toolsets: [CapabilityToolset] = []
     /// The active profile's tools catalog, for step rows (`ChatStepLabel`).
@@ -15333,7 +15338,7 @@ final class AppState: ObservableObject {
             cronSessions = []
             archivedSessions = []
             slashCommands = Self.builtInSlashCommands
-            slashSubcommands = [:]
+            slashSubcommands = Self.conduitSlashSubcommands
         }
         // Fence deferred presentation-cache writes created under the
         // previous profile before transcripts change over.
@@ -30225,6 +30230,8 @@ final class AppState: ObservableObject {
         SlashCommand(name: "debug", description: AppLocalization.string("Create a debug report"), category: "Hermes"),
         SlashCommand(name: "goal", description: AppLocalization.string("Manage this session's standing goal"), category: "Hermes"),
         SlashCommand(name: "personality", description: AppLocalization.string("Switch the session personality"), category: "Hermes"),
+        SlashCommand(name: "reload-mcp", aliases: ["reload_mcp"], description: AppLocalization.string("Reload MCP servers from config"), category: "Hermes"),
+        SlashCommand(name: "reload-skills", aliases: ["reload_skills"], description: AppLocalization.string("Rescan installed skills"), category: "Hermes"),
         SlashCommand(name: "queue", aliases: ["q"], description: AppLocalization.string("Queue a prompt for the next turn"), category: "Hermes"),
         SlashCommand(name: "retry", description: AppLocalization.string("Retry the last user message"), category: "Hermes"),
         SlashCommand(name: "status", description: AppLocalization.string("Show current session status"), category: "Hermes"),
@@ -30250,8 +30257,7 @@ final class AppState: ObservableObject {
         "export", "focus", "handoff", "hatch", "generate-pet", "history",
         "image", "import", "indicator", "journey", "learning", "memory-graph",
         "palette", "paste", "pause", "pet", "platform", "plugins", "prompt",
-        "compose", "quit", "exit", "redraw", "reload", "reload-mcp",
-        "reload_mcp", "reload-skills", "reload_skills", "restart", "resume",
+        "compose", "quit", "exit", "redraw", "reload", "restart", "resume", "rewind",
         "rollback", "save", "sessions", "sethome", "set-home", "skin",
         "snapshot", "snap", "start", "statusbar", "sb", "subscription",
         "upgrade", "timestamps", "ts", "tools", "topic", "update",
@@ -30332,8 +30338,12 @@ final class AppState: ObservableObject {
                 .filter { !$0.isEmpty && !$0.contains(" ") }
             if !words.isEmpty { map[name] = words }
         }
-        return map
+        return map.merging(conduitSlashSubcommands) { hermes, _ in hermes }
     }
+
+    /// Argument words for commands Conduit runs itself, which Hermes'
+    /// catalog lists none for: `/reload-mcp now` reloads without asking.
+    static let conduitSlashSubcommands: [String: [String]] = ["reload-mcp": ["now", "always"]]
 
     private static func slashCommand(from value: AnyCodable, category: String?) -> SlashCommand? {
         if let pair = value.arrayValue, let rawName = pair.first?.stringValue {
@@ -30400,7 +30410,7 @@ final class AppState: ObservableObject {
             slashCommands = Self.normalizedSlashCatalog(payload)
         } else {
             slashCommands = Self.builtInSlashCommands
-            slashSubcommands = [:]
+            slashSubcommands = Self.conduitSlashSubcommands
         }
     }
 
@@ -30541,6 +30551,22 @@ final class AppState: ObservableObject {
             // means).
             cancelChatResumeRestoration()
             await stopReplyAndBackgroundProcesses(client: client, sessionID: sessionId, context: submissionContext)
+            return
+        case "reload-mcp", "reload_mcp":
+            // Hermes' own clients run these through their own verbs;
+            // slash.exec refuses both. A Hermes without the verb gets the
+            // command through slash.exec, whose refusal says what to use.
+            cancelChatResumeRestoration()
+            guard await reloadMCPServers(
+                argument: command.argument,
+                client: client,
+                sessionID: sessionId,
+                context: submissionContext
+            ) else { break }
+            return
+        case "reload-skills", "reload_skills":
+            cancelChatResumeRestoration()
+            guard await reloadSkills(client: client, sessionID: sessionId, context: submissionContext) else { break }
             return
         case "compress", "compact":
             // Dedicated `session.compress` RPC (upstream Desktop parity). Must
@@ -31008,6 +31034,98 @@ final class AppState: ObservableObject {
         }
         guard !lines.isEmpty else { return }
         appendSlashOutput(lines.joined(separator: "\n"), context: context)
+    }
+
+    /// The words after `/reload-mcp` that go ahead without asking first,
+    /// as in Hermes' own clients. `always` also stops Hermes asking again
+    /// where Hermes keeps that setting (`hermes dashboard`).
+    static let mcpReloadConfirmWords: Set<String> = ["now", "yes", "once", "approve", "always"]
+
+    /// `/reload-mcp` through `reload.mcp`. Bare, Hermes may ask first: its
+    /// words say so, plus how to go ahead when they don't. False when this
+    /// Hermes has no `reload.mcp`, so slash.exec answers instead.
+    private func reloadMCPServers(
+        argument: String,
+        client: HermesClient,
+        sessionID: String,
+        context: ComposerSubmissionContext
+    ) async -> Bool {
+        let word = argument.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let confirm = Self.mcpReloadConfirmWords.contains(word)
+        let always = word == "always"
+        let note: String
+        do {
+            let outcome: MCPReloadOutcome
+            if let reloadMCP = chatResumeLifecycleOperations.reloadMCP {
+                outcome = try await reloadMCP(client, sessionID, confirm, always)
+            } else {
+                outcome = try await client.reloadMCP(sessionId: sessionID, confirm: confirm, always: always)
+            }
+            note = Self.mcpReloadNote(outcome)
+        } catch where HermesClient.isMissingRPCMethod(error) {
+            return false
+        } catch {
+            note = Self.mcpReloadFailureNote(error)
+        }
+        guard isCurrentComposerSubmission(context) else { return true }
+        appendSlashOutput(note, context: context)
+        return true
+    }
+
+    static func mcpReloadNote(_ outcome: MCPReloadOutcome) -> String {
+        guard outcome.needsConfirmation else {
+            return outcome.message ?? AppLocalization.string("MCP servers reloaded.")
+        }
+        let goAhead = AppLocalization.string("Send /reload-mcp now to reload.")
+        guard let message = outcome.message else { return goAhead }
+        // Hermes' dashboard already says which words go ahead.
+        return message.contains("/reload-mcp now") ? message : message + "\n" + goAhead
+    }
+
+    /// A reload in which nothing took effect because servers didn't connect
+    /// (`mcp_servers_unavailable`, "did not connect: a, b") names them.
+    static func mcpReloadFailureNote(_ error: Error) -> String {
+        if let refusal = error as? RpcError,
+           refusal.reason == "mcp_servers_unavailable" || refusal.message == "mcp_servers_unavailable" {
+            let detail = refusal.detail?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let names = detail.replacingOccurrences(of: "^did not connect:\\s*", with: "", options: .regularExpression)
+            if !names.isEmpty {
+                return AppLocalization.string("Nothing reloaded: these MCP servers didn't connect: \(names)")
+            }
+        }
+        return slashFailureNote(command: "reload-mcp", error: error)
+    }
+
+    /// `/reload-skills` through `skills.reload`, then the suggestions read
+    /// Hermes' catalog again so new skill commands show. False when this
+    /// Hermes has no `skills.reload`, so slash.exec answers instead.
+    private func reloadSkills(
+        client: HermesClient,
+        sessionID: String,
+        context: ComposerSubmissionContext
+    ) async -> Bool {
+        let note: String
+        var reloaded = false
+        do {
+            let output: String
+            if let reloadSkills = chatResumeLifecycleOperations.reloadSkills {
+                output = try await reloadSkills(client, sessionID)
+            } else {
+                output = try await client.reloadSkills(sessionId: sessionID)
+            }
+            reloaded = true
+            let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+            note = trimmed.isEmpty ? AppLocalization.string("Skills reloaded.") : trimmed
+        } catch where HermesClient.isMissingRPCMethod(error) {
+            return false
+        } catch {
+            note = Self.slashFailureNote(command: "reload-skills", error: error)
+        }
+        if isCurrentComposerSubmission(context) {
+            appendSlashOutput(note, context: context)
+        }
+        if reloaded { await loadChatResumeSlashCommands() }
+        return true
     }
 
     private func executeGatewaySlash(
@@ -33944,7 +34062,7 @@ final class AppState: ObservableObject {
             projectsLoading = false
             projectsLoadFailed = false
             slashCommands = Self.builtInSlashCommands
-            slashSubcommands = [:]
+            slashSubcommands = Self.conduitSlashSubcommands
             restoreActiveSessionState(for: target)
             restorePinnedSessions(for: target)
             // The target's list as it showed last time, until its own lands.
@@ -34286,7 +34404,7 @@ final class AppState: ObservableObject {
         projectsLoading = false
         projectsLoadFailed = false
         slashCommands = Self.builtInSlashCommands
-        slashSubcommands = [:]
+        slashSubcommands = Self.conduitSlashSubcommands
         messages = []
         persistedTranscriptWindow = nil
         resetTranscriptLifecycleEvidence()
