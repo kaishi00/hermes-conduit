@@ -539,6 +539,7 @@ mode menu)
 - Turning on Gemini, Qwen, GPT-Live or Grok Live in Settings > Voice, or by an agent's `voice.mode` write, ends a running Classic conversation (a push to talk call screen still waiting for its first press included), as the menu's switch does, but starts no call in the new mode. Local Live doesn't end a running one: the car already stays on Classic while its session runs (`CarPlayVoiceMode.current`, #1378); it closes only a push to talk screen still waiting for its first press, which has no session for the car to follow. Before, the car followed the new mode while the Classic call went on listening behind it, on no surface that showed or ended it (2026-11-07, #1940, issue 1935).
 
 **Open gaps**
+- A live mode turned on while a phone-side Classic start is still in `prepareVoiceConversation`'s awaits (profile switch, interrupt, capability refresh) isn't fenced: that start can still open a Classic call under the new mode. The car's starts fence it (`stillClassic`); the phone's would need a launch generation through every voice start (#1940).
 - CarPlay and the Watch have no mode menu: a call there changes mode only through Voice settings.
 - Switch voice's caption no longer opens the menu; only the round glyph does (#1355).
 
