@@ -172,6 +172,8 @@ extension AppState {
     /// Whether Pulse said it's quiet.
     func quietPulseForToday(_ target: PulseQuietTarget?, switching: Bool, wait: Duration,
                             timeoutMilliseconds: Int = 15_000) async -> Bool {
+        // A launch waiting for a dashboard pick signs in for it.
+        releaseLaunchDashboardChoice(for: "Pulse's Quiet for Today")
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: wait)
         while dashboardTicketBridge == nil || activeDashboardID == nil, clock.now < deadline, !Task.isCancelled {

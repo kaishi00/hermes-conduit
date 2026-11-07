@@ -443255,6 +443255,170 @@
           }
         }
       }
+    },
+    "Ask Which Dashboard at Launch": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beim Start nach dem Dashboard fragen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preguntar qué panel al abrir"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demander le tableau de bord au lancement"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tanyakan Dasbor saat Dibuka"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiedi quale dashboard all'avvio"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "起動時にダッシュボードを選択"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "실행 시 대시보드 묻기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pytaj o panel przy uruchomieniu"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Perguntar Qual Painel ao Abrir"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Спрашивать дашборд при запуске"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Açılışta Hangi Paneli Sor"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启动时询问仪表板"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "啟動時詢問儀表板"
+          }
+        }
+      }
+    },
+    "When Conduit opens, your dashboards stay listed until you tap one, instead of signing in to the last one you used. A notification, a link, Siri, CarPlay, the Apple Watch or a call from Hermes still signs in on its own.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beim Öffnen von Conduit bleiben deine Dashboards aufgelistet, bis du eines antippst, statt dass Conduit sich beim zuletzt genutzten anmeldet. Eine Mitteilung, ein Link, Siri, CarPlay, die Apple Watch oder ein Anruf von Hermes meldet sich weiterhin von selbst an."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Al abrir Conduit, tus paneles siguen en la lista hasta que toques uno, en lugar de iniciar sesión en el último que usaste. Una notificación, un enlace, Siri, CarPlay, el Apple Watch o una llamada de Hermes siguen iniciando sesión por su cuenta."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "À l'ouverture de Conduit, vos tableaux de bord restent affichés jusqu'à ce que vous en touchiez un, au lieu de vous connecter au dernier utilisé. Une notification, un lien, Siri, CarPlay, l'Apple Watch ou un appel de Hermes se connecte toujours de lui-même."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saat Conduit dibuka, dasbor Anda tetap tercantum sampai Anda mengetuk salah satunya, alih-alih masuk ke dasbor terakhir yang Anda gunakan. Notifikasi, tautan, Siri, CarPlay, Apple Watch, atau panggilan dari Hermes tetap masuk dengan sendirinya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando apri Conduit, le tue dashboard restano in elenco finché non ne tocchi una, invece di accedere all'ultima usata. Una notifica, un link, Siri, CarPlay, Apple Watch o una chiamata di Hermes accedono comunque da soli."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduitを開いたとき、最後に使ったダッシュボードに自動でサインインせず、どれかをタップするまでダッシュボードの一覧を表示します。通知、リンク、Siri、CarPlay、Apple Watch、Hermesからの通話では、これまでどおり自動でサインインします。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit을 열면 마지막으로 사용한 대시보드에 로그인하는 대신, 하나를 탭할 때까지 대시보드 목록이 표시돼요. 알림, 링크, Siri, CarPlay, Apple Watch 또는 Hermes의 전화는 여전히 자동으로 로그인해요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Po otwarciu Conduit Twoje panele pozostają na liście, dopóki nie stukniesz jednego, zamiast logować się do ostatnio używanego. Powiadomienie, link, Siri, CarPlay, Apple Watch lub połączenie od Hermes nadal logują się same."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ao abrir o Conduit, seus painéis continuam na lista até você tocar em um, em vez de entrar no último que você usou. Uma notificação, um link, a Siri, o CarPlay, o Apple Watch ou uma ligação do Hermes continuam entrando sozinhos."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "При открытии Conduit ваши дашборды остаются в списке, пока вы не коснётесь одного из них, вместо входа в последний использованный. Уведомление, ссылка, Siri, CarPlay, Apple Watch или звонок от Hermes по-прежнему выполняют вход сами."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit açıldığında, en son kullandığınız panele giriş yapmak yerine siz birine dokunana kadar panelleriniz listelenir. Bildirim, bağlantı, Siri, CarPlay, Apple Watch veya Hermes'ten gelen bir arama yine kendiliğinden giriş yapar."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 Conduit 时，不会自动登录上次使用的仪表板，而是一直显示仪表板列表，直到你轻点其中一个。通知、链接、Siri、CarPlay、Apple Watch 或来自 Hermes 的通话仍会自动登录。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打開 Conduit 時，不會自動登入上次使用的儀表板，而是持續顯示儀表板列表，直到你點一下其中一個。通知、連結、Siri、CarPlay、Apple Watch 或來自 Hermes 的通話仍會自動登入。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

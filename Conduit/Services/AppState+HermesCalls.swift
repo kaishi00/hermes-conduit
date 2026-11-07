@@ -740,6 +740,7 @@ extension AppState {
             setNativeHermesCallAnswered(false)
         }
         guard isNativeHermesCallActive != active else { return }
+        if active { releaseLaunchDashboardChoice(for: "a call from Hermes") }
         isNativeHermesCallActive = active
         if active {
             // A reading still opening holds no audio yet, so CallKit's

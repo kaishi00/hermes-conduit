@@ -4974,6 +4974,37 @@ describes this case)
 
 **Checked:** 2026-10-24, at #1219.
 
+## Which dashboard a launch signs in to
+
+Ask Which Dashboard at Launch (issue 1908): with it on and two or more
+dashboards saved, a plain open keeps the dashboard list up for a tap instead of
+signing in to the last dashboard used.
+
+**Siblings:** the plain open (the phone's dashboard list) · the Settings toggle
+and its caption · a notification tap or button (a call from Hermes answered, a
+phone change to review and Pulse's retry included) · a
+link from another app · Pulse's Quiet for Today (the notification action and its retry) · a widget · a shared draft · Siri · Send to Hermes
+shortcuts · Log to Hermes (not needed: it queues offline and drains on connect) · CarPlay · the Apple Watch · a call from Hermes ringing · launches in
+the background (Health, places, phone sync, pushes) · the on-screen retry of a
+sign-in that failed off screen · README.md
+
+**Code**
+- Launch: `Conduit/Services/AppState.swift` (beginLaunchSignIn, releaseLaunchDashboardChoice, holdLaunchDashboardChoiceOnScreen, runDashboardSwitch, handleScenePhase, setWatchVoiceCallActive)
+- Releases: `Conduit/ConduitApp.swift` (userNotificationCenter didReceive for every tap but a dismissal or Maps directions; the notification, link and Siri routes), `Conduit/CarPlay/CarPlayVoiceSceneDelegate.swift`, `Conduit/Services/AppState+HermesCalls.swift` (setNativeHermesCallActive), `Conduit/Services/AppState+ShortcutSend.swift`, `Conduit/Services/AppState+Pulse.swift` (quietPulseForToday)
+- Setting: `Conduit/Views/SavedDashboardsView.swift`
+- Tests: `ConduitTests/AppStateLaunchDashboardChoiceTests.swift`
+
+**Rulings**
+- Off by default, and only with two or more dashboards saved; with one, nothing changes (2026-11-07, Eric, #1911).
+- Only a plain open waits. Anything the launch came for that needs Hermes (a notification, Pulse's Quiet for Today, a link, Siri, a shortcut, CarPlay, the Watch, a call from Hermes, a shared draft) signs in to the last dashboard used, as it does with the setting off, and a widget switches as before. A pick, or any dashboard switch, ends the wait (2026-11-07, #1911).
+- A launch with no phone screen after a short grace (2 s) is a background launch and signs in as before. If that sign-in can't finish off screen (Face ID), coming on screen leaves the list up rather than retrying it. A release while it is under way starts no second sign-in (2026-11-07, #1911).
+- Opening the list and leaving without a pick keeps Conduit signed out until something above needs Hermes or a dashboard is tapped; the caption says what still signs in. A push that only arrives meanwhile (a phone change) waits for the pick too, and the connected pass fetches it then (2026-11-07, #1911).
+
+**Open gaps**
+- None known. A background launch that signed in before the phone opened stays signed in: by then Conduit is already running, not launching.
+
+**Checked:** 2026-11-07, #1911.
+
 ## App Store screenshots and showcase clips
 
 What the capture run shows of each screen: the App Store screenshots and
