@@ -1246,6 +1246,10 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertNil(GroupRoomTurns.leadKey(
             context: GroupRoomContext(routing: .lead, leadMemberID: "nahida"), members: members
         ), "a lead who left the room has no pill to crown")
+        let unnamed = [GroupDecoders.member(any(["display_name": "Ghost"]))!]
+        XCTAssertNil(GroupRoomTurns.leadKey(
+            context: GroupRoomContext(routing: .lead, leadMemberID: ""), members: unnamed
+        ), "a lead setting that names nobody crowns nobody")
     }
 
     func testTheKeptEventsDecideOnlyWhatTheyCanKnow() {
