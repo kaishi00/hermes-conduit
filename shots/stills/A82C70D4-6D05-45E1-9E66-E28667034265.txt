@@ -1,0 +1,73 @@
+Attributes: Button, 0x108b53d40, {{174.3, 91.7}, {91.3, 18.0}}, identifier: 'botWork.titleLine', label: '2 working'
+Element subtree:
+ →Button, 0x108b53d40, {{174.3, 91.7}, {91.3, 18.0}}, identifier: 'botWork.titleLine', label: '2 working'
+Path to element:
+ →Application, 0x108b535c0, pid: 49346, label: 'Conduit'
+  ↳Window, 0x108b51680, {{0.0, 0.0}, {440.0, 956.0}}
+   ↳Other, 0x108b512c0, {{0.0, 0.0}, {440.0, 956.0}}
+    ↳Other, 0x108b50dc0, {{0.0, 0.0}, {440.0, 956.0}}
+     ↳Other, 0x108b50f00, {{0.0, 0.0}, {440.0, 956.0}}
+      ↳Other, 0x108b53980, {{0.0, 0.0}, {440.0, 956.0}}
+       ↳Other, 0x108b53ac0, {{0.0, 0.0}, {440.0, 956.0}}
+        ↳NavigationBar, 0x108b52940, {{0.0, 62.0}, {440.0, 54.0}}, identifier: '_TtGC7SwiftUI32NavigationStackHosting'
+         ↳Other, 0x108b51400, {{159.3, 67.3}, {121.3, 33.3}}
+          ↳Other, 0x108b51b80, {{159.3, 67.3}, {121.3, 33.3}}
+           ↳Button, 0x108b53d40, {{174.3, 91.7}, {91.3, 18.0}}, identifier: 'botWork.titleLine', label: '2 working'
+Query chain:
+ →Find: Target Application 'com.milim.relay'
+  Output: {
+    Application, 0x115a32a80, pid: 49346, label: 'Conduit'
+  }
+  ↪︎Find: Descendants matching type Button
+    Output: {
+      Button, 0x1159cbc00, {{20.0, 62.0}, {44.0, 44.0}}, identifier: 'BackButton', label: 'Bots'
+      Button, 0x1159f8000, {{159.3, 58.7}, {121.3, 32.0}}, label: 'Conduit Chan'
+      Button, 0x1159f8140, {{174.3, 91.7}, {91.3, 18.0}}, identifier: 'botWork.titleLine', label: '2 working'
+      Button, 0x1159f88c0, {{364.0, 66.0}, {52.0, 36.0}}, identifier: 'conversation.menu', label: 'Conversation options', value: Connected
+      Button, 0x1159f8a00, {{364.0, 66.0}, {52.0, 36.0}}
+      Button, 0x115a0d2c0, {{28.0, 868.0}, {32.0, 32.0}}, label: 'Attach'
+      Button, 0x115a0de00, {{314.0, 868.0}, {32.0, 32.0}}, identifier: 'composer.dictate', label: 'Dictate'
+      Button, 0x115a0df40, {{368.0, 856.0}, {56.0, 56.0}}, label: 'Call Conduit Chan'
+      Button, 0x115a30000, {{16.0, 120.0}, {164.0, 44.0}}, label: 'Filter', value: All
+      Button, 0x115a30640, {{202.0, 120.0}, {44.0, 44.0}}, identifier: 'magnifyingglass', label: 'Search'
+      Button, 0x115a30780, {{246.0, 120.0}, {44.0, 44.0}}, identifier: 'folder', label: 'Browse projects'
+      Button, 0x115a308c0, {{290.0, 120.0}, {44.0, 44.0}}, identifier: 'chats.pulse', label: 'Pulse'
+      Button, 0x115a30a00, {{334.0, 120.0}, {44.0, 44.0}}, identifier: 'square.grid.2x2', label: 'Artifacts'
+      Button, 0x115a30b40, {{378.0, 120.0}, {44.0, 44.0}}, identifier: 'square.and.pencil', label: 'New Chat'
+      Button, 0x115a0d400, {{28.0, 868.0}, {32.0, 32.0}}
+      Button, 0x115a0e080, {{368.0, 856.0}, {56.0, 56.0}}
+      Button, 0x115a30140, {{16.0, 120.0}, {164.0, 44.0}}
+      Button, 0x115a22d00, {{16.0, 68.0}, {44.0, 44.0}}, identifier: 'v2.profile.all', label: 'All profiles'
+      Button, 0x115a23200, {{68.0, 68.0}, {112.3, 44.0}}, identifier: 'sidebar.workspace', label: 'Hermes profile', Selected
+      Button, 0x115a235c0, {{188.3, 68.0}, {44.0, 44.0}}, identifier: 'v2.profile.conduit-chan', label: 'Conduit Chan profile'
+      Button, 0x115a23840, {{240.3, 68.0}, {44.0, 44.0}}, identifier: 'v2.profile.mira', label: 'Mira profile'
+      Button, 0x115a23ac0, {{292.3, 68.0}, {44.0, 44.0}}, identifier: 'v2.profile.piko', label: 'Piko profile'
+      Button, 0x115a23d40, {{344.3, 68.0}, {44.0, 44.0}}, identifier: 'v2.profile.riri', label: 'Riri profile'
+      Button, 0x115a1aa80, {{0.0, 222.0}, {440.0, 143.7}}, identifier: 'chats.repair-connection', label: 'Repair Connection'
+      Button, 0x115a21f40, {{0.0, 494.0}, {440.0, 65.3}}, label: 'Kyoto packing list', value: What should I pack...
+      Button, 0x1159faa80, {{283.3, 110.3}, {15.3, 15.3}}, identifier: 'face.smiling', label: 'React to this response'
+      Button, 0x1159fabc0, {{321.3, 108.3}, {15.7, 19.0}}, identifier: 'doc.on.doc', label: 'Copy response'
+      Button, 0x1159fad00, {{358.3, 111.3}, {17.7, 13.3}}, identifier: 'speaker.wave.2', label: 'Read response aloud'
+      Button, 0x1159fae40, {{388.0, 101.0}, {34.0, 34.0}}, identifier: 'chat.replyMoreMenu', label: 'More'
+      Button, 0x115a05f40, {{350.0, 247.0}, {44.0, 44.0}}, identifier: 'doc.on.doc', label: 'Copy message'
+      Button, 0x115a06080, {{390.0, 253.0}, {32.0, 32.0}}, identifier: 'chat.messageMoreMenu', label: 'More'
+      Button, 0x115a06940, {{18.0, 285.0}, {404.0, 60.0}}, label: '3 steps, 10 seconds', value: Collapsed
+      Button, 0x115a0c140, {{283.3, 438.3}, {15.3, 15.3}}, identifier: 'face.smiling', label: 'React to this response'
+      Button, 0x115a0c280, {{321.3, 436.7}, {15.7, 19.0}}, identifier: 'doc.on.doc', label: 'Copy response'
+      Button, 0x115a0c3c0, {{358.3, 439.3}, {17.7, 13.3}}, identifier: 'speaker.wave.2', label: 'Read response aloud'
+      Button, 0x115a0c500, {{388.0, 429.0}, {34.0, 34.0}}, identifier: 'chat.replyMoreMenu', label: 'More'
+      Button, 0x115a18780, {{343.7, 174.0}, {76.3, 44.0}}, identifier: 'finish-setup.not-now', label: 'Not now'
+      Button, 0x115a1b700, {{0.0, 450.0}, {440.0, 44.0}}, label: 'Today'
+      Button, 0x1159faf80, {{388.0, 101.0}, {34.0, 34.0}}
+      Button, 0x115a061c0, {{390.0, 253.0}, {32.0, 32.0}}
+      Button, 0x115a0c640, {{388.0, 429.0}, {34.0, 34.0}}
+      Button, 0x115a19680, {{329.7, 302.0}, {82.3, 36.0}}, label: 'Turn on'
+    }
+    ↪︎Find: Elements matching predicate '"botWork.titleLine" IN identifiers'
+      Output: {
+        Button, 0x115994500, {{174.3, 91.7}, {91.3, 18.0}}, identifier: 'botWork.titleLine', label: '2 working'
+      }
+      ↪︎Find: First Match
+        Output: {
+          Button, 0x108b65b80, {{174.3, 91.7}, {91.3, 18.0}}, identifier: 'botWork.titleLine', label: '2 working'
+        }
