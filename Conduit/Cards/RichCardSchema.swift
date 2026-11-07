@@ -507,7 +507,9 @@ struct RichCardSchema {
 
     private static func fieldRules(_ field: [String: Any], controls: inout Controls) -> [String: Any]? {
         guard let id = field["id"] as? String, let input = field["input"] as? String else { return nil }
-        if namesSecret(id) || namesSecret(field["label"] as? String ?? "") { return nil }
+        if ([id] + ["label", "placeholder"].compactMap({ field[$0] as? String })).contains(where: namesSecret) {
+            return nil
+        }
         if controls.fields.contains(id) || controls.fields.count == maxFields { return nil }
         var field = field
         for (key, fits) in fieldExtras where fits != input { field[key] = nil }

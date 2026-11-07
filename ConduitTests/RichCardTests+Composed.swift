@@ -61,6 +61,17 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(reset.actions.map(\.label), ["Go"], "a tap sends its label, so it must be a plain message")
     }
 
+    func testAFieldWhosePlaceholderAsksForASecretIsDropped() throws {
+        let schema = try XCTUnwrap(RichCardSchema.bundled)
+        let card = try XCTUnwrap(RichCard.cards(raw: [[
+            "type": "composed", "title": "Notes", "sections": [["items": [
+                ["kind": "field", "id": "notes", "input": "text", "placeholder": "Paste your API key"],
+                ["kind": "field", "id": "topic", "input": "text", "placeholder": "What it's about"],
+            ]]],
+        ]], schema: schema).first)
+        XCTAssertEqual(card.sections[0].elements.compactMap { $0.field?.id }, ["topic"])
+    }
+
     func testFieldsNeverAskForSecrets() {
         for name in ["password", "Your Passcode", "api_key", "apiKey", "OTP", "PIN", "card-cvv", "One time code",
                      "auth token", "client_secret", "SSH private key", "Recovery key", "Verification code", "license_key",
