@@ -7853,6 +7853,13 @@ final class AppState: ObservableObject {
         )
         restoreActiveSessionState(for: activeProfile)
         restorePinnedSessions(for: activeProfile)
+        // The saved Chats list and the chat it opens on are read ahead off
+        // the main thread now, while the sign-in reads the keychain, so the
+        // saved copy launch shows comes from memory more often than from a
+        // file decoded on the main thread (issue 1963).
+        if shouldLoadSavedConnection, let initialDashboardID {
+            self.offlineChatCache.prefetch(dashboardID: initialDashboardID, profile: activeProfile, transcripts: 1)
+        }
         if shouldLoadSavedConnection {
             beginLaunchSignIn()
         }
@@ -34037,6 +34044,13 @@ final class AppState: ObservableObject {
             return false
         }
         guard !isProfileSwitching else { return false }
+        // What the switch shows first (the profile's saved list and the chat
+        // it opens on) is read ahead off the main thread while it waits on
+        // its ticket and teardown, if the read-ahead after the live list
+        // hasn't already (issue 1963).
+        if let dashboardID = savedDashboardRegistry.activeDashboardID {
+            offlineChatCache.prefetch(dashboardID: dashboardID, profile: target, transcripts: 1)
+        }
         // A switch that spares calls (a notification's or a chat link's)
         // mints its ticket before anything changes, so nothing waits between
         // its call check and the voice teardown below; it refuses while a
