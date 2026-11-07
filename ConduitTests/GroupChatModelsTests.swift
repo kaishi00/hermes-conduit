@@ -837,6 +837,18 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(GroupRoomTurns.members([furina], namedBy: []), [furina])
     }
 
+    func testAMembersFilesAreReadFromItsOwnLocalProfile() {
+        let local = GroupDecoders.member(any(["member_id": "m1", "profile": " furina ", "handle": "furina"]))
+        let explicit = GroupDecoders.member(any(["member_id": "m2", "profile": "nahida", "target": ["kind": "local"]]))
+        let peer = GroupDecoders.member(any(["member_id": "m3", "profile": "furina", "target": ["kind": "peer"]]))
+        let noProfile = GroupDecoders.member(any(["member_id": "m4", "handle": "raiden"]))
+        XCTAssertEqual(GroupRoomTurns.localProfile(of: local), "furina")
+        XCTAssertEqual(GroupRoomTurns.localProfile(of: explicit), "nahida")
+        XCTAssertNil(GroupRoomTurns.localProfile(of: peer), "another gateway's bot names files on its own host")
+        XCTAssertNil(GroupRoomTurns.localProfile(of: noProfile))
+        XCTAssertNil(GroupRoomTurns.localProfile(of: nil))
+    }
+
     func testRecipientsLeadTheMessageOnce() {
         let scout = GroupDecoders.member(any(["member_id": "scout", "profile": "scout", "handle": "scout"]))!
         let atlas = GroupDecoders.member(any(["member_id": "atlas", "profile": "atlas", "handle": "atlas"]))!

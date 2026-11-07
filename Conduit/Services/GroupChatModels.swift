@@ -1064,6 +1064,18 @@ enum GroupRoomTurns {
         return member(withID: id, in: members)
     }
 
+    /// The profile on the connected Hermes a member's files live under: a
+    /// local member's own, never another gateway's bot, whose paths name
+    /// files on its own host.
+    static func localProfile(of member: GroupMember?) -> String? {
+        guard let member else { return nil }
+        let kind = member.target?["kind"]?.stringValue
+        guard kind == nil || kind == "local",
+              let profile = member.profile?.trimmingCharacters(in: .whitespacesAndNewlines), !profile.isEmpty
+        else { return nil }
+        return profile
+    }
+
     /// The members as this gateway's own bots are named now. A room keeps
     /// the name each bot had when it joined, so a bot renamed since (from a
     /// long press in Conduit, or in Desktop) would keep its old name there.
