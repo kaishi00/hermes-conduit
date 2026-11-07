@@ -96,7 +96,9 @@ struct GatewayWork: Equatable {
     }
 
     static func duration(_ seconds: TimeInterval) -> String {
-        let minutes = max(1, Int((seconds / 60).rounded()))
+        // Clamped as a Double first: an absurd running time from the
+        // gateway mustn't trap the conversion.
+        let minutes = Int(min(max((seconds / 60).rounded(), 1), 1_000_000))
         let components = DateComponents(hour: minutes / 60, minute: minutes % 60)
         let formatter = DateComponentsFormatter()
         formatter.allowedUnits = minutes >= 60 ? [.hour, .minute] : [.minute]
@@ -139,9 +141,13 @@ struct GatewayRestartNow {
     func run() async -> String? {
         if let failure = await endWait() { return failure }
         if let work = await readWork() {
-            for unit in work.units where unit.canStop {
-                // A chat that won't stop is ended by the forced restart below.
-                await stop(unit)
+            // All at once, so one chat that doesn't answer holds the rest
+            // up for its own timeout only. A chat that won't stop is ended by
+            // the forced restart below.
+            await withTaskGroup(of: Void.self) { group in
+                for unit in work.units where unit.canStop {
+                    group.addTask { await stop(unit) }
+                }
             }
         }
         // Stopped chats end within a few seconds; an update still waiting

@@ -1126,7 +1126,10 @@ extension GatewayRestartTests {
                 log.reads += 1
                 return reads[index]
             },
-            stop: { unit in log.calls.append("stop \(unit.sessionID ?? "?") \(unit.profile ?? "-")") },
+            // Stops run at once, off this actor: the log is kept on it.
+            stop: { unit in
+                await MainActor.run { log.calls.append("stop \(unit.sessionID ?? "?") \(unit.profile ?? "-")") }
+            },
             force: { log.calls.append("force"); return force },
             pause: {}
         )
