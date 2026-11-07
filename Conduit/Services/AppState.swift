@@ -23100,13 +23100,19 @@ final class AppState: ObservableObject {
         }
     }
 
+    private var isReadingNewestCatalogPage = false
+
     /// Reads the newest catalog page and the cron rows over the cached
     /// catalog, keeping its full-history markers. The older pages follow
     /// only when the full history is due (every
     /// `SessionCatalogCache.fullHistoryRefreshInterval`), so a tab shown
     /// again and again doesn't walk all 25 pages each time (issue 1962).
     func refreshNewestSessionCatalogPage() async {
-        guard !isRefreshingSessionCatalog else { return }
+        // One visit's read at a time (the Tasks tab and the drawer's Cron
+        // list both ask), without the pull's spinner.
+        guard !isRefreshingSessionCatalog, !isReadingNewestCatalogPage else { return }
+        isReadingNewestCatalogPage = true
+        defer { isReadingNewestCatalogPage = false }
         let client = self.client
         let profile = activeProfile
         let dashboardID = activeDashboardID
