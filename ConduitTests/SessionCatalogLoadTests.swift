@@ -179,6 +179,21 @@ final class SessionCatalogLoadTests: XCTestCase {
         XCTAssertEqual(placeholder(appState), .none)
     }
 
+    /// Showing Tasks reads the newest rows once and keeps the listed
+    /// catalog, without the pull's full replace (issue 1962).
+    func testShowingTasksReadsTheNewestRowsOverTheCatalog() async {
+        var loads = 0
+        var answer = CatalogAnswer.rows(["a"])
+        let appState = makeAppState(answer: { answer }, loads: { loads += 1 })
+        await appState.loadSessions()
+        answer = .rows(["a", "b"])
+        await appState.refreshNewestSessionCatalogPage()
+        XCTAssertEqual(loads, 2, "one read for the tab, no page walk")
+        XCTAssertEqual(Set(appState.sessions.map(\.id)), ["a", "b"])
+        XCTAssertEqual(appState.sessionCatalogPhase, .loaded)
+        XCTAssertFalse(appState.isRefreshingSessionCatalog, "a tab visit isn't the pull's spinner")
+    }
+
     /// A refresh that fails after the catalog arrived keeps its rows.
     func testAFailedRefreshKeepsTheListedCatalog() async {
         var answer = CatalogAnswer.rows(["a"])

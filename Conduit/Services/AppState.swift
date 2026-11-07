@@ -1781,6 +1781,8 @@ final class AppState: ObservableObject {
     /// Bumped by an explicit roster reload so rows re-fetch their avatar
     /// (another client may have changed it; the roster carries no version).
     @Published private(set) var botAvatarGeneration = 0
+    /// When `reloadBotRoster` last asked for every picture again.
+    private(set) var botAvatarsReloadedAt: Date?
     private var botAvatarFetchedGeneration: [String: Int] = [:]
     /// Name to the generation its in-flight fetch serves, so a newer
     /// generation can start its own fetch instead of being deduped away.
@@ -23098,6 +23100,26 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Reads the newest catalog page and the cron rows over the cached
+    /// catalog, keeping its full-history markers. The older pages follow
+    /// only when the full history is due (every
+    /// `SessionCatalogCache.fullHistoryRefreshInterval`), so a tab shown
+    /// again and again doesn't walk all 25 pages each time (issue 1962).
+    func refreshNewestSessionCatalogPage() async {
+        guard !isRefreshingSessionCatalog else { return }
+        let client = self.client
+        let profile = activeProfile
+        let dashboardID = activeDashboardID
+        await loadSessions(
+            forceRefresh: true,
+            requiredViewportTransitionGeneration: nil,
+            deferringOlderPages: true
+        )
+        guard let client, self.client === client, activeProfile == profile,
+              sessionCatalogCache.shouldLoadFullHistory(forKey: "\(profile):exclude", forceRefresh: false) else { return }
+        loadDeferredCatalogPages(after: client, profile: profile, dashboardID: dashboardID)
+    }
+
     /// Replace this profile's in-memory catalog with Hermes' current data.
     /// Use this after database recovery or deletion outside Conduit.
     func refreshSessionCatalog() async {
@@ -24084,8 +24106,15 @@ final class AppState: ObservableObject {
     /// The Cron tab presents two independent server-backed surfaces: the job
     /// definitions and the cron-session history. Refresh them together so a
     /// newly completed run is visible without visiting the Sessions tab first.
-    func refreshCronContent() async {
-        async let sessionRefresh: Void = refreshSessionCatalog()
+    ///
+    /// Showing the tab reads only the newest page and the cron rows over the
+    /// cached catalog; the older pages wait for the full history's own
+    /// interval. Pull to refresh (`repairingCatalog`) still replaces the
+    /// whole catalog, as Chats' pull does (issue 1962).
+    func refreshCronContent(repairingCatalog: Bool = false) async {
+        async let sessionRefresh: Void = repairingCatalog
+            ? refreshSessionCatalog()
+            : refreshNewestSessionCatalogPage()
         async let jobsRefresh: Void = loadCronJobs()
         async let notificationsRefresh: Void = refreshCronNotifications()
         _ = await (sessionRefresh, jobsRefresh, notificationsRefresh)
@@ -24239,7 +24268,26 @@ final class AppState: ObservableObject {
     /// avatar version, and another client (Desktop) may have changed one.
     func reloadBotRoster() async {
         botAvatarGeneration &+= 1
+        botAvatarsReloadedAt = Date()
         await refreshBotRoster()
+    }
+
+    /// How old the pictures may be before opening the Profiles sheet reads
+    /// them all again. A picture changed on Desktop shows within this, or
+    /// at once on a pull in the Bots list.
+    static let botPictureRecheckInterval: TimeInterval = 10 * 60
+
+    /// The Profiles sheet's read each time it opens: the roster, and every
+    /// picture again only once they're `botPictureRecheckInterval` old.
+    /// Each open used to download every bot's picture, up to 2 MB each
+    /// (issue 1967).
+    func refreshBotRosterAndStalePictures(now: Date = Date()) async {
+        if let reloadedAt = botAvatarsReloadedAt,
+           now.timeIntervalSince(reloadedAt) < Self.botPictureRecheckInterval {
+            await refreshBotRoster()
+        } else {
+            await reloadBotRoster()
+        }
     }
 
     /// The bot's picture: the one fetched from its profile, else the copy
@@ -25328,6 +25376,7 @@ final class AppState: ObservableObject {
         let previous = profileAvatarSyncTask
         profileAvatarSyncTask = Task { @MainActor [weak self] in
             await previous?.value
+            var fetches: [BotProfile] = []
             for bot in rows {
                 guard let self, self.botRosterEpoch == epoch, self.activeDashboardID == dashboardID,
                       let client = self.client, self.isConnected else { return }
@@ -25338,7 +25387,7 @@ final class AppState: ObservableObject {
                     photoIsMirror: self.profileAppearanceStore.isMirrored(bot.name, dashboardID: dashboardID)
                 ) {
                 case .fetch:
-                    await self.loadBotAvatarIfNeeded(bot)
+                    fetches.append(bot)
                 case .dropMirror:
                     self.removeProfileAvatarFile(for: bot.name)
                 case .upload:
@@ -25347,8 +25396,22 @@ final class AppState: ObservableObject {
                     break
                 }
             }
+            // A few downloads at a time rather than one after another
+            // (issue 1967); each still fences itself on the roster epoch.
+            let width = Self.botPictureDownloadWidth
+            for start in stride(from: 0, to: fetches.count, by: width) {
+                guard let self, self.botRosterEpoch == epoch, self.activeDashboardID == dashboardID,
+                      self.isConnected, !Task.isCancelled else { return }
+                let downloads = fetches[start..<min(start + width, fetches.count)].map { bot in
+                    Task { @MainActor in _ = await self.loadBotAvatarIfNeeded(bot) }
+                }
+                for download in downloads { await download.value }
+            }
         }
     }
+
+    /// Bot pictures downloaded at once by a roster's picture sync.
+    static let botPictureDownloadWidth = 4
 
     /// A photo picked on this device before photos moved to Hermes becomes
     /// the profile's Hermes picture. A failed upload keeps the photo and is

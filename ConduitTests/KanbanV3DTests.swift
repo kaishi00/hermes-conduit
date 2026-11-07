@@ -120,6 +120,83 @@ final class KanbanV3DTests: XCTestCase {
         XCTAssertTrue(secondQuery.contains(where: { $0.name == "ticket" && $0.value == "ticket-2" }), "ticket-1 is NEVER reused")
     }
 
+    // MARK: - Terminal refusals (issue 1971)
+
+    func testA1008CloseEndsTheStreamWithoutMintingAgain() async throws {
+        let requester = V3DMockRequester()
+        requester.boardPayload["latest_event_id"] = 42
+        let store = try makeStore(requester: requester)
+        await store.reload()
+        guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
+
+        // The board was deleted: Hermes accepts, then closes 1008.
+        let deleted = MockSocket(scripts: [.fail(URLError(.networkConnectionLost))])
+        deleted.refusal = .policy
+        let recorder = StreamRecorder(minterTickets: ["ticket-1", "ticket-2"])
+        let coordinator = recorder.makeCoordinator(
+            stamp: stampA, boardSlug: "alpha", initialCursor: 42, baseURL: "https://a.test",
+            sockets: [deleted]
+        )
+        let finished = await raced({ await coordinator.run(); return true })
+        XCTAssertNotNil(finished, "a 1008 ends run() instead of reconnecting forever")
+        XCTAssertEqual(recorder.mintedTickets, ["ticket-1"], "no further ws-tickets for a refused board")
+        XCTAssertTrue(coordinator.endedByRefusal)
+        XCTAssertTrue(deleted.cancelled)
+        XCTAssertFalse(coordinator.isRunning)
+    }
+
+    func testRepeatedRefusedUpgradesEndTheStreamAfterThree() async throws {
+        let requester = V3DMockRequester()
+        requester.boardPayload["latest_event_id"] = 42
+        let store = try makeStore(requester: requester)
+        await store.reload()
+        guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
+
+        let sockets = (0..<5).map { _ -> MockSocket in
+            let socket = MockSocket(scripts: [.fail(URLError(.badServerResponse))])
+            socket.refusal = .refused
+            return socket
+        }
+        let recorder = StreamRecorder(minterTickets: ["t1", "t2", "t3", "t4", "t5"])
+        let coordinator = recorder.makeCoordinator(
+            stamp: stampA, boardSlug: "alpha", initialCursor: 42, baseURL: "https://a.test",
+            sockets: sockets
+        )
+        let finished = await raced({ await coordinator.run(); return true })
+        XCTAssertNotNil(finished)
+        XCTAssertEqual(recorder.mintedTickets, ["t1", "t2", "t3"], "three refusals in a row, then the stream rests")
+        XCTAssertTrue(coordinator.endedByRefusal)
+    }
+
+    func testTransportFailuresKeepReconnecting() async throws {
+        let requester = V3DMockRequester()
+        requester.boardPayload["latest_event_id"] = 42
+        let store = try makeStore(requester: requester)
+        await store.reload()
+        guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
+
+        let sockets = (0..<4).map { _ in MockSocket(scripts: [.fail(URLError(.networkConnectionLost))]) }
+        let recorder = StreamRecorder(minterTickets: ["t1", "t2", "t3", "t4", "t5"])
+        let coordinator = recorder.makeCoordinator(
+            stamp: stampA, boardSlug: "alpha", initialCursor: 42, baseURL: "https://a.test",
+            sockets: sockets
+        )
+        coordinator.start()
+        await recorder.waitUntilURLCount(5)
+        coordinator.stop()
+        XCTAssertFalse(coordinator.endedByRefusal, "a dropped link is never a refusal")
+    }
+
+    func testRefusalClassification() {
+        XCTAssertEqual(KanbanEventSocketRefusal.classify(closeCode: .policyViolation, httpStatus: nil), .policy)
+        XCTAssertEqual(KanbanEventSocketRefusal.classify(closeCode: .invalid, httpStatus: 403), .refused)
+        XCTAssertEqual(KanbanEventSocketRefusal.classify(closeCode: .normalClosure, httpStatus: 101), .refused)
+        XCTAssertEqual(KanbanEventSocketRefusal.classify(closeCode: .invalid, httpStatus: nil), .none)
+        XCTAssertEqual(KanbanEventSocketRefusal.classify(closeCode: .goingAway, httpStatus: 101), .none)
+        XCTAssertEqual(KanbanEventSocketRefusal.classify(closeCode: .abnormalClosure, httpStatus: 101), .none)
+        XCTAssertEqual(KanbanEventSocketRefusal.classify(closeCode: .invalid, httpStatus: 502), .none, "a gateway error is transport trouble")
+    }
+
     func testMalformedOrMissingWatermarkMeansNoSocket() {
         XCTAssertFalse(KanbanLiveUpdatePolicy.isValidInitialWatermark(nil))
         XCTAssertFalse(KanbanLiveUpdatePolicy.isValidInitialWatermark(-1), "negative watermarks never open a stream")
@@ -1347,6 +1424,8 @@ private final class MockSocket: KanbanEventSocket {
     }
 
     private(set) var cancelled = false
+    /// How the scripted server ended this socket (issue 1971).
+    var refusal: KanbanEventSocketRefusal = .none
     private(set) var lateDeliveryHadParkedReceive = false
     /// True while a receive() caller is parked - lets tests synchronize on
     /// the in-flight receive BEFORE retiring the stream.

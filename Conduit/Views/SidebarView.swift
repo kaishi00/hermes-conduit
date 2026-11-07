@@ -2284,7 +2284,7 @@ struct CronList: View {
         .task(id: appState.supportsCronNotifications) {
             if appState.supportsCronNotifications { await appState.refreshCronNotifications() }
         }
-        .refreshable { await appState.refreshCronContent() }
+        .refreshable { await appState.refreshCronContent(repairingCatalog: true) }
         .sheet(item: $selectedJob) {
             CronJobDetailSheet(job: $0)
                 .environmentObject(appState)
