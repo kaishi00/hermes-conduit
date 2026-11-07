@@ -228,9 +228,9 @@ struct V2ScheduledList: View {
         // A hidden Tasks tab stays mounted; it loads when shown, like Chats.
         .task(id: "\(appState.activeProfile)|\(appState.isConnected)|\(shell.isTabActive)") {
             guard shell.isTabActive else { return }
-            await appState.refreshCronContent()
+            await appState.refreshScheduledContent()
         }
-        .refreshable { await appState.refreshCronContent() }
+        .refreshable { await appState.refreshScheduledContent() }
         .sheet(item: $selectedJob) {
             CronJobDetailSheet(job: $0)
                 .environmentObject(appState)
