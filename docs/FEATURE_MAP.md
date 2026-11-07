@@ -1127,7 +1127,8 @@ GPT-Live and Local Live get them, on the phone and the Watch, and a
 Hermes call's reply in its instructions · the
 notifier's line for a spoken turn, which tells the model its answer is
 heard · chat bubbles (the file card; a Markdown file opens in the
-Markdown reader, see Artifacts)
+Markdown reader, see Artifacts) · a bot's message in a group room (the same
+cards, read from the bot's profile, see Pictures in messages)
 
 **Code**
 - The file card: `Conduit/Views/Components/MarkdownText.swift` (GatewayMediaFileCard; a Markdown file opens `Conduit/Views/Components/MarkdownDocumentSheet.swift`)
@@ -1152,7 +1153,7 @@ Markdown reader, see Artifacts)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-06, #1884 (a Markdown file card opens the Markdown reader, as Artifacts does since #1879); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1434, carried in #1449.
+**Checked:** 2026-11-07, #1914 (a group room's bot messages draw their tags as files too, read from the bot's profile; voices unchanged, rooms have none); 2026-11-06, #1884 (a Markdown file card opens the Markdown reader, as Artifacts does since #1879); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1434, carried in #1449.
 
 ## Qwen direct voice
 
@@ -5042,7 +5043,8 @@ does.
 **Siblings:** chats, project chats and Bot Chat · the saved-chat copy · reply
 pictures in tool results, large documents and HTML previews · call job
 result sheets · group rooms (their replies grid pictures in a row through
-the same Markdown; their attached files show as names, never as pictures) ·
+the same Markdown, a bot's `MEDIA:` pictures read from its own profile; the
+user's attached files show as names, never as pictures) ·
 HTML previews (a page shown in place, not a picture, so two in a row stay
 two pages, their fallback pictures included) · iPhone, iPad and Mac (the same views; a grid takes
 as many tiles to a row as the width gives) · Apple Watch and CarPlay (they
@@ -5054,7 +5056,7 @@ caption, briefing or doc says how pictures load)
 **Code**
 - Attachments: `Conduit/Views/ChatView.swift` (UserImageAttachmentPreview and its isTile; UserMessageContent.attachmentViews, which grids two or more)
 - Two or more pictures as a grid: `Conduit/Views/Components/PictureGrid.swift` (PictureGrid.plan, shownCount, moreCount; PictureGridLayout; the tiles and the "+N" badge), `Conduit/Views/Components/MarkdownProseRun.swift` (pictureRanges, isGridPicture, Piece.isPictures, pictureSlot), `Conduit/Views/Components/MarkdownText.swift` (MarkdownPictureGrid, RemoteMarkdownImage.tileContent), and in the bounded views `Conduit/Views/Components/MarkdownRichContent.swift` (RichBudgetedMarkdownBody.slotView) and `Conduit/Views/Components/MarkdownLargeDocumentView.swift` (LargeMarkdownExpandedView's pictureRanges and pictureBlock)
-- Reply pictures (`MEDIA:` and web): `Conduit/Views/Components/MarkdownText.swift` (RemoteMarkdownImage, WebFallbackImage), `Conduit/Views/Components/BoundedRemoteImage.swift`, `Conduit/Views/Components/GatewayMediaDataURLResolver.swift` (imageCacheKey, imageCacheKey(forMediaPath:)), set for job sheets in `Conduit/Views/LiveVoiceCallJobs.swift`
+- Reply pictures (`MEDIA:` and web): `Conduit/Views/Components/MarkdownText.swift` (RemoteMarkdownImage, WebFallbackImage), `Conduit/Views/Components/BoundedRemoteImage.swift`, `Conduit/Views/Components/GatewayMediaDataURLResolver.swift` (imageCacheKey, imageCacheKey(forMediaPath:)), set for job sheets in `Conduit/Views/LiveVoiceCallJobs.swift` and for a group room's bot messages in `Conduit/Views/GroupChatView.swift` (mediaResolver(for:), GroupMemberBubble.mediaResolver, GroupRoomImageGallery), from `Conduit/Services/GroupChatModels.swift` (GroupRoomTurns.localProfile, speaker)
 - Kept and remembered: `Conduit/Services/TranscriptImageCache.swift` (files on the phone), `Conduit/Services/TranscriptPictureMemory.swift` (decoded reply pictures, attachment previews, every picture's size and the card heights, loaded as the app opens from `Conduit/ConduitApp.swift` and again asked for by ChatView), both forgotten in `Conduit/Services/AppState.swift` (wipeOfflineChatCache, deleteSavedChats)
 - A picture's arrival, or its failure: `Conduit/Views/Components/MarkdownText.swift` (placeGatewayImage, placeRemoteImage, placeGatewayFailure, placeRemoteFailure), the row's new height reaching `Conduit/Views/TranscriptLayout.swift` (rowResized) from `Conduit/Views/TranscriptView.swift` (TranscriptCellRoot, and TranscriptViewController's rowResized, which asks at once for the pass that lands it), and `Conduit/Services/TranscriptScroller.swift` (keepAnchor) keeping the reader's row, see Cards drawn in web pages
 - Tests: `ConduitTests/TranscriptInlineImageTests.swift`, `ConduitTests/TranscriptScrollerTests.swift` (Rows changing height), `ConduitTests/TranscriptLayoutTests.swift` (testARowChangingHeightMovesTheRowsUnderItInTheSamePass), `ConduitTests/ChatTypographyTests+PictureGrid.swift`
@@ -5066,16 +5068,16 @@ caption, briefing or doc says how pictures load)
 - A picture with no remembered size takes its height as it arrives, as a card does. In a chat the reader's row (the first starting on screen) stays put in the same layout pass, scrolling or not, a finger keeping its drag and a fling its momentum (TranscriptScroller.keepAnchor): a row above it grows up out of view, one on screen grows down. Its size is remembered as it shows. A picture still loading when its row's cell goes to another row is dropped, and shows from memory or loads again when the row is back; one whose row has moved on to another picture never shows there. In a chat a web picture lands without its fade, since the move needs the growth in one pass (2026-10-25, #1270, #1238; taken at once, scrolling or not, since the transcript rewrite gave every row a frame of its own, 2026-10-31, #1577: the wait for the reader's scrolling to rest, and the rules it needed, went with ChatScrollEngine; Eric delegated the chat scroll's design to Claude, 2026-09-28, and approved the transcript rewrite's design, 2026-10-30).
 - A picture that won't load (unavailable, too large, or a web picture its page can't show either) gives its place to its label or fallback the same way, at once, the reader's row kept by what the label's layout took. The web fallback's page measuring the picture goes the same way, and a row loading again a picture that failed keeps its label meanwhile (2026-10-26, #1270; at once since 2026-10-31, #1577, under the transcript rewrite's design, which Eric approved 2026-10-30).
 - What memory already holds for a row (its picture, decoded, or the picture's size) shows as the row draws, on its first frame or a later one (another row of the same picture showed it since, a cold launch's kept sizes loaded): a row that resizes on its own keeps the reader's row like any growth, so nothing waits for an arrival. A web picture already decoded shows on the first frame too, its size remembered or not (2026-10-26, #1270; on a later frame too since 2026-10-31, #1577, under the transcript rewrite's design, which Eric approved 2026-10-30).
+- A bot's `MEDIA:` pictures and files in a group room show as in its Bot Chat, read from the bot's own profile on the connected Hermes, where Hermes saved them, and page in the room's picture viewer. Another gateway's bot (a peer member) and a member the room no longer lists keep their tags as text, since their paths name files on another host; so does Hermes Desktop's read-only group sheet, and the user's own room messages, as in a chat (Eric's report, 2026-11-07, #1914: a room reply showed "MEDIA: /root/.hermes/cache/images/….png" as links).
 - Outside a transcript (job sheets, whose web pictures load through the same view) a picture, or the label of one that won't load, takes its height as soon as it arrives too, but nothing there keeps the reader's row: a row above them grows down into what they read (2026-10-26, #1270). The saved copy's rows are the chat's own, drawn by its transcript, so their pictures arrive as a chat's do (2026-10-30, #1550), and so are a group room's, whose web pictures land without their fade as a chat's do (2026-10-31, #1590).
 
 **Open gaps**
 - A picture never loaded on this phone, or kept by a build before #1239 and not shown since, or whose row was laid out before a cold launch's kept sizes loaded, still grows its row once as it arrives: above the reader the offset moves with it, on screen it grows below what they look at, unanimated. Its height follows the row's width, so the memo can't reserve it before it loads, and only a read on the main thread before the first frame, which the ruling above keeps off it, would have the kept sizes in time.
 - Job sheets have no transcript: a web picture never loaded on this phone grows its row where it is, and above a reader scrolled back it moves what they read, as chats did before #1270.
-- Group rooms show no `MEDIA:` pictures: their Markdown is given no gateway data URL (the resolver they have since #1524 reads Desktop cards only).
 - Past 4,000 remembered sizes the memo starts again (no LRU), so pictures grow once more until each loads again.
 - Not checked on a device yet: the grid's width as a Mac window is resized, and the "+N" tile under VoiceOver.
 
-**Checked:** 2026-11-05, #1803 (two or more pictures in a message show as a grid of tiles, issue 1801; Code, Rulings, Tests, gaps); 2026-11-02, #1643 (a row growing in a reply moves the cells under it in that pass, not only the layout's frames: the context names every row under it); 2026-11-01, #1622 (the pass that lands a row's new height is asked for at once, so a picture or its label arriving in an idle chat or room lands with the reader's row kept without waiting for the next thing to wake the app, as "at once" says; Code); 2026-10-31, #1590 (group rooms draw on the transcript: a picture, or its label, takes its height as it arrives with the reader's row kept, and a web picture lands without its fade, the room's rows reading a ChatRowDisclosure as a chat's do; Rulings, gaps); 2026-10-31, #1577 (chats draw on the transcript's collection view: a picture, or its label, takes its height as it arrives, scrolling or not, and TranscriptScroller keeps the reader's row; ChatRowArrival and the engine's wait for a rest are gone; the rulings #1566 departed from rewritten, and its Open gaps line gone; Code, Rulings, Tests, gaps); 2026-10-31, #1566 (TranscriptScroller's rule for rows growing above the reader, not called yet; pictures arrive as before; Code, and the rulings it departs from in Open gaps); 2026-10-30, #1550 (the saved copy is drawn by the chat's engine, so its pictures arrive as a chat's); 2026-10-30, #1524 (group rooms get the connected Hermes' resolver for Desktop cards only, their `MEDIA:` pictures still don't load; the resolver gains connectedDashboardBridge); 2026-10-29, #1491 (a tapped picture opens in the picture viewer among the chat's pictures); 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
+**Checked:** 2026-11-07, #1914 (a group room's bot messages load their `MEDIA:` pictures and files from the bot's own profile, closing the gap #1524 left; Siblings, Code, Rulings, gaps); 2026-11-05, #1803 (two or more pictures in a message show as a grid of tiles, issue 1801; Code, Rulings, Tests, gaps); 2026-11-02, #1643 (a row growing in a reply moves the cells under it in that pass, not only the layout's frames: the context names every row under it); 2026-11-01, #1622 (the pass that lands a row's new height is asked for at once, so a picture or its label arriving in an idle chat or room lands with the reader's row kept without waiting for the next thing to wake the app, as "at once" says; Code); 2026-10-31, #1590 (group rooms draw on the transcript: a picture, or its label, takes its height as it arrives with the reader's row kept, and a web picture lands without its fade, the room's rows reading a ChatRowDisclosure as a chat's do; Rulings, gaps); 2026-10-31, #1577 (chats draw on the transcript's collection view: a picture, or its label, takes its height as it arrives, scrolling or not, and TranscriptScroller keeps the reader's row; ChatRowArrival and the engine's wait for a rest are gone; the rulings #1566 departed from rewritten, and its Open gaps line gone; Code, Rulings, Tests, gaps); 2026-10-31, #1566 (TranscriptScroller's rule for rows growing above the reader, not called yet; pictures arrive as before; Code, and the rulings it departs from in Open gaps); 2026-10-30, #1550 (the saved copy is drawn by the chat's engine, so its pictures arrive as a chat's); 2026-10-30, #1524 (group rooms get the connected Hermes' resolver for Desktop cards only, their `MEDIA:` pictures still don't load; the resolver gains connectedDashboardBridge); 2026-10-29, #1491 (a tapped picture opens in the picture viewer among the chat's pictures); 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
 
 ## The picture viewer
 
@@ -5108,12 +5110,13 @@ pictures' VoiceOver hint "Opens full screen with save and share")
 - Copies fetched for the viewer are removed once it is two pages past them, and the rest when it closes, so a long list of large photos doesn't fill the phone (see Files prepared for preview and Save to Files).
 
 **Open gaps**
+- A room's list keys a bot's `MEDIA:` picture by its path alone, as a chat's does, so two bots on Docker or SSH profiles citing one container path in one room page as one picture, fetched through the first one's profile (the tapped picture itself shows its own file). Members of a room are profiles on one host, where one path is one file in every other case (2026-11-07, #1914).
 - Not checked on a device yet: the swipe down beside the pager's own pan, the zoomed edge handing on to the next page, and the trackpad swipe on a Mac.
 - A reply still streaming isn't listed: its pictures open alone until it settles.
 - An animated GIF plays at up to 120 frames, drawn small enough that its frames stay within 32 MB (the pager holds three pages); Quick Look played every frame at full size.
 - The Folder pages through its listed files only: a folder not opened in the tree isn't listed.
 
-**Checked:** 2026-11-06, #1884 (the Markdown reader's pictures page through the file's own, not the chat's it opened over); 2026-11-05, #1803 (a tile of a message's picture grid opens the viewer as its picture did, the "+N" tile on its own picture, the rest paged to; Code); 2026-10-30, #1550 (a saved copy's pictures page through the chat's own list, from the rows drawn); 2026-10-29, #1491.
+**Checked:** 2026-11-07, #1914 (a group room's list holds a bot's `MEDIA:` pictures too, each fetched through its own profile, see Pictures in messages); 2026-11-06, #1884 (the Markdown reader's pictures page through the file's own, not the chat's it opened over); 2026-11-05, #1803 (a tile of a message's picture grid opens the viewer as its picture did, the "+N" tile on its own picture, the rest paged to; Code); 2026-10-30, #1550 (a saved copy's pictures page through the chat's own list, from the rows drawn); 2026-10-29, #1491.
 
 ## Cards Hermes shows
 
@@ -5228,9 +5231,8 @@ keeps a Desktop widget's buttons from throwing)
 - Past 2,000 remembered heights the memo starts again (no LRU), so cards grow once more until each is measured again; the picture sizes have the same limit at 4,000 (see Pictures in messages).
 - Job sheets aren't on a transcript, so their cards grow where they are, and above a reader scrolled back move what they read.
 - The page a tap opens is tested (`SheetPage`), but not the sheet presenting it, nor the fade: there is no hosted tap test for the block yet.
-- Group rooms show no HTML previews (no gateway data URL; the resolver they have since #1524 reads Desktop cards only).
 
-**Checked:** 2026-11-02, #1643 (a row growing in a reply moves the cells under it in that pass, not only the layout's frames: the context names every row under it); 2026-11-01, #1622 (the pass that lands a row's new height is asked for at once, so a card or its fallback taking its height in an idle chat or room lands without waiting for the next thing to wake the app, as "at once" says; Code); 2026-11-01, #1610 (a message's preview opens full screen by its page, not a flag, so it no longer opens blank; the sheet hangs on the block so a fallback leaves it open; a page cut at 900 pt fades at its foot, Eric's choice; the cap and `window.hermes.send` in README.md; Siblings, Code, Rulings, gaps); 2026-10-31, #1590 (group rooms draw on the transcript, so their diagrams and formulas take their heights with the reader's row kept; Rulings, gaps); 2026-10-31, #1577 (chats draw on the transcript's collection view: a card or picture takes its height at once, scrolling or not, and TranscriptScroller keeps the reader's row; the wait for a rest, the owed shifts and the closing chat's waiting cards give way to that one rule, under the chat scroll's design being Claude's; the rulings #1566 departed from rewritten, and its Open gaps line gone; Code, Rulings, Tests, gaps); 2026-10-31, #1566 (TranscriptScroller's one rule for rows growing above the reader, not called yet; cards take their heights as before; Code, and the rulings it departs from in Open gaps); 2026-10-30, #1550 (the saved copy is drawn by the chat's engine, so its cards take their heights as a chat's); 2026-10-30, #1524 (the `::preview` grammar moved to TranscriptDirectives.swift, shared with Desktop cards; group rooms still show no previews); 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
+**Checked:** 2026-11-07, #1914 (a group room's bot messages draw their `::preview` pages, read from the bot's own profile, closing the gap #1524 left; another gateway's bot, Desktop's read-only groups and the user's own room messages keep the directive as text, see Pictures in messages); 2026-11-02, #1643 (a row growing in a reply moves the cells under it in that pass, not only the layout's frames: the context names every row under it); 2026-11-01, #1622 (the pass that lands a row's new height is asked for at once, so a card or its fallback taking its height in an idle chat or room lands without waiting for the next thing to wake the app, as "at once" says; Code); 2026-11-01, #1610 (a message's preview opens full screen by its page, not a flag, so it no longer opens blank; the sheet hangs on the block so a fallback leaves it open; a page cut at 900 pt fades at its foot, Eric's choice; the cap and `window.hermes.send` in README.md; Siblings, Code, Rulings, gaps); 2026-10-31, #1590 (group rooms draw on the transcript, so their diagrams and formulas take their heights with the reader's row kept; Rulings, gaps); 2026-10-31, #1577 (chats draw on the transcript's collection view: a card or picture takes its height at once, scrolling or not, and TranscriptScroller keeps the reader's row; the wait for a rest, the owed shifts and the closing chat's waiting cards give way to that one rule, under the chat scroll's design being Claude's; the rulings #1566 departed from rewritten, and its Open gaps line gone; Code, Rulings, Tests, gaps); 2026-10-31, #1566 (TranscriptScroller's one rule for rows growing above the reader, not called yet; cards take their heights as before; Code, and the rulings it departs from in Open gaps); 2026-10-30, #1550 (the saved copy is drawn by the chat's engine, so its cards take their heights as a chat's); 2026-10-30, #1524 (the `::preview` grammar moved to TranscriptDirectives.swift, shared with Desktop cards; group rooms still show no previews); 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
 
 ## Cards made for Hermes Desktop
 
@@ -5273,7 +5275,7 @@ notifier's push text and the README line that describes it · `::preview`
 - The on-screen retry loop has no unit test: it lives in the view's task (the read cache and the wait it sleeps for are tested).
 - Two rows showing the same card while it is first read each ask for it.
 
-**Checked:** 2026-11-04, #1751 with notifier #539 (the plugin's `::conduit-board` line is hidden, not a card; Siblings, Rulings); 2026-10-30, #1524.
+**Checked:** 2026-11-07, #1914 (a group room's bot message supplies its own profile's file reader, falling back to the room's; the Desktop card's read is unchanged); 2026-11-04, #1751 with notifier #539 (the plugin's `::conduit-board` line is hidden, not a card; Siblings, Rulings); 2026-10-30, #1524.
 
 ## Self-improvement updates
 
@@ -5477,13 +5479,14 @@ reply (no bubble, the column's width) · the room on a wide window (the chat's
 readable column, see Readable width on wide windows) · Hermes Desktop's
 read-only group sheet (the same bubble) · the bot's color on Bots Home (its
 ring and glow, `botColor`), the tags that name it in the room and its chip
-in the composer's "To" row (`GroupRoomComposer`, the same tints) · not
+in the composer's "To" row (`GroupRoomComposer`, the same tints) · the
+pictures and files its `MEDIA:` tags attach (see Pictures in messages) · not
 needed: Watch and CarPlay (no group rooms there), Linked Rooms (its rooms use
 this view, so the branch takes it with main) · text: no caption or doc gives
 the width or the color
 
 **Code**
-- `Conduit/Views/GroupChatView.swift` (GroupMemberBubble: avatarSize, trailingRoom, groupMemberBubbleSurface; GroupMemberHeaderAvatar; GroupRespondingRow; GroupUserBubble; DesktopGroupChatView's shortened caption)
+- `Conduit/Views/GroupChatView.swift` (GroupMemberBubble: avatarSize, trailingRoom, groupMemberBubbleSurface, mediaResolver; GroupMemberHeaderAvatar; GroupRespondingRow; GroupUserBubble; DesktopGroupChatView's shortened caption)
 - Colors: `Conduit/Services/AppState.swift` (groupMemberTints, groupMemberColor), from `Conduit/Services/AppState+V2Shell.swift` (botColor)
 - Tests: `ConduitTests/BotWorkstreamsTests.swift` (testABotsRingTakesItsGlowColorFirst)
 
@@ -5496,7 +5499,7 @@ the width or the color
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-06, #1874 (picture by the name, colors from the glow).
+**Checked:** 2026-11-07, #1914 (a bot's `MEDIA:` pictures and files show in its bubble, see Pictures in messages); 2026-11-06, #1874 (picture by the name, colors from the glow).
 
 ## Who answers in a group chat
 

@@ -837,6 +837,47 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(GroupRoomTurns.members([furina], namedBy: []), [furina])
     }
 
+    func testAMembersFilesAreReadFromItsOwnLocalProfile() {
+        let local = GroupDecoders.member(any(["member_id": "m1", "profile": " furina ", "handle": "furina"]))
+        let explicit = GroupDecoders.member(any(["member_id": "m2", "profile": "nahida", "target": ["kind": "local"]]))
+        let peer = GroupDecoders.member(any(["member_id": "m3", "profile": "furina", "target": ["kind": "peer"]]))
+        let noProfile = GroupDecoders.member(any(["member_id": "m4", "handle": "raiden"]))
+        XCTAssertEqual(GroupRoomTurns.localProfile(of: local), "furina")
+        XCTAssertEqual(GroupRoomTurns.localProfile(of: explicit), "nahida")
+        XCTAssertNil(GroupRoomTurns.localProfile(of: peer), "another gateway's bot names files on its own host")
+        XCTAssertNil(GroupRoomTurns.localProfile(of: noProfile))
+        XCTAssertNil(GroupRoomTurns.localProfile(of: nil))
+    }
+
+    func testAMessagesSpeakerIsFoundByItsActorWithoutAMemberID() throws {
+        let furina = try XCTUnwrap(GroupDecoders.member(any(["member_id": "m1", "profile": "furina", "handle": "furina"])))
+        let message = GroupEvent(
+            roomID: "room", seq: 1, eventID: "e1", kind: "message.member",
+            actor: GroupActor(kind: "member", id: "furina", profile: "furina", displayName: "Furina", connectionID: nil),
+            authorityEpoch: nil, payload: ["text": .string("Hi")], createdAt: 0
+        )
+        XCTAssertEqual(GroupRoomTurns.speaker(of: message, members: [furina])?.memberID, "m1")
+        let user = GroupEvent(
+            roomID: "room", seq: 2, eventID: "e2", kind: "message.user",
+            actor: GroupActor(kind: "user", id: "furina", profile: nil, displayName: nil, connectionID: nil),
+            authorityEpoch: nil, payload: ["text": .string("Hi")], createdAt: 0
+        )
+        XCTAssertNil(GroupRoomTurns.speaker(of: user, members: [furina]), "only a member's actor names a member")
+        let peer = try XCTUnwrap(GroupDecoders.member(any(["member_id": "m2", "profile": "furina", "target": ["kind": "peer"]])))
+        XCTAssertNil(GroupRoomTurns.speaker(of: message, members: [furina, peer]),
+                     "a profile two members share names neither")
+        let unnamed = try XCTUnwrap(GroupDecoders.member(any(["profile": "furina", "handle": "furina"])))
+        XCTAssertNil(GroupRoomTurns.speaker(of: message, members: [unnamed, peer]),
+                     "a member without a member id doesn't take a shared profile as its own id")
+        let named = GroupEvent(
+            roomID: "room", seq: 3, eventID: "e3", kind: "message.member",
+            actor: GroupActor(kind: "member", id: "furina", profile: "furina", displayName: "Furina", connectionID: nil),
+            authorityEpoch: nil, payload: ["text": .string("Hi"), "member_id": .string("gone")], createdAt: 0
+        )
+        XCTAssertNil(GroupRoomTurns.speaker(of: named, members: [furina]),
+                     "a payload naming a member the room no longer lists isn't matched by its actor instead")
+    }
+
     func testRecipientsLeadTheMessageOnce() {
         let scout = GroupDecoders.member(any(["member_id": "scout", "profile": "scout", "handle": "scout"]))!
         let atlas = GroupDecoders.member(any(["member_id": "atlas", "profile": "atlas", "handle": "atlas"]))!

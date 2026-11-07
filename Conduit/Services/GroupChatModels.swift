@@ -1064,6 +1064,35 @@ enum GroupRoomTurns {
         return member(withID: id, in: members)
     }
 
+    /// The member who said a message: the one its payload names (as
+    /// `member(for:)` finds it), else, when the payload names none, the one
+    /// member its actor's id matches (an explicit member id, else a profile no
+    /// other member shares). In that fallback an ambiguous or unknown id finds nobody.
+    static func speaker(of event: GroupEvent, members: [GroupMember]) -> GroupMember? {
+        if event.payload["member_id"]?.stringValue != nil { return member(for: event, members: members) }
+        guard event.actor.kind == "member" else { return nil }
+        let id = event.actor.id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !id.isEmpty else { return nil }
+        let byID = members.filter { $0.memberID?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == id }
+        if !byID.isEmpty { return byID.count == 1 ? byID[0] : nil }
+        let byProfile = members.filter {
+            $0.profile?.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(id) == .orderedSame
+        }
+        return byProfile.count == 1 ? byProfile[0] : nil
+    }
+
+    /// The profile on the connected Hermes a member's files live under: a
+    /// local member's own, never another gateway's bot, whose paths name
+    /// files on its own host.
+    static func localProfile(of member: GroupMember?) -> String? {
+        guard let member else { return nil }
+        let kind = member.target?["kind"]?.stringValue
+        guard kind == nil || kind == "local",
+              let profile = member.profile?.trimmingCharacters(in: .whitespacesAndNewlines), !profile.isEmpty
+        else { return nil }
+        return profile
+    }
+
     /// The members as this gateway's own bots are named now. A room keeps
     /// the name each bot had when it joined, so a bot renamed since (from a
     /// long press in Conduit, or in Desktop) would keep its old name there.

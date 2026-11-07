@@ -80,7 +80,8 @@ struct GroupChatView: View {
         .environment(\.groupMemberTints, appState.groupMemberTints(members))
         .environment(\.chatTextSize, chatTextSize)
         // A Desktop card reads its title and summary from the connected
-        // Hermes (#1522); the room's MEDIA: files stay off it.
+        // Hermes (#1522). A member's MEDIA: files read through its own
+        // profile's resolver, set on its bubble.
         .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver)
         // Files dragged onto the room are staged in its composer (#1408);
         // a plugin that can't store them gets the composer's notice.
@@ -162,7 +163,17 @@ struct GroupChatView: View {
             ),
             scroller: scroller
         )
-        imageGallery.update { GroupRoomImageGallery.items(in: replay.events.filter(GroupRoomTurns.isVisible)) }
+        // The closure is kept by the gallery, so it holds the events, roster and
+        // app state, never the view.
+        let galleryEvents = replay.events.filter(GroupRoomTurns.isVisible)
+        let roster = members
+        let galleryAppState = appState
+        imageGallery.update {
+            GroupRoomImageGallery.items(in: galleryEvents) { event in
+                GroupRoomTurns.localProfile(of: GroupRoomTurns.speaker(of: event, members: roster))
+                    .map { galleryAppState.gatewayMediaResolver(for: $0) }
+            }
+        }
         return GeometryReader { proxy in
             TranscriptView(
                 appState: appState,
@@ -252,12 +263,23 @@ struct GroupChatView: View {
         }
     }
 
+    /// Where a member's `MEDIA:` files are read: its own profile on the
+    /// connected Hermes, where Hermes saved them. Another gateway's bot, or
+    /// a member the room no longer lists, gets none, so its tags stay text.
+    private func mediaResolver(for member: GroupMember?) -> GatewayMediaDataURLResolver? {
+        GroupRoomTurns.localProfile(of: member).map { appState.gatewayMediaResolver(for: $0) }
+    }
+
     /// One of the transcript's rows.
     @ViewBuilder
     private func roomRow(_ row: TranscriptRow) -> some View {
         switch row.kind {
         case .room(.event(let event, let members, let continuesRun, let boards)):
-            GroupEventRow(event: event, members: members, continuesRun: continuesRun, boards: boards)
+            GroupEventRow(
+                event: event, members: members, continuesRun: continuesRun, boards: boards,
+                mediaResolver: event.isMemberMessage
+                    ? mediaResolver(for: GroupRoomTurns.speaker(of: event, members: members)) : nil
+            )
         case .room(.pending(let text, let members, let isSending)):
             GroupUserBubble(text: text, members: members, timestamp: nil, eventID: row.id) {
                 if isSending {
@@ -663,6 +685,8 @@ struct GroupEventRow: View {
     var continuesRun = false
     /// The boards the agent showed for this message (RoomBoards).
     var boards: [RichBoard] = []
+    /// Reads a member's `MEDIA:` files (its own profile's).
+    var mediaResolver: GatewayMediaDataURLResolver? = nil
 
     var body: some View {
         if event.isUserMessage {
@@ -671,7 +695,7 @@ struct GroupEventRow: View {
             }
         } else if event.isMemberMessage {
             GroupMemberBubble(
-                member: GroupRoomTurns.member(for: event, members: members),
+                member: GroupRoomTurns.speaker(of: event, members: members),
                 name: speakerLabel,
                 text: event.messageText ?? "",
                 members: members,
@@ -679,7 +703,8 @@ struct GroupEventRow: View {
                 continuesRun: continuesRun,
                 roomEventID: event.id,
                 roomThreadID: event.threadID,
-                boards: boards
+                boards: boards,
+                mediaResolver: mediaResolver
             )
         } else {
             GroupSystemEventCaption(event: event, members: members)
@@ -700,15 +725,20 @@ struct GroupEventRow: View {
     }
 }
 
-/// The pictures in a room's messages, in order. Rooms draw web pictures
-/// only: their Markdown has no gateway resolver.
+/// The pictures in a room's messages, in order: web pictures, and a
+/// member's `MEDIA:` pictures where `resolver` gives its message one. The
+/// user's own messages draw their `MEDIA:` lines as text, as in a chat.
 enum GroupRoomImageGallery {
     @MainActor
-    static func items(in events: [GroupEvent]) -> [ImageGalleryItem] {
+    static func items(
+        in events: [GroupEvent],
+        resolver: (GroupEvent) -> GatewayMediaDataURLResolver? = { _ in nil }
+    ) -> [ImageGalleryItem] {
         let items = events.filter(\.isChatMessage).flatMap { event -> [ImageGalleryItem] in
             let text = GroupMessageParts(event.messageText ?? "").text
             let shown = event.isUserMessage ? (GroupRoomReplyQuote.parse(text)?.message ?? text) : text
-            return ChatImageGallery.markdownItems(shown, resolver: nil, recognizesGatewayMedia: false)
+            let media = event.isMemberMessage ? resolver(event) : nil
+            return ChatImageGallery.markdownItems(shown, resolver: media, recognizesGatewayMedia: media != nil)
         }
         return ImageGallery.deduplicated(items)
     }
@@ -837,7 +867,14 @@ struct GroupMemberBubble: View {
     var roomThreadID: String? = nil
     /// The boards the agent showed with this message, under its bubble.
     var boards: [RichBoard] = []
+    /// Reads the files its `MEDIA:` tags attach, from its own profile on
+    /// the connected Hermes, as a Bot Chat's reply does. Nil (a Desktop
+    /// group, another gateway's bot) leaves the tags as text.
+    var mediaResolver: GatewayMediaDataURLResolver? = nil
     @Environment(\.groupMemberTints) private var tints
+    /// The room's resolver, which a Desktop card in a message without one
+    /// of its own still reads (#1522).
+    @Environment(\.gatewayMediaFiles) private var roomFiles
 
     /// The picture beside the name, above the bubble.
     static let avatarSize: CGFloat = 24
@@ -881,7 +918,13 @@ struct GroupMemberBubble: View {
                     GroupMessageFiles(files: parts.files)
                     if !parts.text.isEmpty {
                         HugsIdealWidth {
-                            MarkdownText(source: GroupRoomMentions.linkingMarkdown(parts.text, members: members, tints: tints))
+                            MarkdownText(
+                                source: GroupRoomMentions.linkingMarkdown(parts.text, members: members, tints: tints),
+                                gatewayMediaDataURL: mediaResolver.map { resolver in
+                                    { path in await resolver.dataURL(for: path) }
+                                }
+                            )
+                            .environment(\.gatewayMediaFiles, mediaResolver ?? roomFiles)
                         }
                     }
                 }
