@@ -2062,7 +2062,7 @@ lists `cronSessions`, every run, not one job's) · Watch, CarPlay and the
 notifier (not needed: no cron history there)
 
 **Code**
-- App: `Conduit/Services/AppState.swift` (loadCronRuns, cronRunsJobID, cronRunsLoaded, decodeCronRun), `Conduit/Models/Models.swift` (CronRun, isRun(ofJob:)), `Conduit/Services/HermesClient.swift` (cronRuns), `Conduit/Views/SidebarView.swift` (CronJobDetailSheet's Run history), `Conduit/Views/V2/V2TasksView.swift` (the sheet from Tasks)
+- App: `Conduit/Services/AppState.swift` (loadCronRuns, cronRunsJobID, cronRunsLoaded, decodeCronRun), `Conduit/Models/Models.swift` (CronRun, isRun(ofJob:)), `Conduit/Services/HermesClient.swift` (cronRuns), `Conduit/Views/SidebarView.swift` (CronJobDetailSheet's Run history, CronJobRow), `Conduit/Views/V2/V2TasksView.swift` (the sheet from Tasks, V2ScheduledList's row)
 - Test: `ConduitTests/SidebarLayoutTests+CronRunHistory.swift`
 
 **Rulings**
@@ -2075,7 +2075,7 @@ notifier (not needed: no cron history there)
 **Open gaps**
 - Without a dashboard, a run of Hermes' unified runtime (a `local-*` id) that `cron.runs` doesn't name a job for is left out of every job's history.
 
-**Checked:** 2026-11-07, #1924 (a job's name and schedule wrap to two lines at accessibility text sizes in the drawer's Cron list and Tasks › Scheduled, its next run too in Tasks, as a chat's row already does; Code); 2026-11-03, #1712 (added, fixing #1707).
+**Checked:** 2026-11-07, #1924 (a job's name and schedule wrap to two lines at accessibility text sizes in the drawer's Cron list and Tasks › Scheduled, its next run too in Tasks, as a chat's row already does; Code now names CronJobRow and V2ScheduledList's row); 2026-11-03, #1712 (added, fixing #1707).
 
 ## Links in messages
 
