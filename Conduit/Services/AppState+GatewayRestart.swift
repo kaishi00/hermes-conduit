@@ -73,3 +73,63 @@ extension AppState {
         gatewayRestart = GatewayRestartSlot()
     }
 }
+
+// MARK: - What a restart waits on, and Restart now (GatewayWork.swift)
+
+extension AppState {
+    /// Whether this dashboard's plugin names the work a gateway restart
+    /// waits on (plugin 0.135+).
+    var namesGatewayWork: Bool {
+        dashboardTicketBridge != nil && notifierPlugin.reports(GatewayWork.capability)
+    }
+
+    /// What a gateway restart waits on now, or nil when the plugin can't say
+    /// (an older one, or a gateway that serves the dashboard and refuses
+    /// requests while it drains).
+    func gatewayWork() async -> GatewayWork? {
+        guard namesGatewayWork, let bridge = dashboardTicketBridge,
+              let json = try? await bridge.requestJSON(path: GatewayWork.path, method: "GET") else { return nil }
+        return GatewayWork(json: json)
+    }
+
+    /// Restart now: the update stops waiting, Conduit stops the chats the
+    /// restart waits on, and whatever is still running after that (work
+    /// Conduit can't stop, a chat that didn't stop) the plugin ends with a
+    /// restart through the gateway's service manager. Returns why it
+    /// couldn't, or nil.
+    func restartGatewayNow() async -> String? {
+        guard let bridge = dashboardTicketBridge else {
+            return AppLocalization.string("Connect to this dashboard first.")
+        }
+        do {
+            _ = try await bridge.requestJSON(path: GatewayWork.restartNowPath, method: "POST")
+        } catch {
+            return UserFacingError.message(for: error)
+        }
+        if let work = await gatewayWork(), let client {
+            for unit in work.units where unit.canStop {
+                guard let sessionID = unit.sessionID else { continue }
+                // A chat that won't stop is ended by the forced restart below.
+                _ = try? await client.cancel(sessionID, profile: unit.profile ?? activeProfile)
+            }
+        }
+        // Stopped chats end within a few seconds; an update still waiting
+        // sends its restart once the flag lands.
+        for _ in 0..<5 {
+            try? await Task.sleep(for: .seconds(2))
+            guard let work = await gatewayWork() else { return nil }
+            if work.count == 0 { return nil }
+        }
+        guard let work = await gatewayWork(), work.count > 0 else { return nil }
+        do {
+            _ = try await bridge.requestJSON(path: GatewayWork.forceRestartPath, method: "POST", timeoutMilliseconds: 40_000)
+        } catch {
+            // The restart can take this dashboard down with the gateway
+            // before it answers: no answer is how a forced restart looks.
+            if let refusal = error as? DashboardTicketBridgeError, case .http = refusal {
+                return UserFacingError.message(for: error)
+            }
+        }
+        return nil
+    }
+}

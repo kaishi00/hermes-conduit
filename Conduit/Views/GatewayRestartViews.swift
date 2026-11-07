@@ -40,7 +40,12 @@ struct GatewayRestartStatusView: View {
     var body: some View {
         Group {
             if let row = Self.row(for: appState.activeGatewayRestart) {
-                rowView(row)
+                VStack(alignment: .leading, spacing: 4) {
+                    rowView(row)
+                    if case .restarting(.draining, _) = appState.activeGatewayRestart {
+                        GatewayWaitView().padding(.leading, 28)
+                    }
+                }
             }
         }
         // VoiceOver hears each step and the outcome as they land, once per
@@ -161,5 +166,75 @@ struct GatewayRestartStatusView: View {
 
     private static func list(_ names: [String]) -> String {
         names.formatted(.list(type: .and, width: .narrow).locale(AppLocalization.formattingLocale))
+    }
+}
+
+/// Under "Letting running tasks finish…" (Restart Gateway and the plugin
+/// update alike): what the restart waits on, when it goes ahead anyway, and
+/// Restart now. Reads the plugin every few seconds while it shows; with an
+/// older plugin it shows nothing.
+struct GatewayWaitView: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @EnvironmentObject private var appState: AppState
+    @State private var work: GatewayWork?
+    @State private var restarting = false
+    @State private var failure: String?
+
+    static let pollInterval: Duration = .seconds(5)
+
+    var body: some View {
+        Group {
+            if appState.namesGatewayWork {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let work {
+                        TimelineView(.periodic(from: .now, by: 30)) { context in
+                            VStack(alignment: .leading, spacing: 3) {
+                                ForEach(Array(work.lines(now: context.date).enumerated()), id: \.offset) { _, line in
+                                    Text(verbatim: line)
+                                        .scaledFont(.footnote)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                if let restartsBy = work.restartsBy {
+                                    Text(verbatim: AppLocalization.string("Restarts on its own by \(restartsBy.formatted(date: .omitted, time: .shortened))"))
+                                        .scaledFont(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
+                    }
+                    if let failure {
+                        Text(verbatim: failure)
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Button {
+                        restarting = true
+                        failure = nil
+                        Task {
+                            failure = await appState.restartGatewayNow()
+                            restarting = false
+                        }
+                    } label: {
+                        Text(verbatim: restarting ? AppLocalization.string("Stopping running tasks…") : AppLocalization.string("Restart Now"))
+                            .scaledFont(.subheadline.weight(.semibold))
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(restarting)
+                    .accessibilityHint(Text(AppLocalization.string("Stops the running tasks and restarts the gateway now.")))
+                    .accessibilityIdentifier("gatewayRestart.restartNow")
+                }
+                .task {
+                    while !Task.isCancelled {
+                        if let latest = await appState.gatewayWork() { work = latest }
+                        try? await Task.sleep(for: Self.pollInterval)
+                    }
+                }
+            }
+        }
     }
 }

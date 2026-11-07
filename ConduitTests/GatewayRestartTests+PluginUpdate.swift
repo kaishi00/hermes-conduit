@@ -1081,4 +1081,38 @@ extension GatewayRestartTests {
                        .needsDashboardRestart(detail: "Restart it"))
         XCTAssertEqual(NotifierPluginUpdater.hostOutcome(["step": "done", "version": "0.63.0"]), .updated(version: "0.63.0"))
     }
+
+    // MARK: - What a restart waits on (GatewayWork.swift)
+
+    func testTheWorkARestartWaitsOnIsNamed() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let work = try XCTUnwrap(GatewayWork(json: [
+            "units": [
+                ["kind": "chat", "profile": "rei", "bot": "Rei", "title": "New mail arrived", "session_id": "20260815_115050_45f123", "elapsed_s": 1560],
+                ["kind": "chat", "profile": "default", "platform": "telegram", "session_id": NSNull()],
+                ["kind": "cron", "job_id": "dc18", "title": "Morning brief"],
+                ["kind": "managed"],
+            ],
+            "count": 4, "draining": true, "restarts_by": 1_800_000_600,
+        ], now: now))
+        XCTAssertTrue(work.draining)
+        XCTAssertEqual(work.restartsBy, Date(timeIntervalSince1970: 1_800_000_600))
+        XCTAssertEqual(work.units.map(\.canStop), [true, false, false, false])
+        XCTAssertTrue(work.hasWorkConduitCantStop)
+        let lines = work.lines(now: now)
+        XCTAssertEqual(lines.count, 4)
+        XCTAssertTrue(lines[0].hasPrefix("Rei: New mail arrived, running 26"), lines[0])
+        XCTAssertEqual(lines[1], "Hermes: a chat")
+        XCTAssertEqual(lines[2], "Scheduled job Morning brief")
+        XCTAssertEqual(lines[3], "A background task")
+    }
+
+    func testAnOlderGatewaysBareCountSaysItIsntNamed() throws {
+        let work = try XCTUnwrap(GatewayWork(json: ["units": [], "count": 2, "draining": false]))
+        XCTAssertEqual(work.count, 2)
+        XCTAssertNil(work.restartsBy)
+        XCTAssertEqual(work.lines(now: Date()), ["Hermes doesn't say what's running."])
+        XCTAssertTrue(work.hasWorkConduitCantStop)
+        XCTAssertNil(GatewayWork(json: ["count": 1]))
+    }
 }
