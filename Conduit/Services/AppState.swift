@@ -20928,14 +20928,16 @@ final class AppState: ObservableObject {
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent
                 || continuation.handedOffAutomaticIntent
-            await loadChatResumeBusyInputMode(using: client)
+            // Three independent reads, each guarding its own answer against a
+            // switch while it was out: sent together, so the connect tail
+            // waits one round trip for them, not three (issue 1727). The
+            // check that follows is the connection's own.
+            async let busyInputModeRead: Void = loadChatResumeBusyInputMode(using: client)
+            async let profilesRead: Void = loadChatResumeProfiles()
+            async let displayPreferencesRead: Void = loadChatResumeProfileDisplayPreferences()
+            _ = await (busyInputModeRead, profilesRead, displayPreferencesRead)
             guard refreshTransportContinuation(),
                   let activeClient = self.client, activeClient === client else { return }
-            await loadChatResumeProfiles()
-            guard refreshTransportContinuation(),
-                  let activeClient = self.client, activeClient === client else { return }
-            await loadChatResumeProfileDisplayPreferences()
-            guard refreshTransportContinuation() else { return }
             Task { await loadChatResumeSlashCommands() }
             Task { await refreshNotifierPluginStatus() }
         } catch {
@@ -21743,9 +21745,12 @@ final class AppState: ObservableObject {
             )
             guard stillOwns() else { return }
         }
-        await loadChatResumeBusyInputMode(using: client)
-        guard stillOwns() else { return }
-        await loadChatResumeProfileDisplayPreferences()
+        // Two independent reads, each guarding its own answer against a switch
+        // while it was out: sent together, so the tail waits one round trip for
+        // them, not two (issue 1727).
+        async let busyInputModeRead: Void = loadChatResumeBusyInputMode(using: client)
+        async let displayPreferencesRead: Void = loadChatResumeProfileDisplayPreferences()
+        _ = await (busyInputModeRead, displayPreferencesRead)
         guard stillOwns() else { return }
         Task { await loadChatResumeSlashCommands() }
         Task { await refreshNotifierPluginStatus() }
@@ -36614,15 +36619,26 @@ final class AppState: ObservableObject {
     /// the last value this profile had, else Hermes' own default
     /// (interrupt), so Settings never shows a mode Hermes doesn't use.
     private func loadBusyInputMode(using client: HermesClient) async {
+        // The profile that answers is the client's own: every read it sends
+        // carries that profile (or none, for the server's default). Profile
+        // discovery can adopt a fallback before this task starts, and then
+        // `activeProfile` already names the fallback while this client still
+        // addresses the profile that went: reading `activeProfile` here would
+        // ask the old profile and cache its answer under the new one's key.
+        let addressed = client.profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let profile = addressed.isEmpty ? "default" : addressed
+        guard profile == activeProfile else { return }
         let key = busyInputModeCacheKey
         // Shown while Hermes answers, and kept if it can't.
         restoreBusyInputMode()
         let revision = busyInputModeWriteRevision
         do {
             let mode = try await client.busyInputMode()
-            // A switch away while this was out reads its own, and a mode
-            // picked meanwhile is newer.
-            guard self.client === client, revision == busyInputModeWriteRevision else { return }
+            // A switch away while this was out reads its own, a mode picked
+            // meanwhile is newer, and discovery can re-home the connection
+            // before the replacement client is installed.
+            guard self.client === client, revision == busyInputModeWriteRevision,
+                  profile == activeProfile else { return }
             busyInputMode = mode
             defaults.set(mode.rawValue, forKey: key)
         } catch {}
