@@ -398,6 +398,9 @@ struct RichCardButtonRow: View {
                 .frame(minHeight: 44)
                 .foregroundStyle(foreground(button))
                 .background(Capsule().fill(background(button)))
+                // "Sent" alone wouldn't say which of the card's buttons went.
+                .accessibilityLabel(state == .sent ? Text(verbatim: "\(button.label), ") + Text("Sent")
+                                                   : Text(verbatim: button.label))
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)

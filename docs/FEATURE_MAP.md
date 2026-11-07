@@ -5382,7 +5382,7 @@ composer's draft (a send or tap waits for an empty one)
 - Templates are kept per profile on the host (50, 16 KB each), checked when saved, and filled in by the plugin, so the phone, rooms and Desktop draw the filled card (notifier #606).
 
 **Open gaps**
-- Composed cards: the call screen, the saved copy, a chat on its way and saved call transcripts draw them with open and copy only; live models can't fill a template; Desktop's half leaves icons out (it has no SF Symbols); what's typed in a card's fields is kept for the session, for that chat (a board's tab switched away and back keeps it, and whether the card was opened), never on disk, so a relaunch starts the fields over.
+- Composed cards: the call screen, the saved copy, a chat on its way and saved call transcripts draw them with open and copy only; live models can't fill a template; Desktop's half leaves icons out (it has no SF Symbols); what's typed in a card's fields is kept for the session, for that chat (a board's tab switched away and back keeps it, and whether the card was opened), never on disk, so a relaunch starts the fields over; a card-taps report that lands after a board is drawn shows its tap buttons once the row redraws, as checklists do.
 - Diffs: no side-by-side view, and the unchanged lines between hunks can't be expanded (only the patch is known); a kept diff can't be opened offline, nor once the host has pruned it.
 - A room's checklists can't be ticked, and a board in a room another host runs (Linked Rooms) goes as text.
 - Desktop's half draws maps, places, weather, media and contacts as their Markdown, not natively.
