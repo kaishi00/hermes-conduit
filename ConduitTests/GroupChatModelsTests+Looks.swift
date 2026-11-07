@@ -172,4 +172,56 @@ extension GroupChatModelsTests {
         XCTAssertEqual(routes.looksReads, before + 1, "the second read is skipped while the first is out")
         XCTAssertEqual(appState.activeRoomLooks, .empty, "a read answering after the room closed is dropped")
     }
+
+    // MARK: - Giving yours
+
+    @MainActor
+    func testLooksAreGivenOnceForEachChangeAndAFailedOneIsTriedAgain() async throws {
+        let routes = CopiesRoutes(copies: [])
+        let bot = BotProfile(
+            name: "default", botTitle: "Furina", displayName: "", profileDescription: "", model: nil, provider: nil,
+            hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: "#AA3300",
+            canonicalSession: nil, lastActive: nil, lastPreview: nil
+        )
+        var chatResume = ChatResumeLifecycleOperations.live
+        chatResume.botRoster = { _ in BotRosterSnapshot(bots: [bot], supportsBotProtocol: true) }
+        let appState = try copiesAppState(routes, chatResume: chatResume)
+        copiesConnect(appState)
+        var report = copiesPluginReport
+        report["capabilities"] = (report["capabilities"] as? [String] ?? [])
+            + [RoomDraftsClient.capability, RoomLooksUpload.capability]
+        appState.applyNotifierPluginReport(report)
+        await appState.refreshBotRoster()
+        XCTAssertEqual(appState.shownBotRoster.map(\.name), ["default"])
+        XCTAssertNil(appState.roomPersonPicture, "read from this AppState's own defaults")
+
+        // A failed one isn't counted as given, so the next try sends it.
+        routes.failingLooksPuts = 1
+        await appState.shareRoomLooksIfNeeded()
+        await appState.shareRoomLooksIfNeeded()
+        XCTAssertEqual(routes.looksPuts.count, 2)
+        let agents = try XCTUnwrap(routes.looksPuts.last?["agents"] as? [String: Any])
+        XCTAssertEqual(agents.keys.sorted(), ["default"])
+        XCTAssertTrue(routes.looksPuts.last?["person"] is NSNull)
+
+        // Nothing changed: nothing sent.
+        await appState.shareRoomLooksIfNeeded()
+        XCTAssertEqual(routes.looksPuts.count, 2)
+
+        // Your picture is a change, kept on this AppState's defaults.
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 40)).image { context in
+            UIColor.systemTeal.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 40, height: 40))
+        }
+        let taken = await appState.setRoomPersonPicture(image)
+        XCTAssertTrue(taken)
+        XCTAssertEqual(routes.looksPuts.count, 3)
+        let person = try XCTUnwrap(routes.looksPuts.last?["person"] as? [String: Any])
+        XCTAssertNotNil(person["picture"] as? String)
+        XCTAssertNotNil(appState.appDefaults.data(forKey: RoomLooksUpload.personPictureKey))
+
+        await appState.setRoomPersonPicture(nil)
+        XCTAssertEqual(routes.looksPuts.count, 4)
+        XCTAssertNil(appState.appDefaults.data(forKey: RoomLooksUpload.personPictureKey))
+    }
 }

@@ -592,6 +592,9 @@ final class CopiesRoutes {
     var failingLooksReads = 0
     var looksDelays: [Duration] = []
     private(set) var looksReads = 0
+    /// `PUT /rooms/looks`'s bodies; the next this many fail.
+    private(set) var looksPuts: [[String: Any]] = []
+    var failingLooksPuts = 0
     /// The next people reads each wait this long, answering what the people
     /// were when they were asked.
     var peopleDelays: [Duration] = []
@@ -676,6 +679,14 @@ final class CopiesRoutes {
             posts.removeAll { $0["event_id"] as? String == eventID }
             posts.append(post)
             return ["ok": true, "message": post]
+        }
+        if path.hasPrefix(RoomLooksUpload.path), method == "PUT" {
+            looksPuts.append(body ?? [:])
+            if failingLooksPuts > 0 {
+                failingLooksPuts -= 1
+                throw DashboardTicketBridgeError.http(status: 502, detail: "Bad gateway")
+            }
+            return ["ok": true]
         }
         if path.hasPrefix(RoomLooksUpload.path), method == "GET" {
             looksReads += 1

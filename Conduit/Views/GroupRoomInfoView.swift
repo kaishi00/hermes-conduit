@@ -90,6 +90,9 @@ struct GroupRoomInfoSheet: View {
                 }
             }
         }
+        // Its own, not the room screen's: V2 raises this sheet outside
+        // GroupChatView, which sets them for V1.
+        .environment(\.groupRoomLooks, appState.activeRoomLooksShown)
         .onAppear { roomID = openRoomKey }
         // Who left or was taken out since the room opened.
         .task { await appState.refreshActiveRoomPeople() }

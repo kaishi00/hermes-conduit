@@ -7212,6 +7212,8 @@ final class AppState: ObservableObject {
     // MARK: - Persistence
 
     private let defaults: UserDefaults
+    /// This AppState's defaults, for its extensions in other files.
+    var appDefaults: UserDefaults { defaults }
     /// Kept outside ChatResumeStore on purpose: the return surface is a
     /// presentation preference, not part of the resume schema.
     static let chatReturnSurfaceKey = "conduit.chatReturnSurface.v1"
@@ -7724,6 +7726,8 @@ final class AppState: ObservableObject {
             presentationCacheDebounceSuspension
             ?? { duration in try await Task.sleep(for: duration) }
         self.defaults = defaults
+        // The picture you show in rooms over Links (RoomLooks.swift).
+        self._roomPersonPicture = Published(wrappedValue: RoomLooksUpload.storedPersonPicture(defaults))
         let noticeChannel = NotifierPluginNoticeChannel.load(from: defaults)
         self.notifierPluginNoticeChannel = noticeChannel
         // The saved Update notices choice holds from the first status read.
@@ -12802,7 +12806,7 @@ final class AppState: ObservableObject {
     /// Each bot's picture as sent, by the image it was made from.
     var roomLookPictures: [String: (image: UIImage, data: Data?)] = [:]
     /// The picture you show in rooms over Links, kept on this phone.
-    @Published var roomPersonPicture: Data? = RoomLooksUpload.storedPersonPicture()
+    @Published var roomPersonPicture: Data? = nil
     /// The latest people read started: an older one that answers later is
     /// dropped.
     private var activeRoomPeopleRead = 0
@@ -25967,6 +25971,9 @@ final class AppState: ObservableObject {
             }
         }
         await refreshBotRoster()
+        // A picture removed, a bot deleted or renamed: rooms over Links show
+        // the roster as it now is (digest-gated, RoomLooks.swift).
+        await shareRoomLooksIfNeeded()
     }
 
     func openWidgetConversation(

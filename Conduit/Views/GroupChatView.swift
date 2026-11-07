@@ -1485,8 +1485,12 @@ struct GroupMemberAvatar: View {
     var look: RoomLook? = nil
     @Environment(\.groupRoomLooks) private var roomLooks
 
-    /// The roster bot this member is.
-    private var bot: BotProfile? { appState.groupMemberBot(member, name: name) }
+    /// The roster bot this member is. A person's bubble, which comes with
+    /// their look, is never matched to one of your bots by name.
+    private var bot: BotProfile? {
+        if member == nil, look != nil { return nil }
+        return appState.groupMemberBot(member, name: name)
+    }
 
     var body: some View {
         if let bot {

@@ -200,9 +200,9 @@ extension AppState {
         if image != nil, data == nil { return false }
         roomPersonPicture = data
         if let data {
-            UserDefaults.standard.set(data, forKey: RoomLooksUpload.personPictureKey)
+            appDefaults.set(data, forKey: RoomLooksUpload.personPictureKey)
         } else {
-            UserDefaults.standard.removeObject(forKey: RoomLooksUpload.personPictureKey)
+            appDefaults.removeObject(forKey: RoomLooksUpload.personPictureKey)
         }
         await shareRoomLooksIfNeeded()
         return true
