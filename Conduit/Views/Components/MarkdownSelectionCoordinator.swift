@@ -927,15 +927,17 @@ final class MarkdownSelectionCoordinator: ObservableObject {
 
     /// Whether this coordinator's selection still shows in the key window,
     /// the one being touched: across blocks, or inside one block whose text
-    /// view still has text selected. One collapsed by dragging a handle onto
-    /// the other leaves the state behind with nothing selected, and a
+    /// view is still first responder with text selected (the native chrome
+    /// draws it only then). One collapsed by dragging a handle onto the
+    /// other, or left behind when a tap on the row or the background
+    /// resigned its view, leaves the state with nothing showing, and a
     /// selection left in another of an iPad's windows doesn't count.
     var showsSelectionInKeyWindow: Bool {
         guard activeSelectionState != nil else { return false }
         let shownViews = activeSpans.compactMap { recordsByID[$0.segmentID]?.textView }
             .filter { $0.window?.isKeyWindow == true }
         if hasCrossSegmentSelection { return !shownViews.isEmpty }
-        return shownViews.contains { $0.selectedRange.length > 0 }
+        return shownViews.contains { $0.isFirstResponder && $0.selectedRange.length > 0 }
     }
 
     func highlightRects(in window: UIWindow?) -> [CGRect] {

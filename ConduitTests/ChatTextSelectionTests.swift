@@ -541,6 +541,7 @@ final class ChatTextSelectionTests: XCTestCase {
 
         // A reply's words selected: the coordinator holds the selection.
         func selectFourLetters() {
+            XCTAssertTrue(host.mountedTextView.becomeFirstResponder())
             host.mountedTextView.selectedRange = NSRange(location: 0, length: 4)
             selectionCoordinator.updateNativeSelection(
                 segmentID: segment.id,
@@ -566,6 +567,13 @@ final class ChatTextSelectionTests: XCTestCase {
         host.mountedTextView.selectedRange = NSRange(location: 2, length: 0)
         XCTAssertTrue(selectionCoordinator.hasActiveSelection)
         XCTAssertFalse(ChatTextSelection.isShowing, "a selection collapsed to nothing")
+
+        // A tap on the row or the background resigns the view and leaves
+        // its range: nothing shows.
+        selectFourLetters()
+        XCTAssertTrue(ChatTextSelection.isShowing)
+        host.mountedTextView.resignFirstResponder()
+        XCTAssertFalse(ChatTextSelection.isShowing, "a selection whose view resigned")
 
         selectFourLetters()
         selectionCoordinator.clearSelection()
