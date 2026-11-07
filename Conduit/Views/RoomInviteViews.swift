@@ -72,6 +72,8 @@ struct RoomInviteSheet: View {
     /// Choices changed on the card, by profile. Nothing goes until Join.
     @State private var edited: [String: RoomChoices] = [:]
     @State private var busy = false
+    /// Which answer is going: the spinner shows on its button.
+    @State private var declining = false
     @State private var actionError: String?
     /// The answer is still on its way to the host.
     @State private var sendingNote: String?
@@ -289,7 +291,7 @@ struct RoomInviteSheet: View {
             } label: {
                 HStack(spacing: 8) {
                     Text(AppLocalization.string("Join"))
-                    if busy {
+                    if busy && !declining {
                         ProgressView()
                             .controlSize(.small)
                     }
@@ -298,9 +300,20 @@ struct RoomInviteSheet: View {
             }
             .buttonStyle(.settingsPrimary)
             .disabled(busy || !RoomInviteLimits.canJoin(picked: pickedCount, places: invite.places))
-            Button(AppLocalization.string("Decline"), role: .destructive) { confirmingDecline = true }
-                .buttonStyle(.settingsDestructive)
-                .disabled(busy)
+            Button(role: .destructive) {
+                confirmingDecline = true
+            } label: {
+                HStack(spacing: 8) {
+                    Text(AppLocalization.string("Decline"))
+                    if busy && declining {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.settingsDestructive)
+            .disabled(busy)
         }
     }
 
@@ -324,6 +337,7 @@ struct RoomInviteSheet: View {
     private func answer(_ invite: RoomInvite, agents: [RoomInviteAgent]) {
         guard !busy else { return }
         busy = true
+        declining = agents.isEmpty
         actionError = nil
         sendingNote = nil
         Task { @MainActor in

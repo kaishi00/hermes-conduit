@@ -12798,7 +12798,7 @@ final class AppState: ObservableObject {
     /// What was last given each dashboard's Hermes (`PUT /rooms/looks`).
     var sharedRoomLooks: [UUID: String] = [:]
     /// Each bot's picture as sent, by the image it was made from.
-    var roomLookPictures: [String: (image: ObjectIdentifier, data: Data?)] = [:]
+    var roomLookPictures: [String: (image: UIImage, data: Data?)] = [:]
     /// The picture you show in rooms over Links, kept on this phone.
     @Published var roomPersonPicture: Data? = RoomLooksUpload.storedPersonPicture()
     /// The latest people read started: an older one that answers later is

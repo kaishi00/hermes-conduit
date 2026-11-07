@@ -234,10 +234,10 @@ extension AppState {
 
     /// A bot's picture as sent, made once for each picture it has.
     private func roomLookPicture(for profile: String, image: UIImage) -> Data? {
-        let key = ObjectIdentifier(image)
-        if let kept = roomLookPictures[profile], kept.image == key { return kept.data }
+        // The image itself is kept, so its identity can't be another's.
+        if let kept = roomLookPictures[profile], kept.image === image { return kept.data }
         let data = RoomLooksUpload.picture(image)
-        roomLookPictures[profile] = (key, data)
+        roomLookPictures[profile] = (image, data)
         return data
     }
 
@@ -251,8 +251,12 @@ extension AppState {
         let response = try? await roomRouteJSON(
             path: "\(RoomLooksUpload.path)?room_id=\(room)", method: "GET", body: nil, timeoutMilliseconds: nil)
         guard groupRoomEpoch == epoch, activeDashboardID == dashboard,
-              activeRoomSurface?.room.roomID == surface.room.roomID,
-              let response, response["ok"] as? Bool == true else { return }
+              activeRoomSurface?.room.roomID == surface.room.roomID else { return }
+        guard let response, response["ok"] as? Bool == true else {
+            // The next poll tries again, not 30 s on.
+            activeRoomLooksReadAt = nil
+            return
+        }
         let looks = RoomLooks(response)
         if looks != activeRoomLooks { activeRoomLooks = looks }
     }
