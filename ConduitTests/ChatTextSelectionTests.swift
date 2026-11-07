@@ -599,6 +599,62 @@ final class ChatTextSelectionTests: XCTestCase {
         plain.resignFirstResponder()
     }
 
+    /// A selection across blocks holds the swipe while its views are in
+    /// the key window, though its owner resigned (the coordinator draws it).
+    @MainActor
+    func testACrossBlockSelectionHoldsTheSwipeHomeInItsWindow() throws {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        selectionCoordinator.replaceSegments(descriptors, revision: "swipe-hold-cross-v1")
+        let scene = try XCTUnwrap(
+            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first,
+            "the test host has a window scene"
+        )
+        let appKeyWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 240, height: 180)
+        window.addSubview(UIView(frame: window.bounds))
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            appKeyWindow?.makeKey()
+            selectionCoordinator.clearSelection()
+        }
+        let firstHost = mountedSelectionHost(
+            text: "Anchor",
+            segment: descriptors[0],
+            frame: CGRect(x: 10, y: 10, width: 180, height: 40),
+            coordinator: selectionCoordinator,
+            in: window
+        )
+        let secondTextView = SelectableTextView.makeTextView()
+        secondTextView.attributedText = NSAttributedString(string: "Focus")
+        secondTextView.frame = CGRect(x: 10, y: 80, width: 180, height: 40)
+        window.subviews.first?.addSubview(secondTextView)
+        secondTextView.layoutIfNeeded()
+        selectionCoordinator.register(descriptor: descriptors[1], textView: secondTextView)
+
+        firstHost.mountedTextView.selectedRange = NSRange(location: 1, length: 3)
+        selectionCoordinator.updateNativeSelection(
+            segmentID: descriptors[0].id,
+            selectedRange: NSRange(location: 1, length: 3),
+            lowerWindowPoint: CGPoint(x: 18, y: 20),
+            upperWindowPoint: CGPoint(x: 34, y: 20)
+        )
+        selectionCoordinator.updateSelection(windowPoint: CGPoint(x: 150, y: 100))
+        XCTAssertTrue(selectionCoordinator.hasCrossSegmentSelection)
+        XCTAssertTrue(ChatTextSelection.isShowing)
+
+        let otherWindow = UIWindow(windowScene: scene)
+        otherWindow.frame = window.bounds
+        otherWindow.makeKeyAndVisible()
+        XCTAssertFalse(ChatTextSelection.isShowing, "another window's selection")
+        otherWindow.isHidden = true
+    }
+
     @MainActor
     private func mountedSelectionHost(
         text: String,
