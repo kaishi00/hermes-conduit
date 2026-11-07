@@ -2090,7 +2090,7 @@ private struct ChatTakeoverSettings: View {
 }
 
 /// Device-only and off by default: a few lines on a finished run of
-/// steps, asked of Hermes with a hidden /btw (ChatStepSummaries). A run's
+/// steps, asked of Hermes as a side question (ChatStepSummaries). A run's
 /// menu asks for one whatever the switch says.
 private struct StepSummarySettings: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared

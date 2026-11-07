@@ -163,4 +163,41 @@ extension ChatTypographyTests {
         ChatStepSummaries.remove(scopePrefix: nil, defaults: defaults)
         XCTAssertTrue(ChatStepSummaries.saved(defaults).isEmpty)
     }
+
+    /// With the plugin's route, a run's question goes to it, never as a
+    /// /btw that Hermes Desktop would show as a note; an empty answer frees
+    /// the run, which keeps its count.
+    @MainActor
+    func testAStepSummaryIsAskedOfThePluginsRoute() async throws {
+        let defaults = makeScratchDefaults("StepSummarySideQuestionTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        final class Asked { var bodies: [[String: Any]] = [] }
+        let asked = Asked()
+        state.stepSummarySender = { body in
+            asked.bodies.append(body)
+            return ["ok": true, "text": "  "]
+        }
+        state.activeSessionId = "s1"
+        let user = ChatMessage(id: "u", role: .user, content: "Deploy it", timestamp: "2026-11-07T09:00:00Z")
+        let reply = ChatMessage(id: "a", role: .assistant, content: "Deployed", timestamp: "2026-11-07T09:01:00Z")
+        state.messages = [user, summaryStep("call_abcdefghijkl1"), summaryStep("call_abcdefghijkl2"), reply]
+
+        state.explainStepRun(firstMessageID: "row-call_abcdefghijkl1")
+        XCTAssertEqual(state.stepSummaryRequested.count, 1, "the run is being looked back on")
+        for _ in 0..<100 where !state.stepSummaryRequested.isEmpty {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let body = try XCTUnwrap(asked.bodies.first)
+        XCTAssertEqual(body["session_id"] as? String, "s1")
+        XCTAssertEqual(body["wait_s"] as? TimeInterval, ChatStepSummaries.sideQuestionWait)
+        XCTAssertTrue((body["question"] as? String)?.hasPrefix(ChatStepSummaries.explainHead) == true)
+        XCTAssertTrue(state.stepSummaryTasks.isEmpty, "no /btw was sent")
+        XCTAssertTrue(state.stepSummaryRequested.isEmpty, "an empty answer frees the run")
+        XCTAssertNil(ChatStepSummaries.sideQuestionAnswer(["ok": true, "text": " "]))
+        XCTAssertEqual(ChatStepSummaries.sideQuestionAnswer(["ok": true, "text": "I checked the relay."]), "I checked the relay.")
+    }
 }

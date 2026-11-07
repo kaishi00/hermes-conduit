@@ -385,8 +385,15 @@ struct NotifierPluginUpdateStatusView: View {
                         GatewayWaitView().padding(.leading, 28)
                     }
                 }
+                // The first step: the change from idle lands before this
+                // row exists to see it.
+                .onAppear {
+                    guard case .updating = appState.activeNotifierPluginUpdate else { return }
+                    AccessibilityNotification.Announcement(row.title).post()
+                }
             }
         }
+        // Held by the row, so only once it shows.
         .onChange(of: appState.activeNotifierPluginUpdate) { previous, state in
             let before = Self.row(for: previous, plugin: appState.notifierPlugin)
             guard let row = Self.row(for: state, plugin: appState.notifierPlugin),
