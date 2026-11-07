@@ -469,8 +469,8 @@ struct V2ConversationScreen: View {
             // toward the trailing edge read as this swipe, and the chat
             // closed under the finger (issue 1948). Asked as the drag ends,
             // since a selection doesn't redraw the screen.
-            guard swipesBack, !ChatTextSelection.isShowing,
-                  BotChatSwap.isBackSwipe(drag.translation) else { return }
+            guard swipesBack, BotChatSwap.isBackSwipe(drag.translation),
+                  !ChatTextSelection.isShowing else { return }
             if workstreamGoesBack != nil {
                 backToCoordinator()
             } else {

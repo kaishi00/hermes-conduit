@@ -594,6 +594,13 @@ final class ChatTextSelectionTests: XCTestCase {
         XCTAssertFalse(ChatTextSelection.isShowing)
         XCTAssertTrue(plain.becomeFirstResponder())
         XCTAssertTrue(ChatTextSelection.isShowing)
+        let thirdWindow = UIWindow(windowScene: scene)
+        thirdWindow.frame = window.bounds
+        thirdWindow.makeKeyAndVisible()
+        XCTAssertFalse(ChatTextSelection.isShowing, "a plain view's selection in another window")
+        thirdWindow.isHidden = true
+        window.makeKey()
+        XCTAssertTrue(ChatTextSelection.isShowing)
         plain.selectedRange = NSRange(location: 0, length: 0)
         XCTAssertFalse(ChatTextSelection.isShowing, "a range cleared in code")
         plain.resignFirstResponder()
