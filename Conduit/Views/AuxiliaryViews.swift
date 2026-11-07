@@ -1160,9 +1160,23 @@ struct SettingsView: View {
             .init(key: "auxiliary.compression.timeout", label: AppLocalization.string("Compression timeout"), help: AppLocalization.string("Seconds to wait for the compression model on each call. Raise it for slow local models."), control: .number(defaultValue: 120), requiresSchema: true),
         ]),
         ProfileSettingSection(title: AppLocalization.string("Delegation"), symbol: "point.3.connected.trianglepath.dotted", fields: [
-            .init(key: "delegation.max_concurrent_children", label: AppLocalization.string("Concurrent delegate agents"), help: AppLocalization.string("Maximum child agents that can work at once."), control: .number(defaultValue: 2)),
+            .init(key: "delegation.max_concurrent_children", label: AppLocalization.string("Concurrent delegate agents"), help: AppLocalization.string("Maximum child agents that can work at once."), control: .number(defaultValue: 10)),
             .init(key: "delegation.max_iterations", label: AppLocalization.string("Delegate turn limit"), help: AppLocalization.string("Most turns one delegate agent can take."), control: .number(defaultValue: 250), requiresSchema: true),
             .init(key: "delegation.child_timeout_seconds", label: AppLocalization.string("Delegate timeout"), help: AppLocalization.string("Seconds before a delegate agent is stopped. 0 means no limit."), control: .number(defaultValue: 0), requiresSchema: true),
+            .init(key: "delegation.max_spawn_depth", label: AppLocalization.string("Delegation depth"), help: AppLocalization.string("Levels of delegate agents that can start their own. 1 means delegates can't."), control: .number(defaultValue: 1), requiresSchema: true),
+            .init(key: "delegation.orchestrator_enabled", label: AppLocalization.string("Coordinating delegates"), help: AppLocalization.string("Let a delegate agent start and coordinate its own delegates, up to the depth above."), control: .toggle(defaultValue: true), requiresSchema: true),
+            .init(key: "delegation.subagent_auto_approve", label: AppLocalization.string("Delegates approve commands"), help: AppLocalization.string("Delegate agents can't ask you. On, they approve a command once; off, they decline it."), control: .toggle(defaultValue: false), requiresSchema: true),
+            .init(key: "delegation.independent_completions", label: AppLocalization.string("Results as each finishes"), help: AppLocalization.string("Background delegate agents report one by one, not all together at the end."), control: .toggle(defaultValue: false), requiresSchema: true),
+            .init(key: "delegation.gateway_mode", label: AppLocalization.string("Delegation in chats"), help: AppLocalization.string("Inline waits for delegates inside the reply; Background lets the reply finish first. Auto is inline when progress messages are off."), control: .labeledOptions([
+                (value: "auto", label: AppLocalization.string("Auto")),
+                (value: "inline", label: AppLocalization.string("Inline")),
+                (value: "background", label: AppLocalization.string("Background")),
+            ], defaultValue: "auto"), requiresSchema: true),
+            .init(key: "delegation.inherit_mcp_toolsets", label: AppLocalization.string("Delegates keep connectors"), help: AppLocalization.string("A delegate given fewer tools still keeps your connectors' tools."), control: .toggle(defaultValue: true), requiresSchema: true),
+            .init(key: "delegation.max_summary_chars", label: AppLocalization.string("Delegate result limit"), help: AppLocalization.string("Most characters of one delegate's result; the rest is saved to a file. 0 means no limit."), control: .number(defaultValue: 24000), requiresSchema: true),
+            .init(key: "delegation.compression_threshold_tokens", label: AppLocalization.string("Delegate compression cap"), help: AppLocalization.string("Tokens at which a delegate compresses its context, 16000 or more. 0 follows the main setting."), control: .number(defaultValue: 0), requiresSchema: true),
+            .init(key: "delegation.surface_child_process_notifications", label: AppLocalization.string("Delegate command alerts"), help: AppLocalization.string("Tell the chat when a delegate's background command finishes or matches what it watches for."), control: .toggle(defaultValue: false), requiresSchema: true),
+            .init(key: "delegation.prefix_stagger_seconds", label: AppLocalization.string("Delegate start wait"), help: AppLocalization.string("Seconds delegates started together wait for the first to begin answering, so they share its cached prompt. 0 means off."), control: .number(defaultValue: 0), requiresSchema: true),
         ]),
     ]
     }
