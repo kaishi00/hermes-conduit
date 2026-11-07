@@ -72,9 +72,12 @@ private struct RichComposedSection: View {
             if !shown.isEmpty {
                 if section.row {
                     ViewThatFits(in: .horizontal) {
-                        // In the row the elements keep their own widths, so a row
-                        // too wide for the card measures so and stacks instead.
+                        // The row measures its elements' own widths (text on one line,
+                        // fields, pictures and bars at fixed widths), never the card's,
+                        // so a row too wide for the card stacks instead
+                        // (see EqualWidthHStack on children that defeat ViewThatFits).
                         HStack(alignment: .firstTextBaseline, spacing: 12) { elements(shown, inRow: true) }
+                            .fixedSize(horizontal: true, vertical: false)
                         VStack(alignment: .leading, spacing: 8) { elements(shown) }
                     }
                 } else {
@@ -143,6 +146,7 @@ private struct RichElementView: View {
                 } placeholder: {
                     Color.secondary.opacity(0.1).frame(height: 120)
                 }
+                .frame(width: inRow ? 120 : nil)
                 .frame(maxHeight: 220)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .accessibilityLabel(Text(verbatim: element.label ?? ""))
@@ -156,6 +160,7 @@ private struct RichElementView: View {
                 ProgressView(value: min(max(element.progress ?? 0, 0), 1))
                     .tint(element.tone == .neutral ? Color.conduitAccent : tint)
             }
+            .frame(width: inRow ? 120 : nil)
         case .divider:
             Divider()
         case .field:
@@ -205,7 +210,8 @@ private struct RichFieldView: View {
             }
             control
         }
-        .frame(minWidth: inRow ? 140 : nil, maxWidth: inRow ? nil : .infinity, alignment: .leading)
+        .frame(width: inRow ? 160 : nil, alignment: .leading)
+        .frame(maxWidth: inRow ? nil : .infinity, alignment: .leading)
     }
 
     @ViewBuilder
