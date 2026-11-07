@@ -6115,7 +6115,9 @@ sees.
 the open chat's 5 s check against the registry (the same chat on another
 device) · a group room's 3 s `groups.log` and `groups.state` poll · a bot's
 work (the Bot Chat's title line, the Work panel, a workstream's bar; see Bot
-workstreams) · not needed, already gated on what shows: the Chats list's live
+workstreams) · the drawer's scheduled-jobs list (not on a timer: its read
+keys on the connection, so a reconnect makes it read again) · not needed,
+already gated on what shows: the Chats list's live
 registry poll (Running and Needs approval in the chats list), All profiles'
 catalog poll, Tasks and the Kanban board, Pulse's page, Bots Home's portraits
 and talking rooms, Needs you (its own 20 s read) · not needed: the Bot
@@ -6129,16 +6131,18 @@ Settings caption or doc gives the cadence)
 - Open chat: `Conduit/Views/ChatView.swift` (the openChatSyncTick task), `Conduit/Services/AppState.swift` (openChatSyncTick, openChatSyncBecameVisible)
 - Group room: `Conduit/Services/AppState.swift` (startRoomPolling, pollActiveRoomOnce, noteRoomView, roomSurfaceShows), `Conduit/Views/GroupChatView.swift` (roomViewID)
 - Bot work: `Conduit/Views/BotWorkViews.swift` (BotWorkRefresh, its inChat: the Bot Overview's panel isn't in a chat)
+- The drawer's scheduled-jobs list: `Conduit/Views/SidebarView.swift` (CronList's read task and its refreshable)
 - Tests: `ConduitTests/GroupChatSessionSafetyTests.swift` (testRoomPollStopsWhileHiddenAndCatchesUpWhenShown)
 
 **Rulings**
 - A timed read runs only while its screen shows: its tab selected, nothing pushed over it (beside it on a wide window still shows), a chat's column not covered (Settings hosted beside the list, Back to the list: AppState.showSidebar; on a split window a page in the list column, Pulse say, leaves the chat beside it showing: v2Shell's hasChatBeside) and the app not in the background. Showing it again reads at once, so what changed meanwhile is there on return (2026-11-05, #1837, issue #1827).
 - A group room whose screen hasn't appeared yet (just opened) counts as showing. One whose last screen went away while it stayed open (a page pushed over it on one column) doesn't, until a screen shows it again. A poll tick that brings the same driver status publishes nothing.
+- A screen that reads once rather than on a timer reads again when the connection returns: the drawer's scheduled-jobs list and the V2 Scheduled tab key their reads on `isConnected` and read only while connected, so a socket that dropped and came back refills a list it left unread, and the read the drop cancels isn't reported as a failure (a cancelled read leaves the banner alone) (2026-11-07, #1928, issue 1000 F1-41; the Sessions list's first read keys on the connection the same way). A pull to refresh still reads while disconnected, since the user asked for it: its failure is theirs to see.
 
 **Open gaps**
 - A screen covered by a sheet still reads: the sheet doesn't tell the tab it covers.
 
-**Checked:** 2026-11-05, #1837 (added: hidden tabs stop the project page, open chat, room and bot work reads)
+**Checked:** 2026-11-07, #1928 (the drawer's scheduled-jobs list and the V2 Scheduled tab read again after a reconnect, not while disconnected, and a cancelled read isn't bannered, issue 1000 F1-41; Code, Rulings); 2026-11-05, #1837 (added: hidden tabs stop the project page, open chat, room and bot work reads)
 
 ## Swiping list rows on a Mac
 

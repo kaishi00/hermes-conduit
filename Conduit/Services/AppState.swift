@@ -35441,8 +35441,14 @@ final class AppState: ObservableObject {
                 guard profile == activeProfile, self.client === client, generation == cronJobsGeneration else { return }
                 cronJobs = jobs
             }
+        } catch is CancellationError {
+            // A drop cancels this read: its task is keyed on the connection, so
+            // the id changing for a reconnect cancels the one still out. An
+            // interrupted read isn't a failure the user caused, and the read
+            // that starts on the reconnect says whether anything is wrong.
+            return
         } catch {
-            guard profile == activeProfile else { return }
+            guard profile == activeProfile, !Task.isCancelled else { return }
             errorMessage = AppLocalization.string("Could not load scheduled jobs: \(UserFacingError.message(for: error))")
         }
     }

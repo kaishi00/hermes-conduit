@@ -226,8 +226,11 @@ struct V2ScheduledList: View {
             }
         }
         // A hidden Tasks tab stays mounted; it loads when shown, like Chats.
+        // And only while connected: the id carries the connection, so a drop
+        // would otherwise read against a dead socket and banner its failure,
+        // and the reconnect reads the jobs again.
         .task(id: "\(appState.activeProfile)|\(appState.isConnected)|\(shell.isTabActive)") {
-            guard shell.isTabActive else { return }
+            guard shell.isTabActive, appState.isConnected else { return }
             await appState.refreshCronContent()
         }
         .refreshable { await appState.refreshCronContent() }
