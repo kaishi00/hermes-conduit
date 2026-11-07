@@ -1,7 +1,7 @@
 name: opencode-review
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened, labeled, ready_for_review]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -13,8 +13,10 @@ concurrency:
   # later push supersedes that review and is reviewed itself); any other label,
   # or any label on an own-branch or trusted contributor's PR, gets one group
   # per run, so it can't cancel anything. The trusted list here and in the
-  # plan job's if must match.
-  group: opencode-review-${{ github.event.pull_request.number || github.event.inputs.pr_number }}${{ github.event.action == 'labeled' && (github.event.label.name != 'run-review' || github.event.pull_request.head.repo.full_name == github.repository || contains(fromJSON('["malaiwah"]'), github.event.pull_request.user.login)) && format('-{0}', github.run_id) || '' }}
+  # plan job's if must match. Marking a PR ready shares the group only on a
+  # trusted contributor's fork PR, the one PR it reviews; elsewhere it gets a
+  # group of its own, so it can't cancel a review already running.
+  group: opencode-review-${{ github.event.pull_request.number || github.event.inputs.pr_number }}${{ ((github.event.action == 'labeled' && (github.event.label.name != 'run-review' || github.event.pull_request.head.repo.full_name == github.repository || contains(fromJSON('["malaiwah", "Slaymish"]'), github.event.pull_request.user.login))) || (github.event.action == 'ready_for_review' && (github.event.pull_request.head.repo.full_name == github.repository || !contains(fromJSON('["malaiwah", "Slaymish"]'), github.event.pull_request.user.login)))) && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -34,20 +36,27 @@ jobs:
     name: plan
     # The reviewer is an agent holding the review secrets, and a PR's title,
     # body and diff all reach its prompt. PRs from this repository's own
-    # branches (people with push access) get it on every push, and so do fork
-    # PRs opened by the trusted contributors listed below (and in the
-    # concurrency group above). Another fork's PR gets it once someone with
+    # branches (people with push access) get it on every push, drafts
+    # included. Fork PRs opened by the trusted contributors listed below (and
+    # in the concurrency group above) get it on every push once they aren't a
+    # draft, and when marked ready, so a contributor's agent can push a draft
+    # as often as it likes before a model is called (Eric, 2026-11-07).
+    # Another fork's PR gets it once someone with
     # triage access or more adds the run-review label after reading it, and
     # then on every push while the label stays and the PR is open, so only
     # label PRs from contributors you trust. Removing the label stops it.
     # This file runs from main, so a PR can't add its own author to the list.
     if: >-
       github.event_name != 'pull_request_target' ||
-      ((github.event.pull_request.head.repo.full_name == github.repository ||
-        contains(fromJSON('["malaiwah"]'), github.event.pull_request.user.login)) && github.event.action != 'labeled') ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.action != 'labeled' && github.event.action != 'ready_for_review') ||
+      (github.event.pull_request.head.repo.full_name != github.repository &&
+        contains(fromJSON('["malaiwah", "Slaymish"]'), github.event.pull_request.user.login) &&
+        !github.event.pull_request.draft && github.event.action != 'labeled') ||
       (github.event.pull_request.head.repo.full_name != github.repository && github.event.pull_request.state == 'open' &&
         ((github.event.action == 'labeled' && github.event.label.name == 'run-review') ||
-         (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'run-review'))))
+         (github.event.action != 'labeled' && github.event.action != 'ready_for_review' &&
+          contains(github.event.pull_request.labels.*.name, 'run-review'))))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
