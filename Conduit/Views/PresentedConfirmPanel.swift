@@ -135,8 +135,9 @@ struct PresentedConfirmPanel: View {
                 .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
 
-            // A question has nothing to say yes to.
-            if inCall, prompt.canConfirm {
+            // A question has nothing to say yes to, and room work with no
+            // phrase takes no spoken yes at all (only a tap).
+            if inCall, prompt.canConfirm, prompt.room?.work != true || !prompt.spokenYes.isEmpty {
                 Label(spokenHint, systemImage: "waveform")
                     .font(.footnote)
                     .foregroundStyle(Color.conduitAura)
