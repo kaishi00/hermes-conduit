@@ -2070,11 +2070,12 @@ notifier (not needed: no cron history there)
 - Without a dashboard, `cron.runs` keeps only the runs that name the job (`job_id` or `cron_job_id`) or carry Hermes' run session id, `cron_<job id>_<YYYYMMDD>_<HHMMSS>`. A run that says neither is no job's: an empty history beats another job's.
 - The list belongs to one job: opening another job shows a spinner until its answer lands, never the last job's runs or "This job has not run yet." before it knows, and only the newest read's answer is kept. Before the job's first answer, a read that fails, or can't be made offline, says so in the sheet instead; a later refresh that fails keeps the runs shown and reports through the app's error message.
 - Runs that name another profile are left out; a run that names none is kept.
+- At an accessibility text size a job's name and schedule take two lines in both the drawer's Cron list and Tasks › Scheduled, and its next-run line does in Tasks; below those sizes each stays on one line, as a chat's row already does.
 
 **Open gaps**
 - Without a dashboard, a run of Hermes' unified runtime (a `local-*` id) that `cron.runs` doesn't name a job for is left out of every job's history.
 
-**Checked:** 2026-11-07, #1924 (a job's name, schedule and next run wrap to two lines at accessibility text sizes, as a chat's row already does; Code); 2026-11-03, #1712 (added, fixing #1707).
+**Checked:** 2026-11-07, #1924 (a job's name and schedule wrap to two lines at accessibility text sizes in the drawer's Cron list and Tasks › Scheduled, its next run too in Tasks, as a chat's row already does; Code); 2026-11-03, #1712 (added, fixing #1707).
 
 ## Links in messages
 
