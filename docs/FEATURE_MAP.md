@@ -4974,20 +4974,20 @@ signing in to the last dashboard used.
 
 **Siblings:** the plain open (the phone's dashboard list) · the Settings toggle
 and its caption · a notification tap (a call from Hermes answered included) · a
-link from another app · a widget · a shared draft · Siri · Send to Hermes
+link from another app · Pulse's Quiet for Today (the notification action and its retry) · a widget · a shared draft · Siri · Send to Hermes
 shortcuts · CarPlay · the Apple Watch · a call from Hermes ringing · launches in
 the background (Health, places, phone sync, pushes) · the on-screen retry of a
 sign-in that failed off screen · README.md
 
 **Code**
 - Launch: `Conduit/Services/AppState.swift` (beginLaunchSignIn, releaseLaunchDashboardChoice, holdLaunchDashboardChoiceOnScreen, runDashboardSwitch, handleScenePhase, setWatchVoiceCallActive)
-- Releases: `Conduit/ConduitApp.swift` (the notification, link and Siri routes), `Conduit/CarPlay/CarPlayVoiceSceneDelegate.swift`, `Conduit/Services/AppState+HermesCalls.swift` (setNativeHermesCallActive), `Conduit/Services/AppState+ShortcutSend.swift`
+- Releases: `Conduit/ConduitApp.swift` (the notification, link and Siri routes), `Conduit/CarPlay/CarPlayVoiceSceneDelegate.swift`, `Conduit/Services/AppState+HermesCalls.swift` (setNativeHermesCallActive), `Conduit/Services/AppState+ShortcutSend.swift`, `Conduit/Services/AppState+Pulse.swift` (quietPulseForToday)
 - Setting: `Conduit/Views/SavedDashboardsView.swift`
 - Tests: `ConduitTests/AppStateLaunchDashboardChoiceTests.swift`
 
 **Rulings**
 - Off by default, and only with two or more dashboards saved; with one, nothing changes (2026-11-07, Eric, #1911).
-- Only a plain open waits. Anything the launch came for that needs Hermes (a notification, a link, Siri, a shortcut, CarPlay, the Watch, a call from Hermes, a shared draft) signs in to the last dashboard used, as it does with the setting off, and a widget switches as before. A pick, or any dashboard switch, ends the wait (2026-11-07, #1911).
+- Only a plain open waits. Anything the launch came for that needs Hermes (a notification, Pulse's Quiet for Today, a link, Siri, a shortcut, CarPlay, the Watch, a call from Hermes, a shared draft) signs in to the last dashboard used, as it does with the setting off, and a widget switches as before. A pick, or any dashboard switch, ends the wait (2026-11-07, #1911).
 - A launch with no phone screen after a short grace (2 s) is a background launch and signs in as before. If that sign-in can't finish off screen (Face ID), coming on screen leaves the list up rather than retrying it (2026-11-07, #1911).
 - Opening the list and leaving without a pick keeps Conduit signed out until something above needs Hermes or a dashboard is tapped; the caption says what still signs in (2026-11-07, #1911).
 
