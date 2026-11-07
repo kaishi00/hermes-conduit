@@ -669,7 +669,7 @@ class WorkflowExpressionTests(unittest.TestCase):
     which is how `strategy.job-index + 1` in a job name broke both workflows."""
 
     def test_no_arithmetic_inside_expressions(self):
-        for path in (WORKFLOW, NIGHTLY):
+        for path in (WORKFLOW, NIGHTLY, PROMO):
             text = _read(path)
             for expr in re.findall(r"\$\{\{(.*?)\}\}", text):
                 self.assertNotRegex(expr, r"[+/]|\s-\s",
@@ -695,7 +695,7 @@ class WorkflowExpressionTests(unittest.TestCase):
             self.assertLessEqual(used, declared, path)
 
     def test_every_step_reference_names_a_step_of_the_same_job(self):
-        for path in (WORKFLOW, NIGHTLY):
+        for path in (WORKFLOW, NIGHTLY, PROMO):
             for job in _job_keys(path):
                 text = _job_text(path, job)
                 ids = set(re.findall(r"^\s+id: ([a-z0-9-]+)$", text, re.M))
