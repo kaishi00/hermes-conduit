@@ -1081,4 +1081,105 @@ extension GatewayRestartTests {
                        .needsDashboardRestart(detail: "Restart it"))
         XCTAssertEqual(NotifierPluginUpdater.hostOutcome(["step": "done", "version": "0.63.0"]), .updated(version: "0.63.0"))
     }
+
+    // MARK: - What a restart waits on (GatewayWork.swift)
+
+    func testTheWorkARestartWaitsOnIsNamed() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let work = try XCTUnwrap(GatewayWork(json: [
+            "units": [
+                ["kind": "chat", "profile": "rei", "bot": "Rei", "title": "New mail arrived", "session_id": "20260815_115050_45f123", "elapsed_s": 1560],
+                ["kind": "chat", "profile": "default", "platform": "telegram", "session_id": NSNull()],
+                ["kind": "cron", "job_id": "dc18", "title": "Morning brief"],
+                ["kind": "managed"],
+            ],
+            "count": 4, "draining": true, "restarts_by": 1_800_000_600,
+        ], now: now))
+        XCTAssertTrue(work.draining)
+        XCTAssertEqual(work.restartsBy, Date(timeIntervalSince1970: 1_800_000_600))
+        XCTAssertEqual(work.units.map(\.canStop), [true, false, false, false])
+        let lines = work.lines(now: now)
+        XCTAssertEqual(lines.count, 4)
+        XCTAssertTrue(lines[0].hasPrefix("Rei: New mail arrived, running 26"), lines[0])
+        XCTAssertEqual(lines[1], "Hermes: a chat")
+        XCTAssertEqual(lines[2], "Scheduled job Morning brief")
+        XCTAssertEqual(lines[3], "A background task")
+    }
+
+    func testAnOlderGatewaysBareCountSaysItIsntNamed() throws {
+        let work = try XCTUnwrap(GatewayWork(json: ["units": [], "count": 2, "draining": false]))
+        XCTAssertEqual(work.count, 2)
+        XCTAssertNil(work.restartsBy)
+        XCTAssertEqual(work.lines(now: Date()), ["Hermes doesn't say what's running."])
+        XCTAssertNil(GatewayWork(json: ["count": 1]))
+    }
+
+    /// Restart now's steps, scripted: which calls go out, in what order.
+    private func restartNowSteps(
+        reads: [GatewayWork?], endWait: String? = nil, force: String? = nil, log: GatewayRestartNowLog
+    ) -> GatewayRestartNow {
+        GatewayRestartNow(
+            endWait: { log.calls.append("endWait"); return endWait },
+            readWork: {
+                log.calls.append("read")
+                let index = min(log.reads, reads.count - 1)
+                log.reads += 1
+                return reads[index]
+            },
+            // Stops run at once, off this actor: the log is kept on it.
+            stop: { unit in
+                await MainActor.run { log.calls.append("stop \(unit.sessionID ?? "?") \(unit.profile ?? "-")") }
+            },
+            force: { log.calls.append("force"); return force },
+            pause: {}
+        )
+    }
+
+    private static let draining = GatewayWork(units: [
+        .init(kind: "chat", profile: "rei", bot: "Rei", title: "Mail", sessionID: "s1"),
+        .init(kind: "cron", jobID: "j1"),
+    ], count: 2, draining: true)
+
+    func testRestartNowStopsTheChatsAndSkipsTheForceOnceNothingRuns() async {
+        let log = GatewayRestartNowLog()
+        let idle = GatewayWork(units: [], count: 0, draining: true)
+        let failure = await restartNowSteps(reads: [Self.draining, Self.draining, idle], log: log).run()
+        XCTAssertNil(failure)
+        XCTAssertEqual(log.calls, ["endWait", "read", "stop s1 rei", "read", "read"])
+    }
+
+    func testRestartNowForcesWhenWorkStillRunsAndCountsAFailedReadAsRunning() async {
+        let log = GatewayRestartNowLog()
+        let failure = await restartNowSteps(reads: [Self.draining, nil, nil, nil, nil, nil], log: log).run()
+        XCTAssertNil(failure)
+        XCTAssertEqual(log.calls.first, "endWait")
+        XCTAssertEqual(log.calls.filter { $0 == "read" }.count, 6)
+        XCTAssertEqual(log.calls.last, "force")
+    }
+
+    func testRestartNowStopsAtARefusedWaitAndReportsAFailedForce() async {
+        let refused = GatewayRestartNowLog()
+        let endFailure = await restartNowSteps(reads: [Self.draining], endWait: "refused", log: refused).run()
+        XCTAssertEqual(endFailure, "refused")
+        XCTAssertEqual(refused.calls, ["endWait"])
+
+        let failedForce = GatewayRestartNowLog()
+        let forceFailure = await restartNowSteps(reads: [Self.draining], force: "not on systemd", log: failedForce).run()
+        XCTAssertEqual(forceFailure, "not on systemd")
+        XCTAssertEqual(failedForce.calls.last, "force")
+    }
+
+    func testARestartNowFailureShowsOnlyOnItsDashboardForAWhile() {
+        let dashboard = UUID()
+        let at = Date()
+        let failure = GatewayRestartNow.Failure(message: "x", dashboardID: dashboard, at: at)
+        XCTAssertTrue(failure.shows(on: dashboard, now: at.addingTimeInterval(60)))
+        XCTAssertFalse(failure.shows(on: UUID(), now: at))
+        XCTAssertFalse(failure.shows(on: dashboard, now: at.addingTimeInterval(16 * 60)))
+    }
+}
+
+private final class GatewayRestartNowLog {
+    var calls: [String] = []
+    var reads = 0
 }

@@ -140,6 +140,16 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let request = response.notification.request
+        // Ask Which Dashboard at Launch (#1908): whatever a tapped
+        // notification or its button does next needs Hermes, so a launch
+        // waiting for a dashboard pick signs in for it. Not for a dismissal,
+        // or directions that only open Maps.
+        if response.actionIdentifier != UNNotificationDismissActionIdentifier,
+           request.identifier != MapsNavigator.notificationIdentifier {
+            Task { @MainActor in
+                AppStateRuntimeRegistry.shared.appState.releaseLaunchDashboardChoice(for: "a notification")
+            }
+        }
         // Quiet for today on a Pulse push: done in the background, on the
         // dashboard the push came from. One that couldn't be done there (no
         // connection in time, or the push is from another dashboard) says
@@ -406,7 +416,12 @@ struct ConduitApp: App {
                 pendingExternalLink = link
             }
             .task(id: externalLinkRouteKey) {
-                guard appState.isConnected, let link = pendingExternalLink else { return }
+                guard let link = pendingExternalLink else { return }
+                guard appState.isConnected else {
+                    // A launch waiting for a dashboard pick signs in for it.
+                    appState.releaseLaunchDashboardChoice(for: "a link")
+                    return
+                }
                 pendingExternalLink = nil
                 appState.openAppLink(link)
             }
@@ -437,6 +452,8 @@ struct ConduitApp: App {
                 // tap replaced the one it was about.
                 appState.clearCallRefusal()
                 guard appState.isConnected else {
+                    // A launch waiting for a dashboard pick signs in for it.
+                    appState.releaseLaunchDashboardChoice(for: "a notification")
                     notifications.notificationRouteAwaitsConnection(target)
                     return
                 }
@@ -506,6 +523,10 @@ struct ConduitApp: App {
                 }
             }
             .task(id: voiceIntentRouteKey) {
+                // A launch waiting for a dashboard pick signs in for Siri.
+                if pendingVoiceIntents.hasPendingIntent {
+                    appState.releaseLaunchDashboardChoice(for: "Siri")
+                }
                 // Siri's call shows its screen while it waits for Hermes.
                 appState.presentWaitingCallIfNeeded()
                 // A screenshot waits for Conduit to settle after connecting.

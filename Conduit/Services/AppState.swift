@@ -2318,6 +2318,12 @@ final class AppState: ObservableObject {
     /// to (AppState+GatewayRestart.swift).
     @Published var gatewayRestart = GatewayRestartSlot()
     var gatewayRestartTask: Task<Void, Never>?
+    /// Restart now is under way (restartGatewayNow): one at a time, however
+    /// many places show the wait.
+    @Published var gatewayRestartingNow = false
+    /// Why the last Restart now failed, kept here so a wait view opened
+    /// after it finished still shows it.
+    @Published var gatewayRestartNowFailure: GatewayRestartNow.Failure?
     /// The Conduit plugin update's progress and outcome, and the dashboard
     /// it belongs to (AppState+NotifierPluginUpdate.swift).
     @Published var notifierPluginUpdate = NotifierPluginUpdateSlot()
@@ -2538,6 +2544,20 @@ final class AppState: ObservableObject {
     /// A sign-in screen came up while Conduit was off the phone screen; the
     /// next return to the screen retries the saved sign-in.
     private(set) var signInWaitsForForeground = false
+    /// Settings › Saved Dashboards › Ask Which Dashboard at Launch (#1908):
+    /// this launch waits on the dashboard list for a tap instead of signing
+    /// in to the last dashboard used. It ends when a dashboard is picked or
+    /// switched to, when something the launch came for (a notification, a
+    /// link, Siri, the car, the Watch, a call) signs in, or when Conduit
+    /// comes on screen signed in already.
+    private(set) var launchAwaitsDashboardChoice = false
+    /// How long a launch waits for Conduit's phone screen before it counts
+    /// as a launch in the background, which signs in as before. Test seam.
+    var launchDashboardChoiceGrace: Duration = .seconds(2)
+    /// The grace ran out with no phone screen: the background launch's own
+    /// sign-in is under way, or waits for the screen.
+    private var launchSignsInInBackground = false
+    private var launchDashboardChoiceTask: Task<Void, Never>?
     /// Whether no phone screen of Conduit is in the foreground: a launch in
     /// the background, or CarPlay alone. Test seam.
     var phoneScreenIsAway: @MainActor () -> Bool = {
@@ -7010,7 +7030,7 @@ final class AppState: ObservableObject {
     /// copy down too, so a read-only chat doesn't stay up with nothing on
     /// its way.
     private func openChatPickedFromSavedList(_ sessionID: String) {
-        requestOpenSession(sessionID) { [weak self] in
+        requestOpenSession(sessionID) { [weak self] _ in
             guard let self, self.offlineChatPresentation?.isPickedChat == true else { return }
             self.dismissOfflineChatPresentation()
         }
@@ -7801,7 +7821,7 @@ final class AppState: ObservableObject {
         restoreActiveSessionState(for: activeProfile)
         restorePinnedSessions(for: activeProfile)
         if shouldLoadSavedConnection {
-            loadSavedConnection()
+            beginLaunchSignIn()
         }
         // The monitor publishes on the main actor (willSet: `current` still
         // holds the old value, so the handler uses the one it is given).
@@ -9325,8 +9345,6 @@ final class AppState: ObservableObject {
                 openLinkedBotChat(owner)
                 return
             }
-            // Some failed opens say nothing themselves; a deleted job
-            // shouldn't make the link look dead.
             // Job links and chat-turn links share this route.
             openLinkedSession(id, unavailable: AppLocalization.string("That chat is no longer available."))
         case .bot(let profile):
@@ -9474,19 +9492,19 @@ final class AppState: ObservableObject {
                 guard self.activeSessionId == openBefore else { return }
                 target = self.linkedSessionTarget(id)
             }
-            // Only this open's own "not found" may be reworded.
-            self.reconciliationSessionWasNotFound = false
             // Still no row: the stored id learned for a reaped runtime
             // resumes where the runtime id can't.
             let fallback = self.conversationIdentityIndex.durableID(forRuntime: id, profile: self.activeProfile)
-            let opened = await self.requestOpenSession(target ?? fallback ?? id) { [weak self] in
-                // A failed resume says "session not found"; the link's own
-                // words say what's missing. Other refusals keep their text.
-                guard let self,
-                      self.errorMessage == nil
-                        || (self.reconciliationSessionWasNotFound && !self.reconciliationWasKanbanWorker)
-                else { return }
-                self.errorMessage = unavailable
+            // An error already up (an earlier link's, say) isn't this open's:
+            // the tap clears it, so any error after the open is its own.
+            self.errorMessage = nil
+            let opened = await self.requestOpenSession(target ?? fallback ?? id) { [weak self] sessionWasNotFound in
+                guard let self else { return }
+                self.errorMessage = Self.linkedSessionFailureMessage(
+                    current: self.errorMessage,
+                    sessionWasNotFound: sessionWasNotFound,
+                    unavailable: unavailable
+                )
             }.value
             // From outside a chat (a Live Activity, another app) the chat
             // must come forward: V2 keeps the Chats list over it until the
@@ -9496,6 +9514,23 @@ final class AppState: ObservableObject {
             // finished has brought its own chat forward anyway.
             if opened, self.explicitSessionOpenRequestID == nil { self.dismissSidebarDrawer() }
         }
+    }
+
+    /// What a link's failed open says. Only Hermes' own answer that the
+    /// chat isn't there (the resume's 4007, never a history read's 404),
+    /// from this open's reconcile, says the link's words,
+    /// that the chat is gone; a Kanban worker's refusal keeps its own
+    /// explanation. Any other failure (a socket that dropped, a client a
+    /// reconnect replaced mid-open, no connection yet) proves nothing about
+    /// the chat: it keeps the error it came with, and one that came with
+    /// none says to try again, as the retry opens it (#1917).
+    static func linkedSessionFailureMessage(
+        current: String?,
+        sessionWasNotFound: Bool,
+        unavailable: String
+    ) -> String {
+        if sessionWasNotFound { return unavailable }
+        return current ?? AppLocalization.string("Couldn't open that chat. Try again.")
     }
 
     /// The id a linked chat is resumed by. A Live Activity's card from an
@@ -14971,6 +15006,105 @@ final class AppState: ObservableObject {
     }
 #endif
 
+    /// The setting behind Ask Which Dashboard at Launch (#1908).
+    static let asksWhichDashboardAtLaunchKey = "conduit.askDashboardAtLaunch"
+
+    /// The launch's own sign-in. With Ask Which Dashboard at Launch on and
+    /// more than one dashboard saved, a plain open leaves the dashboard
+    /// list up for a tap; otherwise the last dashboard used signs in, as
+    /// it always has.
+    func beginLaunchSignIn() {
+        guard defaults.bool(forKey: Self.asksWhichDashboardAtLaunchKey),
+              savedDashboardRegistry.dashboards.count > 1,
+              let activeID = savedDashboardRegistry.activeDashboardID,
+              hasSavedSignIn(dashboardID: activeID) else {
+            loadSavedConnection()
+            return
+        }
+        lifecycleLog.notice("Launch waits for a dashboard to be picked (Ask Which Dashboard at Launch)")
+        serverSignOutQueue.retryPending()
+        launchAwaitsDashboardChoice = true
+        // Opened in the background (the Watch, a call from Hermes, a place
+        // or Health data woke it), no phone screen comes: what woke Conduit
+        // needs Hermes, and nobody is there to pick.
+        let grace = launchDashboardChoiceGrace
+        launchDashboardChoiceTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: grace) } catch { return }
+            guard let self else { return }
+            self.launchDashboardChoiceTask = nil
+            guard self.launchAwaitsDashboardChoice, !self.sceneHasBeenActive, self.phoneScreenIsAway() else { return }
+            // Nothing waits for a pick now: a release has this sign-in to
+            // go on. One that can't finish here (Face ID can't show off
+            // screen) leaves the list up on screen, not a retry
+            // (holdLaunchDashboardChoiceOnScreen).
+            self.launchAwaitsDashboardChoice = false
+            self.launchSignsInInBackground = true
+            self.loadSavedConnection(trigger: "launch in the background")
+        }
+    }
+
+    /// Something this launch came for needs Hermes: it signs in to the
+    /// last dashboard used, as a launch without the setting does, and the
+    /// open goes on from there (switching dashboards if it is another's).
+    func releaseLaunchDashboardChoice(for reason: String) {
+        if launchSignsInInBackground {
+            // The background launch's sign-in is under way, or waits for the
+            // screen, where its usual retry runs: a second one would race it.
+            launchSignsInInBackground = false
+            return
+        }
+        guard launchAwaitsDashboardChoice else { return }
+        endLaunchDashboardChoice()
+        // The background launch's sign-in is still under way, or went in.
+        guard showLogin, !isConnecting, !isConnected else { return }
+        lifecycleLog.notice("Launch dashboard choice released: \(reason, privacy: .public)")
+        pendingLoginFailure = nil
+        lastConnectionFailure = nil
+        errorMessage = nil
+        loadSavedConnection(trigger: "launch for \(reason)")
+    }
+
+    private func endLaunchDashboardChoice() {
+        launchAwaitsDashboardChoice = false
+        launchSignsInInBackground = false
+        launchDashboardChoiceTask?.cancel()
+        launchDashboardChoiceTask = nil
+    }
+
+    /// Conduit came on screen with the launch's dashboard still to pick:
+    /// the list stays up, with no saved sign-in retried. False when there
+    /// is nothing to pick (signed in, signing in, or a shared draft that
+    /// needs Hermes is waiting).
+    private func holdLaunchDashboardChoiceOnScreen() -> Bool {
+        if launchSignsInInBackground {
+            launchSignsInInBackground = false
+            // Only a background sign-in that ended waiting for the screen
+            // goes back to the list; one still under way finishes.
+            guard showLogin, signInWaitsForForeground, !isConnecting, !isConnected else { return false }
+            launchAwaitsDashboardChoice = true
+        }
+        guard launchAwaitsDashboardChoice else { return false }
+        launchDashboardChoiceTask?.cancel()
+        launchDashboardChoiceTask = nil
+        guard showLogin, !isConnecting, !isConnected else {
+            endLaunchDashboardChoice()
+            return false
+        }
+        if let inbox = shareDraftInbox, !inbox.pending().isEmpty {
+            releaseLaunchDashboardChoice(for: "a shared draft")
+            return true
+        }
+        if signInWaitsForForeground {
+            // A background attempt's failure (Face ID can't show off
+            // screen) isn't news on a list waiting for a tap.
+            signInWaitsForForeground = false
+            pendingLoginFailure = nil
+            lastConnectionFailure = nil
+            errorMessage = nil
+        }
+        return true
+    }
+
     /// `trigger` names what started the restore in the connection
     /// timeline and the call trace.
     func loadSavedConnection(trigger: String = "cold launch") {
@@ -15661,6 +15795,8 @@ final class AppState: ObservableObject {
         dashboardSwitchGeneration &+= 1
         // Its waits belong to the signed-out user (issue 1705).
         needsYou.reset(dashboardID: nil)
+        // So does a Restart now that failed.
+        gatewayRestartNowFailure = nil
         // The next sign-in to it asks for Face ID again.
         if let activeDashboardID { faceIDUnlockedDashboards[activeDashboardID] = nil }
         // Its turns' Lock Screen progress has nothing left to follow.
@@ -16101,6 +16237,8 @@ final class AppState: ObservableObject {
     }
 
     private func runDashboardSwitch(to id: UUID, widgetLease: WidgetLaunchLease?) async {
+        // A pick from the list, or a launch's own switch (a widget, a draft).
+        endLaunchDashboardChoice()
         if widgetLease == nil { widgetLaunchCoordinator.supersede() }
         guard widgetLease?.isCurrent != false else { return }
         widgetAwaitingInteractiveAuthenticationDashboardID = nil
@@ -21050,6 +21188,10 @@ final class AppState: ObservableObject {
                 sceneHidesLiveRows = false
                 resumeLivePublishesIfShown()
             }
+            if holdLaunchDashboardChoiceOnScreen() {
+                foregroundFreshnessCheckArmed = false
+                return nil
+            }
             if showLogin, signInWaitsForForeground {
                 // The freshness arming belongs to the session that was torn
                 // down; the retry's connect syncs from scratch.
@@ -25901,9 +26043,10 @@ final class AppState: ObservableObject {
     }
 
     /// `onFailure` runs when the open failed (not when a newer navigation
-    /// superseded it).
+    /// superseded it), told whether this open's own reconcile heard the
+    /// resume's not found (4007) for a chat that isn't a Kanban worker.
     @discardableResult
-    func requestOpenSession(_ sessionId: String, onFailure: (@MainActor () -> Void)? = nil) -> Task<Bool, Never> {
+    func requestOpenSession(_ sessionId: String, onFailure: (@MainActor (_ sessionWasNotFound: Bool) -> Void)? = nil) -> Task<Bool, Never> {
         // Tapping the chat already open and settled reads it, and nothing
         // else: it shows Hermes' rows as they stand, streamed in live, so a
         // second open would only read them again and drop rows Load earlier
@@ -25920,8 +26063,9 @@ final class AppState: ObservableObject {
         explicitSessionOpenRequestID = requestID
         let task = Task { @MainActor [weak self] in
             guard let self else { return false }
-            let outcome = await self.openSessionOutcome(sessionId)
-            if outcome == .failed, !Task.isCancelled { onFailure?() }
+            let open = await self.performSessionOpenNotingRefusal(sessionId, reusing: nil)
+            let outcome = open.outcome
+            if outcome == .failed, !Task.isCancelled { onFailure?(open.sessionWasNotFound) }
             let opened = outcome == .opened
             // Tapping a chat reads it, even when it was already the open one
             // (the id didn't change, so activeSessionId's didSet stayed quiet).
@@ -26004,8 +26148,11 @@ final class AppState: ObservableObject {
         conversationProfile: String? = nil,
         preferredTitle: String? = nil,
         widgetLease: WidgetLaunchLease? = nil
-    ) async -> (outcome: SessionOpenOutcome, refused: Bool) {
-        guard let client else { return (.failed, false) }
+    ) async -> (outcome: SessionOpenOutcome, refused: Bool, sessionWasNotFound: Bool) {
+        // A failure before this open's reconcile reports no verdict and
+        // leaves the reconcile flags alone: they may be another flow's,
+        // read back after its own hop (#1918).
+        guard let client else { return (.failed, false, false) }
         // From the tap to Hermes' rows, for a device trace (#1533).
         let signposter = ResponsivenessSignposts.signposter
         let opening = signposter.beginInterval("Chat open", id: signposter.makeSignpostID())
@@ -26030,7 +26177,7 @@ final class AppState: ObservableObject {
         if conversationProfile == nil,
            let session = listedSession, !sessionBelongsToProfile(session, profile: activeProfile) {
             errorMessage = AppLocalization.string("That conversation belongs to another workspace. Switch profiles to open it.")
-            return (.failed, true)
+            return (.failed, true, false)
         }
         // Read before the open marks it read: an unread chat lands at the
         // start of its latest reply once its transcript is in (#365).
@@ -26039,14 +26186,14 @@ final class AppState: ObservableObject {
         if let viewportTransitionGeneration {
             guard chatViewportTransitionIsCurrent(
                 generation: viewportTransitionGeneration
-            ) else { return (.superseded, false) }
+            ) else { return (.superseded, false, false) }
             transitionGeneration = viewportTransitionGeneration
         } else {
             transitionGeneration = beginExplicitChatViewportTransition(ownedBy: widgetLease)
         }
-        guard widgetLease?.isCurrent != false else { return (.superseded, false) }
+        guard widgetLease?.isCurrent != false else { return (.superseded, false, false) }
         guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
-            return (.superseded, false)
+            return (.superseded, false, false)
         }
         markChatViewportReplacement()
         // Atomically switch session identity BEFORE clearing the transcript.
@@ -26151,10 +26298,10 @@ final class AppState: ObservableObject {
                 finishChatViewportTransition(generation: transitionGeneration)
                 if turnState == .synchronizing { turnState = .idle }
             }
-            return (.superseded, false)
+            return (.superseded, false, false)
         }
         guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
-            return (.superseded, false)
+            return (.superseded, false, false)
         }
         if !reconciled {
             finishChatViewportTransition(generation: transitionGeneration)
@@ -26163,11 +26310,18 @@ final class AppState: ObservableObject {
             }
             // This open still owns the viewport, so the reconcile failure is
             // genuine (identity rejection and friends set their own message).
-            // Read before any await: the flags describe the reconcile above.
-            return (.failed, reconciliationWasIdentityRejected || reconciliationSessionWasNotFound)
+            // Read before any await: the flags describe the reconcile above,
+            // unless another reconcile (an automatic resume of another chat)
+            // began meanwhile and set them for its own chat (#1918).
+            let verdictIsOwn = reconciliationToken == token
+            return (
+                .failed,
+                verdictIsOwn && (reconciliationWasIdentityRejected || reconciliationSessionWasNotFound),
+                verdictIsOwn && reconciliationSessionWasNotFound && !reconciliationWasKanbanWorker
+            )
         }
         if opensUnreadReply, !landsFromSavedRows { chatReplyStartLandingRequest &+= 1 }
-        return (.opened, false)
+        return (.opened, false, false)
     }
 
     /// Whether saved rows end in a turn with no reply yet: the user's latest
@@ -26662,7 +26816,7 @@ final class AppState: ObservableObject {
             )
         }
         traceStage = "session open"
-        let (outcome, refused) = await performSessionOpenNotingRefusal(
+        let (outcome, refused, _) = await performSessionOpenNotingRefusal(
             route.resumeTargetID,
             reusing: transitionGeneration,
             // The push-named runtime id is a PRESENTATION MIGRATION SOURCE,
@@ -40128,6 +40282,7 @@ final class AppState: ObservableObject {
     @Published private(set) var isWatchVoiceCallActive = false
 
     func setWatchVoiceCallActive(_ active: Bool) {
+        if active { releaseLaunchDashboardChoice(for: "the Apple Watch") }
         isWatchVoiceCallActive = active
     }
 

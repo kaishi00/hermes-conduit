@@ -80,7 +80,8 @@ struct GroupChatView: View {
         .environment(\.groupMemberTints, appState.groupMemberTints(members))
         .environment(\.chatTextSize, chatTextSize)
         // A Desktop card reads its title and summary from the connected
-        // Hermes (#1522); the room's MEDIA: files stay off it.
+        // Hermes (#1522). A member's MEDIA: files read through its own
+        // profile's resolver, set on its bubble.
         .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver)
         // Files dragged onto the room are staged in its composer (#1408);
         // a plugin that can't store them gets the composer's notice.
@@ -116,21 +117,16 @@ struct GroupChatView: View {
             MinimisedLiveVoiceBar()
             GroupRoomComposer(members: members)
         }
-        .overlay(alignment: .top) {
-            // Shown while browsing, centered as on the chat screen.
-            GroupRoomJumpButton(chrome: scroller.chrome) {
-                ChatViewportWatch.shared.command("room latest (button)")
-                scroller.explicitLatestRequested(animated: true)
-            }
-            .alignmentGuide(.top) { $0[.bottom] + 10 }
-        }
     }
 
     /// A pill per member under the title, with how its turn went: the
     /// room's statuses, which the transcript no longer lists (Desktop's
     /// layout, Eric 2026-11-06).
     private var statusStrip: some View {
-        GroupRoomStatusStrip(members: members, statuses: appState.activeRoomMemberStatuses)
+        GroupRoomStatusStrip(
+            members: members, statuses: appState.activeRoomMemberStatuses,
+            leadKey: GroupRoomTurns.leadKey(context: appState.activeRoomContext, members: members)
+        )
     }
 
     private var surface: AppState.GroupRoomSurface? { appState.activeRoomSurface }
@@ -167,7 +163,17 @@ struct GroupChatView: View {
             ),
             scroller: scroller
         )
-        imageGallery.update { GroupRoomImageGallery.items(in: replay.events.filter(GroupRoomTurns.isVisible)) }
+        // The closure is kept by the gallery, so it holds the events, roster and
+        // app state, never the view.
+        let galleryEvents = replay.events.filter(GroupRoomTurns.isVisible)
+        let roster = members
+        let galleryAppState = appState
+        imageGallery.update {
+            GroupRoomImageGallery.items(in: galleryEvents) { event in
+                GroupRoomTurns.localProfile(of: GroupRoomTurns.speaker(of: event, members: roster))
+                    .map { galleryAppState.gatewayMediaResolver(for: $0) }
+            }
+        }
         return GeometryReader { proxy in
             TranscriptView(
                 appState: appState,
@@ -185,6 +191,18 @@ struct GroupChatView: View {
         // Cross-block selection chrome, and Quote on selected text into the
         // room's draft, as in a chat.
         .overlay { MarkdownSelectionChromeRoot() }
+        // Shown while browsing, centered over the composer as on the chat
+        // screen, and inside the transcript's area as there: drawn above the
+        // composer bar's bounds (#1833), it showed but iOS 26's safeAreaBar
+        // passed its taps to the transcript under it.
+        .overlay(alignment: .bottom) {
+            GroupRoomJumpButton(chrome: scroller.chrome) {
+                ChatViewportWatch.shared.command("room latest (button)")
+                scroller.explicitLatestRequested(animated: true)
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 14)
+        }
         .environment(\.imageGallery, imageGallery)
         // As in a chat, text draws until a touch needs its text view, and
         // a drawn bubble sizes to its text.
@@ -245,12 +263,23 @@ struct GroupChatView: View {
         }
     }
 
+    /// Where a member's `MEDIA:` files are read: its own profile on the
+    /// connected Hermes, where Hermes saved them. Another gateway's bot, or
+    /// a member the room no longer lists, gets none, so its tags stay text.
+    private func mediaResolver(for member: GroupMember?) -> GatewayMediaDataURLResolver? {
+        GroupRoomTurns.localProfile(of: member).map { appState.gatewayMediaResolver(for: $0) }
+    }
+
     /// One of the transcript's rows.
     @ViewBuilder
     private func roomRow(_ row: TranscriptRow) -> some View {
         switch row.kind {
         case .room(.event(let event, let members, let continuesRun, let boards)):
-            GroupEventRow(event: event, members: members, continuesRun: continuesRun, boards: boards)
+            GroupEventRow(
+                event: event, members: members, continuesRun: continuesRun, boards: boards,
+                mediaResolver: event.isMemberMessage
+                    ? mediaResolver(for: GroupRoomTurns.speaker(of: event, members: members)) : nil
+            )
         case .room(.pending(let text, let members, let isSending)):
             GroupUserBubble(text: text, members: members, timestamp: nil, eventID: row.id) {
                 if isSending {
@@ -656,6 +685,8 @@ struct GroupEventRow: View {
     var continuesRun = false
     /// The boards the agent showed for this message (RoomBoards).
     var boards: [RichBoard] = []
+    /// Reads a member's `MEDIA:` files (its own profile's).
+    var mediaResolver: GatewayMediaDataURLResolver? = nil
 
     var body: some View {
         if event.isScheduledPost {
@@ -676,7 +707,7 @@ struct GroupEventRow: View {
             }
         } else if event.isMemberMessage {
             GroupMemberBubble(
-                member: GroupRoomTurns.member(for: event, members: members),
+                member: GroupRoomTurns.speaker(of: event, members: members),
                 name: speakerLabel,
                 text: event.messageText ?? "",
                 members: members,
@@ -684,7 +715,8 @@ struct GroupEventRow: View {
                 continuesRun: continuesRun,
                 roomEventID: event.id,
                 roomThreadID: event.threadID,
-                boards: boards
+                boards: boards,
+                mediaResolver: mediaResolver
             )
         } else {
             GroupSystemEventCaption(event: event, members: members)
@@ -713,15 +745,20 @@ struct GroupEventRow: View {
     }
 }
 
-/// The pictures in a room's messages, in order. Rooms draw web pictures
-/// only: their Markdown has no gateway resolver.
+/// The pictures in a room's messages, in order: web pictures, and a
+/// member's `MEDIA:` pictures where `resolver` gives its message one. The
+/// user's own messages draw their `MEDIA:` lines as text, as in a chat.
 enum GroupRoomImageGallery {
     @MainActor
-    static func items(in events: [GroupEvent]) -> [ImageGalleryItem] {
+    static func items(
+        in events: [GroupEvent],
+        resolver: (GroupEvent) -> GatewayMediaDataURLResolver? = { _ in nil }
+    ) -> [ImageGalleryItem] {
         let items = events.filter(\.isChatMessage).flatMap { event -> [ImageGalleryItem] in
             let text = GroupMessageParts(event.messageText ?? "").text
             let shown = event.isUserMessage ? (GroupRoomReplyQuote.parse(text)?.message ?? text) : text
-            return ChatImageGallery.markdownItems(shown, resolver: nil, recognizesGatewayMedia: false)
+            let media = event.isMemberMessage ? resolver(event) : nil
+            return ChatImageGallery.markdownItems(shown, resolver: media, recognizesGatewayMedia: media != nil)
         }
         return ImageGallery.deduplicated(items)
     }
@@ -850,7 +887,14 @@ struct GroupMemberBubble: View {
     var roomThreadID: String? = nil
     /// The boards the agent showed with this message, under its bubble.
     var boards: [RichBoard] = []
+    /// Reads the files its `MEDIA:` tags attach, from its own profile on
+    /// the connected Hermes, as a Bot Chat's reply does. Nil (a Desktop
+    /// group, another gateway's bot) leaves the tags as text.
+    var mediaResolver: GatewayMediaDataURLResolver? = nil
     @Environment(\.groupMemberTints) private var tints
+    /// The room's resolver, which a Desktop card in a message without one
+    /// of its own still reads (#1522).
+    @Environment(\.gatewayMediaFiles) private var roomFiles
 
     /// The picture beside the name, above the bubble.
     static let avatarSize: CGFloat = 24
@@ -894,7 +938,13 @@ struct GroupMemberBubble: View {
                     GroupMessageFiles(files: parts.files)
                     if !parts.text.isEmpty {
                         HugsIdealWidth {
-                            MarkdownText(source: GroupRoomMentions.linkingMarkdown(parts.text, members: members, tints: tints))
+                            MarkdownText(
+                                source: GroupRoomMentions.linkingMarkdown(parts.text, members: members, tints: tints),
+                                gatewayMediaDataURL: mediaResolver.map { resolver in
+                                    { path in await resolver.dataURL(for: path) }
+                                }
+                            )
+                            .environment(\.gatewayMediaFiles, mediaResolver ?? roomFiles)
                         }
                     }
                 }
@@ -936,6 +986,8 @@ struct GroupMemberBubble: View {
 struct GroupRoomStatusStrip: View {
     let members: [GroupMember]
     let statuses: [String: GroupMemberStatus]
+    /// The room's lead, when its Who answers setting names one.
+    var leadKey: String? = nil
     @Environment(\.groupMemberTints) private var tints
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -962,24 +1014,33 @@ struct GroupRoomStatusStrip: View {
         let name = GroupRoomTurns.displayName(of: member)
         let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let status = statuses[member.identityKey]
-        let label = GroupRoomStatusPill(member: member, name: name, status: status, tint: tints[member.identityKey])
+        let isLead = member.identityKey == leadKey
+        let label = GroupRoomStatusPill(
+            member: member, name: name, status: status, tint: tints[member.identityKey], isLead: isLead
+        )
         if handle.isEmpty {
             label
         } else {
             GroupMemberMentionButton(handle: handle, name: name) { label }
-                .accessibilityLabel(Text(name))
+                .accessibilityLabel(Text(GroupRoomStatusPill.spokenName(name, isLead: isLead)))
                 .accessibilityValue(Text(status?.spoken ?? ""))
                 .accessibilityHint(Text(AppLocalization.string("Picks this bot in the To row")))
         }
     }
 }
 
-/// One member's pill: picture, name, and the word for its status.
+/// One member's pill: picture, name, and the word for its status. The
+/// room's lead carries Group Settings' crown beside its name.
 struct GroupRoomStatusPill: View {
     let member: GroupMember
     let name: String
     let status: GroupMemberStatus?
     let tint: CustomAccentColor?
+    var isLead = false
+
+    static func spokenName(_ name: String, isLead: Bool) -> String {
+        isLead ? "\(name), \(AppLocalization.string("Lead"))" : name
+    }
 
     var body: some View {
         let color = tint.map { Color(uiColor: $0.readableColor) } ?? Color.primary
@@ -989,6 +1050,12 @@ struct GroupRoomStatusPill: View {
                 .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(color)
                 .lineLimit(1)
+            if isLead {
+                Image(systemName: "crown.fill")
+                    .scaledFont(.caption2)
+                    .foregroundStyle(.yellow)
+                    .accessibilityHidden(true)
+            }
             if let status {
                 Text(verbatim: status.label)
                     .scaledFont(.caption)
@@ -1006,7 +1073,7 @@ struct GroupRoomStatusPill: View {
         // The bar doesn't grow past the title's sizes.
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(name))
+        .accessibilityLabel(Text(Self.spokenName(name, isLead: isLead)))
         .accessibilityValue(Text(status?.spoken ?? ""))
     }
 

@@ -22,6 +22,9 @@ struct SavedDashboardsSettingsDetail: View {
     @State private var isSwitchingTo: UUID?
     @State private var pendingRemoval: SavedDashboardRowModel?
     @State private var showsAddDashboard = false
+    /// Ask Which Dashboard at Launch (#1908): AppState reads it as Conduit
+    /// opens.
+    @AppStorage(AppState.asksWhichDashboardAtLaunchKey) private var asksWhichDashboardAtLaunch = false
 
     var body: some View {
         SettingsDetailContainer {
@@ -46,6 +49,16 @@ struct SavedDashboardsSettingsDetail: View {
                 }
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.12))
                 .accessibilityIdentifier("settings.add-dashboard")
+                // Only with a choice to make.
+                if rows.count > 1 {
+                    Toggle(isOn: $asksWhichDashboardAtLaunch) {
+                        Label("Ask Which Dashboard at Launch", systemImage: "list.bullet.rectangle")
+                    }
+                    .accessibilityIdentifier("settings.ask-dashboard-at-launch")
+                    Text("When Conduit opens, your dashboards stay listed until you tap one, instead of signing in to the last one you used. A notification, a link, Siri, CarPlay, the Apple Watch or a call from Hermes still signs in on its own.")
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .navigationTitle("Saved Dashboards")
