@@ -61,6 +61,12 @@ case "$what" in
 esac
 """
 
+# The chain removes opencode's "fork" remote before each attempt; this stand-in
+# keeps the test from touching the checkout's real remotes.
+FAKE_GIT = """#!/bin/bash
+echo "$*" >> "$FAKE/git"
+"""
+
 KEYS = {"OPENCODE_GO_API_KEY": "go1", "OPENCODE_GO_API_KEY_2": "go2",
         "COMMANDCODE_API_KEY": "cc1", "COMMANDCODE_API_KEY_2": "cc2", "ZAI_API_KEY": "zai"}
 
@@ -81,7 +87,7 @@ class ReviewChainTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, tmp)
         bin_dir = os.path.join(tmp, "bin")
         os.mkdir(bin_dir)
-        for name, body in (("curl", FAKE_CURL), ("opencode", FAKE_OPENCODE)):
+        for name, body in (("curl", FAKE_CURL), ("opencode", FAKE_OPENCODE), ("git", FAKE_GIT)):
             path = os.path.join(bin_dir, name)
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(body)
@@ -104,6 +110,11 @@ class ReviewChainTests(unittest.TestCase):
                              capture_output=True, text=True, timeout=60)
         with open(os.path.join(tmp, "log"), encoding="utf-8") as fh:
             log = fh.read().splitlines()
+        git_path = os.path.join(tmp, "git")
+        self.git_calls = []
+        if os.path.exists(git_path):
+            with open(git_path, encoding="utf-8") as fh:
+                self.git_calls = fh.read().splitlines()
         outputs = {}
         if os.path.exists(output):
             with open(output, encoding="utf-8") as fh:
@@ -120,6 +131,13 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual(log[0], "probe go1 deepseek-v4.1-flash")
         self.assertIn("Review by DeepSeek V4.1 Flash.", log[1])
         self.assertEqual(out, {"model": "go-custom/deepseek-v4.1-flash", "name": "DeepSeek V4.1 Flash"})
+
+    def test_each_attempt_drops_the_fork_remote_first(self):
+        # opencode adds a "fork" remote on a fork's PR and fails if it's there,
+        # so a fallback after a failed attempt must start without it (#1924).
+        run, log, out = self.run_chain(codes=[("go1", 429)], runs=[("go-custom/deepseek-v4.1-flash", "go2", "fail")])
+        self.assertEqual(len(self.reviews(log)), 2, log)
+        self.assertEqual(self.git_calls, ["remote remove fork"] * 2)
 
     def test_limited_keys_fall_through_to_command_code_then_beam(self):
         run, log, out = self.run_chain(codes=[("go1", 429), ("go2", 429)])
