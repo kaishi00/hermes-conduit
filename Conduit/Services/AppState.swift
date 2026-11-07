@@ -9483,12 +9483,13 @@ final class AppState: ObservableObject {
             // Still no row: the stored id learned for a reaped runtime
             // resumes where the runtime id can't.
             let fallback = self.conversationIdentityIndex.durableID(forRuntime: id, profile: self.activeProfile)
-            // An error already up (an earlier link's, say) isn't this open's.
-            let errorBefore = self.errorMessage
+            // An error already up (an earlier link's, say) isn't this open's:
+            // the tap clears it, so any error after the open is its own.
+            self.errorMessage = nil
             let opened = await self.requestOpenSession(target ?? fallback ?? id) { [weak self] sessionWasNotFound in
                 guard let self else { return }
                 self.errorMessage = Self.linkedSessionFailureMessage(
-                    current: self.errorMessage == errorBefore ? nil : self.errorMessage,
+                    current: self.errorMessage,
                     sessionWasNotFound: sessionWasNotFound,
                     unavailable: unavailable
                 )
