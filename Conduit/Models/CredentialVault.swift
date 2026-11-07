@@ -286,8 +286,10 @@ struct VaultItemDraft: Equatable {
         guard let components = URLComponents(string: withScheme),
               let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
               let host = components.host?.lowercased(), !host.isEmpty else { return nil }
-        // An IPv6 address comes without its brackets.
-        var origin = host.contains(":") ? "\(scheme)://[\(host)]" : "\(scheme)://\(host)"
+        // An IPv6 address keeps its brackets, whichever way this OS's
+        // URLComponents gives it (with them on iOS 26, without on older).
+        let bracketed = host.contains(":") && !host.hasPrefix("[") ? "[\(host)]" : host
+        var origin = "\(scheme)://\(bracketed)"
         if let port = components.port, !(scheme == "https" && port == 443), !(scheme == "http" && port == 80) {
             origin += ":\(port)"
         }
