@@ -55,8 +55,9 @@ struct TranscriptCellEnvironment: Equatable {
     var botChatZoomed: Bool
     var rosterRowsInScroll: Bool
     var v2TabBarClearance: CGFloat
-    /// The side safe area the chat's column takes (#1900); no row reads it yet.
-    var windowSideInsets: WindowSideInsets?
+    /// The window's safe area across that the chat's screen keeps to
+    /// (#1900); no row reads it yet.
+    var windowSafeSpan: WindowSafeSpan?
     var v2ComposerRests: Bool
     var groupMemberTints: [String: CustomAccentColor]
     var conduitAccent: ConduitAccent
@@ -97,7 +98,7 @@ struct TranscriptCellEnvironment: Equatable {
         botChatZoomed = values.botChatZoomed
         rosterRowsInScroll = values.rosterRowsInScroll
         v2TabBarClearance = values.v2TabBarClearance
-        windowSideInsets = values.windowSideInsets
+        windowSafeSpan = values.windowSafeSpan
         v2ComposerRests = values.v2ComposerRests
         groupMemberTints = values.groupMemberTints
         conduitAccent = values.conduitAccent
@@ -141,7 +142,7 @@ struct TranscriptCellEnvironment: Equatable {
             && lhs.botChatZoomed == rhs.botChatZoomed
             && lhs.rosterRowsInScroll == rhs.rosterRowsInScroll
             && lhs.v2TabBarClearance == rhs.v2TabBarClearance
-            && lhs.windowSideInsets == rhs.windowSideInsets
+            && lhs.windowSafeSpan == rhs.windowSafeSpan
             && lhs.v2ComposerRests == rhs.v2ComposerRests
             && lhs.groupMemberTints == rhs.groupMemberTints
             && lhs.conduitAccent == rhs.conduitAccent
@@ -200,7 +201,7 @@ private struct TranscriptCellConduitEnvironmentMore: ViewModifier {
             .environment(\.botChatZoomed, values.botChatZoomed)
             .environment(\.rosterRowsInScroll, values.rosterRowsInScroll)
             .environment(\.v2TabBarClearance, values.v2TabBarClearance)
-            .environment(\.windowSideInsets, values.windowSideInsets)
+            .environment(\.windowSafeSpan, values.windowSafeSpan)
             .environment(\.v2ComposerRests, values.v2ComposerRests)
             .environment(\.groupMemberTints, values.groupMemberTints)
             .environment(\.conduitAccent, values.conduitAccent)
