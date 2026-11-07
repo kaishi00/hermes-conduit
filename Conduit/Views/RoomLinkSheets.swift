@@ -288,7 +288,7 @@ struct RoomLinkInviteSheet: View {
             if let link = list.links.first(where: { !before.contains($0.id) && $0.status == "linked" }) {
                 Haptics.success()
                 linkedWith = link
-                appState.followLinkedRoomInvitesAfterLink()
+                appState.followLinkedRoomInvites()
                 return
             }
         }
@@ -560,7 +560,7 @@ struct RoomLinkOpenedSheet: View {
                 Haptics.success()
                 keptName = name
                 link = made
-                if made.status == "linked" { appState.followLinkedRoomInvitesAfterLink() }
+                if made.status == "linked" { appState.followLinkedRoomInvites() }
             } catch {
                 guard !(error is CancellationError), key == self.key else { return }
                 Haptics.error()
@@ -595,7 +595,7 @@ struct RoomLinkOpenedSheet: View {
                 if now.status == "linked" {
                     Haptics.success()
                     acceptError = nil
-                    appState.followLinkedRoomInvitesAfterLink()
+                    appState.followLinkedRoomInvites()
                 }
                 link = now
                 return

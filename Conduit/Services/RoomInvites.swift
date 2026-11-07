@@ -428,13 +428,15 @@ extension AppState {
         _ = await readLinkedRoomInvites()
     }
 
-    /// Every 10 s for 3 minutes after a Link is made: the room the other
-    /// person makes next reaches this Hermes through the mailbox within a
-    /// minute or so, and its push may not reach the phone (or not while
-    /// the screen showing the Link is up), so Group Chats would show it only
-    /// once it's read again. A new Link starts the count again, and another
-    /// dashboard or a sign-out ends it.
-    func followLinkedRoomInvitesAfterLink() {
+    /// Every 10 s for 3 minutes after a Link is made or an invite joined:
+    /// the room the other person makes next reaches this Hermes through the
+    /// mailbox within a minute or so, and its push may not reach the phone
+    /// (or not while the screen showing the Link is up); a room you joined
+    /// starts on the host once everyone has answered, and its copy appears
+    /// here then. Group Chats would show either only once it's read again.
+    /// Each call starts the count again, and another dashboard or a
+    /// sign-out ends it.
+    func followLinkedRoomInvites() {
         linkedRoomInviteFollow?.cancel()
         let dashboard = activeDashboardID
         linkedRoomInviteFollow = Task { [weak self] in
@@ -459,6 +461,14 @@ extension AppState {
             let invites = try await client.invites()
             guard groupRoomEpoch == epoch, activeDashboardID == client.dashboardID else { return false }
             linkedRoomInvites = LinkedRoomInvites(dashboardID: client.dashboardID, invites: invites)
+            // A room you joined that has started is listed as its copy, which
+            // this Hermes keeps from then on: read the copies while one isn't
+            // there yet, or Group Chats shows neither the invite nor the room
+            // until something else reads them.
+            if canReadRoomCopies,
+               invites.contains(where: { $0.status == "started" && !linkedRoomCopyInviteIDs.contains($0.id) }) {
+                await refreshLinkedRoomCopies()
+            }
             return true
         } catch {
             // The rows stay as they were: a stale row is safer than none.
@@ -484,6 +494,9 @@ extension AppState {
         do {
             let answered = try await client.answer(invite, agents: agents)
             adoptLinkedRoomInvite(answered, from: client.dashboardID)
+            // The room starts on the host when everyone has answered, maybe
+            // after the join card is closed.
+            if !agents.isEmpty { followLinkedRoomInvites() }
             return .answered
         } catch {
             let message = RoomInvitesClient.answerRefusal(for: error, joining: !agents.isEmpty)

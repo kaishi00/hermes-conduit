@@ -12714,7 +12714,7 @@ final class AppState: ObservableObject {
     /// Chats lists with the drafts (RoomInvites.swift).
     @Published var linkedRoomInvites: LinkedRoomInvites?
     /// Reads the invites again for a while after a Link is made
-    /// (RoomInvites.swift followLinkedRoomInvitesAfterLink).
+    /// (RoomInvites.swift followLinkedRoomInvites).
     var linkedRoomInviteFollow: Task<Void, Never>?
     /// What your agents' turns in rooms other people host wait for you to
     /// approve, which Group Chats lists first (RoomApprovals.swift).
