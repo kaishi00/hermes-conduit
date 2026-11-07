@@ -93,7 +93,7 @@ struct PulseMessageMark: View {
             Image(systemName: "waveform.path.ecg")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.conduitAccent)
-                // The message action row's 34 pt, like the buttons beside it.
+                // The Pulse marker reserves its own 34 pt within the action row.
                 .frame(width: 34, height: 34)
                 .contentShape(Rectangle())
         }
