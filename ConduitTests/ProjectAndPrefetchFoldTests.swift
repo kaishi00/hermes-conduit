@@ -35,6 +35,7 @@ final class ProjectAndPrefetchFoldTests: XCTestCase {
     }
 
     func testAKeptProjectThatStopsAnsweringIsForgottenAndNamedFailed() {
+        let known: [String: String?] = ["a": "p-a", "b": nil]
         let read = ProjectOtherProfilesRead(
             folding: [
                 ProjectProfileRead(match: .some(nil), failed: true, part: nil),
@@ -42,12 +43,13 @@ final class ProjectAndPrefetchFoldTests: XCTestCase {
                 ProjectProfileRead(match: nil, failed: false, part: part("c")),
             ],
             of: ["a", "b", "c"],
-            known: ["a": .some("p-a"), "b": .some(nil)]
+            known: known
         )
-        XCTAssertEqual(read.matches["a"], .some(nil), "the kept match is looked up again next time")
-        XCTAssertEqual(read.matches["b"], .some(nil))
-        XCTAssertEqual(read.failed, ["a", "b"])
-        XCTAssertEqual(read.parts.map(\.profile), ["c"])
+        let forgotten: String?? = .some(nil)
+        XCTAssertEqual(read.matches["a"], forgotten, "the kept match is looked up again next time")
+        XCTAssertEqual(read.matches["b"], forgotten)
+        XCTAssertEqual(read.failed, Set(["a", "b"]))
+        XCTAssertEqual(read.parts.map { $0.profile }, ["c"])
     }
 
     func testAnEarlyTextReadIsTakenOnlyBySameOpenWithinItsLifetime() {
