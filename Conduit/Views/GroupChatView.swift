@@ -725,7 +725,13 @@ struct GroupEventRow: View {
 
     private var scheduledName: String {
         let name = (event.actor.displayName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? AppLocalization.string("Scheduled job") : name
+        if !name.isEmpty { return name }
+        // Unnamed jobs stay told apart by their job id (the actor after "cron:").
+        let job = event.actor.id.split(separator: ":", maxSplits: 1).last.map(String.init) ?? ""
+        let label = AppLocalization.string("Scheduled job")
+        // Its end, where jobs that share a prefix differ.
+        let shown: String = job.count > 12 ? "…" + String(job.suffix(12)) : job
+        return job.isEmpty ? label : "\(label) · \(shown)"
     }
 
     private var speakerLabel: String {
@@ -756,7 +762,10 @@ enum GroupRoomImageGallery {
     ) -> [ImageGalleryItem] {
         let items = events.filter(\.isChatMessage).flatMap { event -> [ImageGalleryItem] in
             let text = GroupMessageParts(event.messageText ?? "").text
-            let shown = event.isUserMessage ? (GroupRoomReplyQuote.parse(text)?.message ?? text) : text
+            // A scheduled post's pictures are the ones its bubble shows.
+            let shown = event.isScheduledPost
+                ? GroupMessageParts(event.workUpdateText ?? event.messageText ?? "").text
+                : event.isUserMessage ? (GroupRoomReplyQuote.parse(text)?.message ?? text) : text
             let media = event.isMemberMessage ? resolver(event) : nil
             return ChatImageGallery.markdownItems(shown, resolver: media, recognizesGatewayMedia: media != nil)
         }

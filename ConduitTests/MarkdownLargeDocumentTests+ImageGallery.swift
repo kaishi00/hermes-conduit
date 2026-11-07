@@ -103,6 +103,29 @@ extension MarkdownLargeDocumentTests {
     }
 
     @MainActor
+    func testRoomGalleryListsOnlyTheWorkUpdatePicturesItsBubbleShows() {
+        let work = GroupEvent(
+            roomID: "room", seq: 1, eventID: "e1", kind: "message.user",
+            actor: GroupActor(kind: "user", id: "cron:conduit-work-default-W1", profile: nil,
+                              displayName: "Furina's work", connectionID: nil),
+            authorityEpoch: nil,
+            payload: ["text": .string("![hidden](https://example.com/hidden.png)\n- W1 finished.\n- ![shown](https://example.com/shown.png)")],
+            createdAt: 0
+        )
+        XCTAssertEqual(GroupRoomImageGallery.items(in: [work]).map(\.id), [
+            ImageGalleryItem.webID("https://example.com/shown.png"),
+        ], "a picture the bubble hides doesn't page")
+        let nightly = GroupEvent(
+            roomID: "room", seq: 2, eventID: "e2", kind: "message.user",
+            actor: GroupActor(kind: "user", id: "cron:job42", profile: nil, displayName: "Nightly", connectionID: nil),
+            authorityEpoch: nil, payload: ["text": .string("![chart](https://example.com/chart.png)")], createdAt: 0
+        )
+        XCTAssertEqual(GroupRoomImageGallery.items(in: [nightly]).map(\.id), [
+            ImageGalleryItem.webID("https://example.com/chart.png"),
+        ], "any other scheduled post pages its whole post's pictures")
+    }
+
+    @MainActor
     func testRoomGalleryListsAMembersMediaPicturesThroughItsResolver() throws {
         let appState = try galleryAppState()
         let resolver = GatewayMediaDataURLResolver(appState: appState, profile: "furina")

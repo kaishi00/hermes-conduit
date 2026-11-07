@@ -454,8 +454,9 @@ final class TranscriptLayout: UICollectionViewLayout {
         switch row {
         case .event(let event, _, _, let boards):
             let boardsHeight = CGFloat(boards.count) * 280
-            guard let text = event.workUpdateText ?? event.messageText else { return 24 + boardsHeight }
-            // A scheduled job's post draws on the members' side, under its name.
+            // A scheduled job's post draws on the members' side, under its name, text or not.
+            guard let text = event.workUpdateText ?? event.messageText ?? (event.isScheduledPost ? "" : nil)
+            else { return 24 + boardsHeight }
             if event.isUserMessage && !event.isScheduledPost { return textHeight(text, width: width * 0.8) }
             return textHeight(text, width: width - 70) + 44 + boardsHeight
         case .pending(let text, _, _):
