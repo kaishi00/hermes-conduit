@@ -109,17 +109,19 @@ extension AppState {
         _ question: String, for target: ChatStepSummaries.Run, asked: Date, sessionId: String
     ) {
         let body = ChatStepSummaries.sideQuestionBody(sessionID: sessionId, question: question)
-        let profile = activeProfile
+        // The dashboard the question was asked of, read now: a switch while
+        // it waits must not send this chat's question to another host.
+        let sender = stepSummarySender
+        let bridge = dashboardTicketBridge
+        let path = DashboardPath.withProfile(
+            ChatStepSummaries.sideQuestionPath, profile: activeProfile,
+            parameter: notifierPlugin.dashboardProfileParameter
+        )
         Task { [weak self] in
-            guard let self else { return }
             let response: [String: Any]?
-            if let stepSummarySender {
-                response = try? await stepSummarySender(body)
-            } else if let bridge = dashboardTicketBridge {
-                let path = DashboardPath.withProfile(
-                    ChatStepSummaries.sideQuestionPath, profile: profile,
-                    parameter: notifierPlugin.dashboardProfileParameter
-                )
+            if let sender {
+                response = try? await sender(body)
+            } else if let bridge {
                 response = try? await bridge.requestJSON(
                     path: path, method: "POST", body: body,
                     timeoutMilliseconds: Int((ChatStepSummaries.sideQuestionWait + 5) * 1_000)
@@ -129,7 +131,7 @@ extension AppState {
             }
             // Only while this is still the run's question: forgotten
             // meanwhile, or asked again since, its answer is dropped.
-            guard stepSummaryRequested[target] == asked else { return }
+            guard let self, stepSummaryRequested[target] == asked else { return }
             if let text = response.flatMap(ChatStepSummaries.sideQuestionAnswer),
                Date().timeIntervalSince(asked) < ChatStepSummaries.answerWait {
                 recordStepSummary(text, for: target)
