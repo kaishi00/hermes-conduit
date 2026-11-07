@@ -174,6 +174,30 @@ extension HermesVoiceConfigurationServiceTests {
     /// was out when it was asked or went out since, or a read asked after
     /// it answered first (its models left too), writes one pick at a time,
     /// and a write Hermes refuses puts back what it holds and says why.
+    /// A helper's page is the section alone, so it never shows nothing: it
+    /// waits, says a failed read with Try Again, or says the slot is gone.
+    /// Voice settings shows it only with a setting (#1956).
+    func testTheVoiceRepliesSectionSaysWhatItWaitsOn() {
+        var picks = VoiceReplyModelPicks()
+        XCTAssertEqual(picks.shown(onHelperPage: true), .loading)
+        XCTAssertEqual(picks.shown(onHelperPage: false), .hidden)
+
+        let failed = picks.readAsked()
+        picks.readDidFail(failed)
+        XCTAssertEqual(picks.shown(onHelperPage: true), .failed)
+        XCTAssertEqual(picks.shown(onHelperPage: false), .hidden, "Until the page's next check")
+
+        let answered = picks.readAsked()
+        picks.hermesAnswered(nil, to: answered)
+        XCTAssertEqual(picks.shown(onHelperPage: true), .noSlot)
+        XCTAssertEqual(picks.shown(onHelperPage: false), .hidden, "A Hermes without the slot")
+
+        var kept = VoiceReplyModelPicks()
+        kept.showKept(VoiceReplyModelSetting(provider: "auto", model: "", reasoningEffort: "none"))
+        XCTAssertEqual(kept.shown(onHelperPage: true), .setting)
+        XCTAssertEqual(kept.shown(onHelperPage: false), .setting)
+    }
+
     func testTheVoiceRepliesModelKeepsAPickOverAnOlderAnswer() throws {
         let chats = VoiceReplyModelSetting(provider: "auto", model: "", reasoningEffort: "none")
         let fast = VoiceReplyModelSetting(provider: "openrouter", model: "fast", reasoningEffort: "none")

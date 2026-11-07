@@ -599,7 +599,9 @@ struct BotScreenButton: View {
     var iconOnly = false
 
     var body: some View {
-        Group {
+        // Held, so the check below runs while the button is hidden: it's
+        // what shows it.
+        ModifierHost {
             if support.isSupported(profile) {
                 if iconOnly {
                     Button(action: open) {
