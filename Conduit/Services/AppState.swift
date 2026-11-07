@@ -12824,9 +12824,14 @@ final class AppState: ObservableObject {
     /// Each member's pill under the open room's title, by `identityKey`
     /// (GroupRoomTurns.memberStatuses). A driver that reports idle has no
     /// live turns, so only outcomes and approvals show.
+    ///
+    /// Kept for its inputs, like `activeRoomResponder`: the room's header
+    /// asks on every render, and every publish elsewhere renders it, while
+    /// the walk goes through the whole log with mention matching and
+    /// hashing (issue 1968).
     var activeRoomMemberStatuses: [String: GroupMemberStatus] {
-        GroupRoomTurns.memberStatuses(
-            events: activeRoomReplay.events,
+        let inputs = RoomMemberStatusInputs(
+            replay: roomReplayKey,
             activity: activeRoomDriverStatus?.memberActivity,
             working: activeRoomDriverStatus?.working,
             responder: activeRoomResponder,
@@ -12834,13 +12839,49 @@ final class AppState: ObservableObject {
             members: activeRoomSurface?.room.members ?? [],
             context: activeRoomContext
         )
+        if let cached = roomMemberStatusCache, cached.inputs == inputs { return cached.statuses }
+        let statuses = GroupRoomTurns.memberStatuses(
+            events: activeRoomReplay.events,
+            activity: inputs.activity,
+            working: inputs.working,
+            responder: inputs.responder,
+            approvals: inputs.approvals,
+            members: inputs.members,
+            context: inputs.context
+        )
+        roomMemberStatusCache = (inputs, statuses)
+        return statuses
     }
 
     /// Whether the open room's newest message settled, for its title. Not
-    /// while one is on its way.
+    /// while one is on its way. Kept for the log it read (issue 1968).
     var activeRoomSettled: Bool {
-        GroupRoomTurns.latestDiscussionSettled(activeRoomReplay.events, sending: pendingRoomMessage != nil)
+        let key = "\(roomReplayKey)|\(pendingRoomMessage != nil)"
+        if let cached = roomSettledCache, cached.key == key { return cached.settled }
+        let settled = GroupRoomTurns.latestDiscussionSettled(activeRoomReplay.events, sending: pendingRoomMessage != nil)
+        roomSettledCache = (key, settled)
+        return settled
     }
+
+    /// Which log the open room's replay holds: its room, its cursor, and
+    /// its first event and length, which a trim or a fresh tail change
+    /// without moving the cursor.
+    private var roomReplayKey: String {
+        "\(activeRoomReplay.roomID)|\(activeRoomReplay.cursor)|\(activeRoomReplay.events.first?.seq ?? -1)|\(activeRoomReplay.events.count)"
+    }
+
+    private struct RoomMemberStatusInputs: Equatable {
+        let replay: String
+        let activity: [GroupMemberActivity]?
+        let working: Bool?
+        let responder: GroupMember?
+        let approvals: [GroupPendingApproval]
+        let members: [GroupMember]
+        let context: GroupRoomContext?
+    }
+
+    private var roomMemberStatusCache: (inputs: RoomMemberStatusInputs, statuses: [String: GroupMemberStatus])?
+    private var roomSettledCache: (key: String, settled: Bool)?
 
     /// The open room's settings, as `groups.state` last gave them (or a
     /// save here). Nil until the host answers, or on a host without them.
@@ -13015,15 +13056,48 @@ final class AppState: ObservableObject {
     private func parkActiveRoomSend() {
         guard let surface = activeRoomSurface else { return }
         let key = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
-        if activeRoomReplay.roomID == surface.room.roomID, !activeRoomReplay.events.isEmpty {
-            keptRoomReplays[key] = activeRoomReplay
-        }
         if groupRoomOutbox.pending != nil {
             parkedRoomOutboxes[key] = groupRoomOutbox
         } else {
             parkedRoomOutboxes.removeValue(forKey: key)
         }
+        if activeRoomReplay.roomID == surface.room.roomID, !activeRoomReplay.events.isEmpty {
+            keptRoomReplays[key] = activeRoomReplay
+            keptRoomReplayOrder.removeAll { $0 == key }
+            keptRoomReplayOrder.append(key)
+            // Up to 400 events each: the rooms left longest ago go past
+            // `maxKeptRoomReplays`, never one with a send still parked
+            // (issue 1969).
+            for dropped in Self.keptRoomReplaysToDrop(
+                order: keptRoomReplayOrder.filter { keptRoomReplays[$0] != nil },
+                pinned: Set(parkedRoomOutboxes.keys)
+            ) {
+                keptRoomReplays.removeValue(forKey: dropped)
+            }
+            keptRoomReplayOrder.removeAll { keptRoomReplays[$0] == nil }
+        }
     }
+
+    /// Rooms whose events stay in memory after they're left, to show at
+    /// once when they open again; as many as Bot Chats' kept copies.
+    static let maxKeptRoomReplays = 8
+
+    /// The kept room replays to drop: the least recently left first, past
+    /// `limit`, skipping any room `pinned` names (a parked send settles
+    /// against its events).
+    static func keptRoomReplaysToDrop(order: [String], pinned: Set<String>, limit: Int = maxKeptRoomReplays) -> [String] {
+        var excess = order.count - limit
+        guard excess > 0 else { return [] }
+        var dropped: [String] = []
+        for key in order where excess > 0 && !pinned.contains(key) {
+            dropped.append(key)
+            excess -= 1
+        }
+        return dropped
+    }
+
+    /// The rooms in `keptRoomReplays`, the one left last at the end.
+    private var keptRoomReplayOrder: [String] = []
 
     /// Drop parked sends and drafts of this dashboard's rooms that left the
     /// room list (disbanded elsewhere): they can never be reopened.
