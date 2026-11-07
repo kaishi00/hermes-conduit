@@ -25,6 +25,9 @@ final class AppStoreScreenshotTests: XCTestCase {
         if name.contains("testRecordPreview"), ProcessInfo.processInfo.environment["CONDUIT_RECORD_PREVIEW"] != "1" {
             throw XCTSkip("Only the preview recording runs this")
         }
+        if name.contains("testRecordPromo"), ProcessInfo.processInfo.environment["CONDUIT_RECORD_PROMO"] != "1" {
+            throw XCTSkip("Only the promo recording runs this")
+        }
         app = XCUIApplication()
         app.launchEnvironment["TZ"] = Self.timeZoneNearStatusBarTime()
         // No tips over the screens (BotsHomeGesturesTip).
@@ -172,6 +175,103 @@ final class AppStoreScreenshotTests: XCTestCase {
         // the cut dates the video from here (recordVideo starts late).
         app.terminate()
         print("PREVIEW_MARK stop \(Date().timeIntervalSince1970)")
+    }
+
+    /// The promo footage (app-store-promo.yml, against promo-script.json):
+    /// Bots Home, then Conduit Chan's Bot Chat handing a weekend plan to
+    /// two workstreams, approving the one that needs you, and back home.
+    /// PROMO_MARK lines date each part for the edit. setUp skips it unless
+    /// the promo recording asked for it.
+    func testRecordPromo() throws {
+        signInIfNeeded()
+        let portrait = app.buttons["Conduit Chan"].firstMatch
+        guard portrait.waitForExistence(timeout: 30) else {
+            snap("debug-no-conduit-chan")
+            XCTFail("Conduit Chan's portrait never showed on Bots Home")
+            return
+        }
+        settle(4)
+        print("PROMO_MARK home \(Date().timeIntervalSince1970)")
+        snap("promo-01-bots-home")
+        settle(2)
+        portrait.tap()
+        let composer = app.textViews.firstMatch.exists ? app.textViews.firstMatch : app.textFields.firstMatch
+        guard composer.waitForExistence(timeout: 15) else {
+            snap("debug-no-bot-chat")
+            XCTFail("Conduit Chan's Bot Chat never opened")
+            return
+        }
+        settle(2.5)
+        print("PROMO_MARK botchat \(Date().timeIntervalSince1970)")
+        for _ in 0..<3 {
+            composer.tap()
+            if app.keyboards.firstMatch.waitForExistence(timeout: 3) { break }
+        }
+        composer.typeText("Plan our Kyoto weekend: find a ryokan under $300, and clear the duplicates out of my trip photos.")
+        settle(0.8)
+        app.buttons["Send message"].tap()
+        print("PROMO_MARK sent \(Date().timeIntervalSince1970)")
+        // Both workstreams start; W1 reports, then W2 asks before it
+        // deletes, and the line under the title says it needs you.
+        let needsYou = app.buttons["botWork.titleLine"].firstMatch
+        let asking = NSPredicate(format: "label CONTAINS[c] 'needs you'")
+        expectation(for: asking, evaluatedWith: needsYou)
+        waitForExpectations(timeout: 120) { error in
+            if error != nil { self.snap("debug-no-needs-you") }
+        }
+        // Conduit Chan says so too (her update lands a few seconds later).
+        _ = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS 'needs your OK'")).firstMatch
+            .waitForExistence(timeout: 30)
+        settle(2.5)
+        print("PROMO_MARK needs-you \(Date().timeIntervalSince1970)")
+        snap("promo-02-needs-you")
+        let approve = app.buttons["Approve"].firstMatch
+        if !approve.isHittable {
+            // The Work panel: both workstreams, and W2's approval card.
+            needsYou.tap()
+            print("PROMO_MARK panel \(Date().timeIntervalSince1970)")
+        }
+        guard approve.waitForExistence(timeout: 15) else {
+            snap("debug-no-approval")
+            XCTFail("The photo cleanup's approval never showed")
+            return
+        }
+        settle(3)
+        print("PROMO_MARK approval \(Date().timeIntervalSince1970)")
+        snap("promo-03-approval")
+        approve.tap()
+        print("PROMO_MARK approved \(Date().timeIntervalSince1970)")
+        // W2 finishing shows on its row before the panel goes.
+        _ = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS[c] '214 duplicates deleted'")).firstMatch
+            .waitForExistence(timeout: 30)
+        settle(2.5)
+        if app.otherElements["botWork.panel"].exists {
+            let close = app.otherElements["botWork.panel"].buttons["Close"].firstMatch
+            if close.exists, close.isHittable {
+                close.tap()
+            } else {
+                app.otherElements["botWork.panel"].swipeDown(velocity: .fast)
+            }
+            print("PROMO_MARK panel-closed \(Date().timeIntervalSince1970)")
+        }
+        let done = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS 'all set'")).firstMatch
+        if !done.waitForExistence(timeout: 90) {
+            XCTFail("Conduit Chan never wrapped up")
+        }
+        settle(4)
+        print("PROMO_MARK done \(Date().timeIntervalSince1970)")
+        snap("promo-04-wrapped-up")
+        backToTabs()
+        let bots = app.buttons["Bots"].firstMatch
+        if bots.exists, !portrait.isHittable { bots.tap() }
+        settle(4)
+        print("PROMO_MARK home-again \(Date().timeIntervalSince1970)")
+        snap("promo-05-bots-home-after")
+        settle(2)
+        print("PROMO_MARK end \(Date().timeIntervalSince1970)")
     }
 
     /// Opens a seeded chat and waits for its answer. False (and a failed

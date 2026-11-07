@@ -66,3 +66,34 @@ Results:
   the app in a matching time zone (`timeZoneNearStatusBarTime`).
 - Keep markdown out of the first line of answers that show as previews (bot
   list, chat list).
+
+## Promo footage
+
+`.github/workflows/app-store-promo.yml` records the footage the App Store's
+promo loops (the product page header and the search result video) are cut
+from. Run it from Actions > App Store promo footage > Run workflow; `device`
+takes a simulator name (iPhone 17 Pro Max by default).
+
+- The dashboard plays `promo-script.json` instead (`DEMO_SCRIPT`): the
+  anime's bots, Conduit Chan, Piko, Mira and Riri, with their pictures from
+  `portraits/` (a bot's `"avatar"`, stored with `profiles.set_asset` as
+  Conduit does), and Hermes with the app icon. `"approvals": "manual"` sets
+  that bot's own approval mode, so its workstreams' risky steps ask in
+  Conduit; `"workstreams": true` turns the notifier on in every bot's profile
+  and restarts Hermes, so the Bot Chats coordinate work; `"files"` are empty
+  files the scripted tool calls work on.
+- The scripted Bot Chat calls the work tools through `tool_call`, as a real
+  model does when Hermes keeps them behind Tool Search. A workstream's turns
+  match on its brief (`<title>); the user can open it`), and the Bot Chat's
+  work updates on words from their reports, so the order of a bot's `turns`
+  matters: the first match wins.
+- `testRecordPromo` signs in, opens Conduit Chan from Bots Home, asks her to
+  plan a Kyoto weekend, waits while two workstreams run, approves the photo
+  cleanup from the Work panel and goes back to Bots Home, while
+  `simctl io recordVideo` records the whole walk. Its `PROMO_MARK` lines land
+  in `promo.marks` beside `promo.mov`, with the recorder's start time, to cut
+  by. Then `record-clip.sh` records the live voice fixtures
+  (`clips/voice-listening.mp4`, `clips/voice-speaking.mp4`).
+- Results, under `refs/app-store-shots/<run id>-promo`: `promo.mov` (dropped
+  when over 90 MB), `promo.mp4` (1920 px high), `promo.marks`, `stills/` (the
+  test's `promo-*` screenshots), `clips/` and `logs/`.

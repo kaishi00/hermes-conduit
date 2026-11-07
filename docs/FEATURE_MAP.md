@@ -4974,15 +4974,16 @@ and the README's "See it in action" strip show.
 
 **Siblings:** the iPhone and iPad capture · the Watch capture · the call
 fixtures they launch (phone and Watch) · the showcase clips · the App Preview
-cut · scripts/app-store/README.md · README.md's "See it in action" strip · the hermesconduit.app pages that show the
+cut · the promo footage the App Store's header and search loops are cut from
+(its own workflow and demo script, the anime's bots as the demo's) · scripts/app-store/README.md · README.md's "See it in action" strip · the hermesconduit.app pages that show the
 clips (kaishi00/hermes-conduit-website)
 
 **Code**
-- Workflow: `.github/workflows/app-store-screenshots.yml`
+- Workflow: `.github/workflows/app-store-screenshots.yml`; the promo footage: `.github/workflows/app-store-promo.yml`
 - Scripts: `scripts/app-store/record-clip.sh`, `scripts/app-store/cut-preview.sh`
-- UI test: `ConduitScreenshots/AppStoreScreenshotTests.swift`
+- UI test: `ConduitScreenshots/AppStoreScreenshotTests.swift` (testRecordPromo for the promo footage)
 - Fixtures: `Conduit/Services/ScreenshotCallFixture.swift`, `ConduitWatch/WatchVoiceCall.swift` (applyScreenshotFixture)
-- Demo Hermes: `scripts/app-store/start-demo-hermes.sh`, `scripts/app-store/llm_stub.py`, `scripts/app-store/demo-script.json`
+- Demo Hermes: `scripts/app-store/start-demo-hermes.sh` (DEMO_SCRIPT, a bot's approval mode, the notifier in the bots' profiles), `scripts/app-store/seed_demo.py` (a bot's picture), `scripts/app-store/llm_stub.py`, `scripts/app-store/demo-script.json`, `scripts/app-store/promo-script.json`, `scripts/app-store/portraits/`
 - Text: `scripts/app-store/README.md`
 - README strip: `README.md` ("See it in action"), `docs/media/voice.webp`, `docs/media/watch-speaking.webp`, `docs/media/watch-approval.webp`
 
@@ -4990,11 +4991,12 @@ clips (kaishi00/hermes-conduit-website)
 - A real Hermes with a scripted model, not a mock gateway; only audio-driven states (calls) use DEBUG-only launch fixtures (2026-10-17, #753).
 - Clips come from the same fixtures as the screenshots. The workflow lists the screenshot states and the clip states separately, so a call state that should move goes into both lists. `home` and `listening` are screenshots only: neither moves enough to need a clip (2026-10-25, #1226).
 - The site and README show only V2 media; footage from before the V2 redesign isn't reused (2026-10-24, Eric, #1226).
+- The App Store's promo loops show the anime's characters as the demo's bots, Conduit Chan, Piko, Mira and Riri with their pictures, so the app on screen matches the characters around it (Eric, 2026-11-06). They come from their own workflow and script; the screenshots keep demo-script.json.
 
 **Open gaps**
 - No clips yet of an incoming Hermes call, of CarPlay or of a lock-screen approval. A simulator can't show any of them (calls ring through CallKit, and the CarPlay window opens only by hand), so they come from recordings on Eric's devices, then go into the README strip and the site (#1193).
 
-**Checked:** 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-10-25, at #1228. 2026-11-03, #1678 (on `bot-workstreams` the app opens on Bots, so both the screenshots and the App Preview tap Sessions first).
+**Checked:** 2026-11-06, #PRNUM (the promo footage: app-store-promo.yml, promo-script.json with the anime's bots and their pictures, a Bot Chat handing work to two workstreams and an approval from the Work panel, testRecordPromo); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-10-25, at #1228. 2026-11-03, #1678 (on `bot-workstreams` the app opens on Bots, so both the screenshots and the App Preview tap Sessions first).
 
 ## What your sent message shows
 

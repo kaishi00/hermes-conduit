@@ -6,11 +6,16 @@ Each chat in demo-script.json becomes a session created with session.create
 waiting for message.complete before the next one. The scripted model answers.
 Run with the Hermes venv's Python (needs httpx and websockets).
 
+A bot (or default_bot) with "avatar" gets that PNG, a path next to the
+script, as its picture.
+
 Usage: seed_demo.py SCRIPT.json BASE_URL USER PASSWORD
 """
 
 import asyncio
+import base64
 import json
+import os
 import sys
 
 import httpx
@@ -76,9 +81,21 @@ async def seed(script_path, base, user, password):
                 # Let the turn's bookkeeping (usage, title) land first.
                 await asyncio.sleep(2)
 
+        async def set_avatar(name, entry):
+            # A bot's picture, as Conduit and Desktop store it: a PNG data URL
+            # in the profile's asset store. The path is the script's own.
+            if not entry.get("avatar"):
+                return
+            path = os.path.join(os.path.dirname(os.path.abspath(script_path)), entry["avatar"])
+            with open(path, "rb") as f:
+                data = "data:image/png;base64," + base64.b64encode(f.read()).decode()
+            await rpc("profiles.set_asset", {"name": name, "asset": "avatar", "data": data})
+
         await rpc("client.capabilities", {"server_requests": True})
         if script.get("default_bot"):
-            await rpc("profiles.configure", {"name": "default", "ui_meta": {"hermes-bots": script["default_bot"]}})
+            meta = {key: value for key, value in script["default_bot"].items() if key in ("title", "color")}
+            await rpc("profiles.configure", {"name": "default", "ui_meta": {"hermes-bots": meta}})
+            await set_avatar("default", script["default_bot"])
         # Bots first, so the chats seeded after them are the newest rows.
         for bot in script.get("bots", []):
             name = bot["name"]
@@ -87,6 +104,7 @@ async def seed(script_path, base, user, password):
             meta = {key: bot[key] for key in ("title", "color") if bot.get(key)}
             if meta:
                 await rpc("profiles.configure", {"name": name, "ui_meta": {"hermes-bots": meta}})
+            await set_avatar(name, bot)
             # The bot's one chat, made the way Conduit makes it.
             created = await rpc("session.create", {"cols": 96, "source": "desktop", "profile": name,
                                                    "title": "Bot Chat", "hidden": True,
