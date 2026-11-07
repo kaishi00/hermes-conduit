@@ -272,13 +272,16 @@ struct CredentialVaultSettingsPage: View {
         guard !busy.contains(id) else { return }
         busy.insert(id)
         Task {
+            var failed: String?
             do {
                 try await call()
-                error = nil
             } catch let failure {
-                error = UserFacingError.message(for: failure)
+                failed = UserFacingError.message(for: failure)
             }
             await reload()
+            // The read after it answers for the list, not for the change:
+            // a change that failed still says so.
+            if let failed { error = failed }
             after()
             busy.remove(id)
         }
@@ -344,6 +347,8 @@ private struct VaultSourceUnlockSheet: View {
                 }
             }
         }
+        .disabled(working)
+        .interactiveDismissDisabled(working)
         .presentationDetents([.medium, .large])
     }
 
