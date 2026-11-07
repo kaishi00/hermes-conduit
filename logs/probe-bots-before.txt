@@ -1,0 +1,9 @@
+(200, '{"ok":true,"next":"/"}')
+work (conduit_profile) 200 {"policy":"lookups","bot":"Conduit Chan","bot_chat":"20261107_084337_44b129","work":[],"counts":{"working":0,"needs_you":0,"ready":0,"waiting":0},"max_running":2,"resolved_count":0,"workstream_sessions":[],"screen":{"controlling":null,"last":null,"waiting":[]},"ok":true}
+work (profile) 200 {"policy":"off","bot":"Conduit Chan","bot_chat":"20261107_084337_44b129","work":[],"counts":{"working":0,"needs_you":0,"ready":0,"waiting":0},"max_running":2,"resolved_count":0,"workstream_sessions":[],"screen":{"controlling":null,"last":null,"waiting":[]},"ok":true}
+bot chat 20261107_084337_44b129
+messages 200
+   user  Morning! What's on today?
+   assistant  Morning! Your dentist is at 2, and Riri says Aunt Mae's birthday card needs to go out today. Piko fixed the garage sensor overnight.
+history page 200 {"session_id":"20261107_084337_44b129","profile":"conduit-chan","messages":[{"id":1,"session_id":"20261107_084337_44b129","role":"user","content":"Morning! What's on today?","tool_call_id":null,"tool_calls":null,"tool_name":null,"effect_disposition":null,"timestamp":1794041017.816461,"token_count":null,"finish_reason":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"codex_reasoning_items":null,"codex_message_items":null,"platform_message_id":null,"observed":0,"active":1,"compacted":0,"api_content":"Morning! What's on today?\n\n[System note: This is the user's very first
+sessions 200 {"sessions":[],"total":1,"limit":5,"offset":0,"storage":{}}
