@@ -60,9 +60,11 @@ final class LocalLiveTurnRunner {
         /// Answers one question of the clarify the followed reply waits on
         /// (`questionID` nil for a single question; `answer` nil leaves one
         /// of a form blank); the card as it stands after, or nil when
-        /// Hermes didn't take it.
-        var respondToClarify: @MainActor (_ clarify: ClarifyActivity, _ questionID: String?, _ answer: String?) async -> ClarifyActivity?
-            = { _, _, _ in nil }
+        /// Hermes didn't take it. `sessionID` and `profile` are the reply's
+        /// chat, where the session authority reads a question this socket
+        /// never saw asked.
+        var respondToClarify: @MainActor (_ clarify: ClarifyActivity, _ questionID: String?, _ answer: String?, _ sessionID: String?, _ profile: String?) async -> ClarifyActivity?
+            = { _, _, _, _, _ in nil }
     }
 
     var onDelta: (@MainActor (_ turnID: String, _ text: String) -> Void)?
@@ -103,6 +105,9 @@ final class LocalLiveTurnRunner {
     private var reply: Reply?
     /// The open turn's words, with what's to be seen kept out.
     private var splitter = SpokenVisualSplitter()
+    /// Leaves a persona's narrated actions and emoji out of what is said,
+    /// as in Classic voice.
+    private var actions = SpokenTextFilter()
     /// Hermes showed something with `conduit_show` while answering the
     /// open turn: what its reply writes isn't shown again.
     private var showedCard = false
@@ -126,6 +131,7 @@ final class LocalLiveTurnRunner {
         // still open here has nobody waiting for it.
         turn = (turnID, false)
         splitter.reset()
+        actions.reset()
         showedCard = false
         endedLine = true
         generation += 1
@@ -170,6 +176,7 @@ final class LocalLiveTurnRunner {
         turn = nil
         reply = nil
         splitter.reset()
+        actions.reset()
         showedCard = false
         endedLine = true
     }
@@ -198,7 +205,7 @@ final class LocalLiveTurnRunner {
         // next question.
         if let clarify = reply?.waitingQuestion, let question = HermesCallWaiting(clarify: clarify)?.openQuestion {
             let value = HermesCallWaiting.answerValue(for: words, question: question)
-            if let after = await backend.respondToClarify(clarify, clarify.questions.count == 1 ? nil : question.id, value) {
+            if let after = await backend.respondToClarify(clarify, clarify.questions.count == 1 ? nil : question.id, value, reply?.runtimeID, reply?.profile) {
                 guard reply?.waitingQuestion?.requestId == clarify.requestId else { return }
                 if let next = HermesCallWaiting(clarify: after)?.openQuestion {
                     reply?.waitingQuestion = after
@@ -365,7 +372,7 @@ final class LocalLiveTurnRunner {
     private func speak(_ text: String) {
         guard let current = turn, !text.isEmpty else { return }
         turn?.spoke = true
-        let spoken = splitter.feed(text)
+        let spoken = actions.feed(splitter.feed(text))
         if !spoken.isEmpty {
             endedLine = spoken.hasSuffix("\n")
             onDelta?(current.id, spoken)
@@ -377,8 +384,11 @@ final class LocalLiveTurnRunner {
         guard generation == self.generation, turn?.id == turnID else { return }
         turn?.spoke = true
         // What the reply still held ends with it: nothing of it follows the
-        // call's line.
-        splitter.reset()
+        // call's line. Words the action filter held back for a marker that
+        // never closed were said, so they go first.
+        splitter.dropSpeech()
+        let held = actions.finish()
+        if !held.isEmpty { onDelta?(turnID, held + (held.hasSuffix("\n") ? "" : "\n")) }
         onDelta?(turnID, text)
         finish(turnID)
     }
@@ -390,19 +400,53 @@ final class LocalLiveTurnRunner {
 
     private func finish(_ turnID: String) {
         guard turn?.id == turnID else { return }
-        let rest = splitter.finish()
+        let rest = actions.feed(splitter.finish()) + actions.finish()
         if !rest.isEmpty {
             endedLine = rest.hasSuffix("\n")
             onDelta?(turnID, rest)
         }
-        if splitter.hasVisual, !showedCard, onVisual?(splitter.visualMarkdown) == true {
+        // A card the model showed stands for the reply's tables and links;
+        // the files it attached still go on the screen.
+        let visual = showedCard ? splitter.fileMarkdown : splitter.visualMarkdown
+        if !visual.isEmpty, onVisual?(visual) == true {
             onDelta?(turnID, (endedLine ? "" : "\n") + Self.onScreenLine)
         }
         splitter.reset()
+        actions.reset()
         showedCard = false
         endedLine = true
         turn = nil
         onDone?(turnID)
+    }
+
+    /// Where a call's next turn runs: the chat the call is attached to, or
+    /// else the one it made for itself, while `runtime` finds it (nil: the
+    /// chat was deleted); else a chat `create` makes on the profile of the
+    /// chat it lost, kept as the call's own for the rest of the call (issue
+    /// 1797). `own` is the call's own chat after this turn, on the runtime
+    /// it was found on: a delete of the resumed chat names that one, even
+    /// where it has no stored id (a legacy gateway).
+    static func callChat(
+        attached: VoiceThreadTarget?,
+        own: VoiceThreadTarget?,
+        runtime: @MainActor (VoiceThreadTarget) async throws -> String?,
+        create: @MainActor (_ profile: String?) async throws -> VoiceThreadTarget
+    ) async throws -> (chat: Chat, own: VoiceThreadTarget?) {
+        var profile: String?
+        if let attached {
+            if let runtimeID = try await runtime(attached) { return (Chat(runtimeID: runtimeID, profile: attached.profile), own) }
+            profile = attached.profile
+        }
+        if let own {
+            if let runtimeID = try await runtime(own) {
+                var found = own
+                found.runtimeSessionID = runtimeID
+                return (Chat(runtimeID: runtimeID, profile: own.profile), found)
+            }
+            profile = own.profile
+        }
+        let made = try await create(profile)
+        return (Chat(runtimeID: made.runtimeSessionID, profile: made.profile), made)
     }
 
     // Spoken to the user by their speech server.
@@ -432,8 +476,8 @@ final class LocalLiveTurnRunner {
 
     /// The command Hermes asks to run, which a yes or no answers here.
     static func approvalLine(_ approval: ApprovalActivity) -> String {
-        let asked = approval.description.trimmingCharacters(in: .whitespacesAndNewlines)
-        let what = asked.isEmpty ? approval.command : asked
+        let asked = HermesApprovalText.description(approval.description).trimmingCharacters(in: .whitespacesAndNewlines)
+        let what = asked.isEmpty ? HermesApprovalText.command(approval.command) : asked
         let clipped = what.count > 200 ? String(what.prefix(200)) + "…" : what
         return AppLocalization.string("Hermes needs your OK to go on: \(clipped). Say yes to allow it once, or no.")
     }

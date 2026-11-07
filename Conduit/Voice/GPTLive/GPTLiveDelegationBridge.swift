@@ -166,6 +166,9 @@ final class GPTLiveDelegationBridge {
            decision.answers(supervisor.callWaitsOn) || (decision.isApproval && !supervisor.jobsWaitingOnApproval.isEmpty)
             || (!decision.isApproval && !supervisor.jobsWaitingOnQuestion.isEmpty) {
             guard seenDelegations.insert(id).inserted, !isEnding else { return [] }
+            // The call that asked (#1792): a call replaced while this waits
+            // on the user's yes has someone else's words in the transcript.
+            let call = callGeneration
             let outcome: VoiceCallDecisionOutcome
             if (spokenWords?.wordsMark() ?? 0) == 0 {
                 // Only ever the user's own answer, never the model's. No
@@ -176,6 +179,8 @@ final class GPTLiveDelegationBridge {
                 case .approve:
                     // Never on the model's word for it: on the user's own yes.
                     let saidYes = await VoiceCallDecisionOutcome.userSaysYes({ self.spokenWords?.lastUserLine() ?? "" }, wait: lateYesWait)
+                    // A yes from the next call never answers this one's.
+                    guard callGeneration == call else { return [] }
                     if saidYes {
                         outcome = await supervisor.answerApproval(choice: "once")
                     } else {
@@ -194,7 +199,7 @@ final class GPTLiveDelegationBridge {
                     }
                 }
             }
-            guard !isEnding else { return [] }
+            guard callGeneration == call, !isEnding else { return [] }
             spokenWords?.settleWords(.delegation(id))
             return [.delegationReply(delegationID: id, text: outcome.modelMessage, channel: .commentary)]
         }
@@ -1483,17 +1488,27 @@ final class GPTLiveDelegationBridge {
             supervisor.holdOutcome(jobID: jobID)
             supervisor.markOutcomeDelivered(jobID: jobID)
             deliveredReplies[delegationID] = jobID
+            // A request the call let go of when its chat was deleted (issue
+            // 1797): its end isn't said, only noted for the model.
+            if job.isDetachedThreadTurn {
+                outgoing.append(.delegationReply(delegationID: delegationID, text: Self.chatDeletedNote, channel: .commentary))
+                continue
+            }
             outgoing.append(.delegationReply(delegationID: delegationID, text: Self.outcome(of: job), channel: .speakable))
         }
         return outgoing
     }
+
+    /// A request whose chat was deleted mid-call. Read by the model, not
+    /// spoken: not localized.
+    static let chatDeletedNote = "The chat this request ran in was deleted, so it has no result to tell. Don't mention it unless the user asks."
 
     /// A settled job's outcome, for the model to say in its own words.
     static func outcome(of job: VoiceBackgroundJob) -> String {
         switch job.status {
         case .finished:
             if let text = job.result?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
-                return VoiceBackgroundJobSupervisor.outcomePrompt(for: job, result: GeminiLiveToolBridge.clipped(text))
+                return VoiceBackgroundJobSupervisor.outcomePrompt(for: job, result: GeminiLiveToolBridge.clipped(GatewayMediaTags.namingFiles(in: text)))
             }
             return relay(VoiceBackgroundJobSupervisor.finishedNotice(job.title))
         case .failed(let message):

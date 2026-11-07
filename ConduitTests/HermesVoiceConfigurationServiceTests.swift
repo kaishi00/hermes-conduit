@@ -1231,17 +1231,27 @@ extension HermesVoiceConfigurationServiceTests {
 }
 
 @MainActor
-private final class MockVoiceConfigurationRequester: VoiceConfigurationRequesting {
+final class MockVoiceConfigurationRequester: VoiceConfigurationRequesting {
     var routes: [String: [String: Any]] = [:]
     /// Paths whose PUT requests must fail (route-missing already fails GETs
     /// and PUTs alike; this simulates a read-succeeds/write-fails gateway).
     var failingPUTPaths: Set<String> = []
+    /// Paths whose GET requests fail while their PUTs answer.
+    var failingGETPaths: Set<String> = []
+    /// Paths Hermes answers 404 for, as a Hermes without those routes does.
+    var missingRoutes: Set<String> = []
     private(set) var recorded: [(path: String, method: String, body: [String: Any]?)] = []
 
     func requestJSON(path: String, method: String, body: [String: Any]?) async throws -> [String: Any] {
         recorded.append((path: path, method: method, body: body))
         if method == "PUT", failingPUTPaths.contains(path) {
             throw DashboardTicketBridgeError.requestFailed("Mock PUT failure for \(path)")
+        }
+        if method == "GET", failingGETPaths.contains(path) {
+            throw DashboardTicketBridgeError.requestFailed("Mock GET failure for \(path)")
+        }
+        if missingRoutes.contains(path) {
+            throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found")
         }
         guard let response = routes[path] else {
             throw DashboardTicketBridgeError.requestFailed("No mock response for \(path)")

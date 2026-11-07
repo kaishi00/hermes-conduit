@@ -9,6 +9,53 @@ import XCTest
 @MainActor
 final class SessionPresentationCacheTests: XCTestCase {
 
+    // MARK: - Merge: matching rows by the pool's index (issue 1826)
+
+    /// The merge finds each row's cached match through an index of the pool
+    /// rather than scoring every cached row for every row. Over transcripts
+    /// of repeated text, repeated tools with and without ids, re-rendered
+    /// replies and rows with no match at all, it picks the same rows the
+    /// full scan did, in the same order.
+    func testTheIndexedMatcherPicksWhatTheFullScanDid() {
+        var seed: UInt64 = 0x1826
+        func next(_ bound: Int) -> Int {
+            seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            return Int((seed >> 33) % UInt64(bound))
+        }
+        let roles: [MessageRole] = [.user, .assistant, .tool]
+        let texts = ["OK", "Done.", "Here it is", "  here   it is ", "Thinking", ""]
+        let tools = ["read_file", "Read_File ", "terminal", "search"]
+        func row(_ index: Int, prefix: String) -> ChatMessage {
+            let role = roles[next(roles.count)]
+            let id = next(4) == 0 ? "shared-\(next(6))" : "\(prefix)-\(index)"
+            let tool: ToolActivity? = role == .tool && next(5) != 0
+                ? ToolActivity(
+                    id: next(3) == 0 ? nil : (next(2) == 0 ? " call-\(next(5)) " : "call-\(next(5))"),
+                    name: tools[next(tools.count)],
+                    input: next(3) == 0 ? nil : texts[next(texts.count)],
+                    output: next(2) == 0 ? nil : texts[next(texts.count)],
+                    status: next(4) == 0 ? .running : .complete
+                )
+                : nil
+            return ChatMessage(
+                id: id,
+                role: role,
+                content: texts[next(texts.count)],
+                timestamp: next(3) == 0 ? "" : "t\(index)",
+                tool: tool
+            )
+        }
+        let cache = SessionPresentationCache.shared
+        for round in 0..<200 {
+            let pool = (0..<next(40)).map { row($0, prefix: "cached") }
+            let transcript = (0..<next(60)).map { row($0, prefix: "live") }
+            XCTAssertTrue(
+                cache.indexedMatchesAgreeWithScanForTesting(transcript, pool: pool),
+                "Round \(round) matched other rows than the full scan"
+            )
+        }
+    }
+
     // MARK: - Merge: timestamp restoration
 
     func testMergeRestoresMissingTimestamp() {
@@ -3506,6 +3553,335 @@ extension SessionPresentationCacheTests {
         )
     }
 
+    /// The app's stores are files of their own, out of UserDefaults.standard
+    /// (a write there redraws every `@AppStorage` view): what one run saves,
+    /// the next reads from the files, and a removal goes from them too.
+    func testTheAppsStoresAreFilesOfTheirOwn() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SessionPresentationFiles-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = SessionPresentationCache(storage: SessionPresentationFiles(directory: directory), writesAsynchronously: true)
+        let row = [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "")]
+
+        cache.save(
+            [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "2024-01-01T10:00:00Z")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        cache.waitForPendingWrites()
+        let files = SessionPresentationFiles(directory: directory)
+        XCTAssertNotNil(files.data(forKey: "conduit.sessionPresentation.v1"))
+        XCTAssertEqual(
+            SessionPresentationCache(storage: files).merge(row, profile: "default", sessionIDs: ["session-a"]).first?.timestamp,
+            "2024-01-01T10:00:00Z",
+            "The next launch reads the file"
+        )
+
+        cache.removeSessions(profile: "default", sessionIDs: ["session-a"])
+        XCTAssertEqual(
+            SessionPresentationCache(storage: files).merge(row, profile: "default", sessionIDs: ["session-a"]).first?.timestamp,
+            "",
+            "A removal holds in the files at once"
+        )
+        cache.waitForPendingWrites()
+    }
+
+    /// The first launch with the files moves the stores an earlier build
+    /// kept in the defaults into them, and removes them from the defaults.
+    func testStoresKeptInTheDefaultsMoveToTheFiles() throws {
+        let suiteName = "conduit.tests.presentation-move-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SessionPresentationFiles-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        SessionPresentationCache(defaults: defaults).save(
+            [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "2024-01-01T10:00:00Z")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        XCTAssertNil(defaults.data(forKey: "conduit.sessionPresentation.pendingTools.v1"))
+        let files = SessionPresentationFiles(directory: directory)
+        // Files from an earlier run of a build with them: the defaults were
+        // written since, by a build from before.
+        files.storeData(Data("{}".utf8), forKey: "conduit.sessionPresentation.v1")
+        files.storeData(Data("{}".utf8), forKey: "conduit.sessionPresentation.pendingTools.v1")
+
+        let storage = SessionPresentationCache.storage(movingFrom: defaults, to: files)
+
+        XCTAssertTrue(storage === files)
+        XCTAssertNil(defaults.data(forKey: "conduit.sessionPresentation.v1"), "Gone from the defaults")
+        XCTAssertNil(
+            files.data(forKey: "conduit.sessionPresentation.pendingTools.v1"),
+            "A store the newer set doesn't hold is empty"
+        )
+        XCTAssertEqual(
+            SessionPresentationCache(storage: storage).merge(
+                [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "")],
+                profile: "default",
+                sessionIDs: ["session-a"]
+            ).first?.timestamp,
+            "2024-01-01T10:00:00Z",
+            "The defaults' store replaced the older file"
+        )
+    }
+
+    /// A store that can't be written to its file leaves every store in the
+    /// defaults and the cache on them for that launch: nothing reads as
+    /// empty, and nothing newer goes to a file the next move would replace.
+    func testStoresThatCantMoveStayInTheDefaultsThatLaunch() throws {
+        let suiteName = "conduit.tests.presentation-move-failed-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        SessionPresentationCache(defaults: defaults).save(
+            [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "2024-01-01T10:00:00Z")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        // A file where the directory goes: nothing can be written there.
+        let blocked = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SessionPresentationFiles-\(UUID().uuidString)")
+        try Data().write(to: blocked)
+        defer { try? FileManager.default.removeItem(at: blocked) }
+
+        let storage = SessionPresentationCache.storage(movingFrom: defaults, to: SessionPresentationFiles(directory: blocked))
+
+        XCTAssertTrue(storage === defaults)
+        XCTAssertNotNil(defaults.data(forKey: "conduit.sessionPresentation.v1"), "Still in the defaults")
+        XCTAssertEqual(
+            SessionPresentationCache(storage: storage).merge(
+                [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "")],
+                profile: "default",
+                sessionIDs: ["session-a"]
+            ).first?.timestamp,
+            "2024-01-01T10:00:00Z"
+        )
+    }
+
+    /// A move cut short while it took the stores out of the defaults left
+    /// the files holding what the defaults still do: the next launch
+    /// finishes it and keeps the stores already taken out, which only the
+    /// files hold.
+    func testAMoveCutShortKeepsTheStoresAlreadyTakenOut() throws {
+        let suiteName = "conduit.tests.presentation-move-cut-short-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SessionPresentationFiles-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let files = SessionPresentationFiles(directory: directory)
+        SessionPresentationCache(storage: files).save(
+            [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "2024-01-01T10:00:00Z")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        let tombstones = Data("{}".utf8)
+        files.storeData(tombstones, forKey: "conduit.sessionPresentation.tombstones.v1")
+        // The main store was taken out of the defaults; the tombstones
+        // weren't yet.
+        defaults.set(tombstones, forKey: "conduit.sessionPresentation.tombstones.v1")
+
+        let storage = SessionPresentationCache.storage(movingFrom: defaults, to: files)
+
+        XCTAssertTrue(storage === files)
+        XCTAssertNil(defaults.data(forKey: "conduit.sessionPresentation.tombstones.v1"), "The move is finished")
+        XCTAssertEqual(
+            SessionPresentationCache(storage: storage).merge(
+                [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "")],
+                profile: "default",
+                sessionIDs: ["session-a"]
+            ).first?.timestamp,
+            "2024-01-01T10:00:00Z",
+            "The store only the files held is kept"
+        )
+    }
+
+    /// A store write that doesn't land (a full disk) keeps a delete's
+    /// tombstone: the store on disk still holds the deleted chat, and the
+    /// tombstone keeps it from coming back on the next launch.
+    func testADeleteHoldsWhileTheStoreCantBeWritten() throws {
+        let storage = FailingPresentationStorage()
+        let cache = SessionPresentationCache(storage: storage, writesAsynchronously: true)
+        cache.save(
+            [ChatMessage(id: "row-1", role: .assistant, content: "Kept", timestamp: "2024-01-01T10:00:00Z")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        cache.save(
+            [ChatMessage(id: "row-3", role: .assistant, content: "Doomed", timestamp: "2024-01-03T10:00:00Z")],
+            profile: "default",
+            sessionIDs: ["session-c"]
+        )
+        cache.waitForPendingWrites()
+        storage.failsStoreWrites = true
+
+        cache.removeSessions(profile: "default", sessionIDs: ["session-c"])
+        let settled = expectation(description: "writes settled")
+        cache.notifyWhenPendingWritesLand { settled.fulfill() }
+        wait(for: [settled], timeout: 5)
+
+        XCTAssertNotNil(storage.data(forKey: "conduit.sessionPresentation.tombstones.v1"), "The tombstone stays")
+        XCTAssertEqual(
+            SessionPresentationCache(storage: storage).merge(
+                [ChatMessage(id: "row-3", role: .assistant, content: "Doomed", timestamp: "")],
+                profile: "default",
+                sessionIDs: ["session-c"]
+            ).first?.timestamp,
+            "",
+            "The next launch doesn't bring the deleted chat back"
+        )
+    }
+
+    /// Tombstones whose write didn't land (a full disk) are written again
+    /// once a store write lands: from then a kill no longer loses the
+    /// delete, even while the other store still holds the deleted chat.
+    func testTombstonesThatDidntLandAreWrittenAgain() throws {
+        let storage = FailingPresentationStorage()
+        let cache = SessionPresentationCache(storage: storage, writesAsynchronously: true)
+        cache.save(
+            [ChatMessage(id: "row-3", role: .assistant, content: "Doomed", timestamp: "2024-01-03T10:00:00Z")],
+            profile: "default",
+            sessionIDs: ["session-c"]
+        )
+        // Another chat's running tool keeps the pending tools store from
+        // emptying, so the removal's write to it needs the disk too (an
+        // empty store is removed, which always lands) and stays unlanded
+        // after the save below lands the sessions store.
+        cache.recordPendingToolStart(
+            ChatMessage(
+                id: "pending", role: .tool, content: "", timestamp: "now",
+                tool: ToolActivity(id: "call-1", name: "terminal", input: "pwd", output: nil, status: .running)
+            ),
+            profile: "default",
+            sessionIDs: ["session-b"]
+        )
+        cache.waitForPendingWrites()
+        storage.failsStoreWrites = true
+        storage.failsTombstoneWrites = true
+
+        cache.removeSessions(profile: "default", sessionIDs: ["session-c"])
+        let failed = expectation(description: "the full disk's writes settled")
+        cache.notifyWhenPendingWritesLand { failed.fulfill() }
+        wait(for: [failed], timeout: 5)
+        XCTAssertNil(storage.data(forKey: FailingPresentationStorage.tombstonesKey), "Nothing landed")
+
+        storage.failsStoreWrites = false
+        storage.failsTombstoneWrites = false
+        cache.save(
+            [ChatMessage(id: "row-1", role: .assistant, content: "Later", timestamp: "2024-01-04T10:00:00Z")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        let landed = expectation(description: "a store write landed")
+        cache.notifyWhenPendingWritesLand { landed.fulfill() }
+        wait(for: [landed], timeout: 5)
+
+        XCTAssertNotNil(storage.data(forKey: FailingPresentationStorage.tombstonesKey), "Written again")
+    }
+
+    /// A save reuses a row's record only while the row is as it was saved:
+    /// a row whose text changed is fingerprinted again, so what's restored
+    /// later belongs to its new text.
+    func testASavedRowThatChangesIsSavedAgain() throws {
+        let suiteName = "conduit.tests.presentation-records-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let cache = SessionPresentationCache(defaults: defaults)
+        func save(_ content: String, _ timestamp: String) {
+            cache.save(
+                [ChatMessage(id: "row-1", role: .assistant, content: content, timestamp: timestamp)],
+                profile: "default",
+                sessionIDs: ["session-a"]
+            )
+        }
+        func restoredTimestamp(_ content: String) -> String? {
+            SessionPresentationCache(defaults: defaults).merge(
+                [ChatMessage(id: "row-1", role: .assistant, content: content, timestamp: "")],
+                profile: "default",
+                sessionIDs: ["session-a"]
+            ).first?.timestamp
+        }
+
+        save("Hel", "2024-01-01T10:00:00Z")
+        save("Hel", "2024-01-01T10:00:00Z")
+        XCTAssertEqual(restoredTimestamp("Hel"), "2024-01-01T10:00:00Z")
+
+        save("Hello, all done", "2024-01-01T10:00:05Z")
+        XCTAssertEqual(restoredTimestamp("Hello, all done"), "2024-01-01T10:00:05Z", "The streamed row's new text and time")
+    }
+
+    /// A saved row takes its kept presentation from the first cached row
+    /// that matches it by id or by content, whichever comes first: here
+    /// the content match, ahead of the row with its id.
+    func testASavedRowKeepsTheEarliestMatchingRowsPresentation() throws {
+        let suiteName = "conduit.tests.presentation-first-match-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let cache = SessionPresentationCache(defaults: defaults)
+        cache.save(
+            [
+                ChatMessage(id: "old", role: .assistant, content: "Same words", timestamp: "2024-01-01T10:00:00Z"),
+                ChatMessage(id: "new", role: .assistant, content: "Other words", timestamp: "2024-01-01T10:00:09Z")
+            ],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        cache.save(
+            [ChatMessage(id: "new", role: .assistant, content: "Same words", timestamp: "")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+
+        let restored = SessionPresentationCache(defaults: defaults).merge(
+            [ChatMessage(id: "new", role: .assistant, content: "Same words", timestamp: "")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        XCTAssertEqual(restored.map(\.timestamp), ["2024-01-01T10:00:00Z"])
+    }
+
+    /// The chats are written in key order, in both stores the move out of
+    /// UserDefaults compares byte for byte, so the same chats always write
+    /// the same bytes, whatever order they were saved in.
+    func testChatsAreWrittenInKeyOrder() throws {
+        let suiteName = "conduit.tests.presentation-key-order-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let cache = SessionPresentationCache(defaults: defaults)
+        let chats = (10...21).map { "chat-\($0)" }
+        for sessionID in chats.reversed() {
+            cache.save(
+                [ChatMessage(id: "row-\(sessionID)", role: .user, content: sessionID, timestamp: "2024-01-01T10:00:00Z")],
+                profile: "default",
+                sessionIDs: [sessionID]
+            )
+        }
+        let stored = String(decoding: try XCTUnwrap(defaults.data(forKey: "conduit.sessionPresentation.v1")), as: UTF8.self)
+        let positions = try chats.map { sessionID in
+            try XCTUnwrap(stored.range(of: "\"default|\(sessionID)\":")?.lowerBound, sessionID)
+        }
+        XCTAssertEqual(positions, positions.sorted(), "Chats in key order")
+
+        for sessionID in chats.reversed() {
+            cache.recordPendingToolStart(
+                ChatMessage(
+                    id: "tool-\(sessionID)", role: .tool, content: "", timestamp: "now",
+                    tool: ToolActivity(id: "call-\(sessionID)", name: "terminal", input: "pwd", output: nil, status: .running)
+                ),
+                profile: "default",
+                sessionIDs: [sessionID]
+            )
+        }
+        let pendingTools = String(
+            decoding: try XCTUnwrap(defaults.data(forKey: "conduit.sessionPresentation.pendingTools.v1")),
+            as: UTF8.self
+        )
+        let pendingPositions = try chats.map { sessionID in
+            try XCTUnwrap(pendingTools.range(of: "\"default|\(sessionID)\":")?.lowerBound, sessionID)
+        }
+        XCTAssertEqual(pendingPositions, pendingPositions.sorted(), "Pending tools in key order")
+    }
+
     /// The suspend path must not block the main thread on the write queue
     /// (a UserDefaults write there can wait on SwiftUI's lock, which the
     /// main thread holds during a view update: a watchdog-killed deadlock).
@@ -3556,6 +3932,54 @@ extension SessionPresentationCacheTests {
             ""
         )
     }
+
+    /// A save re-encodes only the rows that changed (#1730); the store it
+    /// writes must still read back whole, for every chat, as a fresh
+    /// instance reads it at launch.
+    func testStreamingSavesWriteAStoreAnotherInstanceReadsWhole() throws {
+        let suiteName = "conduit.tests.presentation-rows-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let writer = SessionPresentationCache(defaults: defaults)
+        let quietChat = #"quiet "chat"/1"#
+        writer.save(
+            [ChatMessage(id: "q-1", role: .user, content: "Hi", timestamp: "2024-01-01T09:00:00Z")],
+            profile: "default",
+            sessionIDs: [quietChat]
+        )
+        var streamed = [
+            ChatMessage(id: "s-1", role: .user, content: "Tell me", timestamp: "2024-01-01T10:00:00Z"),
+            ChatMessage(id: "s-2", role: .assistant, content: "Once", timestamp: "2024-01-01T10:00:01Z")
+        ]
+        for word in ["upon", "a", "time"] {
+            streamed[1].content += " " + word
+            writer.save(streamed, profile: "default", sessionIDs: ["streaming"])
+        }
+        streamed.append(ChatMessage(id: "s-3", role: .user, content: "More", timestamp: "2024-01-01T10:00:09Z"))
+        writer.save(streamed, profile: "default", sessionIDs: ["streaming"])
+
+        let stored = try XCTUnwrap(defaults.data(forKey: "conduit.sessionPresentation.v1"))
+        let sessions = try XCTUnwrap(JSONSerialization.jsonObject(with: stored) as? [String: [String: Any]])
+        XCTAssertEqual(Set(sessions.keys), ["default|" + quietChat, "default|streaming"])
+        XCTAssertEqual((sessions["default|streaming"]?["messages"] as? [Any])?.count, 3)
+
+        let reader = SessionPresentationCache(defaults: defaults)
+        let gatewayStream = streamed.map {
+            ChatMessage(id: $0.id, role: $0.role, content: $0.content, timestamp: "")
+        }
+        XCTAssertEqual(
+            reader.merge(gatewayStream, profile: "default", sessionIDs: ["streaming"]).map(\.timestamp),
+            ["2024-01-01T10:00:00Z", "2024-01-01T10:00:01Z", "2024-01-01T10:00:09Z"]
+        )
+        XCTAssertEqual(
+            reader.merge(
+                [ChatMessage(id: "q-1", role: .user, content: "Hi", timestamp: "")],
+                profile: "default",
+                sessionIDs: [quietChat]
+            ).map(\.timestamp),
+            ["2024-01-01T09:00:00Z"]
+        )
+    }
 }
 
 /// Test-scope clock whose value only moves when a test advances it. Gives
@@ -3575,5 +3999,41 @@ final class DeterministicClock: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         value += 10
+    }
+}
+
+/// A presentation store whose writes can be made to fail, as a full disk
+/// fails a file's: the stores', and on their own the tombstones'.
+private final class FailingPresentationStorage: SessionPresentationStorage {
+    static let tombstonesKey = "conduit.sessionPresentation.tombstones.v1"
+    private let lock = NSLock()
+    private var stored: [String: Data] = [:]
+    private var failing = false
+    private var failingTombstones = false
+
+    var failsStoreWrites: Bool {
+        get { lock.withLock { failing } }
+        set { lock.withLock { failing = newValue } }
+    }
+
+    var failsTombstoneWrites: Bool {
+        get { lock.withLock { failingTombstones } }
+        set { lock.withLock { failingTombstones = newValue } }
+    }
+
+    func data(forKey key: String) -> Data? {
+        lock.withLock { stored[key] }
+    }
+
+    func storeData(_ data: Data, forKey key: String) -> Bool {
+        lock.withLock {
+            guard key == Self.tombstonesKey ? !failingTombstones : !failing else { return false }
+            stored[key] = data
+            return true
+        }
+    }
+
+    func removeObject(forKey key: String) {
+        lock.withLock { stored[key] = nil }
     }
 }

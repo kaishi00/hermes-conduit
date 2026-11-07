@@ -33,6 +33,10 @@ struct TurnSurface: Equatable {
 
     static let capability = "turn-surface"
     static let path = "/api/plugins/conduit_push/turn-surface"
+    /// Forgets the report of a send that failed, so the same words sent
+    /// from another client in that chat don't take its line.
+    static let discardCapability = "turn-surface-discard"
+    static let discardPath = "/api/plugins/conduit_push/turn-surface/discard"
     /// The send waits at most this long for the plugin, then goes anyway:
     /// a turn without the line is only what Hermes had before.
     static let wait: Duration = .milliseconds(600)
@@ -72,5 +76,11 @@ struct TurnSurface: Equatable {
         var body: [String: Any] = ["session_id": runtimeSessionID, "text_sha256": digest, "surface": place.rawValue]
         if let input { body["input"] = input.rawValue }
         return body
+    }
+
+    /// The discard route's body for the report `body(runtimeSessionID:text:)` made.
+    static func discardBody(runtimeSessionID: String, text: String) -> [String: Any] {
+        let digest = SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
+        return ["session_id": runtimeSessionID, "text_sha256": digest]
     }
 }

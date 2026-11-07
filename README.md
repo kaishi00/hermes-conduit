@@ -41,11 +41,14 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 
 - Streaming replies with Markdown, highlighted code, math, Mermaid diagrams and task lists
 - Thinking, tool calls and each turn's steps, shown live or folded away; delegated-agent progress
-- Map, place, travel, media, contact and info cards that Hermes draws in the chat
+- Map, place, travel, media, contact and info cards that Hermes draws in the chat, and diff cards for the changes it shows you (a review, a commit, a config): files with their +added −removed counts in the chat, and a sheet with every file's colored lines, line numbers and changed words
+- HTML pages Hermes draws with `::preview` (charts, small dashboards) show in the reply up to 900 points tall, their foot fading when there's more; tap one to open it full screen, where you can touch and scroll it. A page's `window.hermes.send` answers `undelivered`: Conduit doesn't send prompts from a page
 - Answer Hermes' questions with a tap, or in a short form when it needs several details: fill in what you know and leave the rest blank
-- Attach photos, camera shots and any file; quote a message, react to it, copy it
-- Steer, queue or stop a running turn; context meter; slash commands and workspace files
-- Branch, pin, archive and delete sessions; project chats; Artifacts browser for every file and page Hermes made
+- Attach photos, camera shots and any file, or drag them onto a chat (Finder on a Mac, Files on an iPad); a long paste becomes a text attachment you can open, edit or put back as text; quote a message, react to it, copy it
+- Open a picture full screen and swipe through the chat's pictures (or Artifacts' or a folder's): pinch or double-tap to zoom, swipe down to close, share or save
+- Steer, queue or stop a running turn; context meter; slash commands
+- Branch, pin (in the order you set), archive and delete sessions; project chats, with a dot on a project that holds an unread reply, and a project's page gathering every profile's chats in its folder with a filter by profile; make a project from the Projects heading's +, from a new or an existing folder on the Hermes host; Artifacts browser for every file and page Hermes made, Markdown files opening in the app's reader with their source a tap away
+- Browse the chat's folder and your projects' folders beside Artifacts: preview and edit files, search names and contents, make, rename, move and delete files, upload from the phone, and tap a file path or a link to a file in a reply to open it (the folder's search and changes need the plugin)
 - Saved chats open instantly, and you can type while Conduit reconnects
 
 **Voice**
@@ -55,13 +58,14 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 - Calls stay with their chat, keep going with the screen locked, shrink to a bar while you read, and are saved as chats you can resume
 - Hermes calls you: a CallKit call when a job is done, Hermes needs you, or a check you scheduled is due, on the phone or the Watch
 - Classic voice and dictation with on-device, Apple, Hermes or your own speech-to-text, spoken Stop and End, wake phrases, and Read Aloud for any reply
-- Apple Watch app that calls on its own, CarPlay, Siri and the Action Button
+- Apple Watch app that calls on its own, CarPlay, Siri and the Action Button; Watch and Siri calls can start on a profile you pick, whichever one the iPhone has open
 
 **Tasks, bots and groups**
 
 - Tasks board for Hermes' Kanban tasks
-- Bots and their Bot Chats, with each bot's model, skills, tools and MCP servers, pictures Hermes can generate, and @mentions that bring another bot in; gateway-hosted group chats with @mentions, files and approvals
+- Bots Home, the first tab: your bots as portraits, each opening its Bot Chat, dragged into your own order or dropped on each other to start a room, their faces flying into it, the group chats as small portraits under them, each with its own menu and dragged into your own order too, with an overview of its chat, work and artifacts, and its screen on a Linux host (watch the bot's desktop, take over for a sign-in, install it from the phone); Bots and their Bot Chats, with each bot's model, skills, tools and MCP servers, pictures Hermes or Apple's Image Playground can generate or a GIF, a short video or a still brought to life that moves on its portrait, and @mentions that bring another bot in; gateway-hosted group chats with @mentions, files and approvals, a purpose and shared notes, who answers a message that names nobody (everyone, a lead bot, or picked automatically) and Continue at the turn limit, bots that start work from the room and bring the result back there, and a pill per bot under the title saying whether it replied, passed or is responding, with a crown on the lead's
 - Scheduled jobs: review runs, run now, edit, mute their notifications, delete
+- Pulse (beta): once you turn it on, Hermes brings things up on its own (a morning brief, follow-ups on what you said you'd do, deadlines and birthdays) as cards you can act on, rate or put off, and learns what's worth raising
 
 **Your phone, if you allow it**
 
@@ -79,15 +83,17 @@ Each is off until you turn it on, and goes only to your own Hermes host, encrypt
 - Live Activities on the Lock Screen and in the Dynamic Island while a reply runs
 - Home Screen widgets to start a chat or talk in one tap
 - Provider, model and reasoning effort switching mid-conversation
-- Multiple dashboards and profiles, each with its own credentials and settings
-- Capabilities: skills, tools, connectors and plugins, plus Hermes settings and gateway logs
+- Connect model providers in Settings > Models & providers: sign in, paste an API key once for every profile (or give one profile its own), or add your own OpenAI-compatible server. Keys stay on your Hermes host and are never shown again
+- Pick the helper models Hermes runs smaller jobs on (chat titles, compaction, reading images, Conduit predictions and the rest) in Settings > Models & providers > Helper models, and the order a provider's keys take turns in on its page
+- Multiple dashboards and profiles, each with its own credentials and settings (Settings > Saved Dashboards can ask which dashboard to open each time Conduit launches); rename a profile or change its photo (a GIF, a short video or a still brought to life moves, or make one with Image Playground) and glow in Settings > Profiles; All in the profile row lists every profile's chats together, newest first with each row's profile picture, or grouped by profile with each profile's pinned chats and five newest until Show more
+- Capabilities: skills, tools, connectors (MCP servers you can test and edit, by form or as JSON) and plugins, plus Hermes settings and gateway logs
 - Native OAuth sign-in through your dashboard, QR code and setup links, Cloudflare Access service tokens
 - Face ID or Touch ID lock, credentials in the Keychain
 - Available in English, French, German, Indonesian, Italian, Japanese, Korean, Polish, Portuguese (Brazil), Russian, Simplified Chinese, Spanish, Traditional Chinese and Turkish
 
 ## Requirements
 
-- iPhone or iPad on iOS 17 or later; Apple Watch app on watchOS 10 or later (some features need newer versions)
+- iPhone or iPad on iOS 17 or later; Apple Watch app on watchOS 10 or later (calls from the Watch need watchOS 11 or later, and some other features need newer versions)
 - A running Hermes Agent instance with the native dashboard enabled (default port 9119)
 
 ## Connecting
@@ -158,9 +164,11 @@ On your home network the address is then `http://<nas-ip>:9119`; through Tailsca
 4. **Sign in.** Open Conduit, enter the address and sign in with the username and password from step 1.
 5. **Add the plugin** as described in [Notifications, voice and phone features](#notifications-voice-and-phone-features), or from **Settings > Conduit plugin** once you're signed in.
 
-**Note:** Conduit connects to the native Hermes dashboard, not the separate Hermes WebUI project. The default port is 9119.
+**Note:** Conduit connects to the native Hermes dashboard, not the separate Hermes WebUI project. The default port is 9119. The address of the gateway's own web listener (the one `hermes webapp` serves, port 9120 by default) works too. It serves the gateway's own profile's chats; Bot Chats in other profiles need the dashboard, or a gateway that serves several profiles.
 
 Plain HTTP over Tailscale (MagicDNS `.ts.net` domains and `100.64.0.0/10` tailnet IPs) is supported, since that traffic is already WireGuard-encrypted.
+
+Conduit only needs Tailscale Serve, which shares the dashboard with devices on your own tailnet. It doesn't need Tailscale SSH, so leave that off unless you use it for something else, and keep Tailscale updated on every device, including older ones like an iPad or Apple TV. Tailscale posts fixes on its [security bulletins](https://tailscale.com/security-bulletins) page.
 
 If the dashboard is behind Cloudflare Access, enable the optional service token on the login screen or in Settings > Connection (the first row, under your profile name). Conduit stores the client secret in Keychain (scoped to the gateway origin), and injects both Access headers into native authentication requests, WebSocket handshakes, and all in-page WebKit fetches via a document-start user script. Credentials are bound to the gateway URL and cleared when switching to a different host.
 
@@ -197,6 +205,8 @@ open Conduit.xcodeproj
 
 Select your team in Signing & Capabilities, then build and run on your device.
 
+**On a Mac.** Gatekeeper refuses a Conduit that Xcode launches directly on a Mac. `scripts/mac-dev-build.sh` builds a development-signed **Conduit Dev** instead and installs it in /Applications through macOS's iOS App Installer. Conduit Dev runs beside the App Store or TestFlight Conduit, with its own bundle id, sign-in and settings. A rebuild moves the installed Conduit Dev to the Trash first, which asks for an admin password, because iOS App Installer adds a numbered copy instead of replacing it. It has no widgets, extensions, Watch app, push notifications, CarPlay voice or location push, and `conduit://` links keep opening the installed Conduit. It uses the maintainer's team; another team changes `teamID` in `scripts/mac-dev/ExportOptions.plist`, `DEVELOPMENT_TEAM` in the root `project.yml` (which every build uses), and the bundle id `com.milim.relay.dev` in `scripts/mac-dev/project.yml` and `scripts/mac-dev-build.sh`.
+
 **Requirements:**
 - A current Xcode with the iOS 26 and watchOS 26 SDKs or later (CI builds with the default Xcode on GitHub's `macos-26` runners)
 - [xcodegen](https://github.com/yonaskolb/XcodeGen)
@@ -209,12 +219,12 @@ See [the iOS release workflow](docs/RELEASE_WORKFLOW.md) for the TestFlight and 
 
 Conduit is SwiftUI, generated with xcodegen from `project.yml`. Targets: the iPhone and iPad app, the Watch app and its widgets, Home Screen widgets and Live Activities, a Notification Service Extension (decrypts end-to-end encrypted notifications), a Location Push extension, and a share extension.
 
-The app connects to the Hermes dashboard's WebSocket (`/api/ws`) and REST routes after authenticating through the dashboard, as the desktop client does. Plugin features use the notifier's routes under `/api/plugins/conduit_push/`, behind the same dashboard auth.
+The app connects to the Hermes dashboard's WebSocket (`/api/ws`) and REST routes after authenticating through the dashboard, as the desktop client does. On the gateway's own listener the same socket is answered by Hermes' session authority, which takes other shapes for the same requests; Conduit reads which one it reached from the socket's `gateway.ready` and sends each its own. Plugin features use the notifier's routes under `/api/plugins/conduit_push/`, behind the same dashboard auth.
 
 Key places:
 - `Conduit/Services/HermesClient.swift` - WebSocket client and RPC layer
 - `Conduit/Services/AppState.swift` (and its `AppState+*.swift` extensions) - state and session lifecycle
-- `Conduit/Views/V2/` - the app shell: Chats, Tasks, Bots, Settings
+- `Conduit/Views/V2/` - the app shell: Bots, Sessions, Tasks, Settings
 - `Conduit/Voice/` - Classic voice, dictation and the live voice engines (Gemini Live, Qwen Live, GPT-Live, Grok Live, Local Live)
 - `Conduit/Health`, `Conduit/Location`, `Conduit/Phone` - opt-in phone data sync
 - `ConduitWatch/` - the Apple Watch app
@@ -223,7 +233,7 @@ Key places:
 
 ## Privacy
 
-Conduit has no analytics, telemetry, crash-reporting or ad SDKs, and its developer never receives your conversations, voice or phone data. Chats, attachments and opt-in phone data go to your own Hermes host. Live voice calls go to the voice provider you choose (Google, Alibaba Cloud, OpenAI or xAI) or your own speech server. The optional push relay delivers notifications and calls through Apple; with end-to-end encryption on, it sees only routing data, not their content.
+Conduit has no analytics, telemetry, crash-reporting or ad SDKs, and its developer never receives your conversations, voice or phone data. After a crash or freeze, Conduit asks once whether to send that report (call stacks and codes, the version, iOS version and device model, and what the chat screen did just before: scrolling, sizes and timings, never message text) to its developer, through the developer's push relay; it goes only if you tap Send. A chat trace you send from Settings > Connection > Diagnostics & logs, after a chat jumps or gets stuck, goes the same way. Chats, attachments and opt-in phone data go to your own Hermes host. Live voice calls go to the voice provider you choose (Google, Alibaba Cloud, OpenAI or xAI) or your own speech server. The optional push relay delivers notifications and calls through Apple; with end-to-end encryption on, it sees only their routing data, not their content. A crash report or chat trace you send isn't end-to-end encrypted: the developer's relay keeps what it says.
 
 The full [privacy policy](https://kaishi00.github.io/hermes-conduit-notifier/privacy/) says what each party receives.
 

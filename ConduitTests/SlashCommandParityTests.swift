@@ -156,6 +156,15 @@ extension ComposerDraftStoreTests {
             "An applied rewind without its count still took the target back"
         )
         XCTAssertNil(SessionRewindSnapshot.text(of: .array([])), "No parts is not a text turn")
+        // A stored picture turn held more than text; a text turn's words
+        // come back without any recalled memory left in them.
+        XCTAssertNil(SessionRewindSnapshot.text(of: .string(
+            "look\n[screenshot]\n<memory-context>\n[System note: recalled]\n</memory-context>\n\nA plugin note."
+        )))
+        XCTAssertEqual(
+            SessionRewindSnapshot.text(of: .string("redo this\n\n<memory-context>\nrecalled\n</memory-context>")),
+            "redo this"
+        )
     }
 
     func testRewindRefusalsReadAsWords() {

@@ -24,7 +24,6 @@ enum PerformanceFixtureWait {
             TranscriptPerf.selectableTextViewUpdateCalls,
             TranscriptPerf.selectableTextViewTextRebuilds,
             TranscriptPerf.textKitMeasurementCalls,
-            TranscriptPerf.rowFramePreferenceUpdates,
             TranscriptPerf.layoutMetricsChangedCalls,
             TranscriptPerf.transcriptChangedCalls,
             TranscriptPerf.chatViewBodyEvaluations,

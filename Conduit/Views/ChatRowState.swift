@@ -24,6 +24,10 @@ struct ChatRowState: Equatable {
     /// own part.
     var reactionsAvailable = false
     var latestAssistantMessageID: String?
+    /// The newest reply, while it answers the last message sent: /retry
+    /// sends that message again, so a reply with a message after it (a
+    /// stopped or unanswered turn) offers no Retry.
+    var retryableReplyID: String?
     var readAloudUnavailable = false
     var displayPreferences = ProfileDisplayPreferences()
     /// A call card finds its call through AppState; this redraws it when
@@ -32,6 +36,12 @@ struct ChatRowState: Equatable {
     /// Each live card's last row: earlier rows with that live name show
     /// that it was updated below.
     var latestLiveRows: [String: String] = [:]
+    /// The board whose follow-ups show: the newest one, while nothing has
+    /// been sent after it.
+    var followUpBoardRowID: String?
+    /// The open chat's messages that have a Pulse card, by Hermes' message
+    /// id (PulseFeed.swift): they show a Pulse mark that opens it.
+    var pulseCards: [Int: Int] = [:]
     /// Replies can be pinned here (#918), and the rows that are.
     var canPinReplies = false
     var pinnedMessageIDs: Set<String> = []
@@ -53,29 +63,34 @@ struct ChatRowState: Equatable {
 
     init() {}
 
+    /// `facts`: the transcript's own (ChatView's TranscriptModel), worked out
+    /// once per change of its rows; else from AppState's rows on screen.
     @MainActor
-    init(_ appState: AppState) {
+    init(_ appState: AppState, facts: ChatRowFacts? = nil) {
         let profile = appState.activeProfile
         activeProfile = profile
         agentIdentity = appState.conversationAgentIdentity
         agentGlowTint = appState.profileGlowTint(appState.conversationIdentityProfile)
-        isBusy = appState.isBusy
+        isBusy = appState.chatOnScreenIsBusy
         isBranchingChat = appState.isBranchingChat
         isOffline = appState.offlineChatPresentation != nil
         canQuoteIntoComposer = appState.canQuoteIntoComposer()
         reactionsAvailable = appState.reactionsAvailable
-        latestAssistantMessageID = appState.messages.last(where: { $0.role == .assistant })?.id
+        let facts = facts ?? ChatRowFacts(rows: appState.chatRowsOnScreen, isBusy: isBusy)
+        latestAssistantMessageID = facts.latestAssistantMessageID
+        retryableReplyID = facts.retryableReplyID
         readAloudUnavailable = appState.readAloudUnavailableReason != nil
         displayPreferences = appState.displayPreferences
         voiceCallLinksRevision = appState.voiceCallChatLinksRevision
-        latestLiveRows = RichCard.latestLiveRows(appState.messages)
+        latestLiveRows = facts.latestLiveRows
+        // A tap sends, so the chips show only while a send can go.
+        followUpBoardRowID = isOffline || isBusy || !appState.isConnected || !appState.composerIsEnabled
+            ? nil : facts.followUpBoardRowID
+        pulseCards = appState.pulseCards(forChat: appState.activeSessionId)
         canPinReplies = appState.canPinReplies
         pinnedMessageIDs = appState.openChatPinnedMessageIDs
-        teammateReplies = BotTeammateMessages.teammateReplies(
-            in: appState.messages,
-            streamingMessageID: appState.isBusy ? BotTeammateMessages.runningReplyID(in: appState.messages) : nil
-        )
-        botLabels = appState.botRoster.map { "\($0.name)=\($0.displayLabel)" }
+        teammateReplies = facts.teammateReplies
+        botLabels = appState.shownBotRoster.map { "\($0.name)=\($0.displayLabel)" }
         toolCatalog = appState.toolCatalog
         let scope = appState.toolCatalogKey
         stepSummaries = appState.stepSummaries[scope] ?? [:]
@@ -93,6 +108,35 @@ struct ChatRowState: Equatable {
                 isBusy: isBusy,
                 latestAssistantMessageID: latestAssistantMessageID
             ) != nil
+    }
+}
+
+/// What the rows show that comes from the whole transcript: which reply is
+/// the latest, offers Retry or folds under a teammate's delivery, and each
+/// live card's last row. Worked out from the rows drawn, the saved copy's
+/// while they stand in, so those fold and hide as Hermes' will and nothing
+/// moves when Hermes' land.
+struct ChatRowFacts: Equatable {
+    var latestAssistantMessageID: String?
+    var retryableReplyID: String?
+    var latestLiveRows: [String: String] = [:]
+    var followUpBoardRowID: String?
+    var teammateReplies: [String: String] = [:]
+
+    init() {}
+
+    /// `isBusy`: a turn runs in the chat drawn, so its reply still streaming
+    /// stays open.
+    @MainActor
+    init(rows: [ChatMessage], isBusy: Bool) {
+        latestAssistantMessageID = rows.last(where: { $0.role == .assistant })?.id
+        retryableReplyID = AppState.retryableReplyID(in: rows)
+        latestLiveRows = RichCard.latestLiveRows(rows)
+        followUpBoardRowID = RichBoard.followUpRow(in: rows)
+        teammateReplies = BotTeammateMessages.teammateReplies(
+            in: rows,
+            streamingMessageID: isBusy ? BotTeammateMessages.runningReplyID(in: rows) : nil
+        )
     }
 }
 
@@ -139,18 +183,26 @@ extension Optional where Wrapped == ChatRowActions {
 extension View {
     /// Hands the transcript's rows their state and actions. On every view
     /// that draws chat rows (the chat, an offline copy, a group room).
-    func chatRows() -> some View {
-        modifier(ChatRowsEnvironment())
+    /// `facts`: the transcript's, from the chat's TranscriptModel; nil works
+    /// them out from AppState's rows on screen on each publish (a card on
+    /// its own, as on the Classic voice screen).
+    func chatRows(facts: ChatRowFacts? = nil) -> some View {
+        modifier(ChatRowsEnvironment(facts: facts))
     }
 }
 
 private struct ChatRowsEnvironment: ViewModifier {
     @EnvironmentObject private var appState: AppState
     @State private var last = LastChatRowState()
+    let facts: ChatRowFacts?
+
+    init(facts: ChatRowFacts?) {
+        self.facts = facts
+    }
 
     func body(content: Content) -> some View {
         content
-            .environment(\.chatRowState, last.keeping(ChatRowState(appState)))
+            .environment(\.chatRowState, last.keeping(ChatRowState(appState, facts: facts)))
             .environment(\.chatRowActions, ChatRowActions(appState: appState))
     }
 }

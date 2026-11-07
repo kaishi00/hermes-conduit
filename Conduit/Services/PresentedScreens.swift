@@ -284,15 +284,20 @@ final class PresentedScreensSync: ObservableObject {
     /// comparisons and steps (plugin 0.46+). "media-cards": photos, videos,
     /// audio and contacts; "live-cards": statuses and cards kept up to date
     /// under a live name (plugin 0.47+); "text-drafts": Send text for a
-    /// contact card's message (plugin 0.67+). "room-asks": a room's asks,
-    /// answered with Share, Say instead (with the words) or Don't share
-    /// (plugin 0.118+, Linked Rooms). "link-asks": a linked person's Hermes'
-    /// asks, the same way, with Share only when there's an answer to share
-    /// (plugin 0.120+). "room-work": a room's ask to start work for it (Run
-    /// work), answered Start, Change it (with what to do instead) or Don't
-    /// start (plugin 0.137+).
+    /// contact card's message (plugin 0.67+); "board-cards": tables,
+    /// timelines, checklists, lists, progress and callouts, up to 12 cards
+    /// as a stack or tabs, and follow-ups (plugin 0.128+); "room-boards": a
+    /// group room's boards under its agents' messages (plugin 0.129+);
+    /// "diff-cards": changes line by line (plugin 0.133+). "room-asks": a
+    /// room's asks, answered with Share, Say instead (with the words) or
+    /// Don't share (plugin 0.118+, Linked Rooms). "link-asks": a linked
+    /// person's Hermes' asks, the same way, with Share only when there's an
+    /// answer to share (plugin 0.120+). "room-work": a room's ask to start
+    /// work for it (Run work), answered Start, Change it (with what to do
+    /// instead) or Don't start (plugin 0.137+).
     static let features = ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards",
-                           "text-drafts", "room-asks", "link-asks", "room-work"]
+                           "text-drafts", "board-cards", "room-boards", "diff-cards", "room-asks", "link-asks",
+                           "room-work"]
     /// The longest Say instead the host keeps.
     static let maxEditText = 2_000
     /// Card ids remembered as seen, so a card is shown at most once.

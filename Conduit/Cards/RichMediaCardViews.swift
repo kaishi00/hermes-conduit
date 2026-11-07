@@ -113,7 +113,7 @@ private struct RichMediaTile: View {
                     }
                     if item.kind == .video {
                         Image(systemName: "play.circle.fill")
-                            .font(.system(.largeTitle))
+                            .scaledFont(.largeTitle)
                             .symbolRenderingMode(.palette)
                             .foregroundStyle(.white, .black.opacity(0.45))
                             .accessibilityHidden(true)
@@ -126,7 +126,7 @@ private struct RichMediaTile: View {
                 .overlay(alignment: .bottomTrailing) {
                     if let duration = item.duration {
                         Text(verbatim: RichMediaClock.text(duration))
-                            .font(.caption2.weight(.semibold))
+                            .scaledFont(.caption2.weight(.semibold))
                             .monospacedDigit()
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
@@ -155,18 +155,18 @@ private struct RichMediaText: View {
         VStack(alignment: .leading, spacing: 2) {
             if let title = item.title {
                 Text(verbatim: title)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .lineLimit(2)
             }
             if let by = item.by {
                 Text(verbatim: by)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             if let caption = item.caption {
                 Text(verbatim: caption)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
             }
@@ -378,7 +378,7 @@ private struct RichAudioRow: View {
                         .accessibilityHidden(true)
                 } else if let duration = item.duration {
                     Text(verbatim: RichMediaClock.text(duration))
-                        .font(.caption2)
+                        .scaledFont(.caption2)
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
                 }
@@ -388,7 +388,7 @@ private struct RichAudioRow: View {
                 player.toggle(item.url)
             } label: {
                 Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(.title))
+                    .scaledFont(.title)
                     .foregroundStyle(Color.conduitAccent)
             }
             .buttonStyle(.plain)
@@ -443,10 +443,10 @@ private struct RichPersonRow: View {
                 avatar
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: person.name)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                     if let detail = person.detail {
                         Text(verbatim: detail)
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                     }
                     if let known {
@@ -460,7 +460,7 @@ private struct RichPersonRow: View {
                             Image(systemName: "person.crop.circle.badge.checkmark")
                                 .accessibilityHidden(true)
                         }
-                        .font(.caption2.weight(.semibold))
+                        .scaledFont(.caption2.weight(.semibold))
                         .foregroundStyle(Color.conduitAccent)
                         .labelStyle(RichCompactLabelStyle())
                     }
@@ -469,30 +469,30 @@ private struct RichPersonRow: View {
             }
             if let phone = person.phone {
                 Text(verbatim: phone)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
             if let email = person.email {
                 Text(verbatim: email)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
             if let address = person.address {
                 Text(verbatim: address)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
             if let note = person.note {
                 Text(verbatim: note)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .italic()
             }
             if let message = person.message {
                 Text(verbatim: message)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .textSelection(.enabled)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
@@ -537,7 +537,7 @@ private struct RichPersonRow: View {
         ZStack {
             Circle().fill(Color.conduitAccent.opacity(0.16))
             Text(verbatim: initials)
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .foregroundStyle(Color.conduitAccent)
             if let photo = person.photo {
                 RichCardImage(url: photo.url, maxPixelSize: 512) { phase in
@@ -604,7 +604,7 @@ private struct RichPersonAction: View {
                 Image(systemName: symbol)
                     .accessibilityHidden(true)
             }
-            .font(.caption.weight(.semibold))
+            .scaledFont(.caption.weight(.semibold))
             .labelStyle(RichCompactLabelStyle())
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -710,7 +710,7 @@ struct RichStatusCard: View {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(verbatim: status.state)
-                            .font(.title3.weight(.semibold))
+                            .scaledFont(.title3.weight(.semibold))
                         Spacer(minLength: 8)
                         RichPhaseBadge(phase: status.phase)
                     }
@@ -724,7 +724,7 @@ struct RichStatusCard: View {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             if let detail = status.detail {
                                 Text(verbatim: detail)
-                                    .font(.subheadline)
+                                    .scaledFont(.subheadline)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer(minLength: 4)
@@ -735,7 +735,7 @@ struct RichStatusCard: View {
                                     Image(systemName: "clock")
                                         .accessibilityHidden(true)
                                 }
-                                .font(.subheadline.weight(.semibold))
+                                .scaledFont(.subheadline.weight(.semibold))
                                 .monospacedDigit()
                                 .labelStyle(RichCompactLabelStyle())
                             }
@@ -772,7 +772,7 @@ private struct RichPhaseBadge: View {
             case .problem: Text("Needs attention")
             }
         }
-        .font(.caption2.weight(.bold))
+        .scaledFont(.caption2.weight(.bold))
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
         .foregroundStyle(Self.color(phase))
@@ -793,7 +793,7 @@ private struct RichMilestones: View {
                         .foregroundStyle(stage.done ? tint : Color.secondary)
                         .accessibilityHidden(true)
                     Text(verbatim: stage.label)
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(stage.done ? Color.primary : Color.secondary)
                 }
                 .accessibilityElement(children: .combine)
@@ -818,7 +818,7 @@ struct RichLiveUpdatedLine: View {
             Image(systemName: "arrow.down.circle")
                 .accessibilityHidden(true)
         }
-        .font(.footnote)
+        .scaledFont(.footnote)
         .foregroundStyle(.secondary)
         .padding(.vertical, 2)
     }

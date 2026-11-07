@@ -23,7 +23,7 @@ struct RichInfoCardFrame<Content: View>: View {
         VStack(alignment: .leading, spacing: 12) {
             if let title {
                 Text(verbatim: title)
-                    .font(.headline)
+                    .scaledFont(.headline)
                     .accessibilityAddTraits(.isHeader)
             }
             content
@@ -68,7 +68,7 @@ struct RichInfoSourceLine: View {
                 }
             }
         }
-        .font(.caption2)
+        .scaledFont(.caption2)
         .foregroundStyle(.secondary)
         .labelStyle(RichCompactLabelStyle())
     }
@@ -100,10 +100,10 @@ private struct RichStatTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(verbatim: stat.label)
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             Text(verbatim: stat.value)
-                .font(.title2.weight(.bold))
+                .scaledFont(.title2.weight(.bold))
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
@@ -111,12 +111,12 @@ private struct RichStatTile: View {
                 HStack(spacing: 3) {
                     if let trend = stat.trend {
                         Image(systemName: Self.symbol(trend))
-                            .font(.caption2.weight(.bold))
+                            .scaledFont(.caption2.weight(.bold))
                             .accessibilityHidden(true)
                     }
                     if let change = stat.change {
                         Text(verbatim: change)
-                            .font(.caption.weight(.semibold))
+                            .scaledFont(.caption.weight(.semibold))
                             .monospacedDigit()
                     }
                 }
@@ -124,7 +124,7 @@ private struct RichStatTile: View {
             }
             if let detail = stat.detail {
                 Text(verbatim: detail)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             if !stat.spark.isEmpty {
@@ -320,11 +320,11 @@ private struct RichChartView: View {
                             .frame(width: 8, height: 8)
                             .accessibilityHidden(true)
                         Text(verbatim: slice.0)
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .lineLimit(2)
                         Spacer(minLength: 4)
                         Text(verbatim: (slice.1 / total).formatted(.percent.precision(.fractionLength(0)).locale(AppLocalization.formattingLocale)))
-                            .font(.caption.weight(.semibold))
+                            .scaledFont(.caption.weight(.semibold))
                             .monospacedDigit()
                     }
                     .accessibilityElement(children: .ignore)
@@ -359,7 +359,7 @@ struct RichWeatherCard: View {
                         RichWeatherNow(now: now, place: weather.place, unit: weather.unit)
                     } else if let place = weather.place {
                         Text(verbatim: place)
-                            .font(.subheadline.weight(.semibold))
+                            .scaledFont(.subheadline.weight(.semibold))
                     }
                     if !weather.hours.isEmpty {
                         RichWeatherHours(hours: weather.hours)
@@ -433,24 +433,24 @@ private struct RichWeatherNow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
             RichWeatherSymbol(condition: now.condition)
-                .font(.largeTitle)
+                .scaledFont(.largeTitle)
                 .imageScale(.large)
             VStack(alignment: .leading, spacing: 2) {
                 if let place {
                     Text(verbatim: place)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(verbatim: richDegrees(now.temp) + unit)
-                        .font(.system(.largeTitle, design: .rounded, weight: .semibold))
+                        .scaledFont(.system(.largeTitle, design: .rounded, weight: .semibold))
                         .monospacedDigit()
                     now.condition.name
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 if let text = now.text {
                     Text(verbatim: text)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -469,7 +469,7 @@ private struct RichWeatherPrecip: View {
                     .accessibilityHidden(true)
                 Text(verbatim: "\(precip)%")
             }
-            .font(.caption2.weight(.semibold))
+            .scaledFont(.caption2.weight(.semibold))
             .foregroundStyle(.cyan)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text("Chance of rain or snow: \(richPercent(precip))"))
@@ -486,13 +486,13 @@ private struct RichWeatherHours: View {
                 ForEach(Array(hours.enumerated()), id: \.offset) { _, hour in
                     VStack(spacing: 6) {
                         Text(verbatim: hour.time)
-                            .font(.caption2)
+                            .scaledFont(.caption2)
                             .foregroundStyle(.secondary)
                         RichWeatherSymbol(condition: hour.condition)
-                            .font(.title3)
+                            .scaledFont(.title3)
                             .frame(height: 24)
                         Text(verbatim: richDegrees(hour.temp))
-                            .font(.subheadline.weight(.semibold))
+                            .scaledFont(.subheadline.weight(.semibold))
                             .monospacedDigit()
                         RichWeatherPrecip(precip: hour.precip)
                     }
@@ -520,17 +520,17 @@ private struct RichWeatherDays: View {
             ForEach(Array(days.enumerated()), id: \.offset) { _, day in
                 HStack(spacing: 10) {
                     Text(verbatim: day.day)
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .frame(width: dayWidth, alignment: .leading)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                     RichWeatherSymbol(condition: day.condition)
-                        .font(.body)
+                        .scaledFont(.body)
                         .frame(width: symbolWidth)
                     RichWeatherPrecip(precip: day.precip)
                         .frame(width: precipWidth, alignment: .leading)
                     Text(verbatim: richDegrees(day.low))
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                         .frame(width: tempWidth, alignment: .trailing)
@@ -538,7 +538,7 @@ private struct RichWeatherDays: View {
                         .frame(height: 5)
                         .accessibilityHidden(true)
                     Text(verbatim: richDegrees(day.high))
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .monospacedDigit()
                         .frame(width: tempWidth, alignment: .leading)
                 }
@@ -618,7 +618,7 @@ private struct RichOptionColumn: View {
                 } icon: {
                     Image(systemName: "star.fill")
                 }
-                .font(.caption2.weight(.bold))
+                .scaledFont(.caption2.weight(.bold))
                 .labelStyle(RichCompactLabelStyle())
                 .foregroundStyle(.white)
                 .padding(.horizontal, 8)
@@ -628,10 +628,10 @@ private struct RichOptionColumn: View {
                 .background(Color.conduitUserBubble, in: Capsule())
             }
             Text(verbatim: option.name)
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
             if let summary = option.summary {
                 Text(verbatim: summary)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             if !option.facts.isEmpty {
@@ -639,11 +639,11 @@ private struct RichOptionColumn: View {
                     ForEach(Array(option.facts.enumerated()), id: \.offset) { _, fact in
                         HStack(alignment: .firstTextBaseline) {
                             Text(verbatim: fact.label)
-                                .font(.caption)
+                                .scaledFont(.caption)
                                 .foregroundStyle(.secondary)
                             Spacer(minLength: 6)
                             Text(verbatim: fact.value)
-                                .font(.caption.weight(.semibold))
+                                .scaledFont(.caption.weight(.semibold))
                                 .multilineTextAlignment(.trailing)
                         }
                         .accessibilityElement(children: .combine)
@@ -676,11 +676,11 @@ private struct RichProCon: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 5) {
             Image(systemName: isPro ? "plus.circle.fill" : "minus.circle.fill")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(isPro ? Color.green : Color.orange)
                 .accessibilityHidden(true)
             Text(verbatim: text)
-                .font(.caption)
+                .scaledFont(.caption)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(isPro ? Text("Pro: \(text)") : Text("Con: \(text)"))
@@ -698,7 +698,7 @@ struct RichStepsCard: View {
                 if !card.needs.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("You'll need")
-                            .font(.caption.weight(.semibold))
+                            .scaledFont(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .textCase(.uppercase)
                         ForEach(Array(card.needs.enumerated()), id: \.offset) { _, need in
@@ -707,7 +707,7 @@ struct RichStepsCard: View {
                                     .foregroundStyle(Color.conduitAccent)
                                     .accessibilityHidden(true)
                                 Text(verbatim: need)
-                                    .font(.subheadline)
+                                    .scaledFont(.subheadline)
                             }
                         }
                     }
@@ -717,7 +717,7 @@ struct RichStepsCard: View {
                 }
                 if memory.notificationsOff, card.steps.contains(where: { $0.timer != nil }) {
                     Text("Notifications are off for Conduit in iPhone Settings.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -745,11 +745,11 @@ private struct RichStepRow: View {
             } label: {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
+                        .scaledFont(.title3)
                         .foregroundStyle(done ? Color.conduitAccent : Color.secondary)
                         .accessibilityHidden(true)
                     Text(verbatim: "\(number). \(step.text)")
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .strikethrough(done)
                         .foregroundStyle(done ? Color.secondary : Color.primary)
                         .multilineTextAlignment(.leading)
@@ -818,7 +818,7 @@ private struct RichStepTimer: View {
                     }
                 }
             }
-            .font(.caption.weight(.semibold))
+            .scaledFont(.caption.weight(.semibold))
             .monospacedDigit()
             .labelStyle(RichCompactLabelStyle())
             .padding(.horizontal, 9)

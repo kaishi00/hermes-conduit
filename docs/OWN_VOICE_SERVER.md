@@ -91,18 +91,24 @@ starts when you tap the voice button. The status screen stays on
 "Connecting" until the server has asked Hermes once, so a wrong address
 shows up right away.
 
-Local Live also works on the Apple Watch with plugin 0.48 or later.
+Local Live also works on the Apple Watch with plugin 0.48 or later and
+watchOS 11 or later, and in CarPlay.
 
-## Agent mode (coming)
+## Agent mode
 
-Today, every Local Live utterance is a full Hermes turn, so even "hey,
-what's up?" waits for the agent. Agent mode adds a **front model**: any
-OpenAI-compatible model address you choose (the speech server's own LLM, a
-local model, or a hosted fast model). The front model holds the conversation
-and starts Hermes jobs in the call's chat when there's real work to do. You
-hear progress and results as they arrive, the same way GPT-Live works. The
-settings will sit under Local Live. Without a front model, Local Live keeps
-working as it does today.
+Picked under **Voice mode** as **Live > Local**, Local Live adds a **fast
+model** in front of Hermes: any OpenAI-compatible model address you choose
+(the speech server's own LLM, a local model such as llama.cpp, Ollama, vLLM
+or LM Studio, or a hosted fast model). It holds the conversation and answers
+right away, and real work goes to Hermes as jobs with their cards in the
+call's chat, the same way GPT-Live works. Set the fast model's address,
+model and key in step 3 of that screen. Without a fast model, Hermes answers
+each turn itself, which is slower to start talking.
+
+Without agent mode (step 3 above), Local Live keeps every utterance a
+full Hermes turn. In CarPlay it is listed as Classic, and a call from Hermes
+on it opens classic voice, which says why Hermes called. In agent mode a call
+from Hermes opens Local Live and the fast model says it.
 
 ## When it doesn't work
 
@@ -123,6 +129,11 @@ working as it does today.
   while it speaks can listen again right away. On a server that only reads
   text back, the cancel reaches it after a sentence it already finished
   from plugin 0.88.
+- **Silence while Hermes works, though your server says a filler**: on a
+  server that only reads text back, a line it says on its own while Hermes
+  works ("let me look that up") plays from plugin 0.134.8, and Hermes'
+  answer follows once it ends. Talking over it or Interrupt stops it like
+  the reply.
 
 The full API reference (routes, frames and close codes) is in the Conduit
 plugin's README, under "Your own speech server" and "Local Live".

@@ -35,6 +35,34 @@ enum SessionSource: String, Codable, CaseIterable {
     case voiceJob = "voice_job"
     case discord
     case telegram
+    /// Hermes' other gateway platforms (`gateway.config.Platform` and the
+    /// bundled platform plugins), each under its own name and filter
+    /// (#1561). Two-backend platforms share one: WhatsApp and WhatsApp
+    /// Cloud, iMessage over BlueBubbles or Photon, WeCom and its callback
+    /// app. A plugin platform Conduit doesn't know yet stays Other.
+    case slack
+    case whatsapp
+    case signal
+    case imessage
+    case matrix
+    case mattermost
+    case teams
+    case googleChat = "google_chat"
+    case email
+    case sms
+    case irc
+    case line
+    case simplex
+    case wechat = "weixin"
+    case wecom
+    case feishu
+    case dingtalk
+    case qq = "qqbot"
+    case yuanbao
+    case buzz
+    case raft
+    case ntfy
+    case a2a
     case api
     case webhook
     case cron
@@ -47,6 +75,29 @@ enum SessionSource: String, Codable, CaseIterable {
         case .voiceJob: return AppLocalization.string("Voice Jobs")
         case .discord: return "Discord"
         case .telegram: return "Telegram"
+        case .slack: return "Slack"
+        case .whatsapp: return "WhatsApp"
+        case .signal: return "Signal"
+        case .imessage: return "iMessage"
+        case .matrix: return "Matrix"
+        case .mattermost: return "Mattermost"
+        case .teams: return "Microsoft Teams"
+        case .googleChat: return "Google Chat"
+        case .email: return AppLocalization.string("Email")
+        case .sms: return "SMS"
+        case .irc: return "IRC"
+        case .line: return "LINE"
+        case .simplex: return "SimpleX"
+        case .wechat: return "WeChat"
+        case .wecom: return "WeCom"
+        case .feishu: return "Feishu"
+        case .dingtalk: return "DingTalk"
+        case .qq: return "QQ"
+        case .yuanbao: return "Yuanbao"
+        case .buzz: return "Buzz"
+        case .raft: return "Raft"
+        case .ntfy: return "ntfy"
+        case .a2a: return "A2A"
         case .api: return "API"
         case .webhook: return AppLocalization.string("Webhook")
         case .cron: return AppLocalization.string("Cron")
@@ -61,6 +112,29 @@ enum SessionSource: String, Codable, CaseIterable {
         case .voiceJob: return "bolt.horizontal.circle.fill"
         case .discord: return "person.2.fill"
         case .telegram: return "paperplane.fill"
+        case .slack: return "number"
+        case .whatsapp: return "phone.bubble.left.fill"
+        case .signal: return "lock.shield.fill"
+        case .imessage: return "message.fill"
+        case .matrix: return "square.grid.3x3.fill"
+        case .mattermost: return "bubble.left.and.bubble.right.fill"
+        case .teams: return "person.3.fill"
+        case .googleChat: return "text.bubble.fill"
+        case .email: return "envelope.fill"
+        case .sms: return "iphone.gen3"
+        case .irc: return "number.square.fill"
+        case .line: return "bubble.right.fill"
+        case .simplex: return "lock.fill"
+        case .wechat: return "bubble.left.and.bubble.right"
+        case .wecom: return "building.2.fill"
+        case .feishu: return "bird.fill"
+        case .dingtalk: return "bell.fill"
+        case .qq: return "person.crop.circle.fill"
+        case .yuanbao: return "sparkles"
+        case .buzz: return "dot.radiowaves.left.and.right"
+        case .raft: return "rectangle.3.group.fill"
+        case .ntfy: return "bell.badge.fill"
+        case .a2a: return "arrow.left.arrow.right"
         case .api: return "globe"
         case .webhook: return "link"
         case .cron: return "clock.fill"
@@ -75,6 +149,29 @@ enum SessionSource: String, Codable, CaseIterable {
         case .voiceJob: return .indigo
         case .discord: return .purple
         case .telegram: return .cyan
+        case .slack: return .purple
+        case .whatsapp: return .green
+        case .signal: return .blue
+        case .imessage: return .green
+        case .matrix: return .mint
+        case .mattermost: return .blue
+        case .teams: return .indigo
+        case .googleChat: return .green
+        case .email: return .orange
+        case .sms: return .green
+        case .irc: return .gray
+        case .line: return .green
+        case .simplex: return .indigo
+        case .wechat: return .green
+        case .wecom: return .blue
+        case .feishu: return .blue
+        case .dingtalk: return .blue
+        case .qq: return .cyan
+        case .yuanbao: return .teal
+        case .buzz: return .orange
+        case .raft: return .brown
+        case .ntfy: return .teal
+        case .a2a: return .gray
         case .api: return .green
         case .webhook: return .orange
         case .cron: return .pink
@@ -84,15 +181,56 @@ enum SessionSource: String, Codable, CaseIterable {
 }
 
 extension SessionSource {
+    /// Hermes' gateway platforms after Discord and Telegram, in the Chats
+    /// filter's default order (#1561).
+    static let gatewayPlatforms: [SessionSource] = [
+        .slack, .whatsapp, .signal, .imessage, .matrix, .mattermost, .teams, .googleChat,
+        .email, .sms, .irc, .line, .simplex, .wechat, .wecom, .feishu, .dingtalk, .qq,
+        .yuanbao, .buzz, .raft, .ntfy, .a2a
+    ]
+
     /// Hermes' source for a Kanban worker's transcript. Hermes refuses to
     /// reopen one as a chat (`session.resume` 4132): the board runs it, and
     /// the task's Worker Log shows it.
     static let hermesKanbanSource = "kanban"
 
+    /// Sessions that aren't conversations, which every Hermes picker hides
+    /// (Hermes' `INTERNAL_LISTING_SOURCES`): Kanban workers, third-party
+    /// tool integrations (`hermes chat --source tool`) and finite one-shot
+    /// runs (`chat -q`, `-z`). Lowercased, as Hermes stores them.
+    static let hermesInternalSources: Set<String> = [hermesKanbanSource, "tool", "oneshot"]
+
+    /// `exclude_sources` for search: the sessions that aren't conversations.
+    static let nonChatExcludedSources = hermesInternalSources.sorted().joined(separator: ",")
+
     /// `exclude_sources` for the chat lists: cron runs have a list of their
-    /// own, and Kanban workers stay on the board, as Hermes Desktop's sidebar
-    /// leaves them out.
-    static let chatListExcludedSources = "cron,\(hermesKanbanSource)"
+    /// own, and the sessions that aren't conversations stay out, as Hermes
+    /// Desktop's sidebar leaves them out.
+    static let chatListExcludedSources = "cron,\(nonChatExcludedSources)"
+
+    /// Whether a Hermes session row's `source` is one that isn't a chat.
+    static func isHermesInternalSource(_ source: String?) -> Bool {
+        guard let source else { return false }
+        return hermesInternalSources.contains(source.lowercased())
+    }
+
+    /// Whether a session row is a Kanban worker that Hermes stored before it
+    /// tagged workers `kanban`. Those ran as `cli` sessions on the
+    /// dispatcher's one-line prompt, which is the row's preview; Hermes only
+    /// retags the ones whose folder is under the board's workspaces, so the
+    /// rest still list as chats (#1459).
+    static func isLegacyKanbanWorker(source: String?, preview: String?) -> Bool {
+        guard legacyKanbanWorkerSources.contains(source?.lowercased() ?? ""),
+              let preview = preview?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              preview.hasPrefix(legacyKanbanWorkerPrompt) else { return false }
+        let taskID = preview.dropFirst(legacyKanbanWorkerPrompt.count)
+        return !taskID.isEmpty && !taskID.contains(where: \.isWhitespace)
+    }
+
+    private static let legacyKanbanWorkerPrompt = "work kanban task "
+    /// Where Hermes kept those workers: `cli`, which a peer refresh rewrites
+    /// to `local`. A Telegram or cron row that only reads the same is a chat.
+    private static let legacyKanbanWorkerSources: Set<String> = ["cli", "local"]
 }
 
 struct Attachment: Codable, Identifiable, Equatable {
@@ -740,6 +878,31 @@ struct ChatMessage: Identifiable, Equatable {
         self.reactions = reactions
     }
 
+    /// The same message under another id.
+    func withID(_ id: String) -> ChatMessage {
+        var copy = ChatMessage(
+            id: id,
+            role: role,
+            content: content,
+            rawContent: rawContent,
+            timestamp: timestamp,
+            author: author,
+            reasoning: reasoning,
+            tool: tool,
+            review: review,
+            clarify: clarify,
+            approval: approval,
+            inputPrompt: inputPrompt,
+            attachments: attachments,
+            code: code,
+            displayKind: displayKind,
+            rowId: rowId,
+            reactions: reactions
+        )
+        copy.stepDuration = stepDuration
+        return copy
+    }
+
     /// Hermes' `display_kind` for a mid-turn steer row, also used for the
     /// local row Conduit shows the moment a steer is accepted (issue #337).
     static let steerDisplayKind = "steer"
@@ -786,10 +949,14 @@ struct MessageReaction: Codable, Equatable, Hashable {
     }
 }
 
-struct WorkspaceEntry: Identifiable, Equatable {
+struct WorkspaceEntry: Identifiable, Equatable, Hashable {
     var name: String
     var path: String
     var isDirectory: Bool
+    /// A file's size; nil for a folder, and where the listing has none
+    /// (Hermes' own folder listing).
+    var size: Int64? = nil
+    var modified: Date? = nil
 
     var id: String { path }
 }
@@ -1080,12 +1247,67 @@ struct CronRun: Codable, Identifiable {
     var profile: String?
     var startedAt: Int?
     var title: String?
+    /// The job the gateway says ran it (`job_id` or `cron_job_id`), when it says.
+    var jobID: String?
 
     enum CodingKeys: String, CodingKey {
         case id, model, preview, profile
         case lastActive = "last_active"
         case startedAt = "started_at"
         case title
+        case jobID = "job_id"
+        case cronJobID = "cron_job_id"
+    }
+
+    init(id: String, lastActive: Int?, model: String?, preview: String?, profile: String?, startedAt: Int?, title: String?, jobID: String? = nil) {
+        self.id = id
+        self.lastActive = lastActive
+        self.model = model
+        self.preview = preview
+        self.profile = profile
+        self.startedAt = startedAt
+        self.title = title
+        self.jobID = jobID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        lastActive = try container.decodeIfPresent(Int.self, forKey: .lastActive)
+        model = try container.decodeIfPresent(String.self, forKey: .model)
+        preview = try container.decodeIfPresent(String.self, forKey: .preview)
+        profile = try container.decodeIfPresent(String.self, forKey: .profile)
+        startedAt = try container.decodeIfPresent(Int.self, forKey: .startedAt)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        // The first that names a job: an empty or non-string one doesn't.
+        jobID = [CodingKeys.jobID, .cronJobID].lazy
+            .compactMap { try? container.decodeIfPresent(String.self, forKey: $0) }
+            .first { !$0.isEmpty }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encodeIfPresent(lastActive, forKey: .lastActive)
+        try container.encodeIfPresent(model, forKey: .model)
+        try container.encodeIfPresent(preview, forKey: .preview)
+        try container.encodeIfPresent(profile, forKey: .profile)
+        try container.encodeIfPresent(startedAt, forKey: .startedAt)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encodeIfPresent(jobID, forKey: .jobID)
+    }
+
+    /// Whether this is a run of the job (#1707): the job the gateway names,
+    /// else Hermes' run session id, `cron_<job id>_<YYYYMMDD>_<HHMMSS>` (the
+    /// only form Hermes writes, cron/scheduler.py). A run
+    /// that says neither is no job's, so a list of every job's runs never
+    /// lends one to a job that didn't make it.
+    func isRun(ofJob job: String) -> Bool {
+        if let jobID, !jobID.isEmpty { return jobID == job }
+        let prefix = "cron_\(job)_"
+        guard !job.isEmpty, id.hasPrefix(prefix) else { return false }
+        let stamp = id.dropFirst(prefix.count).split(separator: "_", omittingEmptySubsequences: false)
+        return stamp.map(\.count) == [8, 6] && stamp.allSatisfy { part in part.allSatisfy { $0.isASCII && $0.isNumber } }
     }
 }
 
@@ -1583,7 +1805,9 @@ struct RuntimeState: Equatable {
 // MARK: - Capabilities
 
 struct CapabilitySkill: Identifiable, Equatable {
-    let id = UUID()
+    /// By name, as Hermes keys them: a list read again (or the kept one
+    /// Hermes' answer replaces) draws only the rows that changed.
+    var id: String { name }
     let name: String
     var description: String?
     var category: String?
@@ -1593,7 +1817,7 @@ struct CapabilitySkill: Identifiable, Equatable {
 }
 
 struct CapabilityToolset: Identifiable, Equatable {
-    let id = UUID()
+    var id: String { name }
     let name: String
     var description: String?
     var enabled: Bool

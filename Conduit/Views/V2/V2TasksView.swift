@@ -12,6 +12,7 @@ import SwiftUI
 
 struct V2TasksView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    @EnvironmentObject private var appState: AppState
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.layoutDirection) private var layoutDirection
@@ -63,7 +64,7 @@ struct V2TasksView: View {
         // at a hard line below the control.
         .v2EdgeBar(.top) {
             VStack(spacing: 2) {
-                V2TopBar().withoutScrollEdge()
+                V2TopBar()
                 V2SegmentedControl(
                     selection: segment,
                     options: [
@@ -74,13 +75,16 @@ struct V2TasksView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 10)
             }
-            .modifier(V2LegacyScrollEdge())
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MinimisedLiveVoiceBar()
         }
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.tasks.title)
+        // A task to show (a Pulse card's) is on the Board.
+        .onChange(of: appState.kanbanTaskOpenRequest, initial: true) { _, request in
+            if request != nil { segmentRaw = Segment.board.rawValue }
+        }
     }
 
     /// Under Reduce Motion the pages only crossfade.
@@ -293,14 +297,14 @@ struct V2ScheduledList: View {
     private var listFooter: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(AppLocalization.string("Each run is saved as its own conversation. Chats lists them under the Scheduled filter. Ask Hermes to add or change a schedule."))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Button {
                 Haptics.light()
                 shell.showScheduledRuns()
             } label: {
                 Label(AppLocalization.string("Show runs in Chats"), systemImage: "bubble.left.and.bubble.right")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
             }
             .buttonStyle(.borderless)
             .tint(.conduitAccent)
@@ -310,7 +314,7 @@ struct V2ScheduledList: View {
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(.footnote.weight(.semibold))
+            .scaledFont(.footnote.weight(.semibold))
             .foregroundStyle(.secondary)
             .textCase(nil)
             .accessibilityAddTraits(.isHeader)
@@ -374,28 +378,28 @@ struct V2ScheduledList: View {
                     HStack(spacing: 5) {
                         if pinned {
                             Image(systemName: "pin.fill")
-                                .font(.caption2.weight(.bold))
+                                .scaledFont(.caption2.weight(.bold))
                                 .foregroundStyle(Color.conduitAccent)
                                 .accessibilityLabel(AppLocalization.string("Pinned"))
                         }
                         Text(job.displayName)
-                            .font(.body.weight(.semibold))
+                            .scaledFont(.body.weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                     }
                     Text(CronScheduleText.describe(job, zoneLabel: scheduleZoneLabel) ?? AppLocalization.string("No schedule"))
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(Color.primary.opacity(0.58))
                         .lineLimit(1)
                     HStack(spacing: 5) {
                         Image(systemName: "clock")
-                            .font(.caption.weight(.semibold))
+                            .scaledFont(.caption.weight(.semibold))
                             .conduitFixedGlyph()
                             .accessibilityHidden(true)
                         Text(nextRunLine(job))
                             .lineLimit(1)
                     }
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(job.isActive ? Color.conduitScheduled : Color.primary.opacity(0.45))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

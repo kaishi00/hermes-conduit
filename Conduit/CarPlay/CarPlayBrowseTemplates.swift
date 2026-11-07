@@ -70,14 +70,15 @@ enum CarPlayBrowse {
     static let maximumChats = 11
 
     /// Pinned chats first, then the most recent others, together at most
-    /// `maximumChats`. Pinned chats are newest first too.
+    /// `maximumChats`. Pinned chats are newest first too, until
+    /// `arrangePinned` puts them in the order set on the phone (issue 1354).
     static func chatList(
         from sessions: [SessionSummary],
-        isPinned: (SessionSummary) -> Bool
+        isPinned: (SessionSummary) -> Bool,
+        arrangePinned: ([SessionSummary]) -> [SessionSummary] = { $0 }
     ) -> CarPlayChatList {
-        let pinnedSessions = sessions.filter(isPinned)
-        let pinned = recentChats(from: pinnedSessions).map { row in
-            var pinnedRow = row
+        let pinned = Array(arrangePinned(newestFirst(sessions.filter(isPinned))).prefix(maximumChats)).map { session in
+            var pinnedRow = row(for: session)
             pinnedRow.symbol = pinSymbol
             return pinnedRow
         }
@@ -89,6 +90,10 @@ enum CarPlayBrowse {
     /// The most recent unarchived chats, newest first. Rows without an
     /// activity time keep their listed order after the dated ones.
     static func recentChats(from sessions: [SessionSummary]) -> [CarPlayChatRow] {
+        newestFirst(sessions).prefix(maximumChats).map(row(for:))
+    }
+
+    private static func newestFirst(_ sessions: [SessionSummary]) -> [SessionSummary] {
         sessions.enumerated()
             .filter { !$0.element.isArchived }
             .sorted { lhs, rhs in
@@ -99,17 +104,18 @@ enum CarPlayBrowse {
                 default: return lhs.offset < rhs.offset
                 }
             }
-            .prefix(maximumChats)
-            .map { _, session in
-                let title = session.title.trimmingCharacters(in: .whitespacesAndNewlines)
-                return CarPlayChatRow(
-                    sessionID: session.id,
-                    storedSessionID: session.storedSessionId,
-                    title: title.isEmpty ? AppLocalization.string("New Chat") : title,
-                    detail: session.updatedLabel,
-                    symbol: chatSymbol(for: session.source)
-                )
-            }
+            .map(\.element)
+    }
+
+    private static func row(for session: SessionSummary) -> CarPlayChatRow {
+        let title = session.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return CarPlayChatRow(
+            sessionID: session.id,
+            storedSessionID: session.storedSessionId,
+            title: title.isEmpty ? AppLocalization.string("New Chat") : title,
+            detail: session.updatedLabel,
+            symbol: chatSymbol(for: session.source)
+        )
     }
 
     static let chatSymbol = "bubble.left.fill"
@@ -122,7 +128,7 @@ enum CarPlayBrowse {
         case .voice: return "waveform"
         case .voiceJob: return "checklist"
         case .cron: return "clock.fill"
-        case .chat, .discord, .telegram, .api, .webhook, .other: return chatSymbol
+        default: return chatSymbol
         }
     }
 
@@ -184,7 +190,7 @@ enum CarPlayBrowse {
 }
 
 extension CarPlayVoiceMode {
-    static let all: [CarPlayVoiceMode] = [.classic, .geminiLive, .qwenLive, .gptLive, .grokLive]
+    static let all: [CarPlayVoiceMode] = [.classic, .geminiLive, .qwenLive, .gptLive, .grokLive, .localLive]
 
     var symbol: String {
         switch self {
@@ -193,6 +199,7 @@ extension CarPlayVoiceMode {
         case .qwenLive: return "waveform.circle.fill"
         case .gptLive: return "waveform"
         case .grokLive: return "bolt.fill"
+        case .localLive: return "server.rack"
         }
     }
 
@@ -203,6 +210,19 @@ extension CarPlayVoiceMode {
         case .qwenLive: return AppLocalization.string("Qwen Live")
         case .gptLive: return AppLocalization.string("GPT-Live")
         case .grokLive: return AppLocalization.string("Grok Live")
+        case .localLive: return AppLocalization.string("Local Live")
+        }
+    }
+
+    /// The same mode as Settings > Voice > Voice mode names it.
+    var choice: VoiceModeChoice {
+        switch self {
+        case .classic: return .classic
+        case .geminiLive: return .gemini
+        case .qwenLive: return .qwen
+        case .gptLive: return .gpt
+        case .grokLive: return .grok
+        case .localLive: return .local
         }
     }
 }
@@ -241,7 +261,7 @@ enum CarPlayBarButtonKind: Equatable {
 @MainActor
 enum CarPlayBrowseTemplateFactory {
     static func barButton(_ kind: CarPlayBarButtonKind, action: @escaping () -> Void) -> CPBarButton {
-        CPBarButton(title: kind.title) { _ in action() }
+        CPBarButton(title: kind.title) { _ in CarPlayMainThread.run(action) }
     }
 
     /// The car screen's appearance at connect. Icons start in its colours.
@@ -303,7 +323,7 @@ enum CarPlayBrowseTemplateFactory {
             (AppLocalization.string("Shortcuts"), "bolt.fill", handlers.showShortcuts),
             (AppLocalization.string("Voice"), "waveform.circle.fill", handlers.showVoiceOptions),
         ].map { title, symbol, action in
-            CPGridButton(titleVariants: [title], image: symbolImage(symbol)) { _ in action() }
+            CPGridButton(titleVariants: [title], image: symbolImage(symbol)) { _ in CarPlayMainThread.run(action) }
         }
         return CPGridTemplate(title: AppLocalization.string("More"), gridButtons: buttons)
     }
@@ -325,8 +345,10 @@ enum CarPlayBrowseTemplateFactory {
             image: symbolImage("plus.bubble.fill")
         )
         newChat.handler = { _, completion in
-            handlers.newVoiceChat()
-            completion()
+            CarPlayMainThread.run {
+                handlers.newVoiceChat()
+                completion()
+            }
         }
         var sections = [CPListSection(items: [newChat])]
         if !chats.pinned.isEmpty {
@@ -367,8 +389,10 @@ enum CarPlayBrowseTemplateFactory {
                 item.playingIndicatorLocation = .trailing
             }
             item.handler = { _, completion in
-                handlers.openChat(row)
-                completion()
+                CarPlayMainThread.run {
+                    handlers.openChat(row)
+                    completion()
+                }
             }
             return item
         }
@@ -385,8 +409,10 @@ enum CarPlayBrowseTemplateFactory {
         let items = rows.map { row in
             let item = CPListItem(text: row.title, detailText: row.status, image: symbolImage(row.symbol))
             item.handler = { _, completion in
-                if row.canReplay { handlers.replayJob(row.id) }
-                completion()
+                CarPlayMainThread.run {
+                    if row.canReplay { handlers.replayJob(row.id) }
+                    completion()
+                }
             }
             return item
         }
@@ -407,7 +433,7 @@ enum CarPlayBrowseTemplateFactory {
                 titleVariants: [shortcut.title],
                 image: symbolImage(CarPlayBrowse.shortcutSymbol(at: index))
             ) { _ in
-                handlers.runShortcut(shortcut)
+                CarPlayMainThread.run { handlers.runShortcut(shortcut) }
             }
         }
         return CPGridTemplate(title: title, gridButtons: Array(buttons))
@@ -446,8 +472,10 @@ enum CarPlayBrowseTemplateFactory {
             accessoryType: .none
         )
         item.handler = { _, completion in
-            select()
-            completion()
+            CarPlayMainThread.run {
+                select()
+                completion()
+            }
         }
         return item
     }

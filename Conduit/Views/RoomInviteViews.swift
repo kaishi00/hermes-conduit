@@ -101,13 +101,13 @@ struct RoomInviteSheet: View {
             List {
                 if let actionError {
                     Text(actionError)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.red)
                         .listRowBackground(Color.clear)
                 }
                 if let sendingNote {
                     Text(sendingNote)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .listRowBackground(Color.clear)
                 }
@@ -115,24 +115,24 @@ struct RoomInviteSheet: View {
                     Text(verbatim: RoomInviteText.line(for: invite))
                     if invite.status == "waiting", let expiresAt = invite.expiresAt {
                         Text(AppLocalization.string("Answer by \(RoomDraftText.until(expiresAt))"))
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     }
                     if !invite.people.isEmpty {
                         Text(AppLocalization.string("Also invited: \(RoomDraftText.names(invite.people))"))
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     }
                     if !invite.hostAgents.isEmpty {
                         Text(AppLocalization.string("Their agents: \(RoomDraftText.names(invite.hostAgents))"))
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
                 if appState.linkedRoomInviteIsGone(inviteID) {
                     // The plugin forgot it: nothing here can answer it.
                     Text(AppLocalization.string("This invite isn't on your Hermes any more."))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .listRowBackground(Color.clear)
                 } else if invite.status == "waiting" {
@@ -194,7 +194,7 @@ struct RoomInviteSheet: View {
             if placeCount == 0, !readingBots {
                 // Why every bot below is disabled, or none is listed.
                 Text(AppLocalization.string("This room has no places left for your bots."))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             } else if bots.isEmpty {
                 if readingBots {
@@ -202,7 +202,7 @@ struct RoomInviteSheet: View {
                         .frame(maxWidth: .infinity)
                 } else {
                     Text(AppLocalization.string("None of your bots can join this room."))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -239,10 +239,10 @@ struct RoomInviteSheet: View {
                 BotMonogramView(bot: bot)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(bot.displayLabel)
-                        .font(.body)
+                        .scaledFont(.body)
                         .foregroundStyle(.primary)
                     Text(bot.name)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
@@ -267,9 +267,9 @@ struct RoomInviteSheet: View {
         } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(AppLocalization.string("\(bot.displayLabel)'s choices"))
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                 Text(verbatim: RoomInviteChoicesView.summary(binding.wrappedValue))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
         }

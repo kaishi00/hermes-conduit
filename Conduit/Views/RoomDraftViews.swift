@@ -53,7 +53,7 @@ struct RoomPersonGlyph: View {
             Circle()
                 .fill(Color.secondary.opacity(0.16))
             Image(systemName: "person.fill")
-                .font(.body)
+                .scaledFont(.body)
                 .foregroundStyle(.secondary)
         }
         .frame(width: size, height: size)
@@ -95,7 +95,7 @@ struct RoomDraftSheet: View {
             List {
                 if let actionError {
                     Text(actionError)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.red)
                         .listRowBackground(Color.clear)
                 }
@@ -103,7 +103,7 @@ struct RoomDraftSheet: View {
                     Text(verbatim: line(for: draft))
                     if draft.status == "waiting", let expiresAt = draft.expiresAt {
                         Text(AppLocalization.string("Invites work until \(RoomDraftText.until(expiresAt))"))
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -170,10 +170,10 @@ struct RoomDraftSheet: View {
             RoomPersonGlyph()
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: person.name)
-                    .font(.body)
+                    .scaledFont(.body)
                 if let status = RoomDraftText.status(of: person) {
                     Text(verbatim: status)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             }

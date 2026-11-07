@@ -25,7 +25,7 @@ struct LiveVoiceSetupSheet: View {
         NavigationStack {
             SettingsDetailContainer {
                 Text(AppLocalization.string("Install the notifier if it is missing, or update your existing installation. Both commands target the Hermes gateway used by this profile."))
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
 
                 NotificationSetupCommand(
@@ -49,7 +49,7 @@ struct LiveVoiceSetupSheet: View {
 
                 Link(destination: URL(string: "https://github.com/kaishi00/hermes-conduit-notifier")!) {
                     Label(AppLocalization.string("Hermes notifier repository"), systemImage: "arrow.up.right.square")
-                        .font(.subheadline.weight(.medium))
+                        .scaledFont(.subheadline.weight(.medium))
                 }
                 .accessibilityHint(AppLocalization.string("Opens the notifier project on GitHub"))
 
@@ -57,7 +57,7 @@ struct LiveVoiceSetupSheet: View {
                     AppLocalization.string("Return to Voice settings, enable this mode if it is off, and tap \(mode.checkTitle) to check availability."),
                     systemImage: "arrow.uturn.backward"
                 )
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             }
@@ -79,7 +79,7 @@ struct LiveVoiceSetupSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     Text(verbatim: "2")
-                        .font(.caption.weight(.bold))
+                        .scaledFont(.caption.weight(.bold))
                         .conduitFixedGlyph()
                         .foregroundStyle(.white)
                         .frame(width: 22, height: 22)
@@ -87,10 +87,10 @@ struct LiveVoiceSetupSheet: View {
                         // too light under white text.
                         .background(Color.conduitUserBubble, in: Circle())
                     Text(AppLocalization.string("Add a Gemini API key"))
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                 }
                 Text(AppLocalization.string("Add it in Voice settings under API key, or set GEMINI_API_KEY in the active Hermes profile’s .env file. The key stays on your Hermes server."))
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -98,17 +98,17 @@ struct LiveVoiceSetupSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     Text(verbatim: "2")
-                        .font(.caption.weight(.bold))
+                        .scaledFont(.caption.weight(.bold))
                         .conduitFixedGlyph()
                         .foregroundStyle(.white)
                         .frame(width: 22, height: 22)
                         // As the Gemini step: white on the sent-bubble fill.
                         .background(Color.conduitUserBubble, in: Circle())
                     Text(AppLocalization.string("Add a Qwen API key"))
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                 }
                 Text(AppLocalization.string("Set DASHSCOPE_API_KEY and CONDUIT_QWEN_LIVE_WORKSPACE on your Hermes profile. The permanent key stays on your server."))
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -120,7 +120,7 @@ struct LiveVoiceSetupSheet: View {
                     command: "hermes auth"
                 )
                 Text(AppLocalization.string("Choose OpenAI Codex when prompted. The sign-in stays on your Hermes server."))
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -132,7 +132,7 @@ struct LiveVoiceSetupSheet: View {
                     command: "hermes auth add xai-oauth"
                 )
                 Text(AppLocalization.string("Sign in with your SuperGrok or X Premium+ account, or add an xAI key in Voice settings under API key instead. The sign-in and the key stay on your Hermes server."))
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -162,7 +162,7 @@ struct LiveVoiceSetupLink: View {
                 Text(AppLocalization.string("Setup"))
                     .fontWeight(.semibold)
             }
-            .font(.caption)
+            .scaledFont(.caption)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())

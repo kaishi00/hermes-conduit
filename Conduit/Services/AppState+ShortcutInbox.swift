@@ -27,6 +27,12 @@ struct ShortcutLogError: LocalizedError, Equatable {
         ShortcutLogError(message: AppLocalization.string("Update the Conduit plugin on your Hermes host to log events. This one was kept on the phone and goes after the update."))
     }
 
+    /// Kept on the phone: the profile turned the plugin off. `remedy` says
+    /// how to turn it on (issue 1671).
+    static func pluginOff(_ remedy: String) -> ShortcutLogError {
+        ShortcutLogError(message: AppLocalization.string("\(remedy) This one was kept on the phone and goes once the plugin is on."))
+    }
+
     /// Not kept: the plugin doesn't keep events, so nothing on the phone
     /// would show or delete it.
     static var pluginMissing: ShortcutLogError {
@@ -110,7 +116,11 @@ extension AppState {
         let sender = ShortcutInboxSender(queue: queue, keys: keys, deviceName: UIDevice.current.name)
         do {
             return .logged(try await Self.shortcutInboxGate.run { try await sender.send(request: request) })
-        } catch DashboardTicketBridgeError.http(let status, _) where status == 404 {
+        } catch DashboardTicketBridgeError.http(let status, let detail) where status == 404 {
+            // The profile turned the plugin off: the event waits for it.
+            if let remedy = DashboardTicketBridgeError.pluginOffDetail(of: DashboardTicketBridgeError.http(status: status, detail: detail)) {
+                throw ShortcutLogError.pluginOff(remedy)
+            }
             // A plugin without /inbox: the event waits for the update.
             throw ShortcutLogError.pluginTooOld
         } catch DashboardTicketBridgeError.http(let status, let detail) where status == 409 && HostKeyConflict.isNewerPluginStore(detail) {

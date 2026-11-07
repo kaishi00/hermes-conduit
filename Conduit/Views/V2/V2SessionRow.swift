@@ -98,7 +98,7 @@ struct V2StatusGlyph: View {
                     .tint(Color.conduitAccent)
             } else if let symbol = status.symbol {
                 Image(systemName: symbol)
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .conduitFixedGlyph()
                     .foregroundStyle(status.color)
             }
@@ -116,7 +116,7 @@ struct V2SessionIcon: View {
 
     var body: some View {
         Image(systemName: symbol)
-            .font(.callout.weight(.semibold))
+            .scaledFont(.callout.weight(.semibold))
             .conduitFixedGlyph()
             .foregroundStyle(tint)
             .frame(width: 38, height: 38)
@@ -165,7 +165,7 @@ struct V2SessionRow: View {
     var isUnread = false
     var isPinned = false
     var isStarred = false
-    var isSelected = false
+    var selection = V2RowSelection.none
     /// Project pages draw the status glyph ahead of the title, in the unread
     /// column, instead of ahead of the preview.
     var leadingGlyph = false
@@ -176,10 +176,13 @@ struct V2SessionRow: View {
     /// A Chats row with its "3 jobs" summary under it: the summary sits
     /// close, as part of this row, rather than a row's gap away.
     var hasNestBelow = false
-    /// All, mixing profiles: whose chat this is.
+    /// All, mixing profiles: whose chat this is. On the icon's corner, or
+    /// without an icon (a project page gathering profiles, issue 1761)
+    /// ahead of the title.
     var profileBadge: V2ProfileBadge? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .callout) private var titleFaceSize: CGFloat = 16
 
     var body: some View {
         HStack(alignment: icon == nil ? .top : .center, spacing: 0) {
@@ -206,19 +209,31 @@ struct V2SessionRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    if icon == nil, let profileBadge {
+                        ProfileAvatarView(
+                            profile: profileBadge.profile,
+                            displayName: profileBadge.name,
+                            url: profileBadge.url,
+                            size: titleFaceSize
+                        )
+                        // On the title's line rather than above its baseline.
+                        .alignmentGuide(.firstTextBaseline) { $0[.bottom] - titleFaceSize * 0.2 }
+                        .accessibilityHidden(true)
+                        .padding(.trailing, -3)
+                    }
                     Text(title)
-                        .font(.callout.weight(.semibold))
+                        .scaledFont(.callout.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     Spacer(minLength: 4)
                     if isStarred {
                         Image(systemName: "star.fill")
-                            .font(.caption2)
+                            .scaledFont(.caption2)
                             .foregroundStyle(Color.conduitAccent)
                             .accessibilityHidden(true)
                     }
                     Text(time)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(Color.primary.opacity(0.45))
                         .lineLimit(1)
                         .layoutPriority(1)
@@ -228,13 +243,13 @@ struct V2SessionRow: View {
                         V2StatusGlyph(status: status)
                     }
                     Text(preview)
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(Color.primary.opacity(0.5))
                         .lineLimit(1)
                     Spacer(minLength: 4)
                     if !leadingGlyph, let word = status.actionWord {
                         Text(word)
-                            .font(.footnote.weight(.semibold))
+                            .scaledFont(.footnote.weight(.semibold))
                             .foregroundStyle(status.color)
                             .lineLimit(1)
                             .layoutPriority(1)
@@ -246,16 +261,13 @@ struct V2SessionRow: View {
         .padding(.bottom, hasNestBelow ? 4 : 13)
         .padding(.trailing, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            if isSelected {
-                Color.primary.opacity(0.05)
-            }
-        }
+        .v2RowSelection(selection)
         .contentShape(Rectangle())
         .dynamicTypeSize(...DynamicTypeSize.listRowCap)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(title))
         .accessibilityValue(Text(accessibilityValue))
+        .v2SelectedTrait(selection)
     }
 
     /// The glyph before the preview. Beside an icon that already names the
@@ -318,7 +330,7 @@ struct V2ContentMatchRow: View {
     let snippet: SessionSearchSnippet
     var isUnread = false
     var isStarred = false
-    var isSelected = false
+    var selection = V2RowSelection.none
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -338,25 +350,25 @@ struct V2ContentMatchRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(title)
-                        .font(.callout.weight(.semibold))
+                        .scaledFont(.callout.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     Spacer(minLength: 4)
                     if isStarred {
                         Image(systemName: "star.fill")
-                            .font(.caption2)
+                            .scaledFont(.caption2)
                             .foregroundStyle(Color.conduitAccent)
                             .accessibilityHidden(true)
                     }
                     Text(time)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(Color.primary.opacity(0.45))
                         .lineLimit(1)
                         .layoutPriority(1)
                 }
                 if !snippet.runs.isEmpty {
                     Text(snippet.attributed())
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(Color.primary.opacity(0.58))
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
                 }
@@ -365,16 +377,13 @@ struct V2ContentMatchRow: View {
         .padding(.vertical, 9)
         .padding(.trailing, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            if isSelected {
-                Color.primary.opacity(0.05)
-            }
-        }
+        .v2RowSelection(selection)
         .contentShape(Rectangle())
         .dynamicTypeSize(...DynamicTypeSize.listRowCap)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(title))
         .accessibilityValue(Text(accessibilityValue))
+        .v2SelectedTrait(selection)
     }
 
     private var accessibilityValue: String {

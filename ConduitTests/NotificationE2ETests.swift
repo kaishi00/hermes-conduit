@@ -72,6 +72,21 @@ final class NotificationE2ETests: XCTestCase {
         XCTAssertEqual(answer, "08c9b2cf01c5f94ed56658fc2a8b90d25b0361ab943f9efa4a857f3c44409b27")
     }
 
+    func testTheRoutingPayloadCarriesNoDisplayText() {
+        guard case .verified(let opened) = NotificationE2E.evaluate(delivered(), records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now) else {
+            return XCTFail("the plugin's envelope should verify")
+        }
+        var content = opened.content
+        content.merge(["title_label": "response.ready", "session_title": "Deploy", "headline": "Report finished"]) { $1 }
+        let routing = NotificationE2E.Verified(record: opened.record, envelope: opened.envelope, type: "response.ready", content: content).routingPayload
+        for banner in ["title", "body", "title_label", "session_title", "headline"] {
+            XCTAssertNil(routing[banner], banner)
+        }
+        XCTAssertEqual(routing["type"] as? String, "response.ready")
+        XCTAssertEqual(routing["gateway_id"] as? String, Self.gatewayID)
+        XCTAssertEqual(routing["session_id"] as? String, "sess-1")
+    }
+
     func testPluginSealedPushOpensAndRoutesFromVerifiedDataOnly() throws {
         guard case .verified(let verified) = NotificationE2E.evaluate(delivered(), records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now) else {
             return XCTFail("the plugin's envelope should verify")
@@ -109,6 +124,20 @@ final class NotificationE2ETests: XCTestCase {
         XCTAssertEqual(String(decoding: try ChaChaPoly.open(box, using: keys.answer, authenticating: right), as: UTF8.self), "Blue")
         let otherQuestion = NotificationE2E.answerAAD(kid: Self.kid, installationID: Self.installationID, gatewayID: Self.gatewayID, requestID: "conduit-push-abc123def456", questionID: "q0")
         XCTAssertThrowsError(try ChaChaPoly.open(box, using: keys.answer, authenticating: otherQuestion))
+    }
+
+    /// Issue 1866: `ChaChaPoly.Nonce()` is a random nonce, so no two answers
+    /// sealed with a pairing's key share a keystream, even the same answer to
+    /// the same question.
+    func testEveryAnswerIsSealedWithItsOwnNonce() throws {
+        let sealed = try (0..<8).map { _ in
+            try NotificationE2E.sealAnswer("Yes", record: record, requestID: "conduit-push-abc123def456", questionID: "q1")
+        }
+        let parts = sealed.map { $0.dropFirst(NotificationE2E.answerPrefix.count).split(separator: ".").map(String.init) }
+        let nonces = try parts.map { try XCTUnwrap(NotificationE2E.base64URLDecoded($0[1])) }
+        XCTAssertEqual(Set(nonces).count, nonces.count, "a fresh nonce each time")
+        XCTAssertFalse(nonces.contains(Data(count: 12)), "never the zero nonce")
+        XCTAssertEqual(Set(parts.map { $0[2] }).count, parts.count, "so the same answer never seals the same way")
     }
 
     // MARK: Trust

@@ -21,6 +21,7 @@ struct ComposerInputs: Equatable {
     /// `composerAction(hasText:hasAttachments:)` for each draft shape.
     let actions: [ComposerAction]
     let placeholder: String
+    let shortPlaceholder: String
     let notice: String?
     let errorMessage: String?
     let isConnected: Bool
@@ -28,6 +29,7 @@ struct ComposerInputs: Equatable {
     let lastConnectionFailure: ConnectionFailure?
     let showsConnectionRepair: Bool
     let isCompressing: Bool
+    let isCheckingSend: Bool
     let chatTakeover: ChatTakeoverState?
     let activeChatTakeover: ChatTakeoverState?
     let hasRoomSurface: Bool
@@ -46,6 +48,7 @@ struct ComposerInputs: Equatable {
     let prefillText: String
     let prefillDraftKey: ComposerDraftKey?
     let quoteRequest: ComposerQuoteRequest?
+    let dropRequest: AttachmentDropRequest?
     let predictiveRequest: PredictiveComposerRequest?
     let focusRequest: ComposerFocusRequest?
     let dictationRequest: ComposerDictationRequest?
@@ -74,6 +77,7 @@ struct ComposerInputs: Equatable {
             appState.composerAction(hasText: $0.0, hasAttachments: $0.1)
         }
         placeholder = appState.composerPlaceholder
+        shortPlaceholder = appState.composerShortPlaceholder
         notice = appState.composerNotice
         errorMessage = appState.errorMessage
         isConnected = appState.isConnected
@@ -81,6 +85,7 @@ struct ComposerInputs: Equatable {
         lastConnectionFailure = appState.lastConnectionFailure
         showsConnectionRepair = appState.showsConnectionRepair
         isCompressing = appState.isCompressingActiveSession
+        isCheckingSend = appState.composerSendIsChecking
         chatTakeover = appState.chatTakeover
         activeChatTakeover = appState.activeChatTakeover
         hasRoomSurface = appState.activeRoomSurface != nil
@@ -99,6 +104,7 @@ struct ComposerInputs: Equatable {
         prefillText = appState.composerPrefillText
         prefillDraftKey = appState.composerPrefillDraftKey
         quoteRequest = appState.composerQuoteRequest
+        dropRequest = appState.composerDropRequest
         predictiveRequest = appState.predictiveComposerRequest
         focusRequest = appState.composerFocusRequest
         dictationRequest = appState.composerDictationRequest

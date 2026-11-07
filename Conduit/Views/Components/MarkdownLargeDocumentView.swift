@@ -124,12 +124,12 @@ private struct LargeDocumentBanner: View {
                 "This message is very large (\(sizeLabel))",
                 systemImage: "doc.text.magnifyingglass"
             )
-            .font(.footnote.weight(.semibold))
+            .scaledFont(.footnote.weight(.semibold))
             .foregroundStyle(usesAccentSurface ? Color.white.opacity(0.86) : .secondary)
 
             Button(action: expand) {
                 Label("Show full message", systemImage: "chevron.down")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
             }
             .tint(usesAccentSurface ? .white : .conduitAccent)
         }
@@ -392,6 +392,7 @@ extension MarkdownBlock {
         case .math(let source): return source
         case .image(let url, let alt): return "\(alt) \(url)"
         case .htmlPreview(let path): return path
+        case .desktopCard(let card): return card.source
         case .divider: return ""
         }
     }
@@ -469,8 +470,22 @@ struct LargeMarkdownExpandedView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let prepared {
+                let pictures = Self.pictureRanges(prepared.chunks)
                 ForEach(0..<renderedChunkCount, id: \.self) { index in
-                    chunkView(prepared, chunk: prepared.chunks[index], index: index)
+                    // Two or more pictures in a row draw as one grid of the
+                    // ones mounted (issue 1801), at the first of them.
+                    switch MarkdownProseRun.pictureSlot(at: index, in: pictures, shown: 0..<renderedChunkCount) {
+                    case .single:
+                        chunkView(prepared, chunk: prepared.chunks[index], index: index)
+                    case .grid(let range):
+                        MarkdownPictureGrid(
+                            blocks: range.compactMap { Self.pictureBlock(prepared.chunks[$0]) },
+                            gatewayMediaDataURL: gatewayMediaDataURL
+                        )
+                        .id("\(prepared.sourceIdentity)-\(index)")
+                    case .covered:
+                        EmptyView()
+                    }
                 }
                 if renderedChunkCount < prepared.chunks.count {
                     progressFooter(remainingCount: prepared.chunks.count - renderedChunkCount)
@@ -513,6 +528,17 @@ struct LargeMarkdownExpandedView: View {
         .onDisappear {
             selectionCoordinator.clearSelection()
         }
+    }
+
+    /// The picture a chunk is, when it is one that can share a grid.
+    static func pictureBlock(_ chunk: MarkdownLargeChunk) -> MarkdownBlock? {
+        guard case .block(let block, _) = chunk, MarkdownProseRun.isGridPicture(block) else { return nil }
+        return block
+    }
+
+    /// The runs of two or more pictures among a document's chunks.
+    static func pictureRanges(_ chunks: [MarkdownLargeChunk]) -> [Range<Int>] {
+        MarkdownProseRun.pictureRanges(flags: chunks.map { pictureBlock($0) != nil })
     }
 
     private func registerSegments() {
@@ -629,7 +655,7 @@ struct LargeMarkdownExpandedView: View {
                 "Continue reading (\(remainingCount) sections left)",
                 systemImage: "chevron.down"
             )
-            .font(.footnote.weight(.semibold))
+            .scaledFont(.footnote.weight(.semibold))
         }
         .tint(usesAccentSurface ? .white : .conduitAccent)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -686,7 +712,7 @@ private struct LargeDocumentPreparingView: View {
         HStack(spacing: 8) {
             ProgressView().controlSize(.small)
             Text("Preparing large message…")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -823,7 +849,7 @@ struct LargeMarkdownCallout: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label(detail.title, systemImage: detail.icon)
-                .font(.caption.weight(.bold))
+                .scaledFont(.caption.weight(.bold))
                 .foregroundStyle(detail.color)
             ForEach(Array(content.pieceBlocks.enumerated()), id: \.offset) { index, blocks in
                 LargeFlowChunkView(
@@ -962,7 +988,7 @@ struct LargeCodeBlockView: View {
                                 withAnimation(.easeInOut(duration: 0.15)) { expanded = true }
                             } label: {
                                 Label("Show all \(lineStats?.value.count ?? 0) lines", systemImage: "chevron.down")
-                                    .font(.caption.weight(.semibold))
+                                    .scaledFont(.caption.weight(.semibold))
                             }
                             .tint(usesAccentSurface ? .white : .conduitAccent)
                             .padding(.top, 8)
@@ -1016,7 +1042,7 @@ struct LargeCodeBlockView: View {
     private var header: some View {
         HStack {
             Text(normalizedLanguage == "plain" ? AppLocalization.string("Code") : normalizedLanguage)
-                .font(.caption2.monospaced().weight(.semibold))
+                .scaledFont(.caption2.monospaced().weight(.semibold))
                 .foregroundStyle(usesAccentSurface ? Color.white.opacity(0.86) : .secondary)
             Spacer()
             Button {
@@ -1030,7 +1056,7 @@ struct LargeCodeBlockView: View {
                 }
             } label: {
                 Label(copied ? AppLocalization.string("Copied") : AppLocalization.string("Copy"), systemImage: copied ? "checkmark" : "doc.on.doc")
-                    .font(.caption2.weight(.semibold))
+                    .scaledFont(.caption2.weight(.semibold))
             }
             .tint(usesAccentSurface ? .white : .conduitAccent)
         }

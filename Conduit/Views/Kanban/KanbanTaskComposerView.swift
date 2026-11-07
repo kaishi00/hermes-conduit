@@ -63,20 +63,23 @@ struct KanbanTaskComposerView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            SettingsDetailContainer {
                 basicsSection
                 assignmentSection
                 executionSection
                 dependenciesSection
                 laneSection
                 if let errorMessage {
-                    Section {
+                    SettingsCard {
                         Label(errorMessage, systemImage: "exclamationmark.triangle")
                             .foregroundStyle(.red)
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                     }
                 }
             }
+            // Text fields as Settings draws them.
+            .textFieldStyle(.roundedBorder)
+            .tint(.conduitAccent)
             .navigationTitle(didCreate ? AppLocalization.string("Task created") : AppLocalization.string("New task"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -116,46 +119,65 @@ struct KanbanTaskComposerView: View {
     // MARK: - Sections
 
     private var basicsSection: some View {
-        Section("Basics") {
+        ConduitSettingsSection(title: AppLocalization.string("Basics"), symbol: "square.and.pencil", tint: .conduitAccent) {
             TextField("Title", text: $draft.title)
                 .accessibilityLabel("Task title")
             TextEditor(text: $draft.body)
                 .frame(minHeight: 100)
+                .settingsEditorBox()
+                // The empty editor says what it's for, as the Title field does.
+                .overlay(alignment: .topLeading) {
+                    if draft.body.isEmpty {
+                        Text(AppLocalization.string("Description"))
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 8)
+                            .padding(.leading, 5)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
                 .accessibilityLabel("Task description")
-            Picker("Priority", selection: $draft.priority) {
-                Text("Normal").tag(0)
-                Text("High").tag(1)
-                Text("Urgent").tag(2)
-                Text("Critical").tag(3)
+            ConduitMenuPicker(
+                value: draft.priority,
+                choices: [
+                    (id: 0, title: AppLocalization.string("Normal")),
+                    (id: 1, title: AppLocalization.string("High")),
+                    (id: 2, title: AppLocalization.string("Urgent")),
+                    (id: 3, title: AppLocalization.string("Critical")),
+                ],
+                onSelect: { draft.priority = $0 }
+            ) {
+                Text("Priority").foregroundStyle(.secondary)
             }
         }
     }
 
     private var assignmentSection: some View {
-        Section {
-            Picker("Assigned to", selection: assigneeSelectionBinding) {
-                Text("Default (\(resolvedDefaultAssignee))")
-                    .tag(KanbanAssigneeSelection.inheritDefault)
-                ForEach(rosterWithoutDefault) { profile in
-                    Text(profile.name).tag(KanbanAssigneeSelection.profile(profile.name))
-                }
-                Text("Parked (won't run)")
-                    .tag(KanbanAssigneeSelection.parked)
+        ConduitSettingsSection(title: AppLocalization.string("Assignment"), symbol: "person.crop.circle", tint: .conduitAccent) {
+            ConduitMenuPicker(
+                value: assigneeSelectionBinding.wrappedValue,
+                choices: [(id: KanbanAssigneeSelection.inheritDefault, title: AppLocalization.string("Default (\(resolvedDefaultAssignee))"))]
+                    + rosterWithoutDefault.map { (id: KanbanAssigneeSelection.profile($0.name), title: $0.name) }
+                    + [(id: KanbanAssigneeSelection.parked, title: AppLocalization.string("Parked (won't run)"))],
+                onSelect: { assigneeSelectionBinding.wrappedValue = $0 }
+            ) {
+                Text("Assigned to").foregroundStyle(.secondary)
             }
-        } header: {
-            Text("Assignment")
-        } footer: {
             Text("Default uses Hermes' resolved default assignee (\(resolvedDefaultAssignee)). Parked leaves the task unassigned so no worker claims it.")
+                .settingsCaption()
         }
     }
 
     private var executionSection: some View {
-        Section {
-            Picker("Workspace", selection: $draft.workspaceKind) {
-                ForEach(KanbanWorkspaceKind.allCases) { kind in
-                    Text(kind.displayName + (kind == boardDefaultKind ? AppLocalization.string(" · board default") : ""))
-                        .tag(kind)
-                }
+        ConduitSettingsSection(title: AppLocalization.string("Execution"), symbol: "gearshape.2", tint: .conduitAccent) {
+            ConduitMenuPicker(
+                value: draft.workspaceKind,
+                choices: KanbanWorkspaceKind.allCases.map { kind in
+                    (id: kind, title: kind.displayName + (kind == boardDefaultKind ? AppLocalization.string(" · board default") : ""))
+                },
+                onSelect: { draft.workspaceKind = $0 }
+            ) {
+                Text("Workspace").foregroundStyle(.secondary)
             }
             if draft.workspaceKind.allowsPathOverride {
                 TextField(
@@ -167,23 +189,19 @@ struct KanbanTaskComposerView: View {
                 .accessibilityLabel("Workspace path override")
                 if let dir = boardDefaultDir {
                     Text("Leave empty to inherit the board's project directory: \(dir)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .settingsCaption()
                 } else {
                     Text("Leave empty to inherit the board's project directory.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .settingsCaption()
                 }
             }
 
             modelRow
             skillsRow
             goalModeRows
-        } header: {
-            Text("Execution")
-        } footer: {
             if boardDefaultDir != nil && !draft.workspaceKind.allowsPathOverride {
                 Text("The board's project directory (\(boardDefaultDir!)) applies to this task.")
+                    .settingsCaption()
             }
         }
     }
@@ -207,14 +225,17 @@ struct KanbanTaskComposerView: View {
                     .foregroundStyle(.primary)
                 Spacer()
                 Text(draft.modelOverride.label(inheritCopy: AppLocalization.string("Inherit from profile")))
-                    .font(.callout)
+                    .scaledFont(.callout)
                     .foregroundStyle(draft.modelOverride.isInherited ? .secondary : .primary)
                     .lineLimit(1)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.conduitTertiary)
+                SettingsChevron()
             }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
+        // Plain, with a primary title: a row that opens something, as in
+        // Settings (see Sheets in Settings' look).
+        .buttonStyle(.plain)
         .accessibilityHint("Opens the per-task model, provider, and reasoning override picker")
     }
 
@@ -227,13 +248,16 @@ struct KanbanTaskComposerView: View {
                     .foregroundStyle(.primary)
                 Spacer()
                 Text(draft.skills.isEmpty ? AppLocalization.string("None") : AppLocalization.string("\(draft.skills.count) selected"))
-                    .font(.callout)
+                    .scaledFont(.callout)
                     .foregroundStyle(draft.skills.isEmpty ? .secondary : .primary)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.conduitTertiary)
+                SettingsChevron()
             }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
+        // Plain, with a primary title: a row that opens something, as in
+        // Settings (see Sheets in Settings' look).
+        .buttonStyle(.plain)
         .accessibilityHint("Opens the task skill picker")
     }
 
@@ -256,13 +280,12 @@ struct KanbanTaskComposerView: View {
             )
             .accessibilityHint("Bounds how long the Goal Mode worker may loop")
             Text("The worker loops until a judge agrees the goal is met. Leave unlimited only with caution.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .settingsCaption()
         }
     }
 
     private var dependenciesSection: some View {
-        Section {
+        ConduitSettingsSection(title: AppLocalization.string("Dependencies"), symbol: "link", tint: .conduitAccent) {
             if draft.parents.isEmpty {
                 Button {
                     showParentSheet = true
@@ -273,20 +296,21 @@ struct KanbanTaskComposerView: View {
                         Spacer()
                         Text("None")
                             .foregroundStyle(.secondary)
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.conduitTertiary)
+                        SettingsChevron()
                     }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             } else {
                 ForEach(draft.parents, id: \.self) { parentID in
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(parentTitle(for: parentID))
-                                .font(.subheadline)
+                                .scaledFont(.subheadline)
                                 .foregroundStyle(.primary)
                             Text(KanbanShortID.of(parentID))
-                                .font(.caption2.monospaced())
+                                .scaledFont(.caption2.monospaced())
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
@@ -294,7 +318,11 @@ struct KanbanTaskComposerView: View {
                             draft.parents.removeAll { $0 == parentID }
                         } label: {
                             Image(systemName: "minus.circle.fill")
+                                .foregroundStyle(.red)
+                                .frame(minWidth: 44, minHeight: 44)
+                                .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                         .accessibilityLabel("Remove dependency \(parentTitle(for: parentID))")
                     }
                 }
@@ -303,11 +331,10 @@ struct KanbanTaskComposerView: View {
                 } label: {
                     Label("Change…", systemImage: "arrow.triangle.2.circlepath")
                 }
+                .buttonStyle(.settings)
             }
-        } header: {
-            Text("Dependencies")
-        } footer: {
             Text("The new task stays blocked until its parent completes.")
+                .settingsCaption()
         }
     }
 
@@ -322,14 +349,11 @@ struct KanbanTaskComposerView: View {
     }
 
     private var laneSection: some View {
-        Section {
+        ConduitSettingsSection(title: AppLocalization.string("Lands in"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
             Label(statusPresentation.displayName, systemImage: statusPresentation.systemImage)
                 .foregroundStyle(statusPresentation.tint)
             Text("The board selection is local to this device; creating this task will not switch Hermes' global board.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        } header: {
-            Text("Lands in")
+                .settingsCaption()
         }
     }
 
@@ -444,7 +468,14 @@ struct KanbanModelOverrideSheet: View {
     @Binding var value: TaskModelOverride
 
     @State private var providers: [KanbanModelProviderOption] = []
+    /// The roster shown is the one kept from last time (#1533): its models
+    /// wait for Hermes' answer before one is picked.
+    @State private var showsKept = false
     @State private var isLoadingOptions = false
+    /// The plugin answered, or its read failed: until then the sheet is
+    /// loading, so neither the empty roster's note nor the free-text entry
+    /// shows.
+    @State private var optionsAnswered = false
     @State private var loadFailed = false
     @State private var query = ""
     @State private var expandedProvider: String?
@@ -455,32 +486,40 @@ struct KanbanModelOverrideSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
+            SettingsDetailContainer {
+                SettingsCard {
                     Button {
                         value = TaskModelOverride()
                     } label: {
                         HStack {
                             Text(inheritCopy)
+                                .foregroundStyle(.primary)
                             Spacer()
                             if value.isInherited {
                                 Image(systemName: "checkmark")
                                     .foregroundStyle(.conduitAccent)
                             }
                         }
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                     .disabled(value.isInherited)
                     .accessibilityHint("Uses the assigned profile's own model and reasoning settings")
-                } footer: {
                     Text("An unset override runs the task on the assigned profile's own model, provider, and reasoning effort.")
+                        .settingsCaption()
                 }
 
                 reasoningSection
                 catalogSection
-                if loadFailed || providers.isEmpty {
+                if loadFailed || (optionsAnswered && providers.isEmpty) {
                     customEntrySection
                 }
             }
+            // Text fields as Settings draws them.
+            .textFieldStyle(.roundedBorder)
+            .tint(.conduitAccent)
+            .searchable(text: $query, prompt: Text(AppLocalization.string("Search providers or models")))
             .navigationTitle("Model override")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -489,78 +528,120 @@ struct KanbanModelOverrideSheet: View {
                 }
             }
             .task { await loadOptions() }
-            .onAppear(perform: seedCustomFields)
+            .onAppear {
+                seedCustomFields()
+                showKept()
+            }
         }
     }
 
     private var reasoningSection: some View {
-        Section("Reasoning effort") {
-            Picker("Effort", selection: effortBinding) {
-                Text("Inherit").tag("")
-                ForEach(TaskModelOverride.validReasoningEfforts, id: \.self) { effort in
-                    Text(displayEffort(effort)).tag(effort)
-                }
+        ConduitSettingsSection(title: AppLocalization.string("Reasoning effort"), symbol: "brain", tint: .conduitAccent) {
+            ConduitMenuPicker(
+                value: effortBinding.wrappedValue,
+                choices: [(id: "", title: AppLocalization.string("Inherit"))]
+                    + TaskModelOverride.validReasoningEfforts.map { (id: $0, title: displayEffort($0)) },
+                onSelect: { effortBinding.wrappedValue = $0 }
+            ) {
+                Text("Effort").foregroundStyle(.secondary)
             }
         }
     }
 
-    private var filteredProviders: [KanbanModelProviderOption] {
-        let trimmed = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !trimmed.isEmpty else { return providers }
-        return providers.compactMap { provider in
-            if provider.slug.lowercased().contains(trimmed) || provider.displayName.lowercased().contains(trimmed) {
-                return provider
-            }
-            let models = provider.models.filter { $0.lowercased().contains(trimmed) }
-            return models.isEmpty ? nil : KanbanModelProviderOption(slug: provider.slug, label: provider.label, models: models)
+    /// Search matches across providers, each naming its provider: several
+    /// often serve the same model.
+    private var searchMatches: [KanbanModelSearchMatch] {
+        let search = ModelSearchQuery(query)
+        guard !search.isEmpty else { return [] }
+        return providers.flatMap { provider in
+            provider.models
+                .filter { search.matches([$0, provider.slug, provider.displayName]) }
+                .map { KanbanModelSearchMatch(provider: provider, model: $0) }
         }
     }
 
     @ViewBuilder
     private var catalogSection: some View {
-        Section {
-            if isLoadingOptions {
+        ConduitSettingsSection(title: AppLocalization.string("Catalog"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
+            // Over a kept roster, nothing comes or goes when Hermes answers.
+            if isLoadingOptions || !optionsAnswered, !showsKept {
                 HStack { ProgressView(); Text("Loading models…") }.foregroundStyle(.secondary)
             }
-            ForEach(filteredProviders) { provider in
-                providerDisclosure(provider)
+            if ModelSearchQuery(query).isEmpty {
+                ForEach(providers) { provider in
+                    providerDisclosure(provider)
+                }
+            } else {
+                let matches = searchMatches
+                if matches.isEmpty {
+                    Text(verbatim: AppLocalization.string("Nothing matches “\(query.trimmingCharacters(in: .whitespacesAndNewlines))”."))
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(matches) { match in
+                    modelButton(match.model, provider: match.provider, showsProvider: true)
+                }
             }
-            if !isLoadingOptions && providers.isEmpty {
+            if loadFailed {
+                // A failed read keeps the roster shown, under this.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Could not load models.")
+                        .foregroundStyle(.secondary)
+                    Button("Try Again") {
+                        loadFailed = false
+                        Task { await loadOptions() }
+                    }
+                }
+            } else if optionsAnswered && !isLoadingOptions && providers.isEmpty {
                 Text("No curated model catalog available from Hermes — enter a provider and model below.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
-        } header: {
-            Text("Catalog")
-        } footer: {
             Text("Curated by Hermes so a worker can always spawn what you pick.")
+                .settingsCaption()
         }
     }
 
     private func providerDisclosure(_ provider: KanbanModelProviderOption) -> some View {
         DisclosureGroup(isExpanded: expandedBinding(provider.slug)) {
             ForEach(provider.models, id: \.self) { model in
-                Button {
-                    value = TaskModelOverride(provider: provider.slug, model: model, reasoningEffort: value.reasoningEffort)
-                } label: {
-                    HStack {
-                        Text(model)
-                        Spacer()
-                        if isSelected(provider.slug, model) {
-                            Image(systemName: "checkmark")
-                                .foregroundStyle(.conduitAccent)
-                        }
-                    }
-                }
-                .foregroundStyle(.primary)
+                modelButton(model, provider: provider, showsProvider: false)
             }
         } label: {
             Text(provider.displayName)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
         }
     }
 
+    private func modelButton(_ model: String, provider: KanbanModelProviderOption, showsProvider: Bool) -> some View {
+        let selected = isSelected(provider.slug, model)
+        return Button {
+            value = TaskModelOverride(provider: provider.slug, model: model, reasoningEffort: value.reasoningEffort)
+        } label: {
+            HStack {
+                if showsProvider {
+                    ModelSearchResultText(title: model, provider: provider.displayName)
+                } else {
+                    Text(model)
+                }
+                Spacer()
+                if selected {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.conduitAccent)
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .disabled(showsKept)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
     private var customEntrySection: some View {
-        Section("Custom (free text)") {
+        ConduitSettingsSection(title: AppLocalization.string("Custom (free text)"), symbol: "pencil", tint: .conduitAccent) {
             TextField("Provider", text: $customProvider)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -607,21 +688,46 @@ struct KanbanModelOverrideSheet: View {
         customModel = value.model ?? ""
     }
 
+    /// The roster as the picker listed it last time, while Hermes is asked
+    /// again.
+    private func showKept() {
+        guard providers.isEmpty, let kept = store.keptModelOptions(), !kept.isEmpty else { return }
+        providers = kept
+        showsKept = true
+        expandCurrentProvider()
+    }
+
     private func loadOptions() async {
-        guard providers.isEmpty else { return }
+        guard providers.isEmpty || showsKept else { return }
         isLoadingOptions = true
-        defer { isLoadingOptions = false }
+        defer {
+            isLoadingOptions = false
+            optionsAnswered = true
+        }
         do {
             providers = try await store.fetchModelOptions().filter { !$0.models.isEmpty }
-            // Pre-expand the provider matching the current override.
-            if let current = value.provider,
-               let match = providers.first(where: { $0.slug == current }) {
-                expandedProvider = match.slug
-            }
+            showsKept = false
+            loadFailed = false
+            expandCurrentProvider()
         } catch {
             loadFailed = true
         }
     }
+
+    /// Pre-expands the provider matching the current override.
+    private func expandCurrentProvider() {
+        guard expandedProvider == nil, let current = value.provider,
+              let match = providers.first(where: { $0.slug == current }) else { return }
+        expandedProvider = match.slug
+    }
+}
+
+/// One model the override sheet's search found, with its provider.
+private struct KanbanModelSearchMatch: Identifiable {
+    let provider: KanbanModelProviderOption
+    let model: String
+
+    var id: String { "\(provider.slug)\u{1F}\(model)" }
 }
 
 // MARK: - Skills picker
@@ -642,6 +748,7 @@ struct KanbanSkillsPickerSheet: View {
 
     /// The skills Capabilities last read, while they're this dashboard's
     /// and profile's: another dashboard's names are no suggestion here.
+    /// Kept on the phone, so they're here before Capabilities opens (#1533).
     private var availableSkills: [CapabilitySkill] {
         appState.capabilitiesAreCurrent ? appState.skills : []
     }
@@ -657,9 +764,9 @@ struct KanbanSkillsPickerSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            SettingsDetailContainer {
                 if !selected.isEmpty {
-                    Section("Selected") {
+                    ConduitSettingsSection(title: AppLocalization.string("Selected"), symbol: "checkmark.circle", tint: .conduitAccent) {
                         ForEach(selected, id: \.self) { name in
                             HStack {
                                 Text(name)
@@ -669,14 +776,17 @@ struct KanbanSkillsPickerSheet: View {
                                 } label: {
                                     Image(systemName: "xmark.circle.fill")
                                         .foregroundStyle(.secondary)
+                                        .frame(minWidth: 44, minHeight: 44)
+                                        .contentShape(Rectangle())
                                 }
+                                .buttonStyle(.plain)
                                 .accessibilityLabel("Remove skill \(name)")
                             }
                         }
                     }
                 }
 
-                Section {
+                ConduitSettingsSection(title: AppLocalization.string("Available skills"), symbol: "book", tint: .conduitAccent) {
                     ForEach(filteredSkills) { skill in
                         Button {
                             toggle(skill.name)
@@ -687,8 +797,7 @@ struct KanbanSkillsPickerSheet: View {
                                         .foregroundStyle(.primary)
                                     if let description = skill.description, !description.isEmpty {
                                         Text(description)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                            .settingsCaption()
                                             .lineLimit(2)
                                     }
                                 }
@@ -698,7 +807,10 @@ struct KanbanSkillsPickerSheet: View {
                                         .foregroundStyle(.conduitAccent)
                                 }
                             }
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                         .accessibilityLabel("Skill \(skill.name)")
                         .accessibilityHint(isSelected(skill.name) ? AppLocalization.string("Selected") : AppLocalization.string("Not selected"))
                     }
@@ -706,11 +818,9 @@ struct KanbanSkillsPickerSheet: View {
                         Text("No skills match.")
                             .foregroundStyle(.secondary)
                     }
-                } header: {
-                    Text("Available skills")
                 }
 
-                Section("Add manually") {
+                ConduitSettingsSection(title: AppLocalization.string("Add manually"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
                     HStack {
                         TextField("skill-name", text: $customName)
                             .textInputAutocapitalization(.never)
@@ -720,6 +830,9 @@ struct KanbanSkillsPickerSheet: View {
                     }
                 }
             }
+            // Text fields as Settings draws them.
+            .textFieldStyle(.roundedBorder)
+            .tint(.conduitAccent)
             .searchable(text: $query, prompt: AppLocalization.string("Search skills"))
             .navigationTitle("Skills")
             .navigationBarTitleDisplayMode(.inline)
@@ -729,6 +842,7 @@ struct KanbanSkillsPickerSheet: View {
                 }
             }
         }
+        .onAppear { appState.showKeptCapabilities() }
     }
 
     private func isSelected(_ name: String) -> Bool {
@@ -779,49 +893,61 @@ struct KanbanParentPickerSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Button {
-                    selectedParentID = nil
-                } label: {
-                    HStack {
-                        Text("— no parent —")
-                        Spacer()
-                        if selectedParentID == nil {
-                            Image(systemName: "checkmark")
-                                .foregroundStyle(.conduitAccent)
-                        }
-                    }
-                }
-                ForEach(candidates) { task in
+            SettingsDetailContainer {
+                SettingsCard {
                     Button {
-                        selectedParentID = task.id
+                        selectedParentID = nil
                     } label: {
                         HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(task.title)
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(2)
-                                HStack(spacing: 6) {
-                                    Text(KanbanShortID.of(task.id))
-                                        .font(.caption2.monospaced())
-                                    Text(KanbanStatusPresentation.forStatus(task.status).displayName)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
+                            Text("— no parent —")
+                                .foregroundStyle(.primary)
                             Spacer()
-                            if selectedParentID == task.id {
+                            if selectedParentID == nil {
                                 Image(systemName: "checkmark")
                                     .foregroundStyle(.conduitAccent)
                             }
                         }
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    ForEach(candidates) { task in
+                        Button {
+                            selectedParentID = task.id
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(task.title)
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(2)
+                                    HStack(spacing: 6) {
+                                        Text(KanbanShortID.of(task.id))
+                                            .scaledFont(.caption2.monospaced())
+                                        Text(KanbanStatusPresentation.forStatus(task.status).displayName)
+                                            .scaledFont(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                if selectedParentID == task.id {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(.conduitAccent)
+                                }
+                            }
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if candidates.isEmpty {
+                        Text("No other tasks on this board.")
+                            .foregroundStyle(.secondary)
                     }
                 }
-                if candidates.isEmpty {
-                    Text("No other tasks on this board.")
-                        .foregroundStyle(.secondary)
-                }
             }
+            // Text fields as Settings draws them.
+            .textFieldStyle(.roundedBorder)
+            .tint(.conduitAccent)
             .searchable(text: $query, prompt: AppLocalization.string("Search tasks"))
             .navigationTitle("Parent task")
             .navigationBarTitleDisplayMode(.inline)

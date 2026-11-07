@@ -9,11 +9,11 @@ struct KanbanProfileRoutingScreen: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
+            SettingsDetailContainer {
+                SettingsCard {
                     if store.profiles.isEmpty {
                         Text("No profiles on this Hermes server yet.")
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(store.profiles) { profile in
@@ -21,14 +21,23 @@ struct KanbanProfileRoutingScreen: View {
                                 KanbanProfileDescriptionEditorView(profile: profile)
                                     .environment(store)
                             } label: {
-                                profileRow(profile)
+                                HStack {
+                                    profileRow(profile)
+                                    SettingsChevron()
+                                }
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
                         }
                     }
-                } footer: {
                     Text("Hermes routes triage decomposition across these profiles by their routing description. A clear description helps the decomposer pick the right specialist.")
+                        .settingsCaption()
                 }
             }
+            // Text fields as Settings draws them.
+            .textFieldStyle(.roundedBorder)
+            .tint(.conduitAccent)
             .navigationTitle("Profiles")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -43,29 +52,29 @@ struct KanbanProfileRoutingScreen: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 Text(profile.name)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                 if profile.isDefault {
                     Text("default")
-                        .font(.caption2)
+                        .scaledFont(.caption2)
                         .foregroundStyle(.secondary)
                 }
                 if profile.descriptionAuto {
                     Label("auto", systemImage: "sparkles")
-                        .font(.caption2)
+                        .scaledFont(.caption2)
                         .foregroundStyle(.orange)
                         .labelStyle(.titleOnly)
                 }
                 Spacer()
                 if profile.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text("undescribed")
-                        .font(.caption2)
+                        .scaledFont(.caption2)
                         .foregroundStyle(.conduitTertiary)
                 }
             }
             let trimmed = profile.description.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
                 Text(trimmed)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
@@ -127,23 +136,22 @@ struct KanbanProfileDescriptionEditorView: View {
     }
 
     var body: some View {
-        Form {
-            Section {
+        SettingsDetailContainer {
+            ConduitSettingsSection(title: AppLocalization.string("Routing Description"), symbol: "text.alignleft", tint: .conduitAccent) {
                 TextEditor(text: $draft)
                     .frame(minHeight: 140)
+                    .settingsEditorBox()
                     .accessibilityLabel("Routing description for \(profile.name)")
                 if baseline.isAuto {
                     Label("Automatically generated — review recommended", systemImage: "sparkles")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.orange)
                 }
-            } header: {
-                Text("Routing Description")
-            } footer: {
                 Text("The decomposer reads these descriptions to route child tasks to the best specialist profile. Saving an empty description clears it (Hermes then falls back to name matching).")
+                    .settingsCaption()
             }
 
-            Section {
+            SettingsCard {
                 // V3A final pass: the identity (profile name), the board/server
                 // stamp, the SUBMITTED value and the busy state are all frozen
                 // synchronously in the button action (saveTapped) BEFORE any
@@ -157,6 +165,7 @@ struct KanbanProfileDescriptionEditorView: View {
                         Spacer()
                     }
                 }
+                .buttonStyle(.settingsPrimary)
                 .disabled(!isDirty || isSaving || isGenerating || !store.isSelectedSnapshotLoaded)
 
                 Button {
@@ -168,24 +177,28 @@ struct KanbanProfileDescriptionEditorView: View {
                         Spacer()
                     }
                 }
+                .buttonStyle(.settings)
                 .disabled(isSaving || isGenerating || !store.isSelectedSnapshotLoaded)
             }
 
             if let errorMessage {
-                Section {
+                SettingsCard {
                     Label(errorMessage, systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.red)
                 }
             }
             if let notice {
-                Section {
+                SettingsCard {
                     Label(notice, systemImage: "checkmark.circle")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
         }
+        // Text fields as Settings draws them.
+        .textFieldStyle(.roundedBorder)
+        .tint(.conduitAccent)
         .navigationTitle(profile.name)
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(

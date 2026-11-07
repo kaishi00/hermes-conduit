@@ -32,6 +32,13 @@ struct RichCard: Identifiable, Equatable, Hashable {
         case media
         case contact
         case status
+        case table
+        case timeline
+        case checklist
+        case list
+        case progress
+        case callout
+        case diff
     }
 
     enum TravelMode: String {
@@ -67,6 +74,16 @@ struct RichCard: Identifiable, Equatable, Hashable {
     let media: [RichMedia]
     let people: [RichPerson]
     let status: RichStatus?
+    /// The board kinds (RichBoardCard.swift).
+    let table: RichTable?
+    let timeline: [RichTimelineDay]
+    let checklist: [RichChecklistItem]
+    let list: [RichListItem]
+    let ranked: Bool
+    let progress: [RichProgress]
+    let callout: RichCallout?
+    /// Changes line by line (RichDiffCard.swift).
+    let diff: RichDiff?
 
     init?(normalized json: [String: Any], id: Int) {
         guard let kind = (json["type"] as? String).flatMap(Kind.init(rawValue:)) else { return nil }
@@ -96,6 +113,14 @@ struct RichCard: Identifiable, Equatable, Hashable {
         media = (json["media"] as? [[String: Any]] ?? []).compactMap(RichMedia.init(json:))
         people = (json["people"] as? [[String: Any]] ?? []).compactMap(RichPerson.init(json:))
         status = RichStatus(json: json["status"])
+        table = RichTable(json: json["table"])
+        timeline = (json["timeline"] as? [[String: Any]] ?? []).compactMap(RichTimelineDay.init(json:))
+        checklist = (json["checklist"] as? [[String: Any]] ?? []).compactMap(RichChecklistItem.init(json:))
+        list = (json["list"] as? [[String: Any]] ?? []).compactMap(RichListItem.init(json:))
+        ranked = json["ranked"] as? Bool ?? false
+        progress = (json["progress"] as? [[String: Any]] ?? []).compactMap(RichProgress.init(json:))
+        callout = RichCallout(json: json["callout"])
+        diff = RichDiff(json: json["diff"])
         switch kind {
         case .map, .place, .places: guard !places.isEmpty else { return nil }
         case .stats: guard !stats.isEmpty else { return nil }
@@ -106,6 +131,13 @@ struct RichCard: Identifiable, Equatable, Hashable {
         case .media: guard !media.isEmpty, source != nil else { return nil }
         case .contact: guard !people.isEmpty else { return nil }
         case .status: guard status != nil else { return nil }
+        case .table: guard table != nil else { return nil }
+        case .timeline: guard !timeline.isEmpty else { return nil }
+        case .checklist: guard !checklist.isEmpty else { return nil }
+        case .list: guard !list.isEmpty else { return nil }
+        case .progress: guard !progress.isEmpty else { return nil }
+        case .callout: guard callout != nil else { return nil }
+        case .diff: guard diff != nil else { return nil }
         }
     }
 
@@ -138,35 +170,25 @@ struct RichCard: Identifiable, Equatable, Hashable {
         return cards(raw: jsonObject(tool.input)?["cards"], schema: schema)
     }
 
-    /// Whether a transcript row is a `conduit_show` call that drew cards.
+    /// Whether a transcript row is a `conduit_show` call that showed a
+    /// board: its cards, or their Markdown where they can't be drawn.
     static func hasCards(_ message: ChatMessage) -> Bool {
         guard message.role == .tool, let tool = message.tool else { return false }
-        return !cards(for: tool).isEmpty
+        return RichBoard.board(for: tool) != nil
     }
 
-    /// The live names a transcript row's cards carry. Only a row whose
-    /// JSON names one is read, since every publish asks.
-    @MainActor
+    /// The live names a transcript row's cards carry. Every publish asks,
+    /// so each row is read once and kept.
     static func liveNames(_ message: ChatMessage) -> [String] {
         guard message.role == .tool, let tool = message.tool, tool.name.lowercased() == toolName,
-              tool.status == .complete,
-              (tool.output ?? "").contains("\"live\"") || (tool.input ?? "").contains("\"live\"") else { return [] }
-        // Each row is read once, not on every publish.
-        let key = LiveNamesKey(id: message.id, input: tool.input, output: tool.output)
-        if let names = liveNamesCache[key] { return names }
-        let names = cards(for: tool).compactMap(\.live)
-        if liveNamesCache.count >= 200 { liveNamesCache.removeAll() }
-        liveNamesCache[key] = names
-        return names
+              tool.status == .complete else { return [] }
+        return liveNamesMemo.value(for: tool, id: message.id) {
+            guard (tool.output ?? "").contains("\"live\"") || (tool.input ?? "").contains("\"live\"") else { return [] }
+            return cards(for: tool).compactMap(\.live)
+        }
     }
 
-    private struct LiveNamesKey: Hashable {
-        let id: String
-        let input: String?
-        let output: String?
-    }
-
-    @MainActor private static var liveNamesCache: [LiveNamesKey: [String]] = [:]
+    private static let liveNamesMemo = FinishedToolMemo<[String]>()
 
     /// Each live name's last row in `messages`: the earlier rows with it
     /// were brought up to date there.

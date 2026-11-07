@@ -95,7 +95,7 @@ struct ConduitPluginSettingsDetail: View {
         SettingsDetailContainer {
             ConduitSettingsSection(title: AppLocalization.string("Conduit plugin"), symbol: "puzzlepiece.extension", tint: .conduitAura) {
                 Text("The plugin on your Hermes host serves Conduit's notifications, live voice, calls from Hermes and more. Each dashboard's host has its own copy.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                 if appState.savedDashboardRegistry.dashboards.count > 1, let label = appState.savedDashboardRegistry.activeDashboardLabel {
                     SettingsMetricRow(label: AppLocalization.string("Dashboard"), value: label, lineLimit: 1)
@@ -106,12 +106,12 @@ struct ConduitPluginSettingsDetail: View {
                     valueColor: status.updateRecommended || status.restartPending ? .orange : .secondary
                 )
                 Text(verbatim: statusText(status))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                 if status.updateAvailable, let notes = NotifierPluginReleaseNotes(changelog: appState.notifierPluginChangelog, status: status) {
                     if let summary = notes.summary {
                         Text(verbatim: summary)
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(notes.hasSecurityFixes ? Color.orange : Color.secondary)
                     }
                     if !notes.changes.isEmpty {
@@ -120,7 +120,7 @@ struct ConduitPluginSettingsDetail: View {
                                 .padding(.top, 8)
                         } label: {
                             Text(verbatim: AppLocalization.string("What's new in \(notes.version)"))
-                                .font(.subheadline.weight(.semibold))
+                                .scaledFont(.subheadline.weight(.semibold))
                         }
                         .accessibilityIdentifier("settings.plugin.whatsNew")
                     }
@@ -137,7 +137,7 @@ struct ConduitPluginSettingsDetail: View {
                     .accessibilityIdentifier("settings.plugin.update")
                     if let blocker = appState.notifierPluginUpdateBlocker {
                         Text(verbatim: blocker)
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -157,7 +157,7 @@ struct ConduitPluginSettingsDetail: View {
                 }
                 .accessibilityIdentifier("settings.plugin.notices")
                 Text(verbatim: noticeChannelDetail)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
 
@@ -170,7 +170,7 @@ struct ConduitPluginSettingsDetail: View {
                                 .foregroundStyle(served ? Color.green : Color.secondary)
                                 .accessibilityHidden(true)
                             Text(verbatim: feature.title)
-                                .font(.subheadline)
+                                .scaledFont(.subheadline)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .accessibilityElement(children: .combine)
@@ -191,13 +191,13 @@ struct ConduitPluginSettingsDetail: View {
                         }
                         NotificationSetupCommand(step: 2, title: AppLocalization.string("Restart the gateway"), command: "hermes gateway restart")
                         Text("Then restart the Hermes dashboard, so it serves the new plugin.")
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     }
                     .padding(.top, 8)
                 } label: {
                     Text("Run these on the dashboard's host when Conduit can't update it, such as on an older Hermes.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -219,24 +219,19 @@ struct ConduitPluginSettingsDetail: View {
 
     private static func title(of channel: NotifierPluginNoticeChannel) -> String {
         switch channel {
-        case .automatic: return AppLocalization.string("Automatic")
         case .everyVersion: return AppLocalization.string("Every new version")
         case .stableOnly: return AppLocalization.string("Stable versions only")
+        case .never: return AppLocalization.string("Never")
         }
     }
 
     private var noticeChannelDetail: String {
-        let followsMain = appState.notifierPluginNoticeChannel.followsMain(installedFrom: appState.appInstallSource)
-        let what = followsMain
+        guard appState.notifierPluginNoticeChannel.asksToUpdate else {
+            return AppLocalization.string("Conduit doesn't ask you to update. New versions, security fixes included, wait here until you update. An update you start still asks for its restart.")
+        }
+        return appState.notifierPluginNoticeChannel.followsMain
             ? AppLocalization.string("Conduit asks you to update whenever a new plugin version is out.")
             : AppLocalization.string("Conduit asks you to update only when a plugin version is marked stable, or this app needs a newer one. You can still update here any time.")
-        guard appState.notifierPluginNoticeChannel == .automatic else { return what }
-        let source = switch appState.appInstallSource {
-        case .appStore: AppLocalization.string("This copy of Conduit is from the App Store.")
-        case .testFlight: AppLocalization.string("This copy of Conduit is from TestFlight.")
-        case .xcode: AppLocalization.string("This copy of Conduit was built with Xcode.")
-        }
-        return "\(source) \(what)"
     }
 
     private func isInstall(_ status: NotifierPluginStatus) -> Bool {
@@ -322,7 +317,7 @@ struct NotifierPluginUpdateProgress: View {
             // Ticks every second: the elapsed time is the sign it's alive.
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 Text(verbatim: Self.caption(step: step, elapsed: startedAt.map { context.date.timeIntervalSince($0) } ?? 0))
-                    .font(.footnote.monospacedDigit())
+                    .scaledFont(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
         }
@@ -344,47 +339,52 @@ struct NotifierPluginUpdateStatusView: View {
     var body: some View {
         Group {
             if let row = Self.row(for: appState.activeNotifierPluginUpdate, plugin: appState.notifierPlugin) {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        if let symbol = row.symbol {
-                            Image(systemName: symbol).foregroundStyle(row.tint).accessibilityHidden(true)
-                        } else {
-                            ProgressView().controlSize(.small)
-                        }
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(verbatim: row.title)
-                                .font(.subheadline.weight(.semibold))
-                                .fixedSize(horizontal: false, vertical: true)
-                            if case .updating(let step) = appState.activeNotifierPluginUpdate {
-                                NotifierPluginUpdateProgress(step: step, startedAt: appState.notifierPluginUpdate.startedAt)
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            if let symbol = row.symbol {
+                                Image(systemName: symbol).foregroundStyle(row.tint).accessibilityHidden(true)
+                            } else {
+                                ProgressView().controlSize(.small)
                             }
-                            if let detail = row.detail, !detail.isEmpty {
-                                Text(verbatim: detail)
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                                    .textSelection(.enabled)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(verbatim: row.title)
+                                    .scaledFont(.subheadline.weight(.semibold))
                                     .fixedSize(horizontal: false, vertical: true)
+                                if case .updating(let step) = appState.activeNotifierPluginUpdate {
+                                    NotifierPluginUpdateProgress(step: step, startedAt: appState.notifierPluginUpdate.startedAt)
+                                }
+                                if let detail = row.detail, !detail.isEmpty {
+                                    Text(verbatim: detail)
+                                        .scaledFont(.footnote)
+                                        .foregroundStyle(.secondary)
+                                        .textSelection(.enabled)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
                             }
+                        }
+                        .accessibilityElement(children: .combine)
+                        Spacer(minLength: 0)
+                        if row.symbol != nil {
+                            Button { appState.dismissNotifierPluginUpdateOutcome() } label: {
+                                Image(systemName: "xmark")
+                                    .scaledFont(.footnote.weight(.semibold))
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel(Text(AppLocalization.string("Dismiss")))
+                        } else {
+                            Button(AppLocalization.string("Cancel")) { appState.cancelNotifierPluginUpdate() }
+                                .buttonStyle(.settings)
                         }
                     }
-                    .accessibilityElement(children: .combine)
-                    Spacer(minLength: 0)
-                    if row.symbol != nil {
-                        Button { appState.dismissNotifierPluginUpdateOutcome() } label: {
-                            Image(systemName: "xmark")
-                                .font(.footnote.weight(.semibold))
-                                .frame(minWidth: 44, minHeight: 44)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel(Text(AppLocalization.string("Dismiss")))
-                    } else {
-                        Button(AppLocalization.string("Cancel")) { appState.cancelNotifierPluginUpdate() }
-                            .buttonStyle(.settings)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    if case .updating(.restartingGateway(.draining)) = appState.activeNotifierPluginUpdate {
+                        GatewayWaitView().padding(.leading, 28)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .onChange(of: appState.activeNotifierPluginUpdate) { previous, state in
@@ -554,7 +554,7 @@ struct NotifierPluginUpdateBanner: View {
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(verbatim: text)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .lineLimit(2)
                 // When it came out and what's in it (#297, #300).
                 if update == .idle, offer == .update, let notes {
@@ -562,14 +562,14 @@ struct NotifierPluginUpdateBanner: View {
                         .compactMap { $0 }.joined(separator: " · ")
                     if notes.changes.isEmpty, !line.isEmpty {
                         Text(verbatim: line)
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     } else if !line.isEmpty {
                         Button {
                             shownNotes = notes
                         } label: {
                             Text(verbatim: line)
-                                .font(.footnote)
+                                .scaledFont(.footnote)
                                 .foregroundStyle(notes.hasSecurityFixes ? Color.orange : Color.secondary)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
@@ -580,12 +580,21 @@ struct NotifierPluginUpdateBanner: View {
                 }
                 if case .updating(let step) = update {
                     NotifierPluginUpdateProgress(step: step, startedAt: appState.notifierPluginUpdate.startedAt)
+                    if case .restartingGateway(.draining) = step {
+                        GatewayWaitView()
+                    }
                 }
                 if update == .runningOnHost, let detail = row?.detail {
                     Text(verbatim: detail)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                } else if update != .idle, !update.isInProgress, let detail = row?.detail {
+                    // Why it failed and what to do (Hermes' words, issue 1889); Settings shows it whole.
+                    Text(verbatim: detail)
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(4)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -595,7 +604,7 @@ struct NotifierPluginUpdateBanner: View {
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
                 }
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .accessibilityIdentifier("pluginUpdate.showSteps")
             }
             if update == .idle {
@@ -605,7 +614,7 @@ struct NotifierPluginUpdateBanner: View {
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
                 }
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .disabled(!appState.canUpdateNotifierPlugin)
                     .accessibilityIdentifier("pluginUpdate.update")
             }
@@ -618,7 +627,7 @@ struct NotifierPluginUpdateBanner: View {
                 }
             } label: {
                 Image(systemName: "xmark")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
@@ -632,7 +641,10 @@ struct NotifierPluginUpdateBanner: View {
         // The notice and how it ended are announced; each step isn't.
         .task(id: update.isInProgress ? nil : text) {
             guard !update.isInProgress else { return }
-            UIAccessibility.post(notification: .announcement, argument: text)
+            // How it ended, with why when it says (a failure's detail).
+            let detail = update == .idle ? nil : row?.detail
+            UIAccessibility.post(notification: .announcement,
+                                 argument: [text, detail].compactMap { $0 }.joined(separator: ". "))
         }
         // A finished update leaves on its own once Conduit is connected
         // again; with VoiceOver on it stays until closed.
@@ -669,16 +681,16 @@ struct NotifierPluginChangesList: View {
                 if !items.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Label(Self.title(of: kind), systemImage: Self.symbol(of: kind))
-                            .font(.subheadline.weight(.semibold))
+                            .scaledFont(.subheadline.weight(.semibold))
                             .foregroundStyle(kind == .security ? Color.orange : Color.primary)
                             .accessibilityAddTraits(.isHeader)
                         ForEach(items) { change in
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 Text(verbatim: change.version)
-                                    .font(.caption.monospacedDigit())
+                                    .scaledFont(.caption.monospacedDigit())
                                     .foregroundStyle(.secondary)
                                 Text(verbatim: change.text)
-                                    .font(.footnote)
+                                    .scaledFont(.footnote)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             .accessibilityElement(children: .combine)
@@ -756,7 +768,7 @@ struct NotifierPluginChangesSheet: View {
                 VStack(alignment: .leading, spacing: 16) {
                     if let summary = notes.summary {
                         Text(verbatim: summary)
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     }
                     NotifierPluginChangesList(changes: notes.changes)

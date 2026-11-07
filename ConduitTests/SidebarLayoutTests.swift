@@ -65,7 +65,7 @@ final class SidebarLayoutTests: XCTestCase {
     func testIPadWithPreferenceOnAndNarrowWindowFallsBackToDrawer() {
         // Split View halves, small Stage Manager tiles, and undetermined
         // pre-layout widths must keep the drawer.
-        for width: CGFloat in [0, 320, 417, 512, 683, 749] {
+        for width: CGFloat in [0, 320, 417, 512, 683, 750] {
             XCTAssertEqual(
                 resolve(pad, prefersPersistentSidebar: true, availableWidth: width),
                 .drawer,
@@ -77,7 +77,8 @@ final class SidebarLayoutTests: XCTestCase {
     func testPersistentThresholdKeepsMinimumChatWidth() {
         XCTAssertEqual(
             SidebarLayoutMetrics.minimumPersistentLayoutWidth,
-            SidebarLayoutMetrics.persistentSidebarWidth + SidebarLayoutMetrics.minimumChatWidth
+            SidebarLayoutMetrics.persistentSidebarWidth + 1 + SidebarLayoutMetrics.minimumChatWidth,
+            "The sidebar, the line beside it (#1487) and the chat's least width."
         )
 
         let threshold = SidebarLayoutMetrics.minimumPersistentLayoutWidth
@@ -362,6 +363,55 @@ final class SidebarLayoutTests: XCTestCase {
         _ = memo.category("a") { lookups += 1; return .cron }
         XCTAssertEqual(walks, 5)
         XCTAssertEqual(lookups, 2)
+    }
+
+    /// An equal key reuses the tree; a change to any member rebuilds it.
+    @MainActor
+    func testSessionsNestingCacheRebuildsOnEveryKeyMember() {
+        let cache = V2SessionsNestingCache()
+        var builds = 0
+        let build: () -> (pinned: [SessionNesting.Node], recent: [SessionNesting.Node]) = {
+            builds += 1
+            return ([], [])
+        }
+        let base = V2SessionsNestingCache.Key(
+            rows: [pinnedTestSession("a")],
+            query: "",
+            flattens: false,
+            pinnedIDs: [],
+            tags: [:],
+            linksRevision: 0,
+            dashboard: nil,
+            profile: "default",
+            profiles: ["default"],
+            order: PinnedChatOrder(),
+            groupsByProfile: false
+        )
+        _ = cache.sections(for: base, build: build)
+        _ = cache.sections(for: base, build: build)
+        XCTAssertEqual(builds, 1)
+
+        let changes: [(inout V2SessionsNestingCache.Key) -> Void] = [
+            { $0.rows.append(self.pinnedTestSession("b")) },
+            { $0.query = "x" },
+            { $0.flattens = true },
+            { $0.pinnedIDs = ["a"] },
+            { $0.tags = ["-|default": ["a": VoiceSessionTag(kind: .job, parentID: "b", parentTitle: nil)]] },
+            { $0.linksRevision = 1 },
+            { $0.dashboard = UUID() },
+            { $0.profile = "work" },
+            { $0.profiles = ["default", "work"] },
+            { $0.order = PinnedChatOrder(idsByProfile: ["default": ["a"]]) },
+            { $0.groupsByProfile = true },
+        ]
+        for (index, change) in changes.enumerated() {
+            var key = base
+            change(&key)
+            _ = cache.sections(for: key, build: build)
+            XCTAssertEqual(builds, 2 * index + 2, "change \(index) should rebuild")
+            _ = cache.sections(for: base, build: build)
+            XCTAssertEqual(builds, 2 * index + 3)
+        }
     }
 
     private func waitUntil(_ condition: () -> Bool) {

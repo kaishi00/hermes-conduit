@@ -84,6 +84,14 @@ final class LocationSharingController: ObservableObject {
         monitor.locationPushToken = { token in PushNotificationService.shared.updateLocationToken(token) }
         return monitor
     }()
+    /// Walking past: the shops Pulse asked this iPhone to watch.
+    private(set) lazy var spots: PulseSpotWatcher = {
+        let spots = PulseSpotWatcher()
+        spots.entered = { [weak self] spot, at in self?.spotEntered(spot, at: at) }
+        spots.privatePlaces = { [weak self] in self?.places.filter(\.isPrivate) ?? [] }
+        spots.keepRunning = { LocationSharingController.beginBackgroundTask("conduit.location.spots") }
+        return spots
+    }()
 
     /// The connection to `binding`'s dashboard, or nil when there is none.
     /// AppState+Location supplies it; tests supply their own.
@@ -92,6 +100,13 @@ final class LocationSharingController: ObservableObject {
     var deviceConditions: @MainActor () -> DeviceConditions = { DeviceConditionsMonitor.shared.current }
 
     private var unsent: LocationUnsent
+    /// How many times shop watching was forgotten, and that count when the
+    /// batch now being sent was built.
+    private var spotsForgotten = 0
+    private var spotsSentAt = 0
+    /// Whether shops could be watched at the last reconfigure (nil before
+    /// the first).
+    private var spotsAllowedBefore: Bool?
     private var sendChain: Task<Bool, Never>?
     private var callWatch: Task<Void, Never>?
     private var lastCallFix: CLLocation?
@@ -114,6 +129,12 @@ final class LocationSharingController: ObservableObject {
             }
         }
         self.unsent = unsent ?? LocationSharedStore.readUnsent()
+        self.engine.spotsReplied = { [weak self] watches in
+            // A reply to a batch sent before Walking past went off lists
+            // watches the host no longer keeps.
+            guard let self, self.spotsSentAt == self.spotsForgotten else { return }
+            self.spots.replied(watches, near: self.fixes.lastKnownFix)
+        }
     }
 
     // MARK: State
@@ -246,8 +267,36 @@ final class LocationSharingController: ObservableObject {
         if config.binding != nil, settings.background { reconfigureMonitors() }
     }
 
+    /// Stops watching shops now (Walking past or Where you are turned off
+    /// in Settings > Pulse), as a reply listing none would, and drops the
+    /// entries waiting to be sent.
+    func forgetSpots() {
+        spotsForgotten += 1
+        spots.replied([], near: nil)
+        guard !unsent.spotEntries.isEmpty else { return }
+        unsent.spotEntries = []
+        saveUnsent()
+    }
+
+    /// Shop entries waiting to be sent.
+    var unsentSpotEntryCount: Int { unsent.spotEntries.count }
+
     func reconfigureMonitors() {
         monitor.configure(settings: settings, places: places, bound: config.binding != nil && !configUnreadable)
+        let watching = watchesSpots
+        spots.configure(enabled: watching, savedPlaces: places.count)
+        // Shops may be watched again (Always or Precise allowed in iOS
+        // Settings): a send now brings back the host's list.
+        if watching, spotsAllowedBefore == false { Task { await flush(settingsOnly: true) } }
+        spotsAllowedBefore = watching
+    }
+
+    /// Whether this iPhone may watch shops for Pulse: background sharing at
+    /// Precise (a shop's name and how far the phone was from it say as much
+    /// as a precise fix), with Always and precise location, not paused.
+    var watchesSpots: Bool {
+        config.binding != nil && !configUnreadable && settings.backgroundPrecision == .precise
+            && settings.shares(.place, at: now()) && fixes.authorizationStatus == .authorizedAlways && !fixes.isApproximate
     }
 
     // MARK: Layer 1: talking to Hermes
@@ -332,13 +381,44 @@ final class LocationSharingController: ObservableObject {
         Task { await share(location, source: .significant) }
     }
 
+    /// The phone came within a watched shop's circle: a fresh fix says how
+    /// far from it the phone was then (how late iOS told the app), and the
+    /// entry goes now. Nothing inside a private place.
+    private func spotEntered(_ spot: PulseSpotState.Spot, at date: Date) {
+        guard readConfigIfNeeded(), watchesSpots else { return }
+        Task { @MainActor in
+            let endBackground = beginBackgroundWork(for: .place)
+            defer { endBackground() }
+            let location = await fixes.currentFix(accuracy: kCLLocationAccuracyBest, maxAge: 15, timeout: .seconds(15))
+            // Nothing from inside a private place: without a fresh fix the last
+            // known one decides, and with neither nothing is sent.
+            guard let checked = location ?? fixes.lastKnownFix,
+                  LocationPrecisionRules.containingPrivatePlace(LocationRawFix(checked), places: places) == nil
+            else { return }
+            let entry = LocationSpotEntry(
+                spotID: spot.watchID, name: spot.name, at: date, fixAt: location?.timestamp,
+                distance: location.map { $0.distance(from: spot.location) },
+                accuracy: location.map(\.horizontalAccuracy),
+                speed: location.flatMap { $0.speed >= 0 ? $0.speed : nil },
+                radius: spot.radius)
+            // Walking past may have been turned off, or the shop dropped,
+            // while the fix came.
+            guard watchesSpots, spots.state.watches.contains(where: { $0.id == spot.watchID }),
+                  spots.state.spots.contains(where: { $0.id == spot.id }) else { return }
+            unsent.keep(spotEntry: entry)
+            saveUnsent()
+            if let location { spots.moved(location) }
+            await flush()
+        }
+    }
+
     // MARK: Taking and sending
 
     /// Takes a fix for `source` (with any events) and sends it. True when
     /// the host has it.
     @discardableResult
     func shareFix(source: LocationFixSource, events: [LocationPlaceEvent] = []) async -> Bool {
-        guard settings.shares(source, at: now()) else { return false }
+        guard let bound = config.binding, settings.shares(source, at: now()) else { return false }
         // A background relaunch gets a few seconds: the fix, place name and
         // send run inside an assertion, and an arrive/leave is kept before
         // the fix so a suspension can't lose it.
@@ -360,6 +440,17 @@ final class LocationSharingController: ObservableObject {
                 timeout: source.isTalking ? .seconds(8) : .seconds(15)
             )
         }
+        // Sharing ended or moved to another dashboard while the fix came:
+        // it and these events were taken for the old one, so the events
+        // kept above leave too, or a rebind's flush would send them there.
+        guard config.binding == bound else {
+            if !events.isEmpty {
+                unsent.remove(fixID: nil, eventIDs: Set(events.map(\.id)))
+                saveUnsent()
+            }
+            return false
+        }
+        guard settings.shares(source, at: now()) else { return false }
         // The place the host already has from a message moments ago: the
         // message goes without sending it again (or looking up its area).
         if source == .message, events.isEmpty, unsent.fix == nil, let location,
@@ -407,10 +498,16 @@ final class LocationSharingController: ObservableObject {
         guard readConfigIfNeeded(), config.binding != nil, settings.shares(source, at: now()) else { return false }
         let endBackground = beginBackgroundWork(for: source)
         defer { endBackground() }
+        let bound = config.binding
         var record: LocationFixRecord?
         if let location {
+            // Any fix may move the shops watched along (walking past).
+            spots.moved(location)
             let precision = settings.precision(for: source)
             let area = precision == .places ? nil : await fixes.area(for: location)
+            // Sharing ended or moved to another dashboard during the lookup:
+            // this fix and its events were taken for the old one.
+            guard config.binding == bound, settings.shares(source, at: now()) else { return false }
             record = LocationFixRecord(source: source, raw: LocationRawFix(location), area: area)
         }
         guard record != nil || !events.isEmpty else { return false }
@@ -457,21 +554,36 @@ final class LocationSharingController: ObservableObject {
         // not held for later.
         if let fix = unsent.fix, !settings.shares(fix.source, at: at) { unsent.fix = nil }
         if !settings.shares(.place, at: at) { unsent.events = [] }
+        var watching = watchesSpots
+        if !watching { unsent.spotEntries = [] }
         saveUnsent()
-        let pending = unsent
+        var pending = unsent
         if pending.isEmpty, !settingsOnly { return true }
+        let forgotten = spotsForgotten
         guard let request = await requestProvider?(binding) else { return false }
+        // Walking past turned off, a pause, or Location settings changed
+        // while the connection came: this batch carries no shops.
+        if spotsForgotten != forgotten || !watchesSpots {
+            watching = false
+            pending.spotEntries = []
+        }
         var batch = LocationBatch(sentAt: at, settings: settings)
         batch.approximateOnly = approximate || config.approximateOnly
         batch.knownPlaces = places
         batch.fix = pending.fix?.record
         batch.events = pending.events
+        if watching {
+            // Even empty: the host's answer then lists what to watch.
+            batch.spotEntries = pending.spotEntries
+            batch.spotsRoom = spots.room
+        }
         let endBackground = Self.beginBackgroundTask("conduit.location.send")
         defer { endBackground() }
         isSending = true
         defer { isSending = false }
         let sentSettings = config.settings
         let sentPlaces = config.places
+        spotsSentAt = spotsForgotten
         let outcome = await engine.send(batch, config: config, request: request)
         guard outcome != .failed else { return false }
         if outcome == .sent { noteSent(batch.fix, at: at) }
@@ -480,7 +592,8 @@ final class LocationSharingController: ObservableObject {
         if config.settingsPending, config.settings == sentSettings, config.places == sentPlaces {
             save { $0.settingsPending = false }
         }
-        unsent.remove(fixID: pending.fix?.id, eventIDs: Set(pending.events.map(\.id)))
+        unsent.remove(fixID: pending.fix?.id, eventIDs: Set(pending.events.map(\.id)),
+                      spotEntryIDs: Set(pending.spotEntries.map(\.id)))
         saveUnsent()
         return outcome == .sent
     }
@@ -610,10 +723,13 @@ final class LocationSharingController: ObservableObject {
         if date != nil {
             unsent.fix = nil
             unsent.events = []
+            unsent.spotEntries = []
             saveUnsent()
             lastTalkingUpload = nil
             voiceCallEnded()
         }
+        // Paused, shops stop being watched (and are forgotten); resumed, they start again.
+        reconfigureMonitors()
         await flush(settingsOnly: true)
         // Resumed: a voice mode the user allowed may read again.
         if date == nil { await prepareVoiceReads() }
@@ -628,6 +744,7 @@ final class LocationSharingController: ObservableObject {
             config.settings.pausedUntil = nil
             if config.binding != nil { config.settingsPending = true }
         }
+        reconfigureMonitors()
         if send, config.binding != nil {
             Task {
                 await flush(settingsOnly: true)
@@ -711,6 +828,34 @@ final class LocationSharingController: ObservableObject {
         return await requestProvider?(binding)
     }
 
+    /// The dashboard sharing is bound to is no longer saved in Conduit, so
+    /// nothing can reconnect to it: sharing with it ends here, as turning
+    /// both layers off would, and is unbound, so turning a layer on binds to
+    /// the dashboard in use (issue 1800). What the host kept stays there:
+    /// it can't be reached to delete it.
+    func endSharing(unlessBoundTo saved: Set<UUID>) {
+        // The host pass is the only way to reach a dashboard that isn't the
+        // one in use: forgotten even while the config can't be read, so
+        // nothing reaches the removed host before the next connect unbinds.
+        if let pass = LocationKeychain.loadHostPass(), !saved.contains(pass.dashboardID) {
+            LocationKeychain.clearHostPass()
+        }
+        guard readConfigIfNeeded(), config.isBound(outside: saved) else { return }
+        voiceCallEnded()
+        lastTalkingUpload = nil
+        unsent.fix = nil
+        unsent.events = []
+        unsent.spotEntries = []
+        saveUnsent()
+        engine.forgetHost()
+        LocationKeychain.clearHostPass()
+        // A reply still coming from the removed host lists its shops.
+        spotsForgotten += 1
+        save { $0.unbind() }
+        // Unbound, the monitors stop and the shops' monitor is emptied.
+        reconfigureMonitors()
+    }
+
     /// Deletes what this phone (or, with `everything`, every device and the
     /// place rules) sent to the host. With both layers off, sharing is
     /// unbound too, so it can be turned on for another dashboard.
@@ -720,10 +865,13 @@ final class LocationSharingController: ObservableObject {
         lastTalkingUpload = nil
         unsent.fix = nil
         unsent.events = []
+        unsent.spotEntries = []
         saveUnsent()
         if !settings.isOn {
             save { $0.binding = nil }
             LocationKeychain.clearHostPass()
         }
+        // Unbound, the shops' monitor is emptied and spots.json forgotten.
+        reconfigureMonitors()
     }
 }

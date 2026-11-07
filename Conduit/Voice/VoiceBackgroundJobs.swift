@@ -185,6 +185,14 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// Hermes calls the user about this job's outcome after its call
     /// (#449), so no later voice conversation announces it as well.
     var calledAbout = false
+    /// The ids of the chat its call was kept with, if any (M5b): a job
+    /// brought back after a relaunch is said only to a call in that chat.
+    var callChatIDs: [String] = []
+    /// Brought back from the saved ledger after the app was closed (M5b).
+    var isRestored = false
+    /// The saved ledger it belongs to (the dashboard and profile it was
+    /// made on), so a profile change doesn't file it under the next one.
+    var ledgerKey: String?
 
     func owns(sessionID: String) -> Bool {
         guard !sessionID.isEmpty else { return false }
@@ -288,9 +296,37 @@ enum VoiceBackgroundJobNotice: Equatable {
 /// AppState can bind them to whichever client is current at call time and
 /// tests can script them.
 struct VoiceBackgroundJobBackend {
-    /// `profile` nil creates the job in the active profile.
-    var createSession: @MainActor (_ profile: String?) async throws -> (runtimeID: String, storedID: String?)
+    /// `profile` nil creates the job in the active profile. `callsModel`:
+    /// the job is the call's own on that profile (a Watch call's, or a Bot
+    /// Chat call's on its bot), so it runs on that profile's voice-job model
+    /// rather than its chat model (#1564).
+    /// The session's ids, and the profile it was made on (nil: not known).
+    var createSession: @MainActor (_ profile: String?, _ callsModel: Bool) async throws -> (runtimeID: String, storedID: String?, profile: String?)
     var setTitle: @MainActor (_ sessionID: String, _ title: String) async -> Void
+    /// Keeps the job in its bot's work registry (Bot workstreams M5), so
+    /// the Work panel lists it as a call's and a restart leaves it for the
+    /// user. Fire and forget: the job never waits on it. `fromWatch`: a
+    /// Watch call's job on the phone. `callChat`: the chat the call is kept
+    /// with, so a Bot Chat call's job is its coordinator's own workstream.
+    /// `endedWith`: the reply of a job whose turn already ended (during its
+    /// submit), so its row settles with it.
+    /// `call`: the call's own id, so its end releases only its own hold.
+    var keepInRegistry: @MainActor (_ profile: String?, _ sessionID: String, _ title: String,
+                                    _ instructions: String, _ fromWatch: Bool, _ callChat: String?,
+                                    _ endedWith: String?, _ call: String?) -> Void = { _, _, _, _, _, _, _, _ in }
+    /// A call kept with one of a bot's workstreams' chats stays in that
+    /// session (Eric 2026-11-02): its requests go to the workstream, as an
+    /// interrupt while it works, and never make a job of their own. What to
+    /// tell the call, or nil when the chat isn't a workstream's.
+    var sendToCallWorkstream: @MainActor (_ thread: VoiceThreadTarget, _ request: String) async -> String? = { _, _ in nil }
+    /// A call that kept a job with its chat (`callChat`) left it: when the
+    /// chat is the Bot Chat, the updates its workstreams held go out. Every
+    /// voice mode ends this way, Classic too, which never saves its turns
+    /// with the chat.
+    var callLeftChat: @MainActor (_ profile: String?, _ chat: String, _ call: String?) -> Void = { _, _, _ in }
+    /// The active profile, read as a job without one is made, so a switch
+    /// while its session is made can't file it under another bot.
+    var activeProfile: @MainActor () -> String? = { nil }
     var submit: @MainActor (_ sessionID: String, _ text: String) async throws -> Void
     var cancel: @MainActor (_ sessionID: String) async throws -> Void
     /// The live runtimes of `profile` (nil: the active profile).
@@ -327,15 +363,29 @@ struct VoiceBackgroundJobBackend {
     /// The message the user typed for the chat's latest turn, when Conduit
     /// can see it (the chat is open). Nil otherwise.
     var latestThreadPrompt: @MainActor (_ thread: VoiceThreadTarget) -> String? = { _ in nil }
-    /// The user's earlier chats on the profile in use that match `query`,
-    /// best first, for a call asked to find one.
-    var searchChats: @MainActor (_ query: String) async throws -> [VoiceChatMatch] = { _ in
+    /// Whether the attached chat is a bot's Bot Chat, whose coordinator
+    /// reports its workstreams there in turns of its own.
+    var isBotChat: @MainActor (_ thread: VoiceThreadTarget) -> Bool = { _ in false }
+    /// Whether the open chat shows more than one message waiting on its
+    /// reply, so the latest turn's prompt can't be told.
+    var threadAwaitsSeveralPrompts: @MainActor (_ thread: VoiceThreadTarget) -> Bool = { _ in false }
+    /// Keeps the ledger's background jobs across a relaunch (M5b): called
+    /// with every change, on the main actor.
+    var saveLedger: @MainActor (_ jobs: [SavedVoiceJob]) -> Void = { _ in }
+    /// The ledger a job made now belongs to.
+    var ledgerKey: @MainActor () -> String? = { nil }
+    /// The chat's transcript when it's open on this device, nil otherwise.
+    var openThreadMessages: @MainActor (_ thread: VoiceThreadTarget) -> [ChatMessage]? = { _ in nil }
+    /// The user's earlier chats that match `query`, best first, for a call
+    /// asked to find one: on `profile`, or the one in use when nil.
+    var searchChats: @MainActor (_ query: String, _ profile: String?) async throws -> [VoiceChatMatch] = { _, _ in
         // Said to the model, not shown: not localized.
         throw VoiceAudioError.unavailable("Searching chats isn't available on this call.")
     }
     /// A chat's text for a call to talk about: word for word when short,
-    /// else a summary of the older part plus the latest turns.
-    var readChat: @MainActor (_ sessionID: String) async throws -> VoiceResumeContext = { _ in
+    /// else a summary of the older part plus the latest turns. `profile`
+    /// nil: the one in use.
+    var readChat: @MainActor (_ sessionID: String, _ profile: String?) async throws -> VoiceResumeContext = { _, _ in
         // Said to the model, not shown: not localized.
         throw VoiceAudioError.unavailable("Reading chats isn't available on this call.")
     }
@@ -348,7 +398,9 @@ struct VoiceBackgroundJobBackend {
     /// nil for a single question; `answer` nil leaves one of a form blank),
     /// as its card would. The card as it stands after, or nil when Hermes no
     /// longer waits on it.
-    var respondToClarify: @MainActor (_ clarify: ClarifyActivity, _ questionID: String?, _ answer: String?) async throws -> ClarifyActivity? = { _, _, _ in
+    /// `sessionID` and `profile` are the job's chat, where the session
+    /// authority reads a question this socket never saw asked.
+    var respondToClarify: @MainActor (_ clarify: ClarifyActivity, _ questionID: String?, _ answer: String?, _ sessionID: String?, _ profile: String?) async throws -> ClarifyActivity? = { _, _, _, _, _ in
         throw HermesError.notConnected
     }
 }
@@ -396,6 +448,10 @@ protocol VoiceBackgroundJobHandling: AnyObject {
     /// Removes and returns the next update the voice conversation should
     /// deliver, or nil when nothing is pending.
     func takePendingNotice() -> VoiceBackgroundJobNotice?
+    /// A turn in Classic's own chat it didn't ask for ended with `reply`
+    /// (already flattened for speech). True when it's a Bot Chat's
+    /// coordinator reporting work, queued to be spoken as a notice.
+    func noteChatReport(_ reply: String, sessionID: String) -> Bool
 }
 
 @MainActor
@@ -420,6 +476,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// The chat the running live call is attached to, if any. Published so
     /// the minimised call's bar can name it.
     @Published var liveThread: VoiceThreadTarget?
+    /// The chat this call kept a job with, and its bot: told when the call leaves it.
+    private var keptCallChat: (profile: String?, chat: String, call: String?)?
     /// The job whose chat an unattached call took as its own (#1250): the
     /// call's first ordinary request. Its chat is `liveThread`.
     private(set) var callChatJobID: UUID?
@@ -453,7 +511,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// is deduped only against an immediate repeat.
     private var lastUnidentifiedChatReply: String?
 
-    @Published private(set) var jobs: [VoiceBackgroundJob] = []
+    @Published private(set) var jobs: [VoiceBackgroundJob] = [] {
+        didSet { scheduleLedgerSave() }
+    }
+    private var ledgerSaveScheduled = false
 
     /// Whether a job the liveness poll settles has its final reply read
     /// from its chat first, so the call hears the result instead of a
@@ -643,7 +704,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// The call's jobs waiting on the user's OK for a command.
     var jobsWaitingOnApproval: [UUID] {
-        jobs.filter { $0.status == .needsInput && $0.waitingApproval != nil }.map(\.id)
+        // A request the call let go of (its chat deleted, or a hang-up's) is no longer the call's.
+        jobs.filter { $0.status == .needsInput && $0.waitingApproval != nil && !$0.isDetachedThreadTurn }.map(\.id)
     }
 
     /// Answers the approval `jobID` waits on, `once` or `deny`, as its card
@@ -679,7 +741,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// The call's jobs waiting on the user's answer to a question.
     var jobsWaitingOnQuestion: [UUID] {
         jobs.filter { job in
-            job.status == .needsInput && job.waitingQuestion.flatMap { HermesCallWaiting(clarify: $0) } != nil
+            job.status == .needsInput && !job.isDetachedThreadTurn
+                && job.waitingQuestion.flatMap { HermesCallWaiting(clarify: $0) } != nil
         }.map(\.id)
     }
 
@@ -694,7 +757,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let value = answer.flatMap { HermesCallWaiting.answerValue(for: $0, question: question) }
         let after: ClarifyActivity?
         do {
-            after = try await backend.respondToClarify(clarify, clarify.questions.count == 1 ? nil : question.id, value)
+            after = try await backend.respondToClarify(clarify, clarify.questions.count == 1 ? nil : question.id, value, job.runtimeSessionID, job.profile)
+        } catch let error where HermesClient.isSessionNotFoundError(error) {
+            // The chat is gone (reaped after a relaunch): nothing waits on
+            // this question any more, as the card reads it.
+            after = nil
         } catch {
             return .failed
         }
@@ -1170,7 +1237,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// matches nothing as a whole is tried again a word at a time.
     /// `retryingWords` false asks once: a call whose tool calls hold its
     /// turn (Grok) shouldn't wait on three searches.
-    func findChats(query rawQuery: String, retryingWords: Bool = true) async -> VoiceChatSearchOutcome {
+    func findChats(query: String, retryingWords: Bool = true) async -> VoiceChatSearchOutcome {
+        await findChats(query: query, retryingWords: retryingWords, profile: nil)
+    }
+
+    /// `profile`: the profile whose chats to search (nil: the one in use),
+    /// a Watch call's own (#1564).
+    func findChats(query rawQuery: String, retryingWords: Bool, profile: String?) async -> VoiceChatSearchOutcome {
         // Numbers only ever name the newest search's list, so a failed or
         // superseded search leaves nothing to open, and an older one still
         // running can't bring its list back.
@@ -1183,10 +1256,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let call = liveCallID
         var matches: [VoiceChatMatch]
         do {
-            matches = try await backend.searchChats(query)
+            matches = try await backend.searchChats(query, profile)
             // A word that fails costs only its own matches.
             for word in matches.isEmpty && retryingWords ? VoiceChatFinder.fallbackWords(query) : [] {
-                for match in (try? await backend.searchChats(word)) ?? [] where !matches.contains(where: { $0.sessionID == match.sessionID }) {
+                for match in (try? await backend.searchChats(word, profile)) ?? [] where !matches.contains(where: { $0.sessionID == match.sessionID }) {
                     matches.append(match)
                 }
             }
@@ -1210,12 +1283,16 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Reads one of the last search's chats into the call, so the user can
     /// talk about it. Reading doesn't open it.
     func readFoundChat(_ reference: String) async -> VoiceChatReadOutcome {
+        await readFoundChat(reference, profile: nil)
+    }
+
+    func readFoundChat(_ reference: String, profile: String?) async -> VoiceChatReadOutcome {
         guard let match = foundChat(reference) else { return .unknownChat }
         let started = generation
         let call = liveCallID
         let context: VoiceResumeContext
         do {
-            context = try await backend.readChat(match.sessionID)
+            context = try await backend.readChat(match.sessionID, profile)
         } catch {
             return .failed(error.localizedDescription)
         }
@@ -1333,11 +1410,27 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// first such job's chat becomes the call's, so later requests are its
     /// next turns (#1250).
     func startJob(
-        instructions requested: String,
-        profile spokenProfile: String? = nil,
+        instructions: String,
+        profile: String? = nil,
         joinsCall: Bool = false,
         onJobCreated: (@MainActor (UUID) -> Void)? = nil
     ) async -> String {
+        await startJob(instructions: instructions, profile: profile, joinsCall: joinsCall, callsModel: false, onJobCreated: onJobCreated)
+    }
+
+    /// `callsModel`: a Watch call's own job on its profile, which runs on
+    /// that profile's voice-job model (#1564). `fromWatch`: any job a Watch
+    /// call started, named profile or not, as its bot's Work panel says.
+    func startJob(
+        instructions requested: String,
+        profile spokenProfile: String?,
+        joinsCall: Bool = false,
+        callsModel: Bool,
+        fromWatch: Bool = false,
+        onJobCreated: (@MainActor (UUID) -> Void)? = nil
+    ) async -> String {
+        // A workstream's call: every request stays in its session.
+        if let thread = liveThread, let said = await backend.sendToCallWorkstream(thread, requested) { return said }
         if joinsCall, liveThread == nil {
             // Said while the call's first job is still making its chat: it
             // joins that chat once it's made.
@@ -1357,9 +1450,16 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let instructions: String
         let profile: String?
         let profileLabel: String?
+        // A job on the call's own bot (unnamed, or naming it) keeps the voice-job
+        // model chosen for that bot, as an unnamed job on the phone's does.
+        var callsOwnModel = callsModel
+        // A Bot Chat call whose chat was deleted stays on its bot (issue 1797).
+        let callsBot = liveThread?.profile ?? (liveThread == nil ? deletedLiveThread?.profile : nil)
         switch routed {
         case .run(let task, let target, let label):
-            (instructions, profile, profileLabel) = (task, target, label)
+            // A Bot Chat call's job runs on its bot, as the coordinator's own.
+            (instructions, profile, profileLabel) = (task, target ?? callsBot, label)
+            if target == nil || target == callsBot { callsOwnModel = true }
         case .unknown(let spokenProfile):
             // A named target that isn't a known profile is never guessed at.
             return AppLocalization.string("I don't know a profile or bot called \(spokenProfile), so I didn't start the job.")
@@ -1375,12 +1475,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         )
         var anchored = job
         anchored.callAnchor = currentCallAnchor
+        anchored.callChatIDs = liveThread.map { [$0.runtimeSessionID, $0.storedSessionID ?? ""].filter { !$0.isEmpty } } ?? []
+        anchored.ledgerKey = backend.ledgerKey()
         markNewCallbackJob(&anchored)
         lastJobNumber += 1
         anchored.number = lastJobNumber
         jobs.append(anchored)
         onJobCreated?(job.id)
-        if joinsCall, profile == nil, liveThread == nil, callChatClaim == nil, let callID = liveCallID {
+        if joinsCall, profile == deletedLiveThread?.profile, liveThread == nil, callChatClaim == nil, let callID = liveCallID {
             callChatClaim = (job.id, callID)
             // Marked before Hermes can answer, so a reply that beats the
             // adoption is still matched against replays.
@@ -1389,8 +1491,36 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         defer { if callChatClaim?.jobID == job.id { callChatClaim = nil } }
         let generation = generation
         var createdSessionID: String?
+        var registryID: String?  // the id its bot's registry keeps it by
+        // The bot the job is made on, before the wait for its session.
+        var botProfile = profile ?? backend.activeProfile()
+        // The call's chat as the job starts (a hang-up during its submit
+        // doesn't make it another kind of job), and the bot it lives on.
+        let startCall = liveCallID?.uuidString
+        let startChat = liveThread.map { thread in
+            (profile: thread.profile ?? backend.activeProfile(),
+             id: [thread.storedSessionID, thread.runtimeSessionID].compactMap { $0 }.first { !$0.isEmpty })
+        }
+        func keep() {
+            guard let registryID else { return }
+            // The call's chat, only to the bot it lives on: a job naming
+            // another bot is that bot's call job. The plugin makes it the
+            // coordinator's only when the chat is its Bot Chat; any other
+            // chat's call keeps its jobs as call jobs.
+            let chat = startChat.flatMap { $0.profile == botProfile ? $0.id : nil }
+            let now = self.job(job.id)
+            backend.keepInRegistry(botProfile, registryID, job.title, now?.instructions ?? instructions,
+                                   fromWatch, chat, now?.status == .finished ? (now?.result ?? "") : nil,
+                                   chat == nil ? nil : startCall)
+            if let chat {
+                // A call that already left its chat is told now; one still on, when it leaves.
+                if liveThread == nil { backend.callLeftChat(botProfile, chat, startCall) } else {
+                    keptCallChat = (botProfile, chat, startCall)
+                }
+            }
+        }
         do {
-            let ids = try await backend.createSession(profile)
+            let ids = try await backend.createSession(profile, callsOwnModel && profile != nil)
             createdSessionID = ids.runtimeID.isEmpty ? nil : ids.runtimeID
             guard startIsCurrent(job.id, generation: generation) else {
                 return await abandonStart(job, sessionID: createdSessionID, generation: generation)
@@ -1403,6 +1533,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 $0.storedSessionID = ids.storedID
             }
             onJobSessionCreated?([runtimeID, ids.storedID].compactMap { $0 }.filter { !$0.isEmpty })
+            registryID = ids.storedID.flatMap { $0.isEmpty ? nil : $0 } ?? runtimeID
+            // The bot the session was made on, which a switch while it was
+            // made can have moved from the one read above.
+            if profile == nil, let made = ids.profile { botProfile = made }
             await backend.setTitle(runtimeID, job.title)
             guard startIsCurrent(job.id, generation: generation) else {
                 return await abandonStart(job, sessionID: runtimeID, generation: generation)
@@ -1425,6 +1559,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             if case .failed = self.job(job.id)?.status {
                 return failedStartReply(job.id)
             }
+            // Hermes took the request: the job is kept in its bot's work
+            // registry. A start that failed or was abandoned isn't.
+            keep()
             if self.job(job.id)?.status == .starting {
                 update(job.id) { $0.status = .running }
             }
@@ -1440,7 +1577,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             // turn (its events moved the job on) is not a failed start.
             switch self.job(job.id)?.status {
             case .running?, .needsInput?, .finished?:
+                keep()  // Hermes took it after all
                 if joinsCall { adoptCallChat(job.id) }
+                armCallback(job.id)  // a "call me when it's done" still calls
                 startPollingIfNeeded()
                 return startedReply(job)
             case .failed?:
@@ -1465,7 +1604,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     func continueJob(
         instructions: String,
         in chat: VoiceThreadTarget,
-        onJobCreated: (@MainActor (UUID) -> Void)? = nil
+        onJobCreated: (@MainActor (UUID) -> Void)? = nil,
+        onRuntime: (@MainActor (String) -> Void)? = nil
     ) async -> String {
         let activeCount = activeJobCount
         guard activeCount < Self.maximumActiveJobs else {
@@ -1475,6 +1615,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             id: UUID(),
             title: Self.title(for: instructions),
             instructions: instructions,
+            // A Watch call on a profile the iPhone isn't on (#1564) keeps
+            // its chat there.
+            profile: chat.profile,
             runtimeSessionID: chat.runtimeSessionID,
             storedSessionID: chat.storedSessionID,
             status: .starting,
@@ -1488,11 +1631,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         jobs.append(job)
         onJobCreated?(job.id)
         let generation = generation
-        Task { [weak self] in await self?.sendContinuedJob(job.id, in: chat, generation: generation) }
+        Task { [weak self] in await self?.sendContinuedJob(job.id, in: chat, generation: generation, onRuntime: onRuntime) }
         return startedReply(job)
     }
 
-    private func sendContinuedJob(_ jobID: UUID, in chat: VoiceThreadTarget, generation: UInt64) async {
+    /// `onRuntime` hears the runtime Hermes resumed the chat on.
+    private func sendContinuedJob(
+        _ jobID: UUID, in chat: VoiceThreadTarget, generation: UInt64, onRuntime: (@MainActor (String) -> Void)? = nil
+    ) async {
         while generation == self.generation, job(jobID)?.status == .starting {
             // One request at a time in the chat: an earlier job of the call
             // still running there, or a turn typed in it, goes first.
@@ -1505,9 +1651,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
         guard generation == self.generation, job(jobID)?.status == .starting else { return }
         do {
-            let runtimeID = try await backend.resolveThreadRuntime(chat)
+            let runtimeID = try await resolveRuntime(of: chat)
             guard generation == self.generation, job(jobID)?.status == .starting else { return }
             let request = job(jobID)?.instructions ?? ""
+            if !runtimeID.isEmpty { onRuntime?(runtimeID) }
             update(jobID) {
                 if !runtimeID.isEmpty { $0.runtimeSessionID = runtimeID }
                 $0.requestSent = true
@@ -1533,14 +1680,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// job's own call runs and nothing is attached yet, and only for a job
     /// on the profile in use that Hermes took.
     private func adoptCallChat(_ jobID: UUID) {
-        guard liveThread == nil, liveCallID != callChatClosedCallID, let job = job(jobID), job.profile == nil,
+        // A Bot Chat call whose chat was deleted takes its next chat on that bot.
+        guard liveThread == nil, liveCallID != callChatClosedCallID, let job = job(jobID), job.profile == deletedLiveThread?.profile,
               let callID = job.callAnchor?.callID, callID == liveCallID, liveCallTranscript?() != nil,
               let runtimeID = job.runtimeSessionID, !runtimeID.isEmpty else { return }
         switch job.status {
         case .failed, .cancelled: return
         case .starting, .running, .needsInput, .finished: break
         }
-        let thread = VoiceThreadTarget(runtimeSessionID: runtimeID, storedSessionID: job.storedSessionID, title: job.title)
+        let thread = VoiceThreadTarget(runtimeSessionID: runtimeID, storedSessionID: job.storedSessionID, title: job.title, profile: job.profile)
+        // Deleted while its job was starting (issue 1797).
+        guard !isDeletedChat(thread) else { return }
         callChatJobID = jobID
         update(jobID) { $0.isCallChat = true }
         liveThread = thread
@@ -1626,9 +1776,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             return .joined(title: job.title)
         }
         let generation = generation
-        // Marked in the chat like the call's other turns there; a background
-        // job's own prompt carries no such mark.
-        let text = job.isThreadTurn ? Self.threadTurnText(for: words) : words
+        // Marked as voice's like the call's turns in its chat, so a job's
+        // chat that only voice used still leaves Desktop's list once
+        // answered (the plugin's voice_archive).
+        let text = Self.threadTurnText(for: words)
         var attempts = 0
         var waits = 0
         while true {
@@ -1792,6 +1943,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// among them, and any job update.
     func dropPendingNotices() {
         chatNotes.removeAll()
+        workUpdates.removeAll()
+        workUpdatesOut.removeAll()
         callChatPrompts.removeAll()
         // Each take consumes a notice; the cap only guards the loop, far
         // above what the job limits (3 running, 10 settled) can queue.
@@ -1799,8 +1952,103 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         while dropped < 256, takePendingNotice() != nil { dropped += 1 }
     }
 
+    /// Chats deleted while the app ran, by any of their ids: here, from
+    /// another profile's row, or found gone when a call's turn went to
+    /// resume one (a Desktop delete). A call never pins one again (issue 1797).
+    private var deletedChatIDs: Set<String> = []
+
+    /// The chat the call was attached to until it was deleted: the call's
+    /// new chat is made on its bot. Cleared when the call leaves.
+    private(set) var deletedLiveThread: VoiceThreadTarget?
+
+    /// Whether `chat` was deleted (`noteChatDeleted`).
+    func isDeletedChat(_ chat: VoiceThreadTarget) -> Bool {
+        [chat.runtimeSessionID, chat.storedSessionID].compactMap { $0 }.contains { deletedChatIDs.contains($0) }
+    }
+
+    /// The chat `sessionIDs` name was deleted. A call attached to it lets go
+    /// of it but stays open to a new one: unlike a hang-up, the call's next
+    /// ordinary request makes a chat and the call goes on there, as a call
+    /// that started with none does (#1250). Turns still queued for the
+    /// deleted chat fail when they find it gone, and are said so; one
+    /// already in it is let go of, as at a hang-up.
+    func noteChatDeleted(_ sessionIDs: Set<String>) {
+        let ids = sessionIDs.filter { !$0.isEmpty }
+        guard !ids.isEmpty else { return }
+        deletedChatIDs.formUnion(ids)
+        // A call's request already running in the deleted chat (a Watch
+        // call's later requests included, which have no liveThread) is let
+        // go of, as at a hang-up: its end, its OK or its question is never
+        // said to the call nor counted against a bare yes. One still
+        // starting fails when it finds the chat gone, and is said so.
+        for index in jobs.indices where !jobs[index].isDetachedThreadTurn && !jobs[index].isThreadTurn
+            && (jobs[index].callAnchor != nil || jobs[index].isCallChat || jobs[index].sharesCallChat)
+            && (jobs[index].status == .running || jobs[index].status == .needsInput)
+            && [jobs[index].runtimeSessionID, jobs[index].storedSessionID].compactMap({ $0 }).contains(where: ids.contains) {
+            jobs[index].outcomeDelivered = true
+            jobs[index].isDetachedThreadTurn = true
+            jobs[index].settledByPoll = false
+        }
+        guard let thread = liveThread, ids.contains(where: { backend.threadOwnsSession(thread, $0) }) else { return }
+        deletedLiveThread = thread
+        liveThread = nil
+        // Its bot still hears the call left it, as at a hang-up, so nothing
+        // it holds for the call waits on.
+        if let kept = keptCallChat {
+            keptCallChat = nil
+            backend.callLeftChat(kept.profile, kept.chat, kept.call)
+        }
+        // The request whose chat it was is let go of, as at a hang-up: a
+        // later adoption replaces callChatJobID, and neither its outcome
+        // nor a question or approval it waits on is said to this call or a
+        // later one.
+        if let id = callChatJobID, let index = jobs.firstIndex(where: { $0.id == id }) {
+            jobs[index].outcomeDelivered = true
+            jobs[index].isDetachedThreadTurn = true
+            jobs[index].settledByPoll = false
+        }
+        // A turn already in there never finds the chat gone: it is let go of
+        // too, as at a hang-up, so its end, its OK or its question is never
+        // said to the call nor counted against a bare yes. Turns still
+        // queued fail when they find it gone, and are said so.
+        for index in jobs.indices where jobs[index].isThreadTurn && !jobs[index].isDetachedThreadTurn
+            && jobs[index].threadTurnSubmitted
+            && threadTargets[jobs[index].id].map({ Self.sameChat($0, thread) }) == true {
+            jobs[index].outcomeDelivered = true
+            jobs[index].isDetachedThreadTurn = true
+            jobs[index].settledByPoll = false
+        }
+        callChatJobID = nil
+        callChatClaim = nil
+        chatNotes.removeAll()
+        callChatPrompts.removeAll()
+        notedChatTurns.removeAll()
+        lastUnidentifiedChatReply = nil
+    }
+
+    /// The runtime `chat`'s next turn runs on. A chat Hermes has no session
+    /// for any more (deleted in Desktop, say) is noted as deleted, so the
+    /// call's next request makes a new one; this turn still fails.
+    private func resolveRuntime(of chat: VoiceThreadTarget) async throws -> String {
+        let generation = generation
+        do {
+            return try await backend.resolveThreadRuntime(chat)
+        } catch {
+            // Not after a reset: that answer is an earlier scope's.
+            if generation == self.generation, HermesClient.isSessionNotFoundError(error) {
+                noteChatDeleted(Set([chat.runtimeSessionID, chat.storedSessionID].compactMap { $0 }))
+            }
+            throw error
+        }
+    }
+
     func detachLiveThread() {
         liveThread = nil
+        deletedLiveThread = nil
+        if let kept = keptCallChat {
+            keptCallChat = nil
+            backend.callLeftChat(kept.profile, kept.chat, kept.call)
+        }
         let callChatJob = callChatJobID
         // A first request still starting is the call's too.
         let claimedJob = callChatClaim?.jobID
@@ -1808,6 +2056,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         callChatClaim = nil
         callChatClosedCallID = liveCallID
         chatNotes.removeAll()
+        workUpdates.removeAll()
+        workUpdatesOut.removeAll()
         callChatPrompts.removeAll()
         screenshotNotesHeard.removeAll()
         notedChatTurns.removeAll()
@@ -1925,7 +2175,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             // the rest. Its settling pumps the queue again. A turn left
             // running in another chat (an earlier call's) doesn't.
             let chatHasSentTurn = jobs.contains { job in
-                job.isThreadTurn && job.threadTurnSubmitted && job.status.isActive
+                job.isThreadTurn && job.threadTurnSubmitted && job.status.isActive && !job.isDetachedThreadTurn
                     && threadTargets[job.id].map { Self.sameChat($0, thread) } == true
             } || callChatJobRuns(in: thread)
             if chatHasSentTurn { return }
@@ -1939,7 +2189,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             do {
                 // The runtime id is known before the send, so none of the
                 // turn's events arrive under an id it doesn't own yet.
-                let target = try await backend.resolveThreadRuntime(thread)
+                let target = try await resolveRuntime(of: thread)
                 guard generation == self.generation else { return }
                 if !target.isEmpty { update(next.id) { $0.runtimeSessionID = target } }
                 // Resolving can suspend (a resume): a turn that started in
@@ -2135,6 +2385,29 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         return (summary + failures).joined(separator: " ")
     }
 
+    /// A call's job the user stopped from its bot's Work panel (M5): the
+    /// plugin already interrupted its session, so its running request is
+    /// cancelled here, never left for polling to settle as finished. True
+    /// when one was.
+    @discardableResult
+    func stoppedFromWorkPanel(sessionID: String) -> Bool {
+        let stopped = jobs.filter { $0.status.isActive && $0.owns(sessionID: sessionID)
+            && ($0.isThreadTurn ? $0.threadTurnSubmitted : $0.requestSent) }
+        guard !stopped.isEmpty else { return false }
+        for job in stopped {
+            update(job.id) {
+                $0.status = .cancelled
+                $0.outcomeDelivered = true
+            }
+            callbackJobMayHaveSettled(job.id)
+        }
+        // The chat is free: the call's turns waiting on it go in (#1250).
+        if stopped.contains(where: \.isCallChat) { pumpThreadTurns() }
+        stopPollingIfIdle()
+        pruneSettledJobs()
+        return true
+    }
+
     /// Cancels one active job. Returns what to say, or nil when no active
     /// job has that id.
     func cancel(jobID: UUID) async -> String? {
@@ -2215,6 +2488,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         threadTask = nil
         jobs.removeAll()
         lastJobNumber = 0
+        keptCallChat = nil  // another dashboard's chat: never told to the next
         chatMatches = []
         asksBeforeSending = false
         lastCallResult = nil
@@ -2226,6 +2500,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         callChatJobID = nil
         callChatClaim = nil
         callChatClosedCallID = nil
+        deletedChatIDs.removeAll()
+        deletedLiveThread = nil
         liveCallID = nil
         liveCallStartedAt = nil
         callOpening = nil
@@ -2242,6 +2518,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         screenCards.removeAll()
         threadTargets.removeAll()
         chatNotes.removeAll()
+        workUpdates.removeAll()
+        workUpdatesOut.removeAll()
         callChatPrompts.removeAll()
         screenshotNotesHeard.removeAll()
         notedChatTurns.removeAll()
@@ -2254,6 +2532,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Only events addressed to a job session change anything.
     func observe(_ event: StreamEvent) {
         guard let sessionID = Self.sessionID(for: event) else { return }
+        if case .messageStart = event { noteTurnStart(sessionID) }
         guard let index = Self.observingIndex(in: jobs, sessionID: sessionID) else {
             noteUnownedChatTurn(event, sessionID: sessionID)
             return
@@ -2391,9 +2670,18 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             guard lastUnidentifiedChatReply != reply else { return }
         }
         rememberChatTurn(messageID, reply: reply)
+        let asked = turnAsked.removeValue(forKey: sessionID) ?? askedFor(thread)
+        // A Bot Chat's turn nobody asked for is its coordinator reporting
+        // work (the plugin's work update): the call speaks it, as it speaks
+        // a job's result (Eric 2026-11-02, "Bot Chat calls only").
+        if asked == .nobody, backend.isBotChat(thread) {
+            lastCallResult = nil
+            queueWorkUpdate(reply)
+            return
+        }
         // A voice request's own text is never passed off as typed.
-        var prompt = backend.latestThreadPrompt(thread)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let typed = prompt, typed.isEmpty || typed.hasPrefix(Self.threadTurnText(for: "")) { prompt = nil }
+        var prompt: String?
+        if case .typed(let typed) = asked { prompt = typed }
         // The chat replied after any job result: a read-back reads the chat.
         lastCallResult = nil
         queueChatNote(ChatNote(text: Self.chatContextPrompt(typed: prompt, reply: reply)))
@@ -2529,6 +2817,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// The note a live model gets for a typed exchange. Quiet by design:
     /// someone who typed may not want it read out (#363).
     static func chatContextPrompt(typed: String?, reply: String) -> String {
+        // Named before the clip, so a clip never cuts a path in two.
+        let reply = GatewayMediaTags.namingFiles(in: reply)
         let clippedReply = reply.count > maximumChatContextReplyCharacters
             ? String(reply.prefix(maximumChatContextReplyCharacters)) + "\n[…]"
             : reply
@@ -2565,6 +2855,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
         defer { pruneSettledJobs() }
         guard let item = takeNotice(withReason: false) else { return nil }
+        workUpdatesOut[item.jobID] = nil
         // Spoken at once: no confirmation follows.
         if let job = job(item.jobID) { noteResultReported(job) }
         return item.notice
@@ -2611,20 +2902,131 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// A notice taken with `takePendingNoticeForJob` went out.
     func noticeSent(jobID: UUID) {
+        workUpdatesOut[jobID] = nil
         guard releaseInFlight(jobID) else { return }
         if let job = job(jobID) { noteResultReported(job) }
         pruneSettledJobs()
     }
 
+    func noteChatReport(_ reply: String, sessionID: String) -> Bool {
+        let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        let thread = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
+        let asked = turnAsked.removeValue(forKey: sessionID) ?? askedFor(thread)
+        guard !text.isEmpty, backend.isBotChat(thread), asked == .nobody else { return false }
+        return queueWorkUpdate(text)
+    }
+
+    /// Who asked for each Bot Chat turn under way, taken when it started:
+    /// by its end, a message typed while it ran (Hermes runs it next) sits
+    /// unanswered in the transcript and would pass for its prompt.
+    private var turnAsked: [String: AskedFor] = [:]
+    /// The last message a Bot Chat's turn took as its prompt, by session:
+    /// its words and which time they were sent ("yes" twice is two prompts).
+    private var lastTakenPrompt: [String: (words: String, occurrence: Int)] = [:]
+
+    /// A Bot Chat turn starts: it answers the first message no earlier turn
+    /// took, or nobody (the plugin's hidden work update). Not open on this
+    /// device: unknown here, and its end falls back to `askedFor`.
+    private func noteTurnStart(_ sessionID: String) {
+        let thread = liveThread.flatMap { backend.threadOwnsSession($0, sessionID) ? $0 : nil }
+            ?? VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
+        guard backend.isBotChat(thread), let messages = backend.openThreadMessages(thread) else {
+            // Turns it can't see may answer what's typed meanwhile: once it
+            // opens again, the transcript's last reply is where it starts.
+            turnAsked[sessionID] = nil
+            lastTakenPrompt[sessionID] = nil
+            return
+        }
+        func words(_ message: ChatMessage) -> String { message.content.trimmingCharacters(in: .whitespacesAndNewlines) }
+        // A steer goes into the turn under way: never a turn's prompt.
+        let prompts = messages.indices.filter { messages[$0].role == .user && !messages[$0].isSteer }
+        func taking(_ index: Int) -> (words: String, occurrence: Int) {
+            let text = words(messages[index])
+            return (text, prompts.filter { $0 <= index && words(messages[$0]) == text }.count)
+        }
+        let firstNew: Int
+        if let taken = lastTakenPrompt[sessionID],
+           let index = prompts.filter({ words(messages[$0]) == taken.words }).dropFirst(taken.occurrence - 1).first {
+            firstNew = index + 1
+        } else {
+            firstNew = messages.lastIndex(where: { $0.role == .assistant }).map { $0 + 1 } ?? messages.startIndex
+        }
+        // Everything above it is taken, whoever this turn answers.
+        if let taken = prompts.last(where: { $0 < firstNew }) { lastTakenPrompt[sessionID] = taking(taken) }
+        guard let next = prompts.first(where: { $0 >= firstNew }) else {
+            turnAsked[sessionID] = .nobody
+            return
+        }
+        let message = messages[next]
+        lastTakenPrompt[sessionID] = taking(next)
+        let prompt = AppState.liveVoiceTypedPrompt(message)
+        turnAsked[sessionID] = prompt.isEmpty ? .unknown
+            : prompt.hasPrefix(Self.threadTurnText(for: "")) ? .voice : .typed(prompt)
+    }
+
+    /// Who asked for the chat's latest turn, from its open transcript: a
+    /// message typed there, a voice request, or nobody (the plugin's hidden
+    /// work-update turn never shows), or not known (several messages wait
+    /// on replies: something typed, so it stays quiet).
+    enum AskedFor: Equatable {
+        case nobody
+        case unknown
+        case voice
+        case typed(String)
+    }
+
+    private func askedFor(_ thread: VoiceThreadTarget) -> AskedFor {
+        guard let prompt = backend.latestThreadPrompt(thread)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !prompt.isEmpty else {
+            return backend.threadAwaitsSeveralPrompts(thread) ? .unknown : .nobody
+        }
+        return prompt.hasPrefix(Self.threadTurnText(for: "")) ? .voice : .typed(prompt)
+    }
+
+    @discardableResult
+    private func queueWorkUpdate(_ reply: String) -> Bool {
+        // Said as is in every mode: links read as their text, emoji and
+        // narrated actions dropped, as Classic speaks them.
+        let reply = SpokenTextFilter.filter(Self.linkTextOnly(reply)).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !reply.isEmpty else { return false }
+        let clipped = reply.count > Self.maximumChatContextReplyCharacters
+            ? String(reply.prefix(Self.maximumChatContextReplyCharacters)) + "…" : reply
+        workUpdates.append((UUID(), clipped))
+        if workUpdates.count > Self.maximumPendingChatContext {
+            workUpdates.removeFirst(workUpdates.count - Self.maximumPendingChatContext)
+        }
+        onNoticePending?()
+        return true
+    }
+
+    /// Markdown links (a work update's `[Open W3](conduit://…)`) as their text.
+    static func linkTextOnly(_ text: String) -> String {
+        text.replacingOccurrences(of: #"\[([^\]\n]+)\]\([^)\s]+\)"#, with: "$1", options: .regularExpression)
+    }
+
+    /// A Bot Chat call's coordinator reports, oldest first, waiting to be
+    /// spoken; and those handed out but not yet sent, so one that never
+    /// reached the user is spoken again.
+    private var workUpdates: [(id: UUID, text: String)] = []
+    private var workUpdatesOut: [UUID: String] = [:]
+
     /// `withReason` adds Hermes' reason to a failure's notice: not for one
     /// spoken as is, where a raw provider error would be read out.
     private func takeNotice(withReason: Bool) -> (notice: VoiceBackgroundJobNotice, jobID: UUID)? {
+        if !workUpdates.isEmpty {
+            let update = workUpdates.removeFirst()
+            workUpdatesOut[update.id] = update.text
+            return (.speak(update.text), update.id)
+        }
         for index in jobs.indices {
             let job = jobs[index]
             // A thread turn its call let go of is never announced, nor the
             // request whose chat an ended call took (#1250).
             if job.isDetachedThreadTurn { continue }
             if job.isThreadTurn, job.outcomeDelivered || liveThread == nil { continue }
+            // One an earlier run of the app left: said only to a call in its
+            // call's chat (M5b).
+            if job.isRestored, !restoredJobBelongsToThisCall(job) { continue }
             if job.status == .needsInput, !job.inputRequestDelivered {
                 jobs[index].inputRequestDelivered = true
                 return (.speak(Self.waitingNotice(for: job)), job.id)
@@ -2669,8 +3071,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             return questionNotice(job.title, question: question)
         }
         guard let approval = job.waitingApproval else { return waitingNotice(job.title) }
-        let asked = approval.description.trimmingCharacters(in: .whitespacesAndNewlines)
-        let what = asked.isEmpty ? approval.command : asked
+        let asked = HermesApprovalText.description(approval.description).trimmingCharacters(in: .whitespacesAndNewlines)
+        let what = asked.isEmpty ? HermesApprovalText.command(approval.command) : asked
         let clipped = what.count > 200 ? String(what.prefix(200)) + "…" : what
         return AppLocalization.string("\(job.title) needs your OK to go on: \(clipped). Say yes to allow it once, or no.")
     }
@@ -2704,6 +3106,15 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// A notice taken with `takePendingNoticeForJob` never reached the user:
     /// make it pending again.
     func returnUndeliveredNotice(jobID: UUID) {
+        if let text = workUpdatesOut.removeValue(forKey: jobID) {
+            releaseInFlight(jobID)
+            workUpdates.insert((jobID, text), at: 0)
+            if workUpdates.count > Self.maximumPendingChatContext {
+                workUpdates.removeFirst(workUpdates.count - Self.maximumPendingChatContext)
+            }
+            noticeMayBePending()
+            return
+        }
         releaseInFlight(jobID)
         update(jobID) { job in
             if job.status == .needsInput {
@@ -2810,7 +3221,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 settledThreadTurns.append(job.id)
                 continue
             }
-            if readsRepliesWhenSettling || liveCallReadsReplies, !job.isThreadTurn, job.result == nil {
+            if readsRepliesWhenSettling || liveCallReadsReplies || job.isRestored, !job.isThreadTurn, job.result == nil {
                 settledJobs.append(job.id)
                 continue
             }
@@ -2882,6 +3293,71 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
     }
 
+    // MARK: Saved ledger (M5b)
+
+    /// How many saved jobs a relaunch brings back, newest first.
+    static let maximumSavedJobs = 12
+    /// A job is no longer taken back this long after it started.
+    static let savedJobMaximumAge: TimeInterval = 24 * 60 * 60
+
+    private func scheduleLedgerSave() {
+        guard !ledgerSaveScheduled else { return }
+        ledgerSaveScheduled = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.ledgerSaveScheduled = false
+            self.backend.saveLedger(self.savedLedger())
+        }
+    }
+
+    /// The jobs a relaunch should get back: background jobs in sessions of
+    /// their own still running, or settled with an outcome nobody heard.
+    func savedLedger() -> [SavedVoiceJob] {
+        let kept = jobs.filter { job in
+            guard !job.isThreadTurn, !job.isDetachedThreadTurn, !job.isCallChat, !job.continuesChat,
+                  !(job.runtimeSessionID ?? "").isEmpty, job.requestSent || job.isRestored else { return false }
+            if job.status.isActive { return true }
+            return !job.outcomeDelivered && !job.calledAbout
+        }
+        // Running ones always, then the newest settled ones in what's left.
+        let running = kept.filter { $0.status.isActive }
+        let settled = kept.filter { !$0.status.isActive }.suffix(max(0, Self.maximumSavedJobs - running.count))
+        let ids = Set((running + settled).map(\.id))
+        return kept.filter { ids.contains($0.id) }.compactMap { SavedVoiceJob($0) }
+    }
+
+    /// Brings back what an earlier run saved. A job already in the ledger
+    /// (by its session) stays as it is; the poll settles the rest, reading
+    /// their replies from their chats.
+    func restore(_ saved: [SavedVoiceJob], now: Date = Date()) {
+        var added = false
+        for entry in saved {
+            guard var job = entry.job else { continue }
+            // A day on, a job's turn is long over: its chat has the rest.
+            if now.timeIntervalSince(job.startedAt) > Self.savedJobMaximumAge { continue }
+            guard !jobs.contains(where: { $0.id == job.id || ($0.runtimeSessionID != nil && $0.runtimeSessionID == job.runtimeSessionID) })
+            else { continue }
+            // Its number as the user heard it, unless this run gave it out.
+            if job.number <= 0 || jobs.contains(where: { $0.number == job.number }) {
+                lastJobNumber += 1
+                job.number = lastJobNumber
+            }
+            lastJobNumber = max(lastJobNumber, job.number)
+            jobs.append(job)
+            added = true
+        }
+        guard added else { return }
+        startPollingIfNeeded()
+        noticeMayBePending()
+    }
+
+    /// A job an earlier run left is said to a live call kept with the chat
+    /// its own call was kept with, and to no other call.
+    private func restoredJobBelongsToThisCall(_ job: VoiceBackgroundJob) -> Bool {
+        guard let liveThread, !job.callChatIDs.isEmpty else { return false }
+        return job.callChatIDs.contains { backend.threadOwnsSession(liveThread, $0) }
+    }
+
     // MARK: Helpers
 
     /// Keeps the ledger bounded over a long conversation: only the most
@@ -2949,6 +3425,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Hermes' reply in the attached chat, for the live model. Written for
     /// the model, not shown as UI copy, so not localized.
     static func threadReplyPrompt(result: String) -> String {
+        // Named before the clip, so a tag is never cut in half.
+        let result = GatewayMediaTags.namingFiles(in: result)
         let clipped = result.count > maximumResultCharacters
             ? String(result.prefix(maximumResultCharacters)) + "\n[…]"
             : result
@@ -2962,12 +3440,15 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// A chat reply handed to the live model, fenced as data: the chat's
     /// text can't close the block and pass as instructions.
     static func replyBlock(_ reply: String) -> String {
-        let fenced = reply.replacingOccurrences(of: "</latest_reply>", with: "</ latest_reply>", options: .caseInsensitive)
+        // An attached file is named, not given by its path, which the model
+        // would read out.
+        let fenced = GatewayMediaTags.namingFiles(in: reply).replacingOccurrences(of: "</latest_reply>", with: "</ latest_reply>", options: .caseInsensitive)
         return "<latest_reply>\n\(fenced)\n</latest_reply>"
     }
 
     /// The hand-back submitted to the voice conversation's own session.
     static func completionPrompt(title: String, result: String) -> String {
+        let result = GatewayMediaTags.namingFiles(in: result)
         let clipped: String
         if result.count > maximumResultCharacters {
             clipped = String(result.prefix(maximumResultCharacters)) + "\n[…]"

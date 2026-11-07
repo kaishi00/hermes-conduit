@@ -10,13 +10,53 @@
 //
 
 import Foundation
+import os
 
 final class SessionPresentationCache {
     /// The app's instance writes to disk off the main thread: every caller
     /// is AppState (main actor), and a full-store encode plus UserDefaults
     /// write used to run there on each streaming flush and turn completion,
-    /// a cost that grew with the length of the chat.
-    static let shared = SessionPresentationCache(writesAsynchronously: true)
+    /// a cost that grew with the length of the chat. Its stores are files of
+    /// their own (`SessionPresentationFiles`), out of UserDefaults.standard.
+    static let shared = makeShared()
+
+    /// The first launch after the move reads and rewrites each store once,
+    /// on the thread that first reads `shared`.
+    private static func makeShared() -> SessionPresentationCache {
+        let files = SessionPresentationFiles(directory: SessionPresentationFiles.defaultDirectory())
+        return SessionPresentationCache(storage: storage(movingFrom: .standard, to: files), writesAsynchronously: true)
+    }
+
+    private static let storeKey = "conduit.sessionPresentation.v1"
+    private static let pendingToolsKey = "conduit.sessionPresentation.pendingTools.v1"
+    private static let tombstonesKey = "conduit.sessionPresentation.tombstones.v1"
+    private static let storedKeys = [storeKey, pendingToolsKey, tombstonesKey]
+
+    /// Where the stores live this launch: `files`, once every store an
+    /// earlier build kept in `legacy` is there and gone from `legacy`. The
+    /// stores `legacy` holds are the newer set (a build from before the
+    /// move ran since), so they replace the files, and a store they don't
+    /// hold is empty. When one can't be written, nothing is removed and the
+    /// stores stay on `legacy` this launch, so none reads as empty and
+    /// nothing newer goes to a file the move would replace; a later launch
+    /// moves them. A move cut short while it took the stores out of
+    /// `legacy` left the files holding what `legacy` still does: the stores
+    /// already taken out are only in the files then, so they stay.
+    static func storage(movingFrom legacy: UserDefaults, to files: SessionPresentationFiles) -> SessionPresentationStorage {
+        let held = storedKeys.compactMap { key in legacy.data(forKey: key).map { (key: key, data: $0) } }
+        guard !held.isEmpty else { return files }
+        let cutShort = held.allSatisfy { files.data(forKey: $0.key) == $0.data }
+        if !cutShort {
+            guard held.allSatisfy({ files.storeData($0.data, forKey: $0.key) }) else { return legacy }
+            for key in storedKeys where !held.contains(where: { $0.key == key }) {
+                files.removeObject(forKey: key)
+            }
+        }
+        for store in held {
+            legacy.removeObject(forKey: store.key)
+        }
+        return files
+    }
     static let maxUnconfirmedPendingDecisionAge: TimeInterval = 24 * 60 * 60
 
     /// Returns whether a clarification still holds an unresolved decision.
@@ -134,38 +174,118 @@ final class SessionPresentationCache {
         var unconfirmedPendingDecisionAt: Date?
     }
 
+    /// Encodes the sessions store as `JSONEncoder` would, but with the chats
+    /// sorted by key (`String.<`, so the bytes are deterministic; not
+    /// necessarily `.sortedKeys`' order for non-ASCII keys), reusing each row's
+    /// bytes from the last encode when the row is unchanged. A streaming
+    /// flush changes a row or two of one chat, but encoding the whole store
+    /// (up to `maxSessions` chats of `maxMessagesPerSession` rows) again made
+    /// each write cost the size of every cached chat (#1730). Used only
+    /// where the store is written: the write queue, or the main thread for a
+    /// synchronous cache, never both.
+    private final class SessionsStoreEncoder {
+        private let encoder = JSONEncoder()
+        /// Each row's bytes as last encoded, by store key and row id.
+        private var rows: [String: [String: (record: CachedMessage, data: Data)]] = [:]
+
+        func encode(_ store: [String: CachedSession]) -> Data? {
+            var keptRows: [String: [String: (record: CachedMessage, data: Data)]] = [:]
+            var output = Data("{".utf8)
+            var firstSession = true
+            // In key order, so the same chats always write the same bytes:
+            // the move out of UserDefaults recognizes one cut short by
+            // comparing stores byte for byte (`storage(movingFrom:to:)`).
+            for (key, session) in store.sorted(by: { $0.key < $1.key }) {
+                // The session without its rows, then its rows spliced in
+                // where the empty list is: every other field stays the
+                // encoder's own, so one added to CachedSession is kept.
+                var header = session
+                header.messages = []
+                guard let keyData = try? encoder.encode(key),
+                      let headerData = try? encoder.encode(header),
+                      let emptyRows = headerData.range(of: Data(#""messages":[]"#.utf8)) else {
+                    // Only a change to CachedSession's encoding gets here,
+                    // and it would stop every presentation write.
+                    assertionFailure("A cached session no longer encodes an empty messages list")
+                    rows = [:]
+                    return nil
+                }
+                let earlierRows = rows[key] ?? [:]
+                var sessionRows: [String: (record: CachedMessage, data: Data)] = [:]
+                var rowsData = Data(#""messages":["#.utf8)
+                for (index, record) in session.messages.enumerated() {
+                    let data: Data
+                    if let earlier = earlierRows[record.id], earlier.record == record {
+                        data = earlier.data
+                    } else if let encoded = try? encoder.encode(record) {
+                        data = encoded
+                    } else {
+                        rows = [:]
+                        return nil
+                    }
+                    sessionRows[record.id] = (record, data)
+                    if index > 0 { rowsData.append(UInt8(ascii: ",")) }
+                    rowsData.append(data)
+                }
+                rowsData.append(UInt8(ascii: "]"))
+                keptRows[key] = sessionRows
+                var sessionData = headerData
+                sessionData.replaceSubrange(emptyRows, with: rowsData)
+                if !firstSession { output.append(UInt8(ascii: ",")) }
+                firstSession = false
+                output.append(keyData)
+                output.append(UInt8(ascii: ":"))
+                output.append(sessionData)
+            }
+            output.append(UInt8(ascii: "}"))
+            rows = keptRows
+            return output
+        }
+    }
+
     /// A resume without explicit active-turn confirmation is inherently
     /// ambiguous for pending decisions. Keep an unconfirmed decision across a
     /// cold launch for a bounded grace period, then prefer a stale-card miss
     /// over making an old request answerable forever.
-    private let defaults: UserDefaults
+    private let storage: SessionPresentationStorage
     private let now: () -> Date
-    private let storageKey = "conduit.sessionPresentation.v1"
-    private let pendingToolsStorageKey = "conduit.sessionPresentation.pendingTools.v1"
-    private let tombstonesStorageKey = "conduit.sessionPresentation.tombstones.v1"
+    private let storageKey = SessionPresentationCache.storeKey
+    private let pendingToolsStorageKey = SessionPresentationCache.pendingToolsKey
+    private let tombstonesStorageKey = SessionPresentationCache.tombstonesKey
     private let maxSessions = 32
     private let maxMessagesPerSession = 320
 
     /// Decoded copies of the two stores. Every public operation used to
-    /// decode the whole JSON blob from UserDefaults (often two or three
-    /// times per save); the decoded value is now kept and reused.
+    /// decode the whole JSON blob from storage (often two or three times
+    /// per save); the decoded value is now kept and reused.
     private var memoryStore: [String: CachedSession]?
     private var memoryPendingTools: [String: [CachedMessage]]?
     /// Bytes each memory copy was decoded from or encoded to. In synchronous
-    /// mode the copy is reused only while UserDefaults still holds exactly
-    /// these bytes, so a write made behind this instance's back (another
-    /// instance on the same defaults, a test fixture) is still picked up.
+    /// mode the copy is reused only while storage still holds exactly these
+    /// bytes, so a write made behind this instance's back (another instance
+    /// on the same defaults, a test fixture) is still picked up.
     private var memoryStoreData: Data?
     private var memoryPendingToolsData: Data?
+    /// Each row's record as `save` last made it, with the message it was
+    /// made from, by message id: a save makes records only for the rows
+    /// that changed, so leaving a long chat or a streaming flush doesn't
+    /// fingerprint every row's full text, tool output included, again. Holds
+    /// the last save's rows. Main thread only, as `save` is.
+    private var lastSavedRecords: [String: (message: ChatMessage, record: CachedMessage)] = [:]
     /// Guards the memory copies above. Callers are on the main actor,
     /// except `prewarm()`, which decodes on a background queue outside the
     /// lock and installs its result under it.
     private let memoryLock = NSLock()
+    /// Encodes the sessions store for each write; see `SessionsStoreEncoder`.
+    private let sessionsEncoder = SessionsStoreEncoder()
     /// Removals the stores on disk may not reflect yet (asynchronous mode),
     /// each with the write ticket both stores must reach before it can be
     /// dropped; see `removingDurably`. Guarded by `memoryLock`; nil until
     /// read from disk.
     private var tombstones: [(tombstone: Tombstone, tickets: [StoreKind: Int])]?
+    /// The tombstones' last write didn't land (a full disk): a store write
+    /// that lands writes them again. Guarded by `memoryLock`.
+    private var tombstonesUnwritten = false
     /// Ticket of the newest write that reached disk for each store.
     /// Guarded by `memoryLock`.
     private var landedWriteTicket: [StoreKind: Int] = [:]
@@ -175,20 +295,29 @@ final class SessionPresentationCache {
     /// newer memory copy, so an older snapshot never lands after a newer one.
     private var writeTicket = 0
     private var newestWriteTicket: [StoreKind: Int] = [:]
-    /// When set, encoding and UserDefaults writes run on `writeQueue` and the
-    /// memory copies are authoritative (defaults may briefly lag behind).
+    /// When set, encoding and storage writes run on `writeQueue` and the
+    /// memory copies are authoritative (storage may briefly lag behind).
     /// Each queued write stores the memory copy as it is when the write
     /// runs, not as it was when it was queued. The app keeps itself alive
     /// through suspension until the queue drains (see AppState's background
     /// handling); nothing on the main thread may block on this queue.
     private let writeQueue: DispatchQueue?
 
-    init(
+    /// A cache whose stores are kept in `defaults`, as tests do.
+    convenience init(
         defaults: UserDefaults = .standard,
         now: @escaping () -> Date = { Date() },
         writesAsynchronously: Bool = false
     ) {
-        self.defaults = defaults
+        self.init(storage: defaults, now: now, writesAsynchronously: writesAsynchronously)
+    }
+
+    init(
+        storage: SessionPresentationStorage,
+        now: @escaping () -> Date = { Date() },
+        writesAsynchronously: Bool = false
+    ) {
+        self.storage = storage
         self.now = now
         self.writeQueue = writesAsynchronously
             ? DispatchQueue(label: "conduit.sessionPresentationCache.write", qos: .utility)
@@ -300,11 +429,13 @@ final class SessionPresentationCache {
         guard !cached.isEmpty else { return messages }
 
         var remaining = Set(cached.indices)
+        let pool = CachedPoolIndex(cached, stableToolID: stableToolID)
         var merged = messages.enumerated().map { position, original in
             var message = original
             guard let index = bestMatch(
                 for: message,
                 in: cached,
+                pool: pool,
                 remaining: remaining,
                 preferredPosition: position
             ) else {
@@ -853,13 +984,32 @@ final class SessionPresentationCache {
     ) {
         let ids = Set(sessionIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
         guard !ids.isEmpty else { return }
+        let signposter = ResponsivenessSignposts.signposter
+        let saving = signposter.beginInterval("Save presentation rows", id: signposter.makeSignpostID())
+        defer { signposter.endInterval("Save presentation rows", saving) }
 
         var store = load()
         // Masked input prompts are live-only: never written to disk.
-        let freshRecords = messages
-            .filter { $0.role != .inputPrompt }
-            .suffix(maxMessagesPerSession)
-            .map { CachedMessage($0) }
+        var savedRecords: [String: (message: ChatMessage, record: CachedMessage)] = [:]
+        // Lazily, so a long chat is walked only as far back as the rows kept.
+        let keptMessages = Array(
+            messages.lazy
+                .filter { $0.role != .inputPrompt }
+                .suffix(maxMessagesPerSession)
+        )
+        let freshRecords = keptMessages
+            .map { message -> CachedMessage in
+                // A row as it was last saved keeps its record.
+                let record: CachedMessage
+                if let saved = lastSavedRecords[message.id], saved.message == message {
+                    record = saved.record
+                } else {
+                    record = CachedMessage(message)
+                }
+                savedRecords[message.id] = (message, record)
+                return record
+            }
+        lastSavedRecords = savedRecords
         guard !freshRecords.isEmpty else {
             guard !preservePendingDecisionCards || !unconfirmedPendingDecisionKeys.isEmpty else { return }
             var changed = false
@@ -999,6 +1149,8 @@ final class SessionPresentationCache {
     }
 
     func clear(profile: String? = nil) {
+        // The last save's rows go too, text and all.
+        lastSavedRecords = [:]
         let prefix = profile.map { normalized($0) + "|" } ?? ""
         removingDurably([Tombstone(prefix: prefix, exact: false)]) { clearNow(profile: profile) }
     }
@@ -1013,8 +1165,8 @@ final class SessionPresentationCache {
             }
             // In asynchronous mode `removingDurably` queues the writes.
             if writeQueue == nil {
-                defaults.removeObject(forKey: storageKey)
-                defaults.removeObject(forKey: pendingToolsStorageKey)
+                storage.removeObject(forKey: storageKey)
+                storage.removeObject(forKey: pendingToolsStorageKey)
             }
             return
         }
@@ -1034,6 +1186,7 @@ final class SessionPresentationCache {
     /// deleted conversation cannot resurrect its presentation (including any
     /// pending decision cards) from a stale alias.
     func removeSessions(profile: String, sessionIDs: [String]) {
+        lastSavedRecords = [:]
         let removed = Set(sessionIDs.compactMap { sessionID -> String? in
             let trimmed = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : key(profile: profile, sessionID: trimmed)
@@ -1264,9 +1417,9 @@ final class SessionPresentationCache {
     func prewarm() {
         guard writeQueue != nil else { return }
         DispatchQueue.global(qos: .userInitiated).async { [self] in
-            let data = defaults.data(forKey: storageKey)
+            let data = storage.data(forKey: storageKey)
             let sessions = data.flatMap { try? JSONDecoder().decode([String: CachedSession].self, from: $0) } ?? [:]
-            let toolsData = defaults.data(forKey: pendingToolsStorageKey)
+            let toolsData = storage.data(forKey: pendingToolsStorageKey)
             let tools = toolsData.flatMap { try? JSONDecoder().decode([String: [CachedMessage]].self, from: $0) } ?? [:]
             memoryLock.withLock {
                 if memoryStore == nil {
@@ -1285,7 +1438,7 @@ final class SessionPresentationCache {
         memoryLock.lock()
         defer { memoryLock.unlock() }
         if writeQueue != nil, let memoryStore { return memoryStore }
-        let data = defaults.data(forKey: storageKey)
+        let data = storage.data(forKey: storageKey)
         if let memoryStore, data == memoryStoreData { return memoryStore }
         let decoded = withoutTombstonedKeys(
             data.flatMap { try? JSONDecoder().decode([String: CachedSession].self, from: $0) } ?? [:]
@@ -1304,11 +1457,11 @@ final class SessionPresentationCache {
         memoryLock.lock()
         defer { memoryLock.unlock() }
         memoryStore = store
-        guard let data = try? JSONEncoder().encode(store) else {
+        guard let data = sessionsEncoder.encode(store) else {
             memoryStore = nil
             return
         }
-        defaults.set(data, forKey: storageKey)
+        storage.storeData(data, forKey: storageKey)
         memoryStoreData = data
     }
 
@@ -1316,7 +1469,7 @@ final class SessionPresentationCache {
         memoryLock.lock()
         defer { memoryLock.unlock() }
         if writeQueue != nil, let memoryPendingTools { return memoryPendingTools }
-        let data = defaults.data(forKey: pendingToolsStorageKey)
+        let data = storage.data(forKey: pendingToolsStorageKey)
         if let memoryPendingTools, data == memoryPendingToolsData { return memoryPendingTools }
         let decoded = withoutTombstonedKeys(
             data.flatMap { try? JSONDecoder().decode([String: [CachedMessage]].self, from: $0) } ?? [:]
@@ -1337,16 +1490,26 @@ final class SessionPresentationCache {
         memoryPendingTools = store
         let key = pendingToolsStorageKey
         guard !store.isEmpty else {
-            defaults.removeObject(forKey: key)
+            storage.removeObject(forKey: key)
             memoryPendingToolsData = nil
             return
         }
-        guard let data = try? JSONEncoder().encode(store) else {
+        guard let data = try? Self.encodePendingTools(store) else {
             memoryPendingTools = nil
             return
         }
-        defaults.set(data, forKey: key)
+        storage.storeData(data, forKey: key)
         memoryPendingToolsData = data
+    }
+
+    /// The pending-tools store with its keys sorted, so the same content
+    /// always writes the same bytes, as the sessions store does (see
+    /// `SessionsStoreEncoder`): the move out of UserDefaults compares
+    /// stores byte for byte. The tombstones are an array, already stable.
+    private static func encodePendingTools(_ store: [String: [CachedMessage]]) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return try encoder.encode(store)
     }
 
     private enum StoreKind {
@@ -1382,11 +1545,14 @@ final class SessionPresentationCache {
     /// write was scheduled since `ticket` (that one will store newer
     /// state). A store that was never loaded is left alone: nil means "not
     /// read yet", not "empty". The copy is taken under `memoryLock`;
-    /// encoding and the UserDefaults write happen outside it, so a UserDefaults change
-    /// notification can never re-enter the lock.
+    /// encoding and the storage write happen outside it, so a UserDefaults
+    /// store's change notification can never re-enter the lock.
     private func writeLatest(_ kind: StoreKind, ticket: Int) {
         func isNewest() -> Bool { newestWriteTicket[kind] == ticket }
         guard memoryLock.withLock({ isNewest() }) else { return }
+        let signposter = ResponsivenessSignposts.signposter
+        let writing = signposter.beginInterval("Write presentation store", id: signposter.makeSignpostID())
+        defer { signposter.endInterval("Write presentation store", writing) }
         let key: String
         // Outer nil: never loaded, nothing to write. Inner nil: empty store.
         let encoded: Data??
@@ -1394,24 +1560,26 @@ final class SessionPresentationCache {
         case .sessions:
             key = storageKey
             let snapshot: [String: CachedSession]? = memoryLock.withLock { memoryStore }
-            encoded = snapshot.map { $0.isEmpty ? nil : (try? JSONEncoder().encode($0)) }
+            encoded = snapshot.map { $0.isEmpty ? nil : sessionsEncoder.encode($0) }
             if let snapshot, !snapshot.isEmpty, encoded == .some(nil) { return }
         case .pendingTools:
             key = pendingToolsStorageKey
             let snapshot: [String: [CachedMessage]]? = memoryLock.withLock { memoryPendingTools }
-            encoded = snapshot.map { $0.isEmpty ? nil : (try? JSONEncoder().encode($0)) }
+            encoded = snapshot.map { $0.isEmpty ? nil : (try? Self.encodePendingTools($0)) }
             if let snapshot, !snapshot.isEmpty, encoded == .some(nil) { return }
         }
         guard let encoded, memoryLock.withLock({ isNewest() }) else { return }
         if let data = encoded {
-            defaults.set(data, forKey: key)
+            // One that didn't land (a full disk) leaves the store on disk as
+            // it was, so its tombstones stay until a later write lands.
+            guard storage.storeData(data, forKey: key) else { return }
         } else {
-            defaults.removeObject(forKey: key)
+            storage.removeObject(forKey: key)
         }
         let canRetireTombstones = memoryLock.withLock { () -> Bool in
             landedWriteTicket[kind] = max(landedWriteTicket[kind] ?? 0, ticket)
             guard let tombstones else { return false }
-            return tombstones.contains { hasLandedLocked($0.tickets) }
+            return tombstonesUnwritten || tombstones.contains { hasLandedLocked($0.tickets) }
         }
         if canRetireTombstones {
             DispatchQueue.main.async { self.retireLandedTombstones() }
@@ -1421,12 +1589,14 @@ final class SessionPresentationCache {
     /// Runs a clear or delete so it holds across a kill, without waiting on
     /// the write queue. In asynchronous mode the stores on disk can lag
     /// memory, and a save queued before the removal can still land after
-    /// it, so the removed keys are recorded under their own UserDefaults key
+    /// it, so the removed keys are recorded under their own storage key
     /// before this returns and filtered out whenever a store is read from
     /// disk. That key is only ever written on the main thread (here and in
     /// `retireLandedTombstones`), so no queued write can overwrite it. Once
     /// a write of each store queued after the removal has landed, disk
-    /// matches and the tombstones are dropped. Main thread only.
+    /// matches and the tombstones are dropped. Main thread only: recording
+    /// them is a small file write a delete waits for, the price of holding
+    /// across a kill.
     private func removingDurably(_ removed: [Tombstone], _ body: () -> Void) {
         body()
         guard writeQueue != nil, !removed.isEmpty else { return }
@@ -1446,25 +1616,34 @@ final class SessionPresentationCache {
         retireLandedTombstones()
     }
 
-    /// Drops tombstones whose removal both stores on disk now reflect.
-    /// Main thread only (see `removingDurably`).
+    /// Drops tombstones whose removal both stores on disk now reflect, and
+    /// writes again the ones whose last write didn't land. Main thread only
+    /// (see `removingDurably`).
     private func retireLandedTombstones() {
         let remaining = memoryLock.withLock { () -> [Tombstone]? in
             guard let current = tombstones else { return nil }
             let kept = current.filter { !hasLandedLocked($0.tickets) }
-            guard kept.count != current.count else { return nil }
+            guard kept.count != current.count || tombstonesUnwritten else { return nil }
             tombstones = kept
             return kept.map(\.tombstone)
         }
         if let remaining { storeTombstones(remaining) }
     }
 
+    /// A write that doesn't land (a full disk) is tried again when a store
+    /// write lands, so a delete still holds across a kill once the disk
+    /// takes writes, even before the stores reflect it.
     private func storeTombstones(_ stored: [Tombstone]) {
+        let landed: Bool
         if stored.isEmpty {
-            defaults.removeObject(forKey: tombstonesStorageKey)
+            storage.removeObject(forKey: tombstonesStorageKey)
+            landed = true
         } else if let data = try? JSONEncoder().encode(stored) {
-            defaults.set(data, forKey: tombstonesStorageKey)
+            landed = storage.storeData(data, forKey: tombstonesStorageKey)
+        } else {
+            landed = false
         }
+        memoryLock.withLock { tombstonesUnwritten = !landed }
     }
 
     /// Whether each store has landed a write at least as new as its ticket
@@ -1479,7 +1658,7 @@ final class SessionPresentationCache {
     /// (another instance may have written them). Caller holds `memoryLock`.
     private func loadedTombstonesLocked() -> [(tombstone: Tombstone, tickets: [StoreKind: Int])] {
         if writeQueue != nil, let tombstones { return tombstones }
-        let stored = defaults.data(forKey: tombstonesStorageKey)
+        let stored = storage.data(forKey: tombstonesStorageKey)
             .flatMap { try? JSONDecoder().decode([Tombstone].self, from: $0) } ?? []
         let loaded = stored.map { (tombstone: $0, tickets: [StoreKind.sessions: 0, .pendingTools: 0]) }
         if writeQueue != nil { tombstones = loaded }
@@ -1526,7 +1705,115 @@ final class SessionPresentationCache {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
+    /// The cached rows a transcript row can match, by what it can match on,
+    /// built once per merge. Each list is in pool order. A merge used to
+    /// score every cached row for every transcript row, so a re-resume of a
+    /// chat Load earlier had filled scanned the whole pool for each of its
+    /// older rows, which match nothing (issue 1826).
+    private struct CachedPoolIndex {
+        var byID: [String: [Int]] = [:]
+        var bySignature: [String: [Int]] = [:]
+        var byToolID: [String: [Int]] = [:]
+        /// Tool rows with no stable id, by tool name.
+        var byIDLessToolName: [String: [Int]] = [:]
+
+        init(_ cached: [CachedMessage], stableToolID: (String?) -> String?) {
+            for (index, candidate) in cached.enumerated() {
+                byID[candidate.id, default: []].append(index)
+                bySignature[candidate.signature, default: []].append(index)
+                if let toolID = stableToolID(candidate.toolID) {
+                    byToolID[toolID, default: []].append(index)
+                } else if let name = candidate.toolName {
+                    byIDLessToolName[name, default: []].append(index)
+                }
+            }
+        }
+    }
+
+    /// `bestMatchByScanning`'s answer from the pool's index: the same row,
+    /// looking only at the rows that can score.
     private func bestMatch(
+        for message: ChatMessage,
+        in cached: [CachedMessage],
+        pool: CachedPoolIndex,
+        remaining: Set<Int>,
+        preferredPosition: Int
+    ) -> Int? {
+        func isOpen(_ index: Int) -> Bool {
+            remaining.contains(index) && cached[index].role == message.role
+        }
+        // A row with the same id wins outright, the first in pool order.
+        if let index = pool.byID[message.id]?.first(where: isOpen) { return index }
+        if let tool = message.tool {
+            let toolName = normalized(tool.name)
+            let gatewayToolID = stableToolID(tool.id)
+            let candidates: [Int]
+            if let gatewayToolID {
+                candidates = pool.byToolID[gatewayToolID] ?? []
+            } else {
+                // A locally recorded start belongs after the cached history.
+                candidates = (pool.byIDLessToolName[toolName] ?? []).filter {
+                    cached[$0].toolStatus != .running
+                }
+            }
+            let toolInputSignature = tool.input.map(Self.fingerprint)
+            let toolOutputSignature = tool.output.map(Self.fingerprint)
+            var bestIndex: Int?
+            var bestScore = Int.min
+            for index in candidates where isOpen(index) {
+                let candidate = cached[index]
+                var score = gatewayToolID != nil ? 80 : 50
+                if candidate.toolName == toolName { score += 10 }
+                if let toolInputSignature, candidate.toolInputSignature == toolInputSignature { score += 30 }
+                if let toolOutputSignature, candidate.toolOutputSignature == toolOutputSignature { score += 30 }
+                if (tool.input ?? "").isEmpty, candidate.toolPreview?.isEmpty == false { score += 5 }
+                if score > bestScore {
+                    bestScore = score
+                    bestIndex = index
+                }
+            }
+            return bestIndex
+        }
+        let contentSignature = Self.fingerprint(message.content)
+        if let index = pool.bySignature[contentSignature]?.first(where: isOpen) { return index }
+        // Hermes can re-render a completed response before placing it in
+        // history: a nearby row with a time stands in for it.
+        var bestIndex: Int?
+        var bestScore = Int.min
+        let low = max(cached.startIndex, preferredPosition - 3)
+        let high = min(cached.endIndex - 1, preferredPosition + 3)
+        guard low <= high else { return nil }
+        for index in low...high where isOpen(index) {
+            guard !cached[index].timestamp.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            let score = 20 - abs(index - preferredPosition)
+            if score > bestScore {
+                bestScore = score
+                bestIndex = index
+            }
+        }
+        return bestIndex
+    }
+
+    #if DEBUG
+    /// Whether the index's matches are the full scan's, row for row, for a
+    /// merge of `messages` over a pool of `pool`'s rows. Test-only.
+    func indexedMatchesAgreeWithScanForTesting(_ messages: [ChatMessage], pool: [ChatMessage]) -> Bool {
+        let cached = pool.map(CachedMessage.init)
+        let index = CachedPoolIndex(cached, stableToolID: stableToolID)
+        var remaining = Set(cached.indices)
+        for (position, message) in messages.enumerated() {
+            let scanned = bestMatchByScanning(for: message, in: cached, remaining: remaining, preferredPosition: position)
+            let indexed = bestMatch(for: message, in: cached, pool: index, remaining: remaining, preferredPosition: position)
+            guard scanned == indexed else { return false }
+            if let scanned { remaining.remove(scanned) }
+        }
+        return true
+    }
+
+    /// The matcher as it was before the pool's index: every cached row
+    /// scored for every transcript row. Kept for the test that holds the
+    /// index to the same answers.
+    private func bestMatchByScanning(
         for message: ChatMessage,
         in cached: [CachedMessage],
         remaining: Set<Int>,
@@ -1605,6 +1892,7 @@ final class SessionPresentationCache {
         }
         return bestIndex
     }
+    #endif
 
 
     /// Never replace a cached timestamp/preview with a newer history record
@@ -1615,11 +1903,23 @@ final class SessionPresentationCache {
         from existing: [CachedMessage],
         preservePendingDecisionCards: Bool
     ) -> [CachedMessage] {
-        fresh.enumerated().map { position, record in
+        // The first existing row matching by id or by content, found through
+        // two indexes: a scan of `existing` for each fresh row made every
+        // streaming flush quadratic in the chat's length, on the main thread.
+        var firstIndexByID: [String: Int] = [:]
+        var firstIndexByContent: [RowContentKey: Int] = [:]
+        for (index, row) in existing.enumerated() {
+            if firstIndexByID[row.id] == nil { firstIndexByID[row.id] = index }
+            let content = RowContentKey(role: row.role, signature: row.signature)
+            if firstIndexByContent[content] == nil { firstIndexByContent[content] = index }
+        }
+        return fresh.enumerated().map { position, record in
             var merged = record
-            let exact = existing.first {
-                $0.id == record.id || ($0.role == record.role && $0.signature == record.signature)
-            }
+            let exactIndex = [
+                firstIndexByID[record.id],
+                firstIndexByContent[RowContentKey(role: record.role, signature: record.signature)]
+            ].compactMap { $0 }.min()
+            let exact = exactIndex.map { existing[$0] }
             let positional: CachedMessage? = existing.indices.contains(position) && existing[position].role == record.role
                 ? existing[position]
                 : nil
@@ -1652,6 +1952,11 @@ final class SessionPresentationCache {
             }
             return merged
         }
+    }
+
+    private struct RowContentKey: Hashable {
+        var role: MessageRole
+        var signature: String
     }
 
     private static func fingerprint(_ value: String) -> String {
@@ -1721,5 +2026,80 @@ final class SessionPresentationCache {
             return UUID().uuidString
         }
         return fingerprint(String(decoding: data, as: UTF8.self))
+    }
+}
+
+/// Where a presentation cache keeps its stores: files of their own in the
+/// app (`SessionPresentationFiles`), a UserDefaults suite in tests.
+protocol SessionPresentationStorage: AnyObject {
+    func data(forKey key: String) -> Data?
+    /// Whether the store was written: a file can fail to be (a full disk).
+    @discardableResult
+    func storeData(_ data: Data, forKey key: String) -> Bool
+    func removeObject(forKey key: String)
+}
+
+extension UserDefaults: SessionPresentationStorage {
+    @discardableResult
+    func storeData(_ data: Data, forKey key: String) -> Bool {
+        set(data, forKey: key)
+        return true
+    }
+}
+
+/// The app's presentation stores, a file per store, instead of keys in
+/// UserDefaults.standard, where earlier builds kept them: every write there
+/// redrew each view reading a preference (#756), on every chat switch and
+/// every few seconds while a reply streamed, and the stores (megabytes on
+/// long agent chats) were part of the preferences file each launch reads.
+/// Written atomically, readable once the device has been unlocked since
+/// boot, and excluded from backups, as the saved chats are. Safe from any
+/// thread: it keeps nothing in memory.
+final class SessionPresentationFiles: SessionPresentationStorage {
+    /// Complete-until-first-user-authentication, as the saved chats'.
+    private static let writeOptions: Data.WritingOptions = [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+
+    private let directory: URL
+    private let fileManager: FileManager
+
+    init(directory: URL, fileManager: FileManager = .default) {
+        self.directory = directory
+        self.fileManager = fileManager
+    }
+
+    static func defaultDirectory(fileManager: FileManager = .default) -> URL {
+        let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fileManager.temporaryDirectory
+        return base.appendingPathComponent("SessionPresentation", isDirectory: true)
+    }
+
+    func data(forKey key: String) -> Data? {
+        try? Data(contentsOf: fileURL(key))
+    }
+
+    /// Whether the file was written. The first write makes the directory,
+    /// kept out of backups; the others write straight to it.
+    @discardableResult
+    func storeData(_ data: Data, forKey key: String) -> Bool {
+        if (try? data.write(to: fileURL(key), options: Self.writeOptions)) != nil { return true }
+        do {
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            var directoryURL = directory
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? directoryURL.setResourceValues(values)
+            try data.write(to: fileURL(key), options: Self.writeOptions)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func removeObject(forKey key: String) {
+        try? fileManager.removeItem(at: fileURL(key))
+    }
+
+    func fileURL(_ key: String) -> URL {
+        directory.appendingPathComponent("\(key).json")
     }
 }

@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UIKit.UIGestureRecognizerSubclass
 
 /// A non-editable UIKit text surface gives chat text true character-range
 /// selection on the iOS versions Conduit supports. SwiftUI's native text
@@ -750,8 +751,25 @@ struct SelectableTextView: UIViewRepresentable {
                     )
                     continue
                 }
-                bridged.addAttribute(.link, value: link, range: range)
+                // A link to a file on the Hermes host opens in the Folder,
+                // as a path the reply names does, not on this device.
+                bridged.addAttribute(.link, value: WorkspacePathLinks.url(forLink: link) ?? link, range: range)
                 bridged.addAttribute(.foregroundColor, value: linkColor, range: range)
+            } else {
+                // A file path a reply names opens in the Folder tab (#1389).
+                let text = String(value[run.range].characters)
+                if run.inlinePresentationIntent?.contains(.code) == true {
+                    if let url = WorkspacePathLinks.url(forCode: text) {
+                        bridged.addAttribute(.link, value: url, range: range)
+                        bridged.addAttribute(.foregroundColor, value: linkColor, range: range)
+                    }
+                } else {
+                    for found in WorkspacePathLinks.links(inText: text) {
+                        let linked = NSRange(location: range.location + found.range.location, length: found.range.length)
+                        bridged.addAttribute(.link, value: found.url, range: linked)
+                        bridged.addAttribute(.foregroundColor, value: linkColor, range: linked)
+                    }
+                }
             }
         }
         return bridged
@@ -1149,9 +1167,10 @@ private final class MarkdownSelectionTextView: UITextView {
 
 /// Tracks the finger during a native text-selection drag without ever
 /// recognizing, so UITextView's private selection gesture and the enclosing
-/// scroll views keep their exact stock behavior. A recognizer that never
-/// leaves `.possible`, always allows simultaneous recognition, and never
-/// cancels touches can't be failed or excluded by those gestures — yet it
+/// scroll views keep their exact stock behavior. A recognizer that stays
+/// `.possible` while a finger is down, always allows simultaneous
+/// recognition, and never cancels touches can't be failed or excluded by
+/// those gestures — yet it
 /// still receives the full touch stream, which is the piece every earlier
 /// cross-block attempt was missing (SwiftUI gestures fought the ScrollView,
 /// a coexisting pan was unpredictably failed by the private gesture, and
@@ -1159,6 +1178,13 @@ private final class MarkdownSelectionTextView: UITextView {
 /// active selection drag, each move is forwarded as a window point and the
 /// coordinator resolves it against every registered block/cell text view,
 /// extending the selection across them.
+///
+/// Once the last finger lifts it fails, as InteractionIdleTouchRecognizer
+/// does. UIKit resets the gestures a touch went through only when every one
+/// of them has finished, so one left `.possible` held the chat's scroll and
+/// the swipe back in their ended or failed states: after a flick from the
+/// screen's left edge over a code box or a table, the chat stopped
+/// scrolling until it was opened again (issue 1687).
 final class MarkdownSelectionObserverGestureRecognizer: UIGestureRecognizer, UIGestureRecognizerDelegate {
     private weak var observedTextView: MarkdownSelectionTextView?
     /// Set when a touch begins on this text view's existing selection or its
@@ -1203,11 +1229,20 @@ final class MarkdownSelectionObserverGestureRecognizer: UIGestureRecognizer, UIG
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
         super.touchesEnded(touches, with: event)
         handleTouchEnd()
+        failIfLastTouch(touches, event: event)
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
         super.touchesCancelled(touches, with: event)
         handleTouchEnd()
+        failIfLastTouch(touches, event: event)
+    }
+
+    /// Fails once every finger has lifted, which resets it, and every
+    /// gesture the touch went through, for the next touch.
+    private func failIfLastTouch(_ touches: Set<UITouch>, event: UIEvent) {
+        guard !UIGestureRecognizer.fingerStillDown(besides: touches, among: event.touches(for: self) ?? []) else { return }
+        state = .failed
     }
 
     func handleMove(toWindowPoint windowPoint: CGPoint) {

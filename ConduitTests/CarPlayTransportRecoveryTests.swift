@@ -334,4 +334,122 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         } catch HermesError.notConnected {}
         XCTAssertLessThan(Date().timeIntervalSince(started), 10, "nothing here may reconnect, so nothing waits")
     }
+
+    /// CarPlay woke Conduit with the phone locked, on a socket that died
+    /// while iOS held it suspended and still looks open. A call's request
+    /// checks it first, and waits for the reconnect rather than going out
+    /// on the dead socket until it times out (#1362).
+    func testAnOffScreenRequestOnAQuietDeadSocketWaitsForTheReconnect() async throws {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
+        appState.setCarPlayVoiceSurfaceActive(true)
+        let client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket"),
+            profile: "default"
+        )
+        appState.client = client
+        appState.isConnected = true
+        appState.voiceRequestConnectionWait = .seconds(30)
+        var checks = 0
+        appState.quietTransportLiveness = { _ in
+            checks += 1
+            // The unanswered ping closes the socket; the reconnect starts.
+            appState.isConnected = false
+            appState.isConnecting = true
+            return false
+        }
+
+        let progress = RequestProgress()
+        let request = Task { @MainActor () -> HermesClient? in
+            defer { progress.finished = true }
+            return try? await appState.clientForVoiceRequest()
+        }
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(checks, 1)
+        XCTAssertFalse(progress.finished, "the request waits for the reconnect")
+
+        appState.isConnected = true
+        appState.isConnecting = false
+        let resolved = await request.value
+
+        XCTAssertTrue(resolved === client)
+    }
+
+    func testAnOffScreenRequestOnALiveSocketGoesAtOnce() async throws {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
+        appState.setCarPlayVoiceSurfaceActive(true)
+        let client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket"),
+            profile: "default"
+        )
+        appState.client = client
+        appState.isConnected = true
+        var checks = 0
+        appState.quietTransportLiveness = { _ in
+            checks += 1
+            return true
+        }
+
+        let resolved = try await appState.clientForVoiceRequest()
+
+        XCTAssertTrue(resolved === client)
+        XCTAssertEqual(checks, 1)
+        XCTAssertTrue(recorder.scheduledDelays.isEmpty, "a live socket isn't reconnected")
+    }
+
+    /// With the phone on screen its own foreground check owns the socket.
+    func testARequestWithThePhoneOnScreenDoesNotCheckTheSocket() async throws {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        XCTAssertTrue(appState.isSceneActive)
+        let client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket"),
+            profile: "default"
+        )
+        appState.client = client
+        appState.isConnected = true
+        var checks = 0
+        appState.quietTransportLiveness = { _ in
+            checks += 1
+            return false
+        }
+
+        let resolved = try await appState.clientForVoiceRequest()
+
+        XCTAssertTrue(resolved === client)
+        XCTAssertEqual(checks, 0)
+    }
+
+    /// Requests at the same time share one check.
+    func testConcurrentOffScreenRequestsShareOneCheck() async throws {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
+        appState.setCarPlayVoiceSurfaceActive(true)
+        let client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket"),
+            profile: "default"
+        )
+        appState.client = client
+        appState.isConnected = true
+        var checks = 0
+        var held: CheckedContinuation<Bool?, Never>?
+        appState.quietTransportLiveness = { _ in
+            checks += 1
+            return await withCheckedContinuation { held = $0 }
+        }
+
+        let first = Task { @MainActor in try? await appState.clientForVoiceRequest() }
+        for _ in 0..<50 where held == nil { await Task.yield() }
+        let second = Task { @MainActor in try? await appState.clientForVoiceRequest() }
+        for _ in 0..<20 { await Task.yield() }
+        held?.resume(returning: true)
+        let resolved = [await first.value, await second.value]
+
+        XCTAssertEqual(checks, 1)
+        XCTAssertTrue(resolved.allSatisfy { $0 === client })
+    }
 }

@@ -1,4 +1,5 @@
 import WebKit
+import SwiftUI
 import XCTest
 @testable import Conduit
 
@@ -48,13 +49,13 @@ extension MarkdownLargeDocumentTests {
 
     func testHTMLPreview_ReadAloudSkipsPreviews() {
         let text = "Chart below.\n::preview{file=\"/tmp/a.html\"}\nDone."
-        XCTAssertEqual(TranscriptDirectives.removingPreviews(from: text), "Chart below.\nDone.")
+        XCTAssertEqual(TranscriptDirectives.readable(from: text), "Chart below.\nDone.")
         let quoted = "> Example: ::preview{file=\"/tmp/a.html\"}"
-        XCTAssertEqual(TranscriptDirectives.removingPreviews(from: quoted), quoted)
+        XCTAssertEqual(TranscriptDirectives.readable(from: quoted), quoted)
         let table = "::preview{file=\"/tmp/a.html\"} | x\n--- | ---\n1 | 2"
-        XCTAssertEqual(TranscriptDirectives.removingPreviews(from: table), table)
+        XCTAssertEqual(TranscriptDirectives.readable(from: table), table)
         let crlfTable = table.replacingOccurrences(of: "\n", with: "\r\n")
-        XCTAssertEqual(TranscriptDirectives.removingPreviews(from: crlfTable), table)
+        XCTAssertEqual(TranscriptDirectives.readable(from: crlfTable), table)
     }
 
     // MARK: - Parsing
@@ -144,6 +145,21 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(HTMLPreviewPage.clampedInlineHeight(10), HTMLPreviewPage.minimumInlineHeight)
         XCTAssertEqual(HTMLPreviewPage.clampedInlineHeight(320.2), 321)
         XCTAssertEqual(HTMLPreviewPage.clampedInlineHeight(5_000), HTMLPreviewPage.maximumInlineHeight)
+    }
+
+    func testHTMLPreview_FullScreenOpensOnTheLoadedPage() {
+        typealias Block = HTMLPreviewBlock<EmptyView>
+        XCTAssertEqual(Block.SheetPage(.loaded("<p>chart</p>"))?.html, "<p>chart</p>")
+        XCTAssertNil(Block.SheetPage(.loading))
+        XCTAssertNil(Block.SheetPage(.unavailable))
+        XCTAssertNotEqual(Block.SheetPage(html: "a").id, Block.SheetPage(html: "a").id)
+    }
+
+    func testHTMLPreview_OnlyAPageTallerThanTheMessageIsCut() {
+        XCTAssertFalse(HTMLPreviewPage.isCutInline(320))
+        XCTAssertFalse(HTMLPreviewPage.isCutInline(HTMLPreviewPage.maximumInlineHeight))
+        XCTAssertFalse(HTMLPreviewPage.isCutInline(HTMLPreviewPage.maximumInlineHeight - 0.4))
+        XCTAssertTrue(HTMLPreviewPage.isCutInline(HTMLPreviewPage.maximumInlineHeight + 1))
     }
 
     func testHTMLPreview_NavigationStaysOnThePage() {

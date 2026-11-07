@@ -27,12 +27,12 @@ struct AskHermesPromptView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label(title, systemImage: "sparkles")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .foregroundStyle(.conduitAccent)
 
             // The prompt in a quiet well, so it reads as the text to copy.
             Text(prompt)
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
                 .padding(12)
@@ -59,7 +59,7 @@ struct AskHermesPromptView: View {
 
                 if copied {
                     Text("Copied")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("setup.copied-confirmation")
                 }

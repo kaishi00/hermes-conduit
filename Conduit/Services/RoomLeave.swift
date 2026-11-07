@@ -11,7 +11,7 @@
 import Foundation
 
 /// How a member is out of a room over Links.
-enum RoomMemberOut: String, Equatable {
+enum RoomMemberOut: String, Equatable, Codable {
     /// Its owner took it out (`left`).
     case left
     /// The room's host took it out (`removed`).

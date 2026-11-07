@@ -236,6 +236,139 @@ extension GatewayRestartTests {
         XCTAssertTrue(status.updateRecommended)
     }
 
+    func testNeverAsksOnlyToFinishARestart() {
+        var status = NotifierPluginStatus()
+        status.state = .reported(version: "9.0.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "9.0.0", restartNeeded: false, bootID: nil)
+        status.latestVersion = "9.2.0"
+        status.stableVersion = "9.1.0"
+        status.followsMain = NotifierPluginNoticeChannel.never.followsMain
+        status.asksToUpdate = NotifierPluginNoticeChannel.never.asksToUpdate
+        // Newer and stable versions ask nothing anywhere.
+        XCTAssertFalse(status.updateRecommended)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertFalse(status.needsAttention)
+        XCTAssertEqual(FinishSetupStatus.plugin(status, updating: false), .done)
+        XCTAssertEqual(FinishSetupStatus.pluginDoneNote(status), .newerVersionWaits)
+        // Settings still offers the latest.
+        XCTAssertTrue(status.updateAvailable)
+        XCTAssertEqual(status.offeredVersion, "9.2.0")
+
+        // Neither does a missing feature; Settings shows it.
+        status.state = .reported(version: "9.0.0", capabilities: [])
+        XCTAssertTrue(status.needsUpdate)
+        XCTAssertFalse(status.updateRecommended)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertTrue(status.updateAvailable)
+        XCTAssertEqual(FinishSetupStatus.pluginDoneNote(status), .featuresWait)
+
+        // Nor a plugin below this build's floor.
+        status.state = .reported(version: "0.1.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "0.1.0", restartNeeded: false, bootID: nil)
+        XCTAssertFalse(status.updateRecommended)
+        XCTAssertTrue(status.updateAvailable)
+        XCTAssertEqual(status.noticeDismissalVersion, status.noticeVersion)
+
+        // An update waiting for its restart is still finished from the
+        // notice, and "Not now" on it belongs to the version on disk, so
+        // the next update's restart asks again.
+        status.state = .reported(version: "9.2.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "9.0.0", restartNeeded: true, bootID: nil)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .restart)
+        XCTAssertTrue(status.needsAttention)
+        XCTAssertEqual(status.noticeDismissalVersion, "9.2.0")
+        status.state = .reported(version: "9.3.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        XCTAssertEqual(status.noticeDismissalVersion, "9.3.0")
+
+        // A plugin too old to report anything isn't asked about either.
+        status.state = .predatesCapabilities
+        status.runtime = nil
+        status.hostCopy = .old
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertFalse(status.needsAttention)
+
+        // Installing isn't updating: a missing plugin is still offered.
+        status.hostCopy = .missing
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .install)
+        XCTAssertTrue(status.needsAttention)
+    }
+
+    func testNotNowKeepsOtherDashboardsDismissals() throws {
+        let suite = "GatewayRestartTests.dismissals.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let other = "\(UUID().uuidString)|0.48.0"
+        let this = appState.activeDashboardID?.uuidString ?? ""
+        appState.dismissedPluginUpdates = [other, "\(this)|0.1.0"]
+        appState.dismissNotifierPluginUpdateNotice()
+        // This dashboard's older one goes; the other dashboard's stays.
+        let version = appState.notifierPlugin.noticeDismissalVersion
+        XCTAssertEqual(appState.dismissedPluginUpdates, [other, "\(this)|\(version)"])
+    }
+
+    func testNeverShowsOnlyARestartUntilNotNow() throws {
+        let suite = "GatewayRestartTests.neverNotice.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        appState.setNotifierPluginNoticeChannel(.never)
+        XCTAssertFalse(appState.notifierPlugin.asksToUpdate)
+        // Running what's on disk: nothing asks.
+        appState.applyNotifierPluginReport(Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "a"))
+        XCTAssertFalse(appState.showsNotifierPluginUpdateNotice)
+        // An update on disk waits for its restart: the notice asks, until Not now.
+        appState.applyNotifierPluginReport(Self.capabilities(loaded: "0.63.0", disk: "0.64.0", boot: "a"))
+        XCTAssertTrue(appState.showsNotifierPluginUpdateNotice)
+        appState.dismissNotifierPluginUpdateNotice()
+        XCTAssertFalse(appState.showsNotifierPluginUpdateNotice)
+        // The next update's restart asks again.
+        appState.applyNotifierPluginReport(Self.capabilities(loaded: "0.63.0", disk: "0.65.0", boot: "a"))
+        XCTAssertTrue(appState.showsNotifierPluginUpdateNotice)
+    }
+
+    func testTheSavedNoticeChoiceHoldsFromLaunch() throws {
+        let suite = "GatewayRestartTests.noticeChannel.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(NotifierPluginNoticeChannel.never.rawValue, forKey: NotifierPluginNoticeChannel.key)
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        // Before any refresh has read where Conduit came from.
+        XCTAssertEqual(appState.notifierPluginNoticeChannel, .never)
+        XCTAssertFalse(appState.notifierPlugin.asksToUpdate)
+        XCTAssertFalse(appState.notifierPlugin.followsMain)
+    }
+
+    func testOtherNoticeChoicesKeepTheirFinishSetupText() {
+        var status = NotifierPluginStatus()
+        status.state = .reported(version: "9.1.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "9.1.0", restartNeeded: false, bootID: nil)
+        status.latestVersion = "9.2.0"
+        status.stableVersion = "9.1.0"
+        status.archivedVersion = nil
+        status.followsMain = false
+        // Stable versions only: a newer plugin on main waits unasked, and
+        // the row still reads as up to date, as before Never.
+        XCTAssertTrue(status.updateAvailable)
+        XCTAssertEqual(FinishSetupStatus.plugin(status, updating: false), .done)
+        XCTAssertEqual(FinishSetupStatus.pluginDoneNote(status), .upToDate)
+        XCTAssertEqual(status.noticeDismissalVersion, status.noticeVersion)
+
+        // A restart's "Not now" belongs to the version on disk here too, so
+        // a later update's restart asks again.
+        status.state = .reported(version: "9.2.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "9.1.0", restartNeeded: true, bootID: nil)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .restart)
+        XCTAssertEqual(status.noticeDismissalVersion, "9.2.0")
+        status.state = .reported(version: "9.3.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        XCTAssertEqual(status.noticeDismissalVersion, "9.3.0")
+    }
+
     func testAnAppStoreBuildAsksUpToThePluginItWasArchivedWith() {
         var status = NotifierPluginStatus()
         status.state = .reported(version: "1.0.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
@@ -266,12 +399,25 @@ extension GatewayRestartTests {
         XCTAssertFalse(status.updateRecommended)
     }
 
-    func testTheNoticeChannelFollowsWhereConduitCameFrom() {
-        XCTAssertFalse(NotifierPluginNoticeChannel.automatic.followsMain(installedFrom: .appStore))
-        XCTAssertTrue(NotifierPluginNoticeChannel.automatic.followsMain(installedFrom: .testFlight))
-        XCTAssertTrue(NotifierPluginNoticeChannel.automatic.followsMain(installedFrom: .xcode))
-        XCTAssertTrue(NotifierPluginNoticeChannel.everyVersion.followsMain(installedFrom: .appStore))
-        XCTAssertFalse(NotifierPluginNoticeChannel.stableOnly.followsMain(installedFrom: .testFlight))
+    func testStableVersionsOnlyIsTheDefault() throws {
+        let suite = "GatewayRestartTests.defaultChannel.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(NotifierPluginNoticeChannel.load(from: defaults), .stableOnly)
+        // Automatic, which asked TestFlight builds for every version, is gone:
+        // whoever had it saved hears about stable versions now.
+        defaults.set("automatic", forKey: NotifierPluginNoticeChannel.key)
+        XCTAssertEqual(NotifierPluginNoticeChannel.load(from: defaults), .stableOnly)
+        defaults.set(NotifierPluginNoticeChannel.everyVersion.rawValue, forKey: NotifierPluginNoticeChannel.key)
+        XCTAssertEqual(NotifierPluginNoticeChannel.load(from: defaults), .everyVersion)
+    }
+
+    func testOnlyEveryNewVersionFollowsMain() {
+        XCTAssertTrue(NotifierPluginNoticeChannel.everyVersion.followsMain)
+        XCTAssertFalse(NotifierPluginNoticeChannel.stableOnly.followsMain)
+        XCTAssertFalse(NotifierPluginNoticeChannel.never.followsMain)
+        XCTAssertFalse(NotifierPluginNoticeChannel.never.asksToUpdate)
+        XCTAssertTrue(NotifierPluginNoticeChannel.stableOnly.asksToUpdate)
     }
 
     func testTheStableVersionIsReadFromChannelsYAML() {
@@ -560,6 +706,10 @@ private final class PluginHost {
     /// The dashboard restart signs everyone out, like a host without a
     /// fixed sign-in secret.
     var restartSignsOut = false
+    /// The next capabilities read finds the sign-in expired.
+    var statusReadSignsOut = false
+    /// The dashboard's restart loads the Hermes updated under it: the update pulls again.
+    var restartClearsUpdateError = false
     /// Whether signing in again with the saved password works; nil leaves
     /// the updater without a way to sign in again.
     var signInAgainWorks: Bool?
@@ -585,6 +735,10 @@ private final class PluginHost {
 
     private func respond(path: String, method: String, body: [String: Any]?) throws -> [String: Any] {
         calls.append("\(method) \(path.split(separator: "?").first.map(String.init) ?? path)")
+        if statusReadSignsOut, path == NotifierPluginStatus.path {
+            statusReadSignsOut = false
+            signedIn = false
+        }
         guard signedIn else { throw DashboardTicketBridgeError.signInRequired }
         if path.hasPrefix(NotifierPluginUpdater.selfUpdatePath) {
             selfUpdatePaths.append(path)
@@ -610,6 +764,7 @@ private final class PluginHost {
         case NotifierPluginUpdater.selfRestartPath:
             if !selfRestartErrors.isEmpty { throw selfRestartErrors.removeFirst() }
             if restartSignsOut { signedIn = false }
+            if restartClearsUpdateError { updateError = nil }
             return ["ok": true, "restarting": true]
         case NotifierPluginStatus.path:
             guard let first = capabilities.first else {
@@ -799,12 +954,232 @@ extension GatewayRestartTests {
         XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
     }
 
+    private static let mixedHermesDetail =
+        "Plugin 'conduit_push' update was not published: 'PythonDeclaration' object has no attribute 'installs_packages'"
+
+    /// Issue 1889: Hermes updated under a running dashboard fails the pull; the
+    /// dashboard's restart loads the new Hermes and the update runs again.
+    func testAPullThatMeetsMixedHermesRestartsTheDashboardAndUpdatesAgain() async {
+        let host = PluginHost()
+        host.selfUpdateJobs = [
+            ["id": "j1", "step": "failed", "failed_step": "downloading", "detail": Self.mixedHermesDetail],
+            ["id": "j2", "step": "downloading"],
+            ["id": "j2", "step": "done", "loaded_version": "0.63.0"],
+        ]
+        host.capabilities = [
+            Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "old"),
+            Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "fresh"),
+            Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"),
+        ]
+        var updater = host.updater()
+        updater.onHost = true
+        var steps: [NotifierPluginUpdateState] = []
+        let outcome = await updater.run { steps.append($0) }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        XCTAssertEqual(host.calls.filter { $0 == "POST \(NotifierPluginUpdater.selfRestartPath)" }.count, 1)
+        XCTAssertEqual(host.calls.filter { $0 == "POST \(NotifierPluginUpdater.selfUpdatePath)" }.count, 2)
+        XCTAssertTrue(steps.contains(.updating(.restartingDashboard)))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+    }
+
+    func testMixedHermesAfterTheRestartFailsOnceAndSaysWhatToDo() async {
+        let host = PluginHost()
+        let retryDetail = Self.mixedHermesDetail + " (retry)"
+        host.selfUpdateJobs = [
+            ["id": "j1", "step": "failed", "failed_step": "downloading", "detail": Self.mixedHermesDetail],
+            ["id": "j2", "step": "downloading"],
+            ["id": "j2", "step": "failed", "failed_step": "downloading", "detail": retryDetail],
+        ]
+        host.capabilities = [
+            Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "old"),
+            Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "fresh"),
+        ]
+        var updater = host.updater()
+        updater.onHost = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .failed(detail: NotifierPluginUpdater.explainingMixedHermes(retryDetail)))
+        XCTAssertEqual(host.calls.filter { $0 == "POST \(NotifierPluginUpdater.selfRestartPath)" }.count, 1)
+        XCTAssertEqual(host.calls.filter { $0 == "POST \(NotifierPluginUpdater.selfUpdatePath)" }.count, 2)
+    }
+
+    func testASignInThatCantBeRenewedDuringTheRestartSaysToSignIn() async {
+        let host = PluginHost()
+        host.selfUpdateJobs = [["id": "j1", "step": "failed", "failed_step": "downloading", "detail": Self.mixedHermesDetail]]
+        host.capabilities = [Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "old")]
+        host.restartSignsOut = true
+        host.signInAgainWorks = false
+        var updater = host.updater()
+        updater.onHost = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, NotifierPluginUpdater.outcome(forRequestError: DashboardTicketBridgeError.signInRequired))
+    }
+
+    func testASignInThatCantBeRenewedBeforeTheRestartSaysToSignIn() async {
+        let host = PluginHost()
+        host.selfUpdateJobs = [["id": "j1", "step": "failed", "failed_step": "downloading", "detail": Self.mixedHermesDetail]]
+        host.capabilities = [Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "old")]
+        host.statusReadSignsOut = true
+        host.signInAgainWorks = false
+        var updater = host.updater()
+        updater.onHost = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, NotifierPluginUpdater.outcome(forRequestError: DashboardTicketBridgeError.signInRequired))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.selfRestartPath)"))
+    }
+
+    func testThePhoneRunStepsRestartADashboardRunningMixedHermesAndUpdateAgain() async {
+        let host = PluginHost()
+        host.updateError = DashboardTicketBridgeError.http(status: 400, detail: Self.mixedHermesDetail)
+        host.restartClearsUpdateError = true
+        host.capabilities = [
+            Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "old"),
+            Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "fresh"),
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "fresh"),
+            Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"),
+        ]
+        let outcome = await host.updater().run { _ in }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        XCTAssertEqual(host.calls.filter { $0 == "POST \(NotifierPluginUpdater.updatePath)" }.count, 2)
+        XCTAssertEqual(host.calls.filter { $0 == "POST \(NotifierPluginUpdater.selfRestartPath)" }.count, 2)
+    }
+
+    func testThePhoneRunStepsSayToRestartADashboardRunningMixedHermes() async {
+        let host = PluginHost()
+        host.updateError = DashboardTicketBridgeError.http(status: 400, detail: Self.mixedHermesDetail)
+        let outcome = await host.updater().run { _ in }
+        XCTAssertEqual(outcome, .failed(detail: NotifierPluginUpdater.explainingMixedHermes(Self.mixedHermesDetail)))
+        guard case .failed(let detail?) = outcome else { return XCTFail("\(outcome)") }
+        XCTAssertTrue(detail.hasSuffix(Self.mixedHermesDetail))
+    }
+
+    func testMixedHermesWithoutTheRestartRouteSaysToRestartTheDashboard() async {
+        let host = PluginHost()
+        host.selfUpdateJobs = [["id": "j1", "step": "failed", "failed_step": "downloading", "detail": Self.mixedHermesDetail]]
+        host.selfRestartErrors = [DashboardTicketBridgeError.http(status: 501, detail: "Restart Hermes Desktop")]
+        host.capabilities = [Self.capabilities(loaded: "0.62.0", disk: "0.62.0", boot: "old")]
+        var updater = host.updater()
+        updater.onHost = true
+        let outcome = await updater.run { _ in }
+        guard case .failed(let detail?) = outcome else { return XCTFail("\(outcome)") }
+        XCTAssertTrue(detail.hasSuffix(Self.mixedHermesDetail))
+        XCTAssertTrue(detail.contains("Restart the Hermes dashboard"))
+        XCTAssertEqual(NotifierPluginUpdater.explainingMixedHermes("Plugin not found"), "Plugin not found")
+        XCTAssertTrue(NotifierPluginUpdater.ranMixedHermes("cannot import name 'x' from 'pm.workspace'"))
+    }
+
     func testHostJobOutcomes() {
         XCTAssertNil(NotifierPluginUpdater.hostOutcome(["step": "restarting_gateway"]))
         XCTAssertEqual(NotifierPluginUpdater.hostStep(["step": "restarting_gateway"]), .restartingGateway(nil))
+        XCTAssertEqual(NotifierPluginUpdater.hostStep(["step": "restarting_gateway", "gateway_stage": "waiting", "running_chats": 2]),
+                       .restartingGateway(.draining))
+        XCTAssertEqual(NotifierPluginUpdater.hostStep(["step": "restarting_gateway", "gateway_stage": "draining"]),
+                       .restartingGateway(.draining))
+        XCTAssertEqual(NotifierPluginUpdater.hostStep(["step": "restarting_gateway", "gateway_stage": "later"]),
+                       .restartingGateway(nil))
         XCTAssertEqual(NotifierPluginUpdater.hostOutcome(["step": "failed", "detail": "no"]), .failed(detail: "no"))
         XCTAssertEqual(NotifierPluginUpdater.hostOutcome(["step": "failed", "code": "restart_needed", "detail": "Restart it"]),
                        .needsDashboardRestart(detail: "Restart it"))
         XCTAssertEqual(NotifierPluginUpdater.hostOutcome(["step": "done", "version": "0.63.0"]), .updated(version: "0.63.0"))
     }
+
+    // MARK: - What a restart waits on (GatewayWork.swift)
+
+    func testTheWorkARestartWaitsOnIsNamed() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let work = try XCTUnwrap(GatewayWork(json: [
+            "units": [
+                ["kind": "chat", "profile": "rei", "bot": "Rei", "title": "New mail arrived", "session_id": "20260815_115050_45f123", "elapsed_s": 1560],
+                ["kind": "chat", "profile": "default", "platform": "telegram", "session_id": NSNull()],
+                ["kind": "cron", "job_id": "dc18", "title": "Morning brief"],
+                ["kind": "managed"],
+            ],
+            "count": 4, "draining": true, "restarts_by": 1_800_000_600,
+        ], now: now))
+        XCTAssertTrue(work.draining)
+        XCTAssertEqual(work.restartsBy, Date(timeIntervalSince1970: 1_800_000_600))
+        XCTAssertEqual(work.units.map(\.canStop), [true, false, false, false])
+        let lines = work.lines(now: now)
+        XCTAssertEqual(lines.count, 4)
+        XCTAssertTrue(lines[0].hasPrefix("Rei: New mail arrived, running 26"), lines[0])
+        XCTAssertEqual(lines[1], "Hermes: a chat")
+        XCTAssertEqual(lines[2], "Scheduled job Morning brief")
+        XCTAssertEqual(lines[3], "A background task")
+    }
+
+    func testAnOlderGatewaysBareCountSaysItIsntNamed() throws {
+        let work = try XCTUnwrap(GatewayWork(json: ["units": [], "count": 2, "draining": false]))
+        XCTAssertEqual(work.count, 2)
+        XCTAssertNil(work.restartsBy)
+        XCTAssertEqual(work.lines(now: Date()), ["Hermes doesn't say what's running."])
+        XCTAssertNil(GatewayWork(json: ["count": 1]))
+    }
+
+    /// Restart now's steps, scripted: which calls go out, in what order.
+    private func restartNowSteps(
+        reads: [GatewayWork?], endWait: String? = nil, force: String? = nil, log: GatewayRestartNowLog
+    ) -> GatewayRestartNow {
+        GatewayRestartNow(
+            endWait: { log.calls.append("endWait"); return endWait },
+            readWork: {
+                log.calls.append("read")
+                let index = min(log.reads, reads.count - 1)
+                log.reads += 1
+                return reads[index]
+            },
+            // Stops run at once, off this actor: the log is kept on it.
+            stop: { unit in
+                await MainActor.run { log.calls.append("stop \(unit.sessionID ?? "?") \(unit.profile ?? "-")") }
+            },
+            force: { log.calls.append("force"); return force },
+            pause: {}
+        )
+    }
+
+    private static let draining = GatewayWork(units: [
+        .init(kind: "chat", profile: "rei", bot: "Rei", title: "Mail", sessionID: "s1"),
+        .init(kind: "cron", jobID: "j1"),
+    ], count: 2, draining: true)
+
+    func testRestartNowStopsTheChatsAndSkipsTheForceOnceNothingRuns() async {
+        let log = GatewayRestartNowLog()
+        let idle = GatewayWork(units: [], count: 0, draining: true)
+        let failure = await restartNowSteps(reads: [Self.draining, Self.draining, idle], log: log).run()
+        XCTAssertNil(failure)
+        XCTAssertEqual(log.calls, ["endWait", "read", "stop s1 rei", "read", "read"])
+    }
+
+    func testRestartNowForcesWhenWorkStillRunsAndCountsAFailedReadAsRunning() async {
+        let log = GatewayRestartNowLog()
+        let failure = await restartNowSteps(reads: [Self.draining, nil, nil, nil, nil, nil], log: log).run()
+        XCTAssertNil(failure)
+        XCTAssertEqual(log.calls.first, "endWait")
+        XCTAssertEqual(log.calls.filter { $0 == "read" }.count, 6)
+        XCTAssertEqual(log.calls.last, "force")
+    }
+
+    func testRestartNowStopsAtARefusedWaitAndReportsAFailedForce() async {
+        let refused = GatewayRestartNowLog()
+        let endFailure = await restartNowSteps(reads: [Self.draining], endWait: "refused", log: refused).run()
+        XCTAssertEqual(endFailure, "refused")
+        XCTAssertEqual(refused.calls, ["endWait"])
+
+        let failedForce = GatewayRestartNowLog()
+        let forceFailure = await restartNowSteps(reads: [Self.draining], force: "not on systemd", log: failedForce).run()
+        XCTAssertEqual(forceFailure, "not on systemd")
+        XCTAssertEqual(failedForce.calls.last, "force")
+    }
+
+    func testARestartNowFailureShowsOnlyOnItsDashboardForAWhile() {
+        let dashboard = UUID()
+        let at = Date()
+        let failure = GatewayRestartNow.Failure(message: "x", dashboardID: dashboard, at: at)
+        XCTAssertTrue(failure.shows(on: dashboard, now: at.addingTimeInterval(60)))
+        XCTAssertFalse(failure.shows(on: UUID(), now: at))
+        XCTAssertFalse(failure.shows(on: dashboard, now: at.addingTimeInterval(16 * 60)))
+    }
+}
+
+private final class GatewayRestartNowLog {
+    var calls: [String] = []
+    var reads = 0
 }

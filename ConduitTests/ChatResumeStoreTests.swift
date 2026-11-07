@@ -106,6 +106,28 @@ final class ChatResumeStoreTests: XCTestCase {
         XCTAssertNil(store.snapshot(for: .init(profile: "default", sessionID: "stored-a")))
     }
 
+    /// Every chat open sets the last chat, and any write to the defaults
+    /// redraws each `@AppStorage` view: setting the one already saved, or
+    /// forgetting one that isn't, writes nothing.
+    func testSettingTheSameLastChatWritesNothing() throws {
+        let (defaults, suite) = try defaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ChatResumeStore(defaults: defaults)
+        store.setLastSessionID("stored-a", for: "default")
+        // Gone from the defaults behind the store's back, so a write shows.
+        defaults.removeObject(forKey: ChatResumeStore.defaultStorageKey)
+
+        store.setLastSessionID("stored-a", for: "default")
+        store.setLastSession(nil, for: "work")
+        XCTAssertNil(defaults.data(forKey: ChatResumeStore.defaultStorageKey), "Nothing changed: nothing written")
+
+        store.setLastSessionID("stored-b", for: "default")
+        XCTAssertEqual(ChatResumeStore(defaults: defaults).lastSessionID(for: "default"), "stored-b")
+        defaults.removeObject(forKey: ChatResumeStore.defaultStorageKey)
+        store.setLastSession(nil, for: "default")
+        XCTAssertNotNil(defaults.data(forKey: ChatResumeStore.defaultStorageKey), "Forgetting a saved chat is written")
+    }
+
     func testRemoveSessionsDropsSnapshotsAndLastSelectionWithoutTouchingSiblings() throws {
         let (defaults, suite) = try defaults()
         defer { defaults.removePersistentDomain(forName: suite) }

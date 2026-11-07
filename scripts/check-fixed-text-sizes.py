@@ -22,6 +22,14 @@ lines (`Text(\n"Title"\n).font(...)`) and one that is itself an argument
 after a comment is counted as the Text's, so a glyph's font there needs the
 exemption.
 
+A text style is set with `.scaledFont(.caption)`, not `.font(.caption)`: a
+Mac draws every text style at one size, so a wide column there sets them in
+points (ScaledFont.swift), which only `scaledFont` sees. Any `.font(` whose
+argument names a text style is reported, unless the comment lines just
+above say why it must stay a Font (`// Text style: <reason>`, such as a
+`Text` joined with `+`, which needs `Text`'s own `font`). It reads one line at a
+time, so a `.font(` whose argument starts the next line isn't seen.
+
 Usage: check-fixed-text-sizes.py [--repo-root DIR]
 """
 
@@ -34,6 +42,11 @@ SOURCE_DIRS = ("Conduit",)
 TEXT_START = re.compile(r"\bText\s*\(")
 FIXED_SIZE = re.compile(r"\.system\(size:\s*\d")
 EXEMPTION = "// Fixed size:"
+FONT_CALL = re.compile(r"\.font\(")
+TEXT_STYLE = re.compile(
+    r"(?:Font)?(?:\.system\()?\.(?:caption2?|footnote|subheadline|body|callout|"
+    r"title[23]?|headline|largeTitle)\b")
+TEXT_STYLE_EXEMPTION = "// Text style:"
 
 
 def owning_text(line):
@@ -47,11 +60,11 @@ def owning_text(line):
     return None
 
 
-def stated_reason(lines, index):
+def stated_reason(lines, index, exemption=EXEMPTION):
     """Whether the comment lines just above line `index` say why."""
     above = index - 1
     while above >= 0 and lines[above].strip().startswith("//"):
-        if EXEMPTION in lines[above]:
+        if exemption in lines[above]:
             return True
         above -= 1
     return False
@@ -85,6 +98,102 @@ def find_problems(sources):
     return problems
 
 
+def code_characters(text):
+    """Each (index, character) of `text` outside a string literal."""
+    quoted, escaped = False, False
+    for index, char in enumerate(text):
+        if escaped:
+            escaped = False
+        elif quoted and char == "\\":
+            escaped = True
+        elif char == '"':
+            quoted = not quoted
+        elif not quoted:
+            yield index, char
+
+
+def font_argument(code, start):
+    """The argument of the call whose parenthesis opens at `start`, up to
+    its closing one, or the rest of the line."""
+    depth = 0
+    for end, char in code_characters(code[start:]):
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return code[start + 1:start + end]
+    return code[start + 1:]
+
+
+def branches(argument):
+    """The values an argument can take: each branch of a ternary (nested
+    ones too) and each side of `??`, split at the top level, or the
+    argument itself. A `??` inside a ternary's branch splits once the
+    ternary has. Parentheses around the whole argument are looked inside."""
+    stripped = argument.strip()
+    if stripped.startswith("("):
+        inner = font_argument(stripped, 0)
+        if len(inner) + 2 == len(stripped):
+            return branches(inner)
+    depth, question, nested = 0, None, 0
+    for index, char in code_characters(argument):
+        if char in "([":
+            depth += 1
+        elif char in ")]":
+            depth -= 1
+        elif depth == 0 and "??" in argument[index - 1:index + 2]:
+            if question is None:
+                return branches(argument[:index]) + branches(argument[index + 2:])
+        elif depth == 0 and char == "?" and argument[index - 1:index].isspace():
+            # A ternary's `?` stands apart; optional chaining's follows a name.
+            if question is None:
+                question = index
+            else:
+                nested += 1
+        elif depth == 0 and char == ":" and question is not None:
+            if nested:
+                # The colon of a ternary nested in the first branch.
+                nested -= 1
+            else:
+                return branches(argument[question + 1:index]) + branches(argument[index + 1:])
+    return [argument]
+
+
+def without_comment(line):
+    """The line up to a `//` comment outside a string literal."""
+    for index, _ in code_characters(line):
+        if line.startswith("//", index):
+            return line[:index]
+    return line
+
+
+def sets_text_style(code):
+    """Whether a `.font(` on this line takes a text style, alone or as
+    either branch of a ternary."""
+    for match in FONT_CALL.finditer(code):
+        argument = font_argument(code, match.end() - 1)
+        if any(TEXT_STYLE.match(branch.strip()) for branch in branches(argument)):
+            return True
+    return False
+
+
+def find_text_style_fonts(sources):
+    """sources: {path: text}. Returns ["path:line: ..."] for each text style
+    set with `.font(` rather than `.scaledFont(`."""
+    problems = []
+    for path, text in sorted(sources.items()):
+        lines = text.splitlines()
+        for index, line in enumerate(lines):
+            code = without_comment(line)
+            if sets_text_style(code) and not stated_reason(lines, index, TEXT_STYLE_EXEMPTION):
+                problems.append(
+                    f"{path}:{index + 1}: a text style set with .font( stays one size on a Mac; "
+                    "use .scaledFont(, or say why with "
+                    f"'{TEXT_STYLE_EXEMPTION} ...' on the line above")
+    return problems
+
+
 def load_sources(repo_root):
     sources = {}
     for directory in SOURCE_DIRS:
@@ -102,13 +211,13 @@ def main():
     parser.add_argument("--repo-root", default=".")
     args = parser.parse_args()
     sources = load_sources(args.repo_root)
-    problems = find_problems(sources)
+    problems = find_problems(sources) + find_text_style_fonts(sources)
     if problems:
-        print(f"FAIL: {len(problems)} fixed text size(s):")
+        print(f"FAIL: {len(problems)} fixed text size(s) or text style(s) set with .font(:")
         for problem in problems:
             print(f"  {problem}")
         return 1
-    print(f"OK: no fixed text sizes in {len(sources)} Swift files.")
+    print(f"OK: no fixed text sizes or .font( text styles in {len(sources)} Swift files.")
     return 0
 
 

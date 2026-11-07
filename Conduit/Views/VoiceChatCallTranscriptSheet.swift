@@ -42,7 +42,10 @@ struct VoiceChatCallTranscriptSheet: View {
                                 RichLiveUpdatedLine(title: entry.cards.first?.title)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             } else {
+                                // A saved call's checklists read only, as the
+                                // saved chat's do: ticks belong to the live screen.
                                 RichCardsView(cards: cards)
+                                    .environment(\.richChecklistInChat, true)
                             }
                         }
                     }

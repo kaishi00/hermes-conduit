@@ -583,6 +583,51 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(source.applied, ["ch_once"])
     }
 
+    /// Add on a Pulse suggestion, or its Undo (0.98.0): the tap was the
+    /// asking, so this phone applies that change without its own card, if
+    /// the host hands it out within 15 minutes.
+    func testAChangeApprovedOnAPulseCardIsAppliedWithoutItsCard() async throws {
+        let source = FakePhoneCalendarSource()
+        let host = FakePhoneHost()
+        var clock = Date(timeIntervalSince1970: 1_760_400_000)
+        let engine = makePhoneEngine(source: source, now: { clock })
+        engine.savePreferences(phonePreferences())
+
+        // Approved before the host handed it out: applied when it comes, with
+        // no card, and reported on the next exchange. Another change still asks.
+        await engine.approveFromCard("ch_pulse")
+        host.changes = [
+            ["id": "ch_pulse", "kind": "add_event", "auto": false,
+             "fields": ["title": "Dinner", "start": "2026-10-25T19:00:00Z", "end": "2026-10-25T21:00:00Z"]],
+            ["id": "ch_other", "kind": "add_reminder", "auto": false, "fields": ["title": "Buy milk"]],
+        ]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(source.applied, ["ch_pulse"])
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_other"])
+        XCTAssertEqual(engine.state.unreported.map(\.id), ["ch_pulse"])
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.reported.map { $0["id"] as? String }, ["ch_pulse"])
+        XCTAssertEqual(host.reported.map { $0["outcome"] as? String }, ["applied"])
+
+        // Undo tapped once its delete already waits as a card: applied at once.
+        host.changes.append(["id": "ch_undo", "kind": "delete_event", "auto": false,
+                             "target": ["event_id": "item_ch_pulse"], "fields": [String: Any]()])
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_other", "ch_undo"])
+        await engine.approveFromCard("ch_undo")
+        XCTAssertEqual(source.applied, ["ch_pulse", "ch_undo"])
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_other"])
+
+        // One the host doesn't hand out within 15 minutes (another device's,
+        // or a relaunch's) gets its card, as any change does.
+        await engine.approveFromCard("ch_late")
+        clock = clock.addingTimeInterval(PhoneSyncEngine.cardApprovalWindow + 1)
+        host.changes.append(["id": "ch_late", "kind": "add_reminder", "auto": false, "fields": ["title": "Late"]])
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(source.applied, ["ch_pulse", "ch_undo"])
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_other", "ch_late"])
+    }
+
     func testPhoneVoiceCallsReadAnswerAndAdd() async throws {
         let source = FakePhoneCalendarSource()
         let host = FakePhoneHost()
@@ -886,6 +931,18 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(calendar.component(.weekday, from: soonest), 6, "Friday comes before Monday")
     }
 
+    func testPhoneAlarmsUnsupportedWithoutAlarmKit() {
+        let source = PhoneAlarmSources.system(hasAlarmKit: false)
+        XCTAssertFalse(source.isSupported, "A Vision Pro has no AlarmKit; touching it crashed at launch")
+        XCTAssertEqual(source.alarms(now: Date(), calendar: .current)?.count, 0)
+        // The symbol check finds AlarmKit where it is, or alarms would be
+        // off everywhere.
+        if #available(iOS 26.0, *) {
+            XCTAssertTrue(PhoneAlarmSources.alarmKitLoaded)
+            XCTAssertTrue(PhoneAlarmSources.system().isSupported)
+        }
+    }
+
     func testPhoneAlarmsAndPeopleSyncAndApply() async throws {
         let source = FakePhoneCalendarSource()
         let alarms = FakePhoneAlarmSource()
@@ -974,6 +1031,86 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(PhonePerson.isDialable("+44 7700-900123"))
         XCTAssertFalse(PhonePerson.isDialable("1-800-FLOWERS"), "The host takes only dialling signs")
         XCTAssertFalse(PhonePerson.isDialable("--- ..."))
+    }
+
+    /// Issue: a contact edited in Contacts after it was picked never reached
+    /// Hermes. With Contacts access each sync reads the picked people again;
+    /// someone it can't read keeps their last copy and is flagged.
+    func testPhonePeopleAreReadAgainFromContactsAtEachSync() async throws {
+        let contacts = FakePhoneContactsSource()
+        let host = FakePhoneHost()
+        let engine = makePhoneEngine(source: FakePhoneCalendarSource(), contacts: contacts)
+        var preferences = phonePreferences()
+        preferences.contacts = true
+        engine.savePreferences(preferences)
+        let samID = PhonePerson.id(forContact: "C-sam")
+        engine.savePeople([PhonePerson(id: samID, name: "Sam Lee", relation: "wife", contactID: "C-sam")])
+
+        // Not asked yet: nothing is read, and the picked copy goes.
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(engine.contactsAccess, .notAsked)
+        XCTAssertTrue(contacts.readIdentifiers.isEmpty)
+        XCTAssertNil((host.batches.last?["contacts"] as? [[String: Any]])?.first?["emails"])
+
+        // Allowed, and an email added in Contacts: the next sync sends it, keeping the relation.
+        var edited = PhonePerson(id: PhonePerson.id(forContact: "C-sam"), name: "Sam Lee",
+                                 emails: [.init(address: "sam@example.com", label: "home")])
+        edited.contactID = "C-sam"
+        contacts.people["C-sam"] = .person(edited)
+        contacts.granted = .limited
+        await engine.requestContactsAccess()
+        XCTAssertEqual(engine.contactsAccess, .limited)
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let sent = try XCTUnwrap((host.batches.last?["contacts"] as? [[String: Any]])?.first)
+        XCTAssertEqual(sent["id"] as? String, samID)
+        XCTAssertEqual(sent["relation"] as? String, "wife")
+        XCTAssertEqual((sent["emails"] as? [[String: Any]])?.first?["address"] as? String, "sam@example.com")
+        XCTAssertNil(sent["contact_id"], "The identifier stays on the phone")
+        XCTAssertTrue(engine.peopleProblems.isEmpty)
+
+        // Left out of limited access: flagged, and the host keeps the last copy (nothing new goes).
+        contacts.people["C-sam"] = .problem(.notShared)
+        let count = host.batches.count
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(engine.peopleProblems[samID], .notShared)
+        XCTAssertEqual(engine.people.first?.emails.first?.address, "sam@example.com")
+        XCTAssertTrue(host.batches.dropFirst(count).allSatisfy { $0["contacts"] == nil })
+
+        // Removed in Conduit: the flag goes with them.
+        engine.savePeople([])
+        XCTAssertTrue(engine.peopleProblems.isEmpty)
+    }
+
+    /// Someone picked before Conduit kept the contact's identifier is found
+    /// by their hashed id, then read like the rest; one not found is flagged.
+    func testPhonePeoplePickedBeforeTheIdentifierAreFoundByTheirID() async {
+        let contacts = FakePhoneContactsSource()
+        contacts.granted = .full
+        let engine = makePhoneEngine(source: FakePhoneCalendarSource(), contacts: contacts)
+        let samID = PhonePerson.id(forContact: "C-sam")
+        let alexID = PhonePerson.id(forContact: "C-alex")
+        engine.savePeople([PhonePerson(id: samID, name: "Sam Lee", relation: "wife"),
+                           PhonePerson(id: alexID, name: "Alex", relation: "father")])
+        contacts.found = [samID: "C-sam"]
+        contacts.people["C-sam"] = .person(PhonePerson(id: "ignored", name: "Sam Lee-Park"))
+        await engine.requestContactsAccess()
+        XCTAssertEqual(engine.people.map(\.name), ["Sam Lee-Park", "Alex"])
+        XCTAssertEqual(engine.people.map(\.id), [samID, alexID])
+        XCTAssertEqual(engine.people.map(\.relation), ["wife", "father"])
+        XCTAssertEqual(engine.people.first?.contactID, "C-sam")
+        XCTAssertEqual(engine.peopleProblems, [alexID: .notFound])
+        XCTAssertEqual(contacts.searchedIDs, [samID, alexID])
+
+        // A search that fails says so, never that Alex left Contacts.
+        contacts.searchFails = true
+        await engine.refreshPeople()
+        XCTAssertEqual(engine.peopleProblems, [alexID: .unreadable])
+
+        // A person picked while Contacts was read keeps the picker's copy.
+        let (people, problems) = PhonePeopleStore.refreshed(
+            [PhonePerson(id: "p_new", name: "Kim", contactID: "C-kim")], reads: [:], found: [:], access: .full)
+        XCTAssertEqual(people.first?.name, "Kim")
+        XCTAssertTrue(problems.isEmpty)
     }
 
     /// An update that names another calendar or list moves the item there,
@@ -1289,6 +1426,7 @@ extension HermesVoiceGatewayTimeoutTests {
 
     private func makePhoneEngine(source: FakePhoneCalendarSource,
                                  alarms: PhoneAlarmSource = FakePhoneAlarmSource(),
+                                 contacts: PhoneContactsSource = FakePhoneContactsSource(),
                                  folder given: URL? = nil, defaults givenDefaults: UserDefaults? = nil,
                                  keys box: PhoneKeyBox = PhoneKeyBox(),
                                  now: @escaping () -> Date = { Date(timeIntervalSince1970: 1_760_400_000) }) -> PhoneSyncEngine {
@@ -1301,7 +1439,7 @@ extension HermesVoiceGatewayTimeoutTests {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .gmt
         return PhoneSyncEngine(calendarSource: source, statusSource: FakePhoneStatusSource(), alarmSource: alarms,
-                               store: PhoneSyncStateStore(url: folder.appendingPathComponent("state.json")),
+                               contactsSource: contacts, store: PhoneSyncStateStore(url: folder.appendingPathComponent("state.json")),
                                keys: keys, defaults: defaults, calendar: calendar, now: now)
     }
 
@@ -1342,6 +1480,30 @@ private final class FakePhoneAlarmSource: PhoneAlarmSource {
     func cancel(id: String) throws {
         cancelled.append(id)
         list.removeAll { $0["id"] as? String == id }
+    }
+}
+
+private final class FakePhoneContactsSource: PhoneContactsSource, @unchecked Sendable {
+    var granted: PhoneContactsAccess = .notAsked
+    private var asked = false
+    var people: [String: PhoneContactRead] = [:]
+    var found: [String: String] = [:]
+    private(set) var readIdentifiers: [String] = []
+    private(set) var searchedIDs: Set<String> = []
+
+    var access: PhoneContactsAccess { asked ? granted : .notAsked }
+    func requestAccess() async -> PhoneContactsAccess {
+        asked = true
+        return access
+    }
+    func read(_ identifiers: [String]) async -> [String: PhoneContactRead] {
+        readIdentifiers += identifiers
+        return people.filter { identifiers.contains($0.key) }
+    }
+    var searchFails = false
+    func identifiers(for ids: Set<String>) async -> [String: String]? {
+        searchedIDs.formUnion(ids)
+        return searchFails ? nil : found.filter { ids.contains($0.key) }
     }
 }
 
@@ -1484,7 +1646,7 @@ private final class FakePhoneHost {
             }
             let size = try JSONSerialization.data(withJSONObject: body).count
             ingestBodyBytes.append(size)
-            // plugin_api PHONE_MAX_INGEST_BODY_BYTES
+            // dashboard/api/phone_data.py PHONE_MAX_INGEST_BODY_BYTES
             if size > 4 * 1024 * 1024 {
                 throw DashboardTicketBridgeError.http(status: 413, detail: "Request body is too large")
             }

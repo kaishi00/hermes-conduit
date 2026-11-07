@@ -99,6 +99,12 @@ struct LoginAddressStep: View {
                     focusedField = nil
                     flow.connectionSetupDestination = .start
                 }
+                if context == .firstLaunch {
+                    LoginDiagnosticsLink(identifier: "\(prefix).diagnostics") {
+                        focusedField = nil
+                        flow.showsDiagnostics = true
+                    }
+                }
             }
         }
         .loginReadableWidth()
@@ -110,12 +116,12 @@ struct LoginAddressStep: View {
     private var addressSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(addressLabel)
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
             HStack(spacing: 10) {
                 Image(systemName: "link")
-                    .font(.body.weight(.medium))
+                    .scaledFont(.body.weight(.medium))
                     .conduitFixedGlyph()
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
@@ -134,7 +140,7 @@ struct LoginAddressStep: View {
             .loginFieldChrome(isFocused: focusedField == .server)
             .id(LoginField.server)
             Text(AppLocalization.string("No need to type https://. Conduit checks how this dashboard signs in next."))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 4)
@@ -218,7 +224,7 @@ struct LoginAddressStep: View {
                 }
             ))
             .tint(.conduitAccent)
-            .font(.callout.weight(.semibold))
+            .scaledFont(.callout.weight(.semibold))
             // Stable handles for the UI tests, apart from the copy; the Add
             // sheet's own don't repeat the sign-in screen's.
             .accessibilityIdentifier("\(prefix).cloudflare-toggle")
@@ -240,7 +246,7 @@ struct LoginAddressStep: View {
                     .loginFieldChrome(isFocused: focusedField == .cloudflareClientSecret)
                     .id(LoginField.cloudflareClientSecret)
                 Text("Used only to reach this Cloudflare-protected dashboard; the secret stays in Keychain.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -253,7 +259,7 @@ struct LoginAddressStep: View {
             } label: {
                 HStack {
                     Text(AppLocalization.string("Extra headers"))
-                        .font(.callout.weight(.semibold))
+                        .scaledFont(.callout.weight(.semibold))
                     Spacer()
                     let count = extraHeaderCount
                     if count > 0 {
@@ -261,7 +267,7 @@ struct LoginAddressStep: View {
                             .foregroundStyle(.secondary)
                     }
                     Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                         .foregroundStyle(.conduitTertiary)
                 }
                 .frame(minHeight: 44)
@@ -367,7 +373,7 @@ struct LoginCredentialsPage: View {
                         Task { await flow.signInWithBrowserInstead() }
                     } label: {
                         Label(AppLocalization.string("Sign in with browser instead"), systemImage: "safari")
-                            .font(.callout.weight(.semibold))
+                            .scaledFont(.callout.weight(.semibold))
                             .foregroundStyle(Color.conduitAccent)
                             .frame(minHeight: 44)
                     }
@@ -386,22 +392,22 @@ struct LoginCredentialsPage: View {
     private func targetCard(_ target: LoginTarget) -> some View {
         HStack(spacing: 12) {
             Image(systemName: "server.rack")
-                .font(.body.weight(.medium))
+                .scaledFont(.body.weight(.medium))
                 .conduitFixedGlyph()
                 .foregroundStyle(Color.conduitAccent)
                 .frame(width: 26)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: target.label)
-                    .font(.callout.weight(.semibold))
+                    .scaledFont(.callout.weight(.semibold))
                 Text(verbatim: LoginAddress.displayHost(target.baseURL))
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(Color.primary.opacity(0.58))
                     .lineLimit(2)
             }
             Spacer(minLength: 8)
             Text("Password")
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
@@ -417,7 +423,7 @@ struct LoginCredentialsPage: View {
     private var fields: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Username")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
             TextField("Username", text: $flow.username)
@@ -431,7 +437,7 @@ struct LoginCredentialsPage: View {
                 .loginFieldChrome(isFocused: focusedField == .username)
                 .id(LoginField.username)
             Text("Password")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
                 .padding(.top, 6)
@@ -455,7 +461,7 @@ struct LoginCredentialsPage: View {
                     focusedField = .password
                 } label: {
                     Image(systemName: revealsPassword ? "eye.slash" : "eye")
-                        .font(.body)
+                        .scaledFont(.body)
                         .foregroundStyle(.secondary)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
@@ -558,7 +564,7 @@ struct LoginDashboardsScreen: View {
                 pendingRemoval = nil
             }
         } message: {
-            Text("This dashboard's saved sign-in and cookies will be deleted from this device. Other dashboards are not affected.")
+            Text("This dashboard's saved sign-in and cookies will be deleted from this device, and location, health and phone sharing with it stops. Other dashboards are not affected.")
         }
     }
 
@@ -619,8 +625,11 @@ struct LoginDashboardsScreen: View {
                 LoginHelpLink(identifier: "login.connection-setup") {
                     flow.connectionSetupDestination = .start
                 }
+                LoginDiagnosticsLink(identifier: "login.diagnostics") {
+                    flow.showsDiagnostics = true
+                }
                 Text("Your sign-in stays on this device.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -759,15 +768,15 @@ struct LoginHeader: View {
                 switch style {
                 case .firstLaunch:
                     Text("Conduit")
-                        .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                        .scaledFont(.system(.largeTitle, design: .rounded, weight: .bold))
                     Text("A focused home for your Hermes work")
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(.secondary)
                 case .welcomeBack:
                     Text("Welcome back")
-                        .font(.title2.weight(.semibold))
+                        .scaledFont(.title2.weight(.semibold))
                     Text("Choose a dashboard to connect to.")
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -818,27 +827,27 @@ struct LoginRowLabel: View {
     var body: some View {
         HStack(spacing: 14) {
             Image(systemName: icon)
-                .font(.body.weight(.medium))
+                .scaledFont(.body.weight(.medium))
                 .conduitFixedGlyph()
                 .foregroundStyle(Color.conduitAccent)
                 .frame(width: 26)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: title)
-                    .font(.callout.weight(.semibold))
+                    .scaledFont(.callout.weight(.semibold))
                     .foregroundStyle(.primary)
                 Text(verbatim: detail)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(Color.primary.opacity(0.58))
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                 if let status {
                     HStack(spacing: 5) {
                         Image(systemName: status.icon)
-                            .font(.caption.weight(.semibold))
+                            .scaledFont(.caption.weight(.semibold))
                             .conduitFixedGlyph()
                             .accessibilityHidden(true)
                         Text(verbatim: status.text)
-                            .font(.footnote.weight(.medium))
+                            .scaledFont(.footnote.weight(.medium))
                     }
                     .foregroundStyle(status.tint)
                     .padding(.top, 1)
@@ -848,12 +857,12 @@ struct LoginRowLabel: View {
             switch accessory {
             case .chevron:
                 Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(.conduitTertiary)
                     .accessibilityHidden(true)
             case .collapsed, .expanded:
                 Image(systemName: "chevron.down")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(.conduitTertiary)
                     .rotationEffect(.degrees(accessory == .expanded ? 180 : 0))
                     .accessibilityHidden(true)
@@ -898,9 +907,9 @@ struct LoginSwitchLabel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(verbatim: title)
-                .font(.callout.weight(.semibold))
+                .scaledFont(.callout.weight(.semibold))
             Text(verbatim: detail)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -956,10 +965,10 @@ struct LoginPrimaryButton: View {
                         .tint(Self.labelColor)
                 }
                 Text(verbatim: title)
-                    .font(.headline)
+                    .scaledFont(.headline)
                 if !isBusy {
                     Image(systemName: "arrow.right")
-                        .font(.headline)
+                        .scaledFont(.headline)
                         .accessibilityHidden(true)
                 }
             }
@@ -985,8 +994,30 @@ struct LoginHelpLink: View {
             action()
         } label: {
             Label("Need help connecting?", systemImage: "questionmark.circle")
-                .font(.callout.weight(.semibold))
+                .scaledFont(.callout.weight(.semibold))
                 .foregroundStyle(Color.conduitAccent)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(identifier)
+    }
+}
+
+/// Diagnostics & logs with no dashboard connected: the last connection's
+/// steps, device reports and chat traces, to copy, share or send.
+struct LoginDiagnosticsLink: View {
+    let identifier: String
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            Haptics.selection()
+            action()
+        } label: {
+            Label(AppLocalization.string("Diagnostics & logs"), systemImage: "doc.text.magnifyingglass")
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
         }
@@ -1008,19 +1039,19 @@ struct LoginFailureCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(Color.red)
                     .padding(.top, 2)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(verbatim: failure.title)
-                        .font(.callout.weight(.semibold))
+                        .scaledFont(.callout.weight(.semibold))
                         .foregroundStyle(Color.red)
                         .multilineTextAlignment(.leading)
                         .accessibilityIdentifier("login.error.title")
                     if !failure.message.isEmpty {
                         Text(verbatim: failure.message)
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(Color.primary.opacity(0.72))
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
@@ -1086,7 +1117,7 @@ struct LoginCapsuleButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.subheadline.weight(.semibold))
+            .scaledFont(.subheadline.weight(.semibold))
             .foregroundStyle(prominent ? Color(uiColor: UIColor { traits in
                 traits.userInterfaceStyle == .dark ? UIColor(white: 0, alpha: 0.82) : .white
             }) : Color.primary)
@@ -1209,6 +1240,10 @@ struct LoginFlowPresentations: ViewModifier {
                         flow.nativeOAuthFailed(error)
                     }
                 )
+            }
+            .sheet(isPresented: $flow.showsDiagnostics) {
+                GatewayDiagnosticsSheet(placement: .signIn)
+                    .environmentObject(appState)
             }
             .sheet(isPresented: $flow.showsScanner, onDismiss: { flow.scannerDismissed() }) {
                 DashboardCodeScannerSheet { text in

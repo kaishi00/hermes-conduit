@@ -46,9 +46,9 @@ struct RoomApprovalSheet: View {
                 if appState.linkedRoomApprovalIsGone(approval.id), answer != .submitting {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(verbatim: RoomApprovalText.line(for: approval))
-                            .font(.subheadline.weight(.semibold))
+                            .scaledFont(.subheadline.weight(.semibold))
                         Text(AppLocalization.string("This approval isn't waiting any more."))
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)

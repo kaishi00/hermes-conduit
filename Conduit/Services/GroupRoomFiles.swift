@@ -11,7 +11,7 @@ final class GroupRoomFilesClient {
     /// Base64 of a file near the host's 50 MB cap takes a while to send.
     static let minimumTimeoutMilliseconds = 180_000
 
-    /// The largest file /room-files takes (plugin_api ROOM_FILE_MAX_BYTES).
+    /// The largest file /room-files takes (dashboard/api/rooms.py ROOM_FILE_MAX_BYTES).
     static let maximumMegabytes = 50
 
     /// The room composer's staging limit: the user's attachment limit, but

@@ -31,13 +31,17 @@ enum MapsNavigator {
     nonisolated static let urlKey = "conduit_maps_url"
 
     /// Resolves `ref` and opens Apple Maps with `mode` directions there.
+    /// `stillAllowed` is read once the place is found: a lookup that used
+    /// the user's location or saved places opens nothing when it says no
+    /// (consent turned off meanwhile, issue 1881).
     static func open(_ ref: MapsPlaceRef, mode: MapsRequest.Mode, places: [LocationSavedPlace],
-                     near hint: CLLocationCoordinate2D?) async -> Outcome {
+                     near hint: CLLocationCoordinate2D?, stillAllowed: () -> Bool = { true }) async -> Outcome {
         let item: MKMapItem
         switch await MapsEngine.destination(ref, places: places, near: hint, deadline: lookupDeadline) {
         case .failure(let failure): return .failed(failure)
         case .success(let found): item = found
         }
+        guard stillAllowed() else { return .failed(.paused) }
         let coordinate = item.placemark.coordinate
         let name = MapsText.cleanOrNil(item.name, limit: 120)
             ?? String(format: "%.4f, %.4f", locale: posix, coordinate.latitude, coordinate.longitude)
@@ -92,10 +96,8 @@ enum MapsNavigator {
     /// Whether the car screen opened it; a scene that never answers counts
     /// as no after a few seconds, and the phone is tried next.
     private static func openInCar(_ url: URL, scene: CPTemplateApplicationScene) async -> Bool {
-        await MapsDeadline.run(after: 3, fallback: false) {
-            await withCheckedContinuation { continuation in
-                scene.open(url, options: nil) { opened in continuation.resume(returning: opened) }
-            }
+        await MapsDeadline.first(after: 3, fallback: false) { answer in
+            scene.open(url, options: nil) { opened in answer(opened) }
         }
     }
 

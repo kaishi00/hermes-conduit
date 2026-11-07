@@ -22,13 +22,34 @@ a job. At most three jobs run at once.
 
 - Each job is a new, ordinary Hermes session (`session.create` +
   `prompt.submit`), titled from the task. It shows up in the session list
-  with a waveform badge and can be opened like any chat.
+  with a waveform badge and can be opened like any chat. Once Hermes has
+  answered it, the plugin archives it with Hermes' auto-archive stamp, so
+  Hermes Desktop's list doesn't fill up with voice jobs; Conduit keeps
+  listing it under its call. That holds while only voice has used it (its
+  prompt, and corrections sent as `(voice) <words>`): typing into it brings
+  it back for good, and a failed, stopped or pinned job stays listed.
+- A host whose plugin keeps bot work
+  (`work-adopt`) is also told of each job once Hermes takes its request, so
+  the job shows in its bot's Work panel as a call's ("From a voice call" or
+  "From a Watch call"), journaled, and waiting for the user after a Hermes
+  restart. It's a write to the host during the call, one small request off
+  the job's path beside the session the job makes anyway; how results come
+  back is unchanged. Eric ruled (2026-11-02) that the "no writes to the
+  host mid-call" ruling allows it (feature map, "Job results during
+  calls"). A start that fails
+  or is abandoned isn't kept. Watch relay jobs are kept by the plugin itself
+  as they start.
+- Eric 2026-11-02: a call kept with the Bot Chat
+  runs its jobs on that bot, as the coordinator's own workstreams, and the
+  coordinator reports each in the Bot Chat once the call is saved. A call
+  kept with a workstream's chat makes no jobs at all: every request goes to
+  the workstream through its plugin, interrupting it while it works.
 - During a live call, the call screen shows each job the call started: the
   latest above the captions, and every one in the transcript panel where it
   started (`VoiceJobCallAnchor`). Tapping one shows its status and, once it
   finishes, its full final reply over the call, with **Open chat** to leave
-  for the job's chat. The reply is already on the phone, so nothing is
-  written to the host mid-call (mid-call saves stalled Gemini Live, PR #281).
+  for the job's chat. The reply is already on the phone, so showing it
+  saves nothing to the host mid-call (mid-call saves stalled Gemini Live, PR #281).
 - Gemini Live and Grok Live also have a `show_on_screen` tool (title and
   Markdown) for anything better seen than heard: tables, Mermaid charts
   (`xychart-beta`, `pie`), steps, image and web links. The card opens over
@@ -127,8 +148,14 @@ reply pending or playing):
 
 ## Limits of this phase
 
-- The job ledger is in memory. Jobs keep running on the server across app
-  restarts, sign-out, and profile switches, but Voice stops following them.
+- Jobs keep running on the server across app restarts, sign-out, and
+  profile switches. The phone keeps
+  its job list for each workspace and profile. After a relaunch, or when it
+  comes back to that profile, it follows the jobs again and reads the
+  replies of any that finished meanwhile. Only a later call kept with the
+  same chat as the job's own call says those results. A finished job that
+  nobody heard, or one still running, is no longer taken back a day after it started. Thread turns and the
+  request whose chat a call took aren't kept.
 - Voice still suspends when the app goes to the background. Background audio
   and a GPT-Live transport are later phases.
 
@@ -147,5 +174,6 @@ Live Voice (Gemini, Grok or GPT-Live) started from a chat's mic is attached to t
 - **On screen or not.** When the attached chat is open, the turn goes through the composer's own send path, so it shows and streams like a typed message. Otherwise the chat is resumed if it isn't live, and the turn is tied to that runtime before the prompt is submitted, so none of its events are missed. The supervisor follows the turn by its session events, plus the liveness poll as a fallback.
 - **Typed turns reach the call quietly (#363).** When a turn the call didn't start finishes in the attached chat (the user typed it, in Conduit or on another device), the live model gets a note with what was typed and Hermes' reply, fenced as data, with the reply clipped to 3,000 characters and the typed text to 2,000. The typed message is included only when the open chat shows it as the one message since the last reply (not one typed on another device, nor one queued behind it), with its attachments named (`[Attached: board.jpg (image)]`): the live models can't see pictures, but Hermes looks at them with its own or its vision helper model, and its reply arrives as text. The note is context, not a turn: Gemini gets it as `clientContent` with `turnComplete: false`, Grok as a conversation item with no `response.create`, and GPT-Live on the `commentary` channel. It goes out only while the call is quiet, and the model is told to stay quiet about it until the user brings it up. Up to three wait at once; older ones are dropped (the chat still has them), and hanging up drops any not yet sent. A typed message that steers a running voice turn is part of that turn and comes back with its reply, not as a note.
 - **Hanging up** drops requests still waiting their turn. A turn already sent keeps running in the chat.
-- **The call's own transcript is saved separately, under Voice.** The chat gets a "Voice call" marker where the call started, with its length; tapping it opens the saved transcript. The transcript gets a "Started from <chat>" card that opens the chat, and each request the call sent to the chat is noted there as "Asked the chat: … [Open chat]". The chat's card matches on the chat's stored id (a runtime id only names it while open), and only on the open chat's own ids: its row's ids and the durable id Hermes confirmed for its runtime. The chat scroll identity's aliases are not used, since a new chat (or one opened from another) keeps the previous chat's ids there. Resume Call matches a saved call the same way. The work the call handed to Hermes is already in the chat as ordinary turns, so the spoken back-and-forth stays out of the chat and out of Hermes' context for the next typed message (the host also refuses to write a call into an ordinary chat). The link is kept on the device (up to 300 calls), so another device shows no marker.
+- **A deleted chat lets go of the call (issue 1797).** When the call's chat is deleted mid-call, in Conduit's list or another profile's row, the call lets go of it but stays on: its next ordinary request makes a new chat, which becomes the call's as an unattached call's first request's does. Deleted in Hermes Desktop, the turn that finds the chat gone (Hermes has no session for it) fails and says so, and the next request makes the new chat. A request already in the deleted chat is let go of, as at a hang-up: its end, approval or question isn't said to the call. A Local Live call whose turns go to Hermes makes the new chat in that same turn, on the deleted chat's bot, and a Watch call's next request does the same for the chat its first job made when the iPhone runs its jobs (the relay keeps its chat's live runtime, see the feature map's open gap).
+- **The call's own transcript is saved separately, under Voice.** The chat gets a "Voice call" marker where the call started, with its length; tapping it opens the saved transcript. The transcript gets a "Started from <chat>" card that opens the chat, and each request the call sent to the chat is noted there as "Asked the chat: … [Open chat]". The chat's card matches on the chat's stored id (a runtime id only names it while open), and only on the open chat's own ids: its row's ids and the durable id Hermes confirmed for its runtime. The chat scroll identity's aliases are not used, since a new chat (or one opened from another) keeps the previous chat's ids there. Resume Call matches a saved call the same way. The work the call handed to Hermes is already in the chat as ordinary turns, so the spoken back-and-forth stays out of the chat and out of Hermes' context for the next typed message (the host also refuses to write a call into an ordinary chat). The link is kept on the device (up to 300 calls), and the host lists every chat's kept calls with the voice tags, so another device adopts the ones it lacks and shows their markers too. Voice lists every chat a call was kept with or started from, beside the call rows.
 - **Resume Call goes back to the chat.** Resuming a saved call that was attached to a chat attaches the new call to the same chat, which gets a "Voice call resumed" marker.

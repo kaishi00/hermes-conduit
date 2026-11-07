@@ -2,8 +2,9 @@
 //  V2BotsView.swift
 //  Conduit
 //
-//  Bots: the roster as a chat-style list under a plain "Bots" title with a
-//  "+" for a new bot (the profile picker steps aside here). Tapping a bot
+//  Bots, Conduit's first tab: the bots as portraits under a plain "Bots"
+//  title with a "+" for a new bot and the Pulse and Artifacts shortcuts
+//  (the profile picker steps aside here; V2BotsHome.swift). Tapping a bot
 //  opens its persistent chat in this tab; editing stays in BotEditorSheet.
 //
 
@@ -26,30 +27,25 @@ struct V2BotsView: View {
                 .v2ProfileSwitchContent()
         }
         .v2EdgeBar(.top) {
-            HStack(spacing: 10) {
-                Text(V2Tab.bots.title)
-                    .font(.title2.weight(.bold))
-                    .accessibilityAddTraits(.isHeader)
-                Spacer(minLength: 0)
-                Button {
-                    createRequest = true
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 17, weight: .semibold))
-                        .conduitFixedGlyph()
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 10) {
+                    Text(V2Tab.bots.title)
+                        .scaledFont(.title2.weight(.bold))
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer(minLength: 0)
+                    V2AddButton(title: AppLocalization.string("New Bot")) {
+                        createRequest = true
+                    }
+                    .disabled(!canCreate)
                 }
-                .buttonStyle(PressableButtonStyle())
-                .conduitGlassControl(cornerRadius: 22, interactive: false)
-                .disabled(!canCreate)
-                .accessibilityLabel(AppLocalization.string("New Bot"))
+                // Pulse and Artifacts are global, not any one bot's: small
+                // shortcuts under the title rather than cards among the bots.
+                BotsHomeShortcuts()
             }
             .padding(.horizontal, 16)
             .padding(.top, 4)
             .padding(.bottom, 8)
             .frame(minHeight: 52)
-            .modifier(V2LegacyScrollEdge())
             .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {

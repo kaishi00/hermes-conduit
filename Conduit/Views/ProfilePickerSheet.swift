@@ -3,6 +3,7 @@
 //  Conduit
 //
 
+import PhotosUI
 import SwiftUI
 
 struct ProfilePickerSheet: View {
@@ -44,14 +45,14 @@ struct ProfilePickerSheet: View {
                             Text(isReordering
                                  ? AppLocalization.string("Use the arrows to choose the order profiles appear throughout Conduit.")
                                  : photosFootnote)
-                                .font(.footnote)
+                                .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
                             Spacer(minLength: 0)
                             Button(isReordering ? AppLocalization.string("Done") : AppLocalization.string("Reorder")) {
                                 Haptics.selection()
                                 withAnimation(ConduitMotion.response) { isReordering.toggle() }
                             }
-                            .font(.footnote.weight(.semibold))
+                            .scaledFont(.footnote.weight(.semibold))
                             .buttonStyle(.plain)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 7)
@@ -100,7 +101,7 @@ extension ProfilePickerSheet {
     private var dashboardsSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Saved Dashboards")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
                 .accessibilityAddTraits(.isHeader)
@@ -164,8 +165,17 @@ private struct ProfilePickerRow: View {
     let select: () -> Void
     @State private var showingImagePicker = false
     @State private var pickedImage: UIImage?
+    /// Choose GIF or Video: the Photos picker, which hands over a GIF's own
+    /// file (Choose Photo's crop keeps one frame).
+    @State private var showingMotionPicker = false
+    @State private var pickedMotion: PhotosPickerItem?
+    /// Apple's Image Playground (ImagePlaygroundPicture).
+    @State private var showingPlayground = false
     @State private var saveError: String?
     @State private var isSavingPhoto = false
+    @State private var isRenaming = false
+    @State private var isSavingName = false
+    @State private var draftName = ""
     private var isCurrent: Bool { profile == appState.activeProfile }
     /// One rule for both selection paths: the text column's button and the
     /// card-sized selection surface behind the row must agree on when a
@@ -179,7 +189,7 @@ private struct ProfilePickerRow: View {
             profileLine
             if !isReordering { glowLine }
             if let saveError {
-                Text(saveError).font(.caption2).foregroundStyle(.red)
+                Text(saveError).scaledFont(.caption2).foregroundStyle(.red)
             }
         }
         .padding(12)
@@ -214,10 +224,41 @@ private struct ProfilePickerRow: View {
         .sheet(isPresented: $showingImagePicker) {
             ImagePicker(image: $pickedImage)
         }
+        .photosPicker(
+            isPresented: $showingMotionPicker,
+            selection: $pickedMotion,
+            matching: .any(of: [.images, .videos]),
+            preferredItemEncoding: .current
+        )
+        .onChange(of: pickedMotion) { _, item in
+            guard let item else { return }
+            pickedMotion = nil
+            saveAnimation(item)
+        }
         .onChange(of: pickedImage) { _, newImage in
             guard let newImage else { return }
             pickedImage = nil
             savePhoto(newImage)
+        }
+        .imagePlaygroundPicture(
+            isPresented: $showingPlayground,
+            prompt: ImagePlaygroundPicture.Prompt(name: appState.profileDisplayName(profile)),
+            source: appState.profileAvatarURL(for: profile).flatMap(ProfileAvatarImageCache.image(at:)),
+            onImage: { savePhoto($0) },
+            onFailure: {
+                saveError = AppLocalization.string("That picture could not be used.")
+                UIAccessibility.post(notification: .announcement, argument: saveError)
+            }
+        )
+        .alert(AppLocalization.string("Rename profile"), isPresented: $isRenaming) {
+            TextField(AppLocalization.string("Name"), text: $draftName)
+                .textInputAutocapitalization(.words)
+            Button(AppLocalization.string("Cancel"), role: .cancel) {}
+            Button(AppLocalization.string("Save")) { saveName(draftName) }
+        } message: {
+            Text(BotManagement.isDefaultProfile(profile) || !appState.profilePhotosLiveOnHermes
+                 ? AppLocalization.string("This only changes how the profile is named in Conduit.")
+                 : AppLocalization.string("Chats and settings stay with the profile. Bots and Hermes Desktop show the new name too."))
         }
     }
 
@@ -225,20 +266,20 @@ private struct ProfilePickerRow: View {
         HStack(spacing: 12) {
             Group {
                 if isReordering {
-                    ProfileAvatarView(profile: profile, displayName: appState.profileDisplayName(profile), url: appState.profileAvatarURL(for: profile), size: 48)
+                    ProfileAvatarView(profile: profile, displayName: appState.profileDisplayName(profile), url: appState.profileAvatarURL(for: profile), size: 48, animates: true)
                 } else {
                     Button {
                         Haptics.selection()
                         showingImagePicker = true
                     } label: {
                 ZStack(alignment: .bottomTrailing) {
-                    ProfileAvatarView(profile: profile, displayName: appState.profileDisplayName(profile), url: appState.profileAvatarURL(for: profile), size: 48)
+                    ProfileAvatarView(profile: profile, displayName: appState.profileDisplayName(profile), url: appState.profileAvatarURL(for: profile), size: 48, animates: true)
                         .overlay {
                             if isSavingPhoto {
                                 ProgressView().frame(width: 48, height: 48).background(.ultraThinMaterial, in: Circle())
                             }
                         }
-                    Image(systemName: "camera.fill").font(.caption2.weight(.bold)).foregroundStyle(Color.conduitBackgroundColor)
+                    Image(systemName: "camera.fill").scaledFont(.caption2.weight(.bold)).foregroundStyle(Color.conduitBackgroundColor)
                         .frame(width: 20, height: 20).background(Color.conduitAccent, in: Circle())
                         .overlay { Circle().strokeBorder(.background, lineWidth: 1) }
                 }
@@ -252,8 +293,8 @@ private struct ProfilePickerRow: View {
 
             Button(action: select) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(appState.profileDisplayName(profile)).font(.headline).foregroundStyle(.primary)
-                    Text(profile == "default" ? AppLocalization.string("Primary Hermes profile") : AppLocalization.string("Hermes profile")).font(.caption).foregroundStyle(.secondary)
+                    Text(appState.profileDisplayName(profile)).scaledFont(.headline).foregroundStyle(.primary)
+                    Text(BotManagement.isDefaultProfile(profile) ? AppLocalization.string("Primary Hermes profile") : AppLocalization.string("Hermes profile")).scaledFont(.caption).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             }
@@ -267,20 +308,83 @@ private struct ProfilePickerRow: View {
                         .accessibilityLabel("Move \(appState.profileDisplayName(profile)) later")
                 }
             } else if isCurrent {
-                Label("Current", systemImage: "checkmark.circle.fill").font(.caption.weight(.semibold)).foregroundStyle(.conduitAccent)
+                Label("Current", systemImage: "checkmark.circle.fill").scaledFont(.caption.weight(.semibold)).foregroundStyle(.conduitAccent)
             } else {
-                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.conduitTertiary)
+                Image(systemName: "chevron.right").scaledFont(.caption.weight(.semibold)).foregroundStyle(.conduitTertiary)
             }
-            if !isReordering, appState.profileAvatarURL(for: profile) != nil {
+            if !isReordering { editMenu }
+        }
+    }
+
+    /// The card's Edit menu: its name, and its photo, which the avatar's
+    /// camera badge also picks.
+    private var editMenu: some View {
+        Menu {
+            Button {
+                draftName = appState.profileDisplayName(profile)
+                isRenaming = true
+            } label: {
+                Label(AppLocalization.string("Rename…"), systemImage: "pencil")
+            }
+            Button {
+                showingImagePicker = true
+            } label: {
+                Label(AppLocalization.string("Choose Photo"), systemImage: "photo")
+            }
+            Button {
+                showingMotionPicker = true
+            } label: {
+                Label(AppLocalization.string("Choose GIF or Video"), systemImage: "film")
+            }
+            if ImagePlaygroundPicture.current == .available {
+                Button {
+                    showingPlayground = true
+                } label: {
+                    Label(AppLocalization.string("Image Playground"), systemImage: "apple.image.playground")
+                }
+            }
+            if let url = appState.profileAvatarURL(for: profile), !ProfileAvatarImageCache.isAnimated(at: url) {
+                Button {
+                    Haptics.light()
+                    bringToLife(url)
+                } label: {
+                    Label(AppLocalization.string("Bring to Life"), systemImage: "wand.and.stars")
+                }
+            }
+            if appState.profileAvatarURL(for: profile) != nil {
                 Button(role: .destructive) {
                     Haptics.warning()
                     savePhoto(nil)
                 } label: {
-                    Image(systemName: "trash").font(.caption.weight(.semibold)).frame(width: 30, height: 30)
+                    Label(AppLocalization.string("Remove Photo"), systemImage: "trash")
                 }
-                .buttonStyle(.plain)
-                .disabled(isSavingPhoto)
-                .accessibilityLabel("Remove photo for \(appState.profileDisplayName(profile))")
+            }
+        } label: {
+            Image(systemName: "pencil")
+                .scaledFont(.caption.weight(.semibold))
+                .foregroundStyle(Color.conduitAccent)
+                .opacity(isSavingName ? 0 : 1)
+                .frame(width: 30, height: 30)
+                .background(Color.conduitAccent.opacity(0.12), in: Circle())
+                .overlay { if isSavingName { ProgressView().controlSize(.small) } }
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isSavingPhoto || isSavingName)
+        .accessibilityLabel(AppLocalization.string("Edit \(appState.profileDisplayName(profile))"))
+        .accessibilityIdentifier("profile-edit-\(profile)")
+    }
+
+    private func saveName(_ name: String) {
+        guard name.trimmingCharacters(in: .whitespacesAndNewlines) != appState.profileDisplayName(profile) else { return }
+        isSavingName = true
+        saveError = nil
+        Task { @MainActor in
+            saveError = await appState.renameProfile(profile, to: name)
+            isSavingName = false
+            if let saveError {
+                UIAccessibility.post(notification: .announcement, argument: saveError)
             }
         }
     }
@@ -290,11 +394,11 @@ private struct ProfilePickerRow: View {
     private var glowLine: some View {
         HStack(spacing: 8) {
             Image(systemName: "sparkles")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text(AppLocalization.string("Background glow"))
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Spacer(minLength: 0)
@@ -303,7 +407,7 @@ private struct ProfilePickerRow: View {
                     Haptics.selection()
                     appState.setProfileGlowColor(nil, for: profile)
                 }
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(Color.conduitAccent)
                 .buttonStyle(.plain)
                 .frame(minHeight: 44)
@@ -333,11 +437,62 @@ private struct ProfilePickerRow: View {
         )
     }
 
+    /// A picked GIF or video, made into a looping APNG (AnimatedAvatar)
+    /// first, then saved like a photo; a still picked there is saved as one.
+    private func saveAnimation(_ item: PhotosPickerItem) {
+        isSavingPhoto = true
+        saveError = nil
+        Task { @MainActor in
+            let source: AnimatedAvatar.Source?
+            switch await AnimatedAvatar.pick(from: item) {
+            case .animation(let picked): source = picked
+            case .still(let image):
+                isSavingPhoto = false
+                savePhoto(image)
+                return
+            case .unreadable: source = nil
+            }
+            switch await AnimatedAvatar.picture(fromPicked: source) {
+            case .success(let apng):
+                saveError = await appState.setProfilePhoto(nil, animation: apng, for: profile)
+            case .failure(let failure):
+                saveError = AnimatedAvatar.message(for: failure)
+            }
+            isSavingPhoto = false
+            if let saveError {
+                UIAccessibility.post(notification: .announcement, argument: saveError)
+            }
+        }
+    }
+
+    /// Bring to Life: the still photo, its subject swaying (LivingPortrait),
+    /// saved as the profile's moving picture.
+    private func bringToLife(_ url: URL) {
+        guard let image = UIImage(contentsOfFile: url.path) else {
+            saveError = AppLocalization.string("That picture could not be used.")
+            return
+        }
+        isSavingPhoto = true
+        saveError = nil
+        Task { @MainActor in
+            switch await LivingPortrait.picture(from: image) {
+            case .success(let apng):
+                saveError = await appState.setProfilePhoto(nil, animation: apng, for: profile)
+            case .failure(let failure):
+                saveError = LivingPortrait.message(for: failure)
+            }
+            isSavingPhoto = false
+            if let saveError {
+                UIAccessibility.post(notification: .announcement, argument: saveError)
+            }
+        }
+    }
+
     /// Nil removes the photo.
     private func savePhoto(_ image: UIImage?) {
         isSavingPhoto = true
         saveError = nil
-        Task {
+        Task { @MainActor in
             saveError = await appState.setProfilePhoto(image, for: profile)
             isSavingPhoto = false
             if let saveError {
@@ -354,7 +509,7 @@ private struct ProfilePickerRow: View {
     private func reorderArrow(_ systemImage: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.subheadline.weight(.bold))
+                .scaledFont(.subheadline.weight(.bold))
                 .foregroundStyle(Color.conduitAccent)
                 .frame(width: 34, height: 34)
                 .background(Color.conduitAccent.opacity(0.12), in: Circle())
@@ -375,6 +530,9 @@ struct ProfileAvatarView: View {
     /// transcript's bot face sizes itself to it.
     static let defaultSize: CGFloat = 30
     var size: CGFloat = ProfileAvatarView.defaultSize
+    /// Plays a moving picture (AnimatedAvatarFrames); only where the face is
+    /// the focus, never in rows or the transcript.
+    var animates = false
     private var initials: String {
         let letters = displayName.split(separator: " ").prefix(2).compactMap(\.first)
         return letters.isEmpty ? "H" : String(letters).uppercased()
@@ -382,13 +540,18 @@ struct ProfileAvatarView: View {
     var body: some View {
         Group {
             if let url, let image = ProfileAvatarImageCache.image(at: url) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: size, height: size)
-                    .clipped()
-                    // Always beside the profile's name, or inside a labelled button.
-                    .accessibilityHidden(true)
+                ZStack {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                    if animates, ProfileAvatarImageCache.isAnimated(at: url) {
+                        AnimatedAvatarFrames(playback: .file(url, revision: ProfileAvatarImageCache.revision(of: url)))
+                    }
+                }
+                .frame(width: size, height: size)
+                .clipped()
+                // Always beside the profile's name, or inside a labelled button.
+                .accessibilityHidden(true)
             } else {
                 Text(initials).font(.system(size: max(10, size * 0.36), weight: .bold, design: .rounded))
                     .foregroundStyle(Color.conduitAccent).frame(width: size, height: size)

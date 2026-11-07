@@ -30,7 +30,7 @@ struct DictationSettingsSection: View {
             }
             .accessibilityIdentifier("voice.dictationEngine")
             Text(verbatim: engine.summary)
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             customWords
         }
@@ -39,16 +39,16 @@ struct DictationSettingsSection: View {
     private var customWords: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Custom words")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
             Text(engine == .hermes
                  ? AppLocalization.string("Names and terms dictation should expect, written the way you want them. Hermes uses the words in its own speech to text settings (stt.prompt), not this list.")
                  : AppLocalization.string("Names and terms dictation should expect, written the way you want them: your company, people, products."))
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             ForEach(words, id: \.self) { word in
                 HStack(spacing: 10) {
                     Text(verbatim: word)
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                     Spacer()
                     SettingsRowMenu(itemName: word, onEdit: {
                         draft = word

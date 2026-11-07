@@ -272,11 +272,11 @@ private struct GroupRoomMemberRow: View {
                 Text(name)
                     .lineLimit(1)
                 Text(GroupRoomTurns.ownerLine(of: member))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                 if let trouble {
                     Label(trouble.text, systemImage: trouble.symbol)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.orange)
                 }
             }
@@ -316,7 +316,7 @@ struct RoomAgentChoicesView: View {
                 if !choices.saved {
                     Section {
                         Text(AppLocalization.string("These are \(name)'s defaults. A change here applies to this room only."))
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -351,7 +351,7 @@ struct RoomAgentChoicesView: View {
             if let error {
                 Section {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.red)
                     if loadedKey != key {
                         Button(AppLocalization.string("Try again")) {

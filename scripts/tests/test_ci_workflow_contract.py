@@ -6,10 +6,9 @@ again (e.g. passing observation files positionally when the script requires
 
 CI v5 shape (docs/CI.md): GitHub-hosted CI is the merge gate, and it is light.
 A PR or a push runs the cheap Linux validation and ONE macOS `smoke` job
-that compiles the app (without its Watch app and extensions unless the plan
-job's ui-spec says otherwise, incrementally from an earlier build) and every
-test target once, then runs the curated unit smoke classes and the curated UI
-smoke classes (scripts/smoke-suite.json) on that build and simulator.
+that compiles the full app (incrementally from main's latest build) and every
+test target once, then runs the pinned unit smoke tests and the pinned UI
+smoke tests (scripts/smoke-suite.json) on that build and simulator.
 nightly.yml runs every other unit class in balanced shards
 (scripts/hosted-suite.json), the timing families with repeats and the complete
 UI suite. There is NO lane matrix, NO timing-history job and NO native flake
@@ -19,9 +18,11 @@ retry that would re-run a genuine assertion until it agrees.
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 
 from _util import SCRIPTS_DIR
@@ -149,14 +150,101 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(jobs, ["plan", "self-test", "smoke", "ci-gate"], jobs)
         self.assertEqual(self._workflow_text().count("runs-on: macos-"), 1)
         self.assertIn("runs-on: macos-26", self._job_text("smoke"))
+        self.assertIn("check-weak-imports.py binaries", self._job_text("smoke"))
         self.assertNotIn("matrix", self._job_text("smoke"),
                          "the smoke job must not fan out into several macOS jobs")
         self.assertNotIn("unit-shards", self._workflow_text(),
                          "the unit shards run in nightly.yml, not on every PR")
 
+    def test_a_pr_run_never_waits_for_its_superseded_run(self):
+        """A PR from this repository gets a concurrency group of its own run,
+        and its plan job cancels the PR's older runs first, so the new run
+        never waits for a cancelled Smoke job to wind down (Eric, 2026-11-02).
+        A fork PR, whose token can't cancel, keeps cancel-in-progress per PR;
+        a push keeps a group per commit, so every merge gets a full run."""
+        text = self._workflow_text()
+        same_repo = ("github.event_name == 'pull_request' && "
+                     "github.event.pull_request.head.repo.full_name == github.repository")
+        self.assertIn(
+            f"group: ci-${{{{ github.workflow }}}}-${{{{ ({same_repo}) && format('run-{{0}}', github.run_id)"
+            " || github.event.pull_request.number || github.sha }}", text)
+        self.assertIn("cancel-in-progress: true", text)
+        plan = self._job_text("plan")
+        self.assertIn("actions: write", plan)
+        first_step = plan.index("- name: Cancel this PR's older runs")
+        self.assertLess(first_step, plan.index("- uses: actions/checkout"),
+                        "the cancel runs before anything else in the run")
+        self.assertIn(f"if: {same_repo}", plan)
+        self.assertIn(".run_number < $GITHUB_RUN_NUMBER", plan,
+                      "only older runs, so two runs never cancel each other")
+        self.assertIn('.head_repository.full_name == \\"$GITHUB_REPOSITORY\\"', plan,
+                      "never a fork's run on a branch of the same name")
+        self.assertIn('(.pull_requests | length) == 1 and .pull_requests[0].number == $PR_NUMBER'
+                      ' and .pull_requests[0].base.ref == \\"$BASE_REF\\"', plan,
+                      "only this PR's runs: a branch with PRs into main and linked-rooms runs for each")
+        self.assertIn('actions/runs/$id/cancel', plan)
+
+    def _cancel_step_script(self):
+        lines = self._job_text("plan").splitlines()
+        start = next(i for i, l in enumerate(lines) if "- name: Cancel this PR's older runs" in l)
+        run = next(i for i in range(start, len(lines)) if lines[i].strip() == "run: |")
+        indent = len(lines[run]) - len(lines[run].lstrip())
+        body = []
+        for line in lines[run + 1:]:
+            if line.strip() and len(line) - len(line.lstrip()) <= indent:
+                break
+            body.append(line)
+        return textwrap.dedent("\n".join(body))
+
+    def test_the_cancel_step_cancels_only_this_prs_older_unfinished_runs(self):
+        """Runs the step's script with a stub gh over a list of runs: only the
+        older, unfinished run of this PR (number and base, this repository)
+        is cancelled."""
+        if not shutil.which("jq"):
+            self.skipTest("jq not installed")
+
+        def run(n, status="in_progress", repo="k/conduit", prs=((7, "main"),)):
+            return {"id": n, "run_number": n, "status": status,
+                    "head_repository": {"full_name": repo},
+                    "pull_requests": [{"number": pr, "base": {"ref": base}} for pr, base in prs]}
+
+        runs = [run(9), run(8, status="queued"), run(11), run(10), run(5, status="completed"),
+                run(4, repo="fork/conduit"), run(3, prs=((8, "main"),)),
+                run(2, prs=((7, "linked-rooms"),)), run(1, prs=((7, "main"), (8, "linked-rooms"))),
+                run(6, prs=())]
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = os.path.join(tmp, "runs.json")
+            with open(fixture, "w") as f:
+                json.dump({"workflow_runs": runs}, f)
+            log = os.path.join(tmp, "cancelled")
+            stub = os.path.join(tmp, "gh")
+            with open(stub, "w") as f:
+                f.write(textwrap.dedent(f"""\
+                    #!/usr/bin/env bash
+                    if [ "$3" = POST ]; then echo "$4" >> {log}; exit 0; fi
+                    while [ $# -gt 0 ]; do
+                      if [ "$1" = --jq ]; then jq -r "$2" {fixture}; exit; fi
+                      shift
+                    done
+                    exit 1
+                    """))
+            os.chmod(stub, 0o755)
+            env = dict(os.environ, PATH=f"{tmp}:{os.environ['PATH']}", GITHUB_REPOSITORY="k/conduit",
+                       GITHUB_RUN_NUMBER="10", HEAD_REF="topic", BASE_REF="main", PR_NUMBER="7")
+            result = subprocess.run(["bash", "-c", self._cancel_step_script()], env=env,
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            with open(log) as f:
+                cancelled = f.read().split()
+        self.assertEqual(sorted(cancelled), ["repos/k/conduit/actions/runs/8/cancel",
+                                             "repos/k/conduit/actions/runs/9/cancel"])
+
     # --- the plan job owns every test-to-run mapping -----------------------
 
-    def test_plan_job_selects_the_smoke_suite_and_validates_the_nightly_partition(self):
+    def test_plan_job_selects_the_smoke_suite_and_nothing_else(self):
+        """Smoke waits only for what it needs: the plan job holds the smoke
+        selection and the skip decision, and the Linux checks run in the
+        self-test job beside the build (Eric, 2026-11-02)."""
         plan = self._job_text("plan")
         self.assertIn("plan-tests.py smoke", plan,
                       "the plan job owns the smoke selection")
@@ -165,15 +253,70 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("ui-csv: \"${{ steps.smoke.outputs.ui-csv }}\"", plan)
         self.assertIn("echo \"unit-csv=$(jq -r '.unit_csv' ci-artifacts/smoke.json)\"", plan)
         self.assertIn("echo \"ui-csv=$(jq -r '.ui_csv' ci-artifacts/smoke.json)\"", plan)
+        self.assertIn("smoke-summary.py", plan)
+        for check in ("plan-tests.py validate", "plan-tests.py hosted", "check-l10n-coverage.py",
+                      "check-plugin-version.py", "check-feature-map.py", "unittest discover"):
+            self.assertNotIn(check, plan, f"{check} runs beside the build, not before it")
+
+    def test_self_test_job_runs_the_linux_checks_beside_the_build(self):
+        checks = self._job_text("self-test")
+        self.assertNotIn("needs:", checks, "the checks never delay the build")
         # A renamed nightly-only class, or a class in no list, must fail the
         # PR that caused it, not the next night.
-        self.assertIn("plan-tests.py hosted", plan)
-        self.assertIn("--suite scripts/hosted-suite.json", plan)
-        self.assertIn("plan-tests.py validate", plan)
-        self.assertIn("smoke-summary.py", plan)
-        self.assertIn("check-l10n-coverage.py", plan)
-        self.assertIn("check-plugin-version.py", plan)
-        self.assertIn("check-feature-map.py", plan)
+        self.assertIn("plan-tests.py hosted", checks)
+        self.assertIn("--suite scripts/hosted-suite.json", checks)
+        self.assertIn("plan-tests.py validate", checks)
+        self.assertIn("check-l10n-coverage.py", checks)
+        self.assertIn("check-fixed-text-sizes.py", checks)
+        self.assertIn("check-weak-imports.py targets", checks)
+        self.assertIn("check-transcript-environment.py", checks)
+        self.assertIn("check-plugin-version.py", checks)
+        self.assertIn("check-card-schema.py", checks)
+        self.assertIn("check-feature-map.py", checks)
+        # The feature map check reads the base's map at HEAD^1.
+        self.assertIn("fetch-depth: 2", checks)
+
+    def test_the_smoke_skip_builds_for_anything_the_app_or_ci_reads(self):
+        step = _step_text(self._job_text("plan"), "Does the change need the macOS build")
+        self.assertIn("git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD", step,
+                      "a rename must count by both names")
+        greps = re.findall(r"grep -E(v?) '([^']+)'", step)
+        self.assertEqual([flag for flag, _ in greps], ["v", "", ""])
+        docs, builds, app_markdown = (re.compile(pattern) for _, pattern in greps)
+        # The same-change skip builds for Markdown in an app or test folder,
+        # since the change id counts Markdown only by its words.
+        # core.quotePath=false keeps a non-ASCII name unquoted, so it matches.
+        for path in ("Conduit/Resources/Help.md", "ConduitTests/x.md", "Shared/a/b.md",
+                     "Conduit/Resources/日本語.md", '"Conduit/a\\"b.md"'):
+            self.assertTrue(app_markdown.search(path), path)
+        for path in ("docs/FEATURE_MAP.md", "README.md", "Conduit/App.swift"):
+            self.assertFalse(app_markdown.search(path), path)
+        # The review plan counts the same Markdown as code (both reviewers).
+        review = _read(os.path.join(REPO_ROOT, ".github", "workflows", "opencode-review.yml"))
+        code_config = re.search(r"code_config='([^']+)'", review).group(1)
+        self.assertIn("|^(Conduit[^/]*|Shared)/.*\\.md$|", code_config)
+        # ...and the same-change branch is gated on it and on a non-empty diff.
+        self.assertIn("&& changed=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD) && [ -n \"$changed\" ] \\\n"
+                      "            && ! printf '%s\\n' \"$changed\" | grep -E '^\"?(Conduit[^/]*|Shared)/.*\\.md\"?$' >/dev/null; then\n"
+                      "            repo=", step)
+        # The lookup takes only a passing Smoke job on another of the PR's
+        # commits, built as this PR's merge commit, with a non-empty id.
+        self.assertIn('select(.name == "Smoke" and .conclusion == "success")', step)
+        self.assertIn('[ "$sha" != "$PR_HEAD" ] || continue', step)
+        self.assertIn('[ -n "$now" ] && [ "$now" = "$(change_id "$passed")" ]', step)
+        self.assertEqual(2, step.count("[ \"$(git rev-parse -q --verify 'HEAD^2' || true)\" = \"$PR_HEAD\" ]"))
+
+        def skips(*paths):
+            return all(docs.search(p) for p in paths) and not any(builds.search(p) for p in paths)
+
+        self.assertTrue(skips("README.md", "docs/FEATURE_MAP.md", "designs/x.md", "LICENSE",
+                              "opencode.json", ".coderabbit.yaml", ".github/workflows/opencode-review.yml"))
+        for path in (".github/workflows/ci.yml", "Conduit/Resources/Help.md", "Shared/notes.md",
+                     "ConduitWatch/README.md", "ConduitTests/fixture.md", "scripts/ci-gate.py",
+                     "project.yml", "Conduit/App.swift"):
+            self.assertFalse(skips("README.md", path), path)
+        # A Swift file moved to docs/ lists its old name too, so it builds.
+        self.assertFalse(skips("Conduit/X.swift", "docs/X.md"))
 
     def test_the_feature_map_check_knows_the_pr_and_its_base(self):
         """On a PR, an entry it edits names it on its Checked line: the step
@@ -181,7 +324,7 @@ class WorkflowContractTests(unittest.TestCase):
         and for a PR into pulse or linked-rooms, main's maps where the PR and
         its base meet main, so the entries a merge of main brings in keep
         main's Checked lines."""
-        step = _step_text(self._job_text("plan"), "Feature map paths exist")
+        step = _step_text(self._job_text("self-test"), "Feature map paths exist")
         self.assertIn("PR_NUMBER: ${{ github.event.pull_request.number }}", step)
         self.assertIn("git show HEAD^1:docs/FEATURE_MAP.md", step)
         self.assertIn('--pr "$PR_NUMBER"', step)
@@ -232,11 +375,14 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertLess(unit, ui)
 
     def test_a_unit_smoke_failure_does_not_skip_the_ui_step(self):
-        """Both verdicts are visible on every run: the UI step runs after a
-        failed unit step (any failed step still fails the job), and only a
-        failed build or a cancelled run skips it."""
+        """Both verdicts are visible on every push run: the UI step runs after
+        a failed unit step (any failed step still fails the job), and only a
+        failed build or a cancelled run skips it. A PR runs no UI smoke
+        (Eric, 2026-11-02): main's run after the merge and the nightly do."""
         ui = _step_text(self._job_text("smoke"), "Run the curated UI smoke suite")
-        self.assertIn("if: ${{ !cancelled() && steps.build.outcome == 'success' }}", ui)
+        self.assertIn("if: ${{ !cancelled() && steps.build.outcome == 'success' && github.event_name == 'push' }}", ui)
+        remove = _step_text(self._job_text("smoke"), "Remove the app before UI smoke")
+        self.assertIn("if: ${{ !cancelled() && steps.build.outcome == 'success' && github.event_name == 'push' }}", remove)
         unit = _step_text(self._job_text("smoke"), "Run the curated unit smoke classes")
         self.assertNotIn("if:", unit, "the unit step runs only after a good build")
         self.assertNotIn("continue-on-error", self._job_text("smoke"),
@@ -262,33 +408,22 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("::error title=unit smoke failures::", unit,
                       "the failing cases must reach an annotation")
 
-    def test_smoke_job_builds_the_plan_jobs_project(self):
-        """The smoke job builds the plan job's choice: the app alone
-        (project-tests.yml), or the full app whenever a change reaches the
-        targets the overlay drops."""
-        self.assertIn('xcodegen generate --spec "${{ needs.plan.outputs.ui-spec }}"',
-                      self._job_text("smoke"))
-        self.assertIn("SPEC: ${{ needs.plan.outputs.ui-spec }}", self._job_text("smoke"))
+    def test_smoke_job_builds_the_full_app(self):
+        """Smoke builds the full app on every PR and push, so a PR starts from
+        the build main's latest merge saved and recompiles only its change.
+        The app-only build (project-tests.yml) restored last night's cache,
+        so a PR recompiled the whole day's main: 682 s against 537 s to
+        a finished build, medians of 2026-10-22..29."""
+        smoke = self._job_text("smoke")
+        self.assertIn("xcodegen generate --spec project.yml", smoke)
+        self.assertNotIn("project-tests.yml\n", smoke)
+        self.assertNotIn("ui-spec", self._workflow_text())
+        self.assertIn("kind=full\n", smoke)
+        self.assertNotIn("kind=slim", smoke)
         overlay = _read(os.path.join(REPO_ROOT, "project-tests.yml"))
         self.assertIn("- path: project.yml", overlay)
         self.assertIn("dependencies:REPLACE:", overlay)
         self.assertNotIn("- target:", overlay)
-        plan = self._job_text("plan")
-        self.assertIn("fetch-depth: 2", plan)
-        self.assertIn("^(ConduitWatch|ConduitWidgets|ConduitNotificationService"
-                      "|ConduitLocationPush|ConduitShareExtension|Shared)/", plan,
-                      "a change to any dropped target's folder must build the full app")
-        self.assertIn(r"^project(-tests)?\.yml$", plan)
-        self.assertIn(r"^Conduit/Voice/GPTLive/GPTLiveProtocol\.swift$", plan)
-        self.assertIn("HEAD^2", plan, "only a merge-commit checkout may pick the slim build")
-        self.assertIn('= "$PR_HEAD" ]', plan, "the merge commit's second parent must be this PR's head")
-        self.assertIn("spec=project.yml\n", plan, "the plan job must fail closed to the full app")
-        spec = _read(os.path.join(REPO_ROOT, "project.yml"))
-        # Every target the overlay drops must still be a dependency in the
-        # real spec, or the list above is out of date.
-        for target in ("ConduitWatch", "ConduitNotificationService",
-                       "ConduitWidgets", "ConduitLocationPush"):
-            self.assertIn(f"- target: {target}", spec)
 
     def test_smoke_job_builds_incrementally_and_pushes_save_the_full_build(self):
         """The smoke job restores the newest DerivedData it can reach (main's,
@@ -298,7 +433,7 @@ class WorkflowContractTests(unittest.TestCase):
         after a successful build, with the same path list (a different list
         is a different cache)."""
         text = self._job_text("smoke")
-        _assert_cache_round_trip(self, text, "steps.cache-key.outputs.kind == 'full'", "smoke")
+        _assert_cache_round_trip(self, text, "github.event_name == 'push'", "smoke")
         self.assertIn("&& github.event_name == 'push'\n", text)
         build = _read(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"))
         self.assertIn("ci-normalize-mtimes.py", build)
@@ -308,6 +443,18 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('[ -d "$DERIVED_DATA_PATH/SourcePackages/checkouts" ] || return 0', build,
                       "-skipPackageUpdates only when the restored cache holds the checkout")
         self.assertIn('${package_flag:+"$package_flag"}', build)
+
+    def test_a_failed_build_posts_its_source_errors(self):
+        """A failed build posts its first source errors as annotations, which
+        the API serves when the job log can't be read."""
+        build = _read(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"))
+        self.assertIn('echo "::error file=${file#"$PWD/"},line=$row,col=$col::$message"', build)
+        # A message escapes % and a carriage return, as workflow commands need.
+        self.assertIn('message="${rest//%/%25}"; message="${message//$\'\\r\'/%0D}"', build)
+        self.assertLess(
+            build.index("  annotate_source_errors\n"),
+            build.index('echo "::error::build-for-testing failed'),
+        )
 
     def test_no_shared_build_job_remains(self):
         text = self._workflow_text()
@@ -378,6 +525,9 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("name: CI Gate", gate)
         self.assertIn('--plan "${{ needs.plan.result }}"', gate)
         self.assertIn('--smoke "${{ needs.smoke.result }}"', gate)
+        # Without it every legitimately skipped smoke job fails the gate.
+        self.assertIn('--smoke-needed "${{ needs.plan.outputs.smoke }}"', gate)
+        self.assertIn("if: needs.plan.outputs.smoke != 'false'", self._job_text("smoke"))
         self.assertNotIn("needs.unit.", gate)
         self.assertNotIn("needs.ui-smoke.", gate)
 
@@ -470,8 +620,8 @@ class NightlyWorkflowTests(unittest.TestCase):
         self.assertIn("xcodegen generate --spec project-tests.yml", unit)
 
     def test_unit_shard_one_saves_the_slim_build_cache_on_main(self):
-        """PR smoke builds of project-tests.yml restore the slim cache, and
-        only the nightly unit shards build that kind on main now."""
+        """Only the nightly unit shards build project-tests.yml and restore
+        the slim cache; shard 1 saves it on main. Smoke builds the full app."""
         unit = _job_text(NIGHTLY, "unit")
         _assert_cache_round_trip(self, unit, "matrix.shard == 1", "nightly unit")
         self.assertIn("SPEC: project-tests.yml", unit)
@@ -610,8 +760,8 @@ class HostedSelectionTests(unittest.TestCase):
             smoke = json.load(fh)
         shard_classes = {c for csv in doc["unit_shards"] for c in csv.split(",")}
         ui_classes = {c for csv in doc["ui_shards"] for c in csv.split(",")}
-        self.assertLessEqual(set(smoke["unit"]), shard_classes)
-        self.assertLessEqual(set(smoke["ui"]), ui_classes)
+        self.assertLessEqual({t.split("/")[0] for t in smoke["unit"]}, shard_classes)
+        self.assertLessEqual({t.split("/")[0] for t in smoke["ui"]}, ui_classes)
 
     def test_a_stale_nightly_class_fails_the_selection(self):
         with open(self.HOSTED_SUITE, encoding="utf-8") as fh:
@@ -675,10 +825,10 @@ class SmokeSelectionTests(unittest.TestCase):
         }
         self.assertLessEqual(timing_families, nightly_only)
         self.assertFalse(
-            nightly_only & set(suite.get("unit") or []),
+            nightly_only & {t.split("/")[0] for t in suite.get("unit") or []},
             "a nightly-only timing family must not be in the smoke set")
         self.assertFalse(nightly_only & set(suite.get("source_contracts") or []))
-        self.assertFalse(nightly_only & set(suite.get("ui") or []))
+        self.assertFalse(nightly_only & {t.split("/")[0] for t in suite.get("ui") or []})
 
     def test_a_nonexistent_class_fails_the_selection(self):
         with open(SMOKE_SUITE, encoding="utf-8") as fh:
@@ -705,6 +855,65 @@ class SmokeSelectionTests(unittest.TestCase):
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("twice", proc.stdout)
 
+    def test_a_whole_class_entry_fails_the_selection(self):
+        # A class grows with every test added to it, and the PR gate with it:
+        # the curated lists pin single tests.
+        def mutate(suite):
+            suite["unit"] = list(suite["unit"]) + ["ProfileDiscoveryTests"]
+
+        proc = self._run_smoke_with(mutate)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("Class/testMethod", proc.stdout)
+
+    def test_a_renamed_test_fails_the_selection(self):
+        def mutate(suite):
+            suite["ui"] = list(suite["ui"]) + ["ProfilePickerUITests/testNoSuchThing"]
+            suite["max_ui_tests"] = len(suite["ui"])
+
+        proc = self._run_smoke_with(mutate)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("has no test method testNoSuchThing()", proc.stdout)
+
+    def test_a_list_over_its_cap_fails_the_selection(self):
+        for key, cap in (("unit", "max_unit_tests"), ("ui", "max_ui_tests")):
+            with self.subTest(key=key):
+                def mutate(suite, cap=cap, key=key):
+                    suite[cap] = len(suite[key]) - 1
+
+                proc = self._run_smoke_with(mutate)
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertIn("over its cap", proc.stdout)
+                self.assertIn(cap, proc.stdout)
+
+    def test_a_pinned_timing_family_test_fails_the_selection(self):
+        with open(os.path.join(SCRIPTS_DIR, "hosted-suite.json"), encoding="utf-8") as fh:
+            family = json.load(fh)["nightly_only_unit"][0]
+        method = None
+        for dirpath, _, files in os.walk(os.path.join(REPO_ROOT, "ConduitTests")):
+            for f in files:
+                with open(os.path.join(dirpath, f), encoding="utf-8", errors="replace") as fh:
+                    text = fh.read()
+                m = re.search(r"^(?:final )?class " + family + r"\b.*?^    func (test\w+)\(\)",
+                              text, re.M | re.S)
+                if m:
+                    method = m.group(1)
+        self.assertTrue(method, family)
+
+        def mutate(suite):
+            suite["unit"] = list(suite["unit"])[:-1] + [f"{family}/{method}"]
+
+        proc = self._run_smoke_with(mutate)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("nightly-only timing family", proc.stdout)
+
+    def test_a_missing_cap_fails_the_selection(self):
+        def mutate(suite):
+            suite.pop("max_ui_tests")
+
+        proc = self._run_smoke_with(mutate)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("max_ui_tests", proc.stdout)
+
     def _run_smoke_with(self, mutate):
         """Run `smoke` against a copy of the shipped suite after `mutate`."""
         with open(SMOKE_SUITE, encoding="utf-8") as fh:
@@ -722,11 +931,12 @@ class SmokeSelectionTests(unittest.TestCase):
         # job would then filter it against the wrong bundle - running zero tests
         # for it while the plan job reported success.
         def mutate(suite):
-            suite["unit"] = list(suite["unit"]) + ["ConnectionSetupUITests"]
+            suite["unit"] = list(suite["unit"]) + [
+                "ConnectionSetupUITests/testWizardAdvancesThroughQuestionsToTailscaleBranchAndBack"]
 
         proc = self._run_smoke_with(mutate)
         self.assertNotEqual(proc.returncode, 0)
-        self.assertIn("it is not a unit test class", proc.stdout)
+        self.assertIn("ConnectionSetupUITests is not a unit test class", proc.stdout)
 
     def test_a_missing_target_key_fails_the_selection(self):
         def mutate(suite):
@@ -776,8 +986,9 @@ class SmokeSelectionTests(unittest.TestCase):
             self.assertTrue(doc["unit_csv"])
             self.assertEqual(doc["unit_csv"].split(","), doc["unit"])
             self.assertEqual(doc["ui_csv"].split(","), doc["ui"])
-            self.assertEqual(doc["delegated_unit"] + len(doc["unit"]),
-                             doc["inventory_unit"])
+            self.assertEqual(
+                doc["delegated_unit"] + len({t.split("/")[0] for t in doc["unit"]}),
+                doc["inventory_unit"])
             summary = subprocess.run(
                 [sys.executable, os.path.join(SCRIPTS_DIR, "smoke-summary.py"),
                  "--selection", out],
@@ -785,6 +996,9 @@ class SmokeSelectionTests(unittest.TestCase):
         self.assertEqual(summary.returncode, 0, summary.stderr)
         self.assertIn("Hosted CI selection", summary.stdout)
         self.assertIn("nightly workflow", summary.stdout)
+        # A PR runs no UI smoke, so the summary never says it did.
+        self.assertIn("pinned UI tests (pushes only)", summary.stdout)
+        self.assertIn("UI (pushes only): ", summary.stdout)
 
     def _changed_selection(self, changed, mutate=None):
         """Run `smoke --changed-files` on the shipped (or mutated) suite and
@@ -832,7 +1046,18 @@ class SmokeSelectionTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("SessionPresentationCacheTests", doc["changed_unit"])
         self.assertEqual(doc["unit_csv"].split(","), doc["unit"])
-        self.assertEqual(doc["delegated_unit"] + len(doc["unit"]), doc["inventory_unit"])
+        self.assertEqual(doc["delegated_unit"] + len({t.split("/")[0] for t in doc["unit"]}),
+                         doc["inventory_unit"])
+
+    def test_a_changed_pinned_class_runs_whole_instead_of_its_pinned_tests(self):
+        proc, doc = self._changed_selection(["ConduitTests/BotModeTests.swift"])
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("BotModeTests", doc["changed_unit"])
+        self.assertIn("BotModeTests", doc["unit"])
+        self.assertFalse([t for t in doc["unit"] if t.startswith("BotModeTests/")])
+        self.assertTrue([t for t in doc["curated_unit"] if t.startswith("BotModeTests/")])
+        self.assertEqual(doc["replaced_unit"],
+                         [t for t in doc["curated_unit"] if t.startswith("BotModeTests/")])
 
     def test_a_changed_app_file_adds_its_namesake_tests(self):
         proc, doc = self._changed_selection(
@@ -913,7 +1138,10 @@ class SmokeSelectionTests(unittest.TestCase):
     def test_shipped_smoke_invocation_fits_a_nightly_batch(self):
         with open(SMOKE_SUITE, encoding="utf-8") as fh:
             suite = json.load(fh)
-        total = (len(suite["unit"]) + len(suite.get("source_contracts", []))
+        # Counted in classes, as nightly batches are: the pinned tests come
+        # from a few classes.
+        total = (len({t.split("/")[0] for t in suite["unit"]})
+                 + len(suite.get("source_contracts", []))
                  + suite.get("changed_max_classes", 0))
         self.assertLessEqual(total, 45, "nightly.yml runs unit batches of 45")
 

@@ -114,18 +114,18 @@ struct PresentedConfirmPanel: View {
             } icon: {
                 Image(systemName: askerSymbol)
             }
-            .font(.caption.weight(.semibold))
+            .scaledFont(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
 
             Text(verbatim: prompt.title)
-                .font(.title3.weight(.semibold))
+                .scaledFont(.title3.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
 
             if !prompt.preview.isEmpty {
                 ScrollView {
                     Text(preview)
-                        .font(.body)
+                        .scaledFont(.body)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -139,7 +139,7 @@ struct PresentedConfirmPanel: View {
             // phrase takes no spoken yes at all (only a tap).
             if inCall, prompt.canConfirm, prompt.room?.work != true || !prompt.spokenYes.isEmpty {
                 Label(spokenHint, systemImage: "waveform")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(Color.conduitAura)
             }
 
@@ -187,7 +187,7 @@ struct PresentedConfirmPanel: View {
                     sayingInstead = false
                 } label: {
                     Text("Cancel")
-                        .font(.body.weight(.semibold))
+                        .scaledFont(.body.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .frame(minHeight: 44)
                         .padding(.horizontal, 8)
@@ -199,7 +199,7 @@ struct PresentedConfirmPanel: View {
                     onSayInstead?(instead)
                 } label: {
                     Text("Send")
-                        .font(.body.weight(.semibold))
+                        .scaledFont(.body.weight(.semibold))
                         .foregroundStyle(Color.conduitBackgroundColor)
                         .frame(minWidth: 96, minHeight: 44)
                         .padding(.horizontal, 12)
@@ -220,7 +220,7 @@ struct PresentedConfirmPanel: View {
                 sayingInstead = true
             } label: {
                 Text(prompt.room?.work == true ? AppLocalization.string("Change it") : AppLocalization.string("Say instead"))
-                    .font(.body.weight(.semibold))
+                    .scaledFont(.body.weight(.semibold))
                     .frame(minWidth: 64, minHeight: 44)
                     .padding(.horizontal, 6)
             }
@@ -232,7 +232,7 @@ struct PresentedConfirmPanel: View {
                 onEdit()
             } label: {
                 Text("Edit")
-                    .font(.body.weight(.semibold))
+                    .scaledFont(.body.weight(.semibold))
                     .frame(minWidth: 64, minHeight: 44)
                     .padding(.horizontal, 6)
             }
@@ -244,7 +244,7 @@ struct PresentedConfirmPanel: View {
             onAnswer(.declined)
         } label: {
             Text(declineLabel)
-                .font(.body.weight(.semibold))
+                .scaledFont(.body.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .frame(minHeight: 44)
                 .padding(.horizontal, 8)
@@ -258,7 +258,7 @@ struct PresentedConfirmPanel: View {
                 onAnswer(.confirmed)
             } label: {
                 Text(verbatim: prompt.actionLabel)
-                    .font(.body.weight(.semibold))
+                    .scaledFont(.body.weight(.semibold))
                     .foregroundStyle(Color.conduitBackgroundColor)
                     .frame(minWidth: 96, minHeight: 44)
                     .padding(.horizontal, 12)

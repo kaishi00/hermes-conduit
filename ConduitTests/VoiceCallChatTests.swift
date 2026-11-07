@@ -475,4 +475,218 @@ extension VoiceConversationControllerTests {
         try? await Task.sleep(for: .milliseconds(40))
         XCTAssertEqual(fake.submissions.count, 1, "the cancelled request never goes in")
     }
+
+    // MARK: A call's chat deleted mid-call (issue 1797)
+
+    /// A call started from a chat: attached first, then begun, as AppState does.
+    private func makeAttachedCall() -> (VoiceBackgroundJobSupervisor, FakeVoiceJobBackend) {
+        let fake = FakeVoiceJobBackend()
+        let supervisor = VoiceBackgroundJobSupervisor(
+            backend: fake.backend,
+            pollInterval: .seconds(3_600),
+            threadWaitInterval: .milliseconds(5)
+        )
+        supervisor.liveCallTranscript = { [] }
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build"))
+        supervisor.beginLiveCall()
+        return (supervisor, fake)
+    }
+
+    func testACallWhoseChatIsDeletedHereGoesOnInANewChat() async {
+        let (supervisor, fake) = makeAttachedCall()
+        supervisor.noteChatDeleted(["st-other"])
+        XCTAssertEqual(supervisor.liveThread?.runtimeSessionID, "rt-chat", "another chat's delete leaves it")
+
+        supervisor.noteChatDeleted(["st-chat"])
+        XCTAssertNil(supervisor.liveThread, "the call lets go of the deleted chat")
+        XCTAssertTrue(fake.leftChats.isEmpty, "nothing to archive: the chat is gone")
+        XCTAssertEqual(supervisor.deletedLiveThread?.runtimeSessionID, "rt-chat", "Local Live makes its new chat on its bot")
+        XCTAssertTrue(supervisor.isDeletedChat(VoiceThreadTarget(runtimeSessionID: "rt-2", storedSessionID: "st-chat", title: "")),
+                      "a pin by its stored id is the deleted chat under a new runtime too")
+
+        // Unlike a hang-up, the call stays open to a new chat: its next
+        // request makes one and the call goes on there.
+        _ = await supervisor.startJob(instructions: "check the server", joinsCall: true)
+        XCTAssertEqual(fake.created, 1)
+        XCTAssertEqual(supervisor.liveThread?.runtimeSessionID, "rt-1")
+        XCTAssertEqual(supervisor.callChatJobID, supervisor.jobs.last?.id)
+        supervisor.detachLiveThread()
+        XCTAssertNil(supervisor.deletedLiveThread, "hanging up forgets it")
+    }
+
+    func testABotChatCallWhoseChatIsDeletedGoesOnInANewChatOnItsBot() async {
+        let fake = FakeVoiceJobBackend()
+        let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))
+        supervisor.liveCallTranscript = { [] }
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-bot", storedSessionID: "st-bot",
+                                                      title: "Bot Chat", profile: "furina"))
+        supervisor.beginLiveCall()
+        supervisor.noteChatDeleted(["st-bot"])
+
+        _ = await supervisor.startJob(instructions: "check the backups", joinsCall: true)
+        XCTAssertEqual(fake.createdProfiles, ["furina"], "still the bot's work")
+        XCTAssertEqual(supervisor.liveThread?.runtimeSessionID, "rt-1", "its chat is the call's new one")
+        XCTAssertEqual(supervisor.liveThread?.profile, "furina")
+    }
+
+    func testAQuestionFromADeletedCallChatIsNeverSaid() async {
+        let (supervisor, _) = makeUnattachedCall()
+        _ = await supervisor.startJob(instructions: "clean the logs", joinsCall: true)
+        let approval = ApprovalActivity(
+            sessionId: "rt-1",
+            command: "rm -rf /var/log/old",
+            description: "Delete old logs",
+            choices: nil,
+            allowPermanent: false,
+            smartDenied: false,
+            status: .pending,
+            choice: nil,
+            error: nil
+        )
+        supervisor.observe(.approval(sessionId: "rt-1", activity: approval))
+        XCTAssertEqual(supervisor.jobs.first?.status, .needsInput)
+
+        supervisor.noteChatDeleted(["rt-1", "st-1"])
+        XCTAssertNil(supervisor.liveThread)
+        XCTAssertNil(supervisor.takePendingNotice(), "its chat is gone: the call is not asked about it")
+        XCTAssertTrue(supervisor.jobsWaitingOnApproval.isEmpty, "a bare yes is not taken for it")
+    }
+
+    func testATurnWaitingOnApprovalInADeletedChatIsLetGo() async {
+        let (supervisor, _) = makeAttachedCall()
+        XCTAssertNotNil(supervisor.startThreadTurn(request: "clean the logs").jobID)
+        guard await waitForCallChat({ supervisor.jobs.first?.threadTurnSubmitted == true }) else { return }
+        let approval = ApprovalActivity(
+            sessionId: "rt-chat",
+            command: "rm -rf /var/log/old",
+            description: "Delete old logs",
+            choices: nil,
+            allowPermanent: false,
+            smartDenied: false,
+            status: .pending,
+            choice: nil,
+            error: nil
+        )
+        supervisor.observe(.approval(sessionId: "rt-chat", activity: approval))
+        XCTAssertEqual(supervisor.jobs.first?.status, .needsInput)
+
+        supervisor.noteChatDeleted(["st-chat"])
+        XCTAssertTrue(supervisor.jobsWaitingOnApproval.isEmpty, "a bare yes is not taken for the deleted chat")
+        XCTAssertNil(supervisor.takePendingNotice(), "nor is the call asked about it")
+    }
+
+    func testAGeminiCallsAskThreadAfterItsChatIsDeletedMakesANewChat() async {
+        let (supervisor, fake) = makeAttachedCall()
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        supervisor.noteChatDeleted(["st-chat"])
+
+        // The call's tools still offer ask_thread: it starts the job whose chat the call takes.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "ask_thread", arguments: ["request": "check the server"]))
+        XCTAssertEqual(fake.created, 1)
+        XCTAssertTrue(fake.threadSubmissions.isEmpty)
+        XCTAssertEqual(supervisor.liveThread?.runtimeSessionID, "rt-1")
+    }
+
+    func testAChatDeletedWhileItsJobStartsIsNeverTheCallsChat() async {
+        let fake = FakeVoiceJobBackend()
+        let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))
+        supervisor.liveCallTranscript = { [] }
+        supervisor.beginLiveCall()
+        fake.onSubmit = { _ in supervisor.noteChatDeleted(["st-1"]) }
+        _ = await supervisor.startJob(instructions: "plan the trip", joinsCall: true)
+        XCTAssertNil(supervisor.liveThread)
+
+        let base = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))
+        let watch = WatchCallJobSupervisor(base)
+        fake.onSubmit = { _ in base.noteChatDeleted(["st-2"]) }
+        _ = await watch.startJob(instructions: "plan the trip", profile: nil, joinsCall: true, onJobCreated: nil)
+        XCTAssertNil(watch.callChat)
+    }
+
+    func testACallWhoseChatWasDeletedInDesktopGoesOnInANewChat() async {
+        let (supervisor, fake) = makeAttachedCall()
+        fake.threadRuntimeError = RpcError(code: 4001, message: "session not found")
+        XCTAssertNotNil(supervisor.startThreadTurn(request: "check the server").jobID)
+        guard await waitForCallChat({ supervisor.jobs.first?.status.isActive == false }) else { return }
+        guard case .failed? = supervisor.jobs.first?.status else {
+            return XCTFail("\(String(describing: supervisor.jobs.first?.status))")
+        }
+        XCTAssertTrue(fake.threadSubmissions.isEmpty)
+        XCTAssertNil(supervisor.liveThread, "Hermes has no session for it: the call lets go of it")
+
+        fake.threadRuntimeError = nil
+        _ = await supervisor.startJob(instructions: "check the server", joinsCall: true)
+        XCTAssertEqual(fake.created, 1)
+        XCTAssertEqual(supervisor.liveThread?.runtimeSessionID, "rt-1", "the next request's chat is the call's")
+
+        // A resume that fails for another reason keeps the chat.
+        let (other, otherFake) = makeAttachedCall()
+        otherFake.threadRuntimeError = URLError(.timedOut)
+        _ = other.startThreadTurn(request: "check the server")
+        guard await waitForCallChat({ other.jobs.first?.status.isActive == false }) else { return }
+        XCTAssertEqual(other.liveThread?.runtimeSessionID, "rt-chat")
+    }
+
+    func testAWatchRequestRunningInADeletedChatIsLetGo() async {
+        let fake = FakeVoiceJobBackend()
+        let base = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))
+        let watch = WatchCallJobSupervisor(base)
+        _ = await watch.startJob(instructions: "plan the trip", profile: nil, joinsCall: true, onJobCreated: nil)
+        base.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Plan.", reasoning: nil))
+        _ = await watch.startJob(instructions: "and book the hotel", profile: nil, joinsCall: true, onJobCreated: nil)
+        guard await waitForCallChat({ base.jobs.last?.status == .running }) else { return }
+        let continued = base.jobs.last?.id
+
+        base.noteChatDeleted(["st-1"])
+        XCTAssertEqual(base.jobs.first { $0.id == continued }?.isDetachedThreadTurn, true,
+                       "its end isn't said to the call, as at a hang-up")
+    }
+
+    func testAWatchCallWhoseChatIsDeletedGoesOnInANewChat() async {
+        let fake = FakeVoiceJobBackend()
+        let base = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))
+        let watch = WatchCallJobSupervisor(base)
+        _ = await watch.startJob(instructions: "plan the trip", profile: nil, joinsCall: true, onJobCreated: nil)
+        XCTAssertEqual(watch.callChat?.runtimeSessionID, "rt-1")
+        base.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Plan.", reasoning: nil))
+
+        base.noteChatDeleted(["st-1"])
+        _ = await watch.startJob(instructions: "and book the hotel", profile: nil, joinsCall: true, onJobCreated: nil)
+        XCTAssertEqual(fake.created, 2, "the deleted chat isn't resumed: a new one is made")
+        XCTAssertEqual(watch.callChat?.runtimeSessionID, "rt-2")
+
+        // Deleted in Desktop: the request that finds it gone fails, the next makes a chat.
+        base.observe(.messageComplete(sessionId: "rt-2", messageId: nil, content: "Booked.", reasoning: nil))
+        fake.threadRuntimeError = RpcError(code: 4001, message: "session not found")
+        _ = await watch.startJob(instructions: "and the car", profile: nil, joinsCall: true, onJobCreated: nil)
+        guard await waitForCallChat({ base.jobs.last?.status.isActive == false }) else { return }
+        fake.threadRuntimeError = nil
+        _ = await watch.startJob(instructions: "and the car", profile: nil, joinsCall: true, onJobCreated: nil)
+        XCTAssertEqual(fake.created, 3)
+        XCTAssertEqual(watch.callChat?.runtimeSessionID, "rt-3")
+    }
+
+    /// A Watch call's chat resumed on another runtime follows it, so a
+    /// delete naming only that one (no stored id, a legacy gateway) is the
+    /// chat's delete (issue 1797).
+    func testAWatchCallsChatResumedOnANewRuntimeIsStillFoundDeleted() async {
+        let fake = FakeVoiceJobBackend()
+        fake.storedIDs = false
+        let base = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))
+        let watch = WatchCallJobSupervisor(base)
+        _ = await watch.startJob(instructions: "plan the trip", profile: nil, joinsCall: true, onJobCreated: nil)
+        XCTAssertEqual(watch.callChat?.runtimeSessionID, "rt-1")
+        base.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Plan.", reasoning: nil))
+
+        fake.threadRuntime = "rt-1b"
+        _ = await watch.startJob(instructions: "and book the hotel", profile: nil, joinsCall: true, onJobCreated: nil)
+        guard await waitForCallChat({ base.jobs.last?.requestSent == true }) else { return }
+        base.observe(.messageComplete(sessionId: "rt-1b", messageId: nil, content: "Booked.", reasoning: nil))
+        fake.threadRuntime = nil
+
+        base.noteChatDeleted(["rt-1b"])
+        _ = await watch.startJob(instructions: "and the car", profile: nil, joinsCall: true, onJobCreated: nil)
+        XCTAssertEqual(fake.created, 2, "the deleted chat isn't resumed: a new one is made")
+        XCTAssertEqual(watch.callChat?.runtimeSessionID, "rt-2")
+    }
 }

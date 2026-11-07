@@ -22,6 +22,9 @@ struct SavedDashboardsSettingsDetail: View {
     @State private var isSwitchingTo: UUID?
     @State private var pendingRemoval: SavedDashboardRowModel?
     @State private var showsAddDashboard = false
+    /// Ask Which Dashboard at Launch (#1908): AppState reads it as Conduit
+    /// opens.
+    @AppStorage(AppState.asksWhichDashboardAtLaunchKey) private var asksWhichDashboardAtLaunch = false
 
     var body: some View {
         SettingsDetailContainer {
@@ -31,7 +34,7 @@ struct SavedDashboardsSettingsDetail: View {
                 tint: .conduitAura
             ) {
                 Text("Switch between your saved Hermes dashboards. Each dashboard keeps its own sign-in and cookies on this device.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                 ForEach(rows) { row in
                     rowView(row)
@@ -46,6 +49,16 @@ struct SavedDashboardsSettingsDetail: View {
                 }
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.12))
                 .accessibilityIdentifier("settings.add-dashboard")
+                // Only with a choice to make.
+                if rows.count > 1 {
+                    Toggle(isOn: $asksWhichDashboardAtLaunch) {
+                        Label("Ask Which Dashboard at Launch", systemImage: "list.bullet.rectangle")
+                    }
+                    .accessibilityIdentifier("settings.ask-dashboard-at-launch")
+                    Text("When Conduit opens, your dashboards stay listed until you tap one, instead of signing in to the last one you used. A notification, a link, Siri, CarPlay, the Apple Watch or a call from Hermes still signs in on its own.")
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .navigationTitle("Saved Dashboards")
@@ -71,7 +84,7 @@ struct SavedDashboardsSettingsDetail: View {
                 pendingRemoval = nil
             }
         } message: {
-            Text("This dashboard's saved sign-in and cookies will be deleted from this device. Other dashboards are not affected.")
+            Text("This dashboard's saved sign-in and cookies will be deleted from this device, and location, health and phone sharing with it stops. Other dashboards are not affected.")
         }
         // Adding a dashboard is a sheet over this page: Cancel leaves the
         // current dashboard and chat as they were.
@@ -197,10 +210,10 @@ struct SavedDashboardRowLabel: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(verbatim: row.dashboard.label)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                     if let quantumSafe = notificationsEncryption {
                         Image(systemName: quantumSafe ? "lock.shield.fill" : "lock.fill")
-                            .font(.caption2)
+                            .scaledFont(.caption2)
                             .foregroundStyle(.secondary)
                             .accessibilityLabel(quantumSafe
                                 ? AppLocalization.string("Notifications end-to-end encrypted and quantum-safe")
@@ -208,11 +221,11 @@ struct SavedDashboardRowLabel: View {
                     }
                 }
                 Text(verbatim: row.dashboard.normalizedURL)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Text(statusText)
-                    .font(.caption2.weight(.medium))
+                    .scaledFont(.caption2.weight(.medium))
                     .foregroundStyle(statusColor)
             }
             Spacer(minLength: 8)
@@ -224,7 +237,7 @@ struct SavedDashboardRowLabel: View {
                 ProgressView()
             } else {
                 Text(actionText)
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.conduitAccent)
             }
         }

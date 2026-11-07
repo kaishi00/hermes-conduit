@@ -245,6 +245,10 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
             let password = app.secureTextFields["setup.password"]
             tapVisible(password, in: app)
             password.typeText("round4-private-fixture")
+            // Leave the step with the password field unfocused: see
+            // ConnectionSetupUITests' LAN credentials test (nightly
+            // 2026-10-27).
+            dismissKeyboard(app)
             tapVisible(app.buttons[Identity.next], in: app)
         }
 

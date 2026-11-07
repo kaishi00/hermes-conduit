@@ -33,8 +33,10 @@ struct ConduitProfileEntityQuery: EntityQuery {
             let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
             if !normalized.isEmpty, !result.contains(normalized) { result.append(normalized) }
         }
+        // Named as in Conduit, renames included (AppState keeps the map).
+        let names = UserDefaults.standard.dictionary(forKey: "conduit.knownProfileNames.v1") as? [String: String] ?? [:]
         return (unique.isEmpty ? ["default"] : unique).map {
-            ConduitProfileEntity(id: $0, displayName: $0 == "default" ? AppLocalization.string("Default") : $0)
+            ConduitProfileEntity(id: $0, displayName: names[$0] ?? ($0 == "default" ? AppLocalization.string("Default") : $0))
         }
     }
 }

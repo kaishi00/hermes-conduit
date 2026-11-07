@@ -208,8 +208,10 @@ extension AppState {
                 path: DashboardPath.withProfile("\(HealthSyncEngine.base)/wipe", profile: pending.profile),
                 method: "POST", body: ["device_id": pending.deviceID])
             pending.clear()
-        } catch DashboardTicketBridgeError.http(let status, _) where status == 404 {
+        } catch DashboardTicketBridgeError.http(let status, let detail)
+                    where status == 404 && !DashboardTicketBridgeError.isPluginOffDetail(detail) {
             // No health sync on this host any more: nothing left to delete.
+            // A profile that turned the plugin off deleted nothing: it waits.
             pending.clear()
         } catch {
             Self.healthSyncLog.info("Health deletion still pending: \(LogRedaction.redactingURLs(HealthSyncEngine.describe(error)), privacy: .public)")

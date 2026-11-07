@@ -264,6 +264,20 @@ extension ChatSyncTests {
         XCTAssertEqual(KanbanPollingPolicy.detailInterval(streaming: true, conditions: lowData), 120_000_000_000)
     }
 
+    func testATaskOrBoardThatStaysTheSameIsReadLessOftenWithoutTheStream() {
+        let normal = DeviceConditions()
+        XCTAssertEqual(KanbanPollingPolicy.detailInterval(streaming: false, unchangedReads: 14, conditions: normal), 4_000_000_000)
+        XCTAssertEqual(KanbanPollingPolicy.detailInterval(streaming: false, unchangedReads: 15, conditions: normal), 15_000_000_000)
+        XCTAssertEqual(KanbanPollingPolicy.detailInterval(streaming: false, unchangedReads: 44, conditions: normal), 15_000_000_000)
+        XCTAssertEqual(KanbanPollingPolicy.detailInterval(streaming: false, unchangedReads: 45, conditions: normal), 30_000_000_000)
+        XCTAssertEqual(KanbanPollingPolicy.detailInterval(streaming: false, unchangedReads: 500, conditions: normal), 30_000_000_000)
+        XCTAssertEqual(KanbanPollingPolicy.detailInterval(streaming: true, unchangedReads: 500, conditions: normal), 60_000_000_000)
+        XCTAssertEqual(KanbanPollingPolicy.detailInterval(streaming: false, unchangedReads: 45, conditions: lowPower), 90_000_000_000)
+        XCTAssertEqual(KanbanPollingPolicy.boardInterval(streaming: false, unchangedReads: 14, conditions: normal), 8_000_000_000)
+        XCTAssertEqual(KanbanPollingPolicy.boardInterval(streaming: false, unchangedReads: 15, conditions: normal), 15_000_000_000)
+        XCTAssertEqual(KanbanPollingPolicy.boardInterval(streaming: false, unchangedReads: 45, conditions: normal), 30_000_000_000)
+    }
+
     // MARK: - A wakeable sleep
 
     func testPowerAWakeCutsTheSleepShort() async {

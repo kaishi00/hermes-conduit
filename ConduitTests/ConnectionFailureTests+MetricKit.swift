@@ -110,6 +110,21 @@ extension ConnectionFailureTests {
         XCTAssertTrue(store.entries(.metrics).isEmpty)
     }
 
+    func testMetricKitSaveKeepsAStackThatOverflowed() throws {
+        // JSONSerialization refuses nesting past 512; a stack overflow's
+        // frames nest thousands deep.
+        let levels = 5_000
+        let frames = String(repeating: "{\"subFrames\":[", count: levels) + "{}" + String(repeating: "]}", count: levels)
+        let json = Data("{\"crashDiagnostics\":[{\"callStackTree\":{\"callStacks\":[{\"callStackRootFrames\":[\(frames)]}]}}]}".utf8)
+        let store = metricKitStore()
+        XCTAssertTrue(store.save(json, kind: .diagnostics, begin: metricKitDay(0), end: metricKitDay(0)), "kept, its deepest frames emptied")
+        let saved = try Data(contentsOf: try XCTUnwrap(store.entries(.diagnostics).first?.url))
+        XCTAssertNotNil(try JSONSerialization.jsonObject(with: saved) as? [String: Any])
+
+        let shallow = MetricKitReportStore.shallowed(Data(#"{"a":[[1],2],"b":"[{\"]}","c":{}}"#.utf8), maxDepth: 2)
+        XCTAssertEqual(String(decoding: shallow, as: UTF8.self), #"{"a":[],"b":"[{\"]}","c":{}}"#, "brackets in strings don't count")
+    }
+
     func testMetricKitEntriesIgnoreForeignFiles() throws {
         let store = metricKitStore()
         store.save(metricKitMetricJSON(), kind: .metrics, begin: metricKitDay(0), end: metricKitDay(1))

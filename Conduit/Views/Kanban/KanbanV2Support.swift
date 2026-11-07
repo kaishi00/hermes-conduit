@@ -431,10 +431,14 @@ enum KanbanActivityFormatter {
 
         switch event.kind {
         case "created":
-            var parts: [String] = []
-            if let s = status("status") { parts.append("as \(s)") }
-            if let a = string("assignee") { parts.append("for \(a)") }
-            return Row(label: AppLocalization.string("Task created"), detail: parts.isEmpty ? nil : parts.joined(separator: " "))
+            let detail: String?
+            switch (status("status"), string("assignee")) {
+            case let (s?, a?): detail = AppLocalization.string("as \(s) for \(a)")
+            case let (s?, nil): detail = AppLocalization.string("as \(s)")
+            case let (nil, a?): detail = AppLocalization.string("for \(a)")
+            case (nil, nil): detail = nil
+            }
+            return Row(label: AppLocalization.string("Task created"), detail: detail)
         case "status":
             let reason = string("reason")
             let detail: String?
@@ -462,7 +466,12 @@ enum KanbanActivityFormatter {
         case "completed":
             return Row(label: AppLocalization.string("Completed"), detail: nil)
         case "blocked":
-            return Row(label: AppLocalization.string("Blocked"), detail: string("reason"))
+            // Hermes' own `initial_status` code reads as what it means.
+            let reason = string("reason")
+            return Row(
+                label: AppLocalization.string("Blocked"),
+                detail: reason == KanbanBlockedQuestion.createdBlockedReason ? AppLocalization.string("Created as Blocked") : reason
+            )
         case "unblocked":
             return Row(label: AppLocalization.string("Unblocked → \(status("status") ?? "")"), detail: nil)
         case "reclaimed":
@@ -514,30 +523,63 @@ enum KanbanActivityFormatter {
 /// such as parent_reopened), `unblocked`, claim or completion - makes the
 /// question stale and yields nil. A manual or dependency block yields nil.
 ///
+/// `initial_status` is the one reason Hermes writes on a `blocked` event
+/// itself: it marks a task created already Blocked (`initial_status="blocked"`),
+/// so `wait(in:)` says that in plain words instead of showing the code (issue
+/// #1601). Hermes logs its dependency codes (`parent_not_done`) on
+/// `dependency_wait` and `status` rows, never as a block reason.
+///
 /// Events arrive newest-first, so array order breaks ties between blocked
 /// events, and an event without a timestamp is taken as the newest.
 enum KanbanBlockedQuestion {
+    /// What the current block waits on, for the task screen's callout.
+    enum Wait: Equatable {
+        /// The worker asked something (upstream `kanban_block(reason)`).
+        case question(String)
+        /// The task was created already Blocked; nobody asked anything.
+        case createdBlocked
+        /// Blocked with no reason: by hand, or a blocked run with no summary.
+        case noReason
+    }
+
+    static let createdBlockedReason = "initial_status"
+
     static let transitionKinds: Set<String> = [
         "blocked", "unblocked", "status", "claimed", "completed", "reclaimed", "scheduled", "promoted", "archived",
     ]
 
     static func reason(in detail: KanbanTaskDetail) -> String? {
+        if case .question(let question)? = wait(in: detail) { return question }
+        return nil
+    }
+
+    /// Nil when the current block isn't waiting on the operator: a
+    /// dependency block (a `status` row), a block a newer transition made
+    /// stale, or no block recorded at all.
+    static func wait(in detail: KanbanTaskDetail) -> Wait? {
         let transitions = detail.events.enumerated().filter { transitionKinds.contains($0.element.kind) }
-        let question: String?
+        let wait: Wait?
         let blockTime: Int
         if let block = transitions.filter({ $0.element.kind == "blocked" }).max(by: { lhs, rhs in
             let left = lhs.element.createdAt ?? Int.max
             let right = rhs.element.createdAt ?? Int.max
             return left == right ? lhs.offset > rhs.offset : left < right
         }) {
-            question = nonEmpty(block.element.payload?.objectValue?["reason"]?.stringValue)
+            let reason = nonEmpty(block.element.payload?.objectValue?["reason"]?.stringValue)
+            if reason == createdBlockedReason {
+                wait = .createdBlocked
+            } else if let reason {
+                wait = .question(reason)
+            } else {
+                wait = .noReason
+            }
             blockTime = block.element.createdAt ?? Int.max
         } else {
             let blockedRuns = detail.runs.filter { ($0.outcome ?? $0.status) == "blocked" }
             guard let run = blockedRuns.max(by: { ($0.endedAt ?? $0.startedAt ?? 0) < ($1.endedAt ?? $1.startedAt ?? 0) }) else {
                 return nil
             }
-            question = nonEmpty(run.summary)
+            wait = nonEmpty(run.summary).map(Wait.question) ?? .noReason
             blockTime = run.endedAt ?? run.startedAt ?? Int.max
         }
         // A transition strictly newer than the block supersedes it. One
@@ -546,7 +588,7 @@ enum KanbanBlockedQuestion {
         let superseded = transitions.contains { other in
             other.element.kind != "blocked" && (other.element.createdAt ?? Int.max) > blockTime
         }
-        return superseded ? nil : question
+        return superseded ? nil : wait
     }
 
     private static func nonEmpty(_ value: String?) -> String? {

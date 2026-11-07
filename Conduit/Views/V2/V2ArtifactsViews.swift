@@ -8,7 +8,8 @@
 //  and every bot's Bot Chat; a chat's … menu opens the same list for that
 //  chat alone. The host's notifier plugin reads them (plugin 0.40+).
 //  Tapping opens the viewer the chat itself uses: Quick Look for files, the
-//  full-screen page for HTML, Safari for links.
+//  full-screen page for HTML, Safari for links. Beside the list, the
+//  Folder tab browses the chat's folder or a project's (V2WorkspaceViews).
 //
 
 import ImageIO
@@ -22,6 +23,9 @@ enum ArtifactScope: Equatable {
     case profile
     /// One chat, by every id it's known by.
     case chat([String])
+    /// One bot's profile, its Bot Chat's rows by the bot's name (the Bot
+    /// Overview's Artifacts).
+    case bot(String)
 
     var sessionIDs: [String] {
         if case .chat(let ids) = self { return ids }
@@ -29,15 +33,27 @@ enum ArtifactScope: Equatable {
     }
 }
 
-/// The page pushed from the Chats bar.
+/// The page pushed from the Chats bar: Artifacts, and the Folder tab for
+/// the projects' folders.
 struct V2ArtifactsPage: View {
     @EnvironmentObject private var appState: AppState
+    @State private var tab: ArtifactsTab = .made
 
     var body: some View {
         ZStack {
             V2Backdrop(drifts: false)
-            ArtifactsList(scope: .profile, chatIsOpen: false) { item in
-                appState.showArtifactInChat(item, chatIsOpen: false)
+            VStack(spacing: 0) {
+                ArtifactsTabPicker(tab: $tab)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                switch tab {
+                case .made:
+                    ArtifactsList(scope: .profile, chatIsOpen: false) { item in
+                        appState.showArtifactInChat(item, chatIsOpen: false)
+                    }
+                case .folder:
+                    WorkspaceFolderView(includesChat: false)
+                }
             }
         }
         .navigationTitle(Text("Artifacts"))
@@ -48,30 +64,83 @@ struct V2ArtifactsPage: View {
     }
 }
 
-/// The open chat's artifacts, from its … menu.
-struct ChatArtifactsSheet: View {
+/// A bot's artifacts in its Bot Overview: everything its profile's chats
+/// produced, its Bot Chat's under the bot's name. A row opens its chat
+/// once the overview has closed (`willShowInChat`).
+struct BotArtifactsList: View {
     @EnvironmentObject private var appState: AppState
-    @Environment(\.dismiss) private var dismiss
-    /// Read once: the open chat's ids when the sheet opened.
-    let sessionIDs: [String]
+    let profile: String
+    let willShowInChat: () -> Void
 
     var body: some View {
-        NavigationStack {
-            Group {
+        // In a sheet without a navigation bar: search and Show Missing
+        // Files sit in the list itself, as beside the chat.
+        ArtifactsList(scope: .bot(profile), chatIsOpen: false, inPanel: true) { item in
+            willShowInChat()
+            appState.showArtifactInChat(item, chatIsOpen: false)
+        }
+    }
+}
+
+/// The open chat's artifacts and its folder, from its … menu, a file path
+/// tapped in a reply, or beside the chat on a wide window (`inPanel`).
+struct ChatArtifactsContent: View {
+    @EnvironmentObject private var appState: AppState
+    /// Read once: the open chat's ids when it opened.
+    let sessionIDs: [String]
+    @Binding var tab: ArtifactsTab
+    /// Beside the chat rather than in a sheet of its own: no navigation bar
+    /// of its own, so the list's search is a field in the list.
+    var inPanel = false
+    let showInChat: (ArtifactItem) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ArtifactsTabPicker(tab: $tab)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+            switch tab {
+            case .made:
                 if sessionIDs.isEmpty {
                     ContentUnavailableView {
                         Label("No Artifacts Yet", systemImage: "square.grid.2x2")
                     } description: {
                         Text("Files, pages and links from this chat show up here once Hermes has saved it.")
                     }
+                    .frame(maxHeight: .infinity)
                 } else {
-                    ArtifactsList(scope: .chat(sessionIDs), chatIsOpen: true) { item in
-                        dismiss()
-                        appState.showArtifactInChat(item, chatIsOpen: true)
-                    }
+                    ArtifactsList(scope: .chat(sessionIDs), chatIsOpen: true, inPanel: inPanel, showInChat: showInChat)
                 }
+            case .folder:
+                WorkspaceFolderView(includesChat: true, handlesReveals: true)
             }
-            .navigationTitle(Text("In This Chat"))
+        }
+    }
+}
+
+/// The open chat's artifacts, from its … menu, in a sheet.
+struct ChatArtifactsSheet: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+    /// Read once: the open chat's ids when the sheet opened.
+    let sessionIDs: [String]
+    @State var tab: ArtifactsTab
+    /// The tab now showing, so a later open knows whether to switch.
+    var onTabChange: (ArtifactsTab) -> Void = { _ in }
+
+    init(sessionIDs: [String], tab: ArtifactsTab = .made, onTabChange: @escaping (ArtifactsTab) -> Void = { _ in }) {
+        self.sessionIDs = sessionIDs
+        _tab = State(initialValue: tab)
+        self.onTabChange = onTabChange
+    }
+
+    var body: some View {
+        NavigationStack {
+            ChatArtifactsContent(sessionIDs: sessionIDs, tab: $tab) { item in
+                dismiss()
+                appState.showArtifactInChat(item, chatIsOpen: true)
+            }
+            .navigationTitle(tab == .made ? Text("In This Chat") : Text("Folder"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -81,6 +150,7 @@ struct ChatArtifactsSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .onChange(of: tab) { _, now in onTabChange(now) }
     }
 }
 
@@ -92,6 +162,9 @@ private struct ArtifactsList: View {
     let scope: ArtifactScope
     /// A chat's own sheet: rows give the time rather than the chat's name.
     let chatIsOpen: Bool
+    /// Beside the chat: the search is a field in the list and the Show
+    /// Missing Files toggle a chip, since the chat's bar isn't the list's.
+    var inPanel = false
     let showInChat: (ArtifactItem) -> Void
 
     @AppStorage(ArtifactsClient.showMissingKey) private var showMissing = false
@@ -111,6 +184,7 @@ private struct ArtifactsList: View {
     @State private var generation = 0
     @State private var openingID: String?
     @State private var page: OpenPage?
+    @State private var markdown: MarkdownDocument?
     @State private var missing: ArtifactItem?
     /// The open alert is for a file too big for the phone, not a gone one.
     @State private var missingIsTooLarge = false
@@ -127,6 +201,14 @@ private struct ArtifactsList: View {
         let html: String
     }
 
+    /// What the list is read for: its key, and whether the plugin says it
+    /// serves artifacts, so a list opened before it said so (on its kept
+    /// rows, just connected or offline) reads once it does.
+    private struct Reading: Equatable {
+        let key: ArtifactsListKey
+        let served: Bool
+    }
+
     private var currentKey: ArtifactsListKey {
         ArtifactsListKey(dashboard: appState.activeDashboardID, profile: appState.activeProfile,
                          sources: appState.artifactSources(for: scope), filter: filter,
@@ -137,30 +219,12 @@ private struct ArtifactsList: View {
     private var nextBefore: ArtifactFeed.Cursor? { feed?.nextCursor }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: []) {
-                chips
-                    .padding(.bottom, 6)
-                content
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 24)
-        }
-        .scrollDismissesKeyboard(.interactively)
-        .searchable(text: $query, prompt: Text("Search names and chats"))
-        .refreshable { await reload() }
-        .toolbar {
-            if appState.supportsArtifacts {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Toggle("Show Missing Files", isOn: $showMissing)
-                    } label: {
-                        Label("More", systemImage: "ellipsis.circle")
-                    }
-                }
-            }
-        }
-        .task(id: currentKey) {
+        list
+        .modifier(ArtifactsListChrome(inPanel: inPanel, query: $query, showMissing: $showMissing,
+                                      offersMissing: appState.supportsArtifacts))
+        // Before the first frame, so nothing comes or goes when Hermes answers.
+        .onAppear { showKept(currentKey) }
+        .task(id: Reading(key: currentKey, served: appState.supportsArtifacts)) {
             // Typing settles before the host is asked.
             if loadedKey != nil, currentKey.query != loadedKey?.query {
                 try? await Task.sleep(for: .milliseconds(350))
@@ -171,6 +235,9 @@ private struct ArtifactsList: View {
         .sheet(item: $page) { page in
             HTMLPreviewSheet(name: page.name, html: page.html)
         }
+        .sheet(item: $markdown) { document in
+            MarkdownDocumentSheet(document: document)
+        }
         .onDisappear { openTask?.cancel() }
         .alert(
             missingIsTooLarge ? Text("Too large to open on this phone") : Text("This file is no longer on your Hermes host."),
@@ -180,6 +247,24 @@ private struct ArtifactsList: View {
         } message: {
             Text(verbatim: missing?.path ?? "")
         }
+    }
+
+    private var list: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: []) {
+                if inPanel {
+                    ArtifactsInlineSearch(query: $query)
+                        .padding(.bottom, 6)
+                }
+                chips
+                    .padding(.bottom, 6)
+                content
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 24)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .refreshable { await reload() }
     }
 
     // MARK: - Chips
@@ -194,7 +279,7 @@ private struct ArtifactsList: View {
                         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { filter = option }
                     } label: {
                         Text(option.title)
-                            .font(.subheadline.weight(.semibold))
+                            .scaledFont(.subheadline.weight(.semibold))
                             .foregroundStyle(isOn ? Color.conduitAccent : Color.primary.opacity(0.75))
                             .padding(.horizontal, 14)
                             .frame(minHeight: 36)
@@ -210,6 +295,22 @@ private struct ArtifactsList: View {
                     .buttonStyle(PressableButtonStyle())
                     .accessibilityAddTraits(isOn ? .isSelected : [])
                 }
+                if inPanel, appState.supportsArtifacts {
+                    Button {
+                        Haptics.selection()
+                        showMissing.toggle()
+                    } label: {
+                        Label("Show Missing Files", systemImage: showMissing ? "checkmark.circle.fill" : "circle")
+                            .scaledFont(.subheadline.weight(.semibold))
+                            .foregroundStyle(showMissing ? Color.conduitAccent : Color.primary.opacity(0.75))
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 36)
+                            .background(Color.primary.opacity(0.06), in: Capsule())
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    .accessibilityAddTraits(showMissing ? .isSelected : [])
+                }
             }
             .padding(.vertical, 4)
         }
@@ -220,13 +321,27 @@ private struct ArtifactsList: View {
 
     @ViewBuilder
     private var content: some View {
-        if !appState.supportsArtifacts {
+        // Only once the plugin says it doesn't serve artifacts (or is too
+        // old to say), never while Conduit hasn't heard from it: kept rows
+        // show meanwhile, and with none kept, the loader, or offline, why
+        // nothing can load yet.
+        if !appState.notifierPlugin.mayServe(ArtifactsClient.capability) {
             unavailable(
                 title: Text("Update the Conduit plugin"),
                 detail: Text("Update the Conduit plugin on your Hermes host to see artifacts here. Settings › Conduit plugin can update it."),
                 symbol: "arrow.down.circle"
             )
-        } else if items.isEmpty, isLoading || loadedKey != currentKey {
+        } else if items.isEmpty, loadedKey != currentKey, !appState.supportsArtifacts, !appState.isConnected,
+                  !appState.isRecoveringConnection {
+            // Nothing kept or loaded: a list kept empty says so below.
+            unavailable(
+                title: Text("Artifacts couldn't load"),
+                detail: Text("Conduit isn't connected to Hermes right now. It reconnects on its own, so try again in a moment."),
+                symbol: "wifi.slash"
+            )
+        } else if items.isEmpty, loadedKey != currentKey || (isLoading && failure != nil) {
+            // A list kept or loaded empty says so at once, through a
+            // refresh too; Try Again after a failure shows the loader.
             ProgressView()
                 .frame(maxWidth: .infinity, minHeight: 200)
         } else if items.isEmpty, let failure {
@@ -269,7 +384,7 @@ private struct ArtifactsList: View {
                         // to get past.
                         VStack(spacing: 8) {
                             Text("Files no longer on your Hermes host are hidden.")
-                                .font(.footnote)
+                                .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
                             Button("Show Missing Files") { showMissing = true }
@@ -308,7 +423,7 @@ private struct ArtifactsList: View {
     @ViewBuilder
     private func section(_ day: Date, items: [ArtifactItem]) -> some View {
         Text(Self.dayTitle(day))
-            .font(.footnote.weight(.bold))
+            .scaledFont(.footnote.weight(.bold))
             .textCase(.uppercase)
             .foregroundStyle(.secondary)
             .padding(.top, 16)
@@ -364,7 +479,7 @@ private struct ArtifactsList: View {
                     // and clear of the name along the bottom.
                     if !item.exists {
                         Label("Missing", systemImage: "exclamationmark.circle.fill")
-                            .font(.caption2.weight(.semibold))
+                            .scaledFont(.caption2.weight(.semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
@@ -390,12 +505,12 @@ private struct ArtifactsList: View {
                 ArtifactIcon(kind: item.kind)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: item.name)
-                        .font(.body.weight(.semibold))
+                        .scaledFont(.body.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Text(verbatim: detail(item))
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -514,6 +629,14 @@ private struct ArtifactsList: View {
             return
         }
         Haptics.light()
+        if item.kind == .image {
+            openImage(item, path: path)
+            return
+        }
+        if MarkdownArtifact.isMarkdown(path) {
+            openMarkdown(item, path: path)
+            return
+        }
         openingID = item.id
         let token = UUID()
         openToken = token
@@ -536,28 +659,87 @@ private struct ArtifactsList: View {
                 page = OpenPage(name: item.name, html: html)
                 return
             }
-            switch await resolver.file(for: path) {
-            case .downloaded(let download):
-                guard !Task.isCancelled else {
-                    MediaPreviewPresenter.removeDirectory(download.directory)
-                    return
-                }
-                if MediaPreviewPresenter.shared.present(downloaded: download) { return }
-            case .tooLarge:
-                openFailed(item, tooLarge: true)
-                return
-            case .unavailable:
-                break
-            }
-            // A cancelled download reads as unavailable; no fallback for a
-            // list that has gone.
-            guard !Task.isCancelled else { return }
-            guard let dataURL = await resolver.dataURL(for: path), !Task.isCancelled else { return }
-            guard await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: item.name) else {
-                openFailed(item)
-                return
-            }
+            await presentAsFile(item, path: path, resolver: resolver)
         }
+    }
+
+    /// The reader for a Markdown artifact: `MarkdownText`, the same view the
+    /// Folder draws a `.md` with, rather than Quick Look's plain text. A
+    /// file that isn't readable UTF-8 falls back to the file's usual viewer.
+    private func openMarkdown(_ item: ArtifactItem, path: String) {
+        openingID = item.id
+        let token = UUID()
+        openToken = token
+        let resolver = resolver(for: item)
+        openTask = Task { @MainActor in
+            defer {
+                if openToken == token {
+                    openingID = nil
+                    openToken = nil
+                }
+            }
+            guard let text = await MarkdownArtifact.load(
+                path: path, knownSize: item.size, dataURL: { await resolver.dataURL(for: $0) }
+            ) else {
+                await presentAsFile(item, path: path, resolver: resolver)
+                return
+            }
+            guard !Task.isCancelled else { return }
+            // A file the user sent is the user's text, not Hermes': its
+            // `MEDIA:` lines stay text and fetch nothing, as in their message.
+            let trusted = item.source != .attached
+            var dataURL: ((String) async -> String?)?
+            if trusted { dataURL = { path in await resolver.dataURL(for: path) } }
+            markdown = MarkdownDocument(name: item.name, path: path, text: text,
+                                        gatewayMediaDataURL: dataURL,
+                                        gatewayMediaFiles: trusted ? resolver : nil)
+        }
+    }
+
+    /// Downloads the file and opens it in its usual viewer (Quick Look, or
+    /// the share sheet for active content). The fallback for a Markdown
+    /// file that isn't readable text, and the path every other file takes.
+    private func presentAsFile(_ item: ArtifactItem, path: String,
+                               resolver: GatewayMediaDataURLResolver) async {
+        guard !Task.isCancelled else { return }
+        switch await resolver.file(for: path) {
+        case .downloaded(let download):
+            guard !Task.isCancelled else {
+                MediaPreviewPresenter.removeDirectory(download.directory)
+                return
+            }
+            if MediaPreviewPresenter.shared.present(downloaded: download) { return }
+        case .tooLarge:
+            openFailed(item, tooLarge: true)
+            return
+        case .unavailable:
+            break
+        }
+        // A cancelled download reads as unavailable; no fallback for a
+        // list that has gone.
+        guard !Task.isCancelled else { return }
+        guard let dataURL = await resolver.dataURL(for: path), !Task.isCancelled else { return }
+        guard await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: item.name) else {
+            openFailed(item)
+            return
+        }
+    }
+
+    /// A picture opens among the list's pictures, in the order they show,
+    /// and swipes to the next one.
+    private func openImage(_ item: ArtifactItem, path: String) {
+        let tapped = galleryItem(item, path: path)
+        let images = ArtifactsClient.days(items).flatMap(\.items).compactMap { other -> ImageGalleryItem? in
+            guard other.kind == .image, other.exists, let path = other.path else { return nil }
+            return other.id == item.id ? tapped : galleryItem(other, path: path)
+        }
+        if !ImageGallery.open(tapped, in: ImageGallerySource { images }) {
+            openFailed(item)
+        }
+    }
+
+    private func galleryItem(_ item: ArtifactItem, path: String) -> ImageGalleryItem {
+        .hostFile(path: path, title: item.name, resolver: resolver(for: item))
     }
 
     private func openFailed(_ item: ArtifactItem, tooLarge: Bool = false) {
@@ -590,10 +772,25 @@ private struct ArtifactsList: View {
             openingID = nil
             openToken = nil
         }
+        showKept(key)
         // Every reload, also one that loads nothing, outdates the request
         // before it: the previous dashboard's page can't land under this one.
         generation &+= 1
         let ticket = generation
+        // Connected, and the plugin never said what it serves (its read
+        // failed as Conduit connected): asked again here, as Settings ›
+        // Conduit plugin asks on every visit, so the list isn't left on
+        // its loader until the next connect.
+        if !appState.supportsArtifacts, appState.isConnected, appState.notifierPlugin.state == .unknown {
+            isLoading = true
+            await appState.refreshNotifierPluginStatus()
+            guard ticket == generation else { return }
+            if appState.notifierPlugin.state == .unknown, loadedKey != key {
+                failure = AppLocalization.string("Couldn't reach this dashboard's notifier.")
+                feed = nil
+                loadedKey = key
+            }
+        }
         guard appState.supportsArtifacts else {
             isLoading = false
             return
@@ -607,15 +804,17 @@ private struct ArtifactsList: View {
         for (index, source) in key.sources.enumerated() {
             do {
                 pages.append(try await appState.artifactsClient.page(
-                    source, filter: key.filter, query: key.query, showMissing: key.showMissing
+                    source, filter: key.filter, query: key.query, showMissing: key.showMissing,
+                    keptIn: answers(for: source)
                 ))
             } catch is CancellationError {
                 return
             } catch {
-                // A bot's chat that can't be read leaves the rest listed;
+                // A bot's chat that can't be read leaves the rest listed,
+                // with the rows it listed last time, which don't page on;
                 // the first store is the list itself.
                 if index > 0 {
-                    pages.append(nil)
+                    pages.append(keptPage(source, for: key).map { ArtifactPage(items: $0.items, nextBefore: nil) })
                 } else {
                     // A failed refresh keeps the list it was refreshing (and
                     // the end of it keeps paging).
@@ -634,6 +833,30 @@ private struct ArtifactsList: View {
             failure = nil
             loadedKey = key
         }
+    }
+
+    /// Shows the list as it opened last time while Hermes is asked again
+    /// (#1533), unless this key's rows are up already: kept only as it
+    /// opens, of every kind and unsearched, and only when the list's own
+    /// store (the first) kept its page.
+    private func showKept(_ key: ArtifactsListKey) {
+        guard loadedKey != key, appState.notifierPlugin.mayServe(ArtifactsClient.capability) else { return }
+        let pages = key.sources.map { keptPage($0, for: key) }
+        guard let first = pages.first, first != nil else { return }
+        feed = ArtifactFeed(sources: key.sources, pages: pages)
+        failure = nil
+        loadedKey = key
+    }
+
+    private func keptPage(_ source: ArtifactSource, for key: ArtifactsListKey) -> ArtifactPage? {
+        ArtifactsClient.keptPage(source, filter: key.filter, query: key.query, showMissing: key.showMissing,
+                                 in: answers(for: source))
+    }
+
+    /// Where a store's list is kept: on the dashboard open, for the
+    /// store's profile.
+    private func answers(for source: ArtifactSource) -> KeptAnswers {
+        appState.screenAnswers(profile: source.profile)
     }
 
     private func loadMore() async {
@@ -748,7 +971,7 @@ private struct ArtifactThumbnail: View {
             }
             if image == nil {
                 Text(verbatim: item.name)
-                    .font(.caption2.weight(.semibold))
+                    .scaledFont(.caption2.weight(.semibold))
                     .foregroundStyle(Color.primary.opacity(0.85))
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -811,4 +1034,62 @@ private enum ArtifactThumbnailCache {
         cache.countLimit = 300
         return cache
     }()
+}
+
+/// The list's search and its Show Missing Files toggle: in the navigation
+/// bar of the page or sheet it fills, or (beside the chat, `inPanel`) in
+/// the list itself.
+private struct ArtifactsListChrome: ViewModifier {
+    let inPanel: Bool
+    @Binding var query: String
+    @Binding var showMissing: Bool
+    let offersMissing: Bool
+
+    func body(content: Content) -> some View {
+        if inPanel {
+            content
+        } else {
+            content
+                .searchable(text: $query, prompt: Text("Search names and chats"))
+                .toolbar {
+                    if offersMissing {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Menu {
+                                Toggle("Show Missing Files", isOn: $showMissing)
+                            } label: {
+                                Label("More", systemImage: "ellipsis.circle")
+                            }
+                        }
+                    }
+                }
+        }
+    }
+}
+
+/// The list's search beside the chat.
+private struct ArtifactsInlineSearch: View {
+    @Binding var query: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField(AppLocalization.string("Search names and chats"), text: $query)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(AppLocalization.string("Clear search"))
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 40)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
 }

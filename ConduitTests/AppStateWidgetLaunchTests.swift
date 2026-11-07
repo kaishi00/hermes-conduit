@@ -7,6 +7,8 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         let suite = "AppStateWidgetLaunchTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
+        // "Open to" is the drawer shell's.
+        defaults.set(false, forKey: V2ShellPreference.key)
         let dashboard = SavedDashboard(
             id: UUID(uuidString: "00000000-0000-0000-0000-0000000000a1")!,
             label: "Primary",
@@ -868,6 +870,8 @@ final class AppStateWidgetLaunchTests: XCTestCase {
             appState.composerPlaceholder,
             AppLocalization.string("Message \(appState.profileDisplayName(appState.activeProfile))…")
         )
+        // A field too narrow for the whole hint at a large Text Size.
+        XCTAssertEqual(appState.composerShortPlaceholder, AppLocalization.string("Message…"))
         appState.startNewChat()
         XCTAssertEqual(appState.pendingNewChat, workspace, "another tap shows the same new chat")
 

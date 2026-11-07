@@ -22,20 +22,33 @@ struct ShortcutInboxSettingsPage: View {
     @State private var errorMessage: String?
     @State private var showsDeleteAll = false
 
+    /// Pulse can keep the deadlines it finds in this inbox, and deleting an
+    /// event deletes them (0.90.0); Pulse reads only its own profile's. The
+    /// switch is Settings > Pulse's, so the caption names it. A page still
+    /// showing another dashboard's inbox says nothing.
+    private var pulseKeepsDeadlines: Bool {
+        appState.pulseKeepsDeadlines(from: scope ?? appState.shortcutInboxScope)
+    }
+
     var body: some View {
         SettingsDetailContainer {
             ConduitSettingsSection(title: AppLocalization.string("Shortcuts inbox"), symbol: "tray.full", tint: .indigo) {
                 Text(AppLocalization.string("What your Shortcuts automations logged with Log to Hermes. Hermes can look these up, and Pulse reads them when it's on. Only this iPhone's events show here, and they're deleted after 30 days."))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
+                if pulseKeepsDeadlines {
+                    Text(AppLocalization.string("When “Deadlines from Shortcuts” is on in Pulse's settings, Pulse keeps the deadlines it finds here, like a trial ending or a bill due. Deleting an event deletes them too."))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 if waitingCount > 0 {
                     Label(AppLocalization.string("\(waitingCount) waiting on this iPhone for the next run"), systemImage: "clock")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
                 if let errorMessage {
                     Text(errorMessage)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.orange)
                     Button(AppLocalization.string("Try Again")) { load(before: nil) }
                         .disabled(isWorking)
@@ -47,7 +60,7 @@ struct ShortcutInboxSettingsPage: View {
                         .frame(maxWidth: .infinity)
                 } else if entries.isEmpty && next == nil {
                     Text(AppLocalization.string("Nothing logged from this iPhone. Add Log to Hermes to an automation in the Shortcuts app."))
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(entries) { entry in
@@ -74,7 +87,9 @@ struct ShortcutInboxSettingsPage: View {
             Button(AppLocalization.string("Delete Everything"), role: .destructive) { deleteAll() }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
         } message: {
-            Text(AppLocalization.string("Hermes and Pulse can no longer read it. Your automations keep logging new events."))
+            Text(pulseKeepsDeadlines
+                ? AppLocalization.string("Hermes and Pulse can no longer read it, and Pulse forgets the deadlines it kept from it. Your automations keep logging new events.")
+                : AppLocalization.string("Hermes and Pulse can no longer read it. Your automations keep logging new events."))
         }
     }
 
@@ -86,11 +101,11 @@ struct ShortcutInboxSettingsPage: View {
                     .frame(width: 22)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: [entry.source, entry.title].compactMap { $0 }.joined(separator: " · "))
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .lineLimit(1)
                     if let text = entry.text {
                         Text(verbatim: text)
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
                     }
@@ -102,7 +117,7 @@ struct ShortcutInboxSettingsPage: View {
                             Text(verbatim: amount)
                         }
                     }
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
                 }
             }
@@ -211,6 +226,8 @@ struct ShortcutInboxSettingsPage: View {
     }
 
     private static func message(for error: Error) -> String {
+        // A profile that turned the plugin off says how to turn it on.
+        if let remedy = DashboardTicketBridgeError.pluginOffDetail(of: error) { return remedy }
         if isPluginTooOld(error) {
             return AppLocalization.string("Update the Conduit plugin on your Hermes host to see and delete what was logged.")
         }

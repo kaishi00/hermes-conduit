@@ -13,6 +13,9 @@ enum GroupRoomPictures {
     /// 56 pt, so 256 px covers 3x with room to spare.
     static let uploadEdge: CGFloat = 256
     static let uploadTimeoutMilliseconds = 60_000
+    /// The pictures the Bots list keeps with its rooms, by their bytes at
+    /// most: a kept answer over 2 MB isn't kept at all.
+    static let keptBytes = 1_000_000
 
     static func path(for roomID: String) -> String? {
         var allowed = CharacterSet.alphanumerics
@@ -152,13 +155,48 @@ extension AppState {
         notifierPlugin.reports(GroupRoomPictures.capability)
     }
 
-    /// A room's picture: the one set from Conduit, else the one Hermes
-    /// Desktop synced for the same room.
+    /// A room's picture: the one set from Conduit (the kept one until the
+    /// room list answers, #1533), else the one Hermes Desktop synced for the
+    /// same room.
     func groupRoomPicture(roomID: String) -> UIImage? {
         if let data = groupRoomPictureData[roomID] { return GroupRoomPictureImages.image(from: data) }
+        if !groupRoomsListed, let kept = keptGroupRooms()?.pictures.first(where: { $0.roomID == roomID }) {
+            return GroupRoomPictureImages.image(from: kept.data)
+        }
         guard !roomID.isEmpty,
-              let desktop = desktopGroupChats.first(where: { $0.roomID == roomID }) else { return nil }
+              let desktop = shownDesktopGroupChats.first(where: { $0.roomID == roomID }) else { return nil }
         return GroupRoomPictureImages.image(from: desktop.imageData)
+    }
+
+    /// The rooms listed and their pictures, as the Bots list keeps them.
+    func keptGroupRoomsNow() -> KeptGroupRooms {
+        var bytes = 0
+        let pictures = groupRooms.compactMap { room -> KeptGroupRooms.Picture? in
+            guard let data = groupRoomPictureData[room.roomID],
+                  let revision = groupRoomPictureRevisions[room.roomID],
+                  bytes + data.count <= GroupRoomPictures.keptBytes else { return nil }
+            bytes += data.count
+            return KeptGroupRooms.Picture(roomID: room.roomID, revision: revision, data: data)
+        }
+        return KeptGroupRooms(rooms: groupRooms, pictures: pictures)
+    }
+
+    /// Takes the kept rooms' pictures as the ones on hand as the first list
+    /// lands, so the rows keep them and the refresh fetches only the ones
+    /// whose revision moved; never over one fetched or changed here. Taken
+    /// before the plugin says it keeps pictures, too: its status can land
+    /// after the list, which would otherwise keep the rooms without them.
+    func adoptKeptGroupRoomPictures() {
+        guard let kept = keptGroupRooms() else { return }
+        var data = groupRoomPictureData
+        var revisions = groupRoomPictureRevisions
+        for picture in kept.pictures
+        where data[picture.roomID] == nil && groupRoomPictureGenerations[picture.roomID] == nil {
+            data[picture.roomID] = picture.data
+            revisions[picture.roomID] = picture.revision
+        }
+        if data != groupRoomPictureData { groupRoomPictureData = data }
+        groupRoomPictureRevisions = revisions
     }
 
     func hasCustomGroupRoomPicture(roomID: String) -> Bool {
@@ -256,6 +294,8 @@ extension AppState {
                 groupRoomPictureData.removeValue(forKey: roomID)
                 groupRoomPictureRevisions.removeValue(forKey: roomID)
             }
+            // What the Bots list opens on next (#1533).
+            keepGroupRoomPictures()
         } catch is CancellationError {
             return
         } catch {

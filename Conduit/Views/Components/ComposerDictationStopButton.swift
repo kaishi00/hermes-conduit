@@ -16,7 +16,7 @@ struct ComposerDictationStopButton: View {
         } label: {
             // Named by accessibilityTitle below.
             faceLabel(face)
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: face)
                 .foregroundStyle(waits ? Color.secondary : Color.white)
                 // One width for every face, so the row keeps its layout.

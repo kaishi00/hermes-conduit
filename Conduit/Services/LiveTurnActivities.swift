@@ -179,7 +179,12 @@ enum LiveTurnProgress {
 /// chat's ids).
 @MainActor
 final class LiveTurnActivities {
-    static let shared = LiveTurnActivities()
+    /// Nil on a Mac, which has no Lock Screen or Dynamic Island for an
+    /// iPhone app. ActivityKit is weak-linked (project.yml) because macOS
+    /// 14 has none for iPhone and iPad apps, so nothing may touch it there
+    /// (issue 1877: Conduit didn't launch on Sonoma).
+    static let shared: LiveTurnActivities? = isAvailable ? LiveTurnActivities() : nil
+    nonisolated static var isAvailable: Bool { !ProcessInfo.processInfo.isiOSAppOnMac }
     /// Settings > Notifications "Progress on the Lock Screen"; on unless
     /// turned off.
     nonisolated static let enabledDefaultsKey = "conduit.liveActivities.enabled"
@@ -244,8 +249,11 @@ final class LiveTurnActivities {
         // may have pushed meanwhile.
         for name in [UIApplication.willResignActiveNotification, UIApplication.didEnterBackgroundNotification] {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
-                MainActor.assumeIsolated { LiveTurnActivities.shared.sendAllHeld() }
+                MainActor.assumeIsolated { LiveTurnActivities.shared?.sendAllHeld() }
             }
+        }
+        NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { LiveTurnActivities.shared?.registerUnregistered() }
         }
     }
 
@@ -477,7 +485,8 @@ final class LiveTurnActivities {
     /// cards of `profile` on `dashboardID` count (one naming neither is
     /// from an older build): ids from another workspace say nothing here.
     nonisolated static func sessionIDs(linkedTo id: String, profile: String, dashboardID: String?) -> [String] {
-        sessionIDs(linkedTo: id, profile: profile, dashboardID: dashboardID, in: Activity<HermesTurnAttributes>.activities.map(\.attributes))
+        guard isAvailable else { return [] }
+        return sessionIDs(linkedTo: id, profile: profile, dashboardID: dashboardID, in: Activity<HermesTurnAttributes>.activities.map(\.attributes))
     }
 
     nonisolated static func sessionIDs(linkedTo id: String, profile: String, dashboardID: String?, in cards: [HermesTurnAttributes]) -> [String] {
@@ -569,16 +578,53 @@ final class LiveTurnActivities {
     }
 
     private func register(token: String, for id: String, sessionIDs: Set<String>) async {
-        guard running[id] != nil else { return }
-        let previous = running[id]?.pushToken
+        guard let entry = running[id] else { return }
+        // Finished even if Conduit leaves the screen right after sending:
+        // until the relay has the token, nothing from the host can end the
+        // activity.
+        let endBackground = BackgroundTaskHold.begin("conduit.liveActivity.register")
+        defer { endBackground() }
+        let previous = entry.pushToken
         running[id]?.pushToken = token
         if previous != token { running[id]?.tokenInstallationID = nil }
         if let previous, previous != token {
             await PushNotificationService.shared.unregisterLiveActivity(token: previous)
         }
-        let installationID = await PushNotificationService.shared.registerLiveActivity(token: token, sessionIDs: Array(sessionIDs).sorted())
-        // Unless a newer token replaced it meanwhile.
-        if running[id]?.pushToken == token { running[id]?.tokenInstallationID = installationID }
+        let installationID = await PushNotificationService.shared.registerLiveActivity(
+            token: token,
+            sessionIDs: Array(sessionIDs).sorted(),
+            startedAgo: Date().timeIntervalSince(entry.activity.attributes.startedAt)
+        )
+        // Unless a newer token replaced it meanwhile. One that ended, or
+        // was replaced, while the registration was on its way goes again,
+        // in case the removal reached the relay first.
+        guard running[id]?.pushToken == token else {
+            if installationID != nil {
+                await PushNotificationService.shared.unregisterLiveActivity(token: token)
+            }
+            return
+        }
+        running[id]?.tokenInstallationID = installationID
+    }
+
+    /// Whether an activity's token still has to reach the relay: it has
+    /// one, and no relay installation took it yet.
+    nonisolated static func needsRegistration(pushToken: String?, tokenInstallationID: String?) -> Bool {
+        pushToken != nil && tokenInstallationID == nil
+    }
+
+    /// Conduit is back on screen: an activity whose registration didn't
+    /// reach the relay (no network, or Conduit was suspended first) tries
+    /// again. One whose turn ended meanwhile is ended by the relay at once.
+    private func registerUnregistered() {
+        for (id, entry) in running {
+            guard Self.needsRegistration(pushToken: entry.pushToken, tokenInstallationID: entry.tokenInstallationID),
+                  let token = entry.pushToken else { continue }
+            let sessionIDs = entry.sessionIDs
+            Task { [weak self] in
+                await self?.register(token: token, for: id, sessionIDs: sessionIDs)
+            }
+        }
     }
 
     private func finish(_ id: String, phase: HermesTurnPhase, dismissal: ActivityUIDismissalPolicy, endKnown: Bool = true) {

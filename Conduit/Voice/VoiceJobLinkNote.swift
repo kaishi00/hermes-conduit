@@ -46,7 +46,7 @@ struct VoiceJobLinkNote: Equatable {
               let link = ConduitAppLink(url: url) else { return nil }
         switch link {
         case .session, .bot: break
-        case .settings: return nil
+        case .settings, .file: return nil
         }
         let label = Self.unescaped(String(text[labelRange]))
         let line = text[..<fullRange.lowerBound].trimmingCharacters(in: .whitespaces)

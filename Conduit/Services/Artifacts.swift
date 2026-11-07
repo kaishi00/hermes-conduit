@@ -265,11 +265,53 @@ final class ArtifactsClient {
         self.request = request
     }
 
+    /// With `answers`, the store's list as it opens (`keptRoute`) is kept
+    /// as Hermes gave it, so the list opens on it next time (#1533).
     @MainActor
     func page(_ source: ArtifactSource, filter: ArtifactFilter = .all, query: String = "",
-              showMissing: Bool = true, before: Int? = nil) async throws -> ArtifactPage {
-        try await page(profile: source.profile, sessionIDs: source.sessionIDs, filter: filter, query: query,
-                       showMissing: showMissing, before: before)
+              showMissing: Bool = true, before: Int? = nil, keptIn answers: KeptAnswers? = nil) async throws -> ArtifactPage {
+        let path = Self.requestPath(profile: source.profile, sessionIDs: source.sessionIDs, filter: filter, query: query,
+                                    showMissing: showMissing, before: before)
+        guard before == nil, let answers,
+              let route = Self.keptRoute(source, filter: filter, query: query, showMissing: showMissing) else {
+            return try Self.parse(await request(path), showMissing: showMissing)
+        }
+        // Only an answer the list can read is kept.
+        return try Self.parse(await answers.keep(route, false) {
+            let answer = try await self.request(path)
+            _ = try ArtifactsClient.parse(answer)
+            return answer
+        }, showMissing: showMissing)
+    }
+
+    /// The route a store's list is kept under as it opens, of every kind
+    /// and unsearched: its first page's request. A chat's own (a Bot
+    /// Chat's included) is one of many, kept for the chats opened last.
+    /// Nil for a filtered or searched list, which isn't kept.
+    static func keptRoute(_ source: ArtifactSource, filter: ArtifactFilter, query: String, showMissing: Bool) -> String? {
+        guard filter == .all, query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let path = requestPath(profile: source.profile, sessionIDs: source.sessionIDs, filter: .all, query: "",
+                               showMissing: showMissing, before: nil)
+        return source.sessionIDs.isEmpty ? path : OfflineChatCacheStore.lastOpenedRoutePrefix + path
+    }
+
+    /// The store's list as it opened last time, or nil when none is kept.
+    @MainActor
+    static func keptPage(_ source: ArtifactSource, filter: ArtifactFilter, query: String, showMissing: Bool,
+                         in answers: KeptAnswers) -> ArtifactPage? {
+        guard let route = keptRoute(source, filter: filter, query: query, showMissing: showMissing) else { return nil }
+        return answers.kept(route).flatMap { try? parse($0, showMissing: showMissing) }
+    }
+
+    /// A kept answer without the rows of the chats `sessionIDs` name, as
+    /// Hermes lists it once they're deleted, or nil when it has none.
+    static func answer(_ answer: [String: Any], withoutRowsOf sessionIDs: Set<String>) -> [String: Any]? {
+        guard let rows = answer["items"] as? [[String: Any]] else { return nil }
+        let left = rows.filter { !sessionIDs.contains($0["session_id"] as? String ?? "") }
+        guard left.count < rows.count else { return nil }
+        var answer = answer
+        answer["items"] = left
+        return answer
     }
 
     @MainActor

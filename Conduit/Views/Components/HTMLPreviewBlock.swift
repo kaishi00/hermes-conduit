@@ -23,90 +23,6 @@ import SwiftUI
 import UIKit
 import WebKit
 
-/// Finds `::preview{file="…"}` directives in a line of a reply. The grammar
-/// follows Hermes Desktop's transcript directives (lib/transcript-
-/// directives.ts): the directive starts a word (so `std::preview` isn't
-/// one), attributes are `key="value"` or `key='value'`, and a directive
-/// without a file stays the text it is.
-enum TranscriptDirectives {
-    enum Segment: Equatable {
-        case text(String)
-        case preview(file: String)
-    }
-
-    private static let previewExpression = try! NSRegularExpression(
-        pattern: #"(?:^|(?<=\s))::preview\{([^{}\n]{0,1024})\}"#
-    )
-    private static let attributeExpression = try! NSRegularExpression(
-        pattern: #"([A-Za-z][\w-]{0,63})=(?:"([^"]*)"|'([^']*)')"#
-    )
-    private static let htmlExpression = try! NSRegularExpression(
-        pattern: #"\.(?:html?|xhtml)$"#,
-        options: [.caseInsensitive]
-    )
-
-    /// The line split into text and previews, or nil when it holds none.
-    static func segments(in line: String) -> [Segment]? {
-        guard line.contains("::preview{") else { return nil }
-        let nsLine = line as NSString
-        var segments: [Segment] = []
-        var cursor = 0
-        for match in previewExpression.matches(in: line, range: NSRange(location: 0, length: nsLine.length)) {
-            let body = nsLine.substring(with: match.range(at: 1))
-            guard let file = attributes(in: body)["file"]?.trimmingCharacters(in: .whitespaces),
-                  !file.isEmpty else { continue }
-            appendText(nsLine.substring(with: NSRange(location: cursor, length: match.range.location - cursor)), to: &segments)
-            segments.append(.preview(file: file))
-            cursor = NSMaxRange(match.range)
-        }
-        guard cursor > 0 else { return nil }
-        appendText(nsLine.substring(from: cursor), to: &segments)
-        return segments
-    }
-
-    /// Whether the file draws in place; anything else gets a file card.
-    static func isHTML(_ path: String) -> Bool {
-        htmlExpression.firstMatch(in: path, range: NSRange(location: 0, length: (path as NSString).length)) != nil
-    }
-
-    /// `text` without its previews, for places that read a reply rather
-    /// than render it (Read Aloud).
-    static func removingPreviews(from text: String) -> String {
-        guard text.contains("::preview{") else { return text }
-        // Line endings normalized as the parser does, so its table check sees the same lines.
-        let lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
-        return lines.indices.compactMap { index -> String? in
-            let line = lines[index]
-            // A quoted directive is an example and a table header cell is
-            // table text; the chat shows both as written.
-            guard !line.trimmingCharacters(in: .whitespaces).hasPrefix(">"),
-                  let segments = segments(in: line),
-                  !MarkdownParser.isTableHeader(lines, at: index) else { return line }
-            let kept = segments.compactMap { segment -> String? in
-                if case .text(let value) = segment { return value }
-                return nil
-            }
-            return kept.isEmpty ? nil : kept.joined(separator: " ")
-        }.joined(separator: "\n")
-    }
-
-    private static func attributes(in body: String) -> [String: String] {
-        let nsBody = body as NSString
-        var attributes: [String: String] = [:]
-        for match in attributeExpression.matches(in: body, range: NSRange(location: 0, length: nsBody.length)) {
-            let name = nsBody.substring(with: match.range(at: 1)).lowercased()
-            let valueRange = match.range(at: 2).location != NSNotFound ? match.range(at: 2) : match.range(at: 3)
-            attributes[name] = valueRange.location != NSNotFound ? nsBody.substring(with: valueRange) : ""
-        }
-        return attributes
-    }
-
-    private static func appendText(_ text: String, to segments: inout [Segment]) {
-        let trimmed = text.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty { segments.append(.text(trimmed)) }
-    }
-}
-
 /// An agent's HTML file drawn in the message.
 struct HTMLPreviewBlock<Fallback: View>: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
@@ -123,20 +39,35 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     /// Scopes where the page's height is kept across launches; nil (a
     /// surface that sets no resolver) keeps it by path alone.
     @Environment(\.gatewayMediaFiles) private var gatewayMediaFiles
-    /// The chat's scroll engine, which says when the card takes its height.
-    @Environment(\.chatRowDisclosure) private var disclosure
     @State private var state: LoadState = .loading
     /// The room the card holds and the height it has taken (#1238).
     @StateObject private var cardHeight = ChatCardHeight()
-    /// The block's frame, and the file card waiting to take the card's
-    /// place, or the card the file card's (#1238).
-    @StateObject private var fallbackArrival = ChatRowArrival()
     /// Counts the file's loads; each page reports under its own number.
     @State private var load = 0
-    @State private var showsFullScreen = false
     /// The page the sheet shows, kept apart from `state` so a reload
-    /// underneath doesn't blank an open sheet.
-    @State private var sheetHTML: String?
+    /// underneath doesn't blank an open sheet. The sheet is presented by
+    /// this value itself: a flag beside it let the sheet build before it
+    /// saw the page and open blank, as What's New did (#1227).
+    @State private var sheetPage: SheetPage?
+    /// The page measured taller than a message shows; its foot fades so it
+    /// reads as continuing full screen.
+    @State private var isCut = false
+
+    struct SheetPage: Identifiable {
+        let id = UUID()
+        let html: String
+
+        init(html: String) {
+            self.html = html
+        }
+
+        /// The page a tap opens: the loaded file, or none while it loads or
+        /// has fallen back.
+        init?(_ state: LoadState) {
+            guard case .loaded(let html) = state else { return nil }
+            self.html = html
+        }
+    }
 
     enum LoadState: Equatable {
         case loading
@@ -176,12 +107,13 @@ struct HTMLPreviewBlock<Fallback: View>: View {
                 card
             }
         }
-        .chatRowFrame(fallbackArrival)
-        // A swap still waiting goes with the block; its task reads the file
-        // again when the block is back.
-        .onDisappear { fallbackArrival.rowDisappeared() }
         .task(id: LoadKey(path: path, draws: draws)) {
             await loadDocument()
+        }
+        // On the block, not the card: a page that falls back to the file
+        // card while the sheet is open leaves the sheet up.
+        .sheet(item: $sheetPage) { page in
+            HTMLPreviewSheet(name: name, html: page.html)
         }
     }
 
@@ -190,8 +122,8 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             header
             // The page's room, held from the card's first frame: the file
             // loading, the page drawing and a reload all happen inside it,
-            // and it changes only when the page has measured itself and the
-            // scroll engine lets the card take the height (ChatCardHeight).
+            // and it changes only when the page has measured itself
+            // (ChatCardHeight).
             ZStack {
                 if case .loaded(let html) = state {
                     page(html)
@@ -199,7 +131,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
                         Text("Loading preview…")
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -208,16 +140,10 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             .frame(height: cardHeight.frameHeight(
                 reserving: TranscriptPictureMemory.height(for: heightKey) ?? HTMLPreviewPage.placeholderHeight
             ))
-            .cardStackFrame(cardHeight)
         }
         .padding(12)
         .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         .overlay { RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Color.secondary.opacity(0.20), lineWidth: 1) }
-        .sheet(isPresented: $showsFullScreen, onDismiss: { sheetHTML = nil }) {
-            if let sheetHTML {
-                HTMLPreviewSheet(name: name, html: sheetHTML)
-            }
-        }
     }
 
     private var header: some View {
@@ -227,7 +153,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             } icon: {
                 Image(systemName: "chart.xyaxis.line")
             }
-            .font(.caption2.monospaced().weight(.semibold))
+            .scaledFont(.caption2.monospaced().weight(.semibold))
             .foregroundStyle(.secondary)
             // The spinner over a measuring page isn't read out; say it here
             // (before the page loads, the loading row says it). Once
@@ -240,7 +166,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
                     openFullScreen()
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.caption2.weight(.semibold))
+                        .scaledFont(.caption2.weight(.semibold))
                 }
                 .tint(.conduitAccent)
                 .accessibilityLabel(Text("Open full screen"))
@@ -255,20 +181,21 @@ struct HTMLPreviewBlock<Fallback: View>: View {
         let drawn = isDrawn
         let load = self.load
         let heightKey = self.heightKey
-        let engine = disclosure?.engine
         HTMLPreviewWebView(
             html: HTMLPreviewPage.framed(html, theme: HTMLPreviewTheme(light: light), presentation: .inline),
             interactive: false,
             onHeight: { height in
                 let clamped = HTMLPreviewPage.clampedInlineHeight(height)
+                isCut = HTMLPreviewPage.isCutInline(height)
                 TranscriptPictureMemory.rememberHeight(clamped, for: heightKey)
-                cardHeight.pageMeasured(clamped, page: load, engine: engine)
+                cardHeight.pageMeasured(clamped, page: load)
             },
             // WebKit kept ending the page's process: the file card instead
             // of a blank frame.
             onFailed: { fallBack() }
         )
         .opacity(drawn ? 1 : 0)
+        .modifier(CutFootFade(isCut: isCut))
         .overlay {
             if drawn {
                 Color.clear
@@ -282,7 +209,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             // A page that never reports (WebKit stalled, the file isn't
             // really a page) turns into the file card.
             try? await Task.sleep(for: Self.drawTimeout)
-            guard !Task.isCancelled, !cardHeight.hasMeasured(load) else { return }
+            guard !Task.isCancelled, !cardHeight.isDrawn(load) else { return }
             fallBack()
         }
         .accessibilityElement(children: .ignore)
@@ -294,9 +221,8 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     }
 
     private func openFullScreen() {
-        guard case .loaded(let html) = state else { return }
-        sheetHTML = html
-        showsFullScreen = true
+        guard let page = SheetPage(state) else { return }
+        sheetPage = page
     }
 
     private func loadDocument() async {
@@ -314,6 +240,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
         let showsFileCard = state == .unavailable
         if !showsFileCard { state = .loading }
         load += 1
+        isCut = false
         cardHeight.pageReplaced()
         let dataURL = await gatewayMediaDataURL(path)
         guard !Task.isCancelled else { return }
@@ -321,20 +248,32 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             if !showsFileCard { fallBack() }
             return
         }
-        guard showsFileCard else {
-            state = .loaded(html)
-            return
-        }
-        // The card takes the file card's place the way the file card took
-        // its own.
-        fallbackArrival.arrive(rowHeight: nil, engine: disclosure?.engine) { state = .loaded(html) }
+        // A block showing its file card turns back into the card.
+        state = .loaded(html)
     }
 
-    /// The page can't be drawn: the file card takes the card's place once
-    /// the reader's scrolling allows, the way a card takes its height, with
-    /// a height only its layout tells (#1238).
+    /// The page can't be drawn: the file card takes the card's place.
     private func fallBack() {
-        fallbackArrival.arrive(rowHeight: nil, engine: disclosure?.engine) { state = .unavailable }
+        state = .unavailable
+    }
+
+    /// The foot of a page cut at the message's height fades out; a page
+    /// that fits keeps a fully opaque mask. One view either way, so the
+    /// page's web view is never rebuilt when it turns out to be cut.
+    private struct CutFootFade: ViewModifier {
+        let isCut: Bool
+
+        func body(content: Content) -> some View {
+            content.mask {
+                LinearGradient(
+                    stops: isCut
+                        ? [.init(color: .black, location: 0.82), .init(color: .black.opacity(0.15), location: 1)]
+                        : [.init(color: .black, location: 0), .init(color: .black, location: 1)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+        }
     }
 
     private struct LoadKey: Hashable {
@@ -411,6 +350,11 @@ enum HTMLPreviewPage {
 
     static func clampedInlineHeight(_ height: CGFloat) -> CGFloat {
         min(maximumInlineHeight, max(minimumInlineHeight, height.rounded(.up)))
+    }
+
+    /// A page taller than a message shows, whose foot fades in the message.
+    static func isCutInline(_ height: CGFloat) -> Bool {
+        height.rounded(.up) > maximumInlineHeight
     }
 
     /// The file's text from the dashboard's data URL, or nil when it isn't

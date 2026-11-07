@@ -700,7 +700,7 @@ struct ConnectionSetupView: View {
         ) {
             ConnectionSetupPanel {
                 Text("You will need:")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .accessibilityAddTraits(.isHeader)
                 ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Your existing HTTPS Hermes dashboard URL — for example https://hermes.example.com, https://hermes.example.com:9443, or https://example.com/hermes."))
@@ -739,7 +739,16 @@ struct ConnectionSetupView: View {
                     ConnectionSetupListItem(marker: .check, text: check)
                 }
             }
+
+            if topic == .tls {
+                ServerCertificateSection(address: certificateAddress)
+            }
         }
+    }
+
+    /// The address the HTTPS page checks: the one being set up or repaired.
+    private var certificateAddress: String {
+        (try? ConnectionSetupAddressBuilder.build(flow.draft)) ?? flow.draft.existingServerURL
     }
 
     private var topicBinding: Binding<ConnectionHelpDestination> {
@@ -846,6 +855,8 @@ extension ConnectionHelpDestination {
         case .tls:
             return [
                 AppLocalization.string("If you use your own certificate authority, install its profile on this device (Settings → General → VPN & Device Management), then turn on full trust for its root certificate (Settings → General → About → Certificate Trust Settings)."),
+                AppLocalization.string("Each iPhone and iPad keeps its own trust: turn on full trust on every device you connect from, even if another one already works."),
+                AppLocalization.string("The certificate must name the exact address you entered, as a host name or IP address in its Subject Alternative Name."),
                 AppLocalization.string("Check the server certificate’s expiration and validity dates."),
                 AppLocalization.string("Confirm this device’s date and time are correct.")
             ]

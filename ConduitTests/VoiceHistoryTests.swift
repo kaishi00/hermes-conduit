@@ -89,7 +89,7 @@ extension HermesVoiceGatewayTimeoutTests {
 
     func testVoiceHistorySaveGoesInPartsTheHostTakes() async throws {
         // The plugin takes at most 500 turns and 1 MiB per save
-        // (plugin_api VOICE_MAX_TURNS, VOICE_MAX_BODY_BYTES).
+        // (dashboard/api/voice_calls.py VOICE_MAX_TURNS, VOICE_MAX_BODY_BYTES).
         let turns = (0..<1_201).map {
             VoiceTranscriptTurn(index: $0, role: $0 % 2 == 0 ? .user : .assistant, text: "Turn \($0)", at: Date(timeIntervalSince1970: 10))
         }
@@ -185,7 +185,7 @@ extension HermesVoiceGatewayTimeoutTests {
                                    callAnchor: VoiceJobCallAnchor(callID: UUID(), transcriptIndex: 0), shownAt: Date())
         recorder.screen(card)
         let text = try XCTUnwrap(recorder.turns.last?.text)
-        // plugin_api VOICE_MAX_TURN_CHARS
+        // dashboard/api/voice_calls.py VOICE_MAX_TURN_CHARS
         XCTAssertLessThanOrEqual(text.count, 16_000)
         XCTAssertTrue(text.hasPrefix("Script\n\nHere's the script:"))
         XCTAssertTrue(text.hasSuffix("\n```"), "The cut closes the code block it left open")
@@ -218,6 +218,9 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(VoiceHistoryClient.mapped(.http(status: 409, detail: "")), .busy)
         XCTAssertEqual(VoiceHistoryClient.mapped(.http(status: 422, detail: "")), .rowUnavailable)
         XCTAssertNil(VoiceHistoryClient.mapped(.http(status: 500, detail: "")))
+        // A profile that turned the plugin off isn't a host that can't save
+        // calls: the call waits, and the error says how to turn it on (issue 1671).
+        XCTAssertNil(VoiceHistoryClient.mapped(.http(status: 404, detail: "Plugin not found")))
     }
 
     func testVoiceHistoryParsesTagsAndSkipsUnknownKinds() throws {
@@ -234,6 +237,23 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(tags["d"])
         XCTAssertNil(tags["e"])
         XCTAssertThrowsError(try VoiceHistoryClient.tags(from: ["ok": false]))
+    }
+
+    func testVoiceHistoryParsesEveryChatsCallsAndSkipsBadEntries() {
+        let calls = VoiceHistoryClient.hostChatCalls(from: ["ok": true, "tags": [String: Any](), "chat_calls": [
+            ["call_id": "c1", "chat_id": "chat-1", "engine": "gpt-live", "started_at": 1_000, "ended_at": 1_095.5],
+            ["call_id": "c2", "chat_id": "chat-2", "started_at": 2_000],
+            ["call_id": "c3", "chat_id": "chat-3"],
+            ["call_id": "", "chat_id": "chat-4", "started_at": 1],
+            "not a call"
+        ] as [Any]])
+        XCTAssertEqual(calls, [
+            VoiceHostChatCall(callID: "c1", chatID: "chat-1", startedAt: Date(timeIntervalSince1970: 1_000),
+                              endedAt: Date(timeIntervalSince1970: 1_095.5)),
+            VoiceHostChatCall(callID: "c2", chatID: "chat-2", startedAt: Date(timeIntervalSince1970: 2_000),
+                              endedAt: Date(timeIntervalSince1970: 2_000))
+        ])
+        XCTAssertEqual(VoiceHistoryClient.hostChatCalls(from: ["ok": true, "tags": [String: Any]()]), [], "an older plugin")
     }
 
     func testVoiceHistorySummaryNeedsTextAndCoveredTurns() {
@@ -575,6 +595,29 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     @MainActor
+    func testAChatLinkOnlySaysTheChatIsGoneWhenHermesSaysSo() {
+        let gone = "That call's transcript is no longer available."
+        XCTAssertEqual(
+            AppState.linkedSessionFailureMessage(current: "Failed to restore this conversation: session not found", sessionWasNotFound: true, unavailable: gone),
+            gone, "Hermes' own not found says the link's words"
+        )
+        let worker = "This chat is a Kanban task's worker, so only the board can run it."
+        XCTAssertEqual(
+            AppState.linkedSessionFailureMessage(current: worker, sessionWasNotFound: false, unavailable: gone),
+            worker, "a Kanban worker keeps its explanation"
+        )
+        XCTAssertEqual(
+            AppState.linkedSessionFailureMessage(current: "Failed to restore this conversation: The request timed out.", sessionWasNotFound: false, unavailable: gone),
+            "Failed to restore this conversation: The request timed out.", "another failure keeps its own error"
+        )
+        XCTAssertEqual(
+            AppState.linkedSessionFailureMessage(current: nil, sessionWasNotFound: false, unavailable: gone),
+            AppLocalization.string("Couldn't open that chat. Try again."),
+            "a failure that came with no error (a dropped socket, a replaced client) never calls the chat gone"
+        )
+    }
+
+    @MainActor
     func testABotLinkOnlySaysTheChatIsGoneWhenTheRosterWasRead() async throws {
         XCTAssertEqual(AppState.missingLinkedBotMessage(for: .available), AppLocalization.string("That chat is no longer available."))
         XCTAssertEqual(AppState.missingLinkedBotMessage(for: .failed(message: "Could not refresh bots.")), "Could not refresh bots.")
@@ -639,13 +682,13 @@ extension HermesVoiceGatewayTimeoutTests {
     func testVoiceFiltersJoinASavedOrderAfterChat() {
         XCTAssertEqual(
             AppState.normalizedSessionFilterOrder(["telegram", "chat", "discord", "api", "webhook", "other"]),
-            [.telegram, .chat, .voice, .voiceJob, .discord, .api, .webhook, .cron, .other]
+            [.telegram] + SessionSource.gatewayPlatforms + [.chat, .voice, .voiceJob, .discord, .api, .webhook, .cron, .other]
         )
         XCTAssertEqual(AppState.normalizedSessionFilterOrder([]), AppState.defaultSessionFilterOrder)
         // A moved Voice filter keeps its place.
         XCTAssertEqual(
             AppState.normalizedSessionFilterOrder(["voice", "chat", "voice_job", "discord", "telegram", "api", "webhook", "other"]),
-            [.voice, .chat, .voiceJob, .discord, .telegram, .api, .webhook, .cron, .other]
+            [.voice, .chat, .voiceJob, .discord, .telegram] + SessionSource.gatewayPlatforms + [.api, .webhook, .cron, .other]
         )
     }
 }
@@ -787,6 +830,45 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(links.merge(into: merged, chatIDs: ["st-1"], openIDs: ["st-1"], profile: "default").count, 3)
         // A call later than every message goes last.
         XCTAssertEqual(links.merge(into: Array(history.prefix(1)), chatIDs: ["st-1"], openIDs: ["st-1"], profile: "default").last?.id, "voice-call-c1")
+    }
+
+    func testCallsAnotherDeviceKeptWithAChatGetTheirCardsHere() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let iso = ISO8601DateFormatter()
+        var links = VoiceCallChatLinks()
+        links.add(chatLink(call: "mine", row: "", chat: "rt-1", stored: "st-1", at: start.addingTimeInterval(600)))
+        let host = [
+            VoiceHostChatCall(callID: "mine", chatID: "st-1", startedAt: start.addingTimeInterval(600), endedAt: start.addingTimeInterval(700)),
+            VoiceHostChatCall(callID: "theirs", chatID: "st-1", startedAt: start, endedAt: start.addingTimeInterval(90)),
+            VoiceHostChatCall(callID: "elsewhere", chatID: "st-2", startedAt: start, endedAt: start)
+        ]
+        XCTAssertTrue(links.adopt(host, profile: "default") { $0 == "st-1" ? "Build" : nil })
+        XCTAssertFalse(links.adopt(host, profile: "default") { _ in nil }, "known calls aren't added twice")
+        XCTAssertEqual(links.links.map(\.callID), ["theirs", "elsewhere", "mine"], "in the order the calls started")
+        let theirs = links.links.first
+        XCTAssertEqual(theirs?.storedWithChat, true)
+        XCTAssertEqual(theirs?.chatTitle, "Build")
+        XCTAssertEqual(links.links[1].chatTitle, "")
+
+        let history = [ChatMessage(id: "a", role: .user, content: "later", timestamp: iso.string(from: start.addingTimeInterval(60)))]
+        let merged = links.merge(into: history, chatIDs: ["st-1"], openIDs: ["st-1"], profile: "default")
+        XCTAssertEqual(merged.map(\.id), ["voice-call-theirs", "a", "voice-call-mine"])
+        XCTAssertEqual(links.chatIDs(profile: "default"), ["st-1", "st-2"])
+        XCTAssertEqual(links.chatIDs(profile: "work"), [])
+    }
+
+    func testAdoptedCallsKeepTheLinkCap() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var links = VoiceCallChatLinks()
+        links.add(chatLink(call: "newest", row: "", chat: "rt", stored: "st", at: start.addingTimeInterval(10_000)))
+        let host = (0..<VoiceCallChatLinks.maximumLinks).map {
+            VoiceHostChatCall(callID: "c\($0)", chatID: "st", startedAt: start.addingTimeInterval(Double($0)), endedAt: start)
+        }
+        XCTAssertTrue(links.adopt(host, profile: "default") { _ in nil })
+        XCTAssertEqual(links.links.count, VoiceCallChatLinks.maximumLinks)
+        XCTAssertEqual(links.links.first?.callID, "c1", "the oldest call goes first")
+        XCTAssertEqual(links.links.last?.callID, "newest")
+        XCTAssertFalse(links.adopt(host, profile: "default") { _ in nil }, "the call the cap dropped is no change")
     }
 
     func testCallTranscriptLeadsBackToItsChatAndNeverShowsTheChatsCard() {

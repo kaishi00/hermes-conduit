@@ -112,11 +112,12 @@ extension ReadAloudNowPlaying {
         let spoken = SpokenTextFilter.filter(content)
         let source = spoken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? content : spoken
         // Markdown emphasis and code markers read as noise on the lock
-        // screen; heading, quote, and list markers too.
+        // screen; heading, quote, and list markers too. A spaced "*" is
+        // multiplication ("5 * 3"), as in the spoken filter, and stays.
         let firstLine = source
             .split(whereSeparator: \.isNewline)
             .map { line in
-                String(line.filter { $0 != "*" && $0 != "`" })
+                withoutEmphasisMarkers(Array(line))
                     .trimmingCharacters(in: CharacterSet(charactersIn: "#>-•").union(.whitespaces))
             }
             .first { !$0.isEmpty } ?? ""
@@ -125,6 +126,49 @@ extension ReadAloudNowPlaying {
     }
 
     static let maxTitleLength = 80
+
+    private static func withoutEmphasisMarkers(_ line: [Character]) -> String {
+        let words = wordsStart(line)
+        var kept = ""
+        for (index, character) in line.enumerated() {
+            if character == "`" { continue }
+            if character == "*" {
+                // A list, quote or heading marker before the line's words
+                // goes too.
+                let spacedBefore = index > 0 && line[index - 1].isWhitespace
+                let spacedAfter = index + 1 < line.count && line[index + 1].isWhitespace
+                guard index >= words && spacedBefore && spacedAfter else { continue }
+            }
+            kept.append(character)
+        }
+        return kept.replacingOccurrences(of: #" {2,}"#, with: " ", options: .regularExpression)
+    }
+
+    /// Where a line's words start, after its quote, heading and list markers
+    /// ("> - 1. * ").
+    private static func wordsStart(_ line: [Character]) -> Int {
+        var start = 0
+        while start < line.count {
+            let character = line[start]
+            if character.isWhitespace || character == ">" || character == "#" {
+                start += 1
+                continue
+            }
+            if "-+*•".contains(character), start + 1 < line.count, line[start + 1].isWhitespace {
+                start += 2
+                continue
+            }
+            var digits = start
+            while digits < line.count, line[digits].isNumber { digits += 1 }
+            if digits > start, digits + 1 < line.count, line[digits] == "." || line[digits] == ")",
+               line[digits + 1].isWhitespace {
+                start = digits + 2
+                continue
+            }
+            break
+        }
+        return start
+    }
 }
 
 enum ReadAloudNowPlaying {}
