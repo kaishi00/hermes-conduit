@@ -444175,6 +444175,1728 @@
           }
         }
       }
+    },
+    "A delegate given fewer tools still keeps your connectors' tools.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Delegierter mit weniger Werkzeugen behält trotzdem die Werkzeuge deiner Konnektoren."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un delegado con menos herramientas conserva las de tus conectores."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un délégué doté de moins d'outils garde quand même ceux de vos connecteurs."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegasi dengan alat yang lebih sedikit tetap memakai alat dari konektor Anda."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un delegato con meno strumenti mantiene comunque quelli dei tuoi connettori."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ツールを絞られた委任エージェントでも、コネクタのツールは引き続き使えます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "도구가 줄어든 위임 에이전트도 커넥터의 도구는 계속 사용합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent delegowany z mniejszą liczbą narzędzi nadal zachowuje narzędzia Twoich łączników."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um agente delegado com menos ferramentas ainda mantém as dos seus conectores."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Делегат с урезанным набором инструментов всё равно сохраняет инструменты ваших коннекторов."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daha az araç verilen bir devredilen ajan yine de bağlayıcılarınızın araçlarını korur."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "即使工具集被缩小，委派代理仍会保留你连接器中的工具。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "即使工具集被縮小，委派代理程式仍會保留你連接器中的工具。"
+          }
+        }
+      }
+    },
+    "Background delegate agents report one by one, not all together at the end.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegierte Agenten im Hintergrund melden sich einzeln, nicht alle zusammen am Ende."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los agentes delegados en segundo plano informan uno a uno, no todos juntos al final."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les agents délégués en arrière-plan rendent compte un par un, pas tous ensemble à la fin."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agen delegasi di latar belakang melapor satu per satu, bukan bersamaan di akhir."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gli agenti delegati in background riferiscono uno alla volta, non tutti insieme alla fine."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "バックグラウンドの委任エージェントが、最後にまとめてではなく1つずつ報告します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "백그라운드 위임 에이전트가 마지막에 한꺼번에가 아니라 하나씩 보고합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agenci delegowani w tle zgłaszają się pojedynczo, a nie wszyscy razem na końcu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agentes delegados em segundo plano informam um a um, não todos juntos no final."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Фоновые делегированные агенты отчитываются по одному, а не все вместе в конце."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arka plandaki devredilen ajanlar sonda hep birlikte değil, tek tek bildirir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "后台委派代理逐个汇报结果，而不是在最后一起汇报。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "背景委派代理程式逐一回報結果，而不是在最後一起回報。"
+          }
+        }
+      }
+    },
+    "Coordinating delegates": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koordinierende Delegierte"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegados coordinadores"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Délégués coordinateurs"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegasi koordinator"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegati coordinatori"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委任エージェントによる調整"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "조정하는 위임 에이전트"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koordynujący agenci delegowani"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegados coordenadores"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Координирующие делегаты"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koordine eden devredilen ajanlar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "协调型委派代理"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "協調型委派代理程式"
+          }
+        }
+      }
+    },
+    "Delegate agents can't ask you. On, they approve a command once; off, they decline it.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegierte Agenten können dich nicht fragen. Ein: Sie genehmigen einen Befehl einmalig; aus: Sie lehnen ihn ab."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los agentes delegados no pueden preguntarte. Activado, aprueban un comando una vez; desactivado, lo rechazan."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les agents délégués ne peuvent pas vous demander. Activé, ils approuvent une commande une fois ; désactivé, ils la refusent."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agen delegasi tidak bisa bertanya kepada Anda. Aktif: mereka menyetujui perintah sekali; nonaktif: mereka menolaknya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gli agenti delegati non possono chiederti nulla. Attivo, approvano un comando una volta; disattivo, lo rifiutano."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委任エージェントはあなたに確認できません。オンでは1回限りコマンドを承認し、オフでは拒否します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "위임 에이전트는 사용자에게 물어볼 수 없습니다. 켜면 명령을 한 번 승인하고, 끄면 거부합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agenci delegowani nie mogą Cię zapytać. Włączone: zatwierdzają polecenie jednorazowo; wyłączone: odrzucają je."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agentes delegados não podem perguntar a você. Ativado, aprovam um comando uma vez; desativado, recusam."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Делегированные агенты не могут спросить вас. Включено — разрешают команду один раз; выключено — отклоняют её."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devredilen ajanlar size soramaz. Açıkken bir komutu bir kez onaylarlar; kapalıyken reddederler."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派代理无法询问你。开启时会单次批准命令；关闭时会拒绝。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派代理程式無法詢問你。開啟時會單次核准命令；關閉時會拒絕。"
+          }
+        }
+      }
+    },
+    "Delegate command alerts": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Befehlsmeldungen von Delegierten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avisos de comandos de delegados"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alertes de commandes des délégués"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peringatan perintah delegasi"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avvisi sui comandi dei delegati"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委任エージェントのコマンド通知"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "위임 에이전트 명령 알림"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alerty poleceń agentów delegowanych"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alertas de comandos de delegados"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Оповещения о командах делегатов"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devredilen ajan komut uyarıları"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派代理命令提醒"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派代理程式命令提醒"
+          }
+        }
+      }
+    },
+    "Delegate compression cap": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Komprimierungsgrenze für Delegierte"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Límite de compresión de delegados"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plafond de compression des délégués"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batas kompresi delegasi"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Soglia di compressione dei delegati"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委任エージェントの圧縮上限"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "위임 에이전트 압축 한도"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Próg kompresji agentów delegowanych"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite de compactação de delegados"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Порог сжатия для делегатов"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devredilen ajan sıkıştırma sınırı"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派代理压缩上限"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派代理程式壓縮上限"
+          }
+        }
+      }
+    },
+    "Delegate result limit": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ergebnisgrenze für Delegierte"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Límite del resultado de delegados"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite du résultat des délégués"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batas hasil delegasi"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite del risultato dei delegati"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委任エージェントの結果の上限"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "위임 에이전트 결과 한도"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limit wyniku agenta delegowanego"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite do resultado de delegados"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Лимит результата делегата"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devredilen ajan sonuç sınırı"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派代理结果上限"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派代理程式結果上限"
+          }
+        }
+      }
+    },
+    "Delegate start wait": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Startwartezeit für Delegierte"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Espera al inicio de delegados"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attente au démarrage des délégués"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeda mulai delegasi"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attesa all'avvio dei delegati"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委任エージェントの開始待ち"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "위임 에이전트 시작 대기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oczekiwanie na start agentów delegowanych"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Espera no início dos delegados"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ожидание старта делегатов"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devredilen ajan başlangıç beklemesi"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派代理启动等待"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派代理程式啟動等待"
+          }
+        }
+      }
+    },
+    "Delegates approve commands": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegierte genehmigen Befehle"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los delegados aprueban comandos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les délégués approuvent les commandes"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegasi menyetujui perintah"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I delegati approvano i comandi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委任エージェントがコマンドを承認"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "위임 에이전트가 명령 승인"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agenci delegowani zatwierdzają polecenia"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegados aprovam comandos"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Делегаты разрешают команды"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devredilen ajanlar komutları onaylar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派代理批准命令"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派代理程式核准命令"
+          }
+        }
+      }
+    },
+    "Delegates keep connectors": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegierte behalten Konnektoren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los delegados conservan conectores"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les délégués gardent les connecteurs"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegasi tetap memakai konektor"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I delegati mantengono i connettori"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委任エージェントがコネクタを保持"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "위임 에이전트가 커넥터 유지"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agenci delegowani zachowują łączniki"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegados mantêm conectores"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Делегаты сохраняют коннекторы"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devredilen ajanlar bağlayıcıları korur"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派代理保留连接器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派代理程式保留連接器"
+          }
+        }
+      }
+    },
+    "Delegation depth": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegationstiefe"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profundidad de delegación"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profondeur de délégation"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kedalaman delegasi"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profondità di delega"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委任の深さ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "위임 깊이"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Głębokość delegowania"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profundidade da delegação"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Глубина делегирования"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devretme derinliği"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派深度"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派深度"
+          }
+        }
+      }
+    },
+    "Delegation in chats": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegation in Chats"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegación en chats"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Délégation dans les discussions"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegasi di obrolan"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delega nelle chat"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "チャットでの委任"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "채팅에서의 위임"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegowanie w czatach"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegação nas conversas"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Делегирование в чатах"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sohbetlerde devretme"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聊天中的委派"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聊天中的委派"
+          }
+        }
+      }
+    },
+    "Inline": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Im Verlauf"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En la respuesta"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dans la réponse"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dalam balasan"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nella risposta"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "返信内"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "답변 안에서"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "W odpowiedzi"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Na resposta"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В ответе"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yanıtın içinde"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回复内"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回覆內"
+          }
+        }
+      }
+    },
+    "Inline waits for delegates inside the reply; Background lets the reply finish first. Auto is inline when progress messages are off.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Im Verlauf wartet die Antwort auf die Delegierten; Im Hintergrund lässt die Antwort zuerst fertig werden. Automatisch ist im Verlauf, wenn Fortschrittsmeldungen aus sind."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En la respuesta espera a los delegados dentro de la respuesta; En segundo plano deja que la respuesta termine antes. Auto va en la respuesta si los mensajes de progreso están desactivados."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dans la réponse attend les délégués au sein de la réponse ; En arrière-plan laisse la réponse se terminer d'abord. Auto choisit Dans la réponse quand les messages de progression sont désactivés."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dalam balasan menunggu delegasi di dalam balasan; Latar belakang membiarkan balasan selesai lebih dulu. Otomatis memakai Dalam balasan saat pesan progres nonaktif."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nella risposta attende i delegati all'interno della risposta; In background lascia finire prima la risposta. Auto usa Nella risposta quando i messaggi di avanzamento sono disattivati."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "返信内では返信の中で委任エージェントを待ち、バックグラウンドでは先に返信を終えます。自動は、進捗メッセージがオフのとき返信内になります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "답변 안에서는 답변 중에 위임 에이전트를 기다리고, 백그라운드는 답변을 먼저 끝냅니다. 자동은 진행 메시지가 꺼져 있으면 답변 안에서로 동작합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "W odpowiedzi czeka na agentów delegowanych wewnątrz odpowiedzi; W tle pozwala najpierw dokończyć odpowiedź. Auto działa jak W odpowiedzi, gdy komunikaty o postępie są wyłączone."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Na resposta espera os delegados dentro da resposta; Em segundo plano deixa a resposta terminar antes. Auto usa Na resposta quando as mensagens de progresso estão desativadas."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«В ответе» ждёт делегатов внутри ответа; «В фоне» сначала завершает ответ. «Авто» работает как «В ответе», когда сообщения о ходе работы выключены."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yanıtın içinde, devredilen ajanları yanıtın içinde bekler; Arka planda, önce yanıtın bitmesine izin verir. Otomatik, ilerleme mesajları kapalıyken Yanıtın içinde gibi çalışır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回复内会在回复中等待委派代理；后台会先完成回复。自动在关闭进度消息时使用回复内。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回覆內會在回覆中等待委派代理程式；背景會先完成回覆。自動在關閉進度訊息時使用回覆內。"
+          }
+        }
+      }
+    },
+    "Let a delegate agent start and coordinate its own delegates, up to the depth above.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lass einen delegierten Agenten eigene Delegierte starten und koordinieren, bis zur obigen Tiefe."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permite que un agente delegado inicie y coordine sus propios delegados, hasta la profundidad de arriba."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permet à un agent délégué de lancer et coordonner ses propres délégués, jusqu'à la profondeur ci-dessus."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Izinkan agen delegasi memulai dan mengoordinasikan delegasinya sendiri, hingga kedalaman di atas."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consenti a un agente delegato di avviare e coordinare i propri delegati, fino alla profondità indicata sopra."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委任エージェントが独自の委任エージェントを開始して調整できるようにします（上記の深さまで）。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "위임 에이전트가 자체 위임 에이전트를 시작하고 조정하도록 허용합니다(위의 깊이까지)."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pozwól agentowi delegowanemu uruchamiać i koordynować własnych agentów, do głębokości podanej wyżej."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permite que um agente delegado inicie e coordene seus próprios delegados, até a profundidade acima."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Позволить делегированному агенту запускать и координировать собственных делегатов, до указанной выше глубины."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devredilen bir ajanın kendi ajanlarını başlatıp koordine etmesine izin verin (yukarıdaki derinliğe kadar)."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许委派代理启动并协调自己的委派代理，最多到上面的深度。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允許委派代理程式啟動並協調自己的委派代理程式，最多到上方的深度。"
+          }
+        }
+      }
+    },
+    "Levels of delegate agents that can start their own. 1 means delegates can't.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ebenen delegierter Agenten, die eigene starten können. 1 bedeutet, Delegierte können es nicht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Niveles de agentes delegados que pueden iniciar los suyos. 1 significa que los delegados no pueden."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Niveaux d'agents délégués pouvant lancer les leurs. 1 signifie que les délégués ne le peuvent pas."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tingkat agen delegasi yang dapat memulai delegasinya sendiri. 1 berarti delegasi tidak bisa."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Livelli di agenti delegati che possono avviarne di propri. 1 significa che i delegati non possono."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "独自の委任エージェントを開始できる階層の数です。1の場合、委任エージェントは開始できません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "자체 위임 에이전트를 시작할 수 있는 단계 수입니다. 1이면 위임 에이전트는 시작할 수 없습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Poziomy agentów delegowanych, które mogą uruchamiać własnych. 1 oznacza, że nie mogą."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Níveis de agentes delegados que podem iniciar os seus. 1 significa que os delegados não podem."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сколько уровней делегатов могут запускать своих. 1 — делегаты не могут."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kendi ajanlarını başlatabilen devredilen ajan katmanı sayısı. 1, devredilen ajanların başlatamayacağı anlamına gelir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可以再启动委派代理的层数。1 表示委派代理不能再启动。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可以再啟動委派代理程式的層數。1 表示委派代理程式不能再啟動。"
+          }
+        }
+      }
+    },
+    "Most characters of one delegate's result; the rest is saved to a file. 0 means no limit.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Höchstzahl an Zeichen eines Delegiertenergebnisses; der Rest wird in einer Datei gespeichert. 0 bedeutet keine Grenze."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Máximo de caracteres del resultado de un delegado; el resto se guarda en un archivo. 0 significa sin límite."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nombre maximal de caractères du résultat d'un délégué ; le reste est enregistré dans un fichier. 0 signifie aucune limite."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jumlah karakter maksimum hasil satu delegasi; sisanya disimpan ke file. 0 berarti tanpa batas."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Numero massimo di caratteri del risultato di un delegato; il resto viene salvato in un file. 0 significa nessun limite."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1つの委任エージェントの結果の最大文字数です。残りはファイルに保存されます。0は上限なしです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "위임 에이전트 결과 하나의 최대 글자 수입니다. 나머지는 파일에 저장됩니다. 0은 제한 없음입니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maksymalna liczba znaków wyniku jednego agenta delegowanego; resztę zapisuje się w pliku. 0 oznacza brak limitu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Máximo de caracteres do resultado de um delegado; o restante é salvo em um arquivo. 0 significa sem limite."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Максимум символов в результате одного делегата; остальное сохраняется в файл. 0 — без ограничения."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir devredilen ajan sonucunun en fazla karakter sayısı; kalanı bir dosyaya kaydedilir. 0 sınır yok demektir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "单个委派代理结果的最大字符数；其余内容保存到文件。0 表示不限制。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "單一委派代理程式結果的最大字元數；其餘內容儲存到檔案。0 表示不限制。"
+          }
+        }
+      }
+    },
+    "Results as each finishes": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ergebnisse einzeln"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resultados según terminan"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Résultats au fur et à mesure"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hasil saat masing-masing selesai"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Risultati man mano che finiscono"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "終わったものから結果を返す"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "끝나는 대로 결과 보고"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wyniki w miarę ukończenia"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resultados conforme terminam"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Результаты по мере готовности"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sonuçlar bittikçe"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完成一个返回一个"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完成一個回傳一個"
+          }
+        }
+      }
+    },
+    "Seconds delegates started together wait for the first to begin answering, so they share its cached prompt. 0 means off.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sekunden, die gemeinsam gestartete Delegierte auf die erste Antwort warten, damit sie deren zwischengespeicherten Prompt teilen. 0 bedeutet aus."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Segundos que los delegados iniciados juntos esperan a que el primero empiece a responder, para compartir su prompt en caché. 0 significa desactivado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Secondes pendant lesquelles les délégués lancés ensemble attendent que le premier commence à répondre, pour partager son prompt en cache. 0 signifie désactivé."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Detik yang ditunggu delegasi yang dimulai bersamaan hingga yang pertama mulai menjawab, agar berbagi prompt yang di-cache. 0 berarti nonaktif."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Secondi che i delegati avviati insieme attendono che il primo inizi a rispondere, per condividerne il prompt in cache. 0 significa disattivato."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同時に開始した委任エージェントが、最初の1つが回答を始めるまで待つ秒数です。キャッシュされたプロンプトを共有できます。0はオフです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "함께 시작한 위임 에이전트가 첫 번째가 답하기 시작할 때까지 기다리는 초로, 캐시된 프롬프트를 공유합니다. 0은 끔입니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sekundy, przez które agenci uruchomieni razem czekają, aż pierwszy zacznie odpowiadać, by współdzielić jego prompt z pamięci podręcznej. 0 oznacza wyłączone."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Segundos que delegados iniciados juntos esperam o primeiro começar a responder, para compartilhar o prompt em cache. 0 significa desativado."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сколько секунд делегаты, запущенные вместе, ждут, пока первый начнёт отвечать, чтобы использовать его кэшированный промпт. 0 — выключено."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Birlikte başlatılan devredilen ajanların, önbelleğe alınmış istemi paylaşmak için ilkinin yanıt vermeye başlamasını beklediği saniye. 0 kapalı demektir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同时启动的委派代理等待第一个开始回答的秒数，以共享其缓存的提示词。0 表示关闭。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同時啟動的委派代理程式等待第一個開始回答的秒數，以共用其快取的提示詞。0 表示關閉。"
+          }
+        }
+      }
+    },
+    "Tell the chat when a delegate's background command finishes or matches what it watches for.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Den Chat benachrichtigen, wenn ein Hintergrundbefehl eines Delegierten fertig ist oder auf das Beobachtete trifft."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avisar al chat cuando un comando en segundo plano de un delegado termina o coincide con lo que vigila."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prévenir la discussion quand une commande en arrière-plan d'un délégué se termine ou correspond à ce qu'elle surveille."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beri tahu obrolan saat perintah latar belakang delegasi selesai atau cocok dengan yang dipantaunya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avvisa la chat quando un comando in background di un delegato termina o corrisponde a ciò che osserva."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委任エージェントのバックグラウンドコマンドが終了したとき、または監視対象に一致したときにチャットへ知らせます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "위임 에이전트의 백그라운드 명령이 끝나거나 감시하는 내용과 일치하면 채팅에 알립니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Powiadamiaj czat, gdy polecenie w tle agenta delegowanego się zakończy lub trafi na to, co obserwuje."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avisar a conversa quando um comando em segundo plano de um delegado terminar ou corresponder ao que observa."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сообщать в чат, когда фоновая команда делегата завершится или найдёт то, что отслеживает."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devredilen bir ajanın arka plan komutu bittiğinde veya izlediği şeyle eşleştiğinde sohbete bildir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当委派代理的后台命令完成或匹配到监视内容时通知聊天。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "當委派代理程式的背景命令完成或符合監看內容時通知聊天。"
+          }
+        }
+      }
+    },
+    "Tokens at which a delegate compresses its context, 16000 or more. 0 follows the main setting.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tokens, ab denen ein Delegierter seinen Kontext komprimiert, mindestens 16000. 0 folgt der Haupteinstellung."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tokens a partir de los cuales un delegado comprime su contexto, 16000 o más. 0 sigue el ajuste principal."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tokens à partir desquels un délégué compresse son contexte, 16000 ou plus. 0 suit le réglage principal."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token saat delegasi memadatkan konteksnya, 16000 atau lebih. 0 mengikuti pengaturan utama."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token oltre i quali un delegato comprime il proprio contesto, almeno 16000. 0 segue l'impostazione principale."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委任エージェントがコンテキストを圧縮するトークン数です（16000以上）。0はメインの設定に従います。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "위임 에이전트가 컨텍스트를 압축하는 토큰 수(16000 이상)입니다. 0이면 기본 설정을 따릅니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tokeny, przy których agent delegowany kompresuje kontekst, co najmniej 16000. 0 oznacza ustawienie główne."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tokens a partir dos quais um delegado compacta o contexto, 16000 ou mais. 0 segue a configuração principal."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Число токенов, при котором делегат сжимает контекст, от 16000. 0 — как в основной настройке."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devredilen ajanın bağlamını sıkıştırdığı token sayısı, en az 16000. 0 ana ayarı izler."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派代理压缩上下文的令牌数，至少 16000。0 表示沿用主设置。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派代理程式壓縮上下文的權杖數，至少 16000。0 表示沿用主要設定。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

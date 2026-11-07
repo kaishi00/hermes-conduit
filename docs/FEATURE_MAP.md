@@ -4057,6 +4057,39 @@ notifier's README and CHANGELOG (done) · README's Settings list (done)
 
 **Checked:** 2026-11-05, #1823 (#1816 checked here: the Helper models pages read their models again after opening, see Model lists Hermes is still fetching); 2026-11-01, #1638 (readers asking together share one read; a save drops it and its own read after is the shared one); 2026-11-01, #1636 (the Model page reads the slots too, so Remove names them as Hermes holds them); 2026-11-01, #1632 (provider-only pins, slots on their own endpoint, kept slots follow a save, the Predictive caption waits for the slot; a gap closed); 2026-11-01, #1625 (entry added)
 
+## Subagent settings
+
+How Hermes' delegate agents (subagents) run for a profile: their model,
+how many run at once and how deep they nest, what they may approve, how
+their results come back, and when Hermes stops them. Settings > Memory &
+delegation (`delegation.*` in the profile's config).
+
+**Siblings:** the Delegation section's rows (done: every `delegation.*`
+setting a chat uses, #NUM) · Delegate model (provider, model and effort,
+unchanged) · Pause delegation (unchanged) · Hermes Desktop's Model >
+Subagents page (upstream, the reference) · delegation routing, Desktop's
+mode picker with model and profile routes from the advanced-delegation
+plugin (gap: next) · the subagents' own fallback models
+(`delegation.fallback_providers`, gap: next, with routing) · Screens that
+open on their last answer (done: the rows are the page's kept config
+values) · Profile config saves (done: the rows save through the page's
+queue) · Bots (not needed: a bot's profile opens the same page) · Watch,
+CarPlay and group rooms (not needed: no settings) · Text: each row's
+caption (done); README and docs don't describe these settings
+
+**Code**
+- Rows: `Conduit/Views/AuxiliaryViews.swift` (memorySections' Delegation section), saved by ProfileConfigSettingsPage
+- Delegate model and Pause delegation: `Conduit/Views/AuxiliaryViews.swift` (DelegationModelSettings, DelegationPauseSettings)
+
+**Rulings**
+- Each new row shows only when the gateway's config schema has its key, so an older Hermes isn't offered a setting it would ignore. Concurrent delegate agents shows Hermes' own default, 10, when the config has none (#NUM).
+- Left out on purpose: `oneshot_max_children` (only `hermes chat -q` one-shot runs read it), and `base_url`, `api_key`, `api_mode` and `request_overrides` (an endpoint of the subagents' own, which Delegate model's provider covers; a key is never shown) (#NUM).
+
+**Open gaps**
+- Delegation routing (Default, Model map, Profile routes) and the subagents' fallback models aren't in Conduit yet.
+
+**Checked:** 2026-11-07, #NUM (the Delegation section has every setting a chat reads)
+
 ## Profile config saves
 
 Every change Conduit makes to a profile's Hermes config. Most are a GET, a
