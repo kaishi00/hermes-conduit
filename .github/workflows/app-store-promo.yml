@@ -8,6 +8,10 @@ name: App Store promo footage
 # Never part of the merge gate.
 
 on:
+  # Until this workflow is on main, where Run workflow can find it: a push to
+  # its branch records. Taken out before it merges.
+  push:
+    branches: [claude/app-store-promo]
   workflow_dispatch:
     inputs:
       device:
