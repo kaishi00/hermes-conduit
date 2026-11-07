@@ -502,6 +502,8 @@ struct RoomPersonPictureSection: View {
     @EnvironmentObject private var appState: AppState
     @State private var choosing = false
     @State private var picked: UIImage?
+    /// Said here, where the picture was picked.
+    @State private var unusable = false
 
     private var image: UIImage? { appState.roomPersonPicture.flatMap(RoomLookImages.image(for:)) }
 
@@ -529,12 +531,18 @@ struct RoomPersonPictureSection: View {
                 .buttonStyle(.settings)
                 if image != nil {
                     Button(role: .destructive) {
+                        unusable = false
                         Task { await appState.setRoomPersonPicture(nil) }
                     } label: {
                         Label(AppLocalization.string("Remove"), systemImage: "trash")
                     }
                     .buttonStyle(.settings)
                 }
+            }
+            if unusable {
+                Text(AppLocalization.string("That picture could not be used."))
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.red)
             }
         }
         .sheet(isPresented: $choosing) {
@@ -543,7 +551,7 @@ struct RoomPersonPictureSection: View {
         .onChange(of: picked) { _, image in
             guard let image else { return }
             picked = nil
-            Task { await appState.setRoomPersonPicture(image) }
+            Task { unusable = !(await appState.setRoomPersonPicture(image)) }
         }
     }
 }

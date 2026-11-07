@@ -253,16 +253,20 @@ private struct TakeOutActions: ViewModifier {
     let enabled: Bool
     let action: () -> Void
 
+    @ViewBuilder
     func body(content: Content) -> some View {
-        // A card has no swipe: the row's ⋯ and a long press take it out.
-        content
-            .contextMenu {
-                if enabled {
+        // A card has no swipe: the row's ⋯ and a long press take it out. A
+        // row that can't be taken out has no menu, not an empty one.
+        if enabled {
+            content
+                .contextMenu {
                     Button(role: .destructive, action: action) {
                         Label(AppLocalization.string("Take Out"), systemImage: "person.badge.minus")
                     }
                 }
-            }
+        } else {
+            content
+        }
     }
 }
 

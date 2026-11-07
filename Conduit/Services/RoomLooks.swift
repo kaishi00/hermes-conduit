@@ -192,13 +192,12 @@ extension AppState {
     }
 
     /// Sets the picture you show in rooms over Links (nil takes it away),
-    /// kept on this phone and given to your Hermes.
-    func setRoomPersonPicture(_ image: UIImage?) async {
+    /// kept on this phone and given to your Hermes. False for a picture
+    /// that couldn't be made small enough to send, which the caller says.
+    @discardableResult
+    func setRoomPersonPicture(_ image: UIImage?) async -> Bool {
         let data = image.flatMap(RoomLooksUpload.picture)
-        if image != nil, data == nil {
-            errorMessage = AppLocalization.string("That picture could not be used.")
-            return
-        }
+        if image != nil, data == nil { return false }
         roomPersonPicture = data
         if let data {
             UserDefaults.standard.set(data, forKey: RoomLooksUpload.personPictureKey)
@@ -206,6 +205,7 @@ extension AppState {
             UserDefaults.standard.removeObject(forKey: RoomLooksUpload.personPictureKey)
         }
         await shareRoomLooksIfNeeded()
+        return true
     }
 
     /// Gives your Hermes how your bots and you look, when that changed
