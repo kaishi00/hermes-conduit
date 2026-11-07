@@ -1,0 +1,836 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "674D66DA-2C12-4F6C-9D66-C1FFA1BBC9EA.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-no-approval_0_292502A5-5C02-4D72-A32F-3A65E49A7D2E.png",
+        "timestamp" : 1794039722.632
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "5FD604CF-1466-4841-A5CA-527F57D7C1ED.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_345469CB-5088-463F-899B-08447B83D9B5.relay",
+        "timestamp" : 1794039722.225
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "43992560-1F7D-4B13-8F11-A3F761258D35",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-07 at 08.22.02 AM",
+        "timestamp" : 1794039722.226
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "A396FC56-214D-449F-875E-F3D6848A093E.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Approve\" Button`_0_8D8C156B-164B-458B-9E90-884A2A3FA7B5.txt",
+        "timestamp" : 1794039720.664
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "5345F367-AD7D-4BEE-9B60-81BF74887DCB.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Approve\" Button`_0_50CF2964-D757-4483-AA49-14C3E7356702.txt",
+        "timestamp" : 1794039718.517
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "D18F0DD7-80F6-4778-83BF-9568F2564EA8.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Approve\" Button`_0_ED39AE4F-9E32-49F6-9855-4FE6BD0A6389.txt",
+        "timestamp" : 1794039716.759
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "E93C4903-FA53-4D47-A61B-CABE185166C7.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Approve\" Button`_0_57E6670E-D40E-43AE-B45D-348BC840411D.txt",
+        "timestamp" : 1794039715.283
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "A14DE236-93C9-483D-A58A-409110B8CA58.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Approve\" Button`_0_0E9DEB11-D829-4D54-AA38-A748247F1D09.txt",
+        "timestamp" : 1794039713.148
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "FA6D3C0C-9A55-4684-880B-515E17C2C977.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Approve\" Button`_0_11E67D16-24D9-4415-8420-79665A4C3FFF.txt",
+        "timestamp" : 1794039710.628
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "E9AD8B3C-0DE3-41A3-8C6D-A5C0A67296AA.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Approve\" Button`_0_3AF6E77E-C4C1-4805-9E9F-DB9DC64D34F0.txt",
+        "timestamp" : 1794039707.883
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "E4250FBE-2399-4C84-A075-DB07F847D95C.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_423E0538-86AB-4F04-9867-C4CF5AD3B48E.relay",
+        "timestamp" : 1794039705.439
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "43E74FF9-89B9-44C8-B8C8-794D673CFC63",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-07 at 08.21.45 AM",
+        "timestamp" : 1794039705.439
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "B44F6A5E-E8E0-4384-939A-2B8E45BE52B9.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"botWork.panel\" Any`_0_24804609-6DB9-41E6-88A7-6B1A14DEB2CE.txt",
+        "timestamp" : 1794039701.172
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "A52B6A54-530B-4CA1-A675-34B9EDE95C9C.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"botWork.panel\" Any`_0_27575EAA-C4B4-40B7-A79E-5A442ECAF782.txt",
+        "timestamp" : 1794039698.954
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "FEB21614-293D-49AD-B696-0838B57FFE75",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-07 at 08.21.34 AM",
+        "timestamp" : 1794039694.459
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "1D838CD8-189D-42AA-B513-A903DD98E867",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-07 at 08.21.34 AM",
+        "timestamp" : 1794039694.875
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "C8DA6585-DE57-4618-8E83-E70EEF59F20B.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_549502A4-7DD0-41B6-9BC5-094BB20A6627.relay",
+        "timestamp" : 1794039687.542
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "08AB3254-1657-42FC-BF01-D54384F791E6",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-07 at 08.21.27 AM",
+        "timestamp" : 1794039687.542
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "39CD2000-E732-463F-A6CA-3EA16A9E07EE.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"botWork.panel\" Any`_0_6EDA010C-EDD4-4931-A989-ABBC8952F1AE.txt",
+        "timestamp" : 1794039685.572
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "144C772F-6DF5-4689-A881-C766D849DA77.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"botWork.panel\" Any`_0_963D674B-2B3E-4643-A9FE-F935900A5967.txt",
+        "timestamp" : 1794039683.564
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "50C7DEE6-9A6D-4C22-AD6A-21EE98841EAE.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"botWork.panel\" Any`_0_A36B84FF-4684-4DE0-A169-F7D0158CD5D5.txt",
+        "timestamp" : 1794039682.207
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "DEA88638-987A-4C45-A4BB-09EACB613A32",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-07 at 08.21.18 AM",
+        "timestamp" : 1794039678.814
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "3D6A525D-731A-434F-B2B5-BE34D379D735",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-07 at 08.21.19 AM",
+        "timestamp" : 1794039679.243
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "34212626-E79F-4DAB-A299-2EE9930617CD.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_BB66918D-9044-4DDA-8C8A-17B0FD44D01A.relay",
+        "timestamp" : 1794039672.719
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "A141DAD4-FE86-4924-BCD7-6B5E8C684C9A",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-07 at 08.21.12 AM",
+        "timestamp" : 1794039672.72
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "76D4E4A4-E757-44FC-9B39-F87475D4C4DE.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"botWork.panel\" Any`_0_333F22CE-AF10-4C91-BC2D-CFC7D9EF36C9.txt",
+        "timestamp" : 1794039669.21
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "163C7C14-6041-4677-BC4D-2BED11AE73D7.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"botWork.panel\" Any`_0_9488618D-D7D0-47AD-A81B-5687940DEF14.txt",
+        "timestamp" : 1794039668.512
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "98359EB5-87EA-4756-AF5E-CC129CA22E60.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"botWork.panel\" Any`_0_12D9F34E-7450-4A7E-8D39-8F5E75CD7C2B.txt",
+        "timestamp" : 1794039666.39
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "277BCB0E-7C23-45F0-861D-BFFEDF798F16",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-07 at 08.21.02 AM",
+        "timestamp" : 1794039662.909
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "93F421BA-6C1E-4FC6-9D19-E3F80802374B.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "promo-02-needs-you_0_5FA5E04F-F671-44D4-AFDF-FFDC37504480.png",
+        "timestamp" : 1794039655.772
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "EAEF9A8D-FD0F-47EC-AB92-E0FB86320A70.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_9B51075E-F94E-4EEB-BA85-C9AF803F4832.txt",
+        "timestamp" : 1794039650.748
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "CD20C6D0-85AF-41E2-A64C-BE7451FED0F4.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_F8A3B4A0-E740-4FA3-988C-C61706EB4012.txt",
+        "timestamp" : 1794039648.213
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "606E52A1-3735-4897-884E-88BE5C554243.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"botWork.titleLine\" Button`_0_46B44767-20EB-4969-9E6D-56F759E00FA1.txt",
+        "timestamp" : 1794039642.998
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "1A4CF0EB-3C55-4238-9B6E-BEBED002084B",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-07 at 08.20.42 AM",
+        "timestamp" : 1794039642.999
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "D85B934C-856E-4316-A629-9AF63ACE93CE.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"botWork.titleLine\" Button`_0_3D3F78D9-F7A2-4BD7-947E-9C4ABB3B47BE.txt",
+        "timestamp" : 1794039633.629
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "AD552052-A66A-4EB5-A45F-298019D5C3D5.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"botWork.titleLine\" Button`_0_998DE206-34CC-466B-BA53-CEBE80E877A9.txt",
+        "timestamp" : 1794039632.219
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "4B89E839-8D3B-4D68-A43A-FEE0CB94276E.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"botWork.titleLine\" Button`_0_C14C27C6-23C1-48E3-840C-39F1F93F2493.txt",
+        "timestamp" : 1794039611.331
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "160B2134-0717-4F1B-8275-4D94E0920ED1.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"botWork.titleLine\" Button`_0_74C9367F-6218-4252-B7D6-B73DC9C168AA.txt",
+        "timestamp" : 1794039609.299
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "CD2BD37D-A99A-4BDB-9B15-6B00625193C4.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"botWork.titleLine\" Button`_0_C0717D87-1D17-4AEC-A600-3C9DFF4A842F.txt",
+        "timestamp" : 1794039607.405
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "3F1545DD-F446-42A1-91EB-293F0871E9F5.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"botWork.titleLine\" Button`_0_ABFA35D6-9F08-47A0-9342-A2E20D9DA59A.txt",
+        "timestamp" : 1794039604.11
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "7BD8150E-81FD-4094-AEE9-7C6DEFE6BEFE",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-07 at 08.19.58 AM",
+        "timestamp" : 1794039598.91
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "3D0980F5-9E3D-4268-884B-D400E7762AA2",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-07 at 08.19.54 AM",
+        "timestamp" : 1794039594.947
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "A08384C1-FB4D-4283-ACC8-72DC1C632FBB",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-07 at 08.19.46 AM",
+        "timestamp" : 1794039586.15
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "547EA634-E5DB-496E-BF84-3E8820E7699B.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_017CE2A1-9BB7-43B9-8D04-D13A252A6CCF.txt",
+        "timestamp" : 1794039579.957
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "58AD09C5-EE77-48C7-9997-8EE2899FFD4A.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_CA506EB0-E201-4E1A-8825-0CE9AFB5707F.txt",
+        "timestamp" : 1794039578.687
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "0C999658-1C32-4CA1-B2E6-9061CBEC59FA.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_6EC3CD06-9D8F-4F73-B36C-EFC64CD325E4.txt",
+        "timestamp" : 1794039577.52
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "0BA1F187-2AFA-4798-8377-77DAE75A2D61.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_F3678E3E-6BDC-4B46-A276-52CCE7B823EA.txt",
+        "timestamp" : 1794039574.726
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "8C1C2433-9EBF-429F-96DE-D453C4BC529B.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_817AC45F-8644-44CD-901B-9D7AF156D3AA.txt",
+        "timestamp" : 1794039572.824
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "947C103F-6535-4BA5-8B23-91E03598225A.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_C12A7021-D9E7-4089-859F-8EE510D4D7D2.txt",
+        "timestamp" : 1794039569.263
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "CC3D88AE-99AD-48D4-97E7-EB202E8B6E6A.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_96500FE1-5D5F-499A-A8E3-95F4565B02C3.txt",
+        "timestamp" : 1794039567.54
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "3B566BF9-1A8C-4BAC-9795-280515528672.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_C6A2FA61-DABF-4A80-93A2-780D5C095C61.txt",
+        "timestamp" : 1794039566.668
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "89FC89FA-42AC-4C99-A988-A1CE8526A9E4.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_95D7EF71-90E7-41BE-BD26-932A1762CDB9.txt",
+        "timestamp" : 1794039564.899
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "473D888D-462A-4F55-A7E8-79F0B44DB133.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_6E61900A-030C-4688-894C-E76D29CF3CE6.txt",
+        "timestamp" : 1794039560.383
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "CDF6ADE4-A18B-409C-A1B9-A23DDCBDAA1C.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_0D240452-AEAE-4F37-9DA1-891A6F36B5DD.txt",
+        "timestamp" : 1794039556.923
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "B940F4FA-1B1E-4A1A-85F7-808CDE467F30",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-07 at 08.19.06 AM",
+        "timestamp" : 1794039546.287
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "A35B7229-702E-4AC0-AE2C-261EFB18140B.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "promo-01-bots-home_0_A363925F-4069-48A5-AE6C-6430878E4A6A.png",
+        "timestamp" : 1794039540.732
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "3F5EB56B-6B23-42F6-AA18-687AD2026601",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-07 at 08.18.57 AM",
+        "timestamp" : 1794039537.818
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "D961E06E-568C-4070-A541-7F51F82F1CF0.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Conduit Chan\" Button`_0_7A3A1B12-9D69-4DFC-AE4C-F9FB2B4CE189.txt",
+        "timestamp" : 1794039515.462
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "70C19070-877A-4A0A-BB89-70AEAD2E681F.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Conduit Chan\" Button`_0_DD6E801E-D21A-46C5-8B45-3BEEC8302DD7.txt",
+        "timestamp" : 1794039513.232
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "555306F7-B413-45B5-BC2E-0A9CC4040437.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Conduit Chan\" Button`_0_8D776D60-4F17-4A6B-9D94-654C98E4B393.txt",
+        "timestamp" : 1794039511.426
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "8A788134-6DC9-4EF2-8A5F-1189314E6D28.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Conduit Chan\" Button`_0_E2A05CD6-151A-45CF-B8A4-400C3C93CF61.txt",
+        "timestamp" : 1794039510.364
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "FB61340B-5B41-4CEA-874C-05152436E94A.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Conduit Chan\" Button`_0_79F5FB27-B2DC-4249-A54D-E5EDA6411866.txt",
+        "timestamp" : 1794039508.041
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "C3DA405F-E0D3-451B-A249-F905E9B98ADD.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Conduit Chan\" Button`_0_DC23DDDF-1FB7-4776-AFEE-17E3BD22B945.txt",
+        "timestamp" : 1794039504.787
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "342E7D25-AF96-44AA-99DA-AC1E0AB4AF7E.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.apple_0_3ECCBBA0-99CD-49FB-B3F8-1FFC6267C61E.springboard",
+        "timestamp" : 1794039497.675
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "38BFB188-2BB3-4806-9A63-CCE0A0FE0639",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-07 at 08.18.17 AM",
+        "timestamp" : 1794039497.675
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "15BBDECB-AE65-4421-9CE5-347B411D8213.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"OK\" Button`_0_7E354DD6-1039-467A-A072-81778070D91A.txt",
+        "timestamp" : 1794039496.687
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "57AADC25-14BE-4DB5-9B14-DB36FDF85336.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.apple_0_478D3C81-3E3C-4B94-84E1-DF87C96CEA86.springboard",
+        "timestamp" : 1794039495.45
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "923F6FC9-CEBC-402C-9ED6-5C0B1C72BC50",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-07 at 08.18.15 AM",
+        "timestamp" : 1794039495.45
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "A8A39F0A-5172-47FF-B65F-4F15F3139452.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Not Now\" Button`_0_C00C4F43-3538-49D2-9510-7652A977FF3B.txt",
+        "timestamp" : 1794039494.992
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "912CF60A-3ADF-405C-9DA2-369C43262366.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Not Now\" Button`_0_F8707C48-25A3-4483-AFAD-BD6C92E7BB66.txt",
+        "timestamp" : 1794039493.237
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "9786F23D-7FEE-4595-9DA0-EA144E026CE9.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.apple_0_947AF793-3C41-4603-BC62-A73C883DE90C.springboard",
+        "timestamp" : 1794039491.316
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "EC301F0A-DC8E-49BC-AC8A-E95D5241840C",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-07 at 08.18.11 AM",
+        "timestamp" : 1794039491.324
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "91AD381D-5ECF-46B2-BD06-138AFE191D9B.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Don’t Allow\" Button`_0_15073238-921F-4DD3-A114-59F3F8478F98.txt",
+        "timestamp" : 1794039489.236
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "B8F39642-98A6-494B-BBC8-BCC07CBD2D97.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Don’t Allow\" Button`_0_607316C6-43B5-4CB8-8262-6BD3558C4C1A.txt",
+        "timestamp" : 1794039485.089
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "AF29C10A-4E24-4D80-A693-19F8AB408087.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.apple_0_3503ACD6-A9AA-4BB8-B9AF-DA53389B4FE3.springboard",
+        "timestamp" : 1794039483.598
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "F6FDFFA7-2B37-4B9C-90E4-85F8D69E3BBB",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-07 at 08.18.03 AM",
+        "timestamp" : 1794039483.598
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "3073BB21-0025-485D-97DB-3D8582DEA7E5.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Allow\" Button`_0_48F862F8-9D2B-4068-8177-21918948A759.txt",
+        "timestamp" : 1794039478.339
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "A3E0AE0A-94EC-4A3C-9258-8E83E57D5A3F.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-after-sign-in_0_774383C2-BDA3-40FD-83E9-404FDD847614.png",
+        "timestamp" : 1794039476.016
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "38BD1D86-4A2D-4BB7-A818-95E1546EE109",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-07 at 08.17.55 AM",
+        "timestamp" : 1794039475.098
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "C3556B98-0E18-426A-96BE-3CA6D7DF67F7",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-07 at 08.17.53 AM",
+        "timestamp" : 1794039473.224
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "FD7B0CFC-F959-4AE9-A75F-72CD679A7AD3",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-07 at 08.17.52 AM",
+        "timestamp" : 1794039472.029
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "97E0BF53-2D39-4A1D-B9BA-1E4BC3625775",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-07 at 08.17.50 AM",
+        "timestamp" : 1794039470.634
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "E6A897DB-E980-47C0-980C-A88D17FA50FD.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-login-password-step_0_13110E30-5FEF-4426-A0EA-C3391AFDB3F2.png",
+        "timestamp" : 1794039469.249
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "F2786B36-84A2-41E7-A536-374DFD9A16D5.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"login.username\" TextField`_0_4B6A13DD-3BA0-450C-B016-AC82D520BAD7.txt",
+        "timestamp" : 1794039453.806
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "468DE665-50BF-43E4-AD24-83BBEE594294.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"login.username\" TextField`_0_6AFEF0E7-E530-465A-A367-019F626EEDBD.txt",
+        "timestamp" : 1794039452.588
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "2099E219-D792-4236-BE12-73F1C8EC70B1.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"login.username\" TextField`_0_9E20256F-8D82-4486-8898-77C6BBEEC580.txt",
+        "timestamp" : 1794039451.624
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "D43BE385-1337-40B8-95FD-CAF42B54BAD9.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"login.username\" TextField`_0_A0222F20-3D4A-4A80-BF37-15608F3F4692.txt",
+        "timestamp" : 1794039450.362
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "49F2DFC4-A67C-40FC-8CC8-EFD8FF5A40C2",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-07 at 08.17.24 AM",
+        "timestamp" : 1794039444.197
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "906BE7AA-8965-4339-971F-C26414ECF09F.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-login-address_0_A2004E42-2F0B-4EC9-84D9-413E17170159.png",
+        "timestamp" : 1794039441.544
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "396CD9C8-765E-4A7F-ABAF-21F515890422",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-07 at 08.17.20 AM",
+        "timestamp" : 1794039440.381
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "C247EDA8-8866-4E39-9D4E-2558520A2A16",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-07 at 08.16.58 AM",
+        "timestamp" : 1794039418.979
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "5277349A-B219-4ED4-853A-8AE666B9F5B1",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "CD6BC815-A8BB-4078-9692-416DE45842E4.mp4",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Screen Recording 2026-11-07 at 08.16.29 AM.mp4",
+        "timestamp" : 1794039389.494
+      }
+    ],
+    "testIdentifier" : "AppStoreScreenshotTests/testRecordPromo()",
+    "testIdentifierURL" : "test://com.apple.xcode/Conduit/ConduitScreenshots/AppStoreScreenshotTests/testRecordPromo"
+  }
+]

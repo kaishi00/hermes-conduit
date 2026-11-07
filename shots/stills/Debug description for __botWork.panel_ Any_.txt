@@ -1,0 +1,5 @@
+Query chain:
+ →Find: Target Application 'com.milim.relay'
+  ↪︎Find: Descendants matching type Any
+    ↪︎Find: Elements matching predicate '"botWork.panel" IN identifiers'
+      ↪︎Find: First Match
