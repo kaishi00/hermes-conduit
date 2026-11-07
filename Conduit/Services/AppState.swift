@@ -27889,7 +27889,8 @@ final class AppState: ObservableObject {
         attachments: [Attachment] = [],
         context: ComposerSubmissionContext? = nil,
         onBusy: (() -> Void)? = nil,
-        busyMode: BusyInputMode? = nil
+        busyMode: BusyInputMode? = nil,
+        runsSlashCommands: Bool = true
     ) async -> Bool {
         noteUserWordsSent()
         var submissionContext = context ?? composerSubmissionContext()
@@ -27907,14 +27908,15 @@ final class AppState: ObservableObject {
             attachments: attachments,
             submissionContext: submissionContext,
             onBusy: onBusy,
-            busyMode: busyMode ?? busyInputMode
+            busyMode: busyMode ?? busyInputMode,
+            runsSlashCommands: runsSlashCommands
         )
         // Only something Hermes took moves the registry's count; a refused
         // or busy-diverted submission leaves another device's turn due. A
         // slash command reports true even when it ran only here, so it
         // marks nothing: missing a mark costs one extra read, a wrong mark
         // hides the other device's turn.
-        let isSlashCommand = attachments.isEmpty && Self.parseSlashCommand(text) != nil
+        let isSlashCommand = runsSlashCommands && attachments.isEmpty && Self.parseSlashCommand(text) != nil
         if sent, !isSlashCommand, activeSessionId == submissionContext.sessionID {
             noteOpenChatSentHere()
         }

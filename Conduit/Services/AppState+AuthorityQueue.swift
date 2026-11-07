@@ -87,7 +87,9 @@ extension AppState {
         await discardLostPrompt(row)
         guard authorityQueue.row(row.admissionID) == nil, authorityQueue.notice == nil,
               authorityQueueIsOpenChat(sessionID) else { return }
-        _ = await submitComposer(text: row.text, busyMode: .queue)
+        // Hermes took these words as a message once: they go as one again,
+        // never as a slash command run here.
+        _ = await submitComposer(text: row.text, busyMode: .queue, runsSlashCommands: false)
     }
 
     /// Runs one of the dock's actions on the open chat's queue, saying why
