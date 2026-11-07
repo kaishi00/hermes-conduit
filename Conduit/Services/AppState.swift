@@ -30257,7 +30257,7 @@ final class AppState: ObservableObject {
         "export", "focus", "handoff", "hatch", "generate-pet", "history",
         "image", "import", "indicator", "journey", "learning", "memory-graph",
         "palette", "paste", "pause", "pet", "platform", "plugins", "prompt",
-        "compose", "quit", "exit", "redraw", "reload", "restart", "resume",
+        "compose", "quit", "exit", "redraw", "reload", "restart", "resume", "rewind",
         "rollback", "save", "sessions", "sethome", "set-home", "skin",
         "snapshot", "snap", "start", "statusbar", "sb", "subscription",
         "upgrade", "timestamps", "ts", "tools", "topic", "update",
