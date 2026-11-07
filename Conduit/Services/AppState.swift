@@ -23205,21 +23205,12 @@ final class AppState: ObservableObject {
             deferringOlderPages: true
         )
         guard let client, self.client === client, activeProfile == profile,
-              sessionCatalogCache.shouldLoadFullHistory(forKey: "\(profile):exclude", forceRefresh: false),
-              // A visit while an earlier one's history walk for the same
-              // profile and dashboard is still under way leaves it to that
-              // walk: the marker is set only once it ends.
-              visitHistoryWalk.map({ $0.profile != profile || $0.dashboardID != dashboardID }) ?? true
-        else { return }
-        let walk = loadDeferredCatalogPages(after: client, profile: profile, dashboardID: dashboardID)
-        visitHistoryWalk = (walk, profile, dashboardID)
-        Task { @MainActor [weak self] in
-            await walk.value
-            if self?.visitHistoryWalk?.walk == walk { self?.visitHistoryWalk = nil }
-        }
+              sessionCatalogCache.shouldLoadFullHistory(forKey: "\(profile):exclude", forceRefresh: false) else { return }
+        // An earlier visit's history walk still under way yields to this
+        // visit's newer read, so this walk takes its place rather than a
+        // second one running beside it.
+        loadDeferredCatalogPages(after: client, profile: profile, dashboardID: dashboardID)
     }
-
-    private var visitHistoryWalk: (walk: Task<Void, Never>, profile: String, dashboardID: UUID?)?
 
     /// Replace this profile's in-memory catalog with Hermes' current data.
     /// Use this after database recovery or deletion outside Conduit.
@@ -32754,8 +32745,7 @@ final class AppState: ObservableObject {
     /// Reads the older pages a chat sync left out, after it. Quiet on
     /// failure: the drawer keeps the newest page, and the next list load
     /// tries the full read again.
-    @discardableResult
-    private func loadDeferredCatalogPages(after client: HermesClient, profile: String, dashboardID: UUID?) -> Task<Void, Never> {
+    private func loadDeferredCatalogPages(after client: HermesClient, profile: String, dashboardID: UUID?) {
         Task { @MainActor [weak self] in
             // A sync abandoned for another profile or dashboard leaves the
             // read to that workspace's own sync.
