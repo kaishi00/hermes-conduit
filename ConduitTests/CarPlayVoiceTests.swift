@@ -1862,7 +1862,11 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
             { (appState: AppState) in appState.setGPTLiveEnabled(true) },
             { (appState: AppState) in appState.setGrokLiveEnabled(true) },
         ] {
-            let harness = makeHarness()
+            // The setters tell the shared coordinator.
+            let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+            addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+                defaults.removePersistentDomain(forName: suite)
+            }
             harness.coordinator.handleConnect(harness.spy)
             harness.openVoice(session: "session-1")
             await harness.controller.startListening()
