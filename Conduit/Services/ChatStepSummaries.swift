@@ -4,15 +4,37 @@ import Foundation
 /// icons on the collapsed line: what Hermes set out to do and why each step
 /// came next, about half a line per tool call. Automatic when switched on
 /// (Settings > Chat), or asked from a run's menu (Explain these steps).
-/// Conduit asks Hermes a hidden `/btw`: Hermes answers it from a copy of
-/// the live conversation that reuses the prompt cache and can't call tools
-/// or change the chat (`agent/side_question.py`), so the question costs the
-/// cached prefix and some 150 tokens. The summary is kept on this device,
+/// Conduit asks Hermes a side question, as `/btw` does: Hermes answers it
+/// from a copy of the live conversation that reuses the prompt cache and
+/// can't call tools or change the chat (`agent/side_question.py`), so the
+/// question costs the cached prefix and some 150 tokens. It goes through
+/// the plugin's `POST /side-question` (plugin 0.137.4+), which answers only
+/// this device: `prompt.btw`'s question and answer go to every client on
+/// the chat, and Hermes Desktop showed both as a `[btw …]` note. A host
+/// without the route still gets the hidden `/btw`. The summary is kept on this device,
 /// by dashboard and profile and the run's first tool call, and always
 /// shows. Only a run whose tool calls have ids of their own is described:
 /// an id a provider numbers per turn (`functions.web_search:0`) comes back
 /// in other turns and chats.
 enum ChatStepSummaries {
+    /// The plugin's route that answers only the asking device.
+    static let sideQuestionCapability = "side-question"
+    static let sideQuestionPath = "/api/plugins/conduit_push/side-question"
+    /// How long the route waits for Hermes (the plugin allows 110 s), and
+    /// the request a little longer: within `answerWait`.
+    static let sideQuestionWait: TimeInterval = 100
+
+    static func sideQuestionBody(sessionID: String, question: String) -> [String: Any] {
+        ["session_id": sessionID, "question": question, "wait_s": sideQuestionWait]
+    }
+
+    /// The route's answer; nil when it has none (the run keeps its count).
+    static func sideQuestionAnswer(_ response: [String: Any]) -> String? {
+        guard response["ok"] as? Bool == true, let text = response["text"] as? String,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return text
+    }
+
     /// Device-only, off by default: each summary is one more model call.
     static let preferenceKey = "conduit.describeStepRuns"
     static let defaultEnabled = false
