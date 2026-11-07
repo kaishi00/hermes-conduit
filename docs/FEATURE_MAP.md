@@ -4966,6 +4966,36 @@ describes this case)
 
 **Checked:** 2026-10-24, at #1219.
 
+## Which dashboard a launch signs in to
+
+Ask Which Dashboard at Launch (issue 1908): with it on and two or more
+dashboards saved, a plain open keeps the dashboard list up for a tap instead of
+signing in to the last dashboard used.
+
+**Siblings:** the plain open (the phone's dashboard list) · the Settings toggle
+and its caption · a notification tap (a call from Hermes answered included) · a
+link from another app · a widget · a shared draft · Siri · Send to Hermes
+shortcuts · CarPlay · the Apple Watch · a call from Hermes ringing · launches in
+the background (Health, places, phone sync, pushes) · the on-screen retry of a
+sign-in that failed off screen · README.md
+
+**Code**
+- Launch: `Conduit/Services/AppState.swift` (beginLaunchSignIn, releaseLaunchDashboardChoice, holdLaunchDashboardChoiceOnScreen, runDashboardSwitch, handleScenePhase, setWatchVoiceCallActive)
+- Releases: `Conduit/ConduitApp.swift` (the notification, link and Siri routes), `Conduit/CarPlay/CarPlayVoiceSceneDelegate.swift`, `Conduit/Services/AppState+HermesCalls.swift` (setNativeHermesCallActive), `Conduit/Services/AppState+ShortcutSend.swift`
+- Setting: `Conduit/Views/SavedDashboardsView.swift`
+- Tests: `ConduitTests/AppStateLaunchDashboardChoiceTests.swift`
+
+**Rulings**
+- Off by default, and only with two or more dashboards saved; with one, nothing changes (2026-11-07, Eric, #PRNUM).
+- Only a plain open waits. Anything the launch came for that needs Hermes (a notification, a link, Siri, a shortcut, CarPlay, the Watch, a call from Hermes, a shared draft) signs in to the last dashboard used, as it does with the setting off, and a widget switches as before. A pick, or any dashboard switch, ends the wait (2026-11-07, #PRNUM).
+- A launch with no phone screen after a short grace (2 s) is a background launch and signs in as before. If that sign-in can't finish off screen (Face ID), coming on screen leaves the list up rather than retrying it (2026-11-07, #PRNUM).
+- Opening the list and leaving without a pick keeps Conduit signed out until something above needs Hermes or a dashboard is tapped; the caption says what still signs in (2026-11-07, #PRNUM).
+
+**Open gaps**
+- None known. A background launch that signed in before the phone opened stays signed in: by then Conduit is already running, not launching.
+
+**Checked:** 2026-11-07, #PRNUM.
+
 ## App Store screenshots and showcase clips
 
 What the capture run shows of each screen: the App Store screenshots and

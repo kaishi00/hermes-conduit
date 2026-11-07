@@ -2538,6 +2538,17 @@ final class AppState: ObservableObject {
     /// A sign-in screen came up while Conduit was off the phone screen; the
     /// next return to the screen retries the saved sign-in.
     private(set) var signInWaitsForForeground = false
+    /// Settings › Saved Dashboards › Ask Which Dashboard at Launch (#1908):
+    /// this launch waits on the dashboard list for a tap instead of signing
+    /// in to the last dashboard used. It ends when a dashboard is picked or
+    /// switched to, when something the launch came for (a notification, a
+    /// link, Siri, the car, the Watch, a call) signs in, or when Conduit
+    /// comes on screen signed in already.
+    private(set) var launchAwaitsDashboardChoice = false
+    /// How long a launch waits for Conduit's phone screen before it counts
+    /// as a launch in the background, which signs in as before. Test seam.
+    var launchDashboardChoiceGrace: Duration = .seconds(2)
+    private var launchDashboardChoiceTask: Task<Void, Never>?
     /// Whether no phone screen of Conduit is in the foreground: a launch in
     /// the background, or CarPlay alone. Test seam.
     var phoneScreenIsAway: @MainActor () -> Bool = {
@@ -7801,7 +7812,7 @@ final class AppState: ObservableObject {
         restoreActiveSessionState(for: activeProfile)
         restorePinnedSessions(for: activeProfile)
         if shouldLoadSavedConnection {
-            loadSavedConnection()
+            beginLaunchSignIn()
         }
         // The monitor publishes on the main actor (willSet: `current` still
         // holds the old value, so the handler uses the one it is given).
@@ -14973,6 +14984,88 @@ final class AppState: ObservableObject {
 
     /// `trigger` names what started the restore in the connection
     /// timeline and the call trace.
+    /// The setting behind Ask Which Dashboard at Launch (#1908).
+    static let asksWhichDashboardAtLaunchKey = "conduit.askDashboardAtLaunch"
+
+    /// The launch's own sign-in. With Ask Which Dashboard at Launch on and
+    /// more than one dashboard saved, a plain open leaves the dashboard
+    /// list up for a tap; otherwise the last dashboard used signs in, as
+    /// it always has.
+    func beginLaunchSignIn() {
+        guard defaults.bool(forKey: Self.asksWhichDashboardAtLaunchKey),
+              savedDashboardRegistry.dashboards.count > 1,
+              let activeID = savedDashboardRegistry.activeDashboardID,
+              hasSavedSignIn(dashboardID: activeID) else {
+            loadSavedConnection()
+            return
+        }
+        lifecycleLog.notice("Launch waits for a dashboard to be picked (Ask Which Dashboard at Launch)")
+        serverSignOutQueue.retryPending()
+        launchAwaitsDashboardChoice = true
+        // Opened in the background (the Watch, a call from Hermes, a place
+        // or Health data woke it), no phone screen comes: what woke Conduit
+        // needs Hermes, and nobody is there to pick.
+        let grace = launchDashboardChoiceGrace
+        launchDashboardChoiceTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: grace) } catch { return }
+            guard let self else { return }
+            self.launchDashboardChoiceTask = nil
+            guard self.launchAwaitsDashboardChoice, !self.sceneHasBeenActive, self.phoneScreenIsAway() else { return }
+            // Still waiting for a pick: a sign-in that fails here (Face ID
+            // can't show off screen) leaves the list up on screen, not a
+            // retry (holdLaunchDashboardChoiceOnScreen).
+            self.loadSavedConnection(trigger: "launch in the background")
+        }
+    }
+
+    /// Something this launch came for needs Hermes: it signs in to the
+    /// last dashboard used, as a launch without the setting does, and the
+    /// open goes on from there (switching dashboards if it is another's).
+    func releaseLaunchDashboardChoice(for reason: String) {
+        guard launchAwaitsDashboardChoice else { return }
+        endLaunchDashboardChoice()
+        // The background launch's sign-in is still under way, or went in.
+        guard showLogin, !isConnecting, !isConnected else { return }
+        lifecycleLog.notice("Launch dashboard choice released: \(reason, privacy: .public)")
+        pendingLoginFailure = nil
+        lastConnectionFailure = nil
+        errorMessage = nil
+        loadSavedConnection(trigger: "launch for \(reason)")
+    }
+
+    private func endLaunchDashboardChoice() {
+        launchAwaitsDashboardChoice = false
+        launchDashboardChoiceTask?.cancel()
+        launchDashboardChoiceTask = nil
+    }
+
+    /// Conduit came on screen with the launch's dashboard still to pick:
+    /// the list stays up, with no saved sign-in retried. False when there
+    /// is nothing to pick (signed in, signing in, or a shared draft that
+    /// needs Hermes is waiting).
+    private func holdLaunchDashboardChoiceOnScreen() -> Bool {
+        guard launchAwaitsDashboardChoice else { return false }
+        launchDashboardChoiceTask?.cancel()
+        launchDashboardChoiceTask = nil
+        guard showLogin, !isConnecting, !isConnected else {
+            endLaunchDashboardChoice()
+            return false
+        }
+        if let inbox = shareDraftInbox, !inbox.pending().isEmpty {
+            releaseLaunchDashboardChoice(for: "a shared draft")
+            return true
+        }
+        if signInWaitsForForeground {
+            // A background attempt's failure (Face ID can't show off
+            // screen) isn't news on a list waiting for a tap.
+            signInWaitsForForeground = false
+            pendingLoginFailure = nil
+            lastConnectionFailure = nil
+            errorMessage = nil
+        }
+        return true
+    }
+
     func loadSavedConnection(trigger: String = "cold launch") {
         #if DEBUG
         if let stub = Self.uiTestFailedConnectionStub() {
@@ -16101,6 +16194,8 @@ final class AppState: ObservableObject {
     }
 
     private func runDashboardSwitch(to id: UUID, widgetLease: WidgetLaunchLease?) async {
+        // A pick from the list, or a launch's own switch (a widget, a draft).
+        endLaunchDashboardChoice()
         if widgetLease == nil { widgetLaunchCoordinator.supersede() }
         guard widgetLease?.isCurrent != false else { return }
         widgetAwaitingInteractiveAuthenticationDashboardID = nil
@@ -21049,6 +21144,10 @@ final class AppState: ObservableObject {
             if sceneHidesLiveRows {
                 sceneHidesLiveRows = false
                 resumeLivePublishesIfShown()
+            }
+            if holdLaunchDashboardChoiceOnScreen() {
+                foregroundFreshnessCheckArmed = false
+                return nil
             }
             if showLogin, signInWaitsForForeground {
                 // The freshness arming belongs to the session that was torn
@@ -40128,6 +40227,7 @@ final class AppState: ObservableObject {
     @Published private(set) var isWatchVoiceCallActive = false
 
     func setWatchVoiceCallActive(_ active: Bool) {
+        if active { releaseLaunchDashboardChoice(for: "the Apple Watch") }
         isWatchVoiceCallActive = active
     }
 

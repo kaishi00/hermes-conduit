@@ -406,7 +406,12 @@ struct ConduitApp: App {
                 pendingExternalLink = link
             }
             .task(id: externalLinkRouteKey) {
-                guard appState.isConnected, let link = pendingExternalLink else { return }
+                guard let link = pendingExternalLink else { return }
+                guard appState.isConnected else {
+                    // A launch waiting for a dashboard pick signs in for it.
+                    appState.releaseLaunchDashboardChoice(for: "a link")
+                    return
+                }
                 pendingExternalLink = nil
                 appState.openAppLink(link)
             }
@@ -437,6 +442,8 @@ struct ConduitApp: App {
                 // tap replaced the one it was about.
                 appState.clearCallRefusal()
                 guard appState.isConnected else {
+                    // A launch waiting for a dashboard pick signs in for it.
+                    appState.releaseLaunchDashboardChoice(for: "a notification")
                     notifications.notificationRouteAwaitsConnection(target)
                     return
                 }
@@ -506,6 +513,10 @@ struct ConduitApp: App {
                 }
             }
             .task(id: voiceIntentRouteKey) {
+                // A launch waiting for a dashboard pick signs in for Siri.
+                if pendingVoiceIntents.hasPendingIntent {
+                    appState.releaseLaunchDashboardChoice(for: "Siri")
+                }
                 // Siri's call shows its screen while it waits for Hermes.
                 appState.presentWaitingCallIfNeeded()
                 // A screenshot waits for Conduit to settle after connecting.

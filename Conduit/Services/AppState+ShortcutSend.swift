@@ -14,6 +14,7 @@ import Foundation
 @MainActor
 extension AppState {
     func sendFromShortcut(_ request: ShortcutSendRequest, deadline: Date) async throws -> ShortcutSendOutcome {
+        releaseLaunchDashboardChoice(for: "a shortcut")
         try await ShortcutSender(backend: makeShortcutSendBackend()).send(request, deadline: deadline)
     }
 

@@ -21,6 +21,8 @@ final class CarPlayVoiceSceneDelegate: NSObject, CPTemplateApplicationSceneDeleg
         MainActor.assumeIsolated {
             interfaceController.delegate = self
             CarPlayMapsHandoff.scene = templateApplicationScene
+            // Nobody picks a dashboard on the phone while driving.
+            AppStateRuntimeRegistry.shared.appState.releaseLaunchDashboardChoice(for: "CarPlay")
             CarPlayVoiceCoordinator.shared.handleConnect(interfaceController)
         }
     }
