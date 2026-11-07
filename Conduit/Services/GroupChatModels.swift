@@ -135,6 +135,23 @@ struct GroupEvent: Equatable, Identifiable {
     var id: String { eventID.isEmpty ? "seq-\(seq)" : eventID }
 
     var isUserMessage: Bool { kind == "message.user" }
+    /// A scheduled job's post (Hermes' delivery into a room for cron jobs,
+    /// a `cron:` or `cron-notice:` actor): automated, never the user's words.
+    var isScheduledPost: Bool {
+        isUserMessage && actor.kind == "user"
+            && (actor.id.hasPrefix("cron:") || actor.id.hasPrefix("cron-notice:"))
+    }
+
+    /// A bot's work update posted back into the room it was started from
+    /// (the notifier's room_work, job ids `conduit-work-…`): its "- " lines,
+    /// without the note to the bot around them; nil for any other post.
+    var workUpdateText: String? {
+        guard isScheduledPost, actor.id.hasPrefix("cron:conduit-work-") else { return nil }
+        let lines = (messageText ?? "").components(separatedBy: "\n")
+            .filter { $0.hasPrefix("- ") }
+            .map { String($0.dropFirst(2)) }
+        return lines.isEmpty ? nil : lines.joined(separator: "\n\n")
+    }
     var isMemberMessage: Bool { kind == "message.member" }
     var isChatMessage: Bool { isUserMessage || isMemberMessage }
 

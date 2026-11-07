@@ -89,6 +89,10 @@ struct BotWorkItem: Identifiable, Equatable {
     let startedInCall: String
     /// The call that started it, either way: the card's "From a voice call".
     var call: String { fromCall.isEmpty ? startedInCall : fromCall }
+    /// The group room it reports back into: the room it was started from,
+    /// or last sent to from (room_work in the plugin); empty for work the
+    /// Bot Chat hears.
+    let room: String
     /// The bot's screen (Bot Screen): "controlling" while it drives it now,
     /// "waiting" while it waits for it, else empty. Apart from when it used
     /// it last, which says nothing about now (Eric 2026-11-05).
@@ -133,6 +137,7 @@ struct BotWorkItem: Identifiable, Equatable {
         let used = (row["screen_used_at"] as? NSNumber)?.doubleValue ?? 0
         screenUsedAt = used > 0 ? Date(timeIntervalSince1970: used) : nil
         screenAsk = (row["screen_ask"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        room = kind == .workstream ? (row["room"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines) : ""
         actions = (row["actions"] as? [String] ?? []).compactMap(Action.init(rawValue:))
         manage = (row["manage"] as? [String] ?? []).compactMap(Action.init(rawValue:))
         if let asked = row["approval"] as? [String: Any], let requestID = asked["request_id"] as? String,

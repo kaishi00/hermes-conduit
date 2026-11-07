@@ -77,6 +77,16 @@ extension BotModeTests {
         XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "W4", "kind": "workstream"])).branch, "")
     }
 
+    /// Work started from a group room names the room it reports back into;
+    /// an ask never does.
+    func testWorkStartedFromAGroupRoomNamesTheRoom() throws {
+        let fromRoom = try XCTUnwrap(BotWorkItem(row: ["ref": "W9", "kind": "workstream", "status": "running",
+                                                        "room": " room-1 "]))
+        XCTAssertEqual(fromRoom.room, "room-1")
+        XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "W10", "kind": "workstream"])).room, "")
+        XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "A1", "kind": "ask_out", "room": "room-1"])).room, "")
+    }
+
     /// A voice call's job is marked as the call's; anything else is the bot's own.
     func testACallsJobIsMarkedAsTheCalls() throws {
         let job = try XCTUnwrap(BotWorkItem(row: ["ref": "W5", "kind": "workstream", "status": "running",
