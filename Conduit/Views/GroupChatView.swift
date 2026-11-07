@@ -170,7 +170,7 @@ struct GroupChatView: View {
         )
         imageGallery.update {
             GroupRoomImageGallery.items(in: replay.events.filter(GroupRoomTurns.isVisible)) { event in
-                mediaResolver(for: GroupRoomTurns.member(for: event, members: members))
+                mediaResolver(for: GroupRoomTurns.speaker(of: event, members: members))
             }
         }
         return GeometryReader { proxy in
@@ -265,7 +265,7 @@ struct GroupChatView: View {
             GroupEventRow(
                 event: event, members: members, continuesRun: continuesRun, boards: boards,
                 mediaResolver: event.isMemberMessage
-                    ? mediaResolver(for: GroupRoomTurns.member(for: event, members: members)) : nil
+                    ? mediaResolver(for: GroupRoomTurns.speaker(of: event, members: members)) : nil
             )
         case .room(.pending(let text, let members, let isSending)):
             GroupUserBubble(text: text, members: members, timestamp: nil, eventID: row.id) {

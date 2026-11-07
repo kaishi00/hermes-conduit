@@ -849,6 +849,22 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertNil(GroupRoomTurns.localProfile(of: nil))
     }
 
+    func testAMessagesSpeakerIsFoundByItsActorWithoutAMemberID() {
+        let furina = GroupDecoders.member(any(["member_id": "m1", "profile": "furina", "handle": "furina"]))!
+        let message = GroupEvent(
+            roomID: "room", seq: 1, eventID: "e1", kind: "message.member",
+            actor: GroupActor(kind: "member", id: "furina", profile: "furina", displayName: "Furina", connectionID: nil),
+            authorityEpoch: nil, payload: ["text": .string("Hi")], createdAt: 0
+        )
+        XCTAssertEqual(GroupRoomTurns.speaker(of: message, members: [furina])?.memberID, "m1")
+        let user = GroupEvent(
+            roomID: "room", seq: 2, eventID: "e2", kind: "message.user",
+            actor: GroupActor(kind: "user", id: "furina", profile: nil, displayName: nil, connectionID: nil),
+            authorityEpoch: nil, payload: ["text": .string("Hi")], createdAt: 0
+        )
+        XCTAssertNil(GroupRoomTurns.speaker(of: user, members: [furina]), "only a member's actor names a member")
+    }
+
     func testRecipientsLeadTheMessageOnce() {
         let scout = GroupDecoders.member(any(["member_id": "scout", "profile": "scout", "handle": "scout"]))!
         let atlas = GroupDecoders.member(any(["member_id": "atlas", "profile": "atlas", "handle": "atlas"]))!

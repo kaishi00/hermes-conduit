@@ -1064,6 +1064,14 @@ enum GroupRoomTurns {
         return member(withID: id, in: members)
     }
 
+    /// The member who said a message: the one its payload names, else its
+    /// actor's id (a member id or profile) when the room lists it.
+    static func speaker(of event: GroupEvent, members: [GroupMember]) -> GroupMember? {
+        if let member = member(for: event, members: members) { return member }
+        guard event.actor.kind == "member" else { return nil }
+        return member(withID: event.actor.id, in: members)
+    }
+
     /// The profile on the connected Hermes a member's files live under: a
     /// local member's own, never another gateway's bot, whose paths name
     /// files on its own host.
