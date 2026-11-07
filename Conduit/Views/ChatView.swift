@@ -2549,6 +2549,7 @@ struct AssistantMessageActions: View {
     /// Acted on, not observed: what a row shows comes from `rowState`.
     private var appState: AppState { rowActions.required }
     @State private var copied = false
+    @State private var resetTask: Task<Void, Never>?
 
     var body: some View {
         Button {
@@ -2556,18 +2557,30 @@ struct AssistantMessageActions: View {
         } label: {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
                 .scaledFont(.subheadline.weight(.semibold))
-                .frame(width: 34, height: 34)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(copied ? Color.conduitAccent : Color.secondary)
         .accessibilityLabel(copied ? AppLocalization.string("Response copied") : AppLocalization.string("Copy response"))
+        .onDisappear {
+            resetTask?.cancel()
+            resetTask = nil
+            copied = false
+        }
     }
 
     private func copyResponse() {
+        let copiedTitle = AppLocalization.string("Response copied")
         UIPasteboard.general.string = message.content
         Haptics.light()
         copied = true
-        Task {
+        // Copying says so out loud, as the same button does in a group room,
+        // and a second tap keeps the checkmark up for the full moment rather
+        // than letting the first tap's timer take it down.
+        UIAccessibility.post(notification: .announcement, argument: copiedTitle)
+        resetTask?.cancel()
+        resetTask = Task {
             try? await Task.sleep(for: .seconds(1.4))
             guard !Task.isCancelled else { return }
             copied = false
@@ -2651,7 +2664,7 @@ struct AssistantMessageMoreMenu: View {
         } label: {
             Image(systemName: "ellipsis")
                 .scaledFont(.subheadline.weight(.semibold))
-                .frame(width: 34, height: 34)
+                .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -2698,7 +2711,7 @@ private struct AssistantMessageMoreMenuWithThinking: View {
 
 /// The read-aloud control surface. This is deliberately the ONLY part of
 /// an assistant row that observes the shared read-aloud controller, so a
-/// playback state transition re-renders a 34pt button instead of every
+/// playback state transition re-renders a 44 pt button instead of every
 /// response's Markdown in the transcript.
 struct ReadAloudButton: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
@@ -2745,7 +2758,8 @@ struct ReadAloudButton: View {
                 }
             }
             .scaledFont(.subheadline.weight(.semibold))
-            .frame(width: 34, height: 34)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(isActive ? Color.conduitAccent : Color.secondary)
@@ -2867,7 +2881,7 @@ struct AssistantBubble: View {
                 }
             }
             .padding(.top, 2)
-            // Fixed 34 pt buttons: larger glyphs would overlap each other.
+            // Keep footer glyphs fixed within their reserved button frames.
             .conduitFixedGlyph()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
