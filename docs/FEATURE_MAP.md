@@ -4986,15 +4986,15 @@ sign-in that failed off screen · README.md
 - Tests: `ConduitTests/AppStateLaunchDashboardChoiceTests.swift`
 
 **Rulings**
-- Off by default, and only with two or more dashboards saved; with one, nothing changes (2026-11-07, Eric, #PRNUM).
-- Only a plain open waits. Anything the launch came for that needs Hermes (a notification, a link, Siri, a shortcut, CarPlay, the Watch, a call from Hermes, a shared draft) signs in to the last dashboard used, as it does with the setting off, and a widget switches as before. A pick, or any dashboard switch, ends the wait (2026-11-07, #PRNUM).
-- A launch with no phone screen after a short grace (2 s) is a background launch and signs in as before. If that sign-in can't finish off screen (Face ID), coming on screen leaves the list up rather than retrying it (2026-11-07, #PRNUM).
-- Opening the list and leaving without a pick keeps Conduit signed out until something above needs Hermes or a dashboard is tapped; the caption says what still signs in (2026-11-07, #PRNUM).
+- Off by default, and only with two or more dashboards saved; with one, nothing changes (2026-11-07, Eric, #1911).
+- Only a plain open waits. Anything the launch came for that needs Hermes (a notification, a link, Siri, a shortcut, CarPlay, the Watch, a call from Hermes, a shared draft) signs in to the last dashboard used, as it does with the setting off, and a widget switches as before. A pick, or any dashboard switch, ends the wait (2026-11-07, #1911).
+- A launch with no phone screen after a short grace (2 s) is a background launch and signs in as before. If that sign-in can't finish off screen (Face ID), coming on screen leaves the list up rather than retrying it (2026-11-07, #1911).
+- Opening the list and leaving without a pick keeps Conduit signed out until something above needs Hermes or a dashboard is tapped; the caption says what still signs in (2026-11-07, #1911).
 
 **Open gaps**
 - None known. A background launch that signed in before the phone opened stays signed in: by then Conduit is already running, not launching.
 
-**Checked:** 2026-11-07, #PRNUM.
+**Checked:** 2026-11-07, #1911.
 
 ## App Store screenshots and showcase clips
 
