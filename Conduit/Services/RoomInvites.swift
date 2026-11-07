@@ -449,9 +449,20 @@ extension AppState {
                 guard !Task.isCancelled, let self, self.activeDashboardID == dashboard else { return }
                 guard self.isSceneActive else { continue }
                 await self.refreshLinkedRoomDrafts()
+                await self.refreshGroupRoomsForStartedDrafts()
                 await self.refreshLinkedRoomInvites()
             }
         }
+    }
+
+    /// A started draft leaves Group Chats' draft rows for its room's row,
+    /// so the rooms are read when one has started that isn't listed yet:
+    /// else the host would see neither (as RoomDraftSheet reads them).
+    func refreshGroupRoomsForStartedDrafts() async {
+        guard let drafts = linkedRoomDrafts, drafts.dashboardID == activeDashboardID else { return }
+        let listed = Set(groupRooms.map(\.roomID))
+        guard drafts.list.drafts.contains(where: { $0.status == "started" && !listed.contains($0.id) }) else { return }
+        await refreshGroupRooms()
     }
 
     nonisolated static let linkedRoomInviteFollowSeconds: TimeInterval = 180
@@ -507,6 +518,8 @@ extension AppState {
             let message = RoomInvitesClient.answerRefusal(for: error, joining: !agents.isEmpty)
             guard case DashboardTicketBridgeError.http(504, _) = error else { return .refused(message) }
             await refreshLinkedRoomInvites()
+            // The answer may still reach the host, and the room start then.
+            if !agents.isEmpty { followLinkedRoomInvites() }
             return .sending(message)
         }
     }
