@@ -863,6 +863,16 @@ final class GroupChatModelsTests: XCTestCase {
             authorityEpoch: nil, payload: ["text": .string("Hi")], createdAt: 0
         )
         XCTAssertNil(GroupRoomTurns.speaker(of: user, members: [furina]), "only a member's actor names a member")
+        let peer = GroupDecoders.member(any(["member_id": "m2", "profile": "furina", "target": ["kind": "peer"]]))!
+        XCTAssertNil(GroupRoomTurns.speaker(of: message, members: [furina, peer]),
+                     "a profile two members share names neither")
+        let named = GroupEvent(
+            roomID: "room", seq: 3, eventID: "e3", kind: "message.member",
+            actor: GroupActor(kind: "member", id: "furina", profile: "furina", displayName: "Furina", connectionID: nil),
+            authorityEpoch: nil, payload: ["text": .string("Hi"), "member_id": .string("gone")], createdAt: 0
+        )
+        XCTAssertNil(GroupRoomTurns.speaker(of: named, members: [furina]),
+                     "a payload naming a member the room no longer lists isn't matched by its actor instead")
     }
 
     func testRecipientsLeadTheMessageOnce() {

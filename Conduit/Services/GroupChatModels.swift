@@ -1064,12 +1064,18 @@ enum GroupRoomTurns {
         return member(withID: id, in: members)
     }
 
-    /// The member who said a message: the one its payload names, else its
-    /// actor's id (a member id or profile) when the room lists it.
+    /// The member who said a message: the one its payload names, else, when
+    /// the payload names none, the one member its actor's id (a member id,
+    /// else a profile) matches. An ambiguous or unknown id finds nobody.
     static func speaker(of event: GroupEvent, members: [GroupMember]) -> GroupMember? {
-        if let member = member(for: event, members: members) { return member }
+        if event.payload["member_id"]?.stringValue != nil { return member(for: event, members: members) }
         guard event.actor.kind == "member" else { return nil }
-        return member(withID: event.actor.id, in: members)
+        let id = event.actor.id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !id.isEmpty else { return nil }
+        let byRoute = members.filter { routingID(of: $0) == id }
+        if !byRoute.isEmpty { return byRoute.count == 1 ? byRoute[0] : nil }
+        let byProfile = members.filter { $0.profile?.caseInsensitiveCompare(id) == .orderedSame }
+        return byProfile.count == 1 ? byProfile[0] : nil
     }
 
     /// The profile on the connected Hermes a member's files live under: a
