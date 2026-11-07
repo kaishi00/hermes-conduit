@@ -88,6 +88,30 @@ extension ContinuousConversationPreferenceTests {
         XCTAssertEqual(capture.startCount, 0, "only a press opens the microphone")
     }
 
+    func testPushToTalkWidgetTalkEndsItsLaunchWhenTheCallWaitsForAPress() async {
+        // Issue 1934: a widget's Talk under push to talk opened the call,
+        // then 30 seconds later said the widget action expired over it.
+        let capture = MockCapture(permissionGranted: true)
+        let controller = makePushToTalkController(capture: capture, gateway: MockGateway(), submitted: SubmitSpy())
+        var current = true
+        var consumed = 0
+        let lease = WidgetLaunchLease(isCurrent: { current }, captureDidStart: { consumed += 1 })
+        let authorization = lease.initialCaptureAuthorization()
+        controller.installInitialWidgetCaptureAuthorization(authorization)
+
+        await controller.startListening()
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertEqual(capture.startCount, 0, "only a press opens the microphone")
+        XCTAssertEqual(consumed, 1, "the call waiting for a press ends the launch, so it never expires")
+
+        current = false
+        XCTAssertTrue(authorization.mayStartCapture)
+        await controller.beginPushToTalk()
+        XCTAssertEqual(controller.state, .listening, "a press after the launch's deadline still listens")
+        XCTAssertEqual(capture.startCount, 1)
+        XCTAssertEqual(consumed, 1)
+    }
+
     func testPushToTalkDoesNotListenAgainAfterAReply() async {
         let capture = MockCapture(permissionGranted: true)
         let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
