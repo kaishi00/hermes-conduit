@@ -130,6 +130,7 @@ extension MarkdownLargeDocumentTests {
                        "a member with no resolver (another gateway's bot) draws no MEDIA: pictures")
     }
 
+    @MainActor
     func testRoomGalleryReadsEachMembersPicturesThroughItsOwnResolver() throws {
         let appState = try galleryAppState()
         let resolvers = [
