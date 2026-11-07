@@ -23919,6 +23919,17 @@ final class AppState: ObservableObject {
     /// The Cron tab presents two independent server-backed surfaces: the job
     /// definitions and the cron-session history. Refresh them together so a
     /// newly completed run is visible without visiting the Sessions tab first.
+    /// The V2 Scheduled tab's read: the jobs it draws and their
+    /// notifications. The cron-session history `refreshCronContent` also
+    /// fills is the legacy drawer's Cron tab, which shows those rows; the
+    /// V2 tab shows none, so it does not pay for a catalogue read on every
+    /// switch to it.
+    func refreshScheduledContent() async {
+        async let jobsRefresh: Void = loadCronJobs()
+        async let notificationsRefresh: Void = refreshCronNotifications()
+        _ = await (jobsRefresh, notificationsRefresh)
+    }
+
     func refreshCronContent() async {
         async let sessionRefresh: Void = refreshSessionCatalog()
         async let jobsRefresh: Void = loadCronJobs()
