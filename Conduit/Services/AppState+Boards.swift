@@ -56,7 +56,10 @@ extension AppState {
                     path: RichCardActionContext.tapPath(profile: profile), method: "POST", body: body)
                 // The message goes only to the chat the card was tapped in: after
                 // a switch the tap waits unheard and is forgotten on the host.
-                guard !Set(self.activeChatArtifactSessionIDs).isDisjoint(with: sessionIDs), self.activeProfile == profile else {
+                guard !Set(self.activeChatArtifactSessionIDs).isDisjoint(with: sessionIDs), self.activeProfile == profile,
+                      // The message goes in the draft's place, so words typed while the
+                      // tap was on its way keep the button tappable instead.
+                      self.predictive.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     throw DashboardTicketBridgeError.notReady
                 }
                 self.requestBoardFollowUp(.send, text: message)
