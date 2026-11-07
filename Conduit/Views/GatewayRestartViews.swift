@@ -222,6 +222,12 @@ struct GatewayWaitView: View {
                     .accessibilityHint(Text(AppLocalization.string("Stops the running tasks and restarts the gateway now.")))
                     .accessibilityIdentifier("gatewayRestart.restartNow")
                 }
+                // VoiceOver hears a failed Restart now: nothing else on the
+                // screen changes when it fails.
+                .onChange(of: appState.gatewayRestartNowFailure) { _, failure in
+                    guard let failure, failure.shows(on: appState.activeDashboardID) else { return }
+                    AccessibilityNotification.Announcement(failure.message).post()
+                }
                 .task {
                     while !Task.isCancelled {
                         if let latest = await appState.gatewayWork() { work = latest }

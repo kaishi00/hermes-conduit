@@ -122,8 +122,8 @@ struct GatewayRestartNow {
         var dashboardID: UUID?
         var at: Date
 
-        /// A failure belongs to the wait it came from: a later one on the
-        /// same dashboard starts clean.
+        /// A failure shows on the dashboard it came from, for 15 minutes or
+        /// until the next Restart now.
         func shows(on dashboardID: UUID?, now: Date = Date()) -> Bool {
             self.dashboardID == dashboardID && now.timeIntervalSince(at) < 15 * 60
         }
