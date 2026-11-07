@@ -3304,7 +3304,7 @@ the Lock Screen · a tap on the card, which opens the chat · the plugin's
 CHANGELOG · Conduit on a Mac, which has none of it
 
 **Code**
-- App: `Conduit/Services/LiveTurnActivities.swift` (turnStarted, observe, reconcile, register, registerUnregistered), `Conduit/Services/PushNotificationService.swift` (registerLiveActivity), `Conduit/Services/AppState.swift` (the turnStarted call, liveTurnActivitiesRegistrySnapshot)
+- App: `Conduit/Services/LiveTurnActivities.swift` (turnStarted, observe, reconcile, register, registerUnregistered), `Conduit/Services/PushNotificationService.swift` (registerLiveActivity), `Conduit/Services/AppState.swift` (the turnStarted call, liveTurnActivitiesRegistrySnapshot; a tap's open, `openLinkedSession` and `linkedSessionFailureMessage`, shared with app links and call cards' transcript links)
 - Widget: `Shared/Widgets/HermesTurnActivity.swift`, `ConduitWidgets/HermesTurnLiveActivity.swift`
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (NotificationsSettingsDetail, the Lock Screen section)
 - Linking: `project.yml` (ActivityKit weak in Conduit and ConduitWidgets), held by `scripts/check-weak-imports.py` (WEAK_FRAMEWORKS) in the Smoke job
@@ -3317,6 +3317,7 @@ CHANGELOG · Conduit on a Mac, which has none of it
 - A fork of the chat (Predictions' `/predict`, step summaries' /btw, the self-improvement review) never starts, moves or ends its card, even on a Hermes that runs plugin hooks for forks (2026-10-29, #1495 carrying #1489, notifier #464 carrying #462; see Notifications).
 - The card's registration runs as a background task, so it finishes when Conduit leaves the screen right after sending, and one that didn't reach the relay is sent again when Conduit is next on screen (2026-10-27, #1374).
 - On a Mac there is no card: `LiveTurnActivities.shared` is nil there, so nothing starts, adopts or ends one and Settings shows no Lock Screen section. ActivityKit is weak-linked (in the widget extension too), because macOS 14 has none for iPhone and iPad apps and every build that linked it strongly stopped at launch on Sonoma; nothing may touch it on a Mac (2026-11-06, #1891, issue 1877).
+- A tap whose open fails says the chat is gone only when Hermes said so (the resume's not found); a Kanban worker keeps its own words, any other failure its own error, and one with none says "Couldn't open that chat. Try again." (2026-11-07, #1918 carrying #1917).
 
 **Open gaps**
 - The relay keeps registrations and unwatched ends in memory: a relay restart during a turn leaves its card to Conduit's next time on screen, or to iOS's 8 hours.
@@ -3324,7 +3325,7 @@ CHANGELOG · Conduit on a Mac, which has none of it
 - The widget bundle still lists the Live Activity on a Mac: `WidgetBundleBuilder` takes no runtime `if` (#1891's try didn't compile), so whether the launcher widgets load on macOS 14 is untried.
 - The registration and its retry go through `URLSession.shared`, so only their decisions (`needsRegistration`, `liveActivityStartedAgo`, `liveActivityRouteExists`) are tested.
 
-**Checked:** 2026-11-06, #1891 (no card on a Mac and ActivityKit weak-linked, issue 1877; the relay, the plugin's reporter and the card's views needed no change); 2026-10-29, #1495, carrying #1489 (a chat's fork never touches the card, notifier #464); 2026-10-27, #1374.
+**Checked:** 2026-11-07, #1918, carrying #1917 (a failed tap calls the chat gone only on Hermes' not found; app links and call cards' transcript links share the open, bot links already said it only from a read roster); 2026-11-06, #1891 (no card on a Mac and ActivityKit weak-linked, issue 1877; the relay, the plugin's reporter and the card's views needed no change); 2026-10-29, #1495, carrying #1489 (a chat's fork never touches the card, notifier #464); 2026-10-27, #1374.
 
 ## Large code blocks in messages
 
