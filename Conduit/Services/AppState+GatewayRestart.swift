@@ -136,9 +136,14 @@ extension AppState {
                     // and got no answer is how a forced restart looks.
                     // Anything the dashboard answered, or that never went
                     // out (signed out), is a failure.
+                    // (.notReady is also how a page that went down with the
+                    // gateway mid-request ends, so it counts as sent.)
                     if let refusal = error as? DashboardTicketBridgeError {
                         switch refusal {
                         case .notReady, .answeredAfterSwitch: break
+                        case .http(status: 501, _):
+                            // The gateway isn't a systemd service.
+                            return AppLocalization.string("Conduit can only force a restart for a gateway that systemd runs. Run hermes gateway stop, then hermes gateway start, on the host.")
                         default: return UserFacingError.message(for: error)
                         }
                     }
