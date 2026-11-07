@@ -9,7 +9,10 @@
 //  side beside a chat (#1765), and on the leading side of a window in the
 //  left half of a split screen (#1900), where the rows, the transcript and
 //  the composer started 84 pt in while the tab bar and the chat's Back
-//  didn't.
+//  didn't. A screen also never lays out wider than its column: on the
+//  Duo's outer screen the Chats stack once measured its screen wider than
+//  the window, centered itself 27 pt off the left, and padding the
+//  window's inset as a number kept that width forever (build 258).
 //
 
 import SwiftUI
@@ -19,22 +22,29 @@ import SwiftUI
 struct WindowSideInsets: Equatable {
     var leading: CGFloat
     var trailing: CGFloat
+    /// The width the column's screens lay out in, inside the window's safe
+    /// area, as the shell measured it: a screen never reports itself wider,
+    /// so its stack can't size itself past the column and center the
+    /// overflow off the window's edge. Nil: no cap.
+    var width: CGFloat?
 
-    init(leading: CGFloat, trailing: CGFloat) {
+    init(leading: CGFloat, trailing: CGFloat, width: CGFloat? = nil) {
         self.leading = leading
         self.trailing = trailing
+        self.width = width
     }
 
-    init(_ insets: EdgeInsets) {
-        self.init(leading: insets.leading, trailing: insets.trailing)
+    init(_ insets: EdgeInsets, width: CGFloat? = nil) {
+        self.init(leading: insets.leading, trailing: insets.trailing, width: width)
     }
 
     /// A column's share: the window's inset on the sides it reaches, none
-    /// on a side that meets another column.
-    func reaching(_ edges: HorizontalEdge.Set) -> WindowSideInsets {
+    /// on a side that meets another column, and the column's own width.
+    func reaching(_ edges: HorizontalEdge.Set, width: CGFloat? = nil) -> WindowSideInsets {
         WindowSideInsets(
             leading: edges.contains(.leading) ? leading : 0,
-            trailing: edges.contains(.trailing) ? trailing : 0
+            trailing: edges.contains(.trailing) ? trailing : 0,
+            width: width.map { max(0, $0) }
         )
     }
 }
@@ -79,5 +89,9 @@ private struct WindowSideContent: ViewModifier {
             .safeAreaPadding(.leading, insets?.leading ?? 0)
             .safeAreaPadding(.trailing, insets?.trailing ?? 0)
             .ignoresSafeArea(.container, edges: insets == nil ? Edge.Set() : Edge.Set.horizontal)
+            // Never wider than the column: a stack sizes itself to its
+            // screen, and a screen reporting more than the column once
+            // stayed so, its stack centered off the window's edge.
+            .frame(maxWidth: insets?.width ?? .infinity)
     }
 }
