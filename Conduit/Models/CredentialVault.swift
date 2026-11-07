@@ -239,10 +239,10 @@ struct VaultItemDraft: Equatable {
         case .payment:
             let digits = cardNumber.filter { !$0.isWhitespace && $0 != "-" }
             guard !digits.isEmpty, digits.allSatisfy(\.isNumber) else { return .failure(.cardNumber) }
-            guard let month = Int(expMonth.trimmingCharacters(in: .whitespaces)), (1...12).contains(month) else { return .failure(.expiry) }
-            let year = expYear.trimmingCharacters(in: .whitespaces)
+            guard let month = Int(expMonth.trimmingCharacters(in: .whitespacesAndNewlines)), (1...12).contains(month) else { return .failure(.expiry) }
+            let year = expYear.trimmingCharacters(in: .whitespacesAndNewlines)
             guard [2, 4].contains(year.count), year.allSatisfy(\.isNumber) else { return .failure(.expiry) }
-            guard !cvc.trimmingCharacters(in: .whitespaces).isEmpty else { return .failure(.cvc) }
+            guard !cvc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .failure(.cvc) }
             secret["card_number"] = digits
             secret["exp_month"] = String(format: "%02d", month)
             secret["exp_year"] = year
