@@ -23205,9 +23205,19 @@ final class AppState: ObservableObject {
             deferringOlderPages: true
         )
         guard let client, self.client === client, activeProfile == profile,
-              sessionCatalogCache.shouldLoadFullHistory(forKey: "\(profile):exclude", forceRefresh: false) else { return }
-        loadDeferredCatalogPages(after: client, profile: profile, dashboardID: dashboardID)
+              sessionCatalogCache.shouldLoadFullHistory(forKey: "\(profile):exclude", forceRefresh: false),
+              // A visit while an earlier one's history walk is still under
+              // way leaves it to that walk: the marker is set only once it ends.
+              visitHistoryWalk == nil else { return }
+        let walk = loadDeferredCatalogPages(after: client, profile: profile, dashboardID: dashboardID)
+        visitHistoryWalk = walk
+        Task { @MainActor [weak self] in
+            await walk.value
+            if self?.visitHistoryWalk == walk { self?.visitHistoryWalk = nil }
+        }
     }
+
+    private var visitHistoryWalk: Task<Void, Never>?
 
     /// Replace this profile's in-memory catalog with Hermes' current data.
     /// Use this after database recovery or deletion outside Conduit.
@@ -32742,7 +32752,8 @@ final class AppState: ObservableObject {
     /// Reads the older pages a chat sync left out, after it. Quiet on
     /// failure: the drawer keeps the newest page, and the next list load
     /// tries the full read again.
-    private func loadDeferredCatalogPages(after client: HermesClient, profile: String, dashboardID: UUID?) {
+    @discardableResult
+    private func loadDeferredCatalogPages(after client: HermesClient, profile: String, dashboardID: UUID?) -> Task<Void, Never> {
         Task { @MainActor [weak self] in
             // A sync abandoned for another profile or dashboard leaves the
             // read to that workspace's own sync.

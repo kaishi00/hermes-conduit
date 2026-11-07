@@ -329,6 +329,8 @@ final class WorkspaceExplorer: ObservableObject {
 
     func prefetchText(_ path: String, profile: String) {
         guard let appState else { return }
+        // A read no open can take up any more stops.
+        prefetchedText?.read.cancel()
         prefetchedText = (path, profile, appState.activeDashboardID, Date(), Task {
             try await appState.readWorkspaceText(path, profile: profile)
         })
@@ -340,7 +342,10 @@ final class WorkspaceExplorer: ObservableObject {
         guard Self.prefetchedTextFits(
             path: kept.path, profile: kept.profile, dashboard: kept.dashboard, readAt: kept.at,
             openingPath: path, profile: profile, dashboard: appState?.activeDashboardID, now: Date()
-        ) else { return nil }
+        ) else {
+            kept.read.cancel()
+            return nil
+        }
         return kept.read
     }
 

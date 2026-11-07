@@ -1663,12 +1663,13 @@ extension AppStateMultiDashboardTests {
         let first = WorkspaceExplorer()
         first.attach(appState)
         let open = Task { await first.open(root: "/w/app", profile: appState.activeProfile) }
-        try await held.waitForRequests(1)
-        try await held.answer(["ok": true, "entries": [["name": "src", "path": "/w/app/src", "isDirectory": true]]])
+        // The listing and the recent files are read together (issue 1964),
+        // so either can go first: each is answered by its path.
         try await held.waitForRequests(2)
-        try await held.answer(["ok": true, "entries": [["name": "notes.md", "path": "/w/app/notes.md"]]])
+        try await held.answer(["ok": true, "entries": [["name": "src", "path": "/w/app/src", "isDirectory": true]]], toPathEnding: "/workspace/list")
+        try await held.answer(["ok": true, "entries": [["name": "notes.md", "path": "/w/app/notes.md"]]], toPathEnding: "/workspace/recent")
         await open.value
-        XCTAssertEqual(held.sent.map(\.path), [
+        XCTAssertEqual(Set(held.sent.map(\.path)), [
             "/api/plugins/conduit_push/workspace/list", "/api/plugins/conduit_push/workspace/recent",
         ])
 
@@ -1678,8 +1679,8 @@ extension AppStateMultiDashboardTests {
         try await held.waitForRequests(3)
         XCTAssertEqual(next.rows().map { $0.entry.name }, ["src"], "Shown before Hermes answers")
         XCTAssertEqual(next.recent.map(\.name), ["notes.md"])
-        try await held.answer(["error": "boom"], status: 500)
         try await held.waitForRequests(4)
+        try await held.answer(["error": "boom"], status: 500)
         try await held.answer(["error": "boom"], status: 500)
         await reopen.value
 
