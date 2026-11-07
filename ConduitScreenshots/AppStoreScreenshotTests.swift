@@ -285,7 +285,10 @@ final class AppStoreScreenshotTests: XCTestCase {
             XCTFail("Conduit Chan never wrapped up")
         }
         // Her last reply in full, not under the jump-to-latest button.
-        let latest = app.buttons["arrow.down"].firstMatch
+        // SwiftUI names the button after its icon; its label is the words.
+        let latest = app.buttons["arrow.down"].exists
+            ? app.buttons["arrow.down"].firstMatch
+            : app.buttons["Scroll to latest message"].firstMatch
         if latest.exists, latest.isHittable { latest.tap() }
         settle(4)
         print("PROMO_MARK done \(Date().timeIntervalSince1970)")
