@@ -116,14 +116,6 @@ struct GroupChatView: View {
             MinimisedLiveVoiceBar()
             GroupRoomComposer(members: members)
         }
-        .overlay(alignment: .top) {
-            // Shown while browsing, centered as on the chat screen.
-            GroupRoomJumpButton(chrome: scroller.chrome) {
-                ChatViewportWatch.shared.command("room latest (button)")
-                scroller.explicitLatestRequested(animated: true)
-            }
-            .alignmentGuide(.top) { $0[.bottom] + 10 }
-        }
     }
 
     /// A pill per member under the title, with how its turn went: the
@@ -185,6 +177,18 @@ struct GroupChatView: View {
         // Cross-block selection chrome, and Quote on selected text into the
         // room's draft, as in a chat.
         .overlay { MarkdownSelectionChromeRoot() }
+        // Shown while browsing, centered over the composer as on the chat
+        // screen, and inside the transcript's area as there: drawn above the
+        // composer bar's bounds (#1833), it showed but iOS 26's safeAreaBar
+        // passed its taps to the transcript under it.
+        .overlay(alignment: .bottom) {
+            GroupRoomJumpButton(chrome: scroller.chrome) {
+                ChatViewportWatch.shared.command("room latest (button)")
+                scroller.explicitLatestRequested(animated: true)
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 14)
+        }
         .environment(\.imageGallery, imageGallery)
         // As in a chat, text draws until a touch needs its text view, and
         // a drawn bubble sizes to its text.
