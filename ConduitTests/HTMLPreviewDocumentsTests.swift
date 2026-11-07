@@ -40,15 +40,20 @@ final class HTMLPreviewDocumentsTests: XCTestCase {
         let store = documents()
         var reads = 0
         var release: CheckedContinuation<Void, Never>?
+        var gaveUp = false
         let fetch: () async -> String? = {
             reads += 1
-            await withCheckedContinuation { release = $0 }
+            // A read that starts after the wait below gave up answers at once,
+            // so the test can't hang on a continuation nobody resumes.
+            if !gaveUp { await withCheckedContinuation { release = $0 } }
             return htmlDataURL("<p>shared</p>")
         }
         async let first = store.read("a", fetch: fetch)
         async let second = store.read("a", fetch: fetch)
         for _ in 0..<500 where release == nil { try? await Task.sleep(for: .milliseconds(2)) }
         guard let release else {
+            gaveUp = true
+            _ = await [first, second]
             XCTFail("the shared read never started")
             return
         }
