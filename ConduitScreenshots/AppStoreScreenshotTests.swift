@@ -184,6 +184,8 @@ final class AppStoreScreenshotTests: XCTestCase {
     /// the promo recording asked for it.
     func testRecordPromo() throws {
         signInIfNeeded()
+        // The setup card would push the portraits down Bots Home.
+        dismissFinishSetupCard()
         let portrait = app.buttons["Conduit Chan"].firstMatch
         guard portrait.waitForExistence(timeout: 30) else {
             snap("debug-no-conduit-chan")
@@ -195,12 +197,16 @@ final class AppStoreScreenshotTests: XCTestCase {
         snap("promo-01-bots-home")
         settle(2)
         portrait.tap()
-        let composer = app.textViews.firstMatch.exists ? app.textViews.firstMatch : app.textFields.firstMatch
-        guard composer.waitForExistence(timeout: 15) else {
+        // The Bot Chat is open once its menu is; Bots Home's search field
+        // is a text field too, so the composer is looked up after.
+        guard app.buttons["conversation.menu"].waitForExistence(timeout: 30) else {
             snap("debug-no-bot-chat")
             XCTFail("Conduit Chan's Bot Chat never opened")
             return
         }
+        let composer = app.textViews.firstMatch.exists
+            ? app.textViews.firstMatch
+            : app.textFields.matching(NSPredicate(format: "NOT (placeholderValue BEGINSWITH 'Search')")).firstMatch
         settle(2.5)
         print("PROMO_MARK botchat \(Date().timeIntervalSince1970)")
         for _ in 0..<3 {
