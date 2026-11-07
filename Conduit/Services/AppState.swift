@@ -24930,6 +24930,8 @@ final class AppState: ObservableObject {
             botAvatarFetchedGeneration[name] = generation
             botAvatarImages[name] = image
             mirrorHermesPicture(data, for: name, dashboardID: dashboardID)
+            // Rooms over Links show it too (digest-gated, RoomLooks.swift).
+            Task { await self.shareRoomLooksIfNeeded() }
             return true
         } catch {
             // Not pinned to the generation, so the caller can retry; whatever
@@ -25840,6 +25842,7 @@ final class AppState: ObservableObject {
             botAvatarImages[name] = image
             botAvatarFetchedGeneration[name] = max(botAvatarFetchedGeneration[name] ?? generation, generation)
             mirrorHermesPicture(png, for: name, dashboardID: dashboardID)
+            Task { await self.shareRoomLooksIfNeeded() }
         }
         return true
     }

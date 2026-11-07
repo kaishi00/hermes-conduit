@@ -103,4 +103,73 @@ extension GroupChatModelsTests {
         XCTAssertNotEqual(tint, before)
         XCTAssertEqual(tint, CustomAccentColor(hex: "#AA3300"))
     }
+
+    // MARK: - Reading them in an open room
+
+    /// A room with one of your agents and Mona's Laifu, on a plugin that
+    /// keeps looks, open.
+    @MainActor
+    private func looksRoomAppState(_ routes: CopiesRoutes) async throws -> AppState {
+        routes.people = ["ok": true, "room_id": "conduit-5", "home": NSNull(), "members": [
+            ["member_id": "m-nahida", "handle": "nahida", "display_name": "Nahida", "owner": NSNull(), "status": "in"],
+            ["member_id": "m-laifu", "handle": "laifu", "display_name": "Laifu", "owner": "Mona", "status": "in"],
+        ]]
+        routes.looks = ["ok": true, "room_id": "conduit-5", "members": [
+            "m-laifu": ["picture": NSNull(), "color": "#AA3300"],
+        ], "people": [[String: Any]](), "home": NSNull()]
+        let room = GroupRoom(
+            roomID: "conduit-5", name: "Picnic",
+            members: [
+                GroupMember(memberID: "m-nahida", profile: "nahida", handle: "nahida", displayName: "Nahida",
+                            target: ["kind": .string("local")], extra: [:]),
+                GroupMember(memberID: "m-laifu", profile: nil, handle: "laifu", displayName: "Laifu",
+                            target: ["kind": .string("peer")], extra: [:]),
+            ],
+            authorityGatewayID: "gw-a", authorityEpoch: 1, revision: 1, createdAt: 0, updatedAt: 0,
+            disbandedAt: nil, latestSeq: 0
+        )
+        let appState = try copiesAppState(routes, room: room)
+        copiesConnect(appState)
+        var report = copiesPluginReport
+        report["capabilities"] = (report["capabilities"] as? [String] ?? []) + [RoomLooksUpload.capability]
+        appState.applyNotifierPluginReport(report)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        return appState
+    }
+
+    @MainActor
+    func testAFailedLooksReadIsTriedAgainOnTheNextPoll() async throws {
+        let routes = CopiesRoutes(copies: [])
+        routes.failingLooksReads = 1
+        let appState = try await looksRoomAppState(routes)
+        await copiesWait("the first looks read", until: { routes.looksReads >= 1 })
+        await copiesWait("the failed read settles", until: { appState.activeRoomLooksReadAt == nil
+            || appState.activeRoomLooks.members["m-laifu"] != nil })
+        // The next poll reads again, not 30 s on.
+        appState.readActiveRoomLooksIfDue()
+        await copiesWait("Laifu's look", until: { appState.activeRoomLooks.members["m-laifu"] != nil })
+        XCTAssertGreaterThanOrEqual(routes.looksReads, 2)
+        XCTAssertEqual(appState.activeRoomLooks.members["m-laifu"]?.color, "#AA3300")
+    }
+
+    @MainActor
+    func testOneLooksReadAtATimeAndALateOneIsDroppedOnceTheRoomCloses() async throws {
+        let routes = CopiesRoutes(copies: [])
+        let appState = try await looksRoomAppState(routes)
+        await copiesWait("Laifu's look", until: { appState.activeRoomLooks.members["m-laifu"] != nil })
+        let before = routes.looksReads
+        routes.looksDelays = [.milliseconds(300), .milliseconds(300)]
+        routes.looks["members"] = ["m-laifu": ["picture": NSNull(), "color": "#0033AA"]]
+        let epoch = appState.groupRoomEpoch
+        // The people read and the poll can both start one.
+        let first = Task { await appState.readActiveRoomLooks(epoch: epoch) }
+        let second = Task { await appState.readActiveRoomLooks(epoch: epoch) }
+        await copiesWait("a read asked", until: { routes.looksReads > before })
+        appState.closeGroupRoom()
+        await first.value
+        await second.value
+        XCTAssertEqual(routes.looksReads, before + 1, "the second read is skipped while the first is out")
+        XCTAssertEqual(appState.activeRoomLooks, .empty, "a read answering after the room closed is dropped")
+    }
 }

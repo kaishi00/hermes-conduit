@@ -1504,7 +1504,7 @@ struct GroupMemberAvatar: View {
             .accessibilityHidden(true)
         } else {
             // Another person's agent, or a person: as their own Conduit draws them.
-            let look = self.look ?? roomLooks.member(member) ?? appState.roomLook(for: member)
+            let look = self.look ?? roomLooks.member(member)
             BotAvatarView(name: name, label: name, colorString: look?.color, image: look?.image, size: size)
                 .accessibilityHidden(true)
         }

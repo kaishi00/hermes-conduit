@@ -586,6 +586,12 @@ final class CopiesRoutes {
     /// Leaving and taking out are refused with this, at this status.
     var refusesLeaving: String?
     var leavingStatus = 409
+    /// What `GET /rooms/looks` answers; the next this many fail, and the
+    /// next ones each wait this long.
+    var looks: [String: Any] = ["ok": false]
+    var failingLooksReads = 0
+    var looksDelays: [Duration] = []
+    private(set) var looksReads = 0
     /// The next people reads each wait this long, answering what the people
     /// were when they were asked.
     var peopleDelays: [Duration] = []
@@ -670,6 +676,18 @@ final class CopiesRoutes {
             posts.removeAll { $0["event_id"] as? String == eventID }
             posts.append(post)
             return ["ok": true, "message": post]
+        }
+        if path.hasPrefix(RoomLooksUpload.path), method == "GET" {
+            looksReads += 1
+            let answer = looks
+            if !looksDelays.isEmpty {
+                try await Task.sleep(for: looksDelays.removeFirst())
+            }
+            if failingLooksReads > 0 {
+                failingLooksReads -= 1
+                throw DashboardTicketBridgeError.http(status: 502, detail: "Bad gateway")
+            }
+            return answer
         }
         if path.hasPrefix(RoomPeople.path) {
             peopleReads.append(path)
