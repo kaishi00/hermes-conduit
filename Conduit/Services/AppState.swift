@@ -7853,6 +7853,13 @@ final class AppState: ObservableObject {
         )
         restoreActiveSessionState(for: activeProfile)
         restorePinnedSessions(for: activeProfile)
+        // The saved Chats list and the chat it opens on are read ahead off
+        // the main thread now, while the sign-in reads the keychain, so the
+        // saved copy launch shows comes from memory more often than from a
+        // file decoded on the main thread (issue 1963).
+        if shouldLoadSavedConnection, let initialDashboardID {
+            self.offlineChatCache.prefetch(dashboardID: initialDashboardID, profile: activeProfile, transcripts: 1)
+        }
         if shouldLoadSavedConnection {
             beginLaunchSignIn()
         }
@@ -8859,13 +8866,15 @@ final class AppState: ObservableObject {
         }
         let transcript: AnyPublisher<Void, Never>
         switch engine {
-        case .geminiLive: transcript = geminiLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
-        case .qwenLive: transcript = qwenLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
-        case .gptLive: transcript = gptLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
-        case .grokLive: transcript = grokLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
-        case .localLive: transcript = localLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
+        case .geminiLive: transcript = geminiLiveController.transcriptChanges
+        case .qwenLive: transcript = qwenLiveController.transcriptChanges
+        case .gptLive: transcript = gptLiveController.transcriptChanges
+        case .grokLive: transcript = grokLiveController.transcriptChanges
+        case .localLive: transcript = localLiveController.transcriptChanges
         }
-        // @Published fires before the change lands: read it on the next turn.
+        // Read on the next turn, after the change has landed. The
+        // transcript publishes a growing line at most ten times a second
+        // (issue 1960), so a capture doesn't run per word.
         voiceCallTranscriptSubscription = transcript
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -12764,8 +12773,15 @@ final class AppState: ObservableObject {
     }
     @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "") {
         // An agent's new message may have a board kept for it (RoomBoards).
-        didSet { roomReplayChanged(from: oldValue) }
+        didSet {
+            roomReplayRevision &+= 1
+            roomReplayChanged(from: oldValue)
+        }
     }
+    /// Counts every change to `activeRoomReplay`, so the header's kept
+    /// statuses are read again after any replacement, even one that keeps
+    /// the same range and newest event (issue 1968).
+    private var roomReplayRevision = 0
     /// The open room's boards on the host, oldest first (AppState+RoomBoards).
     @Published var activeRoomBoards: [RoomBoard] = []
     var roomBoardsTask: Task<Void, Never>?
@@ -12809,7 +12825,7 @@ final class AppState: ObservableObject {
         if let activity = activeRoomDriverStatus?.memberActivity {
             return GroupRoomTurns.activeResponder(activity: activity, members: room?.members ?? [])
         }
-        let key = "\(activeRoomReplay.roomID)|\(activeRoomReplay.cursor)|\(room?.revision ?? -1)"
+        let key = "\(roomReplayKey)|\(room?.revision ?? -1)"
             + "|\(activeRoomDriverStatus?.maxRounds ?? 0)"
         let context = activeRoomContext
         if let cached = roomResponderCache, cached.key == key, cached.context == context { return cached.member }
@@ -12824,9 +12840,14 @@ final class AppState: ObservableObject {
     /// Each member's pill under the open room's title, by `identityKey`
     /// (GroupRoomTurns.memberStatuses). A driver that reports idle has no
     /// live turns, so only outcomes and approvals show.
+    ///
+    /// Kept for its inputs, like `activeRoomResponder`: the room's header
+    /// asks on every render, and every publish elsewhere renders it, while
+    /// the walk goes through the whole log with mention matching and
+    /// hashing (issue 1968).
     var activeRoomMemberStatuses: [String: GroupMemberStatus] {
-        GroupRoomTurns.memberStatuses(
-            events: activeRoomReplay.events,
+        let inputs = RoomMemberStatusInputs(
+            replay: roomReplayKey,
             activity: activeRoomDriverStatus?.memberActivity,
             working: activeRoomDriverStatus?.working,
             responder: activeRoomResponder,
@@ -12834,13 +12855,48 @@ final class AppState: ObservableObject {
             members: activeRoomSurface?.room.members ?? [],
             context: activeRoomContext
         )
+        if let cached = roomMemberStatusCache, cached.inputs == inputs { return cached.statuses }
+        let statuses = GroupRoomTurns.memberStatuses(
+            events: activeRoomReplay.events,
+            activity: inputs.activity,
+            working: inputs.working,
+            responder: inputs.responder,
+            approvals: inputs.approvals,
+            members: inputs.members,
+            context: inputs.context
+        )
+        roomMemberStatusCache = (inputs, statuses)
+        return statuses
     }
 
     /// Whether the open room's newest message settled, for its title. Not
-    /// while one is on its way.
+    /// while one is on its way. Kept for the log it read (issue 1968).
     var activeRoomSettled: Bool {
-        GroupRoomTurns.latestDiscussionSettled(activeRoomReplay.events, sending: pendingRoomMessage != nil)
+        let key = "\(roomReplayKey)|\(pendingRoomMessage != nil)"
+        if let cached = roomSettledCache, cached.key == key { return cached.settled }
+        let settled = GroupRoomTurns.latestDiscussionSettled(activeRoomReplay.events, sending: pendingRoomMessage != nil)
+        roomSettledCache = (key, settled)
+        return settled
     }
+
+    /// Which log the open room's replay holds: its room and how many times
+    /// it has changed, so any append, trim or replacement reads it again.
+    private var roomReplayKey: String {
+        "\(activeRoomReplay.roomID)|\(roomReplayRevision)"
+    }
+
+    private struct RoomMemberStatusInputs: Equatable {
+        let replay: String
+        let activity: [GroupMemberActivity]?
+        let working: Bool?
+        let responder: GroupMember?
+        let approvals: [GroupPendingApproval]
+        let members: [GroupMember]
+        let context: GroupRoomContext?
+    }
+
+    private var roomMemberStatusCache: (inputs: RoomMemberStatusInputs, statuses: [String: GroupMemberStatus])?
+    private var roomSettledCache: (key: String, settled: Bool)?
 
     /// The open room's settings, as `groups.state` last gave them (or a
     /// save here). Nil until the host answers, or on a host without them.
@@ -13015,15 +13071,48 @@ final class AppState: ObservableObject {
     private func parkActiveRoomSend() {
         guard let surface = activeRoomSurface else { return }
         let key = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
-        if activeRoomReplay.roomID == surface.room.roomID, !activeRoomReplay.events.isEmpty {
-            keptRoomReplays[key] = activeRoomReplay
-        }
         if groupRoomOutbox.pending != nil {
             parkedRoomOutboxes[key] = groupRoomOutbox
         } else {
             parkedRoomOutboxes.removeValue(forKey: key)
         }
+        if activeRoomReplay.roomID == surface.room.roomID, !activeRoomReplay.events.isEmpty {
+            keptRoomReplays[key] = activeRoomReplay
+            keptRoomReplayOrder.removeAll { $0 == key }
+            keptRoomReplayOrder.append(key)
+            // Up to 400 events each: the rooms left longest ago go past
+            // `maxKeptRoomReplays`, never one with a send still parked
+            // (issue 1969).
+            for dropped in Self.keptRoomReplaysToDrop(
+                order: keptRoomReplayOrder.filter { keptRoomReplays[$0] != nil },
+                pinned: Set(parkedRoomOutboxes.keys)
+            ) {
+                keptRoomReplays.removeValue(forKey: dropped)
+            }
+            keptRoomReplayOrder.removeAll { keptRoomReplays[$0] == nil }
+        }
     }
+
+    /// Rooms whose events stay in memory after they're left, to show at
+    /// once when they open again; as many as Bot Chats' kept copies.
+    static let maxKeptRoomReplays = 8
+
+    /// The kept room replays to drop: the least recently left first, past
+    /// `limit`, skipping any room `pinned` names (a parked send settles
+    /// against its events).
+    static func keptRoomReplaysToDrop(order: [String], pinned: Set<String>, limit: Int = maxKeptRoomReplays) -> [String] {
+        var excess = order.count - limit
+        guard excess > 0 else { return [] }
+        var dropped: [String] = []
+        for key in order where excess > 0 && !pinned.contains(key) {
+            dropped.append(key)
+            excess -= 1
+        }
+        return dropped
+    }
+
+    /// The rooms in `keptRoomReplays`, the one left last at the end.
+    private var keptRoomReplayOrder: [String] = []
 
     /// Drop parked sends and drafts of this dashboard's rooms that left the
     /// room list (disbanded elsewhere): they can never be reopened.
@@ -23100,13 +23189,19 @@ final class AppState: ObservableObject {
         }
     }
 
+    private var isReadingNewestCatalogPage = false
+
     /// Reads the newest catalog page and the cron rows over the cached
     /// catalog, keeping its full-history markers. The older pages follow
     /// only when the full history is due (every
     /// `SessionCatalogCache.fullHistoryRefreshInterval`), so a tab shown
     /// again and again doesn't walk all 25 pages each time (issue 1962).
     func refreshNewestSessionCatalogPage() async {
-        guard !isRefreshingSessionCatalog else { return }
+        // One visit's read at a time (the Tasks tab and the drawer's Cron
+        // list both ask), without the pull's spinner.
+        guard !isRefreshingSessionCatalog, !isReadingNewestCatalogPage else { return }
+        isReadingNewestCatalogPage = true
+        defer { isReadingNewestCatalogPage = false }
         let client = self.client
         let profile = activeProfile
         let dashboardID = activeDashboardID
@@ -23117,6 +23212,9 @@ final class AppState: ObservableObject {
         )
         guard let client, self.client === client, activeProfile == profile,
               sessionCatalogCache.shouldLoadFullHistory(forKey: "\(profile):exclude", forceRefresh: false) else { return }
+        // An earlier visit's history walk still under way yields to this
+        // visit's newer read, so this walk takes its place rather than a
+        // second one running beside it.
         loadDeferredCatalogPages(after: client, profile: profile, dashboardID: dashboardID)
     }
 
@@ -33955,6 +34053,13 @@ final class AppState: ObservableObject {
             return false
         }
         guard !isProfileSwitching else { return false }
+        // What the switch shows first (the profile's saved list and the chat
+        // it opens on) is read ahead off the main thread while it waits on
+        // its ticket and teardown, if the read-ahead after the live list
+        // hasn't already (issue 1963).
+        if let dashboardID = savedDashboardRegistry.activeDashboardID {
+            offlineChatCache.prefetch(dashboardID: dashboardID, profile: target, transcripts: 1)
+        }
         // A switch that spares calls (a notification's or a chat link's)
         // mints its ticket before anything changes, so nothing waits between
         // its call check and the voice teardown below; it refuses while a

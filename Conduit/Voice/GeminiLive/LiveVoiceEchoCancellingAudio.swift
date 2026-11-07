@@ -40,7 +40,6 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
     private var player: AVAudioPlayerNode?
     private var playerFormat: AVAudioFormat?
     private var lease: VoiceAudioLease?
-    private var converter: AVAudioConverter?
     private let microphoneFormat = AVAudioFormat(
         standardFormatWithSampleRate: VoiceAudioSessionConfiguration.capture.outputSampleRate,
         channels: VoiceAudioSessionConfiguration.capture.outputChannelCount
@@ -348,13 +347,16 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         let frameGeneration = tapGeneration
         // Runs on the audio thread: @Sendable keeps it from inheriting the
         // main actor's isolation.
+        // Converted and encoded here, on the tap's thread, with a converter
+        // only this tap uses: the main actor gets the finished PCM16, not
+        // ~50 conversions a second between SwiftUI's commits (issue 1959).
+        let tapConverter = VoiceCaptureFrameConverter(outputFormat: microphoneFormat)
         input.installTap(onBus: 0, bufferSize: 1_024, format: tapFormat) { @Sendable [weak self] buffer, _ in
-            // The engine reuses tap buffers once this block returns: copy
-            // before hopping to the main actor.
-            guard let copy = Self.copy(buffer) else { return }
+            guard case .success(let frame) = tapConverter.convert(buffer) else { return }
+            let pcm = frame.pcm
             Task { @MainActor [weak self] in
                 guard let self, self.tapGeneration == frameGeneration, self.inputWanted else { return }
-                self.forward(copy)
+                self.onChunk?(pcm)
             }
         }
         NotificationCenter.default.addObserver(
@@ -376,30 +378,6 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         self.engine = engine
         self.player = player
         playerFormat = format
-    }
-
-    private func forward(_ buffer: AVAudioPCMBuffer) {
-        if converter == nil || converter?.inputFormat != buffer.format {
-            converter = AVAudioConverter(from: buffer.format, to: microphoneFormat)
-        }
-        guard let converter else { return }
-        let ratio = microphoneFormat.sampleRate / buffer.format.sampleRate
-        let capacity = AVAudioFrameCount(ceil(Double(buffer.frameLength) * ratio) + 32)
-        guard let converted = AVAudioPCMBuffer(pcmFormat: microphoneFormat, frameCapacity: capacity) else { return }
-        var supplied = false
-        var conversionError: NSError?
-        let status = converter.convert(to: converted, error: &conversionError) { _, outStatus in
-            guard !supplied else {
-                outStatus.pointee = .noDataNow
-                return nil
-            }
-            supplied = true
-            outStatus.pointee = .haveData
-            return buffer
-        }
-        guard conversionError == nil, status != .error, converted.frameLength > 0,
-              let channel = converted.floatChannelData?[0] else { return }
-        onChunk?(VoicePCMEncoding.encode(channel, count: Int(converted.frameLength)).data)
     }
 
     private func teardownIfUnused() {
@@ -429,7 +407,6 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         queuedBuffers.removeAll()
         remainder.removeAll(keepingCapacity: true)
         clearDrainWatchdog()
-        converter = nil
         guard let engine else { return }
         NotificationCenter.default.removeObserver(self, name: .AVAudioEngineConfigurationChange, object: engine)
         player?.stop()
@@ -499,18 +476,6 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         Task { @MainActor [weak self] in self?.stopAfterInterruption(observed: observed) }
     }
 
-    nonisolated private static func copy(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-        guard let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameLength) else { return nil }
-        copy.frameLength = buffer.frameLength
-        let source = UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList)
-        let destination = UnsafeMutableAudioBufferListPointer(copy.mutableAudioBufferList)
-        for index in 0..<min(source.count, destination.count) {
-            guard let from = source[index].mData, let to = destination[index].mData else { continue }
-            to.copyMemory(from: from, byteCount: Int(source[index].mDataByteSize))
-            destination[index].mDataByteSize = source[index].mDataByteSize
-        }
-        return copy
-    }
 
     // MARK: Seams
 

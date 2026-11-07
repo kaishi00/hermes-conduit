@@ -19,6 +19,23 @@ struct ProjectOtherProfilesRead: Equatable {
     var failed: Set<String> = []
 }
 
+extension ProjectOtherProfilesRead {
+    /// `outcomes[i]` is `others[i]`'s answer, whichever finished first: the
+    /// lanes follow `others`' order, a match looked up replaces the kept
+    /// one (`.some(nil)` forgets it), and a failed profile is named.
+    init(folding outcomes: [ProjectProfileRead], of others: [String], known: [String: String?]) {
+        var matches = known
+        var parts: [ProjectProfileLanes] = []
+        var failed: Set<String> = []
+        for (profile, outcome) in zip(others, outcomes) {
+            if let match = outcome.match { matches[profile] = .some(match) }
+            if outcome.failed { failed.insert(profile) }
+            if let part = outcome.part { parts.append(part) }
+        }
+        self.init(matches: matches, parts: parts, failed: failed)
+    }
+}
+
 extension AppState {
     /// The profiles a project's page gathers besides its own: the ones All
     /// lists (Show in All), with two or more profiles on the dashboard.
@@ -65,15 +82,7 @@ extension AppState {
             reads.forEach { $0.cancel() }
         }
         guard self.client === client, !Task.isCancelled else { return nil }
-        var matches = known
-        var parts: [ProjectProfileLanes] = []
-        var failed: Set<String> = []
-        for (profile, outcome) in zip(others, outcomes) {
-            if let match = outcome.match { matches[profile] = .some(match) }
-            if outcome.failed { failed.insert(profile) }
-            if let part = outcome.part { parts.append(part) }
-        }
-        return ProjectOtherProfilesRead(matches: matches, parts: parts, failed: failed)
+        return ProjectOtherProfilesRead(folding: outcomes, of: others, known: known)
     }
 
     /// One profile's part of `loadProject`.

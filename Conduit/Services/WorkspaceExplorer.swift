@@ -329,6 +329,15 @@ final class WorkspaceExplorer: ObservableObject {
 
     func prefetchText(_ path: String, profile: String) {
         guard let appState else { return }
+        // The same file's read still under way is kept; any other one no
+        // open can take up any more stops.
+        if let kept = prefetchedText {
+            if Self.prefetchedTextFits(
+                path: kept.path, profile: kept.profile, dashboard: kept.dashboard, readAt: kept.at,
+                openingPath: path, profile: profile, dashboard: appState.activeDashboardID, now: Date()
+            ) { return }
+            kept.read.cancel()
+        }
         prefetchedText = (path, profile, appState.activeDashboardID, Date(), Task {
             try await appState.readWorkspaceText(path, profile: profile)
         })
@@ -337,10 +346,25 @@ final class WorkspaceExplorer: ObservableObject {
     private func takePrefetchedText(_ path: String, profile: String) -> Task<WorkspaceFilePreview, Error>? {
         guard let kept = prefetchedText else { return nil }
         prefetchedText = nil
-        guard kept.path == path, kept.profile == profile,
-              kept.dashboard == appState?.activeDashboardID,
-              Date().timeIntervalSince(kept.at) < Self.prefetchedTextLifetime else { return nil }
+        guard Self.prefetchedTextFits(
+            path: kept.path, profile: kept.profile, dashboard: kept.dashboard, readAt: kept.at,
+            openingPath: path, profile: profile, dashboard: appState?.activeDashboardID, now: Date()
+        ) else {
+            kept.read.cancel()
+            return nil
+        }
         return kept.read
+    }
+
+    /// Whether a read started at `readAt` is the one an open of
+    /// `openingPath` can take up: the same file, profile and dashboard,
+    /// within `prefetchedTextLifetime`.
+    static func prefetchedTextFits(
+        path: String, profile: String, dashboard: UUID?, readAt: Date,
+        openingPath: String, profile openingProfile: String, dashboard openingDashboard: UUID?, now: Date
+    ) -> Bool {
+        path == openingPath && profile == openingProfile && dashboard == openingDashboard
+            && now.timeIntervalSince(readAt) < prefetchedTextLifetime
     }
 
     func closeFile() {
