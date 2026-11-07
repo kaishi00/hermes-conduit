@@ -9486,18 +9486,13 @@ final class AppState: ObservableObject {
             // resumes where the runtime id can't.
             let fallback = self.conversationIdentityIndex.durableID(forRuntime: id, profile: self.activeProfile)
             let opened = await self.requestOpenSession(target ?? fallback ?? id) { [weak self] in
-                // Hermes answered that the chat is not there: the link's own
-                // words say what is missing. Any other failure (a socket that
-                // dropped, a read that timed out, an open a newer one
-                // superseded) proves nothing about the chat, and a link that
-                // called the chat gone while the retry went on to open it was
-                // simply wrong: those keep the error they came with, and say
-                // nothing at all when they came with none.
-                guard let self,
-                      self.reconciliationSessionWasNotFound,
-                      !self.reconciliationWasKanbanWorker
-                else { return }
-                self.errorMessage = unavailable
+                guard let self else { return }
+                self.errorMessage = Self.linkedSessionFailureMessage(
+                    current: self.errorMessage,
+                    sessionWasNotFound: self.reconciliationSessionWasNotFound,
+                    kanbanWorker: self.reconciliationWasKanbanWorker,
+                    unavailable: unavailable
+                )
             }.value
             // From outside a chat (a Live Activity, another app) the chat
             // must come forward: V2 keeps the Chats list over it until the
@@ -9507,6 +9502,24 @@ final class AppState: ObservableObject {
             // finished has brought its own chat forward anyway.
             if opened, self.explicitSessionOpenRequestID == nil { self.dismissSidebarDrawer() }
         }
+    }
+
+    /// What a link's failed open says. Only Hermes' own answer that the
+    /// chat isn't there (the resume's 4007 on the dashboard, 4001 not_found
+    /// on the authority, never a history read's 404) says the link's words,
+    /// that the chat is gone; a Kanban worker's refusal keeps its own
+    /// explanation. Any other failure (a socket that dropped, a client a
+    /// reconnect replaced mid-open, no connection yet) proves nothing about
+    /// the chat: it keeps the error it came with, and one that came with
+    /// none says to try again, as the retry opens it (#1917).
+    static func linkedSessionFailureMessage(
+        current: String?,
+        sessionWasNotFound: Bool,
+        kanbanWorker: Bool,
+        unavailable: String
+    ) -> String {
+        if sessionWasNotFound, !kanbanWorker { return unavailable }
+        return current ?? AppLocalization.string("Couldn't open that chat. Try again.")
     }
 
     /// The id a linked chat is resumed by. A Live Activity's card from an
