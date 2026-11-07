@@ -4672,6 +4672,13 @@ final class AppState: ObservableObject {
         }
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
         if enabled {
+            // A running Classic call stays: the car follows it (#1378). A
+            // push to talk screen still waiting for its first press has no
+            // session for the car to follow, so it closes (#1935).
+            if showVoiceSheet, voiceConversationController.isPushToTalkActive,
+               !voiceConversationController.hasConversationSession {
+                closeVoiceConversation()
+            }
             closeQwenLiveConversation()
             closeGeminiLiveConversation()
             closeGPTLiveConversation()

@@ -116,18 +116,25 @@ extension ContinuousConversationPreferenceTests {
     /// press has no session yet; turning a live mode on still closes it, so
     /// the press can't open Classic's microphone under the new mode.
     func testTurningOnALiveModeClosesAPushToTalkScreenWaitingForItsFirstPress() {
-        let defaults = makeScratchDefaults("PushToTalkLiveModeSwitch")
-        let appState = AppState(defaults: defaults, loadSavedConnection: false)
-        var preferences = VoiceProfilePreferences()
-        preferences.pushToTalk = true
-        appState.voiceConversationController.setProfilePreferences(preferences)
-        appState.showVoiceSheet = true
-        XCTAssertTrue(appState.voiceConversationController.isPushToTalkActive)
-        XCTAssertFalse(appState.voiceConversationController.hasConversationSession, "no session before the first press")
+        // Local Live too: with no session there is no Classic call for the
+        // car to keep following (#1378).
+        for enable in [
+            { (appState: AppState) in appState.setGeminiLiveEnabled(true) },
+            { (appState: AppState) in appState.setLocalLiveEnabled(true) },
+        ] {
+            let defaults = makeScratchDefaults("PushToTalkLiveModeSwitch")
+            let appState = AppState(defaults: defaults, loadSavedConnection: false)
+            var preferences = VoiceProfilePreferences()
+            preferences.pushToTalk = true
+            appState.voiceConversationController.setProfilePreferences(preferences)
+            appState.showVoiceSheet = true
+            XCTAssertTrue(appState.voiceConversationController.isPushToTalkActive)
+            XCTAssertFalse(appState.voiceConversationController.hasConversationSession, "no session before the first press")
 
-        appState.setGeminiLiveEnabled(true)
+            enable(appState)
 
-        XCTAssertFalse(appState.showVoiceSheet, "the Classic call screen closes with the switch")
+            XCTAssertFalse(appState.showVoiceSheet, "the Classic call screen closes with the switch")
+        }
     }
 
     func testPushToTalkDoesNotListenAgainAfterAReply() async {
