@@ -187,7 +187,7 @@ extension GroupChatModelsTests {
         XCTAssertEqual(BotMentions.roomHandles(for: bots), ["hermes", "research-buddy", "helper"])
         let agents = try XCTUnwrap(RoomDraftAgent.agents(for: bots))
         XCTAssertEqual(agents, [
-            RoomDraftAgent(profile: "default", handle: "hermes", displayName: "default"),
+            RoomDraftAgent(profile: "default", handle: "hermes", displayName: "Default"),
             RoomDraftAgent(profile: "research", handle: "research-buddy", displayName: "Research Buddy"),
             RoomDraftAgent(profile: "helper", handle: "helper", displayName: "research buddy"),
         ])
@@ -217,7 +217,7 @@ extension GroupChatModelsTests {
         let posted = try XCTUnwrap(body["agents"] as? [[String: Any]])
         XCTAssertEqual(posted.map { $0["profile"] as? String }, ["default", "research", "helper"])
         XCTAssertEqual(posted.map { $0["handle"] as? String }, ["hermes", "research-buddy", "helper"])
-        XCTAssertEqual(posted.map { $0["display_name"] as? String }, ["default", "Research Buddy", "research buddy"])
+        XCTAssertEqual(posted.map { $0["display_name"] as? String }, ["Default", "Research Buddy", "research buddy"])
         for agent in posted {
             // Null, not left out: the plugin then takes the choices of the
             // last room with the same people, else the defaults.

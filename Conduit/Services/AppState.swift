@@ -12713,6 +12713,9 @@ final class AppState: ObservableObject {
     /// The rooms people you've linked invited this Hermes to, which Group
     /// Chats lists with the drafts (RoomInvites.swift).
     @Published var linkedRoomInvites: LinkedRoomInvites?
+    /// Reads the invites again for a while after a Link is made
+    /// (RoomInvites.swift followLinkedRoomInvites).
+    var linkedRoomInviteFollow: Task<Void, Never>?
     /// What your agents' turns in rooms other people host wait for you to
     /// approve, which Group Chats lists first (RoomApprovals.swift).
     @Published var linkedRoomApprovals: LinkedRoomApprovals?
@@ -13075,6 +13078,8 @@ final class AppState: ObservableObject {
         groupRooms = []
         linkedRoomDrafts = nil
         linkedRoomInvites = nil
+        linkedRoomInviteFollow?.cancel()
+        linkedRoomInviteFollow = nil
         presentedRoomInvite = nil
         linkedRoomApprovals = nil
         answeredLinkedRoomApprovalIDs = []
@@ -21707,6 +21712,8 @@ final class AppState: ObservableObject {
             LocationSharingController.shared.appBecameActive()
             Task { await runPhoneSync(reason: .foreground) }
             Task { await syncPresentedScreens() }
+            // An invite that came while Conduit was away, its push missed.
+            Task { await refreshLinkedRoomInvites() }
             scheduleWakeRefresh()
             // Voice gates. The capture gate additionally requires a Voice
             // surface (the phone sheet, or CarPlay), so it can be false here

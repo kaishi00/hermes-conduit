@@ -192,7 +192,7 @@ extension GroupChatModelsTests {
         let agents = try XCTUnwrap(RoomInviteAgent.agents(for: bots, choices: choices))
         // The handles a room of your own bots gives them.
         XCTAssertEqual(agents.map(\.agent), [
-            RoomDraftAgent(profile: "default", handle: "hermes", displayName: "default"),
+            RoomDraftAgent(profile: "default", handle: "hermes", displayName: "Default"),
             RoomDraftAgent(profile: "research", handle: "research-buddy", displayName: "Research Buddy"),
         ])
         // A bot the invite has no choices for can't come, nor two that
@@ -222,7 +222,7 @@ extension GroupChatModelsTests {
         let posted = try XCTUnwrap(body["agents"] as? [[String: Any]])
         XCTAssertEqual(posted.map { $0["profile"] as? String }, ["default", "research"])
         XCTAssertEqual(posted.map { $0["handle"] as? String }, ["hermes", "research-buddy"])
-        XCTAssertEqual(posted.map { $0["display_name"] as? String }, ["default", "Research Buddy"])
+        XCTAssertEqual(posted.map { $0["display_name"] as? String }, ["Default", "Research Buddy"])
         // Every choice, not only those changed: the plugin fills one left
         // out from its plain defaults, not from the card's.
         let research = try XCTUnwrap(posted.last?["choices"] as? [String: Any])

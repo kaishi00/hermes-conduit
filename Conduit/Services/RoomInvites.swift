@@ -428,6 +428,46 @@ extension AppState {
         _ = await readLinkedRoomInvites()
     }
 
+    /// Every 10 s for 3 minutes after a Link is made or an invite joined:
+    /// the room the other person makes next reaches this Hermes through the
+    /// mailbox within a minute or so, and its push may not reach the phone
+    /// (or not while the screen showing the Link is up); a room you joined
+    /// starts on the host once everyone has answered, and its copy appears
+    /// here then. Group Chats would show either only once it's read again.
+    /// Each call starts the count again, and another dashboard or a
+    /// sign-out ends it.
+    func followLinkedRoomInvites() {
+        linkedRoomInviteFollow?.cancel()
+        let dashboard = activeDashboardID
+        // Until a time, not a count: ticks that came due while iOS held the
+        // app suspended are one read on return, not a burst of them. Ticks in
+        // the background are skipped; the return to the foreground reads.
+        let end = Date().addingTimeInterval(Self.linkedRoomInviteFollowSeconds)
+        linkedRoomInviteFollow = Task { [weak self] in
+            while Date() < end {
+                try? await Task.sleep(for: Self.linkedRoomInviteFollowInterval)
+                guard !Task.isCancelled, let self, self.activeDashboardID == dashboard else { return }
+                guard self.isSceneActive else { continue }
+                await self.refreshLinkedRoomDrafts()
+                await self.refreshGroupRoomsForStartedDrafts()
+                await self.refreshLinkedRoomInvites()
+            }
+        }
+    }
+
+    /// A started draft leaves Group Chats' draft rows for its room's row,
+    /// so the rooms are read when one has started that isn't listed yet:
+    /// else the host would see neither (as RoomDraftSheet reads them).
+    func refreshGroupRoomsForStartedDrafts() async {
+        guard let drafts = linkedRoomDrafts, drafts.dashboardID == activeDashboardID else { return }
+        let listed = Set(groupRooms.map(\.roomID))
+        guard drafts.list.drafts.contains(where: { $0.status == "started" && !listed.contains($0.id) }) else { return }
+        await refreshGroupRooms()
+    }
+
+    nonisolated static let linkedRoomInviteFollowSeconds: TimeInterval = 180
+    nonisolated static let linkedRoomInviteFollowInterval: Duration = .seconds(10)
+
     /// Whether the invites were read now and kept.
     func readLinkedRoomInvites() async -> Bool {
         guard canInviteLinkedPeople, isConnected else { return false }
@@ -437,6 +477,14 @@ extension AppState {
             let invites = try await client.invites()
             guard groupRoomEpoch == epoch, activeDashboardID == client.dashboardID else { return false }
             linkedRoomInvites = LinkedRoomInvites(dashboardID: client.dashboardID, invites: invites)
+            // A room you joined that has started is listed as its copy, which
+            // this Hermes keeps from then on: read the copies while one isn't
+            // there yet, or Group Chats shows neither the invite nor the room
+            // until something else reads them.
+            if canReadRoomCopies,
+               invites.contains(where: { $0.status == "started" && !linkedRoomCopyInviteIDs.contains($0.id) }) {
+                await refreshLinkedRoomCopies()
+            }
             return true
         } catch {
             // The rows stay as they were: a stale row is safer than none.
@@ -462,11 +510,16 @@ extension AppState {
         do {
             let answered = try await client.answer(invite, agents: agents)
             adoptLinkedRoomInvite(answered, from: client.dashboardID)
+            // The room starts on the host when everyone has answered, maybe
+            // after the join card is closed.
+            if !agents.isEmpty { followLinkedRoomInvites() }
             return .answered
         } catch {
             let message = RoomInvitesClient.answerRefusal(for: error, joining: !agents.isEmpty)
             guard case DashboardTicketBridgeError.http(504, _) = error else { return .refused(message) }
             await refreshLinkedRoomInvites()
+            // The answer may still reach the host, and the room start then.
+            if !agents.isEmpty { followLinkedRoomInvites() }
             return .sending(message)
         }
     }

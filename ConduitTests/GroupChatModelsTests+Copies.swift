@@ -145,6 +145,35 @@ extension GroupChatModelsTests {
     }
 
     @MainActor
+    func testAnInviteThatStartedReadsTheCopiesSoTheRoomShows() async throws {
+        // Eric's guest phone (2026-11-07): joined, the room started on the
+        // host and the guest's Hermes made its copy, but Group Chats kept the
+        // old copies until Bots Home loaded again.
+        let routes = CopiesRoutes(copies: [])
+        routes.invites = [
+            ["room_id": "conduit-9", "link": "lk1a2b3c4d5e6f", "name": "Zoo trip", "status": "joined", "from": "Furina",
+             "joined": [["profile": "research", "display_name": "Kuro"]]],
+        ]
+        let appState = try copiesAppState(routes)
+        copiesConnect(appState)
+        appState.applyNotifierPluginReport(copiesPluginReport)
+        await appState.refreshGroupChatSupport()
+        await copiesWait("the invites read", until: { appState.linkedRoomInviteRows.count == 1 })
+        XCTAssertEqual(appState.linkedRoomCopyRows.count, 0)
+
+        routes.invites[0]["status"] = "started"
+        routes.copies = [copiesCopy()]
+        let reads = routes.copiesReads
+        await appState.refreshLinkedRoomInvites()
+        XCTAssertEqual(routes.copiesReads, reads + 1, "a started invite with no copy reads the copies")
+        XCTAssertEqual(appState.linkedRoomCopyRows.count, 1)
+        XCTAssertEqual(appState.linkedRoomInviteRows.count, 0, "the copy is the room now")
+
+        await appState.refreshLinkedRoomInvites()
+        XCTAssertEqual(routes.copiesReads, reads + 1, "its copy is there: no more copies reads")
+    }
+
+    @MainActor
     func testACopyOpensFromItsLogAndPollsAfterTheCursor() async throws {
         let routes = CopiesRoutes(copies: [copiesCopy(lastSeq: 2)])
         routes.events = [copiesEvent(1, kind: "message.user", actor: ["kind": "user", "id": "furina"]), copiesEvent(2)]
