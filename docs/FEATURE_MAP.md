@@ -5268,7 +5268,7 @@ notifier's push text and the README line that describes it · `::preview`
 - The on-screen retry loop has no unit test: it lives in the view's task (the read cache and the wait it sleeps for are tested).
 - Two rows showing the same card while it is first read each ask for it.
 
-**Checked:** 2026-11-04, #1751 with notifier #539 (the plugin's `::conduit-board` line is hidden, not a card; Siblings, Rulings); 2026-10-30, #1524.
+**Checked:** 2026-11-07, #1914 (a group room's bot message supplies its own profile's file reader, falling back to the room's; the Desktop card's read is unchanged); 2026-11-04, #1751 with notifier #539 (the plugin's `::conduit-board` line is hidden, not a card; Siblings, Rulings); 2026-10-30, #1524.
 
 ## Self-improvement updates
 

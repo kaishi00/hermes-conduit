@@ -1064,9 +1064,10 @@ enum GroupRoomTurns {
         return member(withID: id, in: members)
     }
 
-    /// The member who said a message: the one its payload names, else, when
-    /// the payload names none, the one member its actor's id (an explicit member id,
-    /// else a profile no other member shares) matches. An ambiguous or unknown id finds nobody.
+    /// The member who said a message: the one its payload names (as
+    /// `member(for:)` finds it), else, when the payload names none, the one
+    /// member its actor's id matches (an explicit member id, else a profile no
+    /// other member shares). In that fallback an ambiguous or unknown id finds nobody.
     static func speaker(of event: GroupEvent, members: [GroupMember]) -> GroupMember? {
         if event.payload["member_id"]?.stringValue != nil { return member(for: event, members: members) }
         guard event.actor.kind == "member" else { return nil }

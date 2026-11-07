@@ -130,6 +130,42 @@ extension MarkdownLargeDocumentTests {
                        "a member with no resolver (another gateway's bot) draws no MEDIA: pictures")
     }
 
+    func testRoomGalleryReadsEachMembersPicturesThroughItsOwnResolver() throws {
+        let appState = try galleryAppState()
+        let resolvers = [
+            "furina": GatewayMediaDataURLResolver(appState: appState, profile: "furina"),
+            "nahida": GatewayMediaDataURLResolver(appState: appState, profile: "nahida"),
+        ]
+        func event(_ seq: Int, _ who: String, _ path: String) -> GroupEvent {
+            GroupEvent(
+                roomID: "room",
+                seq: seq,
+                eventID: "e\(seq)",
+                kind: "message.member",
+                actor: GroupActor(kind: "member", id: who, profile: who, displayName: who, connectionID: nil),
+                authorityEpoch: nil,
+                payload: ["text": .string("MEDIA: \(path)")],
+                createdAt: 0
+            )
+        }
+        let events = [
+            event(1, "furina", "/root/.hermes/cache/images/bow.png"),
+            event(2, "nahida", "/root/.hermes/cache/images/leaf.png"),
+            event(3, "wanderer", "/root/.hermes/cache/images/hat.png"),
+        ]
+        var asked: [String] = []
+        let items = GroupRoomImageGallery.items(in: events) { event in
+            asked.append(event.actor.id)
+            return resolvers[event.actor.id]
+        }
+
+        XCTAssertEqual(asked, ["furina", "nahida", "wanderer"], "each member message asks for its own speaker's resolver")
+        XCTAssertEqual(items.map(\.id), [
+            ImageGalleryItem.mediaID(path: "/root/.hermes/cache/images/bow.png"),
+            ImageGalleryItem.mediaID(path: "/root/.hermes/cache/images/leaf.png"),
+        ], "a member with no resolver (another gateway's bot) adds no picture")
+    }
+
     func testGalleryPrefilterKeepsEveryPictureSource() {
         XCTAssertTrue(ChatImageGallery.mayHoldPictures("![a](b.png)"))
         XCTAssertTrue(ChatImageGallery.mayHoldPictures("https://example.com/a.png"))

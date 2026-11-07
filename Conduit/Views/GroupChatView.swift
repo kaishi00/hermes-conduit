@@ -168,9 +168,15 @@ struct GroupChatView: View {
             ),
             scroller: scroller
         )
+        // The closure is kept by the gallery, so it holds the events, roster and
+        // app state, never the view.
+        let galleryEvents = replay.events.filter(GroupRoomTurns.isVisible)
+        let roster = members
+        let galleryAppState = appState
         imageGallery.update {
-            GroupRoomImageGallery.items(in: replay.events.filter(GroupRoomTurns.isVisible)) { event in
-                mediaResolver(for: GroupRoomTurns.speaker(of: event, members: members))
+            GroupRoomImageGallery.items(in: galleryEvents) { event in
+                GroupRoomTurns.localProfile(of: GroupRoomTurns.speaker(of: event, members: roster))
+                    .map { galleryAppState.gatewayMediaResolver(for: $0) }
             }
         }
         return GeometryReader { proxy in
