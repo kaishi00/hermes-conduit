@@ -14,6 +14,7 @@ import SwiftUI
 
 struct CredentialVaultSettingsPage: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @State private var snapshot: CredentialVaultSnapshot?
     @State private var loading = false
@@ -240,7 +241,9 @@ struct CredentialVaultSettingsPage: View {
         do {
             let answer = try await appState.loadCredentialVault()
             guard read == readCount else { return }
-            snapshot = answer
+            // A manager switched on shows its Unlock row as Settings'
+            // other switches reveal theirs.
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { snapshot = answer }
             problem = nil
             error = nil
         } catch let failure as CredentialVaultError {
@@ -259,6 +262,9 @@ struct CredentialVaultSettingsPage: View {
             return
         } catch let failure {
             guard read == readCount else { return }
+            // An older Hermes or no connection said so before; this one
+            // failed another way, which the list's line says.
+            problem = nil
             // A read that fails keeps what's shown.
             error = UserFacingError.message(for: failure)
         }
@@ -317,20 +323,22 @@ private struct VaultSourceUnlockSheet: View {
     var body: some View {
         NavigationStack {
             SettingsDetailContainer(compact: true) {
-                Text(AppLocalization.string("Hermes hands your master password to \(source.displayName) on its computer and forgets it. It's never saved, logged or shown to the model."))
-                    .scaledFont(.footnote).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                // No .password content type: iOS would offer to save the
-                // master password to the keychain under Conduit's domain.
-                SecureField(AppLocalization.string("Master password"), text: $password)
-                    .textFieldStyle(.roundedBorder)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .submitLabel(.go)
-                    .onSubmit { submit() }
-                    .disabled(working)
-                    .accessibilityIdentifier("settings.vault.masterPassword")
-                if let error { Text(error).scaledFont(.caption).foregroundStyle(.red) }
+                ConduitSettingsSection(title: source.displayName, symbol: "lock.shield", tint: .conduitAura) {
+                    Text(AppLocalization.string("Hermes hands your master password to \(source.displayName) on its computer and forgets it. It's never saved, logged or shown to the model."))
+                        .scaledFont(.footnote).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    // No .password content type: iOS would offer to save the
+                    // master password to the keychain under Conduit's domain.
+                    SecureField(AppLocalization.string("Master password"), text: $password)
+                        .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .submitLabel(.go)
+                        .onSubmit { submit() }
+                        .disabled(working)
+                        .accessibilityIdentifier("settings.vault.masterPassword")
+                    if let error { Text(error).scaledFont(.caption).foregroundStyle(.red) }
+                }
             }
             .navigationTitle(AppLocalization.string("Unlock \(source.displayName)"))
             .toolbar {
@@ -389,6 +397,9 @@ private struct VaultItemAddSheet: View {
                 ConduitSettingsSection(title: AppLocalization.string("Name and site"), symbol: "globe", tint: .conduitAccent) {
                     plainField(AppLocalization.string("Label, like GitHub work account"), text: $draft.label)
                     plainField(draft.kind == .login ? AppLocalization.string("Site, like github.com") : AppLocalization.string("Site (optional)"), text: $draft.origin, keyboard: .URL)
+                    Text(AppLocalization.string("Saved encrypted on the Hermes computer. Conduit keeps none of it and never shows it again."))
+                        .scaledFont(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 switch draft.kind {
                 case .login: loginFields
@@ -396,14 +407,12 @@ private struct VaultItemAddSheet: View {
                 case .address: addressFields
                 }
                 if let error { Text(error).scaledFont(.caption).foregroundStyle(.red) }
-                Text(AppLocalization.string("Saved encrypted on the Hermes computer. Conduit keeps none of it and never shows it again."))
-                    .scaledFont(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             .navigationTitle(AppLocalization.string("Add to vault"))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(AppLocalization.string("Cancel")) { dismiss() }
+                        .disabled(working)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if working {

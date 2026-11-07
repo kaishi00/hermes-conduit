@@ -14,6 +14,7 @@ final class CredentialVaultTests: XCTestCase {
         XCTAssertEqual(VaultItemDraft.normalizedOrigin(" https://GitHub.com/login?next=1 "), "https://github.com")
         XCTAssertEqual(VaultItemDraft.normalizedOrigin("https://example.com:443"), "https://example.com")
         XCTAssertEqual(VaultItemDraft.normalizedOrigin("http://192.168.1.4:8080/admin"), "http://192.168.1.4:8080")
+        XCTAssertEqual(VaultItemDraft.normalizedOrigin("https://[2001:DB8::1]:8080/x"), "https://[2001:db8::1]:8080")
         XCTAssertNil(VaultItemDraft.normalizedOrigin(""))
         XCTAssertNil(VaultItemDraft.normalizedOrigin("not a site"))
         XCTAssertNil(VaultItemDraft.normalizedOrigin("ftp://files.example.com"))

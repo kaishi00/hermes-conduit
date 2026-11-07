@@ -216,7 +216,7 @@ struct VaultItemDraft: Equatable {
         var name = label.trimmingCharacters(in: .whitespacesAndNewlines)
         // A login named for nothing is named for its site, as Hermes names
         // one saved on a sign-in page.
-        if name.isEmpty, let normalizedOrigin, let host = URL(string: normalizedOrigin)?.host() { name = host }
+        if name.isEmpty, let normalizedOrigin, let host = URLComponents(string: normalizedOrigin)?.host { name = host }
         guard !name.isEmpty else { return .failure(.label) }
 
         var secret: [String: String] = [:]
@@ -286,7 +286,8 @@ struct VaultItemDraft: Equatable {
         guard let components = URLComponents(string: withScheme),
               let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
               let host = components.host?.lowercased(), !host.isEmpty else { return nil }
-        var origin = "\(scheme)://\(host)"
+        // An IPv6 address comes without its brackets.
+        var origin = host.contains(":") ? "\(scheme)://[\(host)]" : "\(scheme)://\(host)"
         if let port = components.port, !(scheme == "https" && port == 443), !(scheme == "http" && port == 80) {
             origin += ":\(port)"
         }

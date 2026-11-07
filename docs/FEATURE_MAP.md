@@ -217,7 +217,9 @@ scoped to the profile in use.
 reference) · Passwords, logins and codes Hermes asks for (done: a login
 saved from the card lists here, and a manager unlocked here is one the
 card doesn't ask for) · Screens that open on their last answer (done: the
-page opens on its kept items and sources) · a bot's profile (not needed:
+page opens on its kept items and sources) · Sheets in Settings' look
+(done: the Add and Unlock sheets) · Settings rows a toggle reveals (done: a
+manager's Unlock or Lock row) · a bot's profile (not needed:
 the page shows the profile in use, as the other agent settings do) ·
 Watch, CarPlay and group rooms (not needed: no settings) · the notifier
 (not needed: gateway calls) · Text: the page's captions (done); README and
@@ -3699,7 +3701,8 @@ Bot and New Bot, with its Model, Work, personality and capabilities pages
 scheduled job editor, its blueprints gallery and blueprint form (done) · What
 Pulse learned and What Pulse left out (done) · a workspace file's Move (done)
 · Generate picture (done) · Connectors' add and edit sheets (done) ·
-Location's place editor (done) · custom headers (done) · Kanban's task,
+Location's place editor (done) · custom headers (done) · Passwords &
+logins' Add and Unlock sheets (done) · Kanban's task,
 model, skills, parent, reassign, board, filter, orchestration, routing and
 bulk sheets (done) · the plan card's sheet (done) · reorder bots, reorder
 pinned chats, reorder session filters and What Pulse remembers (Settings'
@@ -3713,7 +3716,7 @@ and Bots Home (not needed: already in V2's look)
 
 **Code**
 - The pieces: `Conduit/Views/AuxiliaryViews.swift` (SettingsDetailContainer, ConduitSettingsSection, SettingsCard, SettingsLinkRow, SettingsChevron, settingsCaption, settingsEditorBox, SettingsNames, ConduitMenuPicker, SettingsButtonStyle's `.settings`, `.settingsPrimary` and `.settingsDestructive`, ConduitList, ConduitFormRowFill, conduitFormBackdrop)
-- Used by: `Conduit/Views/BotWorkViews.swift` (BotWorkPanel, BotWorkRow), `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotWorkSettingsView.swift`, `Conduit/Views/BotCapabilitiesView.swift`, `Conduit/Views/SidebarView.swift` (ProjectCreateSheet, RenameSheet), `Conduit/Views/V2/CronJobEditorSheet.swift`, `Conduit/Views/GeneratePictureSheet.swift`, `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/CustomHeadersEditor.swift`, `Conduit/Views/KanbanViews.swift` (bulk sheets), `Conduit/Views/Kanban/KanbanTaskComposerView.swift`, `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (KanbanReassignSheet), `Conduit/Views/Kanban/KanbanBoardEditorView.swift`, `Conduit/Views/Kanban/KanbanBoardFilterSheet.swift`, `Conduit/Views/Kanban/KanbanOrchestrationSettingsSheet.swift`, `Conduit/Views/Kanban/KanbanProfileRoutingScreen.swift`, `Conduit/Views/Components/ChatCards.swift` (PlanSheet), `Conduit/Views/GroupChatView.swift` (GroupCreateSheet), `Conduit/Views/V2/V2PulsePage.swift` (PulseLearnedSheet, PulseLeftOutSheet), `Conduit/Views/V2/V2WorkspaceViews.swift` (WorkspaceMoveSheet), `Conduit/Views/V2/V2BotsHome.swift` (BotOverviewSheet)
+- Used by: `Conduit/Views/CredentialVaultViews.swift` (VaultItemAddSheet, VaultSourceUnlockSheet), `Conduit/Views/BotWorkViews.swift` (BotWorkPanel, BotWorkRow), `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotWorkSettingsView.swift`, `Conduit/Views/BotCapabilitiesView.swift`, `Conduit/Views/SidebarView.swift` (ProjectCreateSheet, RenameSheet), `Conduit/Views/V2/CronJobEditorSheet.swift`, `Conduit/Views/GeneratePictureSheet.swift`, `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/CustomHeadersEditor.swift`, `Conduit/Views/KanbanViews.swift` (bulk sheets), `Conduit/Views/Kanban/KanbanTaskComposerView.swift`, `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (KanbanReassignSheet), `Conduit/Views/Kanban/KanbanBoardEditorView.swift`, `Conduit/Views/Kanban/KanbanBoardFilterSheet.swift`, `Conduit/Views/Kanban/KanbanOrchestrationSettingsSheet.swift`, `Conduit/Views/Kanban/KanbanProfileRoutingScreen.swift`, `Conduit/Views/Components/ChatCards.swift` (PlanSheet), `Conduit/Views/GroupChatView.swift` (GroupCreateSheet), `Conduit/Views/V2/V2PulsePage.swift` (PulseLearnedSheet, PulseLeftOutSheet), `Conduit/Views/V2/V2WorkspaceViews.swift` (WorkspaceMoveSheet), `Conduit/Views/V2/V2BotsHome.swift` (BotOverviewSheet)
 - Lists kept for move and swipe (ConduitList): `Conduit/Views/PinnedChatsOrderSheet.swift`, `Conduit/Views/SidebarView.swift` (SessionFilterOrderSheet), `Conduit/Views/V2/V2BotsHome.swift` (BotReorderSheet), `Conduit/Views/PulseSettingsViews.swift` (PulseMemoryList)
 
 **Rulings**
@@ -3725,7 +3728,7 @@ and Bots Home (not needed: already in V2's look)
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-05, #1811 (the Bot Overview and its Work panel, beside a Bot Chat too, built from Settings' pieces: backdrop, section names, cards and buttons); 2026-11-05, #1805 (rows that open something, the routing rows included, tap across 44 pt, and New task's skill and dependency remove buttons take a 44 pt target; Kanban orchestration's Default row reads Default; SettingsPickerField's 11 choices moved to ConduitMenuPicker, so the whole field opens the menu, and its value no longer wraps, in Settings too); 2026-11-05, #1793 (sheets rebuilt from Settings' pieces)
+**Checked:** 2026-11-07, #1952 (Passwords & logins' Add and Unlock sheets, built from Settings' pieces); 2026-11-05, #1811 (the Bot Overview and its Work panel, beside a Bot Chat too, built from Settings' pieces: backdrop, section names, cards and buttons); 2026-11-05, #1805 (rows that open something, the routing rows included, tap across 44 pt, and New task's skill and dependency remove buttons take a 44 pt target; Kanban orchestration's Default row reads Default; SettingsPickerField's 11 choices moved to ConduitMenuPicker, so the whole field opens the menu, and its value no longer wraps, in Settings too); 2026-11-05, #1793 (sheets rebuilt from Settings' pieces)
 
 ## Sharing into Conduit
 
@@ -5616,6 +5619,8 @@ checklist and tests), Hands-free on your speech server (its speech server
 section), the wake phrase · Live call style's greeting · Sync across devices ·
 Cloudflare Access's service token · a connector's Turned on (Capabilities) ·
 Predictive (how many, the pause, the first follow-up check) ·
+Passwords & logins' password managers (done: a manager switched on shows
+its Unlock or Lock row) ·
 text that describes it (none: no caption or doc mentions the motion) ·
 not needed: the live voice modes' Use switches, which Voice never shows (its
 mode picker shows a mode's section only once that mode is picked)
@@ -5624,7 +5629,7 @@ mode picker shows a mode's section only once that mode is picked)
 - Motion: `Conduit/Theme.swift` (ConduitMotion.ease)
 - Enable voice on this device shows the saved switch, not the live state that reads off while reconnecting: `Conduit/Services/AppState.swift` (activeProfileVoiceSwitch), `Conduit/Views/AuxiliaryViews.swift` (VoiceSettingsRoute)
 - A switch that sets state at once animates its own setter: `Conduit/Views/HermesCallSettingsViews.swift` (change), `Conduit/Views/HealthSettingsViews.swift` (categoryBinding), `Conduit/Views/PhoneSettingsViews.swift` (binding), `Conduit/Views/VoiceSettingsView.swift` (setVoice, localHandsFreeSection, WakePhraseSettingsSection.save), `Conduit/Views/LiveVoiceStyleViews.swift`, `Conduit/Views/AuxiliaryViews.swift` (GatewaySettingsDetail, Cloudflare Access)
-- A switch whose state lands later (a consent sheet, the host's answer) animates on the value, page-wide: `Conduit/Views/LocationSettingsViews.swift` (LocationSettingsPage), `Conduit/Views/SyncedPreferencesViews.swift` (also the switch easing back after a failed host check), `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift` (ConnectorDetailPage), `Conduit/Views/PredictiveSettingsView.swift` (PredictiveSettingsPage), `Conduit/Views/HealthSettingsViews.swift` and `Conduit/Views/PhoneSettingsViews.swift` (sharing turned on from the consent sheet)
+- A switch whose state lands later (a consent sheet, the host's answer) animates on the value, page-wide: `Conduit/Views/CredentialVaultViews.swift` (reload's snapshot), `Conduit/Views/LocationSettingsViews.swift` (LocationSettingsPage), `Conduit/Views/SyncedPreferencesViews.swift` (also the switch easing back after a failed host check), `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift` (ConnectorDetailPage), `Conduit/Views/PredictiveSettingsView.swift` (PredictiveSettingsPage), `Conduit/Views/HealthSettingsViews.swift` and `Conduit/Views/PhoneSettingsViews.swift` (sharing turned on from the consent sheet)
 
 **Rulings**
 - Revealed rows animate with `ConduitMotion.ease`, which is the settle fade under Reduce Motion. Use withAnimation in the setter, or `.animation(_:value:)` on the whole page, never on one section alone: an animation scoped to a section grows its card while the sections below jump (proposed in #1246, 2026-10-25).
@@ -5632,7 +5637,7 @@ mode picker shows a mode's section only once that mode is picked)
 **Open gaps**
 - A row revealed by something other than a switch (a picker or a host answer) isn't covered here.
 
-**Checked:** 2026-10-30, #1544: Calls from Hermes' "Wait while I'm at a screen" shows under "Call about approvals and questions" while it's on, through the same animated `change`. 2026-10-28, #1441: Enable voice on this device shows the saved switch while Conduit reconnects, so its rows stay. Earlier 2026-10-26, at #1281 (carrying #1242): Predictive's switches reveal their pickers on the page-wide ease. Earlier 2026-10-25, at #1274: Health and Phone's consent-sheet turn-on animate; the live voice Use switches are not needed (never shown). Earlier at #1246 (fork CI #92): Eric's review added Enable voice and Hands-free; a connector's Turned on and Sync's failed check added from the bot reviews.
+**Checked:** 2026-11-07, #1952: Passwords & logins' manager switch reveals its Unlock or Lock row as Hermes' answer lands, page-wide. 2026-10-30, #1544: Calls from Hermes' "Wait while I'm at a screen" shows under "Call about approvals and questions" while it's on, through the same animated `change`. 2026-10-28, #1441: Enable voice on this device shows the saved switch while Conduit reconnects, so its rows stay. Earlier 2026-10-26, at #1281 (carrying #1242): Predictive's switches reveal their pickers on the page-wide ease. Earlier 2026-10-25, at #1274: Health and Phone's consent-sheet turn-on animate; the live voice Use switches are not needed (never shown). Earlier at #1246 (fork CI #92): Eric's review added Enable voice and Hands-free; a connector's Turned on and Sync's failed check added from the bot reviews.
 
 ## Predictions
 
