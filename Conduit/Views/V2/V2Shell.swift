@@ -940,12 +940,14 @@ struct V2Shell: View {
     }
 
     /// The tabs and the main button standing in the status strip, at its
-    /// foot, clear of the clock and wifi at its top. Shown and hidden by
-    /// the same rule as the floating bar: a pushed chat or Pulse on one
-    /// column hides them, beside the list they stay.
+    /// foot, clear of the clock and wifi at its top. Any page pushed over
+    /// the tab's root on one column hides them, not just a chat or Pulse
+    /// as with the floating bar: iOS lays the page's Back and a search
+    /// toolbar button out in the same strip, over the tabs and the main
+    /// button. Beside the list they stay.
     private func stripTabs(_ strip: V2StatusStrip, split: Bool) -> some View {
         ZStack(alignment: .bottom) {
-            if split || (!conversationVisible && !pulseVisible) {
+            if split || path(of: selectedTab).isEmpty {
                 VStack(spacing: 12) {
                     V2StripTabBar(selection: $selectedTab, width: strip.barWidth)
                     voiceButton(chatVoiceBeside: V2SplitLayout.hasChatVoiceBeside(split: split, path: path(of: selectedTab), inRoom: appState.activeRoomSurface != nil))
@@ -954,7 +956,7 @@ struct V2Shell: View {
                 .transition(.move(edge: strip.edge == .trailing ? .trailing : .leading).combined(with: .opacity))
             }
         }
-        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: conversationVisible || pulseVisible)
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: path(of: selectedTab).isEmpty)
         .frame(width: strip.width)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: strip.edge == .trailing ? .bottomTrailing : .bottomLeading)
         // Out past the shell's frame, into the strip itself.

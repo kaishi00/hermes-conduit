@@ -89,9 +89,41 @@ private struct WindowSideContent: ViewModifier {
             .safeAreaPadding(.leading, insets?.leading ?? 0)
             .safeAreaPadding(.trailing, insets?.trailing ?? 0)
             .ignoresSafeArea(.container, edges: insets == nil ? Edge.Set() : Edge.Set.horizontal)
-            // Never wider than the column: a stack sizes itself to its
-            // screen, and a screen reporting more than the column once
-            // stayed so, its stack centered off the window's edge.
-            .frame(maxWidth: insets?.width ?? .infinity)
+            // Never wider than offered: a stack sizes itself to its
+            // screen. Measured, the padding takes the window's inset off
+            // while `ignoresSafeArea` hands back none of the stack's, so a
+            // crowded screen (the Duo's outer screen's Chats with five
+            // buttons in its bar) reported more than the column; that sized
+            // the stack past it for good, centered off the window's edge.
+            .modifier(OfferedWidth(cap: insets?.width))
+    }
+}
+
+/// Reports no more width than it's offered (and the column's, `cap`): a
+/// screen that can't fit in what's left after the padding overflows
+/// inside its stack instead of sizing the stack past the column. Placed,
+/// the stack's insets come back and the screen gets its full width.
+private struct OfferedWidth: ViewModifier {
+    let cap: CGFloat?
+
+    func body(content: Content) -> some View {
+        OfferedWidthLayout(cap: cap) { content }
+    }
+}
+
+private struct OfferedWidthLayout: Layout {
+    let cap: CGFloat?
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let subview = subviews.first else { return .zero }
+        let size = subview.sizeThatFits(proposal)
+        var width = size.width
+        if let offered = proposal.width, offered.isFinite { width = min(width, offered) }
+        if let cap { width = min(width, cap) }
+        return CGSize(width: width, height: size.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
     }
 }
