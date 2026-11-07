@@ -372,7 +372,16 @@ final class HTMLPreviewDocuments {
         self.now = now
     }
 
-    func kept(_ key: String) -> Kept? { pages[key] }
+    /// The kept page, which counts as just used: the page dropped at
+    /// capacity is the one shown longest ago, not read longest ago.
+    func kept(_ key: String) -> Kept? {
+        guard let page = pages[key] else { return nil }
+        if order.last != key {
+            order.removeAll { $0 == key }
+            order.append(key)
+        }
+        return page
+    }
 
     func isFresh(_ kept: Kept) -> Bool {
         now().timeIntervalSince(kept.readAt) < Self.freshFor

@@ -47,8 +47,12 @@ final class HTMLPreviewDocumentsTests: XCTestCase {
         }
         async let first = store.read("a", fetch: fetch)
         async let second = store.read("a", fetch: fetch)
-        for _ in 0..<100 where release == nil { await Task.yield() }
-        release?.resume()
+        for _ in 0..<500 where release == nil { try? await Task.sleep(for: .milliseconds(2)) }
+        guard let release else {
+            XCTFail("the shared read never started")
+            return
+        }
+        release.resume()
         let answers = await [first, second]
         XCTAssertEqual(answers, ["<p>shared</p>", "<p>shared</p>"])
         XCTAssertEqual(reads, 1)
@@ -75,5 +79,16 @@ final class HTMLPreviewDocumentsTests: XCTestCase {
         }
         XCTAssertNil(store.kept("page0"), "the page read longest ago goes")
         XCTAssertNotNil(store.kept("page\(HTMLPreviewDocuments.capacity)"))
+    }
+
+    func testAPageShownAgainIsKeptOverOnesShownLongerAgo() {
+        let store = documents()
+        for index in 0..<HTMLPreviewDocuments.capacity {
+            store.keep("<p>\(index)</p>", for: "page\(index)")
+        }
+        XCTAssertNotNil(store.kept("page0"), "shown again")
+        store.keep("<p>new</p>", for: "new")
+        XCTAssertNotNil(store.kept("page0"), "a page just shown stays")
+        XCTAssertNil(store.kept("page1"), "the page shown longest ago goes")
     }
 }

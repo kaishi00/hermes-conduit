@@ -223,31 +223,10 @@ final class EchoCancellingVoicePlayback: SpeechPlaybackService {
     /// The gateway sends a fallback clip only for a reply that streamed no
     /// PCM, and the clip is the whole reply: like the default playback, it
     /// replaces anything still queued.
-    ///
-    /// The clip decodes off the main thread (writing it to a file, reading
-    /// it whole), and plays once decoded unless a stop came first; `drain`
-    /// waits for it (issue 1970). A clip that can't be decoded is logged
-    /// and plays nothing, as a reply with no speech would.
     func playEncodedAudioData(_ data: Data) throws {
         audio.interrupt()
-        pendingClip?.cancel()
-        let generation = stopGeneration
-        pendingClip = Task { [weak self] in
-            let decoded = await Task.detached(priority: .userInitiated) {
-                Result { try Self.decode(data) }
-            }.value
-            guard let self, generation == self.stopGeneration, !Task.isCancelled,
-                  case .success(let buffer) = decoded else { return }
-            do {
-                try self.audio.play(buffer)
-            } catch {
-                conversationAudioLogger.error("Fallback speech could not be played: \(LogRedaction.describing(error), privacy: .public)")
-            }
-        }
+        try audio.play(try Self.decode(data))
     }
-
-    /// A fallback clip still decoding; `drain` plays it out first.
-    private var pendingClip: Task<Void, Never>?
 
     func finish() throws {
         // An odd tail is invalid PCM16 and is dropped rather than shifted
@@ -257,10 +236,6 @@ final class EchoCancellingVoicePlayback: SpeechPlaybackService {
 
     func drain() async {
         let generation = stopGeneration
-        if let clip = pendingClip {
-            await clip.value
-            if pendingClip == clip { pendingClip = nil }
-        }
         while audio.isPlaying, generation == stopGeneration, !Task.isCancelled {
             try? await Task.sleep(for: drainPollInterval)
         }
@@ -273,8 +248,6 @@ final class EchoCancellingVoicePlayback: SpeechPlaybackService {
 
     func stop() {
         stopGeneration &+= 1
-        pendingClip?.cancel()
-        pendingClip = nil
         audio.stopOutput()
     }
 
@@ -283,8 +256,10 @@ final class EchoCancellingVoicePlayback: SpeechPlaybackService {
     func resume() {}
 
     /// AVAudioFile reads from a file only, and the file's extension is its
-    /// format hint. Off the main actor: see `playEncodedAudioData`.
-    nonisolated private static func decode(_ data: Data) throws -> AVAudioPCMBuffer {
+    /// format hint. Decoding runs on the main actor: it is the fallback-only
+    /// path (one clip for a reply whose speech didn't stream), and the
+    /// playback seam is synchronous.
+    private static func decode(_ data: Data) throws -> AVAudioPCMBuffer {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("conduit-speech-\(UUID().uuidString)")
             .appendingPathExtension(fileExtension(for: data))
@@ -305,7 +280,7 @@ final class EchoCancellingVoicePlayback: SpeechPlaybackService {
     }
 
     /// Sniffs the clip's container from its first bytes.
-    nonisolated static func fileExtension(for data: Data) -> String {
+    static func fileExtension(for data: Data) -> String {
         let head = [UInt8](data.prefix(12))
         func starts(_ ascii: String, at offset: Int = 0) -> Bool {
             let bytes = Array(ascii.utf8)

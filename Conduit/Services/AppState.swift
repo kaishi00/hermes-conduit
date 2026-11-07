@@ -12876,7 +12876,7 @@ final class AppState: ObservableObject {
     /// its first event and length, which a trim or a fresh tail change
     /// without moving the cursor.
     private var roomReplayKey: String {
-        "\(activeRoomReplay.roomID)|\(activeRoomReplay.cursor)|\(activeRoomReplay.events.first?.seq ?? -1)|\(activeRoomReplay.events.count)"
+        "\(activeRoomReplay.roomID)|\(activeRoomReplay.cursor)|\(activeRoomReplay.events.first?.seq ?? -1)|\(activeRoomReplay.events.count)|\(activeRoomReplay.events.last?.eventID ?? "")"
     }
 
     private struct RoomMemberStatusInputs: Equatable {
@@ -23206,18 +23206,20 @@ final class AppState: ObservableObject {
         )
         guard let client, self.client === client, activeProfile == profile,
               sessionCatalogCache.shouldLoadFullHistory(forKey: "\(profile):exclude", forceRefresh: false),
-              // A visit while an earlier one's history walk is still under
-              // way leaves it to that walk: the marker is set only once it ends.
-              visitHistoryWalk == nil else { return }
+              // A visit while an earlier one's history walk for the same
+              // profile and dashboard is still under way leaves it to that
+              // walk: the marker is set only once it ends.
+              visitHistoryWalk.map({ $0.profile != profile || $0.dashboardID != dashboardID }) ?? true
+        else { return }
         let walk = loadDeferredCatalogPages(after: client, profile: profile, dashboardID: dashboardID)
-        visitHistoryWalk = walk
+        visitHistoryWalk = (walk, profile, dashboardID)
         Task { @MainActor [weak self] in
             await walk.value
-            if self?.visitHistoryWalk == walk { self?.visitHistoryWalk = nil }
+            if self?.visitHistoryWalk?.walk == walk { self?.visitHistoryWalk = nil }
         }
     }
 
-    private var visitHistoryWalk: Task<Void, Never>?
+    private var visitHistoryWalk: (walk: Task<Void, Never>, profile: String, dashboardID: UUID?)?
 
     /// Replace this profile's in-memory catalog with Hermes' current data.
     /// Use this after database recovery or deletion outside Conduit.

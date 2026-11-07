@@ -231,7 +231,7 @@ extension VoiceConversationController {
         where predicate: @escaping (Float) -> Bool,
         timeout: TimeInterval = 5
     ) async -> Bool {
-        await awaitPublishedValue($microphoneLevel, initialValue: microphoneLevel, where: predicate, timeout: timeout)
+        await awaitPublishedValue(microphoneMeter.$level, initialValue: microphoneMeter.level, where: predicate, timeout: timeout)
     }
 
     /// Awaits the speaker-safe playback capture suspension flag.
