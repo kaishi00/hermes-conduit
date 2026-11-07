@@ -6440,7 +6440,7 @@ shapes for the same verbs. Conduit works on either address and sends each
 its own shape.
 
 **Siblings:** every chat surface's send, steer, redirect, interrupt and Queue
-(chats, project chats, Bot Chat; the voice modes' turns and jobs, CarPlay
+(the queue it joins: A chat's queue on the Webapp; chats, project chats, Bot Chat; the voice modes' turns and jobs, CarPlay
 and the Watch go through the same client) · approval and clarify answers
 (chat cards, notification actions, spoken answers) · rename, branch,
 compress (a Bot Chat's `/new` compaction included), rewind (Edit and
@@ -6505,7 +6505,47 @@ README (Connecting, Architecture) · the website's FAQ
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-07, #1954 (step summaries ask through the plugin's /side-question, the /btw side agent only as a fallback); 2026-11-03, #1696 (an interrupt names the turn it stopped, for Voice's cancelled-turn note; a turn that starts during it keeps running); 2026-11-02, #1631 with notifier #504 (pictures ride in the message's attachments; host verbs checked on a real listener; Predictions' limit ruled); 2026-11-01, #1631 with notifier #504 (the plugin's chat features ported to the authority: turn surface, Predictions, Watch jobs, a Watch call's Local Live chat, Pulse's turns; Desktop views ruled; each checked on the canary); 2026-11-01, #1631 (seeded; issue #1618; probed against the 2026-11-01 canary; unseen prompts and the model confirm closed; the other socket verbs, the hidden turn, sends into a running turn and other profiles probed).
+**Checked:** 2026-11-07, #1978 with notifier #612 (the chat's queue and a turn a restart cut off, see A chat's queue on the Webapp); 2026-11-07, #1954 (step summaries ask through the plugin's /side-question, the /btw side agent only as a fallback); 2026-11-03, #1696 (an interrupt names the turn it stopped, for Voice's cancelled-turn note; a turn that starts during it keeps running); 2026-11-02, #1631 with notifier #504 (pictures ride in the message's attachments; host verbs checked on a real listener; Predictions' limit ruled); 2026-11-01, #1631 with notifier #504 (the plugin's chat features ported to the authority: turn surface, Predictions, Watch jobs, a Watch call's Local Live chat, Pulse's turns; Desktop views ruled; each checked on the canary); 2026-11-01, #1631 (seeded; issue #1618; probed against the 2026-11-01 canary; unseen prompts and the model confirm closed; the other socket verbs, the hidden turn, sends into a running turn and other profiles probed).
+
+## A chat's queue on the Webapp
+
+On the gateway's own listener (the Webapp, Hermes 0.23's session authority)
+every send joins the chat's queue: a send into a running turn waits there,
+and a turn a gateway restart cut off comes back `unknown` and holds every
+later message until someone discards it. Conduit shows the open chat's
+queue above the composer: each waiting message with Send now, Edit and
+Remove from queue, and a cut-off turn with Resend and Discard. `hermes
+dashboard` keeps no queue, so none of this shows there.
+
+**Siblings:** chats, project chats and Bot Chat (the same chat screen) · the
+composer's Queue and any send into a running turn (Two Hermes servers) · a
+send whose reply was lost (the lost-reply check reads the queue first) ·
+the voice modes, CarPlay and the Watch (not needed: their sends still say
+they were queued, and a cut-off turn shows its card when the chat is opened
+on the phone) · the plugin's own chats (Watch jobs, Pulse's turns, a Watch
+call's Local Live chat), which let go of their own cut-off turns · group
+rooms (not needed: rooms run on the gateway's groups API, not a chat's
+queue) · the notifier's CHANGELOG
+
+**Code**
+- The queue and its rows: `Conduit/Models/AuthorityQueue.swift` (QueuedPrompt, QueuedPromptReceipt, AuthorityQueueStore)
+- Reading it and its verbs: `Conduit/Services/HermesClient.swift` (SessionRuntimeSnapshot.queuedPrompts from the resume's and `session.info`'s `pending`; cancelQueuedPrompt, replaceQueuedPrompt, sendQueuedPromptNow, discardLostPrompt, queuedPrompts, unansweredSubmissionID, admittedAdmissionID, deliveringEventAdmissionID)
+- The user's queued rows and the lost-reply check: `Conduit/Services/AppState.swift` (applyRuntime's queue, holdQueuedSendRow, takeQueuedSendRow, noteOwnSend, adoptOwnQueuedSends, moveQueuedSendToDock, noteQueuedTurnStarted, heldInAuthorityQueue in reconcileAmbiguousPromptSubmission)
+- The buttons: `Conduit/Services/AppState+AuthorityQueue.swift`, `Conduit/Views/Components/AuthorityQueueDock.swift`, `Conduit/Views/ChatView.swift` (the bottom bar)
+- The plugin's own cut-off turns: `notifier/gateway_chats.py` (OWN_SUBMISSION_PREFIX, _note_pending, _settle_lost)
+- Tests: `ConduitTests/HermesClientTests.swift` (the queue tests), `notifier/tests/test_gateway_chats.py`, `notifier/upstream/test_gateway_queue.py` (a real listener killed and restarted)
+
+**Rulings**
+- Full queue support on the listener only: a cut-off turn's Discard and Resend, a queued message's Cancel, Edit and Send now, the receipt check for a lost send, and the plugin's own chats (Eric, 2026-11-07, #1978, notifier #612).
+- The user's own message leaves the transcript while it waits and comes back at its turn's `message.start` (which names its admission), so it shows once, in the dock or in the chat, never both. Send now adds it as a steer, as the composer's Steer does; Edit sends it to the back of the line, as Hermes does (2026-11-07, #1978).
+- Resend discards the cut-off turn and sends its words again as a new message, at the back of the line: the messages that waited behind it run first (2026-11-07, #1978).
+- The plugin discards only its own cut-off turns (sent with a `conduit-plugin-` submission id), before its next send into that chat; a person's is left for them to choose in Conduit. A refused discard is logged and the send still goes (2026-11-07, #1978, notifier #612).
+- A refused action says what became of the message (still queued, already started, runs next, no longer waiting), never a bare refusal token (2026-11-07, #1978).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-07, #1978 with notifier #612 (added: the queue dock, the lost-turn card, the receipt check and the plugin's own lost turns).
 
 ## Where a message was sent (turn surface)
 
