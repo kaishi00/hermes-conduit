@@ -59,10 +59,48 @@ Results:
 ## Changing what's shown
 
 - Chats, bots, tasks and scheduled jobs: edit `demo-script.json`. A chat with
-  `"seed": false` is only sent live by the preview recording.
+  `"seed": false` is only sent live by the preview recording; a bot's turn
+  with `"seed": false` is only answered live (the promo's message and its
+  work updates).
 - A new screen: add a `snap("NN-name")` step to the test. Wait for real
   content before snapping; the hosted Mac is slow.
 - Message times read just before the 9:41 status bar because the test runs
   the app in a matching time zone (`timeZoneNearStatusBarTime`).
 - Keep markdown out of the first line of answers that show as previews (bot
   list, chat list).
+
+## Promo footage
+
+`.github/workflows/app-store-promo.yml` records the footage the App Store's
+promo loops (the product page header and the search result video) are cut
+from. Run it from Actions > App Store promo footage > Run workflow; `device`
+takes a simulator name (iPhone 17 Pro Max by default).
+
+- The dashboard plays `promo-script.json` instead (`DEMO_SCRIPT`): the
+  anime's bots, Conduit Chan, Piko, Mira and Riri, with their pictures from
+  `portraits/` (a bot's `"avatar"`, stored with `profiles.set_asset` as
+  Conduit does), and Hermes with the app icon. `"approvals": "manual"` sets
+  that bot's own approval mode, so its workstreams' risky steps ask in
+  Conduit; `"workstreams": true` turns the notifier on in every bot's profile
+  and restarts Hermes, so the Bot Chats coordinate work; `"files"` are empty
+  files the scripted tool calls work on.
+- The scripted Bot Chat calls the work tools through `tool_call`, as a real
+  model does when Hermes keeps them behind Tool Search. A workstream's turns
+  match on its brief (`<title>); the user can open it`), and the Bot Chat's
+  work updates on words from their reports, so the order of a bot's `turns`
+  matters: the first match wins.
+- `testRecordPromo` signs in, opens Conduit Chan from Bots Home, asks her to
+  plan a Kyoto weekend, waits while two workstreams run, approves the photo
+  cleanup from the Work panel and goes back to Bots Home, while
+  `simctl io recordVideo` records the whole walk. Its `PROMO_MARK` lines land
+  in `promo.marks` beside `promo.mov`, with the recorder's start time, to cut
+  by. Then `record-clip.sh` records the live voice fixtures
+  (`clips/voice-listening.mp4`, `clips/voice-speaking.mp4`).
+- Results, under `refs/app-store-shots/<run id>-promo`, in `shots/`:
+  `promo.mov` (dropped when over 90 MB; `promo-full-NN.mp4` are the same at
+  full resolution, 90 s each, and a part over 90 MB is dropped too),
+  `promo.mp4` (1920 px high), `promo.marks`, `stills/` (the test's
+  `promo-*` screenshots, named from the result's manifest) and `clips/`; in
+  `logs/`, Hermes' and xcodebuild's logs, the app's own log (`app-log.txt`)
+  and `probe_bot_routes.py`'s answers from the runner before and after the
+  walk (`probe-bots-before.txt`, `probe-bots.txt`), for a walk that stopped short.

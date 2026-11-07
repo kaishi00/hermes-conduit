@@ -9,7 +9,8 @@
 # a believable address.
 #
 # Env: HERMES_COMMIT (pinned), DEMO_HOST, DEMO_PORT, DEMO_USER, DEMO_PASSWORD,
-#      DEMO_WORK (scratch dir). Writes $DEMO_WORK/*.log.
+#      DEMO_WORK (scratch dir), DEMO_SCRIPT (demo-script.json by default;
+#      app-store-promo.yml passes promo-script.json). Writes $DEMO_WORK/*.log.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -20,6 +21,7 @@ DEMO_USER="${DEMO_USER:-demo}"
 DEMO_PASSWORD="${DEMO_PASSWORD:?set DEMO_PASSWORD}"
 DEMO_WORK="${DEMO_WORK:-$PWD/demo-hermes}"
 STUB_PORT="${STUB_PORT:-8765}"
+DEMO_SCRIPT="$(cd "$SCRIPT_DIR" && realpath "${DEMO_SCRIPT:-demo-script.json}")"
 
 mkdir -p "$DEMO_WORK"
 export HERMES_HOME="$DEMO_WORK/home"
@@ -86,26 +88,37 @@ if ! grep -q " $DEMO_HOST\$" /etc/hosts; then
   sudo dscacheutil -flushcache 2>/dev/null || true
 fi
 
-# Hermes works (and the scripted tool calls write) in the scratch dir.
+# Hermes works (and the scripted tool calls write) in the scratch dir, with
+# the script's "files" in it (empty files its tool calls work on).
 cd "$DEMO_WORK"
-nohup python3 "$SCRIPT_DIR/llm_stub.py" "$SCRIPT_DIR/demo-script.json" "$STUB_PORT" > "$DEMO_WORK/stub.log" 2>&1 &
-nohup "$HERMES" gateway run > "$DEMO_WORK/gateway.log" 2>&1 &
-nohup "$HERMES" dashboard --no-open --skip-build --port "$DEMO_PORT" > "$DEMO_WORK/dashboard.log" 2>&1 &
-
+"$PY" - "$DEMO_SCRIPT" <<'PY'
+import json, os, sys
+for path in json.load(open(sys.argv[1])).get("files", []):
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    open(path, "a").close()
+PY
+nohup python3 "$SCRIPT_DIR/llm_stub.py" "$DEMO_SCRIPT" "$STUB_PORT" > "$DEMO_WORK/stub.log" 2>&1 &
 BASE="http://$DEMO_HOST:$DEMO_PORT"
-for _ in $(seq 1 90); do
-  curl -sf "$BASE/api/status" >/dev/null && break
-  sleep 2
-done
-curl -sf "$BASE/api/status" >/dev/null || { echo "::error::dashboard did not start"; tail -40 "$DEMO_WORK/dashboard.log"; exit 1; }
+start_hermes() {
+  nohup "$HERMES" gateway run >> "$DEMO_WORK/gateway.log" 2>&1 &
+  GATEWAY_PID=$!
+  nohup "$HERMES" dashboard --no-open --skip-build --port "$DEMO_PORT" >> "$DEMO_WORK/dashboard.log" 2>&1 &
+  DASHBOARD_PID=$!
+  for _ in $(seq 1 90); do
+    curl -sf "$BASE/api/status" >/dev/null && break
+    sleep 2
+  done
+  curl -sf "$BASE/api/status" >/dev/null || { echo "::error::dashboard did not start"; tail -40 "$DEMO_WORK/dashboard.log"; exit 1; }
+}
+start_hermes
 
 # Seed the chats through the gateway RPC the app itself uses, then the
 # scheduled jobs through the CLI.
-"$PY" -u "$SCRIPT_DIR/seed_demo.py" "$SCRIPT_DIR/demo-script.json" "$BASE" "$DEMO_USER" "$DEMO_PASSWORD" \
+"$PY" -u "$SCRIPT_DIR/seed_demo.py" "$DEMO_SCRIPT" "$BASE" "$DEMO_USER" "$DEMO_PASSWORD" \
   2>&1 | tee "$DEMO_WORK/seed.log"
-"$PY" "$SCRIPT_DIR/seed_board.py" "$SCRIPT_DIR/demo-script.json" "$HERMES" 2>&1 | tee -a "$DEMO_WORK/seed.log" \
+"$PY" "$SCRIPT_DIR/seed_board.py" "$DEMO_SCRIPT" "$HERMES" 2>&1 | tee -a "$DEMO_WORK/seed.log" \
   || { echo "::error::the Kanban board was not fully seeded"; exit 1; }
-"$PY" - "$SCRIPT_DIR/demo-script.json" <<'PY' > "$DEMO_WORK/cron.tsv"
+"$PY" - "$DEMO_SCRIPT" <<'PY' > "$DEMO_WORK/cron.tsv"
 import json, sys
 for job in json.load(open(sys.argv[1])).get("cron", []):
     print("\t".join([job["name"], job["schedule"], job["prompt"], "paused" if job.get("paused") else ""]))
@@ -114,6 +127,62 @@ while IFS=$'\t' read -r name schedule prompt paused; do
   "$HERMES" cron create --name "$name" ${paused:+--paused} "$schedule" "$prompt" >> "$DEMO_WORK/seed.log" 2>&1 \
     || { echo "::error::cron job '$name' was not created"; tail -20 "$DEMO_WORK/seed.log"; exit 1; }
 done < "$DEMO_WORK/cron.tsv"
+
+# A bot's own approval mode (the demo's is off): "approvals": "manual" in
+# the script, so its workstreams' risky steps ask in Conduit.
+"$PY" - "$DEMO_SCRIPT" <<'PY' > "$DEMO_WORK/approvals.tsv"
+import json, sys
+for bot in json.load(open(sys.argv[1])).get("bots", []):
+    if bot.get("approvals"):
+        print(bot["name"] + "\t" + bot["approvals"])
+PY
+while IFS=$'\t' read -r bot mode; do
+  "$HERMES" -p "$bot" config set approvals.mode "$mode" >> "$DEMO_WORK/seed.log" 2>&1 \
+    || { echo "::error::approvals for $bot were not set"; tail -20 "$DEMO_WORK/seed.log"; exit 1; }
+done < "$DEMO_WORK/approvals.tsv"
+
+# Bot workstreams: the bots' own turns and work routes run the notifier from
+# each bot's profile, so turn it on there and link the main install in (the
+# plugin's own sweep, hermes-conduit#1538), then restart Hermes to load it.
+if grep -q '"workstreams": true' "$DEMO_SCRIPT"; then
+  "$PY" - "$DEMO_SCRIPT" <<'PY' > "$DEMO_WORK/bots.txt"
+import json, sys
+print("\n".join(bot["name"] for bot in json.load(open(sys.argv[1])).get("bots", [])))
+PY
+  while read -r bot; do
+    [ -n "$bot" ] || continue
+    (cd "$DEMO_WORK/src" && HERMES_HOME="$HERMES_HOME/profiles/$bot" "$PY" -c '
+from hermes_cli.config import load_config, save_config
+cfg = load_config()
+enabled = cfg.setdefault("plugins", {}).setdefault("enabled", [])
+if "conduit_push" not in enabled:
+    enabled.append("conduit_push")
+save_config(cfg)') || { echo "::error::the notifier was not turned on for $bot"; exit 1; }
+  done < "$DEMO_WORK/bots.txt"
+  "$PY" - "$HERMES_HOME" <<'PY' | tee -a "$DEMO_WORK/seed.log"
+import importlib.util, sys
+from pathlib import Path
+home = Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location("profile_copies", home / "plugins/conduit_push/profile_copies.py")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+print("\n".join(module.sweep(home, home / "plugins/conduit_push")))
+PY
+  kill "$GATEWAY_PID" "$DASHBOARD_PID" 2>/dev/null || true
+  for _ in $(seq 1 30); do
+    kill -0 "$GATEWAY_PID" 2>/dev/null || kill -0 "$DASHBOARD_PID" 2>/dev/null || break
+    sleep 1
+  done
+  kill -9 "$GATEWAY_PID" "$DASHBOARD_PID" 2>/dev/null || true
+  sleep 2
+  # The old dashboard must be gone, or the status check below would pass
+  # against it while the new one fails to bind the port.
+  if kill -0 "$GATEWAY_PID" 2>/dev/null || kill -0 "$DASHBOARD_PID" 2>/dev/null \
+      || curl -sf "$BASE/api/status" >/dev/null; then
+    echo "::error::Hermes did not stop for its restart"; exit 1
+  fi
+  start_hermes
+fi
 
 jar="$DEMO_WORK/cookies"
 curl -sf -c "$jar" -H 'Content-Type: application/json' \

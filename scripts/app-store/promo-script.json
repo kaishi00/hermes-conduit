@@ -1,0 +1,398 @@
+{
+  "workstreams": true,
+  "fallback": "Done. Anything else?",
+  "stream_delay": 0.0,
+  "default_bot": {
+    "title": "Hermes",
+    "avatar": "portraits/hermes.png"
+  },
+  "chats": [
+    {
+      "title": "Ryokan shortlist",
+      "seed": false,
+      "turns": [
+        {
+          "match": "ryokan shortlist); the user can open it",
+          "steps": [
+            {
+              "reasoning": "Three ryokan near Gion, under $300 a night, each with a private bath. Search first, then compare price, walking time and reviews.",
+              "delay": 0.1,
+              "tool_calls": [
+                {
+                  "name": "tool_call",
+                  "arguments": {
+                    "name": "work_progress",
+                    "arguments": {
+                      "steps": [
+                        {
+                          "step": "Search ryokan near Gion",
+                          "state": "doing"
+                        },
+                        {
+                          "step": "Compare prices and reviews",
+                          "state": "todo"
+                        },
+                        {
+                          "step": "Pick three",
+                          "state": "todo"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "reasoning": "Eleven places fit the budget. Hanami-tei, Gion Kotori and Shirakawa Yado have the best reviews and a private bath in every room.",
+              "delay": 0.1,
+              "tool_calls": [
+                {
+                  "name": "tool_call",
+                  "arguments": {
+                    "name": "work_progress",
+                    "arguments": {
+                      "steps": [
+                        {
+                          "step": "Search ryokan near Gion",
+                          "state": "done"
+                        },
+                        {
+                          "step": "Compare prices and reviews",
+                          "state": "doing"
+                        },
+                        {
+                          "step": "Pick three",
+                          "state": "todo"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "reasoning": "Hanami-tei is the best value. Shirakawa Yado has the canal view.",
+              "delay": 0.1,
+              "tool_calls": [
+                {
+                  "name": "tool_call",
+                  "arguments": {
+                    "name": "work_progress",
+                    "arguments": {
+                      "steps": [
+                        {
+                          "step": "Search ryokan near Gion",
+                          "state": "done"
+                        },
+                        {
+                          "step": "Compare prices and reviews",
+                          "state": "done"
+                        },
+                        {
+                          "step": "Pick three",
+                          "state": "done"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "delay": 0.03,
+              "content": "Three picks near Gion, all under $300 a night with a private bath:\n\n1. **Ryokan Hanami-tei**: $240, quiet garden rooms, 5 minutes to Gion.\n2. **Gion Kotori**: $285, 2 minutes from Yasaka Shrine, kaiseki dinner included.\n3. **Shirakawa Yado**: $295, on the Shirakawa canal, rated 9.6.\n\nHanami-tei is the best value; Shirakawa Yado if you want the canal view."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Trip photo cleanup",
+      "seed": false,
+      "turns": [
+        {
+          "match": "trip photo cleanup); the user can open it",
+          "steps": [
+            {
+              "reasoning": "Group the Kyoto photos by how alike they look, keep the sharpest of each set and delete the rest.",
+              "delay": 0.45,
+              "tool_calls": [
+                {
+                  "name": "tool_call",
+                  "arguments": {
+                    "name": "work_progress",
+                    "arguments": {
+                      "steps": [
+                        {
+                          "step": "Find duplicate sets",
+                          "state": "doing"
+                        },
+                        {
+                          "step": "Keep the sharpest of each",
+                          "state": "todo"
+                        },
+                        {
+                          "step": "Delete the rest",
+                          "state": "todo"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "content": "Looking for near-identical shots.",
+              "delay": 0.3,
+              "tool_calls": [
+                {
+                  "name": "terminal",
+                  "arguments": {
+                    "command": "ls Photos/Kyoto/duplicates | wc -l"
+                  }
+                }
+              ]
+            },
+            {
+              "reasoning": "214 duplicates in 61 sets. The sharpest of each set stays in the album.",
+              "delay": 0.45,
+              "tool_calls": [
+                {
+                  "name": "tool_call",
+                  "arguments": {
+                    "name": "work_progress",
+                    "arguments": {
+                      "steps": [
+                        {
+                          "step": "Find duplicate sets",
+                          "state": "done"
+                        },
+                        {
+                          "step": "Keep the sharpest of each",
+                          "state": "done"
+                        },
+                        {
+                          "step": "Delete the rest",
+                          "state": "doing"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "content": "214 duplicates in 61 sets. Deleting them now.",
+              "tool_calls": [
+                {
+                  "name": "terminal",
+                  "arguments": {
+                    "command": "rm -r Photos/Kyoto/duplicates"
+                  }
+                }
+              ]
+            },
+            {
+              "tool_calls": [
+                {
+                  "name": "tool_call",
+                  "arguments": {
+                    "name": "work_progress",
+                    "arguments": {
+                      "steps": [
+                        {
+                          "step": "Find duplicate sets",
+                          "state": "done"
+                        },
+                        {
+                          "step": "Keep the sharpest of each",
+                          "state": "done"
+                        },
+                        {
+                          "step": "Delete the rest",
+                          "state": "done"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "delay": 0.03,
+              "content": "Done: 214 duplicates deleted, the sharpest shot of each set kept. Kyoto went from 1,032 photos to 818, and 3.1 GB is free again."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Kyoto packing list",
+      "turns": [
+        {
+          "match": "pack for kyoto",
+          "prompt": "What should I pack for Kyoto in late November?",
+          "steps": [
+            {
+              "content": "Layers: it's around 50°F by day and near freezing at night. Bring a warm coat, comfortable walking shoes you can slip off at temples, and socks without holes. A small towel and a coin purse help too."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "bots": [
+    {
+      "name": "conduit-chan",
+      "title": "Conduit Chan",
+      "avatar": "portraits/conduit-chan.png",
+      "description": "Runs your errands and hands the big ones to her workstreams.",
+      "soul": "You are Conduit Chan, a cheerful, capable assistant who coordinates the user's work.",
+      "approvals": "manual",
+      "turns": [
+        {
+          "match": "214 duplicates deleted",
+          "steps": [
+            {
+              "delay": 0.03,
+              "content": "Photos are tidy: 214 duplicates gone and 3.1 GB back. Your Kyoto weekend is all set!"
+            }
+          ],
+          "seed": false
+        },
+        {
+          "match": "three picks near gion",
+          "steps": [
+            {
+              "delay": 0.03,
+              "content": "The ryokan shortlist is in. Hanami-tei is the best value at $240 a night. Want me to hold a room?"
+            }
+          ],
+          "seed": false
+        },
+        {
+          "match": "work update from your workstreams",
+          "steps": [
+            {
+              "delay": 0.03,
+              "content": "The photo cleanup needs your OK before it deletes anything."
+            }
+          ],
+          "seed": false
+        },
+        {
+          "match": "plan our kyoto weekend",
+          "steps": [
+            {
+              "reasoning": "Two separate jobs: research the ryokan, and clean up the photos. One workstream each.",
+              "delay": 0.15,
+              "tool_calls": [
+                {
+                  "name": "tool_call",
+                  "arguments": {
+                    "name": "work_start",
+                    "arguments": {
+                      "title": "Ryokan shortlist",
+                      "instructions": "Shortlist three ryokan near Gion for Friday and Saturday night, under $300 a night with a private bath. Compare price, the walk to Gion and the reviews, and recommend one."
+                    }
+                  }
+                },
+                {
+                  "name": "tool_call",
+                  "arguments": {
+                    "name": "work_start",
+                    "arguments": {
+                      "title": "Trip photo cleanup",
+                      "instructions": "Clear the duplicate shots out of the Kyoto photos in Photos/Kyoto: keep the sharpest of each set and delete the rest (they're in Photos/Kyoto/duplicates)."
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "delay": 0.03,
+              "content": "On it! I'll tell you the moment they're back."
+            }
+          ],
+          "seed": false
+        },
+        {
+          "match": "what's on today",
+          "prompt": "Morning! What's on today?",
+          "steps": [
+            {
+              "content": "Morning! Your dentist is at 2, and Riri says Aunt Mae's birthday card needs to go out today. Piko fixed the garage sensor overnight."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "piko",
+      "title": "Piko",
+      "avatar": "portraits/piko.png",
+      "description": "Fixes things around the house and the homelab.",
+      "soul": "You are Piko, an upbeat tinkerer who fixes the user's devices and home setup.",
+      "turns": [
+        {
+          "match": "garage door sensor",
+          "prompt": "The garage door sensor keeps going offline.",
+          "steps": [
+            {
+              "content": "Fixed! It kept roaming to the 5 GHz band, which doesn't reach the garage. I pinned it to 2.4 GHz and it's held a steady signal all night."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "mira",
+      "title": "Mira",
+      "color": "blue",
+      "avatar": "portraits/mira.png",
+      "description": "Researches anything and comes back with sources.",
+      "soul": "You are Mira, a precise researcher who always cites sources.",
+      "turns": [
+        {
+          "match": "maple leaves",
+          "prompt": "When do the maple leaves peak in Kyoto?",
+          "steps": [
+            {
+              "content": "Usually from the third week of November to early December. Eikando and Tofukuji peak first; go early in the morning, before the tour buses."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "riri",
+      "title": "Riri",
+      "avatar": "portraits/riri.png",
+      "description": "Keeps up with your messages, cards and reminders.",
+      "soul": "You are Riri, a warm, upbeat assistant who keeps up with the user's messages and reminders.",
+      "turns": [
+        {
+          "match": "aunt mae",
+          "prompt": "What did I promise Aunt Mae?",
+          "steps": [
+            {
+              "content": "A postcard from Kyoto and your matcha cookie recipe! Her birthday is Friday, so I've drafted the card for you to sign."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "cron": [],
+  "kanban": [],
+  "files": [
+    "Photos/Kyoto/duplicates/IMG_4120.jpg",
+    "Photos/Kyoto/duplicates/IMG_4121.jpg",
+    "Photos/Kyoto/duplicates/IMG_4122.jpg",
+    "Photos/Kyoto/duplicates/IMG_4123.jpg",
+    "Photos/Kyoto/duplicates/IMG_4124.jpg",
+    "Photos/Kyoto/duplicates/IMG_4125.jpg",
+    "Photos/Kyoto/duplicates/IMG_4126.jpg",
+    "Photos/Kyoto/duplicates/IMG_4127.jpg"
+  ]
+}
