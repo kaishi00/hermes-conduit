@@ -43,7 +43,16 @@ try:
 except ValueError:
     pass
 print("bot chat", chat)
-show("messages", call("GET", f"/api/sessions/{chat}/messages?profile={bot}"))
+status, body = call("GET", f"/api/sessions/{chat}/messages?profile={bot}")
+print("messages", status)
+try:
+    for row in json.loads(body).get("messages", []):
+        content = row.get("content") or ""
+        if row.get("tool_calls"):
+            content += " " + json.dumps(row["tool_calls"])[:300]
+        print("  ", row.get("role"), row.get("tool_name") or "", content[:500].replace("\n", " "))
+except ValueError:
+    print("  ", body[:600])
 show("history page", call("POST", f"/api/plugins/conduit_push/sessions/history-page?profile={bot}",
                             {"session_id": chat, "offset": 0, "limit": 20, "order": "latest", "known": []}))
 show("sessions", call("GET", f"/api/sessions?profile={bot}&limit=5"))
