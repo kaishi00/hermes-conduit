@@ -1007,7 +1007,7 @@ final class VoiceConversationController: ObservableObject {
         switch state {
         case .listening:
             if utteranceStartedAt == nil { utteranceStartedAt = date }
-            switch speechDetector.observe(level) {
+            switch speechDetector.observe(level, at: date) {
             case .started, .continued:
                 lastSpeechAt = date
                 openLiveTranscriptionIfNeeded()
