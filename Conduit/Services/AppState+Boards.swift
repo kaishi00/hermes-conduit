@@ -68,7 +68,7 @@ extension AppState {
         } else {
             tap = nil
         }
-        return RichCardActionContext(canSend: canSend, composer: predictive,
+        return RichCardActionContext(chat: sessionIDs[0], canSend: canSend, composer: predictive,
                                      send: { [weak self] text in self?.requestBoardFollowUp(.send, text: text) },
                                      tap: tap)
     }

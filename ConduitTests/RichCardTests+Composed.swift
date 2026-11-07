@@ -69,10 +69,20 @@ extension AppStateVoiceCapabilityTests {
                 ["kind": "field", "id": "note", "input": "text"]]]],
         ]], schema: schema).first)
         let memory = RichCardFieldMemory()
-        XCTAssertNil(memory.kept(card: card))
-        memory.keep(card: card, values: ["note": "typed"], open: true)
-        XCTAssertEqual(memory.kept(card: card)?.values, ["note": "typed"])
-        XCTAssertEqual(memory.kept(card: card)?.open, true)
+        XCTAssertNil(memory.kept(card: card, chat: "a"))
+        memory.keep(card: card, chat: "a", values: ["note": "typed"], open: true)
+        XCTAssertEqual(memory.kept(card: card, chat: "a")?.values, ["note": "typed"])
+        XCTAssertEqual(memory.kept(card: card, chat: "a")?.open, true)
+        XCTAssertNil(memory.kept(card: card, chat: "b"), "the same card in another chat starts on its own")
+        // The least recently kept card goes past the cap; the one typed in stays.
+        for index in 0..<RichCardFieldMemory.maxCards {
+            memory.keep(card: card, chat: "other-\(index)", values: [:], open: false)
+            if index == RichCardFieldMemory.maxCards / 2 {
+                memory.keep(card: card, chat: "a", values: ["note": "again"], open: true)
+            }
+        }
+        XCTAssertEqual(memory.kept(card: card, chat: "a")?.values, ["note": "again"])
+        XCTAssertNil(memory.kept(card: card, chat: "other-0"))
     }
 
     func testAFieldWhosePlaceholderAsksForASecretIsDropped() throws {
@@ -90,10 +100,12 @@ extension AppStateVoiceCapabilityTests {
         for name in ["password", "Your Passcode", "api_key", "apiKey", "OTP", "PIN", "card-cvv", "One time code",
                      "auth token", "client_secret", "SSH private key", "Recovery key", "Verification code", "license_key",
                      "Passphrase", "TOTP", "Master key", "App credentials",
-                     "2FA code", "Two-factor code", "Login code"] {
+                     "2FA code", "Two-factor code", "Login code", "パスワード", "Passwort", "Contraseña",
+                     "Mot de passe", "Пароль", "Kata sandi", "비밀번호를 입력", "密码"] {
             XCTAssertTrue(RichCardSchema.namesSecret(name), name)
         }
-        for name in ["Spin class", "Subject", "Opinion", "Pinned note", "to", "Topic", "Key dates", "Zip code"] {
+        for name in ["Spin class", "Subject", "Opinion", "Pinned note", "to", "Topic", "Key dates", "Zip code", "メモ",
+                     "Betreff", "Тема"] {
             XCTAssertFalse(RichCardSchema.namesSecret(name), name)
         }
     }

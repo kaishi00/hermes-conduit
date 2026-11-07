@@ -17,6 +17,7 @@ struct RichComposedCard: View {
     @State private var values: [String: String] = [:]
     @State private var open = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.richCardActions) private var context
 
     var body: some View {
         RichInfoCardFrame(title: card.title, source: card.source) {
@@ -48,16 +49,24 @@ struct RichComposedCard: View {
         }
         // A board's tabs draw one card at a time, so a tab switch remounts
         // this view: what was typed and folded is kept for when it's back.
-        .onChange(of: values) { _, new in RichCardFieldMemory.shared.keep(card: card, values: new, open: open) }
-        .onChange(of: open) { _, new in RichCardFieldMemory.shared.keep(card: card, values: values, open: new) }
+        .onChange(of: values) { _, new in
+            RichCardFieldMemory.shared.keep(card: card, chat: chat, values: new, open: open)
+        }
+        .onChange(of: open) { _, new in
+            RichCardFieldMemory.shared.keep(card: card, chat: chat, values: values, open: new)
+        }
     }
+
+    /// Outside a chat (the saved copy, a room, the call screen) the card's
+    /// fields keep to themselves.
+    private var chat: String { context?.chat ?? "" }
 
     private var shownSections: [RichSection] {
         open ? card.sections : card.sections.filter { !$0.more }
     }
 
     private func startValues() {
-        if let kept = RichCardFieldMemory.shared.kept(card: card) {
+        if let kept = RichCardFieldMemory.shared.kept(card: card, chat: chat) {
             values = kept.values
             open = kept.open
         }

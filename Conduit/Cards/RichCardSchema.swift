@@ -437,7 +437,12 @@ struct RichCardSchema {
     private static let secretParts = ["password", "passcode", "secret", "token", "apikey", "onetime", "privatekey",
                                       "recoverykey", "licensekey", "seedphrase", "verificationcode", "securitycode",
                                       "authcode", "backupcode", "passphrase", "totp", "masterkey", "credential",
-                                      "2fa", "twofactor", "logincode"]
+                                      "2fa", "twofactor", "logincode",
+                                      // The same in the languages Conduit ships, as a model writes
+                                      // labels in the user's.
+                                      "passwort", "kennwort", "contraseña", "motdepasse", "senha", "пароль",
+                                      "hasło", "şifre", "katasandi", "パスワード", "暗証番号", "認証コード",
+                                      "密码", "密碼", "验证码", "驗證碼", "비밀번호", "인증번호"]
     private static let secretWords: Set<String> = ["pin", "otp", "cvv", "cvc"]
     private static let datePattern = try! NSRegularExpression(pattern: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2})?$"#)
     private static let numberPattern = try! NSRegularExpression(pattern: #"^-?[0-9]+(\.[0-9]+)?$"#)
@@ -453,14 +458,13 @@ struct RichCardSchema {
         var primary = false
     }
 
-    /// Whether a field's id or label asks for a secret (the plugin's
-    /// names_secret): read in lower case with everything but ASCII letters
-    /// and digits as spaces.
+    /// Whether a field's id, label or placeholder asks for a secret (the
+    /// plugin's names_secret): read in lower case with everything but
+    /// letters of any script and digits as spaces.
     static func namesSecret(_ text: String) -> Bool {
         var spaced = String.UnicodeScalarView()
         for scalar in text.lowercased().unicodeScalars {
-            let ascii = (48...57).contains(scalar.value) || (97...122).contains(scalar.value)
-            spaced.append(ascii ? scalar : " ")
+            spaced.append(CharacterSet.alphanumerics.contains(scalar) ? scalar : " ")
         }
         let words = String(spaced).split(separator: " ").map(String.init)
         let joined = words.joined()

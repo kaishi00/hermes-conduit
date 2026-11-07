@@ -165,6 +165,9 @@ struct RichSection: Equatable, Hashable {
 /// message can go. Nil where they can't (a group room, the call screen,
 /// the saved copy, a chat on its way), where only open and copy work.
 struct RichCardActionContext {
+    /// The chat the cards are in, so what's typed in one chat's card never
+    /// shows in the same card in another (RichCardFieldMemory).
+    let chat: String
     /// A send or tap can go now: Hermes is free and connected and the
     /// composer is on, as for a board's follow-ups.
     let canSend: Bool
@@ -210,7 +213,8 @@ extension EnvironmentValues {
 
 /// What the user typed in a card's fields and whether it was opened, kept
 /// for the session while the card is drawn again (a board's tab switched
-/// back to), by the card's normalized JSON: a changed card starts over.
+/// back to), by the chat and the card's normalized JSON: a changed card
+/// starts over, and the same card in another chat starts on its own.
 @MainActor
 final class RichCardFieldMemory {
     static let shared = RichCardFieldMemory()
@@ -219,17 +223,21 @@ final class RichCardFieldMemory {
     private var cards: [String: (values: [String: String], open: Bool)] = [:]
     private var order: [String] = []
 
-    func kept(card: RichCard) -> (values: [String: String], open: Bool)? {
-        cards[card.normalizedJSON]
+    func kept(card: RichCard, chat: String) -> (values: [String: String], open: Bool)? {
+        cards[Self.key(card: card, chat: chat)]
     }
 
-    func keep(card: RichCard, values: [String: String], open: Bool) {
-        let key = card.normalizedJSON
+    func keep(card: RichCard, chat: String, values: [String: String], open: Bool) {
+        let key = Self.key(card: card, chat: chat)
         // Least recently kept goes first, so the card being typed in stays.
         order.removeAll { $0 == key }
         order.append(key)
         cards[key] = (values, open)
         while order.count > Self.maxCards { cards[order.removeFirst()] = nil }
+    }
+
+    private static func key(card: RichCard, chat: String) -> String {
+        "\(chat)\u{1F}\(card.normalizedJSON)"
     }
 }
 
