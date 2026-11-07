@@ -9486,11 +9486,16 @@ final class AppState: ObservableObject {
             // resumes where the runtime id can't.
             let fallback = self.conversationIdentityIndex.durableID(forRuntime: id, profile: self.activeProfile)
             let opened = await self.requestOpenSession(target ?? fallback ?? id) { [weak self] in
-                // A failed resume says "session not found"; the link's own
-                // words say what's missing. Other refusals keep their text.
+                // Hermes answered that the chat is not there: the link's own
+                // words say what is missing. Any other failure (a socket that
+                // dropped, a read that timed out, an open a newer one
+                // superseded) proves nothing about the chat, and a link that
+                // called the chat gone while the retry went on to open it was
+                // simply wrong: those keep the error they came with, and say
+                // nothing at all when they came with none.
                 guard let self,
-                      self.errorMessage == nil
-                        || (self.reconciliationSessionWasNotFound && !self.reconciliationWasKanbanWorker)
+                      self.reconciliationSessionWasNotFound,
+                      !self.reconciliationWasKanbanWorker
                 else { return }
                 self.errorMessage = unavailable
             }.value
