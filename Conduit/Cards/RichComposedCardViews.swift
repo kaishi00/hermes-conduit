@@ -59,7 +59,7 @@ struct RichComposedCard: View {
 
     /// Outside a chat (the saved copy, a room, the call screen) the card's
     /// fields keep to themselves.
-    private var chat: String { context?.chat ?? "" }
+    private var chat: [String] { context?.sessionIDs ?? [] }
 
     private var shownSections: [RichSection] {
         open ? card.sections : card.sections.filter { !$0.more }
@@ -243,12 +243,24 @@ private struct RichFieldView: View {
             .scaledFont(.subheadline)
             .textFieldStyle(.roundedBorder)
         case .number:
-            TextField(text: $value, prompt: field.placeholder.map { Text(verbatim: $0) }) {
-                Text(verbatim: field.label ?? field.id)
+            VStack(alignment: .leading, spacing: 2) {
+                TextField(text: $value, prompt: field.placeholder.map { Text(verbatim: $0) }) {
+                    Text(verbatim: field.label ?? field.id)
+                }
+                .keyboardType(.decimalPad)
+                .scaledFont(.subheadline)
+                .textFieldStyle(.roundedBorder)
+                // The host takes only a number in range, so a tap waits for one (RichCardButtonRow).
+                if field.numberText(value) == nil {
+                    Label {
+                        Text(verbatim: field.numberRange)
+                    } icon: {
+                        Image(systemName: "exclamationmark.circle.fill")
+                    }
+                    .scaledFont(.caption)
+                    .foregroundStyle(.red)
+                }
             }
-            .keyboardType(.decimalPad)
-            .scaledFont(.subheadline)
-            .textFieldStyle(.roundedBorder)
         case .choice:
             Picker(selection: $value) {
                 if !field.options.contains(value) {
@@ -369,7 +381,9 @@ struct RichCardButtonRow: View {
     @ViewBuilder
     private func row(_ shown: [RichButton], draftEmpty: Bool) -> some View {
         ForEach(Array(shown.enumerated()), id: \.offset) { _, button in
-            let state = button.id.flatMap { taps.state(RichCardTapMemory.key(card: card, button: $0)) }
+            let state = button.id.flatMap {
+                taps.state(RichCardTapMemory.key(card: card, button: $0), chat: context?.sessionIDs ?? [])
+            }
             Button {
                 Haptics.light()
                 if button.confirm != nil || button.style == .destructive && button.action == .tap {
@@ -412,7 +426,17 @@ struct RichCardButtonRow: View {
         switch button.action {
         case .open, .copy: return false
         case .send: return !draftEmpty || !(context?.canSend ?? false)
-        case .tap: return state != nil || !draftEmpty || !(context?.canSend ?? false)
+        // A tap sends the fields as shown, so it waits while a number is out of range.
+        case .tap: return state != nil || !draftEmpty || !(context?.canSend ?? false) || !numbersFit
+        }
+    }
+
+    private var numbersFit: Bool {
+        card.sections.allSatisfy { section in
+            section.elements.allSatisfy { element in
+                guard let field = element.field, field.input == .number else { return true }
+                return field.numberText(values[field.id] ?? field.startingValue) != nil
+            }
         }
     }
 
@@ -448,13 +472,14 @@ struct RichCardButtonRow: View {
             let body: [String: Any] = ["card": jsonObject(card.normalizedJSON) ?? [:], "action": id,
                                        "values": fieldValues]
             let message = RichCardActionContext.message(label: button.label, title: card.title)
-            taps.set(key, .sending)
+            let chat = context.sessionIDs
+            taps.set(key, .sending, chat: chat)
             Task { @MainActor in
                 do {
                     try await tap(body, message)
-                    RichCardTapMemory.shared.set(key, .sent)
+                    RichCardTapMemory.shared.set(key, .sent, chat: chat)
                 } catch {
-                    RichCardTapMemory.shared.set(key, nil)
+                    RichCardTapMemory.shared.set(key, nil, chat: chat)
                     Haptics.error()
                     UIAccessibility.post(notification: .announcement,
                                          argument: AppLocalization.string("Failed to send: \(error.localizedDescription)"))
@@ -468,7 +493,9 @@ struct RichCardButtonRow: View {
         var all: [String: String] = [:]
         for section in card.sections {
             for element in section.elements {
-                if let field = element.field { all[field.id] = values[field.id] ?? field.startingValue }
+                guard let field = element.field else { continue }
+                let value = values[field.id] ?? field.startingValue
+                all[field.id] = field.input == .number ? field.numberText(value) ?? value : value
             }
         }
         return all

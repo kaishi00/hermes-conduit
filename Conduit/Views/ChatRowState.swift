@@ -42,6 +42,9 @@ struct ChatRowState: Equatable {
     /// A card's send and tap buttons can go: Hermes is free and connected
     /// and the composer is on, as for a board's follow-ups.
     var cardsCanSend = false
+    /// The plugin takes card taps (/boards/taps): a report that lands
+    /// after a card is drawn redraws its row, showing or hiding tap buttons.
+    var cardTaps = false
     /// The open chat's messages that have a Pulse card, by Hermes' message
     /// id (PulseFeed.swift): they show a Pulse mark that opens it.
     var pulseCards: [Int: Int] = [:]
@@ -89,6 +92,7 @@ struct ChatRowState: Equatable {
         // A tap sends, so the chips show only while a send can go.
         cardsCanSend = !(isOffline || isBusy || !appState.isConnected || !appState.composerIsEnabled)
         followUpBoardRowID = cardsCanSend ? facts.followUpBoardRowID : nil
+        cardTaps = appState.notifierPlugin.reports(RichCardActionContext.capability)
         pulseCards = appState.pulseCards(forChat: appState.activeSessionId)
         canPinReplies = appState.canPinReplies
         pinnedMessageIDs = appState.openChatPinnedMessageIDs

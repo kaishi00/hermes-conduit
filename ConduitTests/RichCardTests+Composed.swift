@@ -69,20 +69,56 @@ extension AppStateVoiceCapabilityTests {
                 ["kind": "field", "id": "note", "input": "text"]]]],
         ]], schema: schema).first)
         let memory = RichCardFieldMemory()
-        XCTAssertNil(memory.kept(card: card, chat: "a"))
-        memory.keep(card: card, chat: "a", values: ["note": "typed"], open: true)
-        XCTAssertEqual(memory.kept(card: card, chat: "a")?.values, ["note": "typed"])
-        XCTAssertEqual(memory.kept(card: card, chat: "a")?.open, true)
-        XCTAssertNil(memory.kept(card: card, chat: "b"), "the same card in another chat starts on its own")
+        XCTAssertNil(memory.kept(card: card, chat: ["a"]))
+        memory.keep(card: card, chat: ["a"], values: ["note": "typed"], open: true)
+        XCTAssertEqual(memory.kept(card: card, chat: ["a"])?.values, ["note": "typed"])
+        XCTAssertEqual(memory.kept(card: card, chat: ["a"])?.open, true)
+        XCTAssertEqual(memory.kept(card: card, chat: ["a", "a2"])?.values, ["note": "typed"],
+                       "a chat that gained an id is the same chat")
+        XCTAssertNil(memory.kept(card: card, chat: ["b"]), "the same card in another chat starts on its own")
+        XCTAssertNil(memory.kept(card: card, chat: []), "outside a chat too")
         // The least recently kept card goes past the cap; the one typed in stays.
         for index in 0..<RichCardFieldMemory.maxCards {
-            memory.keep(card: card, chat: "other-\(index)", values: [:], open: false)
+            memory.keep(card: card, chat: ["other-\(index)"], values: [:], open: false)
             if index == RichCardFieldMemory.maxCards / 2 {
-                memory.keep(card: card, chat: "a", values: ["note": "again"], open: true)
+                memory.keep(card: card, chat: ["a", "a2"], values: ["note": "again"], open: true)
             }
         }
-        XCTAssertEqual(memory.kept(card: card, chat: "a")?.values, ["note": "again"])
-        XCTAssertNil(memory.kept(card: card, chat: "other-0"))
+        XCTAssertEqual(memory.kept(card: card, chat: ["a2"])?.values, ["note": "again"])
+        XCTAssertNil(memory.kept(card: card, chat: ["other-0"]))
+    }
+
+    @MainActor
+    func testATapShowsSentOnlyInItsOwnChat() {
+        let memory = RichCardTapMemory()
+        memory.set("k", .sent, chat: ["a"])
+        XCTAssertEqual(memory.state("k", chat: ["a", "a2"]), .sent)
+        XCTAssertNil(memory.state("k", chat: ["b"]))
+        XCTAssertNil(memory.state("k", chat: ["a"], now: .now.addingTimeInterval(RichCardTapMemory.holdSeconds + 1)))
+    }
+
+    func testANumberFieldTakesOnlyANumberInRange() throws {
+        let field = try XCTUnwrap(RichField(json: ["id": "seats", "input": "number", "min": 1, "max": 8]))
+        XCTAssertEqual(field.numberText("3"), "3")
+        XCTAssertEqual(field.numberText("3,5"), "3.5", "a comma keypad's decimal point")
+        XCTAssertEqual(field.numberText(""), "")
+        XCTAssertNil(field.numberText("12"))
+        XCTAssertNil(field.numberText("0"))
+        XCTAssertNil(field.numberText("two"))
+        XCTAssertEqual(field.numberRange, "1 – 8")
+    }
+
+    func testATapsMessageGoesOnlyToItsChatWithNoDraft() {
+        func may(open: [String] = ["s1"], profile: String = "p", enabled: Bool = true, draft: String = "") -> Bool {
+            RichCardActionContext.mayFollowUp(tappedIn: ["s1", "s2"], profile: "p", openSessionIDs: open,
+                                              openProfile: profile, composerIsEnabled: enabled, draft: draft)
+        }
+        XCTAssertTrue(may())
+        XCTAssertTrue(may(draft: "  \n"))
+        XCTAssertFalse(may(open: ["other"]), "the user switched chats while the tap was on its way")
+        XCTAssertFalse(may(profile: "q"))
+        XCTAssertFalse(may(enabled: false))
+        XCTAssertFalse(may(draft: "typed meanwhile"))
     }
 
     func testAFieldWhosePlaceholderAsksForASecretIsDropped() throws {
@@ -102,7 +138,8 @@ extension AppStateVoiceCapabilityTests {
                      "Passphrase", "TOTP", "Master key", "App credentials",
                      "2FA code", "Two-factor code", "Login code", "パスワード", "Passwort", "Contraseña",
                      "Mot de passe", "Пароль", "Kata sandi", "비밀번호를 입력", "密码", "Access code",
-                     "Unlock code", "Security key"] {
+                     "Unlock code", "Security key", "Bestätigungscode", "Código de verificación",
+                     "Code de vérification", "Kode verifikasi", "Doğrulama kodu", "Код подтверждения"] {
             XCTAssertTrue(RichCardSchema.namesSecret(name), name)
         }
         for name in ["Spin class", "Subject", "Opinion", "Pinned note", "to", "Topic", "Key dates", "Zip code", "メモ",

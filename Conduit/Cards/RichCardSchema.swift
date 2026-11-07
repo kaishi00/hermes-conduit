@@ -442,7 +442,12 @@ struct RichCardSchema {
                                       // labels in the user's.
                                       "passwort", "kennwort", "contraseña", "motdepasse", "senha", "пароль",
                                       "hasło", "şifre", "katasandi", "パスワード", "暗証番号", "認証コード",
-                                      "密码", "密碼", "验证码", "驗證碼", "비밀번호", "인증번호"]
+                                      "密码", "密碼", "验证码", "驗證碼", "비밀번호", "인증번호",
+                                      "bestätigungscode", "verifizierungscode", "zugangscode",
+                                      "códigodeverificación", "codigodeverificacion", "códigodeverificação",
+                                      "codedevérification", "codedeverification", "codicediverifica",
+                                      "kodeverifikasi", "doğrulamakodu", "kodweryfikacyjny", "кодподтверждения",
+                                      "clavedeacceso", "contrasena"]
     private static let secretWords: Set<String> = ["pin", "otp", "cvv", "cvc"]
     private static let datePattern = try! NSRegularExpression(pattern: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2})?$"#)
     private static let numberPattern = try! NSRegularExpression(pattern: #"^-?[0-9]+(\.[0-9]+)?$"#)
