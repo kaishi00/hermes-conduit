@@ -146,13 +146,19 @@ extension AppState {
                             return AppLocalization.string("Conduit can only force a restart for a gateway that systemd runs. Run hermes gateway stop, then hermes gateway start, on the host.")
                         default: return UserFacingError.message(for: error)
                         }
+                    } else if let dropped = error as? URLError,
+                              [.networkConnectionLost, .timedOut, .cannotConnectToHost].contains(dropped.code) {
+                        // The native sign-in's connection, gone with the dashboard.
+                    } else if !(error is CancellationError) {
+                        return UserFacingError.message(for: error)
                     }
                 }
                 return nil
             },
             pause: { try? await Task.sleep(for: .seconds(2)) }
         )
-        if let message = await steps.run() {
+        // A sign-out or switch meanwhile leaves the failure with the run.
+        if let message = await steps.run(), activeDashboardID == dashboardID, dashboardTicketBridge === bridge {
             gatewayRestartNowFailure = .init(message: message, dashboardID: dashboardID, at: Date())
         }
     }
