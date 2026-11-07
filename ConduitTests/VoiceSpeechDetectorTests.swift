@@ -116,6 +116,21 @@ final class VoiceSpeechDetectorTests: XCTestCase {
         }
     }
 
+    func testWordsJustAboveALoudRoomNeverReadAsTheRoom() {
+        var detector = VoiceSpeechDetector()
+        var date = Date()
+        XCTAssertEqual(detector.observe(0.2, at: date), .started)
+
+        // Three seconds of words peaking at 0.05 whose dips fall only to a
+        // room around 0.03.
+        let words: [Float] = [0.05, 0.045, 0.035, 0.03, 0.032, 0.048]
+        for index in 0..<150 {
+            date = date.addingTimeInterval(0.02)
+            _ = detector.observe(words[index % words.count], at: date)
+            XCTAssertTrue(detector.isSpeechActive, "the user is still talking")
+        }
+    }
+
     func testUnheardLevelsDoNotHoldSteady() {
         var detector = VoiceSpeechDetector()
         let start = Date()

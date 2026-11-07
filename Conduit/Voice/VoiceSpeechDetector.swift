@@ -62,12 +62,13 @@ struct VoiceSpeechDetectorConstants: Equatable {
     var maximumNoiseFloor: Float = 0.5
     /// How long an active utterance's level has to hold steady before it
     /// is taken for the room rather than a voice: speech dips between
-    /// words; a fan, traffic or a TV holds. Longer than the room floor's
-    /// own run, so a drawn-out "ähm" stays speech.
+    /// words; a fan, traffic or a TV holds. A steady stretch shorter than
+    /// this is still speech.
     var steadyRoomDuringSpeechDuration: TimeInterval = 1.5
     /// The smallest spread between an active run's quietest and loudest
-    /// level that still reads as a voice; a wider relative spread (half
-    /// the loudest) counts too.
+    /// level that reads as a voice; a spread of a third of the loudest
+    /// does too (the speech-rise factor), so words only a little above a
+    /// loud room still break the run.
     var steadyRoomDuringSpeechRange: Float = 0.006
 }
 
@@ -268,7 +269,7 @@ struct VoiceSpeechDetector {
            date.timeIntervalSince(last) <= VoiceRoomNoiseFloor.maximumRunGap {
             let quietest = min(activeRunQuietest, level)
             let loudest = max(activeRunLoudest, level)
-            if loudest - quietest < max(constants.steadyRoomDuringSpeechRange, loudest * 0.5) {
+            if loudest - quietest < max(constants.steadyRoomDuringSpeechRange, loudest / constants.noiseFloorSpeechRiseFactor) {
                 activeRunQuietest = quietest
                 activeRunLoudest = loudest
                 activeRunLastSampleAt = date
