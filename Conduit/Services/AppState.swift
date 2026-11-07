@@ -9331,8 +9331,6 @@ final class AppState: ObservableObject {
                 openLinkedBotChat(owner)
                 return
             }
-            // Some failed opens say nothing themselves; a deleted job
-            // shouldn't make the link look dead.
             // Job links and chat-turn links share this route.
             openLinkedSession(id, unavailable: AppLocalization.string("That chat is no longer available."))
         case .bot(let profile):
@@ -26032,12 +26030,9 @@ final class AppState: ObservableObject {
         preferredTitle: String? = nil,
         widgetLease: WidgetLaunchLease? = nil
     ) async -> (outcome: SessionOpenOutcome, refused: Bool, sessionWasNotFound: Bool) {
-        // A failure says what this open found, never what an earlier
-        // reconcile of another chat did: the open's own reconcile sets these
-        // again, and one that fails before it (no client, another
-        // workspace's chat) leaves them clear (#1918).
-        reconciliationSessionWasNotFound = false
-        reconciliationWasKanbanWorker = false
+        // A failure before this open's reconcile reports no verdict and
+        // leaves the reconcile flags alone: they may be another flow's,
+        // read back after its own hop (#1918).
         guard let client else { return (.failed, false, false) }
         // From the tap to Hermes' rows, for a device trace (#1533).
         let signposter = ResponsivenessSignposts.signposter
