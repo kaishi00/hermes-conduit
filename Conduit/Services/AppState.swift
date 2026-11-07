@@ -2554,6 +2554,9 @@ final class AppState: ObservableObject {
     /// How long a launch waits for Conduit's phone screen before it counts
     /// as a launch in the background, which signs in as before. Test seam.
     var launchDashboardChoiceGrace: Duration = .seconds(2)
+    /// The grace ran out with no phone screen: the background launch's own
+    /// sign-in is under way, or waits for the screen.
+    private var launchSignsInInBackground = false
     private var launchDashboardChoiceTask: Task<Void, Never>?
     /// Whether no phone screen of Conduit is in the foreground: a launch in
     /// the background, or CarPlay alone. Test seam.
@@ -14988,8 +14991,6 @@ final class AppState: ObservableObject {
     }
 #endif
 
-    /// `trigger` names what started the restore in the connection
-    /// timeline and the call trace.
     /// The setting behind Ask Which Dashboard at Launch (#1908).
     static let asksWhichDashboardAtLaunchKey = "conduit.askDashboardAtLaunch"
 
@@ -15017,9 +15018,12 @@ final class AppState: ObservableObject {
             guard let self else { return }
             self.launchDashboardChoiceTask = nil
             guard self.launchAwaitsDashboardChoice, !self.sceneHasBeenActive, self.phoneScreenIsAway() else { return }
-            // Still waiting for a pick: a sign-in that fails here (Face ID
-            // can't show off screen) leaves the list up on screen, not a
-            // retry (holdLaunchDashboardChoiceOnScreen).
+            // Nothing waits for a pick now: a release has this sign-in to
+            // go on. One that can't finish here (Face ID can't show off
+            // screen) leaves the list up on screen, not a retry
+            // (holdLaunchDashboardChoiceOnScreen).
+            self.launchAwaitsDashboardChoice = false
+            self.launchSignsInInBackground = true
             self.loadSavedConnection(trigger: "launch in the background")
         }
     }
@@ -15028,6 +15032,12 @@ final class AppState: ObservableObject {
     /// last dashboard used, as a launch without the setting does, and the
     /// open goes on from there (switching dashboards if it is another's).
     func releaseLaunchDashboardChoice(for reason: String) {
+        if launchSignsInInBackground {
+            // The background launch's sign-in is under way, or waits for the
+            // screen, where its usual retry runs: a second one would race it.
+            launchSignsInInBackground = false
+            return
+        }
         guard launchAwaitsDashboardChoice else { return }
         endLaunchDashboardChoice()
         // The background launch's sign-in is still under way, or went in.
@@ -15041,6 +15051,7 @@ final class AppState: ObservableObject {
 
     private func endLaunchDashboardChoice() {
         launchAwaitsDashboardChoice = false
+        launchSignsInInBackground = false
         launchDashboardChoiceTask?.cancel()
         launchDashboardChoiceTask = nil
     }
@@ -15050,6 +15061,13 @@ final class AppState: ObservableObject {
     /// is nothing to pick (signed in, signing in, or a shared draft that
     /// needs Hermes is waiting).
     private func holdLaunchDashboardChoiceOnScreen() -> Bool {
+        if launchSignsInInBackground {
+            launchSignsInInBackground = false
+            // Only a background sign-in that ended waiting for the screen
+            // goes back to the list; one still under way finishes.
+            guard showLogin, signInWaitsForForeground, !isConnecting, !isConnected else { return false }
+            launchAwaitsDashboardChoice = true
+        }
         guard launchAwaitsDashboardChoice else { return false }
         launchDashboardChoiceTask?.cancel()
         launchDashboardChoiceTask = nil
@@ -15072,6 +15090,8 @@ final class AppState: ObservableObject {
         return true
     }
 
+    /// `trigger` names what started the restore in the connection
+    /// timeline and the call trace.
     func loadSavedConnection(trigger: String = "cold launch") {
         #if DEBUG
         if let stub = Self.uiTestFailedConnectionStub() {

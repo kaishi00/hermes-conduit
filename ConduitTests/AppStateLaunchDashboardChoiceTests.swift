@@ -89,6 +89,40 @@ extension AppStateForegroundLifecycleTests {
         XCTAssertTrue(appState.launchAwaitsDashboardChoice)
     }
 
+    /// A release while the background launch's sign-in is under way or
+    /// waiting for the screen starts no second one; on screen its usual
+    /// retry runs.
+    func testReleaseDuringTheBackgroundSignInStartsNoSecondOne() async throws {
+        let (appState, home, _) = makeTwoDashboardLaunch(asks: true, homeTicket: false)
+        KeychainHelper.saveCredentials(
+            DashboardCredentials(baseURL: home.normalizedURL, username: "hermes", password: "secret", requiresFaceID: true),
+            dashboardID: home.id
+        )
+        var away = true
+        appState.phoneScreenIsAway = { away }
+        var unlockAsked = 0
+        appState.unlockWithFaceID = {
+            unlockAsked += 1
+            return false
+        }
+
+        appState.beginLaunchSignIn()
+        try await waitForLaunchSignIn { appState.signInWaitsForForeground }
+        let trigger = appState.connectionTimeline?.trigger
+        let askedInBackground = unlockAsked
+
+        appState.releaseLaunchDashboardChoice(for: "a notification")
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(appState.connectionTimeline?.trigger, trigger, "No second sign-in")
+        XCTAssertEqual(unlockAsked, askedInBackground)
+        XCTAssertFalse(appState.launchAwaitsDashboardChoice)
+
+        away = false
+        appState.handleScenePhase(.active)
+        try await waitForLaunchSignIn { unlockAsked > askedInBackground }
+        XCTAssertFalse(appState.signInWaitsForForeground)
+    }
+
     /// A notification, a link, Siri, the car or the Watch needs Hermes: the
     /// last dashboard signs in for it, as without the setting.
     func testSomethingTheLaunchCameForSignsIn() {
