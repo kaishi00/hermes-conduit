@@ -12825,7 +12825,7 @@ final class AppState: ObservableObject {
         if let activity = activeRoomDriverStatus?.memberActivity {
             return GroupRoomTurns.activeResponder(activity: activity, members: room?.members ?? [])
         }
-        let key = "\(activeRoomReplay.roomID)|\(activeRoomReplay.cursor)|\(room?.revision ?? -1)"
+        let key = "\(roomReplayKey)|\(room?.revision ?? -1)"
             + "|\(activeRoomDriverStatus?.maxRounds ?? 0)"
         let context = activeRoomContext
         if let cached = roomResponderCache, cached.key == key, cached.context == context { return cached.member }
