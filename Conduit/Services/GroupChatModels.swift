@@ -1298,6 +1298,13 @@ enum GroupRoomTurns {
         return statuses
     }
 
+    /// The pill that carries the lead's crown: the member the room's
+    /// Who answers setting names as lead, while that setting is Lead.
+    static func leadKey(context: GroupRoomContext?, members: [GroupMember]) -> String? {
+        guard let context, context.routing == .lead else { return nil }
+        return member(withID: context.leadMemberID, in: members)?.identityKey
+    }
+
     /// Each thread's current discussion: its newest message's event id. A
     /// thread whose message the kept events (the last 200) no longer hold
     /// takes the newest discussion its events name, so a long discussion

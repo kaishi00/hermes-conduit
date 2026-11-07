@@ -130,7 +130,10 @@ struct GroupChatView: View {
     /// room's statuses, which the transcript no longer lists (Desktop's
     /// layout, Eric 2026-11-06).
     private var statusStrip: some View {
-        GroupRoomStatusStrip(members: members, statuses: appState.activeRoomMemberStatuses)
+        GroupRoomStatusStrip(
+            members: members, statuses: appState.activeRoomMemberStatuses,
+            leadKey: GroupRoomTurns.leadKey(context: appState.activeRoomContext, members: members)
+        )
     }
 
     private var surface: AppState.GroupRoomSurface? { appState.activeRoomSurface }
@@ -916,6 +919,8 @@ struct GroupMemberBubble: View {
 struct GroupRoomStatusStrip: View {
     let members: [GroupMember]
     let statuses: [String: GroupMemberStatus]
+    /// The room's lead, when its Who answers setting names one.
+    var leadKey: String? = nil
     @Environment(\.groupMemberTints) private var tints
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -942,24 +947,33 @@ struct GroupRoomStatusStrip: View {
         let name = GroupRoomTurns.displayName(of: member)
         let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let status = statuses[member.identityKey]
-        let label = GroupRoomStatusPill(member: member, name: name, status: status, tint: tints[member.identityKey])
+        let isLead = member.identityKey == leadKey
+        let label = GroupRoomStatusPill(
+            member: member, name: name, status: status, tint: tints[member.identityKey], isLead: isLead
+        )
         if handle.isEmpty {
             label
         } else {
             GroupMemberMentionButton(handle: handle, name: name) { label }
-                .accessibilityLabel(Text(name))
+                .accessibilityLabel(Text(GroupRoomStatusPill.spokenName(name, isLead: isLead)))
                 .accessibilityValue(Text(status?.spoken ?? ""))
                 .accessibilityHint(Text(AppLocalization.string("Picks this bot in the To row")))
         }
     }
 }
 
-/// One member's pill: picture, name, and the word for its status.
+/// One member's pill: picture, name, and the word for its status. The
+/// room's lead carries Group Settings' crown beside its name.
 struct GroupRoomStatusPill: View {
     let member: GroupMember
     let name: String
     let status: GroupMemberStatus?
     let tint: CustomAccentColor?
+    var isLead = false
+
+    static func spokenName(_ name: String, isLead: Bool) -> String {
+        isLead ? "\(name), \(AppLocalization.string("Lead"))" : name
+    }
 
     var body: some View {
         let color = tint.map { Color(uiColor: $0.readableColor) } ?? Color.primary
@@ -969,6 +983,12 @@ struct GroupRoomStatusPill: View {
                 .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(color)
                 .lineLimit(1)
+            if isLead {
+                Image(systemName: "crown.fill")
+                    .scaledFont(.caption2)
+                    .foregroundStyle(.yellow)
+                    .accessibilityHidden(true)
+            }
             if let status {
                 Text(verbatim: status.label)
                     .scaledFont(.caption)
@@ -986,7 +1006,7 @@ struct GroupRoomStatusPill: View {
         // The bar doesn't grow past the title's sizes.
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(name))
+        .accessibilityLabel(Text(Self.spokenName(name, isLead: isLead)))
         .accessibilityValue(Text(status?.spoken ?? ""))
     }
 

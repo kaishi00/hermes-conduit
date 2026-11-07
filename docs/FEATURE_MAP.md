@@ -5553,13 +5553,14 @@ chats line · not needed: Bots Home (its room tiles show talking or not, not
 each member), Watch and CarPlay (no group rooms there), the notifier (it
 reads nothing here), Hermes Desktop's read-only group sheet in Conduit
 (`DesktopGroupChatView`: it shows a legacy group's messages only) ·
-Linked Rooms: its rooms use this view, so the branch takes it with main
+Linked Rooms: its rooms use this view, so the branch takes it with main ·
+Group Settings' Who answers (its Lead section's crown marks the lead's pill)
 
 **Code**
-- Statuses: `Conduit/Services/GroupChatModels.swift` (GroupMemberStatus; GroupRoomTurns.memberStatuses, currentDiscussions, latestDiscussionSettled, isVisible)
+- Statuses: `Conduit/Services/GroupChatModels.swift` (GroupMemberStatus; GroupRoomTurns.memberStatuses, currentDiscussions, latestDiscussionSettled, isVisible, leadKey)
 - App: `Conduit/Services/AppState.swift` (activeRoomMemberStatuses, activeRoomSettled)
 - Screen: `Conduit/Views/GroupChatView.swift` (GroupRoomStatusStrip, GroupRoomStatusPill, statusStrip, memberSummary, GroupSystemEventCaption)
-- Tests: `ConduitTests/GroupChatModelsTests.swift` (testSettledTurnsAndASettledRoomLeaveTheTranscriptToThePills, testEachPillShowsTheMembersLastTurnInItsThreadsDiscussion, testALeadsRoutingTurnIsNotItsPass, testALeadWhoseRoutingTurnEndsWithoutAPickAnswersItself, testALongDiscussionKeepsItsPillsWhenItsMessageIsTrimmed, testAFailureInAnotherThreadStaysOnItsPill, testAnApprovalOutranksTheTurnAndAnOlderHostNamesItsResponder, testAnIdleDriverOrAStatusThisAppPredatesShowsNoLiveTurn, testTheTitleSaysSettledUntilTheNextMessageOrAContinue), `ConduitTests/GroupChatSessionSafetyTests.swift` (testAnIdleRoomsPillsShowNoLiveTurn)
+- Tests: `ConduitTests/GroupChatModelsTests.swift` (testSettledTurnsAndASettledRoomLeaveTheTranscriptToThePills, testEachPillShowsTheMembersLastTurnInItsThreadsDiscussion, testALeadsRoutingTurnIsNotItsPass, testALeadWhoseRoutingTurnEndsWithoutAPickAnswersItself, testALongDiscussionKeepsItsPillsWhenItsMessageIsTrimmed, testAFailureInAnotherThreadStaysOnItsPill, testAnApprovalOutranksTheTurnAndAnOlderHostNamesItsResponder, testAnIdleDriverOrAStatusThisAppPredatesShowsNoLiveTurn, testTheTitleSaysSettledUntilTheNextMessageOrAContinue, testTheLeadsPillCarriesTheCrownOnlyWhileTheRoomRoutesThroughIt), `ConduitTests/GroupChatSessionSafetyTests.swift` (testAnIdleRoomsPillsShowNoLiveTurn)
 
 **Rulings**
 - Statuses sit in pills under the title, not in the transcript (Eric, 2026-11-06, from Desktop's new group screen: "seems elegant"; he picked the pills over a summary in the title capsule or statuses on the composer's To row).
@@ -5567,6 +5568,7 @@ Linked Rooms: its rooms use this view, so the branch takes it with main
 - The transcript keeps what says where something went wrong or needs a tap: failed and stopped turns, the turn limit with Continue, the routing's captions, Stop and member changes, as Desktop keeps them. Passed and replied turns and "settled" leave it.
 - The subtitle says "Settled, nobody had more to say" while the room is idle and the newest message's discussion settled, until a new message (from the moment it is sent), a Continue or a Stop. Approvals, choosing who answers, who is responding and working come first, as before.
 - Tapping a pill picks the bot in the "To" row, as its picture does; nothing new goes in the reply row.
+- While Who answers is Lead, the lead's pill has a yellow crown after its name, the symbol Group Settings' Lead section uses, and VoiceOver reads "name, Lead" (Eric, 2026-11-07). Everyone and Automatic rooms have no crown, and neither does a lead who has left the room.
 
 **Open gaps**
 - Once a discussion's message has left the kept events (the last 200), a lead's routing turn that ended without a pick can't be told from its answer, since the message's place in the log is gone, so the lead's pill can show it as stopped or passed. The "is responding" line has the same limit for that tail. Left as is: it needs a discarded routing turn in a discussion longer than the kept events.
