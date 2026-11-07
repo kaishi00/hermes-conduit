@@ -225,6 +225,9 @@ struct LiveVoiceCallTimeline<Line: View>: View {
         jobs: [VoiceBackgroundJob],
         screens: [VoiceScreenCard] = []
     ) -> [Item] {
+        // Most calls start no job and show no card: just the lines, with no
+        // index to build (issue 1960).
+        if jobs.isEmpty, screens.isEmpty { return transcript.map(Item.line) }
         var positions: [UUID: Int] = [:]
         for (index, entry) in transcript.enumerated() where positions[entry.id] == nil {
             positions[entry.id] = index

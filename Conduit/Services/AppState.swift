@@ -8859,13 +8859,15 @@ final class AppState: ObservableObject {
         }
         let transcript: AnyPublisher<Void, Never>
         switch engine {
-        case .geminiLive: transcript = geminiLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
-        case .qwenLive: transcript = qwenLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
-        case .gptLive: transcript = gptLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
-        case .grokLive: transcript = grokLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
-        case .localLive: transcript = localLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
+        case .geminiLive: transcript = geminiLiveController.transcriptChanges
+        case .qwenLive: transcript = qwenLiveController.transcriptChanges
+        case .gptLive: transcript = gptLiveController.transcriptChanges
+        case .grokLive: transcript = grokLiveController.transcriptChanges
+        case .localLive: transcript = localLiveController.transcriptChanges
         }
-        // @Published fires before the change lands: read it on the next turn.
+        // Read on the next turn, after the change has landed. The
+        // transcript publishes a growing line at most ten times a second
+        // (issue 1960), so a capture doesn't run per word.
         voiceCallTranscriptSubscription = transcript
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
