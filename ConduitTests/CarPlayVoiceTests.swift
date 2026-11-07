@@ -1852,6 +1852,35 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertFalse(harness.appState.isGPTLiveEnabled, "a stale list never changes the saved mode")
     }
 
+    /// Issue 1935: a live mode turned on during a classic conversation in
+    /// the car (Settings > Voice, an agent's config write) ends it, so the
+    /// call never goes on listening behind the new mode's idle screen.
+    func testTurningOnALiveModeDuringAClassicCallEndsTheCall() async {
+        for enable in [
+            { (appState: AppState) in appState.setGeminiLiveEnabled(true) },
+            { (appState: AppState) in appState.setQwenLiveEnabled(true) },
+            { (appState: AppState) in appState.setGPTLiveEnabled(true) },
+            { (appState: AppState) in appState.setGrokLiveEnabled(true) },
+        ] {
+            let harness = makeHarness()
+            harness.coordinator.handleConnect(harness.spy)
+            harness.openVoice(session: "session-1")
+            await harness.controller.startListening()
+            XCTAssertTrue(harness.controller.hasLiveVoiceSession)
+            XCTAssertEqual(harness.coordinator.observedVoiceMode, .classic)
+
+            enable(harness.appState)
+            // The setters tell `CarPlayVoiceCoordinator.shared`; the
+            // harness's own coordinator gets the same notice here.
+            harness.coordinator.voiceModeChanged(in: harness.appState)
+
+            XCTAssertFalse(harness.controller.hasLiveVoiceSession, "the classic call ends with the switch")
+            XCTAssertFalse(harness.appState.showVoiceSheet)
+            XCTAssertNotEqual(harness.coordinator.observedVoiceMode, .classic, "the car shows the new mode")
+            harness.coordinator.handleDisconnect()
+        }
+    }
+
     func testPickingAVoiceModeFromTheCarSwitchesTheProfileMode() async {
         let harness = makeHarness()
         harness.coordinator.handleConnect(harness.spy)

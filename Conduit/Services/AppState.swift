@@ -3396,6 +3396,19 @@ final class AppState: ObservableObject {
         return await qwenLiveTokenClient.webSearchAvailable() ? .hermes : .none
     }
 
+    /// A live mode turned on (Settings > Voice, an agent's config write)
+    /// while a classic conversation runs ends that conversation, as a mode
+    /// switch from the call's menu or a live start from the car does.
+    /// Otherwise the car followed the new mode while the classic call went
+    /// on listening behind it, on no surface that showed or ended it (#1935).
+    /// A call screen under push to talk waiting for its first press counts
+    /// too: it has no session yet, and its press would open Classic's mic.
+    private func closeClassicConversationForLiveMode() {
+        let waitsForFirstPress = showVoiceSheet && voiceConversationController.isPushToTalkActive
+        guard voiceConversationController.hasConversationSession || waitsForFirstPress else { return }
+        closeVoiceConversation()
+    }
+
     func setGeminiLiveEnabled(_ enabled: Bool) {
         var preferences = loadVoiceProfilePreferences(profile: activeProfile)
         guard preferences.geminiLiveEnabled != enabled else { return }
@@ -3410,6 +3423,7 @@ final class AppState: ObservableObject {
         }
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
         if enabled {
+            closeClassicConversationForLiveMode()
             closeQwenLiveConversation()
             closeGPTLiveConversation()
             closeGrokLiveConversation()
@@ -3434,6 +3448,7 @@ final class AppState: ObservableObject {
         }
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
         if enabled {
+            closeClassicConversationForLiveMode()
             closeGeminiLiveConversation()
             closeGPTLiveConversation()
             closeGrokLiveConversation()
@@ -3822,6 +3837,7 @@ final class AppState: ObservableObject {
         }
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
         if enabled {
+            closeClassicConversationForLiveMode()
             closeQwenLiveConversation()
             closeGeminiLiveConversation()
             closeGrokLiveConversation()
@@ -4235,6 +4251,7 @@ final class AppState: ObservableObject {
         }
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
         if enabled {
+            closeClassicConversationForLiveMode()
             closeQwenLiveConversation()
             closeGeminiLiveConversation()
             closeGPTLiveConversation()
@@ -4655,6 +4672,13 @@ final class AppState: ObservableObject {
         }
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
         if enabled {
+            // A running Classic call stays: the car follows it (#1378). A
+            // push to talk screen still waiting for its first press has no
+            // session for the car to follow, so it closes (#1935).
+            if showVoiceSheet, voiceConversationController.isPushToTalkActive,
+               !voiceConversationController.hasConversationSession {
+                closeVoiceConversation()
+            }
             closeQwenLiveConversation()
             closeGeminiLiveConversation()
             closeGPTLiveConversation()
@@ -9225,7 +9249,7 @@ final class AppState: ObservableObject {
                 request.callID = UUID().uuidString
                 request.title = Self.fallbackVoiceCallTitle(at: entry.queuedAt)
                 request.turns = request.turns.enumerated().map { offset, turn in
-                    VoiceTranscriptTurn(index: offset, role: turn.role, text: turn.text, at: turn.at)
+                    VoiceTranscriptTurn(index: offset, role: turn.role, text: turn.text, at: turn.at, cards: turn.cards)
                 }
                 // The chat attachment keeps the original call id on purpose:
                 // it names the chat's marker, which stays one per call.
