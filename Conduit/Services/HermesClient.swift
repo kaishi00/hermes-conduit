@@ -1248,6 +1248,8 @@ final class HermesClient: ObservableObject {
     }
     static let promptSubmitTimeout: TimeInterval = 180 // 3 minutes
     static let titleGenerationTimeout: TimeInterval = 90
+    /// `reload.mcp` connects each configured MCP server before it answers.
+    static let mcpReloadTimeout: TimeInterval = 120
     /// The legacy full-transcript resume is the RPC most likely to carry the
     /// largest payload over the slowest connections (issue #106 follow-up),
     /// so it gets a bounded-but-generous budget instead of the ordinary
@@ -4262,6 +4264,26 @@ final class HermesClient: ObservableObject {
         ])
     }
 
+    /// `/reload-mcp` (`reload.mcp`), which `slash.exec` refuses: Hermes
+    /// brings the profile's MCP servers in step with its config. Without
+    /// `confirm` it may only ask (`confirm_required`, with what to send).
+    /// `always` (`hermes dashboard` only; the gateway's listener refuses
+    /// the key) also turns off approvals.mcp_reload_confirm.
+    func reloadMCP(sessionId: String, confirm: Bool, always: Bool) async throws -> MCPReloadOutcome {
+        var params: [String: Any] = ["session_id": sessionId]
+        if confirm { params["confirm"] = true }
+        if always, !speaksSessionAuthority { params["always"] = true }
+        let result = try await rpc("reload.mcp", params: params, timeout: Self.mcpReloadTimeout)
+        return MCPReloadOutcome(from: result)
+    }
+
+    /// `/reload-skills` (`skills.reload`), which `slash.exec` refuses:
+    /// Hermes rescans the profile's skills and says what changed.
+    func reloadSkills(sessionId: String) async throws -> String {
+        let result = try await rpc("skills.reload", params: ["session_id": sessionId])
+        return result.objectValue?["output"]?.stringValue ?? ""
+    }
+
     /// Starts a side agent (`prompt.background` / `prompt.btw`) and
     /// returns its task id.
     func startSideAgent(_ kind: SideAgentKind, sessionId: String, text: String) async throws -> String? {
@@ -4846,6 +4868,25 @@ extension ProviderInfo {
         }
     }
 
+}
+
+/// What `reload.mcp` answered: it reloaded, or it asks first.
+struct MCPReloadOutcome: Equatable {
+    var needsConfirmation: Bool
+    /// Hermes' own words, when it sent some.
+    var message: String?
+
+    init(needsConfirmation: Bool, message: String?) {
+        self.needsConfirmation = needsConfirmation
+        self.message = message
+    }
+
+    init(from codable: AnyCodable) {
+        let object = codable.objectValue ?? [:]
+        needsConfirmation = object["status"]?.stringValue == "confirm_required"
+        let text = object["message"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        message = (text?.isEmpty ?? true) ? nil : text
+    }
 }
 
 struct ContextBreakdown {
