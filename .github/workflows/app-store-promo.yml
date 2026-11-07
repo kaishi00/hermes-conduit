@@ -140,7 +140,8 @@ jobs:
             > probe-bots.txt 2>&1 || true
           # Full resolution in parts the git ref can carry.
           ffmpeg -v error -y -i shots/promo.mov -vf fps=30 -an -c:v libx264 -crf 20 -pix_fmt yuv420p \
-            -f segment -segment_time 90 -reset_timestamps 1 shots/promo-full-%02d.mp4 || true
+            -f segment -segment_time 90 -reset_timestamps 1 shots/promo-full-%02d.mp4 \
+            || echo "promo-full parts not made" >> failures.txt
           # Live voice, over the scripted call (the sign-in is saved now).
           for state in listening speaking; do
             scripts/app-store/record-clip.sh "$udid" com.milim.relay "$state" "shots/clips/voice-$state.mp4" 12 \
