@@ -1,0 +1,19 @@
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-07 05:18:35,672 WARNING gateway.run: No messaging platforms enabled.
+2026-11-07 05:19:07,345 WARNING gateway.run: Shutdown context: signal=SIGTERM under_systemd=no parent_pid=8406 parent_name=? loadavg_1m=10.08
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-07 05:19:20,756 WARNING gateway.run: No messaging platforms enabled.
+2026-11-07 05:21:43,023 WARNING tui_gateway.ws: ws send failed peer=127.0.0.1:49529 error_type=WebSocketDisconnect error=
+2026-11-07 05:21:43,054 ERROR tui_gateway.ws: ws ready frame send failed peer=127.0.0.1:49529

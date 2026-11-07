@@ -1,0 +1,9 @@
+Failed to tap "botWork.titleLine" Button: No matches found for first query match sequence: `Descendants matching type Button` -> `Elements matching predicate '"botWork.titleLine" IN identifiers'`, given input App element pid: 51302
+Possibly caused by runtime issues:
+Automation type mismatch: computed Button from legacy attributes vs PopUpButton from modern attribute. Input attributes and values: {
+    "XC_kAXXCAttributeAutomationType" = 14;
+    "XC_kAXXCAttributeElementBaseType" = UIResponder;
+    "XC_kAXXCAttributeElementType" = "SwiftUI.AccessibilityNode";
+    "XC_kAXXCAttributeTraits" = 1108101562369;
+}
+See test report attachments for more detail.

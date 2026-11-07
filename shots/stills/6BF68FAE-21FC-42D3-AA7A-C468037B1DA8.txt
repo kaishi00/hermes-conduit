@@ -1,0 +1,129 @@
+Application, 0x115b42300, pid: 51302, label: 'Conduit' <App element pid: 51302>
+  Window (Main), 0x115b42940, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4369336320.3>
+    Other, 0x115b42a80, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4434920960.4>
+      Other, 0x115b42bc0, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4433949824.5>
+        Other, 0x115b42d00, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4369335296.6>
+          Other, 0x115b42e40, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4433403776.7>
+            Other, 0x115b42f80, {{0.0, 62.0}, {440.0, 860.0}} <AX element pid: 51302, elementOrHash.elementID: 4434211072.8>
+            Other, 0x115b430c0, {{0.0, 62.0}, {440.0, 860.0}} <AX element pid: 51302, elementOrHash.elementID: 4434211520.9>
+            Other, 0x115b43200, {{0.0, 62.0}, {440.0, 860.0}} <AX element pid: 51302, elementOrHash.elementID: 4434925568.10>
+            Other, 0x115b43340, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4433962176.280>
+              Other, 0x115b43480, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4433962624.288>
+                Other, 0x115b435c0, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4434165760.302>
+                  Other, 0x115b43700, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4369573504.310>
+                    Other, 0x115b43840, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 5010593472.314>
+                      Other, 0x115b43980, {{-216.7, -197.3}, {914.3, 1402.0}} <AX element pid: 51302, elementOrHash.elementID: 5010601536.316>
+                      Image, 0x115b43ac0, {{195.3, 509.3}, {49.3, 44.7}}, identifier: 'exclamationmark.triangle', label: 'Warning' <AX element pid: 51302, elementOrHash.elementID: 5010596160.317>
+                      StaticText, 0x115b43c00, {{117.5, 509.3}, {205.0, 89.3}}, label: 'Could not load bots.' <AX element pid: 51302, elementOrHash.elementID: 5010600640.318>
+                      StaticText, 0x115b43d40, {{93.8, 601.7}, {252.3, 18.0}}, label: 'Connect to Hermes to see your bots.' <AX element pid: 51302, elementOrHash.elementID: 5010602432.319>
+                      Button, 0x115b43e80, {{201.7, 639.7}, {36.7, 18.0}}, label: 'Retry' <AX element pid: 51302, elementOrHash.elementID: 5010602880.320>
+                      StaticText, 0x115a7d7c0, {{30.0, 180.0}, {376.3, 33.7}}, label: 'Hermes didn't answer in time. Check that your Hermes server is running, then try again.' <AX element pid: 51302, elementOrHash.elementID: 4433713728.362>
+                      Button, 0x115a7d540, {{30.0, 223.7}, {380.0, 58.0}}, identifier: 'bots.repair-connection', label: 'Repair Connection' <AX element pid: 51302, elementOrHash.elementID: 4433711488.363>
+                        Image, 0x115a7d680, {{150.0, 245.0}, {16.0, 15.7}}, identifier: 'wrench.and.screwdriver', label: 'wrench.and.screwdriver' <AX element pid: 51302, elementOrHash.elementID: 4433722240.364>
+                        StaticText, 0x115a7d2c0, {{30.0, 223.7}, {380.0, 58.0}}, label: 'Repair Connection' <AX element pid: 51302, elementOrHash.elementID: 4433721792.365>
+                      StaticText, 0x115a7d400, {{16.0, 75.0}, {47.0, 26.3}}, label: 'Bots' <AX element pid: 51302, elementOrHash.elementID: 5010603328.321>
+                      Button, 0x115a7d040, {{380.0, 66.0}, {44.0, 44.0}}, identifier: 'plus', label: 'New Bot', Disabled <AX element pid: 51302, elementOrHash.elementID: 5010595264.322>
+                      Button, 0x115a7d180, {{16.0, 114.0}, {115.3, 44.0}}, identifier: 'bots.artifacts', label: 'Artifacts' <AX element pid: 51302, elementOrHash.elementID: 5010594368.323>
+                        Image, 0x115a7cdc0, {{32.0, 129.0}, {14.0, 14.0}}, identifier: 'square.grid.2x2', label: 'Grid View' <AX element pid: 51302, elementOrHash.elementID: 5010595712.333>
+                        StaticText, 0x115a7cf00, {{16.0, 114.0}, {115.3, 44.0}}, label: 'Artifacts' <AX element pid: 51302, elementOrHash.elementID: 5010594816.334>
+                      Other, 0x115a7ca00, {{0.0, 860.0}, {440.0, 62.0}} <AX element pid: 51302, elementOrHash.elementID: 5010593920.324>
+              Other, 0x115a7cb40, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 5008857088.289>
+                Other, 0x115a7cc80, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 5008861696.303>
+            Other, 0x115a7c640, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4433688576.281>
+              Other, 0x115a7c780, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4433688128.290>
+                Other, 0x115a7c8c0, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4434115904.304>
+                  Other, 0x115a7c280, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4369575296.311>
+                    Other, 0x115a7c3c0, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4433716864.315>
+                      Other, 0x115a7c500, {{-277.7, -170.0}, {1048.8, 1352.3}} <AX element pid: 51302, elementOrHash.elementID: 4434170688.325>
+                      CollectionView, 0x115a7c000, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4544555520.326>
+                        Other, 0x115a7c140, {{0.0, -1790.0}, {440.0, 4187.7}} <AX element pid: 51302, elementOrHash.elementID: 4529413120.335>
+                        Cell, 0x115a71180, {{0.0, 122.0}, {440.0, 50.0}} <AX element pid: 51302, elementOrHash.elementID: 4543860480.336>
+                          Other, 0x115a71680, {{0.0, 122.0}, {440.0, 50.0}} <AX element pid: 51302, elementOrHash.elementID: 4529409024.343>
+                            Other, 0x115a717c0, {{0.0, 122.0}, {440.0, 50.0}} <AX element pid: 51302, elementOrHash.elementID: 5008718720.348>
+                              Other, 0x115a70f00, {{0.0, 122.0}, {440.0, 50.0}} <AX element pid: 51302, elementOrHash.elementID: 4433716416.352>
+                          Other, 0x115a71f40, {{0.0, 122.0}, {440.0, 50.0}} <AX element pid: 51302, elementOrHash.elementID: 4434179648.344>
+                            Other, 0x115a712c0, {{0.0, 122.0}, {440.0, 50.0}} <AX element pid: 51302, elementOrHash.elementID: 4436641280.349>
+                              Other, 0x115a71400, {{0.0, 122.0}, {440.0, 50.0}} <AX element pid: 51302, elementOrHash.elementID: 4433714624.353>
+                                Image, 0x115a71540, {{31.7, 138.7}, {14.7, 15.0}}, identifier: 'magnifyingglass', label: 'Search' <AX element pid: 51302, elementOrHash.elementID: 4433715520.356>
+                                TextField, 0x115a735c0, {{56.0, 135.0}, {362.0, 22.0}}, placeholderValue: 'Search Hermes' <AX element pid: 51302, elementOrHash.elementID: 4543861760.357>
+                        Cell, 0x115a73700, {{0.0, 172.0}, {440.0, 143.7}} <AX element pid: 51302, elementOrHash.elementID: 4543857920.366>
+                          Other, 0x115a73840, {{0.0, 172.0}, {440.0, 143.7}} <AX element pid: 51302, elementOrHash.elementID: 4512676352.368>
+                            Other, 0x115a73e80, {{0.0, 172.0}, {440.0, 143.7}} <AX element pid: 51302, elementOrHash.elementID: 4546344064.372>
+                              Other, 0x115a73d40, {{0.0, 172.0}, {440.0, 143.7}} <AX element pid: 51302, elementOrHash.elementID: 4433557504.376>
+                          Other, 0x115a73c00, {{0.0, 172.0}, {440.0, 143.7}} <AX element pid: 51302, elementOrHash.elementID: 4433711040.369>
+                            Other, 0x115a73ac0, {{0.0, 172.0}, {440.0, 143.7}} <AX element pid: 51302, elementOrHash.elementID: 4436644352.373>
+                              Other, 0x115a73980, {{0.0, 172.0}, {440.0, 143.7}} <AX element pid: 51302, elementOrHash.elementID: 4433556160.377>
+                                StaticText, 0x115a71900, {{30.0, 188.0}, {376.3, 33.7}}, label: 'Hermes didn't answer in time. Check that your Hermes server is running, then try again.' <AX element pid: 51302, elementOrHash.elementID: 4433555712.382>
+                                Button, 0x115a721c0, {{30.0, 231.7}, {380.0, 58.0}}, identifier: 'chats.repair-connection', label: 'Repair Connection' <AX element pid: 51302, elementOrHash.elementID: 4433555264.383>
+                                  Image, 0x115a72080, {{143.7, 250.7}, {20.3, 20.3}}, identifier: 'wrench.and.screwdriver', label: 'wrench.and.screwdriver' <AX element pid: 51302, elementOrHash.elementID: 4433556608.386>
+                                  StaticText, 0x115a71a40, {{30.0, 231.7}, {380.0, 58.0}}, label: 'Repair Connection' <AX element pid: 51302, elementOrHash.elementID: 4433557056.387>
+                        Cell, 0x115a71b80, {{0.0, 172.0}, {440.0, 170.0}} <AX element pid: 51302, elementOrHash.elementID: 4543869440.337>
+                          Other, 0x115a73200, {{0.0, 172.0}, {440.0, 170.0}} <AX element pid: 51302, elementOrHash.elementID: 4529411584.345>
+                            Other, 0x115a72a80, {{0.0, 172.0}, {440.0, 170.0}} <AX element pid: 51302, elementOrHash.elementID: 5008710656.350>
+                              Other, 0x115a71cc0, {{0.0, 172.0}, {440.0, 170.0}} <AX element pid: 51302, elementOrHash.elementID: 4433722688.378>
+                          Other, 0x115a71e00, {{0.0, 172.0}, {440.0, 170.0}} <AX element pid: 51302, elementOrHash.elementID: 4434180096.346>
+                            Other, 0x115a72300, {{0.0, 172.0}, {440.0, 170.0}} <AX element pid: 51302, elementOrHash.elementID: 4436642816.351>
+                              Other, 0x115a72bc0, {{0.0, 172.0}, {440.0, 170.0}} <AX element pid: 51302, elementOrHash.elementID: 4433719104.379>
+                                ActivityIndicator, 0x115a72e40, {{0.0, 172.0}, {440.0, 170.0}}, label: 'Loading chats…', value: 1 <AX element pid: 51302, elementOrHash.elementID: 4433718656.384>
+                                  ActivityIndicator, 0x115a72f80, {{210.0, 233.7}, {20.0, 20.0}}, value: 1 <AX element pid: 51302, elementOrHash.elementID: 4544154112.359>
+                                    Image, 0x115a730c0, {{210.0, 233.7}, {20.0, 20.0}} <AX element pid: 51302, elementOrHash.elementID: 4529412096.361>
+                                  StaticText, 0x115a72d00, {{0.0, 0.0}, {0.0, 0.0}}, label: 'Loading chats…' <AX element pid: 51302, elementOrHash.elementID: 4433719552.388>
+                        Cell, 0x115a72440, {{0.0, 315.7}, {440.0, 170.0}} <AX element pid: 51302, elementOrHash.elementID: 4543868160.367>
+                          Other, 0x115a726c0, {{0.0, 315.7}, {440.0, 170.0}} <AX element pid: 51302, elementOrHash.elementID: 4512674816.370>
+                            Other, 0x115a72580, {{0.0, 315.7}, {440.0, 170.0}} <AX element pid: 51302, elementOrHash.elementID: 4546342272.374>
+                              Other, 0x115a72940, {{0.0, 315.7}, {440.0, 170.0}} <AX element pid: 51302, elementOrHash.elementID: 4433558400.380>
+                          Other, 0x115a72800, {{0.0, 315.7}, {440.0, 170.0}} <AX element pid: 51302, elementOrHash.elementID: 4433709696.371>
+                            Other, 0x115a71040, {{0.0, 315.7}, {440.0, 170.0}} <AX element pid: 51302, elementOrHash.elementID: 4436645888.375>
+                              Other, 0x115a73340, {{0.0, 315.7}, {440.0, 170.0}} <AX element pid: 51302, elementOrHash.elementID: 4433592320.381>
+                                ActivityIndicator, 0x115a73480, {{0.0, 315.7}, {440.0, 170.0}}, label: 'Loading chats…', value: 1 <AX element pid: 51302, elementOrHash.elementID: 4433592768.385>
+                                  ActivityIndicator, 0x10526ee40, {{210.0, 377.3}, {20.0, 20.0}}, value: 1 <AX element pid: 51302, elementOrHash.elementID: 5008730112.389>
+                                    Image, 0x10526ef80, {{210.0, 377.3}, {20.0, 20.0}} <AX element pid: 51302, elementOrHash.elementID: 4512675328.391>
+                                  StaticText, 0x10526f0c0, {{0.0, 0.0}, {0.0, 0.0}}, label: 'Loading chats…' <AX element pid: 51302, elementOrHash.elementID: 4433593216.390>
+                        Other, 0x10526f200, {{20.0, 366.7}, {400.0, 1.0}} <AX element pid: 51302, elementOrHash.elementID: 4529413632.338>
+                        Other, 0x10526f340, {{407.0, 122.0}, {30.0, 738.0}}, label: 'Vertical scroll bar, 1 page', value: 0% <AX element pid: 51302, elementOrHash.elementID: 4528733696.339>
+                        Other, 0x10526f480, {{407.0, 122.0}, {30.0, 738.0}}, label: 'Vertical scroll bar, 1 page', value: 0% <AX element pid: 51302, elementOrHash.elementID: 4528733696.339>
+                      Button, 0x10526f5c0, {{16.0, 68.0}, {112.3, 44.0}}, identifier: 'sidebar.workspace', label: 'Hermes profile', Selected <AX element pid: 51302, elementOrHash.elementID: 4433721344.327>
+                        StaticText, 0x10526f700, {{31.2, 82.7}, {9.7, 14.7}}, label: 'H' <AX element pid: 51302, elementOrHash.elementID: 4434115008.340>
+                        StaticText, 0x10526f840, {{60.0, 81.0}, {56.3, 18.0}}, label: 'Hermes' <AX element pid: 51302, elementOrHash.elementID: 4433720896.341>
+                      Button, 0x10526fe80, {{246.0, 68.0}, {44.0, 44.0}}, identifier: 'folder', label: 'Browse projects' <AX element pid: 51302, elementOrHash.elementID: 4433720000.328>
+                      Button, 0x10526fd40, {{290.0, 68.0}, {44.0, 44.0}}, identifier: 'square.grid.2x2', label: 'Artifacts' <AX element pid: 51302, elementOrHash.elementID: 4433712832.329>
+                      Button, 0x10526fac0, {{334.0, 68.0}, {44.0, 44.0}}, label: 'Filter', value: All <AX element pid: 51302, elementOrHash.elementID: 4433710144.330>
+                        Button, 0x10526fc00, {{334.0, 68.0}, {44.0, 44.0}} <AX element pid: 51302, elementOrHash.elementID: 5008714240.342>
+                          Image, 0x1158792c0, {{334.0, 68.0}, {44.0, 44.0}}, identifier: 'line.3.horizontal.decrease', label: 'Filter' <AX element pid: 51302, elementOrHash.elementID: 4433713280.347>
+                      Button, 0x115878280, {{378.0, 68.0}, {44.0, 44.0}}, identifier: 'square.and.pencil', label: 'New Chat', Disabled <AX element pid: 51302, elementOrHash.elementID: 4433715968.331>
+                      Other, 0x1158783c0, {{0.0, 860.0}, {440.0, 62.0}} <AX element pid: 51302, elementOrHash.elementID: 4433717760.332>
+              Other, 0x115878500, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 5008850944.291>
+                Other, 0x115878640, {{0.0, 0.0}, {0.0, 0.0}} <AX element pid: 51302, elementOrHash.elementID: 4433407360.305>
+                Other, 0x115878780, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4512662528.306>
+            Button, 0x1158788c0, {{20.0, 864.0}, {82.0, 48.0}}, label: 'Bots', Selected <AX element pid: 51302, elementOrHash.elementID: 4433917504.282>
+              Image, 0x115878a00, {{49.3, 872.0}, {24.7, 17.0}}, identifier: 'person.2', label: 'person.2' <AX element pid: 51302, elementOrHash.elementID: 4433919296.292>
+              StaticText, 0x115878b40, {{48.5, 892.2}, {25.0, 13.3}}, label: 'Bots' <AX element pid: 51302, elementOrHash.elementID: 4433916608.293>
+            Button, 0x115878c80, {{104.0, 864.0}, {82.0, 48.0}}, label: 'Sessions' <AX element pid: 51302, elementOrHash.elementID: 4433913472.283>
+              Image, 0x115878dc0, {{132.7, 870.7}, {25.0, 19.7}}, identifier: 'bubble.left.and.bubble.right', label: 'Conversation' <AX element pid: 51302, elementOrHash.elementID: 4433917952.294>
+              StaticText, 0x115878f00, {{120.5, 893.5}, {49.0, 13.3}}, label: 'Sessions' <AX element pid: 51302, elementOrHash.elementID: 4433912576.295>
+            Button, 0x115879040, {{188.0, 864.0}, {82.0, 48.0}}, label: 'Tasks' <AX element pid: 51302, elementOrHash.elementID: 4434101120.284>
+              Image, 0x115879180, {{219.3, 871.7}, {19.7, 17.3}}, identifier: 'checklist', label: 'checklist' <AX element pid: 51302, elementOrHash.elementID: 4434100224.296>
+              StaticText, 0x11587bc00, {{213.3, 892.3}, {31.3, 13.3}}, label: 'Tasks' <AX element pid: 51302, elementOrHash.elementID: 4434100672.297>
+            Button, 0x11587a6c0, {{272.0, 864.0}, {82.0, 48.0}}, label: 'Settings' <AX element pid: 51302, elementOrHash.elementID: 4434102464.285>
+              Image, 0x11587ad00, {{304.3, 873.0}, {17.7, 15.0}}, identifier: 'slider.horizontal.3', label: 'Edit' <AX element pid: 51302, elementOrHash.elementID: 4434101568.298>
+              StaticText, 0x11587ae40, {{290.0, 891.2}, {46.0, 13.3}}, label: 'Settings' <AX element pid: 51302, elementOrHash.elementID: 4434102016.299>
+            Button, 0x11587af80, {{368.0, 860.0}, {56.0, 56.0}}, label: 'New voice call', Disabled <AX element pid: 51302, elementOrHash.elementID: 4434103360.286>
+              Other, 0x11587b0c0, {{368.0, 860.0}, {56.0, 56.0}}, Disabled <AX element pid: 51302, elementOrHash.elementID: 4434102912.300>
+            WebView, 0x11587b200, {{219.7, 491.7}, {1.0, 1.0}} <AX element pid: 51302, elementOrHash.elementID: 4475817984.287>
+              WebView, 0x11587b340, {{219.7, 491.7}, {1.0, 1.0}} <AX element pid: 51302, elementOrHash.elementID: 4545008640.301>
+                WebView, 0x11587b480, {{219.7, 491.7}, {1.0, 1.0}} <AX element pid: 51302, elementOrHash.elementID: 4369678336.307>
+                  Other, 0x11587b5c0, {{0.0, 0.0}, {2.0, 2.0}} <AX element pid: 51302, elementOrHash.elementID: 17032702385453854738.9999>
+                    Other, 0x11587b700, {{0.0, 0.0}, {2.0, 2.0}} <AX element pid: 51932, elementOrHash.elementID: 4342083584.3>
+                      Other, 0x11587b840, {{219.0, 491.0}, {2.0, 2.0}} <AX element pid: 51932, elementOrHash.elementID: 4396522816.4>
+                        Other, 0x11587b980, {{219.0, 491.0}, {981.0, 981.0}}, Focused <AX element pid: 51932, elementOrHash.elementID: 4396523136.5>
+                Other, 0x11587bac0, {{217.2, 491.7}, {0.5, 1.0}}, label: 'Vertical scroll bar, 980 pages', value: 0% <AX element pid: 51302, elementOrHash.elementID: 4512677376.308>
+                  Other, 0x11587a940, {{214.7, 450.0}, {3.0, 36.0}} <AX element pid: 51302, elementOrHash.elementID: 5010600192.312>
+                Other, 0x11587aa80, {{219.7, 489.2}, {1.0, 0.5}}, label: 'Horizontal scroll bar, 980 pages', value: 0% <AX element pid: 51302, elementOrHash.elementID: 4512672768.309>
+                  Other, 0x11587abc0, {{175.0, 486.7}, {36.0, 3.0}} <AX element pid: 51302, elementOrHash.elementID: 5010599744.313>
+                Other, 0x11587bd40, {{217.2, 491.7}, {0.5, 1.0}}, label: 'Vertical scroll bar, 980 pages', value: 0% <AX element pid: 51302, elementOrHash.elementID: 4512677376.308>
+                  Other, 0x11587be80, {{214.7, 450.0}, {3.0, 36.0}} <AX element pid: 51302, elementOrHash.elementID: 5010600192.312>
+                Other, 0x11587a440, {{219.7, 489.2}, {1.0, 0.5}}, label: 'Horizontal scroll bar, 980 pages', value: 0% <AX element pid: 51302, elementOrHash.elementID: 4512672768.309>
+                  Other, 0x11587a300, {{175.0, 486.7}, {36.0, 3.0}} <AX element pid: 51302, elementOrHash.elementID: 5010599744.313>
+  Window, 0x115879680, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4369019392.48>
+    Other, 0x11587a080, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4433601728.50>
+      Other, 0x11587a1c0, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 51302, elementOrHash.elementID: 4433603968.52>
