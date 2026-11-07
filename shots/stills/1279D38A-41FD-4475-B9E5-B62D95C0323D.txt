@@ -1,0 +1,5 @@
+Query chain:
+ →Find: Target Application 'com.milim.relay'
+  ↪︎Find: Descendants matching type Any
+    ↪︎Find: Elements matching predicate 'label CONTAINS "needs your OK"'
+      ↪︎Find: First Match

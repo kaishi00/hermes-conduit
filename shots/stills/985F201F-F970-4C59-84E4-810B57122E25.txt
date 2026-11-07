@@ -1,0 +1,44 @@
+Attributes: Button, 0x106e66940, {{343.7, 313.7}, {76.3, 44.0}}, identifier: 'finish-setup.not-now', label: 'Not now'
+Element subtree:
+ →Button, 0x106e66940, {{343.7, 313.7}, {76.3, 44.0}}, identifier: 'finish-setup.not-now', label: 'Not now'
+Path to element:
+ →Button, 0x106e66940, {{343.7, 313.7}, {76.3, 44.0}}, identifier: 'finish-setup.not-now', label: 'Not now'
+Query chain:
+ →Find: Target Application 'com.milim.relay'
+  Output: {
+    Application, 0x113c03980, pid: 33401, label: 'Conduit'
+  }
+  ↪︎Find: Descendants matching type Button
+    Output: {
+      Button, 0x113c00f00, {{20.0, 864.0}, {82.0, 48.0}}, label: 'Bots', Selected
+      Button, 0x113c012c0, {{104.0, 864.0}, {82.0, 48.0}}, label: 'Sessions'
+      Button, 0x113c01680, {{188.0, 864.0}, {82.0, 48.0}}, label: 'Tasks'
+      Button, 0x113c01a40, {{272.0, 864.0}, {82.0, 48.0}}, label: 'Settings'
+      Button, 0x113c01e00, {{368.0, 860.0}, {56.0, 56.0}}, label: 'New voice call', Disabled
+      Button, 0x106ff57c0, {{380.0, 66.0}, {44.0, 44.0}}, identifier: 'plus', label: 'New Bot', Disabled
+      Button, 0x106ff5900, {{16.0, 114.0}, {115.3, 44.0}}, identifier: 'bots.artifacts', label: 'Artifacts'
+      Button, 0x106ffbe80, {{16.0, 120.0}, {208.0, 44.0}}, label: 'Filter', value: All
+      Button, 0x113c00500, {{246.0, 120.0}, {44.0, 44.0}}, identifier: 'magnifyingglass', label: 'Search'
+      Button, 0x113c00640, {{290.0, 120.0}, {44.0, 44.0}}, identifier: 'folder', label: 'Browse projects'
+      Button, 0x113c00780, {{334.0, 120.0}, {44.0, 44.0}}, identifier: 'square.grid.2x2', label: 'Artifacts'
+      Button, 0x113c008c0, {{378.0, 120.0}, {44.0, 44.0}}, identifier: 'square.and.pencil', label: 'New Chat'
+      Button, 0x113c00000, {{16.0, 120.0}, {208.0, 44.0}}
+      Button, 0x106ffb0c0, {{16.0, 68.0}, {44.0, 44.0}}, identifier: 'v2.profile.all', label: 'All profiles'
+      Button, 0x106ffb5c0, {{68.0, 68.0}, {112.3, 44.0}}, identifier: 'sidebar.workspace', label: 'Hermes profile', Selected
+      Button, 0x106ffb980, {{188.3, 68.0}, {44.0, 44.0}}, identifier: 'v2.profile.conduit-chan', label: 'Conduit-chan profile'
+      Button, 0x106ffbac0, {{240.3, 68.0}, {44.0, 44.0}}, identifier: 'v2.profile.mira', label: 'Mira profile'
+      Button, 0x106ffbc00, {{292.3, 68.0}, {44.0, 44.0}}, identifier: 'v2.profile.piko', label: 'Piko profile'
+      Button, 0x106ffbd40, {{344.3, 68.0}, {44.0, 44.0}}, identifier: 'v2.profile.riri', label: 'Riri profile'
+      Button, 0x106ff8280, {{343.7, 174.0}, {76.3, 44.0}}, identifier: 'finish-setup.not-now', label: 'Not now'
+      Button, 0x106ff8a00, {{338.7, 244.0}, {73.3, 36.0}}, label: 'Check'
+      Button, 0x106ff9180, {{329.7, 314.0}, {82.3, 36.0}}, label: 'Turn on'
+      Button, 0x106ff9a40, {{338.0, 378.0}, {74.0, 36.0}}, label: 'Set up'
+    }
+    ↪︎Find: Elements matching predicate '"finish-setup.not-now" IN identifiers'
+      Output: {
+        Button, 0x106fc88c0, {{343.7, 174.0}, {76.3, 44.0}}, identifier: 'finish-setup.not-now', label: 'Not now'
+      }
+      ↪︎Find: Element at index 0
+        Output: {
+          Button, 0x106e66440, {{343.7, 174.0}, {76.3, 44.0}}, identifier: 'finish-setup.not-now', label: 'Not now'
+        }
