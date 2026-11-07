@@ -451,6 +451,12 @@ struct V2Shell: View {
     /// The floating bar's height as last laid out (the capsule and the
     /// voice button, with their bottom padding).
     @State private var tabBarHeight: CGFloat = 62
+    /// An iPhone Duo's side status strip, where the tabs stand instead of
+    /// floating over the screens' bottom (`V2StatusStrip`).
+    @State private var statusStrip: V2StatusStrip?
+    /// The room a screen keeps under the floating bar: none while the tabs
+    /// stand in the status strip.
+    private var barClearance: CGFloat { statusStrip == nil ? tabBarHeight : 0 }
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
     @AppStorage(V2ChatListPreference.key) private var chatListBeside = V2ChatListPreference.defaultValue
     @AppStorage(V2SplitLayout.listWidths.key) private var storedListWidth = Double(V2SplitLayout.listWidths.standard)
@@ -631,12 +637,19 @@ struct V2Shell: View {
             let canSplit = V2SplitLayout.isSplit(width: proxy.size.width)
             let split = V2SplitLayout.isSplit(width: proxy.size.width, showsList: chatListBeside)
             let list = V2SplitLayout.ListColumn(window: proxy.size.width, stored: storedListWidth, dragged: draggedListWidth)
+            let strip = V2StatusStrip(insets: proxy.safeAreaInsets, isPhone: UIDevice.current.userInterfaceIdiom == .phone)
             tabs(split: split, canSplit: canSplit, list: list)
+                // The bars and the screens' clearance under them read it
+                // from here together, so they change in the same pass.
+                .onChange(of: strip, initial: true) { _, strip in
+                    if statusStrip != strip { statusStrip = strip }
+                }
                 // The window's side safe area as the shell has it, outside
                 // every stack: each tab's screens take it, or their
                 // column's share of it, in place of what UIKit hands their
-                // stack (`windowSideContent`, #1900).
-                .environment(\.windowSideInsets, WindowSideInsets(proxy.safeAreaInsets))
+                // stack, and never grow past the column's width
+                // (`windowSideContent`, #1900).
+                .environment(\.windowSideInsets, WindowSideInsets(proxy.safeAreaInsets, width: proxy.size.width))
                 .environment(\.v2Shell, V2ShellContext(pickProfile: { pickProfile($0) }, dropQueuedProfilePick: { queuedProfilePick = V2QueuedProfilePick() }, showScheduledRuns: showScheduledRuns, values: .init(contentFaded: contentFaded, contentShift: contentShift, isSplit: split, canSplit: canSplit, isPickingProfile: isPickingProfile)))
         }
     }
@@ -828,7 +841,12 @@ struct V2Shell: View {
     /// under it rather than sitting alone in the corner.
     /// Under a list the user widened, the bar keeps its own width, centered
     /// under the list's column.
+    /// On an iPhone Duo the tabs stand in the side status strip instead,
+    /// under the clock and wifi, the main button at their foot
+    /// (`V2StatusStrip`, Eric 2026-11-07): the screens beside it keep
+    /// their whole height, nothing floating over their last rows.
     private func tabs(split: Bool, canSplit: Bool, list: V2SplitLayout.ListColumn) -> some View {
+        let strip = statusStrip
         let settingsBeside = V2SplitLayout.settingsBesideList(split: split)
         let underList = V2SplitLayout.tabBarUnderList(split: split, tab: selectedTab)
         return ZStack {
@@ -873,7 +891,7 @@ struct V2Shell: View {
         // (`tabBarClearance`).
         .overlay(alignment: .bottom) {
             ZStack(alignment: .bottom) {
-                if split || (!conversationVisible && !pulseVisible) {
+                if strip == nil, split || (!conversationVisible && !pulseVisible) {
                     HStack(spacing: 10) {
                         V2CapsuleTabBar(selection: $selectedTab)
                         voiceButton(chatVoiceBeside: V2SplitLayout.hasChatVoiceBeside(split: split, path: path(of: selectedTab), inRoom: appState.activeRoomSurface != nil))
@@ -901,6 +919,11 @@ struct V2Shell: View {
             }
             .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: conversationVisible || pulseVisible)
         }
+        .overlay {
+            if let strip {
+                stripTabs(strip, split: split)
+            }
+        }
         .overlay(alignment: .top) {
             // Animated on its own, so the notice slides in without
             // animating the screen under it.
@@ -916,18 +939,49 @@ struct V2Shell: View {
         }
     }
 
+    /// The tabs and the main button standing in the status strip, at its
+    /// foot, clear of the clock and wifi at its top. Any page pushed over
+    /// the tab's root on one column hides them, not just a chat or Pulse
+    /// as with the floating bar: iOS lays the page's Back and a search
+    /// toolbar button out in the same strip, over the tabs and the main
+    /// button. Beside the list they stay.
+    private func stripTabs(_ strip: V2StatusStrip, split: Bool) -> some View {
+        ZStack(alignment: .bottom) {
+            if split || path(of: selectedTab).isEmpty {
+                VStack(spacing: 12) {
+                    V2StripTabBar(selection: $selectedTab, width: strip.barWidth)
+                    voiceButton(chatVoiceBeside: V2SplitLayout.hasChatVoiceBeside(split: split, path: path(of: selectedTab), inRoom: appState.activeRoomSurface != nil))
+                }
+                .padding(.bottom, 6)
+                .transition(.move(edge: strip.edge == .trailing ? .trailing : .leading).combined(with: .opacity))
+            }
+        }
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: path(of: selectedTab).isEmpty)
+        .frame(width: strip.width)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: strip.edge == .trailing ? .bottomTrailing : .bottomLeading)
+        // Out past the shell's frame, into the strip itself.
+        .ignoresSafeArea(.container, edges: strip.edge == .trailing ? .trailing : .leading)
+    }
+
     /// Room under the floating bar for a screen that shows it: its lists
     /// scroll under the bar and stop above it. The same height whether or
     /// not the bar is up, so pushing or popping a chat never re-lays out
     /// the screen under it.
     /// The clearance is a bar to the lists, so they fade out under the
     /// floating bar (`v2EdgeBar`): the system's soft edge on iOS 26.
+    /// With the tabs in a Duo's status strip there's no bar to clear, and
+    /// no bottom edge either, as Settings' pages (`V2TabBarClearance`).
+    @ViewBuilder
     private func tabBarClearance<Content: View>(_ content: Content) -> some View {
-        content.v2EdgeBar(.bottom) {
-            Color.clear
-                .frame(height: tabBarHeight)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+        if barClearance > 0 {
+            content.v2EdgeBar(.bottom) {
+                Color.clear
+                    .frame(height: barClearance)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        } else {
+            content
         }
     }
 
@@ -990,7 +1044,7 @@ struct V2Shell: View {
             // Settings puts the clearance inside its own stack, on its home
             // and on every page it pushes (`v2TabBarClearance()`).
             V2SettingsTab(link: $settingsLink)
-                .environment(\.v2TabBarClearance, tabBarHeight)
+                .environment(\.v2TabBarClearance, barClearance)
         }
     }
 
@@ -1042,8 +1096,9 @@ struct V2Shell: View {
             }
             .frame(width: column.width)
             // The list's screens take the window's leading inset, never
-            // its trailing one (`leadingColumnContent`).
-            .transformEnvironment(\.windowSideInsets) { $0 = $0?.reaching(.leading) }
+            // its trailing one (`leadingColumnContent`), and keep to the
+            // column's width.
+            .transformEnvironment(\.windowSideInsets) { $0 = $0?.reaching(.leading, width: column.width) }
             // Each column's backdrop stays in its own column.
             .v2ClippedToColumn(outerEdge: .leading)
             ColumnDivider(
@@ -1093,8 +1148,11 @@ struct V2Shell: View {
             }
             .animation(nil, value: selectedTab)
             // The chat's column (and Settings in it) takes the window's
-            // trailing inset, never its leading one.
-            .transformEnvironment(\.windowSideInsets) { $0 = $0?.reaching(.trailing) }
+            // trailing inset, never its leading one, and keeps to the room
+            // the list and the line between them leave.
+            .transformEnvironment(\.windowSideInsets) { insets in
+                insets = insets?.reaching(.trailing, width: insets?.width.map { $0 - column.width - 1 })
+            }
             .v2ClippedToColumn(outerEdge: .trailing)
         }
     }
@@ -1718,6 +1776,90 @@ private struct V2CapsuleTabBar: View {
         }
         .padding(4)
         .conduitGlassControl(cornerRadius: 28, interactive: false)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+    }
+}
+
+/// An iPhone Duo's side status strip: the clock, wifi and battery stand in
+/// a column along one side of the window instead of across its top, and
+/// the rest of that column is empty. The window's safe area shows it: a
+/// wide inset on one side and none on the other. A landscape iPhone's
+/// sensor gives both sides an inset, and an iPad or Mac window none, so
+/// they keep the floating bar.
+struct V2StatusStrip: Equatable {
+    /// Narrower than this, a side inset is a sensor's or a corner's, not a
+    /// strip with room for the tabs. The Duo's is 84 pt.
+    static let minimumWidth: CGFloat = 72
+
+    let edge: HorizontalEdge
+    let width: CGFloat
+
+    init?(insets: EdgeInsets, isPhone: Bool) {
+        guard isPhone else { return nil }
+        if insets.trailing >= Self.minimumWidth, insets.leading < 1 {
+            edge = .trailing
+            width = insets.trailing
+        } else if insets.leading >= Self.minimumWidth, insets.trailing < 1 {
+            edge = .leading
+            width = insets.leading
+        } else {
+            return nil
+        }
+    }
+
+    /// The tabs' glass column, a margin in from the strip's sides.
+    var barWidth: CGFloat { width - 12 }
+}
+
+/// The tab bar standing in a Duo's status strip: the same four items as
+/// the capsule, one above another, the selection sliding between them.
+private struct V2StripTabBar: View {
+    @Binding var selection: V2Tab
+    let width: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var highlight
+
+    var body: some View {
+        VStack(spacing: 2) {
+            ForEach(V2Tab.destinations) { tab in
+                let isSelected = selection == tab
+                Button {
+                    withAnimation(ConduitMotion.overshoot(reduceMotion: reduceMotion)) {
+                        selection = tab
+                    }
+                } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: tab.symbol)
+                            .font(.system(size: 18, weight: .semibold))
+                            .conduitFixedGlyph()
+                        Text(tab.title)
+                            .scaledFont(.caption2.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    .foregroundStyle(isSelected ? Color.conduitAccent : Color.secondary)
+                    .padding(.horizontal, 2)
+                    .frame(maxWidth: .infinity, minHeight: 54)
+                    .background {
+                        if isSelected {
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .fill(Color.primary.opacity(0.08))
+                                .matchedGeometryEffect(id: "selection", in: highlight)
+                        }
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityLabel(tab.title)
+                .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+                .accessibilityShowsLargeContentViewer {
+                    Label(tab.title, systemImage: tab.symbol)
+                }
+            }
+        }
+        .padding(4)
+        .frame(width: width)
+        .conduitGlassControl(cornerRadius: 22, interactive: false)
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
     }
 }
