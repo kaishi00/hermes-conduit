@@ -4980,7 +4980,7 @@ clips (kaishi00/hermes-conduit-website)
 
 **Code**
 - Workflow: `.github/workflows/app-store-screenshots.yml`; the promo footage: `.github/workflows/app-store-promo.yml`
-- Scripts: `scripts/app-store/record-clip.sh`, `scripts/app-store/cut-preview.sh`
+- Scripts: `scripts/app-store/record-clip.sh`, `scripts/app-store/cut-preview.sh`, `scripts/app-store/probe_bot_routes.py` (the promo run's check of a bot's routes)
 - UI test: `ConduitScreenshots/AppStoreScreenshotTests.swift` (testRecordPromo for the promo footage)
 - Fixtures: `Conduit/Services/ScreenshotCallFixture.swift`, `ConduitWatch/WatchVoiceCall.swift` (applyScreenshotFixture)
 - Demo Hermes: `scripts/app-store/start-demo-hermes.sh` (DEMO_SCRIPT, a bot's approval mode, the notifier in the bots' profiles), `scripts/app-store/seed_demo.py` (a bot's picture), `scripts/app-store/llm_stub.py`, `scripts/app-store/demo-script.json`, `scripts/app-store/promo-script.json` and its bots' pictures beside it (`scripts/app-store/portraits/conduit-chan.png` and the rest)

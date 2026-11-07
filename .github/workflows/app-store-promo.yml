@@ -113,6 +113,15 @@ jobs:
             -pix_fmt yuv420p -movflags +faststart shots/promo.mp4 || echo "promo.mp4 not made" >> failures.txt
           mkdir -p shots/stills
           xcrun xcresulttool export attachments --path results/promo.xcresult --output-path shots/stills || true
+          # What the app logged, and the bot's routes from the runner itself,
+          # for a walk that didn't finish.
+          xcrun simctl spawn "$udid" log show --last 20m --style compact \
+            --predicate 'process == "Conduit" OR subsystem BEGINSWITH "com.milim"' > app-log.txt 2>&1 || true
+          python3 scripts/app-store/probe_bot_routes.py "http://$DEMO_HOST:$DEMO_PORT" "$DEMO_USER" "$DEMO_PASSWORD" conduit-chan \
+            > probe-bots.txt 2>&1 || true
+          # Full resolution in parts the git ref can carry.
+          ffmpeg -v error -y -i shots/promo.mov -vf fps=30 -an -c:v libx264 -crf 20 -pix_fmt yuv420p \
+            -f segment -segment_time 90 -reset_timestamps 1 shots/promo-full-%02d.mp4 || true
           # Live voice, over the scripted call (the sign-in is saved now).
           for state in listening speaking; do
             scripts/app-store/record-clip.sh "$udid" com.milim.relay "$state" "shots/clips/voice-$state.mp4" 12 \
@@ -129,7 +138,7 @@ jobs:
           cp -R shots "$out/" 2>/dev/null || true
           find "$out" -name '*.mov' -size +90M -delete
           mkdir -p "$out/logs"
-          for f in demo-hermes/*.log results-*.log record-*.log; do
+          for f in demo-hermes/*.log results-*.log record-*.log app-log.txt probe-bots.txt; do
             if [ -f "$f" ]; then tail -c 400000 "$f" > "$out/logs/$(basename "$f")"; fi
           done
 

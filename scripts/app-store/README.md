@@ -97,5 +97,8 @@ takes a simulator name (iPhone 17 Pro Max by default).
   by. Then `record-clip.sh` records the live voice fixtures
   (`clips/voice-listening.mp4`, `clips/voice-speaking.mp4`).
 - Results, under `refs/app-store-shots/<run id>-promo`: `promo.mov` (dropped
-  when over 90 MB), `promo.mp4` (1920 px high), `promo.marks`, `stills/` (the
-  test's `promo-*` screenshots), `clips/` and `logs/`.
+  when over 90 MB; `promo-full-NN.mp4` are the same at full resolution, 90 s
+  each), `promo.mp4` (1920 px high), `promo.marks`, `stills/` (the test's
+  `promo-*` screenshots), `clips/` and `logs/`, with the app's own log
+  (`app-log.txt`) and `probe_bot_routes.py`'s answers from the runner
+  (`probe-bots.txt`) for a walk that stopped short.
