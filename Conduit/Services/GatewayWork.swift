@@ -109,3 +109,48 @@ struct GatewayWork: Equatable {
         return formatter.string(from: components) ?? "\(minutes) min"
     }
 }
+
+/// Restart now's steps, apart from the dashboard they go to (so a test can
+/// script them): the update stops waiting, the chats the restart waits on
+/// are stopped, and whatever still runs after a few reads is ended with a
+/// forced restart. Each step answers why it failed, or nil.
+struct GatewayRestartNow {
+    struct Failure: Equatable {
+        var message: String
+        var dashboardID: UUID?
+        var at: Date
+
+        /// A failure belongs to the wait it came from: a later one on the
+        /// same dashboard starts clean.
+        func shows(on dashboardID: UUID?, now: Date = Date()) -> Bool {
+            self.dashboardID == dashboardID && now.timeIntervalSince(at) < 15 * 60
+        }
+    }
+
+    var endWait: () async -> String?
+    /// What the restart waits on, from the dashboard Restart now started
+    /// on; nil when the read failed.
+    var readWork: () async -> GatewayWork?
+    var stop: (GatewayWork.Unit) async -> Void
+    var force: () async -> String?
+    var pause: () async -> Void
+    var reads = 5
+
+    func run() async -> String? {
+        if let failure = await endWait() { return failure }
+        if let work = await readWork() {
+            for unit in work.units where unit.canStop {
+                // A chat that won't stop is ended by the forced restart below.
+                await stop(unit)
+            }
+        }
+        // Stopped chats end within a few seconds; an update still waiting
+        // sends its restart once the flag lands. A read that fails proves
+        // nothing, so only an answer with no work skips the force.
+        for _ in 0..<reads {
+            await pause()
+            if let work = await readWork(), work.count == 0 { return nil }
+        }
+        return await force()
+    }
+}

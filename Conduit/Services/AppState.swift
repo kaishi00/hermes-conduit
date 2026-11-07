@@ -2321,6 +2321,9 @@ final class AppState: ObservableObject {
     /// Restart now is under way (restartGatewayNow): one at a time, however
     /// many places show the wait.
     @Published var gatewayRestartingNow = false
+    /// Why the last Restart now failed, kept here so a wait view opened
+    /// after it finished still shows it.
+    @Published var gatewayRestartNowFailure: GatewayRestartNow.Failure?
     /// The Conduit plugin update's progress and outcome, and the dashboard
     /// it belongs to (AppState+NotifierPluginUpdate.swift).
     @Published var notifierPluginUpdate = NotifierPluginUpdateSlot()

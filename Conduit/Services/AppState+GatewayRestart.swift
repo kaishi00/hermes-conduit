@@ -87,56 +87,68 @@ extension AppState {
     /// (an older one, or a gateway that serves the dashboard and refuses
     /// requests while it drains).
     func gatewayWork() async -> GatewayWork? {
-        guard namesGatewayWork, let bridge = dashboardTicketBridge,
-              let json = try? await bridge.requestJSON(path: GatewayWork.path, method: "GET") else { return nil }
+        guard namesGatewayWork, let bridge = dashboardTicketBridge else { return nil }
+        return await Self.gatewayWork(from: bridge)
+    }
+
+    private static func gatewayWork(from bridge: DashboardTicketBridge) async -> GatewayWork? {
+        guard let json = try? await bridge.requestJSON(path: GatewayWork.path, method: "GET") else { return nil }
         return GatewayWork(json: json)
     }
 
-    /// Restart now: the update stops waiting, Conduit stops the chats the
-    /// restart waits on, and whatever is still running after that (work
-    /// Conduit can't stop, a chat that didn't stop) the plugin ends with a
-    /// restart through the gateway's service manager. Returns why it
-    /// couldn't, or nil.
-    func restartGatewayNow() async -> String? {
-        guard !gatewayRestartingNow else { return nil }
+    /// Restart now (GatewayRestartNow), on the dashboard it started on even
+    /// if another becomes active meanwhile. Why it couldn't lands in
+    /// gatewayRestartNowFailure.
+    func restartGatewayNow() async {
+        guard !gatewayRestartingNow else { return }
+        let dashboardID = activeDashboardID
+        gatewayRestartNowFailure = nil
         guard let bridge = dashboardTicketBridge else {
-            return AppLocalization.string("Connect to this dashboard first.")
+            gatewayRestartNowFailure = .init(
+                message: AppLocalization.string("Connect to this dashboard first."), dashboardID: dashboardID, at: Date())
+            return
         }
         gatewayRestartingNow = true
         defer { gatewayRestartingNow = false }
-        do {
-            _ = try await bridge.requestJSON(path: GatewayWork.restartNowPath, method: "POST")
-        } catch {
-            return UserFacingError.message(for: error)
-        }
-        if let work = await gatewayWork(), let client {
-            for unit in work.units where unit.canStop {
-                guard let sessionID = unit.sessionID else { continue }
-                // A chat that won't stop is ended by the forced restart below.
-                _ = try? await client.cancel(sessionID, profile: unit.profile ?? activeProfile)
-            }
-        }
-        // Stopped chats end within a few seconds; an update still waiting
-        // sends its restart once the flag lands. A read that fails proves
-        // nothing, so only an answer with no work skips the force.
-        for _ in 0..<5 {
-            try? await Task.sleep(for: .seconds(2))
-            if let work = await gatewayWork(), work.count == 0 { return nil }
-        }
-        do {
-            _ = try await bridge.requestJSON(path: GatewayWork.forceRestartPath, method: "POST", timeoutMilliseconds: 40_000)
-        } catch {
-            // The restart can take this dashboard down with the gateway
-            // before it answers, so a request that went out and got no
-            // answer is how a forced restart looks. Anything the dashboard
-            // answered, or that never went out (signed out), is a failure.
-            if let refusal = error as? DashboardTicketBridgeError {
-                switch refusal {
-                case .notReady, .answeredAfterSwitch: break
-                default: return UserFacingError.message(for: error)
+        let client = client
+        let profile = activeProfile
+        let steps = GatewayRestartNow(
+            endWait: {
+                do {
+                    _ = try await bridge.requestJSON(path: GatewayWork.restartNowPath, method: "POST")
+                    return nil
+                } catch {
+                    return UserFacingError.message(for: error)
                 }
-            }
+            },
+            readWork: { await Self.gatewayWork(from: bridge) },
+            stop: { unit in
+                guard let sessionID = unit.sessionID else { return }
+                _ = try? await client?.cancel(sessionID, profile: unit.profile ?? profile)
+            },
+            force: {
+                do {
+                    _ = try await bridge.requestJSON(
+                        path: GatewayWork.forceRestartPath, method: "POST", timeoutMilliseconds: 40_000)
+                } catch {
+                    // The restart can take this dashboard down with the
+                    // gateway before it answers, so a request that went out
+                    // and got no answer is how a forced restart looks.
+                    // Anything the dashboard answered, or that never went
+                    // out (signed out), is a failure.
+                    if let refusal = error as? DashboardTicketBridgeError {
+                        switch refusal {
+                        case .notReady, .answeredAfterSwitch: break
+                        default: return UserFacingError.message(for: error)
+                        }
+                    }
+                }
+                return nil
+            },
+            pause: { try? await Task.sleep(for: .seconds(2)) }
+        )
+        if let message = await steps.run() {
+            gatewayRestartNowFailure = .init(message: message, dashboardID: dashboardID, at: Date())
         }
-        return nil
     }
 }
