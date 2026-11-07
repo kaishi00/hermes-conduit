@@ -101,7 +101,8 @@ extension AppStateVoiceCapabilityTests {
                      "auth token", "client_secret", "SSH private key", "Recovery key", "Verification code", "license_key",
                      "Passphrase", "TOTP", "Master key", "App credentials",
                      "2FA code", "Two-factor code", "Login code", "パスワード", "Passwort", "Contraseña",
-                     "Mot de passe", "Пароль", "Kata sandi", "비밀번호를 입력", "密码"] {
+                     "Mot de passe", "Пароль", "Kata sandi", "비밀번호를 입력", "密码", "Access code",
+                     "Unlock code", "Security key"] {
             XCTAssertTrue(RichCardSchema.namesSecret(name), name)
         }
         for name in ["Spin class", "Subject", "Opinion", "Pinned note", "to", "Topic", "Key dates", "Zip code", "メモ",
