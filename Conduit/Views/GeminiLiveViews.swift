@@ -768,6 +768,22 @@ struct VoiceReplyModelPicks {
     /// Nothing from Hermes is shown yet: the kept setting can be.
     var opensOnKept: Bool { saved == nil && !answered }
 
+    /// What the section shows.
+    enum Shown: Equatable {
+        case hidden, loading, failed, noSlot, setting
+    }
+
+    /// Voice settings shows the section only with a setting: hidden
+    /// meanwhile, and on a Hermes without the slot. A helper's page is
+    /// nothing else, so it says it's waiting, that the read failed, or
+    /// that Hermes no longer has the slot.
+    func shown(onHelperPage: Bool) -> Shown {
+        if saved != nil { return .setting }
+        guard onHelperPage else { return .hidden }
+        if answered { return .noSlot }
+        return readFailed ? .failed : .loading
+    }
+
     /// The setting Hermes gave last, kept on the phone, drawn before the
     /// first frame while Hermes is asked again.
     mutating func showKept(_ setting: VoiceReplyModelSetting?) {
@@ -902,16 +918,23 @@ struct VoiceReplyModelSettingsSection: View {
     var body: some View {
         // Held, so the reads below run while nothing is shown yet.
         ModifierHost {
-            if shown {
+            let shown = picks.shown(onHelperPage: helper != nil)
+            if shown != .hidden {
                 ConduitSettingsSection(
                     title: helper?.title ?? AppLocalization.string("Voice replies"),
                     symbol: helper?.symbol ?? "waveform.circle",
                     tint: .conduitAura
                 ) {
-                    if picks.saved == nil {
-                        waiting
-                    } else {
+                    switch shown {
+                    case .setting, .hidden:
                         pickers
+                    case .loading:
+                        ProgressView().frame(maxWidth: .infinity).accessibilityLabel(AppLocalization.string("Loading…"))
+                    case .failed:
+                        ModelCatalogPlaceholder(state: .failed) { Task { await tryAgain() } }
+                    case .noSlot:
+                        Text(AppLocalization.string("This Hermes no longer has this helper model."))
+                            .scaledFont(.subheadline).foregroundStyle(.secondary)
                     }
                     if let helper {
                         Text(verbatim: helper.caption)
@@ -945,22 +968,6 @@ struct VoiceReplyModelSettingsSection: View {
         }
         .onChange(of: picks.selection) { _, _ in save() }
         .onChange(of: picks.reasoning) { _, _ in save() }
-    }
-
-    /// Hidden once Hermes answers without the slot, on Voice settings; a
-    /// helper's page says so instead, as the page is nothing else.
-    private var shown: Bool { picks.saved != nil || !picks.answered || helper != nil }
-
-    /// Nothing kept and no answer yet, or no slot on a helper's page.
-    @ViewBuilder private var waiting: some View {
-        if picks.answered {
-            Text(AppLocalization.string("This Hermes no longer has this helper model."))
-                .scaledFont(.subheadline).foregroundStyle(.secondary)
-        } else if picks.readFailed {
-            ModelCatalogPlaceholder(state: .failed) { Task { await tryAgain() } }
-        } else {
-            ProgressView().frame(maxWidth: .infinity).accessibilityLabel(AppLocalization.string("Loading…"))
-        }
     }
 
     @ViewBuilder private var pickers: some View {
