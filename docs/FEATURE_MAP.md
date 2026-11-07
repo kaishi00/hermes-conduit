@@ -535,7 +535,7 @@ mode menu)
 - A failed live call offers Switch voice beside Try again, so a mode that keeps refusing (a plan's limit, a provider's outage) needn't end the conversation (#964).
 - Switch voice is a round button like the call's others: only the glyph is the menu's label, and the caption sits under it, hidden from VoiceOver since the menu carries the name. On iOS 26 a menu draws its glass over its whole label, so a caption inside it made a large slab that clipped the caption (2026-10-27, #1355).
 - A Local Live call working in a chat it made for itself (started from Home, or after its chat was deleted) switches in that chat, as an attached call does, unless that chat was deleted since: then the new mode starts with none (2026-11-05, issue 1797, #1799, #1804).
-- Turning on a live mode in Settings > Voice, or by an agent's `voice.mode` write, ends a running Classic conversation, as the menu's switch does, but starts no call in the new mode. Before, the car followed the new mode while the Classic call went on listening behind it, on no surface that showed or ended it (2026-11-07, #1940, issue 1935).
+- Turning on Gemini, Qwen, GPT-Live or Grok Live in Settings > Voice, or by an agent's `voice.mode` write, ends a running Classic conversation, as the menu's switch does, but starts no call in the new mode. Local Live doesn't: the car already stays on Classic while its session runs (`CarPlayVoiceMode.current`, #1378). Before, the car followed the new mode while the Classic call went on listening behind it, on no surface that showed or ended it (2026-11-07, #1940, issue 1935).
 
 **Open gaps**
 - CarPlay and the Watch have no mode menu: a call there changes mode only through Voice settings.
