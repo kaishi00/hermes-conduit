@@ -552,7 +552,8 @@ swapped · the chat's own voice button (Starting a call) · a minimised call's
 way back · the iPad split layout, with the list shown or hidden (#1164) ·
 Tasks and Settings on a wide window · Bots and Bot Chat · group rooms · the
 Main button caption · a list the user widened (Resizable columns on a split
-window)
+window) · a Duo's status strip, where the button stands under the tabs (The
+tabs in a Duo's status strip)
 
 **Code**
 - Bots Home's bot list: `Conduit/Views/V2/V2VoiceButton.swift` (V2VoiceContext.bots, showsBotMenu, botsToCall, call), from `V2Shell.voiceContext`; test: `ConduitTests/BotWorkstreamsTests.swift` (testBotsHomesVoiceButtonListsTheBotUsedLastFirst)
@@ -572,7 +573,37 @@ window)
 **Open gaps**
 - Recent isn't reachable beside a chat on a split window (see Rulings).
 
-**Checked:** 2026-11-03, #1714 (on Bots Home the button calls a bot picked from a list); 2026-10-29, #1492 (the bar under a widened list); 2026-10-26, at #1319.
+**Checked:** 2026-11-07, #1945 (on a Duo the button stands under the tabs in the status strip; Siblings). Earlier 2026-11-03, #1714 (on Bots Home the button calls a bot picked from a list); 2026-10-29, #1492 (the bar under a widened list); 2026-10-26, at #1319.
+
+## The tabs in a Duo's status strip
+
+On an iPhone Duo the clock, wifi and battery stand in a column along one side
+of the window, and the rest of that column is empty: the tabs and the main
+button stand there, under the status icons, instead of floating over the
+bottom of the screens.
+
+**Siblings:** the floating capsule bar on every other window (a phone, a
+landscape iPhone, an iPad, a Mac, split or not) · the main button (Voice
+beside the tabs) · the screens' clearance under the bar (Bars lists scroll
+under: none beside the strip) · the split layout on the Duo's inner screen
+(the strip beside the chat's column) · the screens' side safe area (A split
+window's columns fill the window: they keep clear of the strip) · the
+drawer shell (V2 off: no tab bar, not needed) · Watch and CarPlay (no tabs,
+not needed) · text: no Settings caption or doc describes the bar's place
+
+**Code**
+- `Conduit/Views/V2/V2Shell.swift` (V2StatusStrip, V2StripTabBar, stripTabs, tabs' strip, sizedTabs, barClearance)
+- Tests: `ConduitTests/V2SplitLayoutTests.swift` (testTheTabsStandInADuosStatusStripOnly)
+
+**Rulings**
+- The tabs stand in the strip whenever the window has one: a phone window whose safe area has a side inset of 72 pt or more on one side and none on the other (the Duo's is 84 pt). A landscape iPhone's sensor insets both sides, and an iPad or Mac window has none, so they keep the floating bar (Eric, 2026-11-07, #1945, picked from four mockups: option D, a tester's ask to put the bar under the wifi and battery).
+- They stand at the strip's foot, the main button under them, so they never reach the status icons at its top (the outer screen's end about 152 pt down; the simulator took taps everywhere below them and draws nothing else there, 2026-11-07).
+- Shown and hidden by the floating bar's rule: a chat or Pulse pushed on one column hides them, beside the list they stay; the screens keep no clearance under a bar while the tabs are in the strip.
+
+**Open gaps**
+- Not seen on a Duo yet: the inner screen's strip (the simulator can't unfold from the command line) and a finger's taps in the strip on hardware wait on TestFlight.
+
+**Checked:** 2026-11-07, added at #1945.
 
 ## The open chat in the list beside it
 
@@ -5951,7 +5982,7 @@ them: a chat's composer bar, the tab bar's clearance, and the list headers.
 
 **Siblings:** the chat composer bar (chats, project chats, Bot Chat) · group
 rooms' composer bar · the tab bar's clearance under the Chats, Bots and Tasks
-lists and Settings' pages · the Chats, Bots, Tasks and Capabilities headers and Settings' home header · a chat's and a group room's header (the navigation bar), which the transcript fades under ·
+lists and Settings' pages (none while the tabs stand in a Duo's status strip) · the Chats, Bots, Tasks and Capabilities headers and Settings' home header · a chat's and a group room's header (the navigation bar), which the transcript fades under ·
 iPhone, iPad and Mac · iOS 26 and earlier · text: no Settings caption or doc
 describes them
 
@@ -5970,7 +6001,7 @@ describes them
 - The navigation bar over a chat keeps the system's top edge on a Mac too (`V2SoftTopScrollEdge` in `Conduit/Views/ChatView.swift`; before iOS 26 the transcript fades itself under it, `underChatHeader`): #1357 only showed the bottom. If macOS 27 draws it too tall as well, it moves to the same switch.
 - On iOS 26 the chat's transcript, and a group room's, is a UIKit collection view under SwiftUI's bars: its soft edges are set on it (applyEdgeEffect, soft under the header and under a floating composer, as the stack had them), and whether the bars' system edge draws over it as it did over the stack waits on a device check (the transcript rewrite, 2026-10-31, #1577; group rooms, #1590).
 
-**Checked:** 2026-10-31, #1590 (a group room's transcript is the chat's collection view: its iOS 26 soft edges are set on it, V2SoftTopScrollEdge's setsOwnEdge on the room too, and the device check's gap covers it; Code, gap); 2026-10-31, #1586 (the chat's transcript no longer takes V2SoftTopScrollEdge's iOS 26 edge, which its collection view sets; Code); 2026-10-31, #1577 (the chat's transcript is a collection view: the bars' heights and the keyboard reach it as its insets, moved in SwiftUI's own animation; its iOS 26 soft edges are set on it, a gap until a device check; Code, gap); 2026-10-30, #1550 (a saved copy scrolls under the chat's header in the chat's own scroll view, its offline banner in the transcript's top inset); 2026-10-30, #1541 (at accessibility Text Sizes the resting composers are shorter, one-line placeholder and capped controls, and the bar takes their height as before; see Composer at rest and expanded); 2026-10-29, #1512 (a composer that stays expanded on a Mac or a wide iPad is taller, and the bar takes and reports its height as before; see Composer at rest and expanded); 2026-10-29, #1468 (the content fades itself instead of a material behind the bars; Code, Rulings); 2026-10-28, #1455 (carrying #1431; a chat's bar growing keeps a following transcript's end above it; Code); 2026-10-28, #1444; 2026-10-27, #1397.
+**Checked:** 2026-11-07, #1945 (no clearance under a bar while the tabs stand in a Duo's status strip; Siblings). Earlier 2026-10-31, #1590 (a group room's transcript is the chat's collection view: its iOS 26 soft edges are set on it, V2SoftTopScrollEdge's setsOwnEdge on the room too, and the device check's gap covers it; Code, gap); 2026-10-31, #1586 (the chat's transcript no longer takes V2SoftTopScrollEdge's iOS 26 edge, which its collection view sets; Code); 2026-10-31, #1577 (the chat's transcript is a collection view: the bars' heights and the keyboard reach it as its insets, moved in SwiftUI's own animation; its iOS 26 soft edges are set on it, a gap until a device check; Code, gap); 2026-10-30, #1550 (a saved copy scrolls under the chat's header in the chat's own scroll view, its offline banner in the transcript's top inset); 2026-10-30, #1541 (at accessibility Text Sizes the resting composers are shorter, one-line placeholder and capped controls, and the bar takes their height as before; see Composer at rest and expanded); 2026-10-29, #1512 (a composer that stays expanded on a Mac or a wide iPad is taller, and the bar takes and reports its height as before; see Composer at rest and expanded); 2026-10-29, #1468 (the content fades itself instead of a material behind the bars; Code, Rulings); 2026-10-28, #1455 (carrying #1431; a chat's bar growing keeps a following transcript's end above it; Code); 2026-10-28, #1444; 2026-10-27, #1397.
 
 ## Readable width on wide windows
 

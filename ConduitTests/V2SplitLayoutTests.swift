@@ -239,6 +239,23 @@ extension SidebarLayoutTests {
         XCTAssertEqual(sides(outer, WindowSafeSpan(minX: -0.1, maxX: 466.33)), [0, 84.5])
     }
 
+    func testTheTabsStandInADuosStatusStripOnly() {
+        // An iPhone Duo's outer screen: the strip's 84 pt on the right.
+        let outer = V2StatusStrip(insets: EdgeInsets(top: 0, leading: 0, bottom: 34, trailing: 84), isPhone: true)
+        XCTAssertEqual(outer?.edge, .trailing)
+        XCTAssertEqual(outer?.width, 84)
+        XCTAssertEqual(outer?.barWidth, 72)
+        // A strip on the left works the same.
+        XCTAssertEqual(V2StatusStrip(insets: EdgeInsets(top: 0, leading: 84, bottom: 20, trailing: 0), isPhone: true)?.edge, .leading)
+        // A landscape iPhone's sensor insets both sides: the floating bar.
+        XCTAssertNil(V2StatusStrip(insets: EdgeInsets(top: 0, leading: 62, bottom: 21, trailing: 62), isPhone: true))
+        // A portrait phone, and a side inset too narrow for the tabs.
+        XCTAssertNil(V2StatusStrip(insets: EdgeInsets(top: 62, leading: 0, bottom: 34, trailing: 0), isPhone: true))
+        XCTAssertNil(V2StatusStrip(insets: EdgeInsets(top: 0, leading: 0, bottom: 20, trailing: 44), isPhone: true))
+        // An iPad or Mac window never has one, whatever its insets.
+        XCTAssertNil(V2StatusStrip(insets: EdgeInsets(top: 24, leading: 0, bottom: 20, trailing: 84), isPhone: false))
+    }
+
     func testReadableWidthMarginCentersAndNeverGoesNegative() {
         XCTAssertEqual(ReadableWidth.margin(available: 400, maxWidth: ReadableWidth.chat), 0)
         XCTAssertEqual(ReadableWidth.margin(available: 760, maxWidth: 760), 0)
