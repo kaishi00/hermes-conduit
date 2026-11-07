@@ -173,7 +173,21 @@ extension AppStateVoiceCapabilityTests {
             sent = body
             return ["ok": true, "prompts": []]
         }
-        XCTAssertEqual(sent["features"] as? [String], ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards", "text-drafts", "room-asks", "link-asks"])
+        XCTAssertEqual(sent["features"] as? [String], ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards", "text-drafts", "room-asks", "link-asks", "room-work"])
+    }
+
+    func testRunWorksAskIsARoomsAskToStartWork() throws {
+        let prompt = try XCTUnwrap(PresentedConfirm(json: [
+            "id": "w1", "title": "Start “Compare flights”?", "preview": "Compare the three flights.",
+            "action_label": "Start", "spoken_yes": ["start it"], "session_id": "room_abc",
+            "room": ["id": "zoo-trip", "name": "Zoo trip", "work": true],
+        ]))
+        XCTAssertEqual(prompt.room, PresentedRoom(id: "zoo-trip", name: "Zoo trip", work: true))
+        XCTAssertTrue(prompt.isAsk, "answered with Change it, never an Edit into the room's hidden chat")
+        XCTAssertEqual(PresentVoiceTool.describe(prompt)["starts_work_for_room"] as? String, "Zoo trip")
+        XCTAssertNil(PresentVoiceTool.describe(prompt)["room"])
+        XCTAssertEqual(PresentedConfirm(json: ["id": "p", "title": "Share?", "room": ["id": "r", "work": "yes"]])?.room?.work,
+                       false, "only a true work flag")
     }
 
     func testARoomsAskNamesItsRoomAndSaysInsteadWithTheWords() async throws {

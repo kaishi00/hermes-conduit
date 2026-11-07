@@ -331,6 +331,18 @@ struct RoomAgentChoicesView: View {
                 } footer: {
                     Text(AppLocalization.string("It can search your other chats to answer here, other people's messages in them included."))
                 }
+                // A plugin without Run work sends no run_work.
+                if choices.runWork != nil {
+                    Section {
+                        Toggle(AppLocalization.string("Run work"), isOn: Binding(
+                            get: { self.choices?.runWork ?? false },
+                            set: { on in change("run_work", to: on) { $0.runWork = on } }
+                        ))
+                        .tint(.conduitAccent)
+                    } footer: {
+                        Text(AppLocalization.string("It can start work for this room, like research or code. Before each start, and before it sends the work more, it asks you on your phone: Start, Change it or Don't start. What the work finds reaches the room only as your share choices allow."))
+                    }
+                }
                 noteSection(choices)
             } else if error == nil {
                 ProgressView()

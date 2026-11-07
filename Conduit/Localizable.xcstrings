@@ -373541,6 +373541,416 @@
           }
         }
       }
+    },
+    "Run work" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arbeit ausführen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ejecutar trabajo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lancer du travail"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jalankan pekerjaan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avvia lavori"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作業を実行"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "작업 실행"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uruchamiaj pracę"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Executar trabalho"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запуск работы"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İş başlatma"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行工作"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "執行工作"
+          }
+        }
+      }
+    },
+    "Change it" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ändern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambiarlo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le modifier"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ubah"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modifica"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "変更する"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "변경"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zmień"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alterar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Изменить"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Değiştir"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修改"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修改"
+          }
+        }
+      }
+    },
+    "Don't start" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht starten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No empezar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ne pas lancer"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jangan mulai"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non avviare"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開始しない"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "시작 안 함"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie uruchamiaj"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não iniciar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не запускать"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başlatma"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不开始"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不開始"
+          }
+        }
+      }
+    },
+    "What it should do instead" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was es stattdessen tun soll"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qué debe hacer en su lugar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce qu'il doit faire à la place"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apa yang sebaiknya dilakukan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cosa deve fare invece"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "代わりにやること"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "대신 할 일"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Co ma zrobić zamiast tego"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O que ele deve fazer em vez disso"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Что сделать вместо этого"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bunun yerine ne yapmalı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "改为做什么"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "改為做什麼"
+          }
+        }
+      }
+    },
+    "It can start work for this room, like research or code. Before each start, and before it sends the work more, it asks you on your phone: Start, Change it or Don't start. What the work finds reaches the room only as your share choices allow." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es kann Arbeit für diesen Raum starten, etwa Recherche oder Code. Vor jedem Start und bevor es der Arbeit mehr schickt, fragt es dich auf deinem Telefon: Starten, Ändern oder Nicht starten. Was die Arbeit findet, erreicht den Raum nur so, wie deine Freigabe-Einstellungen es erlauben."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Puede empezar trabajo para esta sala, como investigación o código. Antes de cada inicio, y antes de enviarle más al trabajo, te pregunta en tu teléfono: Empezar, Cambiarlo o No empezar. Lo que encuentre el trabajo llega a la sala solo como lo permitan tus opciones de compartir."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il peut lancer du travail pour ce salon, comme des recherches ou du code. Avant chaque lancement, et avant d'envoyer plus au travail, il te demande sur ton téléphone : Lancer, Le modifier ou Ne pas lancer. Ce que le travail trouve n'atteint le salon que comme tes choix de partage le permettent."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ia bisa memulai pekerjaan untuk ruang ini, seperti riset atau kode. Sebelum setiap mulai, dan sebelum mengirim lebih banyak ke pekerjaan itu, ia bertanya di ponselmu: Mulai, Ubah, atau Jangan mulai. Temuan pekerjaan itu sampai ke ruang hanya sejauh pilihan berbagimu mengizinkan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Può avviare lavori per questa stanza, come ricerche o codice. Prima di ogni avvio, e prima di mandare altro al lavoro, te lo chiede sul telefono: Avvia, Modifica o Non avviare. Quello che il lavoro trova arriva alla stanza solo come consentono le tue scelte di condivisione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このルームのために、調査やコードなどの作業を開始できます。開始のたび、また作業に追加で送る前に、スマートフォンで確認します: 開始、変更する、開始しない。作業の結果は、共有の設定が許す範囲でのみルームに届きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 방을 위해 조사나 코드 같은 작업을 시작할 수 있습니다. 시작할 때마다, 그리고 작업에 더 보내기 전에 휴대폰에서 물어봅니다: 시작, 변경, 시작 안 함. 작업이 찾은 내용은 공유 선택이 허용하는 만큼만 방에 전달됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Może uruchamiać pracę dla tego pokoju, np. research lub kod. Przed każdym startem i zanim wyśle pracy coś więcej, pyta cię na telefonie: Uruchom, Zmień lub Nie uruchamiaj. To, co znajdzie praca, trafia do pokoju tylko tak, jak pozwalają twoje wybory udostępniania."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ele pode iniciar trabalho para esta sala, como pesquisa ou código. Antes de cada início, e antes de enviar mais ao trabalho, ele pergunta no seu telefone: Iniciar, Alterar ou Não iniciar. O que o trabalho encontrar chega à sala só como suas escolhas de compartilhamento permitirem."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Он может запускать работу для этой комнаты, например поиск или код. Перед каждым запуском и перед тем, как отправить работе что-то ещё, он спрашивает вас на телефоне: Запустить, Изменить или Не запускать. То, что найдёт работа, попадает в комнату только так, как позволяют ваши настройки доступа."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu oda için araştırma ya da kod gibi işler başlatabilir. Her başlatmadan önce ve işe daha fazlasını göndermeden önce telefonunda sorar: Başlat, Değiştir ya da Başlatma. İşin bulduğu şeyler odaya yalnızca paylaşım seçimlerinin izin verdiği kadar ulaşır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它可以为这个房间开始工作，比如调研或写代码。每次开始前，以及给工作发送更多内容前，它都会在你的手机上询问：开始、修改或不开始。工作的发现只会按你的分享选择传到房间。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它可以為這個房間開始工作，例如調查或寫程式。每次開始前，以及給工作傳送更多內容前，它都會在你的手機上詢問：開始、修改或不開始。工作的發現只會依你的分享選擇傳到房間。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

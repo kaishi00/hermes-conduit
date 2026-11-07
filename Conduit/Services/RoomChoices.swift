@@ -29,17 +29,24 @@ struct RoomChoices: Equatable {
     /// (room_choices.MIN_DAILY_LIMIT to MAX_DAILY_LIMIT).
     var dailyLimit: Int = 40
     var note: String
+    /// Run work (plugin 0.137+): it may start work for the room, asking you
+    /// on your phone before each start. Nil from a plugin without it.
+    var runWork: Bool? = nil
     /// False while the room has none of its own: these are the agent's
     /// defaults, and the first change saves the room a copy.
     var saved: Bool
 
     /// Every choice, as the plugin takes them: it fills one a body leaves
     /// out from its plain defaults.
+    /// Run work only when the plugin has it: an older one refuses a choice it
+    /// doesn't know.
     var body: [String: Any] {
-        [
+        var body: [String: Any] = [
             "tools": tools, "custom_tools": customTools, "share": share, "search_chats": searchChats,
             "takes_part": takesPart, "daily_limit": dailyLimit, "note": note,
         ]
+        if let runWork { body["run_work"] = runWork }
+        return body
     }
 
     /// Whether a choices page offers Use my data: where the plugin says when
@@ -130,6 +137,7 @@ struct RoomChoicesClient {
             takesPart: object["takes_part"] as? String ?? "joins",
             dailyLimit: object["daily_limit"] as? Int ?? 40,
             note: object["note"] as? String ?? "",
+            runWork: object["run_work"] as? Bool,
             saved: saved
         )
     }

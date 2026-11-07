@@ -44,10 +44,14 @@ struct PresentedMapsTarget: Equatable {
 struct PresentedRoom: Equatable {
     let id: String
     let name: String
+    /// Run work's ask (plugin 0.137+): your agent asks before it starts work
+    /// for the room, or sends to it, answered Start, Change it or Don't start.
+    let work: Bool
 
-    init(id: String, name: String) {
+    init(id: String, name: String, work: Bool = false) {
         self.id = id
         self.name = name
+        self.work = work
     }
 
     /// Any room the host names makes it a room's ask, even one without an id:
@@ -56,7 +60,7 @@ struct PresentedRoom: Equatable {
         guard let entry = json as? [String: Any] else { return nil }
         let id = (entry["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let name = (entry["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        self.init(id: id, name: String(name.prefix(80)))
+        self.init(id: id, name: String(name.prefix(80)), work: entry["work"] as? Bool == true)
     }
 }
 
@@ -284,9 +288,11 @@ final class PresentedScreensSync: ObservableObject {
     /// answered with Share, Say instead (with the words) or Don't share
     /// (plugin 0.118+, Linked Rooms). "link-asks": a linked person's Hermes'
     /// asks, the same way, with Share only when there's an answer to share
-    /// (plugin 0.120+).
+    /// (plugin 0.120+). "room-work": a room's ask to start work for it (Run
+    /// work), answered Start, Change it (with what to do instead) or Don't
+    /// start (plugin 0.137+).
     static let features = ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards",
-                           "text-drafts", "room-asks", "link-asks"]
+                           "text-drafts", "room-asks", "link-asks", "room-work"]
     /// The longest Say instead the host keeps.
     static let maxEditText = 2_000
     /// Card ids remembered as seen, so a card is shown at most once.
@@ -482,7 +488,10 @@ enum PresentVoiceTool {
                                     "action": prompt.actionLabel]
         if !prompt.spokenYes.isEmpty { entry["confirming_phrases"] = prompt.spokenYes }
         // Your agent asks before it shares this in a room with other people's agents.
-        if let room = prompt.room { entry["room"] = room.name.isEmpty ? "a room" : room.name }
+        if let room = prompt.room {
+            // Run work: it asks before it starts work for that room (confirm starts it).
+            entry[room.work ? "starts_work_for_room" : "room"] = room.name.isEmpty ? "a room" : room.name
+        }
         // A linked person's Hermes asks; a question has nothing to confirm.
         if let link = prompt.link {
             entry["asked_by"] = link.name.isEmpty ? "a linked person's Hermes" : "\(link.name)'s Hermes"
