@@ -489,8 +489,10 @@ enum PresentVoiceTool {
         if !prompt.spokenYes.isEmpty { entry["confirming_phrases"] = prompt.spokenYes }
         // Your agent asks before it shares this in a room with other people's agents.
         if let room = prompt.room {
-            // Run work: it asks before it starts work for that room (confirm starts it).
-            entry[room.work ? "starts_work_for_room" : "room"] = room.name.isEmpty ? "a room" : room.name
+            // Run work: it asks before it starts work for that room, or sends its
+            // running work more (confirm does it).
+            let key = !room.work ? "room" : prompt.actionLabel == "Send" ? "sends_to_work_for_room" : "starts_work_for_room"
+            entry[key] = room.name.isEmpty ? "a room" : room.name
             // Work never starts on a plain yes, which may have answered something else.
             if room.work { entry["plain_yes_counts"] = false }
         }
@@ -553,7 +555,8 @@ enum PresentVoiceTool {
                         guard let phrase = prompt.spokenYes.first else {
                             return ["error": "Not confirmed. Ask the user to answer it on the screen."]
                         }
-                        return ["error": "Not confirmed: a plain yes doesn't start work. Ask the user to say \"\(phrase)\", and confirm only after they do."]
+                        let what = prompt.actionLabel == "Send" ? "send to work" : "start work"
+                        return ["error": "Not confirmed: a plain yes doesn't \(what). Ask the user to say \"\(phrase)\", and confirm only after they do."]
                     }
                     return ["error": "Not confirmed: the user's own words weren't a yes. Ask them, and confirm only after they say yes."]
                 }

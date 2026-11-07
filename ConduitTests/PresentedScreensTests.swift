@@ -194,6 +194,15 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertTrue(prompt.isConfirmed(by: "Yes, start it"))
         XCTAssertEqual(SpokenApprovals.answer("Yes", waiting: SpokenApprovals.Waiting(presented: [prompt]))?.approve, nil)
         XCTAssertEqual(SpokenApprovals.answer("Start it", waiting: SpokenApprovals.Waiting(presented: [prompt]))?.approve, true)
+        XCTAssertEqual(SpokenApprovals.answer("Don't start.", waiting: SpokenApprovals.Waiting(presented: [prompt]))?.approve, false)
+        XCTAssertNil(SpokenApprovals.answer("Don't start, look at trains", waiting: SpokenApprovals.Waiting(presented: [prompt])))
+        let send = try XCTUnwrap(PresentedConfirm(json: [
+            "id": "w2", "title": "Send to W1?", "preview": "Add the toilets.", "action_label": "Send",
+            "spoken_yes": ["send it"], "session_id": "room_abc", "room": ["id": "zoo-trip", "name": "Zoo trip", "work": true],
+        ]))
+        XCTAssertEqual(PresentVoiceTool.describe(send)["sends_to_work_for_room"] as? String, "Zoo trip")
+        XCTAssertNil(PresentVoiceTool.describe(send)["starts_work_for_room"])
+        XCTAssertEqual(SpokenApprovals.answer("don't send it", waiting: SpokenApprovals.Waiting(presented: [send]))?.approve, false)
     }
 
     func testAVoiceConfirmOfRoomWorkNeedsItsPhrase() async throws {
