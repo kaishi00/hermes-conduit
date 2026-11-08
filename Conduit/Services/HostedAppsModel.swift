@@ -43,7 +43,7 @@ final class HostedAppsModel {
     @ObservationIgnored private var attempt = 0
     @ObservationIgnored private var reads = 0
     @ObservationIgnored private var signInTask: Task<Void, Never>?
-    /// A given-up try per app, until it has given its operation up.
+    /// A given-up try per Hermes and app, until it has given its operation up.
     @ObservationIgnored private var retiring: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var browserClosedAt: Date?
     /// Which close the fallback below belongs to: an earlier one's timer
@@ -129,7 +129,7 @@ final class HostedAppsModel {
         let hermes = self.hermes
         attempt += 1
         let attempt = self.attempt
-        let previous = retiring.removeValue(forKey: slug)
+        let previous = retiring.removeValue(forKey: "\(hermes ?? "")|\(slug)")
         signInTask = Task { [weak self] in
             // A given-up try at this app first settles what it started:
             // Hermes hands a matching start the operation still open, so
@@ -153,7 +153,7 @@ final class HostedAppsModel {
     }
 
     func cancelSignIn() {
-        if let task = signInTask, let slug = signingIn { retiring[slug] = task }
+        if let task = signInTask, let slug = signingIn { retiring["\(hermes ?? "")|\(slug)"] = task }
         signInTask?.cancel()
         signInTask = nil
         signingIn = nil
