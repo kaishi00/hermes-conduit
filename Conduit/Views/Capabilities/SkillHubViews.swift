@@ -235,6 +235,9 @@ struct SkillHubBrowsePage: View {
             searching = false
             return
         }
+        // Another search's results never stand in for this one's.
+        results = nil
+        searchError = nil
         if !now {
             try? await Task.sleep(for: .milliseconds(450))
             guard !Task.isCancelled else { return }

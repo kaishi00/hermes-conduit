@@ -525,7 +525,7 @@ final class CapabilitiesStore {
             }
             skillRemovals[name] = nil
             skillHubEpoch &+= 1
-            hubInstalled = hubInstalled.filter { $0.value != name && $0.key.split(separator: "/").last.map(String.init) != name }
+            hubInstalled = hubInstalled.filter { $0.value != name }
             // An official skill removed here can be installed again from
             // the catalog's list.
             let answers = self.answers
