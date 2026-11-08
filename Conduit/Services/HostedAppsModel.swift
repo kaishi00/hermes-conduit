@@ -138,7 +138,9 @@ final class HostedAppsModel {
         let hermes = self.hermes
         attempt += 1
         let attempt = self.attempt
-        let previous = Self.retiring.removeValue(forKey: "\(hermes ?? "")|\(slug)")
+        // Left in place, so every page's start at the app waits for it
+        // until it has settled, not only the first one's.
+        let previous = Self.retiring["\(hermes ?? "")|\(slug)"]
         signInTask = Task { [weak self] in
             // A given-up try at this app first settles what it started:
             // Hermes hands a matching start the operation still open, so
