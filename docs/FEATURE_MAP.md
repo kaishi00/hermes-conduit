@@ -3621,7 +3621,7 @@ the pages' captions and README.md's Capabilities line (done)
 - Pictures load only from GitHub's hosts over https, as Hermes' catalog check and Desktop's browser allow; any other address shows the plugin's glyph (#2009).
 - The shelf leads with Desktop's curated picks, then official plugins with a picture; Browse All lists official, then verified, then community, A-Z within each, installed ones marked (#2009).
 - Install asks first with what the plugin adds, as the tab does; the keys it needs are listed, never asked for or kept (#2009).
-- A plugin's page installs only on the dashboard and profile it opened on: Install is disabled once they're not the current ones, and an install's outcome is said only there, so one finishing after a switch says nothing there (the keys it needs stay listed on its page). The drawer shell's Settings sheet closes when the dashboard changes under it, as the V2 tab starts over (issue 2016, #2019).
+- A plugin's page installs only on the dashboard and profile it opened on: Install is disabled once they're not the current ones (a reconnect to the same Hermes keeps them), and an install's outcome is said only there, so one finishing after a switch says nothing there (the keys it needs stay listed on its page). The drawer shell's Settings sheet closes when the dashboard changes under it, as the V2 tab starts over (issue 2016, #2019).
 
 **Open gaps**
 - The curated picks are Desktop's list as of 2026-11-08, written into Conduit: Hermes' catalog route doesn't carry them.

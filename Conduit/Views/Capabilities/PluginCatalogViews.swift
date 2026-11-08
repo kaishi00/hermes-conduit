@@ -420,7 +420,7 @@ struct PluginCatalogDetailPage: View {
             }
             // A page left open across a switch installs nowhere: Install
             // waits for its own dashboard and profile, as install() does.
-            .disabled(busy || openedOn.map { $0 != appState.currentCapabilitiesOwner || !store.serves($0) } ?? false)
+            .disabled(busy || (openedOn != nil && !onItsHermes(openedOn)))
             .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
         } else {
             Text("Hermes installs plugins for the host's default profile. Switch to it to change them.")
@@ -494,16 +494,24 @@ struct PluginCatalogDetailPage: View {
         }
     }
 
+    /// The page's dashboard and profile are the current ones and the store
+    /// reads them. A reconnect's new bridge is the same Hermes.
+    private func onItsHermes(_ owner: CapabilitySnapshotOwner?) -> Bool {
+        let current = appState.currentCapabilitiesOwner
+        guard let owner else { return false }
+        return owner.dashboardID == current.dashboardID && owner.profile == current.profile && store.serves(current)
+    }
+
     private func install() {
         let owner = appState.currentCapabilitiesOwner
-        guard let entry, canManage, owner == openedOn, store.serves(owner) else { return }
+        guard let entry, canManage, onItsHermes(openedOn) else { return }
         Haptics.selection()
         message = nil
         Task {
             do {
                 let outcome = try await store.installPlugin(entry)
                 // Said only on the page's own dashboard and profile.
-                guard appState.currentCapabilitiesOwner == owner, store.serves(owner) else { return }
+                guard onItsHermes(owner) else { return }
                 if !outcome.missingEnv.isEmpty {
                     message = AppLocalization.string("\(outcome.name) is installed but needs a key before it works: \(outcome.missingEnv.joined(separator: ", ")).")
                 } else if outcome.restartRequired {
@@ -513,7 +521,7 @@ struct PluginCatalogDetailPage: View {
                     message = AppLocalization.string("\(outcome.name) is installed and loaded.")
                 }
             } catch {
-                guard appState.currentCapabilitiesOwner == owner, store.serves(owner) else { return }
+                guard onItsHermes(owner) else { return }
                 message = UserFacingError.message(for: error)
             }
         }
