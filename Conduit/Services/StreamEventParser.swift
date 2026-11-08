@@ -201,6 +201,13 @@ enum StreamEventParser {
             }
             return nil
 
+        case "connection.request", "connection.update":
+            // The connect card Hermes waits on: every frame carries the
+            // operation's whole snapshot, the settlement included.
+            guard let payload,
+                  let activity = ConnectionActivity.from(payload: payload, sessionId: sessionId) else { return nil }
+            return .connection(sessionId: activity.sessionId, activity: activity)
+
         case "approval.request":
             guard let payload,
                   let approval = MessageNormalizer.approvalActivity(from: payload, sessionId: sessionId) else { return nil }

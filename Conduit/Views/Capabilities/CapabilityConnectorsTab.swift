@@ -21,12 +21,6 @@ struct CapabilityConnectorsTab: View {
     @State private var actionError: String?
     @State private var hostedApps = HostedAppsModel()
 
-    /// What the Apps section's snapshot belongs to: the dashboard, the
-    /// profile and the client that carries it.
-    private var hostedAppsScope: String {
-        "\(appState.activeDashboardID?.uuidString ?? "")|\(appState.activeProfile)|\(appState.client.map { "\(ObjectIdentifier($0).hashValue)" } ?? "")|\(appState.isConnected)"
-    }
-
     private var states: [String: ConnectorState] {
         Dictionary(store.servers.map { server in
             (server.name, ConnectorState.of(server, probe: store.probes[server.name], probing: store.probing.contains(server.name)))
@@ -110,8 +104,8 @@ struct CapabilityConnectorsTab: View {
                 }
             }
         }
-        .task(id: hostedAppsScope) {
-            hostedApps.show(scope: hostedAppsScope, kept: appState.keptHostedApps())
+        .task(id: appState.hostedAppsScope) {
+            hostedApps.show(scope: appState.hostedAppsScope, kept: appState.keptHostedApps())
             guard appState.isConnected else { return }
             await hostedApps.reload(appState)
         }
