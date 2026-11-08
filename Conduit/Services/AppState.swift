@@ -29659,6 +29659,9 @@ final class AppState: ObservableObject {
         if !joinsRunningTurn {
             LiveTurnActivities.shared?.turnSubmitting(sessionIDs: submissionSessionIDs)
         }
+        // Taken before the send waits: a lifecycle edge that lands while
+        // it's in flight is newer than anything the receipt says.
+        let preSendRevision = turnLifecycleEvidence.revision
         do {
             let outcome: PromptSubmissionOutcome
             if queued, let sendQueuedPrompt = chatResumeLifecycleOperations.sendQueuedPrompt {
@@ -29704,11 +29707,11 @@ final class AppState: ObservableObject {
                 turnStateIsStale = false
                 // A send docked behind a turn a restart cut off starts no
                 // turn: the chat reads idle, so the next message queues
-                // rather than steers. A newer lifecycle edge wins.
-                let dockRevision = turnLifecycleEvidence.revision
+                // rather than steers. A lifecycle edge since the send
+                // went (a turn that started meanwhile) wins.
                 func idleIfHeldByLostTurn() {
                     guard client.chatIsHeldByLostTurn(sessionId),
-                          turnLifecycleEvidence.revision == dockRevision,
+                          turnLifecycleEvidence.revision == preSendRevision,
                           isCurrentComposerSubmission(submissionContext) else { return }
                     turnState = .idle
                 }
