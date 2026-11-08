@@ -102,7 +102,11 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
             records: KeychainE2EKeyStore().records(),
             knownGatewayIDs: NotificationSharedSettings.knownGatewayIDs,
             keysProvisioned: NotificationSharedSettings.keysProvisioned
-        ) else { return }
+        ) else {
+            // No id to name: the envelope didn't open for this iPhone.
+            Self.log.error("location push not answered: it didn't verify for this iPhone (untrusted, no key, or no locate or maps id)")
+            return
+        }
         if request.kind == .maps {
             await answerMaps(request)
             return
@@ -111,7 +115,7 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         guard case .value(let config) = LocationSharedStore.readConfig(),
               request.isAnswered(by: config, at: Date()),
               let binding = config.binding
-        else { return Self.unanswered(id, "not answered by sharing's binding, consent or pause", kind: "locate") }
+        else { return Self.unanswered(id, "not answered by sharing's binding, consent or pause, or its config unreadable", kind: "locate") }
         guard let key = LocationKeychain.loadKey(), key.deviceID == config.deviceID else {
             return Self.unanswered(id, "no location key for this device", kind: "locate")
         }
@@ -193,7 +197,7 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         guard case .value(let config) = LocationSharedStore.readConfig(),
               request.isForBinding(of: config),
               let binding = config.binding
-        else { return Self.unanswered(id, "not for the dashboard and profile sharing is bound to") }
+        else { return Self.unanswered(id, "not for the dashboard and profile sharing is bound to, or its config unreadable") }
         guard let key = LocationKeychain.loadKey(), key.deviceID == config.deviceID, key.answersMaps,
               let deviceQuery = Self.queryValue(key.deviceID), let kidQuery = Self.queryValue(key.kid)
         else { return Self.unanswered(id, "no location key that answers maps") }
