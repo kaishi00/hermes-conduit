@@ -30,7 +30,7 @@ struct PluginSettingField: Equatable, Identifiable {
     /// A secret's `.env` variable.
     let env: String?
     /// A secret that already has a value.
-    let hasValue: Bool
+    var hasValue: Bool
 
     init?(_ value: Any) {
         guard let dict = value as? [String: Any],

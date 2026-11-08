@@ -209,8 +209,9 @@ struct PluginSettingsSection: View {
                 guard !(error is CancellationError) else { return }
                 // A key that landed empties its field; the rest stay filled.
                 if let partial = error as? PluginSettings.PartialSave {
-                    for field in fields where field.kind == .secret && field.env.map(partial.saved.contains) == true {
-                        draft[field.key] = nil
+                    for index in fields.indices where fields[index].kind == .secret && fields[index].env.map(partial.saved.contains) == true {
+                        draft[fields[index].key] = nil
+                        fields[index].hasValue = true
                     }
                 }
                 saved = false
