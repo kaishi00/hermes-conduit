@@ -3721,8 +3721,10 @@ Settings).
 **Siblings:** the Settings tab's pages (the look itself; pages that had
 drifted brought back, #1985: Appearance's and Voice's Chat voice button as
 ConduitMenuPicker, the Predictive page on SettingsDetailContainer, the Chat
-page's title, and the rows that open Predictive, Diagnostics & logs, What
-Pulse remembers, Edit endpoint and Custom endpoint as SettingsLinkRows) · Edit
+page's title, the rows that open Predictive, Diagnostics & logs, What
+Pulse remembers and Edit endpoint as SettingsLinkRows, Custom endpoint's
+two-line row with a SettingsChevron, and a Kanban task's Status as
+ConduitMenuPicker) · Edit
 Bot and New Bot, with its Model, Work, personality and capabilities pages
 (done) · New Project and Rename (done) · New Group Chat (done) · the
 scheduled job editor, its blueprints gallery and blueprint form (done) · What
