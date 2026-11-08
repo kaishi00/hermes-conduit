@@ -343,6 +343,9 @@ extension HermesVoiceConfigurationServiceTests {
                        "a provider pinned without a model is named as its default model")
         let openrouter = ProviderInfo(name: "openrouter", models: [ModelInfo(id: "gpt-5", label: nil, reasoningCapable: false)])
         XCTAssertNil(unlisted.heldProvider(in: [openrouter]), "a provider-only pick is no listed row")
+        let titled = ProviderInfo(name: "openrouter", models: openrouter.models, displayName: "OpenRouter")
+        XCTAssertEqual(unlisted.lines(in: [titled], defaultTitle: "chats").value, VoiceJobModelSettingsSection.providerDefaultTitle("OpenRouter"),
+                       "a listed provider is named as its row names it")
         XCTAssertEqual(unlisted.pick, ModelChooserPick(provider: "openrouter", model: ""))
         let aliasPick = VoiceJobModelSettingsSection.tag(provider: "custom:key", model: "qwen3")
         let custom = ProviderInfo(name: "custom", models: [ModelInfo(id: "qwen3", label: nil, reasoningCapable: false)],

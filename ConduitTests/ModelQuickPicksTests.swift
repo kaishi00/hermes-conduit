@@ -147,5 +147,12 @@ final class ModelQuickPicksTests: XCTestCase {
         XCTAssertNil(inherited.detail)
         let providerOnly = ModelChooserLinkRow.lines(pick: ModelChooserPick(provider: "openrouter", model: ""), providers: [labelled], defaultTitle: "x")
         XCTAssertEqual(providerOnly.value, VoiceJobModelSettingsSection.providerDefaultTitle("OpenRouter"))
+        let aliased = ProviderInfo(name: "custom", models: [model("qwen3")], displayName: "Custom", aliases: ["custom:key"])
+        let exact = ProviderInfo(name: "custom:key", models: [model("qwen3")], displayName: "Key")
+        XCTAssertEqual([aliased, exact].row(named: "custom:key")?.name, "custom:key", "the row named exactly wins over an alias")
+        let keyOnly = ModelChooserLinkRow.lines(pick: ModelChooserPick(provider: "custom:key", model: ""), providers: [aliased, exact], defaultTitle: "x")
+        XCTAssertEqual(keyOnly.value, VoiceJobModelSettingsSection.providerDefaultTitle("Key"))
+        let keyModel = ModelChooserLinkRow.lines(pick: ModelChooserPick(provider: "custom:key", model: "qwen3"), providers: [aliased, exact], defaultTitle: "x")
+        XCTAssertEqual(keyModel.detail, "Key", "a model pick names the row named exactly too")
     }
 }

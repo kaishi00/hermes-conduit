@@ -3907,7 +3907,7 @@ menus)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-08, #1992 (entry added)
+**Checked:** 2026-11-08, #2002 (a bot's Model and Workstream Model rows name the catalog's model and provider, as every other row does; a provider-only pick is named by its row's title on the Model page's top card and on the tagged rows, Voice jobs, Voice replies, Helper models' pages and Pulse; the Helper models list's own summary, HelperModelSlot.value, keeps the saved spelling as it does for every pick, having no catalog); 2026-11-08, #1992 (entry added)
 
 ## The + that makes something new
 

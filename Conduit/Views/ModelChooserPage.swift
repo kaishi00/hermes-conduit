@@ -169,7 +169,10 @@ struct ModelChooserPage: View {
     private func picked(_ provider: ProviderInfo, _ model: ModelInfo) -> Bool {
         guard let pick else { return false }
         if let isPicked { return isPicked(provider, model) }
-        return provider.matches(pick.provider) && model.id == pick.model
+        guard model.id == pick.model, provider.matches(pick.provider) else { return false }
+        // The row named exactly holds it over one the name is an alias of.
+        return provider.name == pick.provider
+            || !catalog.providers.contains { $0.name == pick.provider && $0.models.contains { $0.id == pick.model } }
     }
 
     /// The listed row holding the pick, hidden with Edit or not.
@@ -183,7 +186,7 @@ struct ModelChooserPage: View {
     }
 
     private var pickedProvider: ProviderInfo? {
-        pickedRow?.provider ?? pick.flatMap { pick in catalog.providers.first { $0.matches(pick.provider) } }
+        pickedRow?.provider ?? pick.flatMap { catalog.providers.row(named: $0.provider) }
     }
 
     /// The pick and what it runs on: the top card's two lines.
@@ -198,7 +201,7 @@ struct ModelChooserPage: View {
         }
         if pick.model.isEmpty {
             // A provider pinned without a model runs on its default one.
-            return (VoiceJobModelSettingsSection.providerDefaultTitle(pick.provider), nil)
+            return (VoiceJobModelSettingsSection.providerDefaultTitle(pickedProvider?.title ?? pick.provider), nil)
         }
         let provider = pick.provider.isEmpty ? nil : (pickedProvider?.title ?? pick.provider)
         return (pick.model, catalog.answered ? [provider, AppLocalization.string("Not listed by Hermes")].compactMap { $0 }.joined(separator: " · ") : provider)
@@ -511,7 +514,11 @@ struct ModelChooserLinkRow: View {
         guard let pick else {
             return (defaultTitle, reasoning)
         }
-        let row = providers.first { $0.matches(pick.provider) }
+        // As the page holds it: the row listing the model, named exactly first.
+        let row = pick.model.isEmpty
+            ? providers.row(named: pick.provider)
+            : providers.filter { $0.models.contains { $0.id == pick.model } }.row(named: pick.provider)
+                ?? providers.row(named: pick.provider)
         let model = row?.models.first { $0.id == pick.model }
         let value = pick.model.isEmpty
             ? VoiceJobModelSettingsSection.providerDefaultTitle(row?.title ?? pick.provider)
@@ -519,5 +526,14 @@ struct ModelChooserLinkRow: View {
         let provider = pick.model.isEmpty ? nil : (row?.title ?? (pick.provider.isEmpty ? nil : pick.provider))
         let detail = [provider, reasoning].compactMap { $0 }.joined(separator: " · ")
         return (value, detail.isEmpty ? nil : detail)
+    }
+}
+
+extension Array where Element == ProviderInfo {
+    /// The row a saved provider names: the one named exactly, else the
+    /// first whose display name or alias it is (a `custom:key` pick beside
+    /// both a `custom:key` row and a `custom` row aliased to it).
+    func row(named provider: String) -> ProviderInfo? {
+        first { $0.name == provider } ?? first { $0.matches(provider) }
     }
 }

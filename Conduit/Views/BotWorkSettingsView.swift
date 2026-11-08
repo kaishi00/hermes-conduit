@@ -118,15 +118,14 @@ struct BotWorkSettingsView: View {
                         )
                     )
                 } label: {
-                    let effort = effortBinding.wrappedValue
-                    ModelChooserLinkRow(
-                        title: AppLocalization.string("Model"),
-                        value: settings.workstreamModel?.model ?? AppLocalization.string("Same as Bot Chat"),
-                        detail: settings.workstreamModel == nil
-                            ? nil
-                            : [settings.workstreamModel?.provider, effort.map(ReasoningEffortLevel.displayTitle(for:))]
-                                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+                    // The model and provider as the catalog names them.
+                    let lines = ModelChooserLinkRow.lines(
+                        pick: settings.workstreamModel.map { ModelChooserPick(provider: $0.provider, model: $0.model) },
+                        providers: appState.keptModelProviders(),
+                        defaultTitle: AppLocalization.string("Same as Bot Chat"),
+                        reasoning: settings.workstreamModel == nil ? nil : effortBinding.wrappedValue.flatMap { $0.isEmpty ? nil : ReasoningEffortLevel.displayTitle(for: $0) }
                     )
+                    ModelChooserLinkRow(title: AppLocalization.string("Model"), value: lines.value, detail: lines.detail)
                 }
                 .buttonStyle(.plain)
                 caption(AppLocalization.string("New workstreams start on this model. Work that’s already running keeps its own."))
