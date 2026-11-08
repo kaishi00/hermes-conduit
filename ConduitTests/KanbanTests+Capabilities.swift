@@ -516,6 +516,32 @@ extension KanbanTests {
         heldSkills?.resume()
         await skills.value
         XCTAssertFalse(store.officialSkillsLoading)
+
+        // A read that fails says so, a retry that lands clears it, and a
+        // read cut off by leaving the tab says nothing either way.
+        requester.beforeAnswering = nil
+        requester.failures["/api/skills/hub/official"] = URLError(.timedOut)
+        requester.failures["/api/dashboard/plugins/catalog"] = URLError(.timedOut)
+        await store.loadOfficialSkills()
+        await store.loadPlugins()
+        XCTAssertTrue(store.officialSkillsFailed, "the tab says the catalog couldn't be read")
+        XCTAssertTrue(store.pluginCatalogFailed)
+        requester.failures = [:]
+        await store.loadOfficialSkills()
+        await store.loadPlugins()
+        XCTAssertFalse(store.officialSkillsFailed, "Try Again that lands clears it")
+        XCTAssertFalse(store.pluginCatalogFailed)
+        var heldCut: CheckedContinuation<Void, Never>?
+        requester.beforeAnswering = { path in
+            guard path.hasPrefix("/api/skills/hub/official"), heldCut == nil else { return }
+            await withCheckedContinuation { heldCut = $0 }
+        }
+        let cut = Task { await store.loadOfficialSkills() }
+        while heldCut == nil { await Task.yield() }
+        cut.cancel()
+        heldCut?.resume()
+        await cut.value
+        XCTAssertFalse(store.officialSkillsFailed, "a read cut off isn't the catalog failing")
     }
 
     /// A catalog connector's keys go to the profile's .env, only the

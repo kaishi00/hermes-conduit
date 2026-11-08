@@ -428,7 +428,11 @@ final class CapabilitiesStore {
         officialSkillsLoading = true
         defer { if token == generation, skillsRead == officialSkillsRead { officialSkillsLoading = false } }
         let answer = try? await read(scoped(KeptRoute.officialSkills), keptAs: KeptRoute.officialSkills, in: answers)
-        if token == generation, skillsRead == officialSkillsRead { officialSkillsFailed = answer == nil }
+        // Only the newest read, not overtaken by a change or cut off, says
+        // whether the catalog failed.
+        if token == generation, skillsRead == officialSkillsRead, epoch == skillsEpoch, !Task.isCancelled {
+            officialSkillsFailed = answer == nil
+        }
         guard let response = answer, token == generation, epoch == skillsEpoch else { return }
         officialSkills = Self.officialSkills(from: response)
         showsKept.remove(.officialSkills)
@@ -1148,7 +1152,7 @@ final class CapabilitiesStore {
         do {
             let plugins = AgentPluginRow.list(from: try await hubResponse)
             let catalog = await catalogResponse
-            if token == generation, catalogRead == pluginCatalogRead { pluginCatalogFailed = catalog == nil }
+            if token == generation, catalogRead == pluginCatalogRead, epoch == pluginsEpoch, !Task.isCancelled { pluginCatalogFailed = catalog == nil }
             guard token == generation, epoch == pluginsEpoch else { return }
             self.plugins = plugins
             // A catalog read that fails keeps the catalog shown: a kept one
@@ -1161,7 +1165,7 @@ final class CapabilitiesStore {
             showsKept.remove(.plugins)
         } catch {
             let catalog = await catalogResponse
-            if token == generation, catalogRead == pluginCatalogRead { pluginCatalogFailed = catalog == nil }
+            if token == generation, catalogRead == pluginCatalogRead, epoch == pluginsEpoch, !Task.isCancelled { pluginCatalogFailed = catalog == nil }
             // A read cut off by leaving the tab isn't a failure: the tab
             // asks again when it next shows, as the Connectors tab does.
             guard token == generation, epoch == pluginsEpoch, !(error is CancellationError) else { return }
