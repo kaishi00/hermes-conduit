@@ -66,7 +66,7 @@ extension GroupChatModelsTests {
         let defaults = UserDefaults(suiteName: suite)!
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         let room = attachmentsRoom()
-        var methods: Set<String> = ["groups.list", "groups.state", "groups.send", "groups.log"]
+        var methods = GroupWire.requiredMethods
         if attachmentMethods {
             methods.formUnion(["groups.attachment.upload", "groups.attachment.download"])
         }
