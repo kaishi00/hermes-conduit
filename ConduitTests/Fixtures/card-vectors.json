@@ -4319,7 +4319,7 @@
       ]
     },
     {
-      "name": "Fields read joined and mixed-script secret words, and keep only real days",
+      "name": "Fields read joined, full-width and mixed-script secret words, and keep only real days",
       "input": [
         {
           "type": "composed",
@@ -4348,6 +4348,18 @@
                   "id": "spin",
                   "input": "text",
                   "label": "Spinning クラス"
+                },
+                {
+                  "kind": "field",
+                  "id": "fullwidth",
+                  "input": "text",
+                  "label": "ＰＩＮコード"
+                },
+                {
+                  "kind": "field",
+                  "id": "spincode",
+                  "input": "text",
+                  "label": "Spin code"
                 }
               ]
             },
@@ -4387,6 +4399,12 @@
                   "input": "text",
                   "label": "Spinning クラス",
                   "id": "spin"
+                },
+                {
+                  "kind": "field",
+                  "input": "text",
+                  "label": "Spin code",
+                  "id": "spincode"
                 }
               ]
             },

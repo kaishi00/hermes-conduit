@@ -156,11 +156,12 @@ extension AppStateVoiceCapabilityTests {
                      "Mot de passe", "Пароль", "Kata sandi", "비밀번호를 입력", "인증 코드", "密码", "Access code",
                      "Unlock code", "Security key", "Bestätigungscode", "Código de verificación",
                      "Code de vérification", "Kode verifikasi", "Doğrulama kodu", "Код подтверждения",
-                     "Pincode", "pin_code", "MFA code", "mfaCode", "PIN码", "输入PIN", "OTP認証"] {
+                     "Pincode", "pin_code", "MFA code", "mfaCode", "PIN码", "输入PIN", "OTP認証", "ＰＩＮコード", "ＭＦＡ"] {
             XCTAssertTrue(RichCardSchema.namesSecret(name), name)
         }
         for name in ["Spin class", "Subject", "Opinion", "Pinned note", "to", "Topic", "Key dates", "Zip code", "メモ",
-                     "Betreff", "Тема", "Spinning クラス", "Comfort level"] {
+                     "Betreff", "Тема", "Spinning クラス", "Comfort level", "Spin code",
+                     "Hairpin code", "ＳＰＩＮ"] {
             XCTAssertFalse(RichCardSchema.namesSecret(name), name)
         }
     }

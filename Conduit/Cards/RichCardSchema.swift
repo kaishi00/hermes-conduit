@@ -439,7 +439,7 @@ struct RichCardSchema {
                                       "authcode", "backupcode", "passphrase", "totp", "masterkey", "credential",
                                       "2fa", "twofactor", "logincode", "accesscode", "unlockcode", "securitykey",
                                       "resetcode", "recoverycode", "activationcode", "authkey", "verificationkey",
-                                      "backupkey", "pincode", "mfacode",
+                                      "backupkey",
                                       // The same in the languages Conduit ships, as a model writes
                                       // labels in the user's.
                                       "passwort", "kennwort", "contraseña", "motdepasse", "senha", "пароль",
@@ -450,7 +450,7 @@ struct RichCardSchema {
                                       "codedevérification", "codedeverification", "codicediverifica",
                                       "kodeverifikasi", "doğrulamakodu", "kodweryfikacyjny", "кодподтверждения",
                                       "clavedeacceso", "contrasena"]
-    private static let secretWords: Set<String> = ["pin", "otp", "cvv", "cvc", "mfa"]
+    private static let secretWords: Set<String> = ["pin", "otp", "cvv", "cvc", "mfa", "pincode", "mfacode"]
     private static let datePattern = try! NSRegularExpression(pattern: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2})?$"#)
     private static let numberPattern = try! NSRegularExpression(pattern: #"^-?[0-9]+(\.[0-9]+)?$"#)
     /// What an open button may open: web pages and the links iOS hands to
@@ -466,11 +466,12 @@ struct RichCardSchema {
     }
 
     /// Whether a field's id, label or placeholder asks for a secret (the
-    /// plugin's names_secret): read in lower case with everything but
-    /// letters of any script and digits as spaces.
+    /// plugin's names_secret): read after NFKC, so full-width ＰＩＮ reads as
+    /// pin, in lower case with everything but letters of any script and
+    /// digits as spaces.
     static func namesSecret(_ text: String) -> Bool {
         var spaced = String.UnicodeScalarView()
-        for scalar in text.lowercased().unicodeScalars {
+        for scalar in text.precomposedStringWithCompatibilityMapping.lowercased().unicodeScalars {
             spaced.append(CharacterSet.alphanumerics.contains(scalar) ? scalar : " ")
         }
         let words = String(spaced).split(separator: " ").map(String.init)
