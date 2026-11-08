@@ -1686,7 +1686,7 @@ extension AppStateMultiDashboardTests {
         try await held.answer(["dataUrl": "data:image/jpeg;base64,/9j/"], toPathEnding: "/room-files/data-url")
         let answered = await read.value
         XCTAssertEqual(answered, .dataURL("data:image/jpeg;base64,/9j/"))
-        XCTAssertEqual(held.sent.last?.path, GroupRoomFilesClient.picturePath)
+        XCTAssertEqual(held.sent.last?.path, GroupRoomFilesClient.readPath)
         XCTAssertEqual(held.sent.last?.query?.removingPercentEncoding, "path=\(path)")
 
         let refused = Task { await resolver.read(for: "/elsewhere/x.jpg") }

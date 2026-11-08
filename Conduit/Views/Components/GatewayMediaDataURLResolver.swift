@@ -87,7 +87,7 @@ final class GatewayMediaDataURLResolver {
         let result: GatewayMediaRead
         switch source {
         case .hermes: result = await appState.gatewayMediaRead(for: path, profile: profile)
-        case .roomFiles: result = await appState.roomFilePictureRead(for: path)
+        case .roomFiles: result = await appState.roomFileRead(for: path)
         }
         return appState.activeDashboardID == dashboardID ? result : .failed
     }

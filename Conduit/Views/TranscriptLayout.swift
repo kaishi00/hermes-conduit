@@ -462,7 +462,7 @@ final class TranscriptLayout: UICollectionViewLayout {
                 return textHeight(text, width: width * 0.8)
             }
             return textHeight(text, width: width - 70) + 44 + boardsHeight
-        case .pending(let text, _, _, _):
+        case .pending(let text, _, _, _, _):
             return textHeight(text, width: width * 0.8)
         case .responding:
             return 60

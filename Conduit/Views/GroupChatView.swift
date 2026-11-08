@@ -321,8 +321,8 @@ struct GroupChatView: View {
                 mediaResolver: event.isMemberMessage
                     ? mediaResolver(for: GroupRoomTurns.speaker(of: event, members: members)) : nil
             )
-        case .room(.pending(let text, let members, let isSending, let copyPost)):
-            GroupUserBubble(text: text, members: members, timestamp: nil, eventID: row.id) {
+        case .room(.pending(let text, let members, let isSending, let copyPost, let files)):
+            GroupUserBubble(text: text, members: members, timestamp: nil, eventID: row.id, files: files) {
                 if let copyPost {
                     // In a room someone else hosts, where its post through
                     // your Hermes stands.
@@ -813,7 +813,10 @@ struct GroupEventRow: View {
                 personLook: looks.home
             )
         } else if event.isUserMessage {
-            GroupUserBubble(text: attribution.text(of: event), members: members, timestamp: event.createdAt, eventID: event.id) {
+            GroupUserBubble(
+                text: attribution.text(of: event), members: members, timestamp: event.createdAt, eventID: event.id,
+                files: event.attachments.map { $0.attachment(roomID: event.roomID) }
+            ) {
                 EmptyView()
             }
         } else if event.isMemberMessage {
@@ -896,7 +899,9 @@ enum GroupRoomImageGallery {
                 : event.isUserMessage ? (GroupRoomReplyQuote.parse(parts.text)?.message ?? parts.text) : parts.text
             // Its files come first, as its bubble draws them.
             let sent = files.map { files in
-                shownParts.files.filter(GroupRoomFilesClient.isStoredPicture).compactMap { ImageGalleryItem.attachment($0, resolver: files) }
+                (event.attachments.map { $0.attachment(roomID: event.roomID) } + shownParts.files)
+                    .filter(GroupRoomFilesClient.isStoredPicture)
+                    .compactMap { ImageGalleryItem.attachment($0, resolver: files) }
             } ?? []
             let media = event.isMemberMessage ? resolver(event) : nil
             return sent + ChatImageGallery.markdownItems(shown, resolver: media, recognizesGatewayMedia: media != nil)
@@ -975,6 +980,8 @@ struct GroupUserBubble<Footer: View>: View {
     /// The room event it is: its "Replying to" card scrolls to the message
     /// it quoted; a send not in the log yet looks through all of it.
     var eventID: String? = nil
+    /// The files Hermes keeps as the message's own attachments.
+    var files: [Attachment] = []
     @ViewBuilder let footer: Footer
 
     var body: some View {
@@ -987,7 +994,7 @@ struct GroupUserBubble<Footer: View>: View {
             Spacer(minLength: 48)
             VStack(alignment: .trailing, spacing: 2) {
                 VStack(alignment: .leading, spacing: 8) {
-                    GroupMessageFiles(files: parts.files, onAccent: true)
+                    GroupMessageFiles(files: files + parts.files, onAccent: true)
                     if let reply {
                         ReplyReferenceQuoteCard(quote: reply.quote, authorName: reply.author, quotedIn: eventID)
                     }
