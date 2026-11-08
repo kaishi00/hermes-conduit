@@ -183,7 +183,7 @@ struct ModelChooserPage: View {
     }
 
     private var pickedProvider: ProviderInfo? {
-        pickedRow?.provider ?? pick.flatMap { pick in catalog.providers.first { $0.matches(pick.provider) } }
+        pickedRow?.provider ?? pick.flatMap { catalog.providers.row(named: $0.provider) }
     }
 
     /// The pick and what it runs on: the top card's two lines.
@@ -511,7 +511,7 @@ struct ModelChooserLinkRow: View {
         guard let pick else {
             return (defaultTitle, reasoning)
         }
-        let row = providers.first { $0.matches(pick.provider) }
+        let row = providers.row(named: pick.provider)
         let model = row?.models.first { $0.id == pick.model }
         let value = pick.model.isEmpty
             ? VoiceJobModelSettingsSection.providerDefaultTitle(row?.title ?? pick.provider)
@@ -519,5 +519,14 @@ struct ModelChooserLinkRow: View {
         let provider = pick.model.isEmpty ? nil : (row?.title ?? (pick.provider.isEmpty ? nil : pick.provider))
         let detail = [provider, reasoning].compactMap { $0 }.joined(separator: " · ")
         return (value, detail.isEmpty ? nil : detail)
+    }
+}
+
+extension Array where Element == ProviderInfo {
+    /// The row a saved provider names: the one named exactly, else the
+    /// first whose display name or alias it is (a `custom:key` pick beside
+    /// both a `custom:key` row and a `custom` row aliased to it).
+    func row(named provider: String) -> ProviderInfo? {
+        first { $0.name == provider } ?? first { $0.matches(provider) }
     }
 }

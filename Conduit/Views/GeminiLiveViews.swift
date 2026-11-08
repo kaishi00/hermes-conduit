@@ -598,7 +598,7 @@ struct TaggedModelChoice {
         guard let pick else { return (defaultTitle, reasoning) }
         if pick.model.isEmpty {
             // Named as its row names it, as the Model page's top card does.
-            let title = providers.first { $0.matches(pick.provider) }?.title ?? pick.provider
+            let title = providers.row(named: pick.provider)?.title ?? pick.provider
             return (VoiceJobModelSettingsSection.providerDefaultTitle(title), reasoning)
         }
         let provider = heldProvider(in: providers).flatMap { name in providers.first { $0.name == name } }
