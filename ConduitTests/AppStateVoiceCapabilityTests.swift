@@ -579,22 +579,6 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertEqual(ConduitBackdropGlows.auraOffset(drift: 1, in: size).width, -320, accuracy: 0.001)
     }
 
-    func testBackdropTickDateMapsOntoTheUptimeClock() {
-        let now = Date(timeIntervalSinceReferenceDate: 1_000)
-        XCTAssertEqual(ConduitBackdropMotionClock.uptime(at: now, now: now, uptimeNow: 50), 50, accuracy: 0.000_001)
-        XCTAssertEqual(
-            ConduitBackdropMotionClock.uptime(at: now.addingTimeInterval(-0.1), now: now, uptimeNow: 50),
-            49.9,
-            accuracy: 0.000_001
-        )
-        // A tick dated ahead of now never runs the clock forward.
-        XCTAssertEqual(
-            ConduitBackdropMotionClock.uptime(at: now.addingTimeInterval(2), now: now, uptimeNow: 50),
-            50,
-            accuracy: 0.000_001
-        )
-    }
-
     func testAgentMarkBreathStartsAtRestAndPeaksHalfwayThrough() {
         XCTAssertEqual(ConduitAgentMark.breath(at: 0), 0, accuracy: 0.000_001)
         XCTAssertEqual(ConduitAgentMark.breath(at: ConduitAgentMark.breathDuration / 2), 1, accuracy: 0.000_001)

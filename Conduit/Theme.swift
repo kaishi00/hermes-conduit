@@ -457,13 +457,6 @@ struct ConduitBackdropMotionClock {
         }
     }
 
-    /// The system uptime at a timeline tick's date. The clock runs on
-    /// uptime, so a wall-clock change can't jump the phase; the tick's date
-    /// only says how long ago the frame was asked for.
-    static func uptime(at date: Date, now: Date = Date(), uptimeNow: TimeInterval = ProcessInfo.processInfo.systemUptime) -> TimeInterval {
-        uptimeNow - max(0, now.timeIntervalSince(date))
-    }
-
     func progress(at now: TimeInterval) -> CGFloat {
         guard hasAnimated else { return 0 }
         return ConduitBackdropMotionPolicy.progress(at: (pauseStartedAt ?? now) - motionOrigin)
@@ -528,15 +521,16 @@ struct ConduitBackdrop: View {
                     minimumInterval: 1.0 / Double(ConduitBackdropMotionPolicy.framesPerSecond),
                     paused: !shouldAnimate
                 )
-            ) { context in
-                // The phase is handed to a view of its own as a value, so
-                // each tick that moves it redraws the glows. Worked out in a
+            ) { _ in
+                // Read on each tick, by system uptime so a wall-clock
+                // change can't jump it, and handed to a view of its own as
+                // a value, so each tick that moves it redraws the glows. Worked out in a
                 // GeometryReader's closure here, it was read only when
                 // something else redrew the backdrop: the glows sat still
                 // and then jumped, in one frame, to wherever the clock had
                 // got to (issue 1980).
                 ConduitBackdropGlows(
-                    drift: motionClock.progress(at: ConduitBackdropMotionClock.uptime(at: context.date)),
+                    drift: motionClock.progress(at: ProcessInfo.processInfo.systemUptime),
                     warmColor: glowColor.opacity(colorScheme == .dark ? 0.20 : 0.24),
                     auraColor: Color.conduitAura.opacity(colorScheme == .dark ? 0.14 : 0.10)
                 )
