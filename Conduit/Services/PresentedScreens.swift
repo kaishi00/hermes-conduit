@@ -265,7 +265,7 @@ struct PresentedConfirm: Identifiable, Equatable {
         // the change, which the panel's edit takes. A no on its own, or one
         // said with its action ("don't share", "cancel the email"), declines.
         case .no(let change):
-            return change == nil || !Self.bareNos.contains(Self.words(in: words).first ?? "")
+            return change == nil || !Self.ledByBareNo(said)
         // A wait holds; it doesn't refuse ("hold on"). "Not now" does, and
         // a not yet with a change in it ("wait, make it Wednesday") asks
         // for that change, not a no.
@@ -286,11 +286,29 @@ struct PresentedConfirm: Identifiable, Equatable {
         "nessuna idea", "nie wiem", "не знаю", "понятия не имею", "bilmiyorum", "emin değilim", "tidak tahu",
         "tak tahu", "nggak tahu", "gak tahu", "tidak yakin",
     ].map { words(in: $0) }
-    /// A no that says only no, so what follows it is the answer.
-    private static let bareNos: Set<String> = [
-        "no", "nope", "nah", "nein", "nee", "nö", "non", "não", "nao", "нет", "nie", "hayır", "hayir", "tidak",
-        "nggak", "gak", "いいえ", "いや", "不", "不是", "不对", "아니", "아니요", "아뇨",
-    ]
+    /// Whether the answer, past the words the handset skips before its lead
+    /// ("well", "oh", "um"), opens with a no that says only no, so what
+    /// follows it is the answer.
+    private static func ledByBareNo(_ said: [String]) -> Bool {
+        let skipped = VoiceThreadRouting.answerJoiners.map { words(in: $0) }
+        var rest = said[...]
+        while let first = rest.first {
+            if VoiceThreadRouting.fillers.contains(first) {
+                rest = rest.dropFirst()
+            } else if let joiner = skipped.first(where: { !$0.isEmpty && rest.starts(with: $0) }) {
+                rest = rest.dropFirst(joiner.count)
+            } else {
+                break
+            }
+        }
+        return bareNos.contains { rest.starts(with: $0) }
+    }
+
+    /// A no that says only no.
+    private static let bareNos: [[String]] = [
+        "no", "nope", "nah", "nein", "nee", "nö", "non", "não", "nao", "нет", "не надо", "не нужно", "не стоит",
+        "nie", "hayır", "hayir", "tidak", "nggak", "gak", "いいえ", "いや", "不", "不是", "不对", "아니", "아니요", "아뇨",
+    ].map { words(in: $0) }
     /// A not yet whose not sits inside it ("先不", "还没", "先别", "まだ", "아직").
     private static let cjkNotYet = ["不", "没", "沒", "别", "別", "まだ", "아직"]
     private static let cjkUnsure = ["不知道", "不确定", "不確定", "わからない", "分からない", "わかりません", "分かりません", "모르겠", "몰라"]

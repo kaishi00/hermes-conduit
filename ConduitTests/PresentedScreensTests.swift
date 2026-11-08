@@ -201,6 +201,9 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(prompt.isDeclined(by: "hold on"))
         XCTAssertFalse(prompt.isDeclined(by: "Wait, make it Wednesday"))
         XCTAssertFalse(prompt.isDeclined(by: "No, make it for Alex"))
+        XCTAssertFalse(prompt.isDeclined(by: "Well, no, make it for Alex"))
+        XCTAssertFalse(prompt.isDeclined(by: "Oh, no, make it Wednesday"))
+        XCTAssertFalse(prompt.isDeclined(by: "Не надо, сделай для Алекса"))
         // Not knowing, in the other shipped languages.
         for unsure in ["No sé", "Não sei", "Tidak tahu", "Je ne sais pas", "Ich weiß nicht", "不知道", "わからない"] {
             XCTAssertFalse(prompt.isDeclined(by: unsure), unsure)
