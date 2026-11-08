@@ -109,6 +109,11 @@ struct NotifierPluginStatus: Equatable {
 
     var isManaged: Bool { managedBy != nil }
 
+    /// A managed host put the new plugin there itself: an update there
+    /// runs only the restarts (`NotifierPluginUpdater.restartOnly`). An
+    /// install isn't an update and runs as one.
+    func updateRunsOnlyRestarts(install: Bool) -> Bool { isManaged && !install }
+
     /// The version installed on disk, as the plugin reports it.
     var version: String? {
         if case .reported(let version, _) = state { return version }

@@ -297,8 +297,8 @@ private struct NotifierPluginUpdateConfirmation: ViewModifier {
     let install: Bool
 
     /// A managed host put the new plugin there itself: only the restarts
-    /// run (`NotifierPluginUpdater.restartOnly`).
-    private var restartOnly: Bool { !install && appState.notifierPlugin.isManaged }
+    /// run, as `updateNotifierPlugin` runs them.
+    private var restartOnly: Bool { appState.notifierPlugin.updateRunsOnlyRestarts(install: install) }
 
     func body(content: Content) -> some View {
         content.confirmationDialog(

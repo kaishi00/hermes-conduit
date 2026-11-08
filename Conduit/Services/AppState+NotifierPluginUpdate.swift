@@ -48,7 +48,7 @@ extension AppState {
             guard let self, let dashboardID, self.activeDashboardID == dashboardID else { return false }
             return await self.renewDashboardSignIn(dashboardID: dashboardID)
         }, onHost: notifierPlugin.reports(NotifierPluginUpdater.selfUpdateCapability),
-           restartOnly: notifierPlugin.isManaged && !install,
+           restartOnly: notifierPlugin.updateRunsOnlyRestarts(install: install),
            profile: activeProfile, report: { [weak self] json in
             guard let self, self.activeDashboardID == dashboardID else { return }
             self.applyNotifierPluginReport(json)

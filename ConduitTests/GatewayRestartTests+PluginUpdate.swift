@@ -311,6 +311,9 @@ extension GatewayRestartTests {
         XCTAssertEqual(FinishSetupStatus.pluginDoneNote(status), .managed)
         XCTAssertEqual(NotifierPluginStatus.managedText(status.managedBy), "Family farm keeps the plugin up to date.")
         XCTAssertEqual(NotifierPluginSummary.detail(status, update: .idle), "9.0.0 · Managed by the host")
+        // Finish Update runs only the restarts there; an install still installs.
+        XCTAssertTrue(status.updateRunsOnlyRestarts(install: false))
+        XCTAssertFalse(status.updateRunsOnlyRestarts(install: true))
         status.state = .reported(version: "0.1.0", capabilities: [])
         XCTAssertFalse(status.updateRecommended)
         XCTAssertFalse(status.updateAvailable)
@@ -323,6 +326,7 @@ extension GatewayRestartTests {
     }
 
     func testOnlyAHostThatSaysSoIsManaged() {
+        XCTAssertFalse(NotifierPluginStatus().updateRunsOnlyRestarts(install: false))
         XCTAssertNil(NotifierPluginStatus.managedBy(from: ["ok": true, "version": "0.140.3"]))
         XCTAssertNil(NotifierPluginStatus.managedBy(from: ["ok": true, "managed": false]))
         XCTAssertNil(NotifierPluginStatus.managedBy(from: ["ok": false, "managed": true]))
