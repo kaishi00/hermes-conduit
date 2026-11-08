@@ -66,6 +66,26 @@ extension ChatOnScreenTests {
         XCTAssertTrue(store.items.isEmpty)
     }
 
+    func testTheLoneAllChipSumsOnlyTheProfilesItLists() {
+        let store = NeedsYouStore()
+        let dashboard = UUID()
+        func items(_ hosts: [[String: Any]], _ profile: String) -> [NeedsYouItem] {
+            hosts.compactMap { NeedsYouItem(host: $0, profile: profile) }
+        }
+        store.apply(items([needsYouWait("a1", "s1", at: 10), needsYouWait("a2", "s2", at: 20)], "atlas"),
+                    profile: "atlas", dashboardID: dashboard) { _ in false }
+        store.apply(items([needsYouWait("b1", "s9", at: 30)], "nahida"),
+                    profile: "nahida", dashboardID: dashboard) { _ in false }
+        // Both profiles All lists: every wait counts.
+        XCTAssertEqual(V2ProfileStrip.waiting(in: ["atlas", "nahida"], needsYou: store,
+                                              matches: AppState.profilesMatch), 3)
+        // A profile All leaves out isn't counted, and no profiles is none.
+        XCTAssertEqual(V2ProfileStrip.waiting(in: ["nahida"], needsYou: store,
+                                              matches: AppState.profilesMatch), 1)
+        XCTAssertEqual(V2ProfileStrip.waiting(in: [], needsYou: store,
+                                              matches: AppState.profilesMatch), 0)
+    }
+
     func testNeedsYouBannerIsDismissedOnlyForItsOwnWait() {
         let store = NeedsYouStore()
         let dashboard = UUID()

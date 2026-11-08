@@ -1981,13 +1981,20 @@ struct HugsIdealWidth: Layout {
     }
 }
 
-private struct UserImageAttachmentPreview: View {
+/// A message's picture: the chat's sent pictures, and a group room's
+/// (GroupMessageFiles), which reads them from the room's files.
+struct UserImageAttachmentPreview: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let attachment: Attachment
     let gatewayResolver: GatewayMediaDataURLResolver?
     /// A square tile of a message's picture grid, filling the size it is
     /// proposed, instead of the picture at its own shape (issue 1801).
     var isTile = false
+    /// On the user's accent bubble; a room member's plain bubble isn't.
+    var onAccent = true
+    /// A picture that won't load shows its file name, not only "Image
+    /// unavailable": a room's message has no other place naming it.
+    var namesUnavailable = false
     @State private var gatewayImage: UIImage?
     /// The cache key `gatewayImage` was loaded for, so a reused view never
     /// shows the picture it held before.
@@ -2085,15 +2092,23 @@ private struct UserImageAttachmentPreview: View {
                     .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
                     .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
             } else {
+                let failed = gatewayLoadFailed || localPreviewFailed
+                let named = failed && namesUnavailable && !attachment.name.isEmpty
                 Label(
-                    (gatewayLoadFailed || localPreviewFailed) ? AppLocalization.string("Image unavailable") : AppLocalization.string("Image attached"),
-                    systemImage: (gatewayLoadFailed || localPreviewFailed) ? "photo.badge.exclamationmark" : "photo"
+                    named ? attachment.name
+                        : failed ? AppLocalization.string("Image unavailable") : AppLocalization.string("Image attached"),
+                    systemImage: failed ? "photo.badge.exclamationmark" : "photo"
                 )
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .accessibilityLabel(Text(verbatim: named
+                    ? "\(AppLocalization.string("Image unavailable")): \(attachment.name)"
+                    : failed ? AppLocalization.string("Image unavailable") : AppLocalization.string("Image attached")))
                 .scaledFont(.caption.weight(.medium))
-                .foregroundStyle(.white)
+                .foregroundStyle(onAccent ? Color.white : Color.primary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
-                .background(Color.white.opacity(0.13), in: Capsule())
+                .background(chipFill, in: Capsule())
                 .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
                 .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
             }
@@ -2233,9 +2248,9 @@ private struct UserImageAttachmentPreview: View {
     @ViewBuilder private var placeholder: some View {
         if let size = reservedSize {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.13))
+                .fill(chipFill)
                 .frame(width: 224, height: previewHeight(for: size))
-                .overlay { ProgressView().tint(.white) }
+                .overlay { ProgressView().tint(onAccent ? .white : nil) }
                 .accessibilityElement()
                 .accessibilityLabel(Text("Loading image…"))
         } else {
@@ -2246,14 +2261,18 @@ private struct UserImageAttachmentPreview: View {
     private var loadingPlaceholder: some View {
         HStack(spacing: 8) {
             ProgressView()
-                .tint(.white)
+                .tint(onAccent ? .white : nil)
             Text("Loading image…")
         }
         .scaledFont(.caption.weight(.medium))
-        .foregroundStyle(.white)
+        .foregroundStyle(onAccent ? Color.white : Color.primary)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(Color.white.opacity(0.13), in: Capsule())
+        .background(chipFill, in: Capsule())
+    }
+
+    private var chipFill: Color {
+        onAccent ? Color.white.opacity(0.13) : Color.primary.opacity(0.05)
     }
 
     private var isGatewayImage: Bool {
@@ -2271,7 +2290,7 @@ private struct UserImageAttachmentPreview: View {
     /// the same square, so the row never changes height as it loads.
     @ViewBuilder private var tileContent: some View {
         if let image = cachedLocalImage ?? currentLocalPreview ?? currentGatewayImage {
-            PictureTileImage(image: image, onAccent: true)
+            PictureTileImage(image: image, onAccent: onAccent)
                 .opensMediaPreview { openPreview(showing: image) }
                 .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
                 .accessibilityLabel("Attached image: \(attachment.imageDescription ?? attachment.name)")
@@ -2285,7 +2304,7 @@ private struct UserImageAttachmentPreview: View {
             // the viewer fetches the picture itself, and the "+N" tile is
             // the only way to the pictures without a tile.
             // One element first, so VoiceOver keeps the tap's button trait.
-            PictureTilePlaceholder(state: loading ? .loading : failed ? .unavailable : .attached, onAccent: true)
+            PictureTilePlaceholder(state: loading ? .loading : failed ? .unavailable : .attached, onAccent: onAccent)
                 .accessibilityElement()
                 .accessibilityLabel(
                     loading ? AppLocalization.string("Loading image…")
@@ -2305,7 +2324,7 @@ private struct UserImageAttachmentPreview: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
+                        .strokeBorder(onAccent ? Color.white.opacity(0.22) : Color.primary.opacity(0.08), lineWidth: 1)
                 }
                 .opensMediaPreview { openPreview(showing: image) }
                 .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
@@ -2351,9 +2370,14 @@ enum AttachmentPreviewFilename {
     }
 }
 
-private struct UserDocumentAttachmentChip: View {
+/// A message's file that isn't a picture: opens in Quick Look, and audio
+/// plays in place. A chat's sent files, and a group room's
+/// (GroupMessageFiles), read from the room's files.
+struct UserDocumentAttachmentChip: View {
     let attachment: Attachment
     let gatewayResolver: GatewayMediaDataURLResolver?
+    /// On the user's accent bubble; a room member's plain bubble isn't.
+    var onAccent = true
     @State private var loading = false
     @State private var failed = false
     @State private var openTask: Task<Void, Never>?
@@ -2381,7 +2405,7 @@ private struct UserDocumentAttachmentChip: View {
                         ? AppLocalization.string("Voice message")
                         : attachment.name,
                     filename: AttachmentPreviewFilename.make(name: attachment.name, uri: attachment.uri),
-                    style: .bubble,
+                    style: onAccent ? .bubble : .card,
                     opening: loading,
                     openFailed: failed,
                     load: loadAudio,
@@ -2405,15 +2429,27 @@ private struct UserDocumentAttachmentChip: View {
             if loading {
                 ProgressView()
                     .controlSize(.mini)
-                    .tint(.white)
+                    .tint(onAccent ? .white : nil)
+            } else if failed {
+                // The file couldn't be read (gone from the host, too large,
+                // or refused): say so rather than leave a tap that does nothing.
+                Image(systemName: "exclamationmark.circle")
+                    .accessibilityHidden(true)
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(loading
+            ? AppLocalization.string("Loading \(AttachmentTypePolicy.displayName(for: attachment))…")
+            : failed
+            ? AppLocalization.string("\(AttachmentTypePolicy.displayName(for: attachment)) unavailable")
+            : AttachmentTypePolicy.displayName(for: attachment))
         .scaledFont(.caption.weight(.medium))
-        .foregroundStyle(.white)
+        .foregroundStyle(onAccent ? Color.white : Color.primary)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(Color.white.opacity(0.13), in: Capsule())
-        .opensMediaPreview(open)
+        .background(onAccent ? Color.white.opacity(0.13) : Color.primary.opacity(0.05), in: Capsule())
+        // A tap on a file that couldn't be read asks again.
+        .opensMediaPreview(open, hint: failed ? Text("Try again") : nil)
     }
 
     /// The clip's bytes: the local file while it is still on this device,

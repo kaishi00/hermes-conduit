@@ -475,6 +475,251 @@ final class CompactResumeTranscriptTests: XCTestCase {
         )
     }
 
+    // MARK: - Hermes' resume size limit (issue 2025)
+
+    private static let resumeTooLong = RpcError(
+        code: 4130,
+        message: "This session is too long to reload safely (20001 messages; limit 20000)."
+    )
+
+    /// Past `sessions.max_resume_messages` Hermes refuses the resume that
+    /// carries the whole transcript but still resumes compact: the chat
+    /// opens on that, with the history source's rows once it answers.
+    func testAResumeTooLongForTheWholeTranscriptOpensCompact() async throws {
+        let recorder = ResumeCallRecorder()
+        var historyReads = 0
+        let harness = try makeHarness(
+            openSession: { _, sessionID, compact in
+                recorder.record(sessionID: sessionID, compact: compact)
+                if !compact { throw Self.resumeTooLong }
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _, _ in
+                historyReads += 1
+                // The history source wasn't ready for the first read.
+                if historyReads == 1 { return .unavailable }
+                return .payload([
+                    "session_id": "stored-long",
+                    "messages": [
+                        ["id": 1, "role": "user", "content": "Still here?", "timestamp": "2026-11-08T10:00:00Z"],
+                        ["id": 2, "role": "assistant", "content": "Yes.", "timestamp": "2026-11-08T10:00:02Z"]
+                    ]
+                ])
+            }
+        )
+        harness.appState.sessions = [session("stored-long")]
+
+        let opened = await harness.appState.openSession("stored-long")
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(recorder.calls.map { $0.compact }, [true, false, true])
+        XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Still here?", "Yes."])
+        XCTAssertNil(harness.appState.errorMessage)
+    }
+
+    /// The chat on screen keeps its rows when Hermes refuses the whole
+    /// transcript and no history source answers; the next read brings them
+    /// up to date. With nothing to keep, the refusal shows, and a later
+    /// resume of the chat that works takes it down again.
+    func testAResumeTooLongKeepsTheRowsOnScreenAndItsErrorClearsOnceTheChatComesBack() async throws {
+        var refusesWholeTranscript = false
+        var historyAnswers = false
+        let shown = [
+            ChatMessage(id: "1", role: .user, content: "Long chat", timestamp: "2026-11-08T10:00:00Z"),
+            ChatMessage(id: "2", role: .assistant, content: "Kept", timestamp: "2026-11-08T10:00:02Z")
+        ]
+        let harness = try makeHarness(
+            openSession: { _, sessionID, compact in
+                if !compact, refusesWholeTranscript { throw Self.resumeTooLong }
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: compact ? [] : shown,
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _, _ in
+                historyAnswers
+                    ? .payload([
+                        "session_id": "stored-long",
+                        "messages": [
+                            ["id": 1, "role": "user", "content": "Long chat", "timestamp": "2026-11-08T10:00:00Z"],
+                            ["id": 2, "role": "assistant", "content": "Kept", "timestamp": "2026-11-08T10:00:02Z"]
+                        ]
+                    ])
+                    : .unavailable
+            },
+            additionalOperations: { ops in
+                ops.connectClient = { _ in }
+                ops.loadCatalog = { _, _ in [self.session("stored-long")] }
+                ops.refreshContext = { _, _ in }
+            }
+        )
+        harness.appState.sessions = [session("stored-long")]
+
+        // Nothing on screen to keep: the refusal says why.
+        refusesWholeTranscript = true
+        let failedOpen = await harness.appState.openSession("stored-long")
+        XCTAssertFalse(failedOpen)
+        XCTAssertTrue(harness.appState.errorMessage?.contains("too long to reload safely") == true)
+
+        // The chat comes back on the next resume: its error goes.
+        historyAnswers = true
+        await harness.appState.syncSession(purpose: .preserveCurrent, using: nil, automaticWorkToken: nil)
+        XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Long chat", "Kept"])
+        XCTAssertNil(harness.appState.errorMessage)
+
+        // Refused again with no history source: the rows on screen stay.
+        // A source that isn't there can't be read before a send either, so
+        // sends aren't held for it; the next return reads it.
+        historyAnswers = false
+        await harness.appState.syncSession(purpose: .preserveCurrent, using: nil, automaticWorkToken: nil)
+        XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Long chat", "Kept"])
+        XCTAssertNil(harness.appState.errorMessage)
+        XCTAssertFalse(harness.appState.transcriptFreshnessIsStale)
+    }
+
+    /// A history read that failed for now, after Hermes refused the whole
+    /// transcript, keeps the rows on screen but unresolved, so the next send
+    /// reads again.
+    func testAResumeTooLongWithAFailedHistoryReadKeepsTheRowsUnresolved() async throws {
+        var refusesWholeTranscript = false
+        var historyReads = 0
+        let shown = [
+            ChatMessage(id: "1", role: .user, content: "Long chat", timestamp: "2026-11-08T10:00:00Z"),
+            ChatMessage(id: "2", role: .assistant, content: "Kept", timestamp: "2026-11-08T10:00:02Z")
+        ]
+        let harness = try makeHarness(
+            openSession: { _, sessionID, compact in
+                if !compact, refusesWholeTranscript { throw Self.resumeTooLong }
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: compact ? [] : shown,
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _, _ in
+                historyReads += 1
+                // The open reads no source and takes the legacy rows. After
+                // the refusal, the compact path's read finds no source either
+                // and the retry's read fails for now.
+                guard refusesWholeTranscript, historyReads > 1 else { return .unavailable }
+                return .failed(DashboardTicketBridgeError.http(status: 503, detail: "Service Unavailable"))
+            },
+            additionalOperations: { ops in
+                ops.connectClient = { _ in }
+                ops.loadCatalog = { _, _ in [self.session("stored-long")] }
+                ops.refreshContext = { _, _ in }
+            }
+        )
+        harness.appState.sessions = [session("stored-long")]
+        let opened = await harness.appState.openSession("stored-long")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Long chat", "Kept"])
+
+        refusesWholeTranscript = true
+        historyReads = 0
+        await harness.appState.syncSession(purpose: .preserveCurrent, using: nil, automaticWorkToken: nil)
+        XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Long chat", "Kept"])
+        XCTAssertNil(harness.appState.errorMessage)
+        XCTAssertTrue(harness.appState.transcriptFreshnessIsStale)
+    }
+
+    /// Kept rows keep their paging window, so what Load earlier brought in
+    /// survives; a page naming another chat leaves them unresolved.
+    func testAResumeTooLongKeepsThePagingWindowAndAForeignPageLeavesTheRowsUnresolved() async throws {
+        enum History { case page, none, foreign }
+        var refusesWholeTranscript = false
+        var history = History.page
+        let rows: [[String: Any]] = [
+            ["id": 1, "role": "user", "content": "Long chat", "timestamp": "2026-11-08T10:00:00Z"],
+            ["id": 2, "role": "assistant", "content": "Kept", "timestamp": "2026-11-08T10:00:02Z"]
+        ]
+        let harness = try makeHarness(
+            openSession: { _, sessionID, compact in
+                if !compact, refusesWholeTranscript { throw Self.resumeTooLong }
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _, _ in
+                switch history {
+                case .page: return self.tailPagePayload(sessionId: "stored-long", rows: rows, offset: 0, limit: 2)
+                case .none: return .unavailable
+                case .foreign: return self.tailPagePayload(sessionId: "another-chat", rows: rows, offset: 0, limit: 2)
+                }
+            },
+            additionalOperations: { ops in
+                ops.connectClient = { _ in }
+                ops.loadCatalog = { _, _ in [self.session("stored-long")] }
+                ops.refreshContext = { _, _ in }
+            }
+        )
+        harness.appState.sessions = [session("stored-long")]
+        let opened = await harness.appState.openSession("stored-long")
+        XCTAssertTrue(opened)
+        let window = harness.appState.persistedTranscriptWindow
+        XCTAssertEqual(window?.nextOffset, 2)
+        XCTAssertEqual(window?.canLoadEarlier, true)
+
+        refusesWholeTranscript = true
+        history = .none
+        await harness.appState.syncSession(purpose: .preserveCurrent, using: nil, automaticWorkToken: nil)
+        XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Long chat", "Kept"])
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 2)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
+        XCTAssertFalse(harness.appState.transcriptFreshnessIsStale)
+
+        history = .foreign
+        await harness.appState.syncSession(purpose: .preserveCurrent, using: nil, automaticWorkToken: nil)
+        XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Long chat", "Kept"])
+        XCTAssertNil(harness.appState.errorMessage)
+        XCTAssertTrue(harness.appState.transcriptFreshnessIsStale)
+    }
+
+    /// A chat open by its runtime id that a resume addresses by its stored
+    /// id (an automatic return to a Bot Chat) still keeps its rows.
+    func testAResumeTooLongKeepsTheRowsOfAChatOpenByAnotherOfItsIDs() async throws {
+        var refusesWholeTranscript = false
+        let shown = [
+            ChatMessage(id: "1", role: .user, content: "Long chat", timestamp: "2026-11-08T10:00:00Z"),
+            ChatMessage(id: "2", role: .assistant, content: "Kept", timestamp: "2026-11-08T10:00:02Z")
+        ]
+        let row = session("stored-long", alternateIDs: ["runtime-long"])
+        let harness = try makeHarness(
+            openSession: { _, _, compact in
+                if !compact, refusesWholeTranscript { throw Self.resumeTooLong }
+                return SessionResumeResult(
+                    sessionId: "runtime-long",
+                    storedSessionId: "stored-long",
+                    messages: compact ? [] : shown,
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _, _ in .unavailable },
+            additionalOperations: { ops in
+                ops.connectClient = { _ in }
+                ops.loadCatalog = { _, _ in [row] }
+                ops.refreshContext = { _, _ in }
+            }
+        )
+        harness.appState.sessions = [row]
+        let opened = await harness.appState.openSession("stored-long")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Long chat", "Kept"])
+        XCTAssertTrue(harness.appState.chatOwnSessionIDsForTesting("runtime-long").contains("stored-long"))
+
+        refusesWholeTranscript = true
+        await harness.appState.syncSession(purpose: .preserveCurrent, using: nil, automaticWorkToken: nil)
+        XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Long chat", "Kept"])
+        XCTAssertNil(harness.appState.errorMessage)
+    }
+
     /// Drives one reconciliation against a history source that fails with
     /// `failure` and asserts the bounded-failure contract: a failing or slow
     /// BOUNDED history request must never escalate into the legacy

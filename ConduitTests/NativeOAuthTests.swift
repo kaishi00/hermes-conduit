@@ -592,6 +592,46 @@ final class NativeOAuthTests: XCTestCase {
         session.invalidate()
     }
 
+    /// Location's host pass copies the access token; it's saved again on
+    /// this notice, which comes only once the rotated tokens are stored
+    /// (issue 2028).
+    @MainActor
+    func testSavedRefreshPostsTheRotationOnlyForItsDashboard() async throws {
+        let dashboardID = UUID()
+        final class Rotations: @unchecked Sendable { var ids: [UUID] = [] }
+        let rotated = Rotations()
+        let observer = NotificationCenter.default.addObserver(forName: .nativeOAuthTokensRotated, object: nil, queue: nil) { note in
+            if let id = note.userInfo?["dashboardID"] as? UUID, id == dashboardID { rotated.ids.append(id) }
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        var refreshed = false
+        NativeOAuthURLProtocolStub.handler = { request in
+            if request.url?.path == "/auth/native/refresh" {
+                refreshed = true
+                return (200, [
+                    "access_token": "new-access", "refresh_token": "new-refresh",
+                    "expires_at": 4_000_000_100, "provider": "google", "user_id": "user",
+                ])
+            }
+            return refreshed ? (200, ["ok": true]) : (401, ["detail": "expired"])
+        }
+        let session = NativeOAuthSession(tokens: tokens(), dashboardID: dashboardID, client: makeClient())
+
+        _ = try await session.requestJSON(path: "/api/status")
+        XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID)?.accessToken, "new-access")
+        XCTAssertEqual(rotated.ids, [dashboardID])
+
+        // A refused refresh stores nothing, so nothing is taken again.
+        rotated.ids = []
+        refreshed = false
+        NativeOAuthURLProtocolStub.handler = { request in
+            request.url?.path == "/auth/native/refresh" ? (401, ["error": "session_expired"]) : (401, ["detail": "expired"])
+        }
+        _ = try? await session.requestJSON(path: "/api/status")
+        XCTAssertEqual(rotated.ids, [])
+        session.invalidate()
+    }
+
     @MainActor
     func testRejectedRefreshClearsOnlyThisDashboardTokens() async throws {
         let dashboardID = UUID()
