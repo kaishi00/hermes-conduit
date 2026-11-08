@@ -1528,6 +1528,10 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertLessThanOrEqual(onlyFiles.count, VoiceResumePlan.turnCharacterLimit)
         XCTAssertTrue(onlyFiles.hasPrefix("[Attached: photo-0-from-the-trip.jpg (image)]"))
         XCTAssertEqual(onlyFiles, crowded.prefix(25).joined(separator: " "))
+        // One name too long for any turn: the turn is clipped, never dropped.
+        let huge = VoiceResumeContext.fitting("Look", naming: ["[Attached: \(String(repeating: "n", count: 1_300)).jpg (image)]"])
+        XCTAssertTrue(huge.hasPrefix("Look [Attached:"))
+        XCTAssertEqual(huge.count, VoiceResumePlan.turnCharacterLimit)
 
         XCTAssertNil(VoiceResumeContext.chat([]))
         XCTAssertNil(VoiceResumeContext.chat([row("1", .user, "Hello?")]), "nothing answered yet: no seed")

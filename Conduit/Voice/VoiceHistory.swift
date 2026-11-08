@@ -964,7 +964,7 @@ struct VoiceResumeContext: Equatable {
         guard reserved + 1 < limit else {
             var kept: [String] = []
             for marker in named + attached where (kept + [marker]).joined(separator: " ").count <= limit { kept.append(marker) }
-            return kept.joined(separator: " ")
+            return kept.isEmpty ? VoiceResumePlan.clip(whole) : kept.joined(separator: " ")
         }
         var cut = collapsed.index(collapsed.startIndex, offsetBy: limit - reserved - 1)
         // A file's name the cut lands in goes whole after it instead.
