@@ -282,13 +282,13 @@ Text: the section's captions and README.md's Capabilities line (done)
 - A second account takes a name before its sign-in (the Portal's format: lowercase letters, digits and dashes, up to 32); a reconnect repairs the account by its id, never by its name, as Desktop does (#1982).
 - The app and tool switches change the member's own rules against the revision read, then read the rules back; rules changed elsewhere meanwhile are read and shown and the change isn't sent again. A tool or app the organization or a role turned off shows off and can't be switched, and with no member rules the switches only read (#1982).
 - Logos are the catalog's, else the vendor mark Desktop draws for the slug. An SVG is drawn once by a hidden WebKit view with JavaScript off and navigation refused; one that won't load or draw shows the app's first letter, and gets another try once the apps are read again. A render given up at its four seconds never ends the next one (#1982, #1988).
-- Giving up a sign-in reads how far it got first: an account that finished since the last look stays, and when Hermes can't say, none is removed. A new sign-in waits until the last one's Safari is gone from the screen, and an earlier close's fallback never ends a later one's wait (#1988, from #1982's review; #NUM).
+- Giving up a sign-in reads how far it got first: an account that finished since the last look stays, and when Hermes can't say, none is removed. A new sign-in waits until the last one's Safari is gone from the screen, and an earlier close's fallback never ends a later one's wait (#1988, from #1982's review; #1993).
 - A Hermes without the calls shows no Apps section rather than an error, and one with hosted connectors off shows none either (#1982).
 
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-08, #NUM (Safari's close fallback fenced per close); 2026-11-08, #1988 (the chat card's gap closed; Browse Apps lists a chat's suggestions first; #1982's review: logo renders, give-up, Safari's dismissal, logo retries); 2026-11-08, #1982 (the section, Browse Apps, the app page, the name sheet and the logos)
+**Checked:** 2026-11-08, #1993 (Safari's close fallback fenced per close); 2026-11-08, #1988 (the chat card's gap closed; Browse Apps lists a chat's suggestions first; #1982's review: logo renders, give-up, Safari's dismissal, logo retries); 2026-11-08, #1982 (the section, Browse Apps, the app page, the name sheet and the logos)
 
 ## Things Hermes connects from a chat
 
@@ -327,8 +327,8 @@ no README, docs, Settings or model-facing text describes the card)
 - Tests: `ConduitTests/ConnectionCardTests.swift`
 
 **Rulings**
-- Hermes' snapshot is the card: a frame with a lower `seq` changes nothing, and an answer holds the card's buttons until a newer frame or the settlement answers it. A settled operation keeps its rows' outcomes on the card with nothing to press, no later frame reopens it, and one this device never showed opens no card (#1988, #NUM).
-- An answer on its way stays on its way when reopening the chat brings the card back before Hermes answers, and only that answer's failure reopens the buttons, never an earlier one's arriving late (#NUM).
+- Hermes' snapshot is the card: a frame with a lower `seq` changes nothing, and an answer holds the card's buttons until a newer frame or the settlement answers it. A settled operation keeps its rows' outcomes on the card with nothing to press, no later frame reopens it, and one this device never showed opens no card (#1988, #1993).
+- An answer on its way stays on its way when reopening the chat brings the card back before Hermes answers, and only that answer's failure reopens the buttons, never an earlier one's arriving late (#1993).
 - A key typed for an MCP server lives only in the card's view state, goes once onto the socket with its approval (only the keys with a value) and is never on the message, in a cache, a log or a notification. A secret field never starts from a value Hermes sent. The card is live-only; reopening the chat brings an open one back from `pending_connection`. A card shown before a profile switch never sends: it stops offering anything (#1988, as Passwords, logins and codes Hermes asks for).
 - An app's or server's page opens in Safari (a web address only) from the card's Connect; closing Safari wakes Hermes to look at once. A dead page's Try Again has Hermes make a new one on the open operation. Continue lets Hermes carry on without what isn't connected, and a message sent while the card is open continues it first, as in Hermes Desktop, so the message doesn't wait behind the card (#1988).
 - The directory card lists Hermes' suggestions and opens Browse Apps with them first; connecting there signs in for the profile, as on the Apps page, and the card's Continue tells Hermes. A catalog row shows its tier and the catalog's scan of it as they come; the Advanced choices Desktop offers aren't on the card (#1988).
@@ -339,7 +339,7 @@ no README, docs, Settings or model-facing text describes the card)
 - Group rooms show no card.
 - A catalog install's Advanced choices (force, enable, a ref) and a settled install's Try Again, which Desktop's card offers.
 
-**Checked:** 2026-11-08, #NUM (#1988's review: a settled card stays settled, an answer survives a resume, failures fenced per answer, tests for these and for a message continuing the card); 2026-11-08, #1988 (the card, its reopening, its siblings)
+**Checked:** 2026-11-08, #1993 (#1988's review: a settled card stays settled, an answer survives a resume, failures fenced per answer, tests for these and for a message continuing the card); 2026-11-08, #1988 (the card, its reopening, its siblings)
 
 ## Voice follow-ups
 
