@@ -1,5 +1,6 @@
 import CoreLocation
 import Foundation
+import os
 
 /// Answers the agent's on-demand locate (designs/location-awareness.md
 /// section 12, contract section 5) while Conduit may not be running.
@@ -33,6 +34,9 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
     /// The replay namespace of `pendingReplayKey`: "locate" or "maps".
     private var pendingNamespace = "locate"
     private static let claimLifetime: TimeInterval = 30
+    /// Why a request went unanswered, for a device log: the host only sees a
+    /// timeout (issue 2028). Ids and reasons only, never a position.
+    private static let log = Logger(subsystem: "com.milim.relay", category: "location-push")
 
     // The whole answer has to fit iOS's budget for this extension.
     private static let fixTimeout: TimeInterval = 6
@@ -108,7 +112,7 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
               let binding = config.binding,
               let key = LocationKeychain.loadKey(), key.deviceID == config.deviceID,
               let pass = LocationKeychain.loadHostPass(), pass.dashboardID == binding.dashboardID, pass.isUsable(at: Date())
-        else { return }
+        else { return Self.unanswered(request.id, "not answered by sharing's binding, key or host pass", kind: "locate") }
         // A second delivery of the same request is answered once. The key
         // is claimed now (a concurrent delivery stops here), marked answered
         // after the post, and released if the answer doesn't reach the
@@ -157,6 +161,7 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         } catch {
             // The claim is released (finish), so a redelivery can answer;
             // this fix isn't kept, and the app shares its own next time.
+            Self.unanswered(request.id, "post failed: \(Self.describe(error))", via: pass, kind: "locate")
         }
     }
 
@@ -168,16 +173,23 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
     /// to; while sharing is paused or the background layer is off, the
     /// answer is "paused". A fix is taken only when the request uses "me".
     private func answerMaps(_ request: LocationLocateRequest) async {
+        let id = request.id
         guard case .value(let config) = LocationSharedStore.readConfig(),
               request.isForBinding(of: config),
-              let binding = config.binding,
-              let key = LocationKeychain.loadKey(), key.deviceID == config.deviceID, key.answersMaps,
-              let pass = LocationKeychain.loadHostPass(), pass.dashboardID == binding.dashboardID, pass.isUsable(at: Date()),
-              LocationLocateRequest.isMapsID(request.id),
+              let binding = config.binding
+        else { return Self.unanswered(id, "not for the dashboard and profile sharing is bound to") }
+        guard let key = LocationKeychain.loadKey(), key.deviceID == config.deviceID, key.answersMaps,
               let deviceQuery = Self.queryValue(key.deviceID), let kidQuery = Self.queryValue(key.kid)
-        else { return }
-        guard !Task.isCancelled else { return }
-        guard E2ESeenStore.shared.claim(request.replayKey, namespace: "maps", ttl: Self.claimLifetime) else { return }
+        else { return Self.unanswered(id, "no location key that answers maps") }
+        guard let pass = LocationKeychain.loadHostPass(), pass.dashboardID == binding.dashboardID else {
+            return Self.unanswered(id, "no host pass for the bound dashboard")
+        }
+        guard pass.isUsable(at: Date()) else { return Self.unanswered(id, "the host pass's sign-in has expired") }
+        guard LocationLocateRequest.isMapsID(id) else { return Self.unanswered(id, "not a maps request id") }
+        guard !Task.isCancelled else { return Self.unanswered(id, "stopped by iOS") }
+        guard E2ESeenStore.shared.claim(request.replayKey, namespace: "maps", ttl: Self.claimLifetime) else {
+            return Self.unanswered(id, "already being answered")
+        }
         lock.withLock {
             pendingReplayKey = request.replayKey
             pendingNamespace = "maps"
@@ -196,12 +208,12 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         } catch {
             // Expired, answered, another device's, or the host is away:
             // nothing to answer. The claim is released (finish).
-            return
+            return Self.unanswered(id, "fetch failed: \(Self.describe(error))", via: pass)
         }
-        guard !Task.isCancelled,
-              let body = try? LocationCrypto.openMapsRequest(sealed, key: key, id: request.id),
+        guard !Task.isCancelled else { return Self.unanswered(id, "stopped by iOS") }
+        guard let body = try? LocationCrypto.openMapsRequest(sealed, key: key, id: request.id),
               body["id"] as? String == request.id
-        else { return }
+        else { return Self.unanswered(id, "the request didn't open with this iPhone's key") }
 
         let answer: MapsAnswer
         switch MapsRequest.parse(body) {
@@ -209,15 +221,15 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
             answer = .failure(failure)
         case .success(let maps):
             // Too late: the host refuses answers after expires_at, so none is sent.
-            if let expiresAt = maps.expiresAt, expiresAt < Date() { return }
+            if let expiresAt = maps.expiresAt, expiresAt < Date() { return Self.unanswered(id, "expired before it was answered") }
             let found = await run(maps, config: config)
             // Paused or turned off while the fix or the lookup was on its
             // way: the host hears "paused", not what was found.
             answer = Self.stillAnswers(request, detail: config.settings.backgroundPrecision) ? found : .failure(.paused)
         }
-        guard !Task.isCancelled,
-              let envelope = try? LocationCrypto.mapsAnswer(plaintext: answer.plaintext(id: request.id), key: key, id: request.id)
-        else { return }
+        guard !Task.isCancelled else { return Self.unanswered(id, "stopped by iOS") }
+        guard let envelope = try? LocationCrypto.mapsAnswer(plaintext: answer.plaintext(id: request.id), key: key, id: request.id)
+        else { return Self.unanswered(id, "the answer couldn't be sealed") }
         do {
             _ = try await LocationHostClient.requestJSON(
                 pass: pass,
@@ -230,6 +242,33 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
             E2ESeenStore.shared.markAnswered(request.replayKey, namespace: "maps")
         } catch {
             // The claim is released (finish), so a redelivery can answer.
+            Self.unanswered(id, "answer failed: \(Self.describe(error))", via: pass)
+        }
+    }
+
+    // MARK: Diagnostics
+
+    /// With `via`, the address the request went to: its scheme in the open
+    /// (http or https is what tells an ATS refusal from the rest), its host
+    /// private. Never the pass's headers.
+    private static func unanswered(_ id: String, _ reason: String, via pass: LocationHostPass? = nil, kind: String = "maps") {
+        guard let pass else {
+            log.error("\(kind, privacy: .public) request \(id, privacy: .public) not answered: \(reason, privacy: .public)")
+            return
+        }
+        let url = URL(string: pass.baseURL)
+        let scheme = url?.scheme ?? "?"
+        let host = "\(url?.host ?? "?")\(url?.port.map { ":\($0)" } ?? "")"
+        log.error("\(kind, privacy: .public) request \(id, privacy: .public) not answered: \(reason, privacy: .public) (\(scheme, privacy: .public)://\(host, privacy: .private))")
+    }
+
+    private static func describe(_ error: Error) -> String {
+        switch error {
+        case let error as URLError: return "URLError \(error.code.rawValue)"
+        case LocationHostError.noPass: return "address outside the pass"
+        case LocationHostError.signInRequired: return "sign-in required (redirect, 401 or 403)"
+        case LocationHostError.http(let status, _): return "HTTP \(status)"
+        default: return String(describing: type(of: error))
         }
     }
 

@@ -44,6 +44,13 @@ extension AppState {
         controller.requestProvider = { [weak self] binding in
             await self?.locationRequest(for: binding)
         }
+        // A native sign-in's refresh rotates its access token, and the host
+        // pass carries a copy: saved again at once, or the push extension
+        // goes on sending the old token until the next connect (issue 2028).
+        NotificationCenter.default.addObserver(forName: .nativeOAuthTokensRotated, object: nil, queue: .main) { [weak self] note in
+            guard let dashboardID = note.userInfo?["dashboardID"] as? UUID else { return }
+            Task { @MainActor in await self?.saveLocationHostPass(dashboardID: dashboardID) }
+        }
         controller.activateAtLaunch()
     }
 
@@ -97,9 +104,20 @@ extension AppState {
         // Bound, on or not: turning sharing off or pausing it must still
         // reach the host, and that may need the pass.
         guard let binding = controller.binding,
-              activeDashboardID == binding.dashboardID, let bridge = dashboardTicketBridge else { return }
+              activeDashboardID == binding.dashboardID, dashboardTicketBridge != nil else { return }
+        await saveLocationHostPass(dashboardID: binding.dashboardID)
+        controller.hostConnected()
+    }
+
+    /// Saves the host pass for the dashboard in use, when location sharing
+    /// is bound to it: at each connect, and when a native sign-in rotates
+    /// its tokens.
+    func saveLocationHostPass(dashboardID: UUID) async {
+        let controller = LocationSharingController.shared
+        guard controller.binding?.dashboardID == dashboardID,
+              activeDashboardID == dashboardID, let bridge = dashboardTicketBridge else { return }
         // Removed or unbound while the pass was read: it isn't kept.
-        if let pass = await locationHostPass(bridge: bridge, dashboardID: binding.dashboardID),
+        if let pass = await locationHostPass(bridge: bridge, dashboardID: dashboardID),
            controller.binding?.dashboardID == pass.dashboardID,
            !LocationKeychain.saveHostPass(pass) {
             // Logged by LocationKeychain. The previous pass (if any) stays;
@@ -108,7 +126,6 @@ extension AppState {
             // next connect saves it.
             LocationSyncEngine.log.error("Couldn't store the location host pass; background sends use the previous one")
         }
-        controller.hostConnected()
     }
 
     /// The headers this dashboard's requests carry, for sending without the
