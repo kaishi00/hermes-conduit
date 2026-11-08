@@ -70,7 +70,6 @@ struct PluginCatalogArtwork: View {
 /// The Plugins tab's catalog: the featured shelf and Browse All.
 struct PluginCatalogShelf: View {
     let store: CapabilitiesStore
-    let canManage: Bool
 
     var body: some View {
         let featured = CapabilityPluginFilter.featured(store.pluginCatalog)
@@ -85,7 +84,7 @@ struct PluginCatalogShelf: View {
                     LazyHStack(spacing: 12) {
                         ForEach(featured) { entry in
                             NavigationLink {
-                                PluginCatalogDetailPage(name: entry.name, store: store, canManage: canManage)
+                                PluginCatalogDetailPage(name: entry.name, store: store)
                                     .v2TabBarClearance()
                             } label: {
                                 PluginFeaturedCard(entry: entry)
@@ -98,7 +97,7 @@ struct PluginCatalogShelf: View {
                 CapabilityRowDivider()
             }
             NavigationLink {
-                PluginCatalogBrowsePage(store: store, canManage: canManage)
+                PluginCatalogBrowsePage(store: store)
                     .v2TabBarClearance()
             } label: {
                 CapabilityRowLabel(
@@ -141,7 +140,6 @@ private struct PluginFeaturedCard: View {
 struct PluginCatalogBrowsePage: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let store: CapabilitiesStore
-    let canManage: Bool
     @State private var query = ""
     @State private var tier: String?
     @State private var category: String?
@@ -166,7 +164,7 @@ struct PluginCatalogBrowsePage: View {
                     ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                         CapabilityCardRow(divided: index > 0) {
                             NavigationLink {
-                                PluginCatalogDetailPage(name: entry.name, store: store, canManage: canManage)
+                                PluginCatalogDetailPage(name: entry.name, store: store)
                                     .v2TabBarClearance()
                             } label: {
                                 PluginCatalogListRow(entry: entry)
@@ -283,9 +281,16 @@ struct PluginCatalogDetailPage: View {
     @Environment(\.openURL) private var openURL
     let name: String
     let store: CapabilitiesStore
-    let canManage: Bool
+    @EnvironmentObject private var appState: AppState
     @State private var confirmsInstall = false
+
+    /// Read live: a page pushed on another profile offers Install once the
+    /// store switches to the default one.
+    private var canManage: Bool { store.canManagePlugins }
     @State private var message: String?
+    /// The dashboard the page opened on: an install goes only there, never
+    /// to one switched to under it (issue 2016).
+    @State private var openedOn: CapabilitySnapshotOwner?
 
     /// Read from the store, so an install shows at once.
     private var entry: PluginCatalogEntry? { store.pluginCatalog.first { $0.name == name } }
@@ -337,6 +342,7 @@ struct PluginCatalogDetailPage: View {
             }
         }
         .navigationTitle(Text(verbatim: entry?.displayName ?? name))
+        .onAppear { if openedOn == nil { openedOn = appState.currentCapabilitiesOwner } }
         .confirmationDialog(
             Text("Install \(entry?.displayName ?? name)?"),
             isPresented: $confirmsInstall,
@@ -413,7 +419,9 @@ struct PluginCatalogDetailPage: View {
                 .padding(.vertical, 6)
                 .frame(minHeight: 44)
             }
-            .disabled(busy)
+            // A page left open across a switch installs nowhere: Install
+            // waits for its own dashboard, as install() does.
+            .disabled(busy || (openedOn != nil && !onItsHermes(openedOn)))
             .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
         } else {
             Text("Hermes installs plugins for the host's default profile. Switch to it to change them.")
@@ -487,13 +495,32 @@ struct PluginCatalogDetailPage: View {
         }
     }
 
+    /// The page's dashboard is the current one and the store reads it. The
+    /// profile is read live (#2018), and a reconnect's new bridge is the
+    /// same Hermes.
+    private func onItsHermes(_ owner: CapabilitySnapshotOwner?) -> Bool {
+        let current = appState.currentCapabilitiesOwner
+        guard let owner else { return false }
+        return owner.dashboardID == current.dashboardID && store.serves(current)
+    }
+
+    /// An install's outcome is said only on the dashboard and profile it
+    /// went to.
+    private func stillOn(_ owner: CapabilitySnapshotOwner) -> Bool {
+        let current = appState.currentCapabilitiesOwner
+        return owner.dashboardID == current.dashboardID && owner.profile == current.profile && store.serves(current)
+    }
+
     private func install() {
-        guard let entry, canManage else { return }
+        let owner = appState.currentCapabilitiesOwner
+        guard let entry, canManage, onItsHermes(openedOn) else { return }
         Haptics.selection()
         message = nil
         Task {
             do {
                 let outcome = try await store.installPlugin(entry)
+                // Said only on the page's own dashboard and profile.
+                guard stillOn(owner) else { return }
                 if !outcome.missingEnv.isEmpty {
                     message = AppLocalization.string("\(outcome.name) is installed but needs a key before it works: \(outcome.missingEnv.joined(separator: ", ")).")
                 } else if outcome.restartRequired {
@@ -503,6 +530,7 @@ struct PluginCatalogDetailPage: View {
                     message = AppLocalization.string("\(outcome.name) is installed and loaded.")
                 }
             } catch {
+                guard stillOn(owner) else { return }
                 message = UserFacingError.message(for: error)
             }
         }

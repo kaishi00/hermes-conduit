@@ -494971,6 +494971,170 @@
           }
         }
       }
+    },
+    "The connection to Hermes dropped, so the sign-in stopped. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Verbindung zu Hermes ist abgebrochen, daher wurde die Anmeldung beendet. Versuche es erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se perdió la conexión con Hermes, así que el inicio de sesión se detuvo. Inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La connexion à Hermes a été perdue, la connexion au compte a donc été arrêtée. Réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Koneksi ke Hermes terputus, jadi proses masuk dihentikan. Coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La connessione a Hermes si è interrotta, quindi l'accesso è stato fermato. Riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes との接続が切れたため、サインインを中止しました。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes와의 연결이 끊겨 로그인이 중단되었습니다. 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączenie z Hermesem zostało przerwane, więc logowanie zatrzymano. Spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A conexão com o Hermes caiu, então o login foi interrompido. Tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Соединение с Hermes прервалось, поэтому вход остановлен. Попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bağlantısı koptuğu için oturum açma durduruldu. Tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与 Hermes 的连接已断开，登录已停止。请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與 Hermes 的連線已中斷，登入已停止。請再試一次。"
+          }
+        }
+      }
+    },
+    "Hermes couldn't read your organization's rules just now, so it can't tell yet whether %@ is allowed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes konnte die Regeln deiner Organisation gerade nicht lesen und kann daher noch nicht sagen, ob %@ erlaubt ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes no pudo leer las reglas de tu organización ahora mismo, así que aún no sabe si %@ está permitido."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes n'a pas pu lire les règles de votre organisation pour le moment, il ne peut donc pas encore savoir si %@ est autorisé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak dapat membaca aturan organisasi Anda saat ini, jadi belum dapat memastikan apakah %@ diizinkan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non è riuscito a leggere le regole della tua organizzazione in questo momento, quindi non sa ancora se %@ è consentito."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes は今、組織のルールを読み取れなかったため、%@ が許可されているかどうかをまだ判断できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 지금 조직의 규칙을 읽지 못해 %@이(가) 허용되는지 아직 알 수 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nie mógł teraz odczytać zasad Twojej organizacji, więc nie wie jeszcze, czy %@ jest dozwolone."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes não conseguiu ler as regras da sua organização agora, então ainda não sabe se %@ é permitido."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes сейчас не смог прочитать правила вашей организации, поэтому пока не знает, разрешено ли %@."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes kuruluşunuzun kurallarını şu anda okuyamadı, bu yüzden %@ uygulamasına izin verilip verilmediğini henüz bilemiyor."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 暂时无法读取你所在组织的规则，因此还不能确定是否允许使用 %@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 暫時無法讀取你所在組織的規則，因此還無法確定是否允許使用 %@。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

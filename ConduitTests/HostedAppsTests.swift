@@ -163,6 +163,16 @@ final class HostedAppsTests: XCTestCase {
         }
     }
 
+    /// An outage's stop with no answer in time is asked again; only an
+    /// answer from Hermes ends it.
+    func testAStopWithNoAnswerInTimeIsAskedAgain() {
+        XCTAssertTrue(HostedAppsModel.isTimeout(HermesError.timeout("x")))
+        XCTAssertTrue(HostedAppsModel.isTimeout(URLError(.timedOut)))
+        for answer: Error in [RpcError(code: -32000, message: "x"), HermesError.invalidResponse, URLError(.badURL), HostedAppsError.unsupported] {
+            XCTAssertFalse(HostedAppsModel.isTimeout(answer), "\(answer)")
+        }
+    }
+
     func testAllowAndDenyAllRules() {
         let allow = HostedAppPolicy.Rules(revision: "r", allowed: ["gmail"])
         XCTAssertTrue(allow.allows("gmail"))

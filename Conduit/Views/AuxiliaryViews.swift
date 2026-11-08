@@ -1087,6 +1087,7 @@ struct SettingsView: View {
             HermesCallsSettingsPage(
                 model: HermesCallSettingsModel(
                     profile: appState.activeProfile,
+                    dashboardID: appState.activeDashboardID,
                     botName: appState.hermesCallContactName(appState.activeProfile),
                     status: appState.activeHermesCallsStatus,
                     load: {

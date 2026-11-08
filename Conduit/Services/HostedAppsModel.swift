@@ -43,8 +43,23 @@ final class HostedAppsModel {
     @ObservationIgnored private var attempt = 0
     @ObservationIgnored private var reads = 0
     @ObservationIgnored private var signInTask: Task<Void, Never>?
-    /// A given-up try per Hermes and app, until it has given its operation up.
-    @ObservationIgnored private var retiring: [String: Task<Void, Never>] = [:]
+    /// A given-up try per Hermes and app, until it has given its operation
+    /// up. Kept for the app, not the page: one given up while the page was
+    /// open still settles after it closes, and a page opened later waits
+    /// for it too.
+    private static var retiring: [String: (id: UUID, task: Task<Void, Never>)] = [:]
+
+    /// Holds `work` for the app until it has settled, then lets it go
+    /// unless a newer try took its place.
+    private static func retire(_ key: String, _ work: Task<Void, Never>) {
+        let id = UUID()
+        let previous = retiring[key]?.task
+        retiring[key] = (id, Task {
+            await previous?.value
+            await work.value
+            if retiring[key]?.id == id { retiring[key] = nil }
+        })
+    }
     @ObservationIgnored private var browserClosedAt: Date?
     /// Which close the fallback below belongs to: an earlier one's timer
     /// never ends a later close.
@@ -53,6 +68,12 @@ final class HostedAppsModel {
     static let pollInterval: Duration = .seconds(2)
     /// How long a closed Safari is given for Hermes to see the account.
     static let closedGrace: TimeInterval = 6
+    /// How long a sign-in waits out a connection that stays down before it
+    /// gives up and says so, so one dead try never holds the section
+    /// (issue 2013).
+    static let outageGrace: TimeInterval = 120
+    /// How long a sign-in given up over an outage waits to tell Hermes.
+    static let retireWait: TimeInterval = 600
 
     /// Opens on the kept apps for `scope` (the dashboard, profile and
     /// client), and drops another scope's. A sign-in and what the section
@@ -129,7 +150,9 @@ final class HostedAppsModel {
         let hermes = self.hermes
         attempt += 1
         let attempt = self.attempt
-        let previous = retiring.removeValue(forKey: "\(hermes ?? "")|\(slug)")
+        // Left in place, so every page's start at the app waits for it
+        // until it has settled, not only the first one's.
+        let previous = Self.retiring["\(hermes ?? "")|\(slug)"]?.task
         signInTask = Task { [weak self] in
             // A given-up try at this app first settles what it started:
             // Hermes hands a matching start the operation still open, so
@@ -153,7 +176,7 @@ final class HostedAppsModel {
     }
 
     func cancelSignIn() {
-        if let task = signInTask, let slug = signingIn { retiring["\(hermes ?? "")|\(slug)"] = task }
+        if let task = signInTask, let slug = signingIn { Self.retire("\(hermes ?? "")|\(slug)", task) }
         signInTask?.cancel()
         signInTask = nil
         signingIn = nil
@@ -205,6 +228,7 @@ final class HostedAppsModel {
             }
             browser = BotMcpBrowserPage(url: url)
             var wokeHermes = false
+            var downSince: Date?
             while true {
                 try await Task.sleep(for: Self.pollInterval)
                 guard isLatest else { return }
@@ -216,9 +240,19 @@ final class HostedAppsModel {
                     current = try await appState.hostedAppOperation(current.id).carryingLink(from: current)
                 } catch let error where Self.isConnectionBlip(error, appState: appState) {
                     // Asked again once the connection is back: the
-                    // sign-in lives on Hermes, and Safari stays up.
-                    continue
+                    // sign-in lives on Hermes, and Safari stays up. Not
+                    // forever: past the grace it's given up, as on a
+                    // failed ask.
+                    let since = downSince ?? Date()
+                    downSince = since
+                    guard Date().timeIntervalSince(since) >= Self.outageGrace else { continue }
+                    // Only on its own Hermes, as the other exits.
+                    guard isLatest else { return }
+                    notes[slug] = AppLocalization.string("The connection to Hermes dropped, so the sign-in stopped. Try again.")
+                    retireOnceConnected(current, slug: slug, hermes: hermes, appState: appState)
+                    return
                 }
+                downSince = nil
                 operation = current
                 guard isLatest else { return }
                 let target = current.target(slug)
@@ -251,6 +285,45 @@ final class HostedAppsModel {
             notes[slug] = UserFacingError.message(for: error)
             if let operation { try? await appState.stopHostedAppSignIn(operation) }
         }
+    }
+
+    /// A sign-in given up while the connection is down: Hermes is told once
+    /// the same Hermes is connected again, and a new try at the app waits
+    /// for that, since Hermes hands a matching start the operation still
+    /// open. Another Hermes switched to is never told.
+    private func retireOnceConnected(_ operation: HostedAppOperation, slug: String, hermes: String?, appState: AppState) {
+        let key = "\(hermes ?? "")|\(slug)"
+        Self.retire(key, Task { [weak self, weak appState] in
+            let deadline = Date().addingTimeInterval(Self.retireWait)
+            while Date() < deadline {
+                // The app's own Hermes, not this page's, which may have
+                // closed or not yet seen a switch. Switched away, it waits
+                // for a switch back.
+                guard let appState else { return }
+                if appState.isConnected, appState.hostedAppsHermes == hermes {
+                    do {
+                        try await appState.stopHostedAppSignIn(operation)
+                    } catch where Self.isConnectionBlip(error, appState: appState) || Self.isTimeout(error) {
+                        // Dropped again on the way, or no answer in time:
+                        // asked again next tick.
+                        try? await Task.sleep(for: Self.pollInterval)
+                        continue
+                    } catch {
+                        // Hermes answered: the operation is gone or ended.
+                    }
+                    // An account that finished during the outage shows.
+                    if let self, self.hermes == hermes { await self.reload(appState) }
+                    return
+                }
+                try? await Task.sleep(for: Self.pollInterval)
+            }
+        })
+    }
+
+    /// No answer in time: whether Hermes did it is unknown.
+    nonisolated static func isTimeout(_ error: Error) -> Bool {
+        if case HermesError.timeout = error { return true }
+        return (error as? URLError)?.code == .timedOut
     }
 
     /// The connection, not Hermes, failed the ask: no connection, another
