@@ -43,6 +43,8 @@ final class HostedAppsModel {
     @ObservationIgnored private var attempt = 0
     @ObservationIgnored private var reads = 0
     @ObservationIgnored private var signInTask: Task<Void, Never>?
+    /// A given-up try per Hermes and app, until it has given its operation up.
+    @ObservationIgnored private var retiring: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var browserClosedAt: Date?
     /// Which close the fallback below belongs to: an earlier one's timer
     /// never ends a later close.
@@ -127,7 +129,13 @@ final class HostedAppsModel {
         let hermes = self.hermes
         attempt += 1
         let attempt = self.attempt
+        let previous = retiring.removeValue(forKey: "\(hermes ?? "")|\(slug)")
         signInTask = Task { [weak self] in
+            // A given-up try at this app first settles what it started:
+            // Hermes hands a matching start the operation still open, so
+            // starting alongside it could pick up the one being given up.
+            await previous?.value
+            guard !Task.isCancelled else { return }
             await self?.runSignIn(slug, alias: alias, repairing: connectionID, hermes: hermes, attempt: attempt, appState: appState)
         }
     }
@@ -145,6 +153,7 @@ final class HostedAppsModel {
     }
 
     func cancelSignIn() {
+        if let task = signInTask, let slug = signingIn { retiring["\(hermes ?? "")|\(slug)"] = task }
         signInTask?.cancel()
         signInTask = nil
         signingIn = nil
@@ -233,8 +242,9 @@ final class HostedAppsModel {
         } catch is CancellationError {
             // Left the page: give it up there, never on a Hermes switched to.
             // A task of its own, since this one's calls are cancelled.
+            // Waited for, so a new try at this app starts after it.
             if hermes == self.hermes, let operation {
-                Task { try? await appState.stopHostedAppSignIn(operation) }
+                await Task { try? await appState.stopHostedAppSignIn(operation) }.value
             }
         } catch {
             guard isLatest else { return }

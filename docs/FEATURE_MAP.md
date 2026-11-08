@@ -284,14 +284,14 @@ Text: the section's captions and README.md's Capabilities line (done)
 - A second account takes a name before its sign-in (the Portal's format: lowercase letters, digits and dashes, up to 32); a reconnect repairs the account by its id, never by its name, as Desktop does (#1982).
 - The app and tool switches change the member's own rules against the revision read, then read the rules back; rules changed elsewhere meanwhile are read and shown and the change isn't sent again. A tool or app the organization or a role turned off shows off and can't be switched, and with no member rules the switches only read (#1982).
 - Logos are the catalog's, else the vendor mark Desktop draws for the slug. An SVG is drawn once by a hidden WebKit view with JavaScript off and navigation refused; one that won't load or draw shows the app's first letter, and gets another try once the apps are read again. A render given up at its four seconds never ends the next one (#1982, #1988).
-- Giving up a sign-in reads how far it got first: an account that finished since the last look stays, and when Hermes can't say, none is removed. A new sign-in waits until the last one's Safari is gone from the screen, and an earlier close's fallback never ends a later one's wait (#1988, from #1982's review; #1993).
+- Giving up a sign-in reads how far it got first: an account that finished since the last look stays, and when Hermes can't say, none is removed. A new sign-in waits until the last one's Safari is gone from the screen, and an earlier close's fallback never ends a later one's wait (#1988, from #1982's review; #1993); a new try at the same app also waits until a given-up one has settled its operation, since Hermes hands a matching start the one still open (#2006).
 - A Hermes without the calls shows no Apps section rather than an error, and one with hosted connectors off shows none either (#1982).
 - Rules Hermes couldn't give (other than no Nous account yet) or with a layer Conduit can't read count as not read, never as no rules: the switches only read, and the app's page says the rules couldn't be read, with Try Again, as Desktop's rules line does (issue 1998, #2001).
 
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-08, #2001 (a sign-in over a reconnect, issue 1997; rules not read said so, issue 1998; Code, Rulings); 2026-11-08, #1993 (Safari's close fallback fenced per close); 2026-11-08, #1988 (the chat card's gap closed; Browse Apps lists a chat's suggestions first; #1982's review: logo renders, give-up, Safari's dismissal, logo retries); 2026-11-08, #1982 (the section, Browse Apps, the app page, the name sheet and the logos)
+**Checked:** 2026-11-08, #2006 (a retry waits for a given-up try's settle; Rulings); 2026-11-08, #2001 (a sign-in over a reconnect, issue 1997; rules not read said so, issue 1998; Code, Rulings); 2026-11-08, #1993 (Safari's close fallback fenced per close); 2026-11-08, #1988 (the chat card's gap closed; Browse Apps lists a chat's suggestions first; #1982's review: logo renders, give-up, Safari's dismissal, logo retries); 2026-11-08, #1982 (the section, Browse Apps, the app page, the name sheet and the logos)
 
 ## Things Hermes connects from a chat
 
