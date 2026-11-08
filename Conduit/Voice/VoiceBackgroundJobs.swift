@@ -3917,7 +3917,11 @@ enum VoiceThreadRouting {
             .map(String.init)
         guard !negates(words), !words.contains(where: { refusalVerbAskers.contains($0) }) else { return false }
         return words.contains { answerRefusalVerbs.contains($0) || $0.hasPrefix("거절") || $0.hasPrefix("거부") }
+            || cjkRefusalVerbs.contains { answer.contains($0) }
     }
+
+    /// Chinese and Japanese refusal verbs, matched inside the words.
+    private static let cjkRefusalVerbs = ["拒绝", "拒絕", "拒否", "却下", "断る", "断って", "お断り"]
 
     /// Words that make a refusal verb a question or a maybe, not an answer.
     private static let refusalVerbAskers: Set<String> = [
@@ -3926,7 +3930,7 @@ enum VoiceThreadRouting {
 
     /// Verbs that refuse, in the shipped languages with word breaks
     /// (Korean is matched by its stem, Chinese and Japanese in
-    /// `cjkRefusals`).
+    /// `cjkRefusalVerbs`).
     private static let answerRefusalVerbs: Set<String> = [
         "reject", "rejected", "deny", "denied", "refuse", "refused", "decline", "declined", "veto",
         "ablehnen", "lehne", "abgelehnt", "verweigern", "verweigere", "zurückweisen",

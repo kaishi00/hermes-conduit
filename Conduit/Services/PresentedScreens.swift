@@ -255,8 +255,15 @@ struct PresentedConfirm: Identifiable, Equatable {
         // Not knowing isn't a no ("no idea", "not sure").
         let folded = words.lowercased().replacingOccurrences(of: "’", with: "'")
         guard !Self.unsure.contains(where: { folded.contains($0) }) else { return false }
+        let said = Self.words(in: words)
+        guard !Self.unsureWords.contains(where: { Self.range(of: $0, in: said) != nil }),
+              !Self.cjkUnsure.contains(where: { words.contains($0) }) else { return false }
         switch VoiceThreadRouting.heldRequestAnswer(words) {
-        case .no, .notYet: return true
+        case .no: return true
+        // A wait holds; it doesn't refuse ("hold on"). "Not now" does, and
+        // a not yet with a change in it ("wait, make it Wednesday") asks
+        // for that change, not a no.
+        case .notYet(let change): return change == nil && VoiceThreadRouting.containsNegation(words)
         case .yes: return false
         case .other: return VoiceThreadRouting.containsRefusalVerb(words)
         }
@@ -264,6 +271,14 @@ struct PresentedConfirm: Identifiable, Equatable {
 
     /// Led by a no but not one: a hit only keeps the panel up for the tap.
     private static let unsure = ["not sure", "no idea", "no clue", "no problem", "no worries", "no rush"]
+    /// Not knowing in the other shipped languages, as whole words.
+    private static let unsureWords: [[String]] = [
+        "no sé", "no lo sé", "ni idea", "não sei", "nao sei", "não faço ideia", "je ne sais pas", "je sais pas",
+        "aucune idée", "ich weiß nicht", "weiß nicht", "weiss nicht", "keine ahnung", "non lo so", "non so",
+        "nessuna idea", "nie wiem", "не знаю", "понятия не имею", "bilmiyorum", "emin değilim", "tidak tahu",
+        "tak tahu", "nggak tahu", "gak tahu", "tidak yakin",
+    ].map { words(in: $0) }
+    private static let cjkUnsure = ["不知道", "不确定", "不確定", "わからない", "分からない", "わかりません", "分かりません", "모르겠", "몰라"]
 
     private static func words(in text: String) -> [String] {
         text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
