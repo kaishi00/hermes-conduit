@@ -19384,7 +19384,10 @@ final class AppState: ObservableObject {
                           ChatScrollIdentityNormalization.sessionID(activeSessionId)
                             == ChatScrollIdentityNormalization.sessionID(sessionId) else { throw refusal }
                     keepsRowsOnScreen = true
-                    if case .failed = history { keptRowsAwaitHistory = true }
+                    // Only a source that isn't there settles them; a read
+                    // that failed, or a page naming another chat, is tried
+                    // again before the next send.
+                    if case .unavailable = history {} else { keptRowsAwaitHistory = true }
                     return compact
                 }
             }

@@ -582,6 +582,52 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertFalse(harness.appState.transcriptFreshnessIsStale)
     }
 
+    /// A history read that failed for now, after Hermes refused the whole
+    /// transcript, keeps the rows on screen but unresolved, so the next send
+    /// reads again.
+    func testAResumeTooLongWithAFailedHistoryReadKeepsTheRowsUnresolved() async throws {
+        var refusesWholeTranscript = false
+        var historyReads = 0
+        let shown = [
+            ChatMessage(id: "1", role: .user, content: "Long chat", timestamp: "2026-11-08T10:00:00Z"),
+            ChatMessage(id: "2", role: .assistant, content: "Kept", timestamp: "2026-11-08T10:00:02Z")
+        ]
+        let harness = try makeHarness(
+            openSession: { _, sessionID, compact in
+                if !compact, refusesWholeTranscript { throw Self.resumeTooLong }
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: compact ? [] : shown,
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _, _ in
+                historyReads += 1
+                // The open reads no source and takes the legacy rows. After
+                // the refusal, the compact path's read finds no source either
+                // and the retry's read fails for now.
+                guard refusesWholeTranscript, historyReads > 1 else { return .unavailable }
+                return .failed(DashboardTicketBridgeError.http(status: 503, detail: "Service Unavailable"))
+            },
+            additionalOperations: { ops in
+                ops.connectClient = { _ in }
+                ops.loadCatalog = { _, _ in [self.session("stored-long")] }
+                ops.refreshContext = { _, _ in }
+            }
+        )
+        harness.appState.sessions = [session("stored-long")]
+        let opened = await harness.appState.openSession("stored-long")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Long chat", "Kept"])
+
+        refusesWholeTranscript = true
+        historyReads = 0
+        await harness.appState.syncSession(purpose: .preserveCurrent, using: nil, automaticWorkToken: nil)
+        XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Long chat", "Kept"])
+        XCTAssertNil(harness.appState.errorMessage)
+        XCTAssertTrue(harness.appState.transcriptFreshnessIsStale)
+    }
+
     /// Drives one reconciliation against a history source that fails with
     /// `failure` and asserts the bounded-failure contract: a failing or slow
     /// BOUNDED history request must never escalate into the legacy
