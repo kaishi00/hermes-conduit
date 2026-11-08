@@ -895,7 +895,8 @@ struct VoiceResumeContext: Equatable {
     /// its reply is left off the end, so a model seeded with it as history
     /// doesn't answer it in Hermes' place: while Hermes is still answering
     /// (`runningNotes`, the ids of the progress notes the running turn has
-    /// sealed so far), the running turn's rows go (its progress notes and
+    /// sealed so far; after a reread, stored commentary whose reply isn't
+    /// written yet), the running turn's rows go (its progress notes and
     /// steers, and the question that started it when it was asked here). A
     /// turn typed on another device has no row here, so the answered
     /// exchange before it stays. A turn names its files even when its text
@@ -912,13 +913,22 @@ struct VoiceResumeContext: Equatable {
         }
         var kept = messages[...]
         if let runningNotes {
+            // A reread transcript gives the running turn's notes as stored
+            // commentary (`<reply>-commentary-<n>`) whose reply isn't
+            // written yet: no row, or an empty one.
+            let written = Set(messages.filter { !silent($0) }.map(\.id))
+            func runningNote(_ message: ChatMessage) -> Bool {
+                if runningNotes.contains(message.id) { return true }
+                guard message.role == .assistant, let mark = message.id.range(of: "-commentary-", options: .backwards) else { return false }
+                return !written.contains(String(message.id[..<mark.lowerBound]))
+            }
             // Back to the last completed reply: everything after it is the
             // running turn (its question when it was asked here, steers,
             // progress notes) or messages queued behind it, in any order.
             var cut = kept.endIndex
             while cut > kept.startIndex {
                 let message = kept[cut - 1]
-                guard silent(message) || message.role == .user || runningNotes.contains(message.id) else { break }
+                guard silent(message) || message.role == .user || runningNote(message) else { break }
                 cut -= 1
             }
             kept = kept[..<cut]

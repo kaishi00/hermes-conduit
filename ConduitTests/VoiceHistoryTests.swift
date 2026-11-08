@@ -1489,6 +1489,13 @@ extension HermesVoiceGatewayTimeoutTests {
         let finishedInterim = Array(messages.dropLast()) + [row("6", .user, "Book the hotel"), row("interim-old", .assistant, "Booked the Kyoto Inn."),
                                                              row("16", .user, "Trains?"), row("interim-7", .assistant, "Checking…")]
         XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(finishedInterim, runningNotes: notes)).recent.last?.text, "Booked the Kyoto Inn.")
+        // A reread transcript gives the running turn's notes as stored
+        // commentary with no reply yet (or an empty one): they go with the
+        // question.
+        let reread = Array(messages.dropLast()) + [row("17", .user, "Trains?"), row("18-commentary-0", .assistant, "Checking.")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(reread, runningNotes: [])).recent.map(\.text), context.recent.map(\.text))
+        let emptyReply = reread + [row("18", .assistant, "")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(emptyReply, runningNotes: [])).recent.map(\.text), context.recent.map(\.text))
         // A stored reply's progress notes come before it, so a finished
         // exchange keeps its reply.
         let stored = Array(messages.dropLast()) + [row("11", .user, "Trains?"), row("12-commentary-0", .assistant, "Checking."), row("12", .assistant, "The 9:10.")]
