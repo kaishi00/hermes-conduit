@@ -109,9 +109,11 @@ struct ProfilePickerSheet: View {
     /// from Settings alone. The All-profiles sheet carries the way out in the
     /// other direction.
     private var showsAllChatsRow: Bool {
-        profilesPreference == .currentOnly
-            && !appState.isAllProfilesChatsOn
-            && AllProfilesChats.isAvailable(profiles: appState.profiles)
+        V2SessionsBarControls.showsAllChatsRow(
+            profiles: profilesPreference,
+            allProfilesChatsOn: appState.isAllProfilesChatsOn,
+            allProfilesAvailable: AllProfilesChats.isAvailable(profiles: appState.profiles)
+        )
     }
 
     private var allChatsRow: some View {
@@ -136,6 +138,11 @@ struct ProfilePickerSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
+        // The profile rows are disabled during a switch, and a dashboard's row
+        // while another dashboard is coming in. This row writes the same
+        // preference, so it waits for the same switch to end rather than
+        // applying it to a dashboard already on its way out.
+        .disabled(appState.isProfileSwitching || switchingToDashboard != nil)
         .accessibilityHint(AppLocalization.string("Shows the chats of several profiles in one list"))
         .settingsCard()
     }

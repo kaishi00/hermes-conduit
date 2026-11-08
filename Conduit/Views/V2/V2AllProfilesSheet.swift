@@ -28,7 +28,10 @@ struct V2AllProfilesSheet: View {
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 4)
 
-                        if profilesPreference == .currentOnly && appState.isAllProfilesChatsOn {
+                        if V2SessionsBarControls.showsShowOnlyRow(
+                            profiles: profilesPreference,
+                            allProfilesChatsOn: appState.isAllProfilesChatsOn
+                        ) {
                             showOnlyProfileButton
                         }
 

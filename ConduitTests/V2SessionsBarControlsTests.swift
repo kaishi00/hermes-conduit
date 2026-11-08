@@ -102,6 +102,32 @@ extension SidebarLayoutTests {
         }
     }
 
+    /// Greptile's P1 on #2020: with Current only on and All chats off the bar
+    /// draws no All chip, so this row is the only way into All. It stays out
+    /// while All is already on (that sheet carries the way back) and while
+    /// All isn't offered at all, one profile being nothing to list together.
+    func testSessionsBarAllChatsRowIsTheWayInUnderCurrentOnly() {
+        XCTAssertTrue(V2SessionsBarControls.showsAllChatsRow(
+            profiles: .currentOnly, allProfilesChatsOn: false, allProfilesAvailable: true))
+        XCTAssertFalse(V2SessionsBarControls.showsAllChatsRow(
+            profiles: .currentOnly, allProfilesChatsOn: true, allProfilesAvailable: true))
+        XCTAssertFalse(V2SessionsBarControls.showsAllChatsRow(
+            profiles: .currentOnly, allProfilesChatsOn: false, allProfilesAvailable: false))
+        XCTAssertFalse(V2SessionsBarControls.showsAllChatsRow(
+            profiles: .all, allProfilesChatsOn: false, allProfilesAvailable: true))
+    }
+
+    /// Its mirror in the All-profiles sheet, the only way back to one profile
+    /// while All is on under Current only.
+    func testSessionsBarShowOnlyRowIsTheWayOutUnderCurrentOnly() {
+        XCTAssertTrue(V2SessionsBarControls.showsShowOnlyRow(
+            profiles: .currentOnly, allProfilesChatsOn: true))
+        XCTAssertFalse(V2SessionsBarControls.showsShowOnlyRow(
+            profiles: .currentOnly, allProfilesChatsOn: false))
+        XCTAssertFalse(V2SessionsBarControls.showsShowOnlyRow(
+            profiles: .all, allProfilesChatsOn: true))
+    }
+
     /// A throwaway defaults store, so a test never reads or writes the test
     /// host's own preferences.
     private func withSessionsBarDefaults(_ body: (UserDefaults) -> Void) {

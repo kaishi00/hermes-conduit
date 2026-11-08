@@ -32,6 +32,24 @@ struct V2SessionsBarControls: Equatable {
     let showsArtifacts: Bool
     let presentation: Presentation
 
+    /// Current only leaves the bar one chip, so the way between All and a
+    /// single profile has to live in the two sheets: the profiles sheet a
+    /// single profile's chip opens carries the way into All while All chats
+    /// is off, and the All-profiles sheet carries the way back out while it's
+    /// on. Both read here, so the pair can be tested without a device: the
+    /// first going missing is what made All unreachable under Current only
+    /// (Greptile, #2020).
+    static func showsAllChatsRow(profiles: V2SessionsBarPreferences.Profiles,
+                                 allProfilesChatsOn: Bool,
+                                 allProfilesAvailable: Bool) -> Bool {
+        profiles == .currentOnly && !allProfilesChatsOn && allProfilesAvailable
+    }
+
+    static func showsShowOnlyRow(profiles: V2SessionsBarPreferences.Profiles,
+                                 allProfilesChatsOn: Bool) -> Bool {
+        profiles == .currentOnly && allProfilesChatsOn
+    }
+
     /// Pulse remains inside the profile's own capability gate. Hidden
     /// Projects, or All profiles' chats-only list, resolves even an old value
     /// or another window's write to Sessions without writing during a render.
