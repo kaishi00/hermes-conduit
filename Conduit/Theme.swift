@@ -457,6 +457,13 @@ struct ConduitBackdropMotionClock {
         }
     }
 
+    /// The system uptime at a timeline tick's date. The clock runs on
+    /// uptime, so a wall-clock change can't jump the phase; the tick's date
+    /// only says how long ago the frame was asked for.
+    static func uptime(at date: Date, now: Date = Date(), uptimeNow: TimeInterval = ProcessInfo.processInfo.systemUptime) -> TimeInterval {
+        uptimeNow - max(0, now.timeIntervalSince(date))
+    }
+
     func progress(at now: TimeInterval) -> CGFloat {
         guard hasAnimated else { return 0 }
         return ConduitBackdropMotionPolicy.progress(at: (pauseStartedAt ?? now) - motionOrigin)
@@ -521,34 +528,18 @@ struct ConduitBackdrop: View {
                     minimumInterval: 1.0 / Double(ConduitBackdropMotionPolicy.framesPerSecond),
                     paused: !shouldAnimate
                 )
-            ) { _ in
-                GeometryReader { proxy in
-                    let drift = motionClock.progress(at: ProcessInfo.processInfo.systemUptime)
-                    ZStack {
-                        ConduitGlow(
-                            // On the light base a dark-mode-strength glow
-                            // washes out, so light mode draws it stronger.
-                            color: glowColor.opacity(colorScheme == .dark ? 0.20 : 0.24),
-                            diameter: min(proxy.size.width * 0.92, proxy.size.height),
-                            blur: 72
-                        )
-                        .offset(
-                            x: (-0.18 + 0.48 * drift) * proxy.size.width,
-                            y: (-0.24 - 0.10 * drift) * proxy.size.height
-                        )
-
-                        ConduitGlow(
-                            color: Color.conduitAura.opacity(colorScheme == .dark ? 0.14 : 0.10),
-                            diameter: min(proxy.size.width * 0.84, proxy.size.height),
-                            blur: 84
-                        )
-                        .offset(
-                            x: (0.26 - 0.58 * drift) * proxy.size.width,
-                            y: (0.28 + 0.08 * drift) * proxy.size.height
-                        )
-                    }
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                }
+            ) { context in
+                // The phase is handed to a view of its own as a value, so
+                // each tick that moves it redraws the glows. Worked out in a
+                // GeometryReader's closure here, it was read only when
+                // something else redrew the backdrop: the glows sat still
+                // and then jumped, in one frame, to wherever the clock had
+                // got to (issue 1980).
+                ConduitBackdropGlows(
+                    drift: motionClock.progress(at: ConduitBackdropMotionClock.uptime(at: context.date)),
+                    warmColor: glowColor.opacity(colorScheme == .dark ? 0.20 : 0.24),
+                    auraColor: Color.conduitAura.opacity(colorScheme == .dark ? 0.14 : 0.10)
+                )
             }
 
             LinearGradient(
@@ -580,6 +571,47 @@ struct ConduitBackdrop: View {
         colorScheme == .dark
             ? Color(red: 0.045, green: 0.052, blue: 0.072)
             : Color(red: 0.94, green: 0.95, blue: 0.98)
+    }
+}
+
+/// The backdrop's two drifting glows at one phase of the drift (0...1).
+/// A view of its own, so a new phase is a changed input and redraws it.
+struct ConduitBackdropGlows: View, Equatable {
+    let drift: CGFloat
+    /// On the light base a dark-mode-strength glow washes out, so light
+    /// mode draws it stronger; the caller picks the opacity.
+    let warmColor: Color
+    let auraColor: Color
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                ConduitGlow(
+                    color: warmColor,
+                    diameter: min(proxy.size.width * 0.92, proxy.size.height),
+                    blur: 72
+                )
+                .offset(Self.warmOffset(drift: drift, in: proxy.size))
+
+                ConduitGlow(
+                    color: auraColor,
+                    diameter: min(proxy.size.width * 0.84, proxy.size.height),
+                    blur: 84
+                )
+                .offset(Self.auraOffset(drift: drift, in: proxy.size))
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+    }
+
+    /// The warm glow drifts from the upper left toward the upper right.
+    static func warmOffset(drift: CGFloat, in size: CGSize) -> CGSize {
+        CGSize(width: (-0.18 + 0.48 * drift) * size.width, height: (-0.24 - 0.10 * drift) * size.height)
+    }
+
+    /// The blue aura drifts the other way along the bottom.
+    static func auraOffset(drift: CGFloat, in size: CGSize) -> CGSize {
+        CGSize(width: (0.26 - 0.58 * drift) * size.width, height: (0.28 + 0.08 * drift) * size.height)
     }
 }
 
