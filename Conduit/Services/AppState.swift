@@ -2345,6 +2345,8 @@ final class AppState: ObservableObject {
     var notifierPluginStatusGeneration = 0
     var notifierPluginStatusAcceptedGeneration = 0
     @Published private(set) var modelVisibility = ModelVisibility()
+    /// The model sheet's pinned and recent models, for the active dashboard.
+    @Published private(set) var modelQuickPicks = ModelQuickPicks()
 
     // MARK: - UI state
 
@@ -7255,6 +7257,7 @@ final class AppState: ObservableObject {
     private let activeProfileByDashboardKey = "conduit.activeProfileByDashboard.v1"
     private let profileOrderByDashboardKey = "conduit.profileOrderByDashboard.v1"
     private let modelVisibilityByDashboardKey = "conduit.modelVisibilityByDashboard.v1"
+    private let modelQuickPicksByDashboardKey = "conduit.modelQuickPicksByDashboard.v1"
     private let profileAppearanceStore: ProfileAppearanceStore
     /// Shared with the saved-dashboard migration (which relabels a legacy
     /// URL identity to the dashboard UUID), so it is a static.
@@ -7802,6 +7805,7 @@ final class AppState: ObservableObject {
         ) ?? .dark
         adoptLegacyProfilePreferences(into: initialRegistry.dashboards.first?.id)
         modelVisibility = scopedModelVisibility(dashboardID: initialDashboardID)
+        modelQuickPicks = storedModelQuickPicks()[Self.dashboardPreferenceBucket(initialDashboardID)] ?? ModelQuickPicks()
         if let savedFilterOrder = defaults.stringArray(forKey: sessionFilterOrderKey) {
             sessionFilterOrder = Self.normalizedSessionFilterOrder(savedFilterOrder)
         }
@@ -14845,6 +14849,7 @@ final class AppState: ObservableObject {
         profileBotTitles = profileAppearanceStore.loadBotTitles(dashboardID: dashboardID)
         profileHermesNames = profileAppearanceStore.loadHermesNames(dashboardID: dashboardID)
         modelVisibility = scopedModelVisibility(dashboardID: dashboardID)
+        modelQuickPicks = storedModelQuickPicks()[Self.dashboardPreferenceBucket(dashboardID)] ?? ModelQuickPicks()
         restoreDisplayPreferences()
     }
 
@@ -14917,6 +14922,29 @@ final class AppState: ObservableObject {
         storedModelVisibilities()[Self.dashboardPreferenceBucket(dashboardID)] ?? ModelVisibility()
     }
 
+    private func storedModelQuickPicks() -> [String: ModelQuickPicks] {
+        guard let data = defaults.data(forKey: modelQuickPicksByDashboardKey),
+              let stored = try? JSONDecoder().decode([String: ModelQuickPicks].self, from: data) else { return [:] }
+        return stored
+    }
+
+    private func persistModelQuickPicks(_ picks: [String: ModelQuickPicks]) {
+        if let data = try? JSONEncoder().encode(picks) {
+            defaults.set(data, forKey: modelQuickPicksByDashboardKey)
+        }
+    }
+
+    /// Changes the active dashboard's Quick picks and keeps them.
+    func updateModelQuickPicks(_ change: (inout ModelQuickPicks) -> Void) {
+        var picks = modelQuickPicks
+        change(&picks)
+        guard picks != modelQuickPicks else { return }
+        modelQuickPicks = picks
+        var stored = storedModelQuickPicks()
+        stored[Self.dashboardPreferenceBucket(activeDashboardID)] = picks
+        persistModelQuickPicks(stored)
+    }
+
     private func rememberedActiveProfile(for dashboardID: UUID) -> String? {
         let map = defaults.dictionary(forKey: activeProfileByDashboardKey) as? [String: String] ?? [:]
         guard let profile = map[dashboardID.uuidString]?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -14965,6 +14993,10 @@ final class AppState: ObservableObject {
         var visibilities = storedModelVisibilities()
         if visibilities.removeValue(forKey: bucket) != nil {
             persistModelVisibilities(visibilities)
+        }
+        var quickPicks = storedModelQuickPicks()
+        if quickPicks.removeValue(forKey: bucket) != nil {
+            persistModelQuickPicks(quickPicks)
         }
         forgetPulseHome(of: id)
         forgetPulseFoldedBriefs(of: id)
