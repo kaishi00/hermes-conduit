@@ -129,7 +129,7 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         // Stopped already (iOS's time ran out): leave it to a redelivery.
         guard !Task.isCancelled else { return Self.unanswered(id, "stopped by iOS", kind: "locate") }
         guard E2ESeenStore.shared.claim(request.replayKey, namespace: "locate", ttl: Self.claimLifetime) else {
-            return Self.unanswered(id, "already being answered", kind: "locate")
+            return Self.unanswered(id, "already claimed or answered (a redelivery)", kind: "locate")
         }
         lock.withLock {
             pendingReplayKey = request.replayKey
@@ -141,7 +141,7 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         guard !Task.isCancelled else { return Self.unanswered(id, "stopped by iOS", kind: "locate") }
         let (location, approximate) = await fix(precision: precision)
         guard !Task.isCancelled else { return Self.unanswered(id, "stopped by iOS", kind: "locate") }
-        guard let location else { return Self.unanswered(id, "no fix within \(Int(Self.fixTimeout)) s", kind: "locate") }
+        guard let location else { return Self.unanswered(id, "no fix (Core Location failed, or none within \(Int(Self.fixTimeout)) s)", kind: "locate") }
         // The area is a nicety: sent only if the geocoder answers quickly.
         var area: LocationArea?
         if precision != .places, !Task.isCancelled { area = await Self.area(for: location, timeout: Self.geocodeTimeout) }
@@ -157,7 +157,7 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         // Paused, turned off or its detail lowered while the fix was on its
         // way: nothing goes.
         guard Self.stillAnswers(request, detail: precision) else {
-            return Self.unanswered(id, "sharing paused, turned off or lowered while the fix was on its way", kind: "locate")
+            return Self.unanswered(id, "sharing no longer answers it after the fix (paused, off, detail lowered, or bound elsewhere)", kind: "locate")
         }
         guard let body = try? LocationIngest.body(batch, key: key) else {
             return Self.unanswered(id, "the batch couldn't be sealed", kind: "locate")
@@ -204,7 +204,7 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         guard LocationLocateRequest.isMapsID(id) else { return Self.unanswered(id, "not a maps request id") }
         guard !Task.isCancelled else { return Self.unanswered(id, "stopped by iOS") }
         guard E2ESeenStore.shared.claim(request.replayKey, namespace: "maps", ttl: Self.claimLifetime) else {
-            return Self.unanswered(id, "already being answered")
+            return Self.unanswered(id, "already claimed or answered (a redelivery)")
         }
         lock.withLock {
             pendingReplayKey = request.replayKey
