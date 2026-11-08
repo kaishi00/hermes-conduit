@@ -210,6 +210,22 @@ extension GroupChatModelsTests {
         XCTAssertNotNil(appState.homeRoomLooksByKey[elsewhere], "another dashboard's are its own")
     }
 
+    @MainActor
+    func testARoomSomeoneElseHostsThatsOverIsReadForItsFacesOnce() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy(status: "ended", reason: "disbanded")])
+        let appState = try await looksRoomAppState(routes)
+        await copiesWait("the copies read", until: { appState.linkedRoomCopyRows.count == 1 })
+        appState.closeGroupRoom()
+        let before = routes.looksReads
+        appState.homeRoomLooksReadAt = [:]
+        await appState.readHomeRoomLooks()
+        XCTAssertEqual(routes.looksReads, before + 2, "Picnic and, once, the room that's over")
+        XCTAssertEqual(appState.homeRoomLooks(roomID: "conduit-9").members["m-laifu"]?.color, "#AA3300")
+        appState.homeRoomLooksReadAt = [:]
+        await appState.readHomeRoomLooks()
+        XCTAssertEqual(routes.looksReads, before + 3, "its faces can't change, so it isn't read again")
+    }
+
     // MARK: - Giving yours
 
     @MainActor

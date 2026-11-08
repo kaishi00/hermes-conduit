@@ -307,15 +307,19 @@ extension AppState {
             homeRoomLooksByKey[key] = nil
             homeRoomLooksReadAt[key] = nil
         }
+        // A room someone else hosts that's over can't change: read once.
+        let over = Set(linkedRoomCopyRows.filter(\.isOver).map(\.roomID))
         for roomID in roomIDs {
             let key = Self.homeRoomLooksKey(dashboard, roomID)
+            if over.contains(roomID), homeRoomLooksByKey[key] != nil { continue }
             if let at = homeRoomLooksReadAt[key], Date().timeIntervalSince(at) < Self.roomLooksReadInterval { continue }
             guard !Task.isCancelled else { return }
             guard let room = DashboardPath.encodedQueryComponent(roomID) else { continue }
             homeRoomLooksReadAt[key] = Date()
             let response = try? await roomRouteJSON(
                 path: "\(RoomLooksUpload.path)?room_id=\(room)", method: "GET", body: nil, timeoutMilliseconds: nil)
-            guard activeDashboardID == dashboard else { return }
+            // Signed out meanwhile: what it said is the outgoing session's.
+            guard activeDashboardID == dashboard, isConnected else { return }
             guard let response, response["ok"] as? Bool == true else {
                 homeRoomLooksReadAt[key] = nil
                 continue

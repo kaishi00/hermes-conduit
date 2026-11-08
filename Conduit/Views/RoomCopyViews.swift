@@ -139,7 +139,9 @@ struct HomeRoomLooksReader: ViewModifier {
         // background: the open room's own reads keep its tile's faces.
         let shown = shell.isTabActive && !shell.isRootCovered && scenePhase == .active
         content.task(id: "\(shown)|\(appState.isConnected)|\(appState.homeLinkedRoomIDs.joined(separator: ","))") {
-            guard shown, appState.isConnected, !appState.homeLinkedRoomIDs.isEmpty else { return }
+            guard shown, appState.isConnected else { return }
+            // With none left it runs once, to drop the last one's faces.
+            if appState.homeLinkedRoomIDs.isEmpty { return await appState.readHomeRoomLooks() }
             while !Task.isCancelled {
                 await appState.readHomeRoomLooks()
                 try? await Task.sleep(for: .seconds(AppState.roomLooksReadInterval))
