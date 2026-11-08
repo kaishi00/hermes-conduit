@@ -117,7 +117,7 @@ struct CapabilityPluginsTab: View {
                     }
                 }
                 if query.isEmpty, !store.pluginCatalog.isEmpty {
-                    PluginCatalogShelf(store: store, canManage: canManage)
+                    PluginCatalogShelf(store: store)
                 } else if !catalog.isEmpty {
                     CapabilitySection(
                         title: AppLocalization.string("Plugin catalog"),
@@ -129,7 +129,7 @@ struct CapabilityPluginsTab: View {
                             CapabilityCardRow(divided: index > 0) {
                                 HStack(spacing: 10) {
                                     NavigationLink {
-                                        PluginCatalogDetailPage(name: entry.name, store: store, canManage: canManage)
+                                        PluginCatalogDetailPage(name: entry.name, store: store)
                                             .v2TabBarClearance()
                                     } label: {
                                         CapabilityRowLabel(
@@ -241,7 +241,7 @@ private struct AgentPluginListRow: View {
     var body: some View {
         HStack(spacing: 10) {
             NavigationLink {
-                AgentPluginDetailPage(name: plugin.name, canManage: canManage, store: store)
+                AgentPluginDetailPage(name: plugin.name, store: store)
                     .v2TabBarClearance()
             } label: {
                 CapabilityRowLabel(
@@ -326,10 +326,13 @@ struct AgentPluginDetailPage: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @Environment(\.dismiss) private var dismiss
     let name: String
-    let canManage: Bool
     let store: CapabilitiesStore
     @State private var message: String?
     @State private var confirmingRemove = false
+
+    /// Read live: a page pushed on another profile opens up once the store
+    /// switches to the default one, as its settings section does.
+    private var canManage: Bool { store.canManagePlugins }
     @State private var consent: PluginConsent?
 
     private var plugin: AgentPluginRow? { store.plugins.first { $0.name == name } }
