@@ -454,6 +454,12 @@ struct MainView: View {
         }
         // A widget's New Chat or Talk asks Settings out of the way
         // (revealChatForWidgetLaunch); the chat it opens must end up on top.
+        // The sheet's pages belong to the dashboard it opened on, as the
+        // V2 tab's start over on a switch (V2SettingsTab): a switch made
+        // under it, by a notification's route, closes it (issue 2016).
+        .onChange(of: appState.activeDashboardID) { _, _ in
+            settingsPresentation = nil
+        }
         .onChange(of: appState.settingsDismissRequest) { _, _ in
             // A drawer closing on its way to Settings doesn't open it either.
             shouldPresentSettingsAfterSidebarDismissal = false

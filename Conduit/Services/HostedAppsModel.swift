@@ -53,6 +53,10 @@ final class HostedAppsModel {
     static let pollInterval: Duration = .seconds(2)
     /// How long a closed Safari is given for Hermes to see the account.
     static let closedGrace: TimeInterval = 6
+    /// How long a sign-in waits out a connection that stays down before it
+    /// gives up and says so, so one dead try never holds the section
+    /// (issue 2013).
+    static let outageGrace: TimeInterval = 120
 
     /// Opens on the kept apps for `scope` (the dashboard, profile and
     /// client), and drops another scope's. A sign-in and what the section
@@ -85,8 +89,12 @@ final class HostedAppsModel {
         loading = true
         defer { if read == reads { loading = false } }
         do {
-            let fresh = try await appState.loadHostedApps()
+            var fresh = try await appState.loadHostedApps()
             guard read == reads, scope == self.scope else { return }
+            // Rules that didn't read this time leave the last ones read
+            // showing what the organization turned off; nothing changes on
+            // them until they read again (issue 2014).
+            if fresh.rulesFailed == true, fresh.policy == nil { fresh.policy = snapshot?.policy }
             snapshot = fresh
             showsKept = false
             HostedAppLogoLoader.retryFailed()
@@ -205,6 +213,7 @@ final class HostedAppsModel {
             }
             browser = BotMcpBrowserPage(url: url)
             var wokeHermes = false
+            var downSince: Date?
             while true {
                 try await Task.sleep(for: Self.pollInterval)
                 guard isLatest else { return }
@@ -216,9 +225,17 @@ final class HostedAppsModel {
                     current = try await appState.hostedAppOperation(current.id).carryingLink(from: current)
                 } catch let error where Self.isConnectionBlip(error, appState: appState) {
                     // Asked again once the connection is back: the
-                    // sign-in lives on Hermes, and Safari stays up.
-                    continue
+                    // sign-in lives on Hermes, and Safari stays up. Not
+                    // forever: past the grace it's given up, as on a
+                    // failed ask.
+                    let since = downSince ?? Date()
+                    downSince = since
+                    guard Date().timeIntervalSince(since) >= Self.outageGrace else { continue }
+                    notes[slug] = AppLocalization.string("The connection to Hermes dropped, so the sign-in stopped. Try again.")
+                    try? await appState.stopHostedAppSignIn(current)
+                    return
                 }
+                downSince = nil
                 operation = current
                 guard isLatest else { return }
                 let target = current.target(slug)

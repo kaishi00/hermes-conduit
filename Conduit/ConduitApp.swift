@@ -191,6 +191,7 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
                 if quiet || app.pulseQuietOwnership(target) == .route {
                     app.openPulse(card: nil)
                 }
+                await PulseNotifications.sayNotQuiet(quiet, target: target)
             }
             return
         }
@@ -588,6 +589,9 @@ struct ConduitApp: App {
                 if quiet || appState.pulseQuietOwnership(target) == .route {
                     appState.openPulse(card: nil)
                 }
+                // The quiet promised when the call ends didn't come: it
+                // says so, and its tap tries again (issue 1975).
+                await PulseNotifications.sayNotQuiet(quiet, target: target)
             }
             .task(id: voiceIntentRouteKey) {
                 // A launch waiting for a dashboard pick signs in for Siri.

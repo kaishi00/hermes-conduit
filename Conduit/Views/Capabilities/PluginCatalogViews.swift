@@ -284,8 +284,12 @@ struct PluginCatalogDetailPage: View {
     let name: String
     let store: CapabilitiesStore
     let canManage: Bool
+    @EnvironmentObject private var appState: AppState
     @State private var confirmsInstall = false
     @State private var message: String?
+    /// The dashboard and profile the page opened on: an install goes only
+    /// there, never to one switched to under it (issue 2016).
+    @State private var openedOn: CapabilitySnapshotOwner?
 
     /// Read from the store, so an install shows at once.
     private var entry: PluginCatalogEntry? { store.pluginCatalog.first { $0.name == name } }
@@ -337,6 +341,7 @@ struct PluginCatalogDetailPage: View {
             }
         }
         .navigationTitle(Text(verbatim: entry?.displayName ?? name))
+        .onAppear { if openedOn == nil { openedOn = appState.currentCapabilitiesOwner } }
         .confirmationDialog(
             Text("Install \(entry?.displayName ?? name)?"),
             isPresented: $confirmsInstall,
@@ -488,7 +493,8 @@ struct PluginCatalogDetailPage: View {
     }
 
     private func install() {
-        guard let entry, canManage else { return }
+        let owner = appState.currentCapabilitiesOwner
+        guard let entry, canManage, owner == openedOn, store.serves(owner) else { return }
         Haptics.selection()
         message = nil
         Task {

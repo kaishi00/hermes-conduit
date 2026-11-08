@@ -35,6 +35,15 @@ extension PulseNotifications {
         return UNNotificationRequest(identifier: retryIdentifier, content: content, trigger: nil)
     }
 
+    /// After a try with Conduit open (a retry's tap, or the one waiting for
+    /// a call) that didn't make Pulse quiet: the retry notification again,
+    /// unless the try is waiting for another call, which says so itself.
+    @MainActor
+    static func sayNotQuiet(_ quiet: Bool, target: PulseQuietTarget) async {
+        guard !quiet, PushNotificationService.shared.pendingPulseQuiet == nil else { return }
+        try? await UNUserNotificationCenter.current().add(retryRequest(target: target))
+    }
+
     /// Where a retry notification tries again; nil when the push it came
     /// from couldn't be read.
     static func retryTarget(_ userInfo: [AnyHashable: Any]) -> PulseQuietTarget? {

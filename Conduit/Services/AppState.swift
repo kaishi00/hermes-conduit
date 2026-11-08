@@ -40309,8 +40309,17 @@ final class AppState: ObservableObject {
     }
 
     func gatewayMediaDataURL(for path: String, profile: String) async -> String? {
-        guard let dashboardTicketBridge else { return nil }
-        guard let encodedPath = DashboardPath.encodedQueryComponent(path) else { return nil }
+        if case .dataURL(let dataURL) = await gatewayMediaRead(for: path, profile: profile) { return dataURL }
+        return nil
+    }
+
+    /// The file's data URL, or why there's none: Hermes answered that it
+    /// can't give the file (`gone`), or it couldn't be asked just now
+    /// (`failed`: no connection, a cancelled or timed-out ask, a gateway in
+    /// trouble), which a later ask may get past (issue 2015).
+    func gatewayMediaRead(for path: String, profile: String) async -> GatewayMediaRead {
+        guard let dashboardTicketBridge else { return .failed }
+        guard let encodedPath = DashboardPath.encodedQueryComponent(path) else { return .gone }
         let endpoint = DashboardPath.withProfile("/api/fs/read-data-url?path=\(encodedPath)", profile: profile)
 
         do {
@@ -40322,12 +40331,14 @@ final class AppState: ObservableObject {
             // themselves, while video, audio and document previews (#195)
             // take whatever the gateway returns.
             guard let dataURL = result["dataUrl"] as? String,
-                  DataURLLimits.isBoundedBase64DataURL(dataURL) else { return nil }
-            return dataURL
-        } catch is CancellationError {
-            return nil
+                  DataURLLimits.isBoundedBase64DataURL(dataURL) else { return .gone }
+            return .dataURL(dataURL)
+        } catch DashboardTicketBridgeError.http(let status, _) {
+            return GatewayMediaRead.isRefusal(status: status) ? .gone : .failed
+        } catch DashboardTicketBridgeError.oversizedResponse {
+            return .gone
         } catch {
-            return nil
+            return .failed
         }
     }
 
