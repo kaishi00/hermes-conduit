@@ -169,7 +169,10 @@ struct ModelChooserPage: View {
     private func picked(_ provider: ProviderInfo, _ model: ModelInfo) -> Bool {
         guard let pick else { return false }
         if let isPicked { return isPicked(provider, model) }
-        return provider.matches(pick.provider) && model.id == pick.model
+        guard model.id == pick.model, provider.matches(pick.provider) else { return false }
+        // The row named exactly holds it over one the name is an alias of.
+        return provider.name == pick.provider
+            || !catalog.providers.contains { $0.name == pick.provider && $0.models.contains { $0.id == pick.model } }
     }
 
     /// The listed row holding the pick, hidden with Edit or not.
@@ -511,7 +514,11 @@ struct ModelChooserLinkRow: View {
         guard let pick else {
             return (defaultTitle, reasoning)
         }
-        let row = providers.row(named: pick.provider)
+        // As the page holds it: the row listing the model, named exactly first.
+        let row = pick.model.isEmpty
+            ? providers.row(named: pick.provider)
+            : providers.filter { $0.models.contains { $0.id == pick.model } }.row(named: pick.provider)
+                ?? providers.row(named: pick.provider)
         let model = row?.models.first { $0.id == pick.model }
         let value = pick.model.isEmpty
             ? VoiceJobModelSettingsSection.providerDefaultTitle(row?.title ?? pick.provider)
