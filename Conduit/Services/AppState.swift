@@ -1468,9 +1468,12 @@ final class AppState: ObservableObject {
     private(set) var foregroundFreshnessCheckArmed = false
     /// Whether the visible persisted transcript may be MISSING rows —
     /// conceptually disjoint from `turnStateIsStale`, which answers "do I
-    /// know whether Hermes is currently busy?". Set only when a bounded
+    /// know whether Hermes is currently busy?". Set when a bounded
     /// foreground freshness read failed transiently on a real background
-    /// return; a liveness answer (the registry probe) can never clear it.
+    /// return, and when a resume Hermes refused as too long for the whole
+    /// transcript kept the rows on screen while its history read failed for
+    /// now (issue 2025); a liveness answer (the registry probe) can never
+    /// clear it.
     /// Cleared only when an authoritative transcript source proves
     /// convergence: an unchanged bounded verdict, an advancement merge, or a
     /// resume/reconcile hydration (`applyChatResume`).
