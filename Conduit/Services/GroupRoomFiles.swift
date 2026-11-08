@@ -181,6 +181,6 @@ extension AppState {
                 let type = TranscriptImageCache.fileExtension(forDataURL: "data:\(attachment.mimeType ?? "");")
                 TranscriptImageCache.store(data, fileExtension: type, for: key, in: directory, generation: generation)
             }
-        }
+        }.value
     }
 }
