@@ -167,7 +167,8 @@ enum PluginSettings {
                   let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys]) else { return "" }
             return String(decoding: data, as: UTF8.self)
         case .number:
-            if let number = value as? NSNumber, !(value is Bool) {
+            // `is Bool` takes a JSON 0 or 1 for a switch: ask CF instead.
+            if let number = value as? NSNumber, !AnyCodable.isBoolean(number) {
                 let double = number.doubleValue
                 return double.rounded() == double && abs(double) < 1e15 ? String(Int(double)) : number.stringValue
             }

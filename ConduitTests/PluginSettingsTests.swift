@@ -37,6 +37,11 @@ extension PluginCatalogBrowseTests {
         XCTAssertEqual(fields[0].initialText, "imperial")
         XCTAssertTrue(fields[0].required)
         XCTAssertEqual(fields[1].initialText, "3")
+        for (sent, shown) in [(0, "0"), (1, "1")] {
+            let json = try JSONSerialization.data(withJSONObject: ["key": "n", "type": "number", "value": sent])
+            let parsed = try JSONSerialization.jsonObject(with: json)
+            XCTAssertEqual(PluginSettingField(parsed)?.initialText, shown, "A JSON \(sent) is a number, not a switch")
+        }
         XCTAssertEqual(fields[2].initialText, "true")
         XCTAssertEqual(fields[3].initialText, "")
         XCTAssertEqual(fields[3].description, "Where you are")
