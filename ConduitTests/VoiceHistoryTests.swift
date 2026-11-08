@@ -1479,11 +1479,14 @@ extension HermesVoiceGatewayTimeoutTests {
         let laterNote = queued + [row("interim-15", .assistant, "Still checking…")]
         XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(laterNote, runningNotes: notes)).recent.map(\.text), context.recent.map(\.text))
         // A turn typed on another device has no row here: the answered
-        // exchange before it stays, and only its progress notes go.
+        // exchange before it stays, and its progress notes go.
         let answered = Array(messages.dropLast()) + [row("6", .user, "Book the hotel"), row("9", .assistant, "Booked the Kyoto Inn.")]
         XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(answered, runningNotes: notes)).recent.last?.text, "Booked the Kyoto Inn.")
         let remote = answered + [row("interim-10", .assistant, "Looking up trains…")]
         XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(remote, runningNotes: notes)).recent.last?.text, "Booked the Kyoto Inn.")
+        // Once a sync brings its question here, that goes too.
+        let synced = answered + [row("19", .user, "Trains?"), row("interim-10", .assistant, "Looking up trains…")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(synced, runningNotes: notes)).recent.last?.text, "Booked the Kyoto Inn.")
         // A finished reply that kept its interim row's id is no running
         // note: a new question running after it leaves it in.
         let finishedInterim = Array(messages.dropLast()) + [row("6", .user, "Book the hotel"), row("interim-old", .assistant, "Booked the Kyoto Inn."),

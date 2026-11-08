@@ -951,9 +951,9 @@ struct VoiceResumeContext: Equatable {
         }
     }
 
-    /// A turn's text within `VoiceResumePlan.turnCharacterLimit` with every
-    /// file it names: a long text is clipped before its attachments, and a
-    /// file named past the cut is named again after it.
+    /// A turn's text within `VoiceResumePlan.turnCharacterLimit`, with the
+    /// files it names that fit: a long text is clipped before its
+    /// attachments, and a file named past the cut is named again after it.
     static func fitting(_ body: String, naming attached: [String]) -> String {
         let collapsed = body.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         let whole = ([collapsed] + attached).filter { !$0.isEmpty }.joined(separator: " ")
