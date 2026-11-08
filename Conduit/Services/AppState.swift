@@ -4811,6 +4811,11 @@ final class AppState: ObservableObject {
                     defer { self.spokenSubmissionText = nil }
                     let stillWanted = self.localLiveTurns.currentTurnCheck()
                     if await self.submitComposerForCall(text: text, onBusy: { foundBusy = true }, stillWanted: stillWanted) {
+                        // Admitted behind a turn a restart cut off: the
+                        // chat's card holds it until it's discarded.
+                        if client.chatIsHeldByLostTurn(chat.runtimeID) {
+                            return .notStarted(message: AppLocalization.string("Hermes queued this in the chat. Its reply will appear there."))
+                        }
                         return .started(runtimeID: chat.runtimeID)
                     }
                 }
@@ -4833,12 +4838,12 @@ final class AppState: ObservableObject {
                 throw error
             }
             switch outcome {
+            case .accepted where client.chatIsHeldByLostTurn(chat.runtimeID), .queued:
+                return .notStarted(message: AppLocalization.string("Hermes queued this in the chat. Its reply will appear there."))
             case .accepted:
                 return .started(runtimeID: chat.runtimeID)
             case .steered, .redirected:
                 return .notStarted(message: AppLocalization.string("Hermes added this to the reply already running in the chat."))
-            case .queued:
-                return .notStarted(message: AppLocalization.string("Hermes queued this in the chat. Its reply will appear there."))
             }
         },
         redirect: { [weak self] runtimeID, text in
