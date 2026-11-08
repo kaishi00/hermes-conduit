@@ -259,7 +259,9 @@ struct PresentedConfirm: Identifiable, Equatable {
         guard !Self.unsureWords.contains(where: { Self.range(of: $0, in: said) != nil }),
               !Self.cjkUnsure.contains(where: { words.contains($0) }) else { return false }
         switch VoiceThreadRouting.heldRequestAnswer(words) {
-        case .no: return true
+        // A no with a change in it ("no, make it for Alex") asks for the
+        // change, which the panel's edit takes; a no on its own declines.
+        case .no(let change): return change == nil
         // A wait holds; it doesn't refuse ("hold on"). "Not now" does, and
         // a not yet with a change in it ("wait, make it Wednesday") asks
         // for that change, not a no.

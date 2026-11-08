@@ -191,6 +191,7 @@ extension AppStateVoiceCapabilityTests {
         // A wait holds, and a wait with a change asks for the change.
         XCTAssertFalse(prompt.isDeclined(by: "hold on"))
         XCTAssertFalse(prompt.isDeclined(by: "Wait, make it Wednesday"))
+        XCTAssertFalse(prompt.isDeclined(by: "No, make it for Alex"))
         // Not knowing, in the other shipped languages.
         for unsure in ["No sé", "Não sei", "Tidak tahu", "Je ne sais pas", "Ich weiß nicht", "不知道", "わからない"] {
             XCTAssertFalse(prompt.isDeclined(by: unsure), unsure)
