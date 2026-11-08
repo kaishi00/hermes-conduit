@@ -204,6 +204,10 @@ enum HealthSyncLimits {
     static let backfillChunkDays = 30
     /// The host refuses times before this (health_store.py's EARLIEST).
     static let hostEarliest = Date(timeIntervalSince1970: 946_684_800)
+    /// The longest workout, sleep stage or reading the host keeps
+    /// (health_store.py's _parse_event): one past it, or one that ends
+    /// before it starts, stays on the iPhone (notifier issue 555).
+    static let longestEvent: TimeInterval = 7 * 24 * 3600
 
     /// The first day history may start on: the first local midnight whose
     /// sleep window, which opens 12 hours before it, is not before
@@ -311,6 +315,8 @@ enum HealthSyncPause: Codable, Equatable {
     case pluginMissing
     /// Another dashboard is in use; sharing waits for its own.
     case otherDashboard
+    /// The profile turned the plugin off: how to turn it on (issue 1671).
+    case pluginOff(String)
     /// The host refused a batch for a reason a retry won't fix.
     case refused(String)
 
@@ -322,6 +328,8 @@ enum HealthSyncPause: Codable, Equatable {
             return AppLocalization.string("Paused: update the Conduit plugin on this host to share health data.")
         case .otherDashboard:
             return AppLocalization.string("Waiting: health data goes only to the dashboard it was turned on for. Switch back to it to sync.")
+        case .pluginOff(let remedy):
+            return AppLocalization.string("Paused: \(remedy)")
         case .refused(let detail):
             return AppLocalization.string("Paused: the host refused health data (\(detail)).")
         }

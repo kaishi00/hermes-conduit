@@ -140,6 +140,7 @@ final class KanbanV3ATests: XCTestCase {
         XCTAssertEqual(KanbanOrchestrationDisplay.defaultOptionLabel(configured: "", resolved: "coder"), "Default (coder)")
         XCTAssertEqual(KanbanOrchestrationDisplay.defaultOptionLabel(configured: "", resolved: "  coder  "), "Default (coder)", "resolved trimmed for display")
         XCTAssertEqual(KanbanOrchestrationDisplay.defaultOptionLabel(configured: "", resolved: ""), "Default")
+        XCTAssertEqual(KanbanOrchestrationDisplay.defaultOptionLabel(configured: "coder", resolved: "coder"), "Default (coder)", "a pin has its own row; it never renames Default")
         XCTAssertEqual(KanbanOrchestrationDisplay.resolveFootnote(configured: "", resolved: "coder"), "Default resolves to coder.")
         XCTAssertEqual(KanbanOrchestrationDisplay.resolveFootnote(configured: "coder", resolved: "coder"), "Pinned to coder.", "explicit pin is labeled as pinned, not defaulted")
     }

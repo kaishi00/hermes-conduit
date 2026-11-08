@@ -343,8 +343,8 @@ private struct PlanSheet: View {
         NavigationStack {
             Group {
                 if let plan = cards.plan, cards.showsPlan {
-                    List {
-                        Section {
+                    SettingsDetailContainer(compact: true) {
+                        SettingsCard {
                             ProgressView(value: plan.progress) {
                                 Text(PlanText.count(plan))
                                     .scaledFont(.subheadline.monospacedDigit())
@@ -352,7 +352,7 @@ private struct PlanSheet: View {
                             }
                             .tint(plan.isFinished ? .green : .conduitAccent)
                         }
-                        Section {
+                        SettingsCard {
                             ForEach(plan.items) { item in
                                 PlanItemRow(item: item, depth: plan.depth(of: item, cap: 4))
                             }

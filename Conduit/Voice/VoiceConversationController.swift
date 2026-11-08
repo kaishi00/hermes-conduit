@@ -47,7 +47,13 @@ final class VoiceConversationController: ObservableObject {
     /// regardless of whether the speech detector classifies it as speech,
     /// and returns to zero whenever capture is paused, stopped, suspended,
     /// or interrupted.
-    @Published private(set) var microphoneLevel: Float = 0
+    ///
+    /// Read from `microphoneMeter`, which publishes on its own: the meter
+    /// ticks up to 20 times a second, and only the level bars draw it. On
+    /// the controller every tick re-rendered the whole voice sheet
+    /// (issue 1970).
+    var microphoneLevel: Float { microphoneMeter.level }
+    let microphoneMeter = VoiceMicrophoneMeter()
     /// Publication clock for meter throttling: level events arrive at tap
     /// buffer rate (~50 Hz), far faster than any useful UI animation, and
     /// every @Published assignment re-renders observing surfaces.
@@ -141,6 +147,9 @@ final class VoiceConversationController: ObservableObject {
     /// Keeps a persona's emoji and *narrated actions* out of speech; the
     /// transcript still shows the full reply.
     private var spokenTextFilter = SpokenTextFilter()
+    /// The last reply this conversation took as its own turn's (or said
+    /// as a Bot Chat's report), so its replay isn't said again.
+    private var lastOwnReply: String?
     private var isDrainingSpeech = false
     private var speechStream: VoiceSpeechStream?
     private var assistantFinished = false
@@ -464,6 +473,10 @@ final class VoiceConversationController: ObservableObject {
         isVoiceSessionActive || isProviderTestRunning
     }
 
+    /// A conversation runs (a call), not a provider test, which raises
+    /// isVoiceSessionActive too.
+    var hasConversationSession: Bool { isVoiceSessionActive && !isProviderTestRunning }
+
     /// Observability seam: whether a gateway reference is currently installed.
     /// The server-replacement boundary clears this reference; tests pin the
     /// clearing through here because a stale gateway's failure mode (reaching
@@ -542,6 +555,10 @@ final class VoiceConversationController: ObservableObject {
         // relisten (after a reply, an empty transcript, a spoken Stop, the
         // voice screen opening) settles to wait for the next press instead.
         if isPushToTalkActive, !isPushToTalkHeld {
+            // A widget's or Shortcut's Talk has done its part once the call
+            // waits for the press: the launch ends here, so its deadline
+            // never reports it expired over a call the user is in (#1934).
+            widgetAuthorization?.conversationDidSettle()
             if isSteeringTurn {
                 resumeTurnAfterSteer()
             } else if isVoiceSessionActive {
@@ -725,7 +742,7 @@ final class VoiceConversationController: ObservableObject {
         // Manual Interrupt proceeds on the attempt regardless of the
         // cancellation result: the local turn retirement below already
         // re-opened the listening window.
-        if turnStillRunning { _ = await interrupt() }
+        if turnStillRunning { await cancelRetiredTurn() }
         // The interruption is a real re-entrant async boundary (Hermes
         // cancellation/recovery), and the sheet can close while it is in
         // flight — stop() then advances the generation and tears the session
@@ -1000,7 +1017,7 @@ final class VoiceConversationController: ObservableObject {
         switch state {
         case .listening:
             if utteranceStartedAt == nil { utteranceStartedAt = date }
-            switch speechDetector.observe(level) {
+            switch speechDetector.observe(level, at: date) {
             case .started, .continued:
                 lastSpeechAt = date
                 openLiveTranscriptionIfNeeded()
@@ -1083,6 +1100,23 @@ final class VoiceConversationController: ObservableObject {
             sessionID = id
         }
         if routePromotedSteerReply(event, sessionID: sessionID) { return }
+        // A turn in this chat Classic didn't ask for: in a Bot Chat, its
+        // coordinator reporting work (Eric 2026-11-02), said when it's quiet.
+        if case .completed(_, let content, _) = event, isVoiceSessionActive, !isAwaitingVoiceAssistant,
+           expectedAssistantSessionIDs.contains(sessionID), let backgroundJobs {
+            let reply = (content ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            // The supervisor filters it for speech, as for every mode.
+            if reply.isEmpty {
+            } else if reply == lastOwnReply {
+                lastOwnReply = nil  // only its replay is skipped: the same words later are new
+            } else if backgroundJobs.noteChatReport(reply, sessionID: sessionID) {
+                lastOwnReply = reply  // a replay of it isn't said twice
+                deliverPendingBackgroundJobNoticeIfIdle()
+            } else {
+                lastOwnReply = nil
+            }
+            return
+        }
         guard isVoiceSessionActive,
               isAwaitingVoiceAssistant,
               expectedAssistantSessionIDs.contains(sessionID) else { return }
@@ -1156,6 +1190,7 @@ final class VoiceConversationController: ObservableObject {
             assistantFinished = true
             isAwaitingVoiceAssistant = false
             awaitedAssistantResponseStarted = false
+            lastOwnReply = content?.trimmingCharacters(in: .whitespacesAndNewlines)
             endApprovalNotice()
             if steerSentThisTurn {
                 promotedSteerReplyDeadline = Date().addingTimeInterval(promotedSteerReplyWindow)
@@ -1223,7 +1258,7 @@ final class VoiceConversationController: ObservableObject {
             // @Published state.
             guard state != .transcribing else { return }
             if lastMeterPublication == nil || date.timeIntervalSince(lastMeterPublication!) >= 0.05 {
-                microphoneLevel = level
+                microphoneMeter.level = level
                 lastMeterPublication = date
             }
             guard !isProviderTestRunning else { return }
@@ -1259,7 +1294,7 @@ final class VoiceConversationController: ObservableObject {
     /// Zeroes the visible meter and clears the publication clock so the
     /// first event of a fresh capture window always publishes.
     private func resetMicrophoneMeter() {
-        microphoneLevel = 0
+        microphoneMeter.level = 0
         lastMeterPublication = nil
     }
 
@@ -1396,8 +1431,19 @@ final class VoiceConversationController: ObservableObject {
             if isWholeUtteranceStopCommand(transcript) {
                 // Spoken Stop proceeds on the attempt: its local semantics
                 // (cancel, stop playback, relisten) do not depend on the
-                // server-side cancellation result.
-                _ = await interrupt()
+                // server-side cancellation result. The turn it cancels is
+                // retired first, as barge-in and Interrupt do: its terminal
+                // event belongs to the retired turn and must not end the
+                // window this Stop reopens (#1691). The steer and approval
+                // bookkeeping that terminal would have closed ends here.
+                // A Stop with no turn of this conversation's running still
+                // cancels whatever runs in the chat, without the orphan retry.
+                let turnStillRunning = isAwaitingVoiceAssistant
+                isAwaitingVoiceAssistant = false
+                awaitedAssistantResponseStarted = false
+                endSteerBookkeeping()
+                endApprovalNotice()
+                if turnStillRunning { await cancelRetiredTurn() } else { _ = await interrupt() }
                 guard isCurrent(generation) else { return }
                 playback.stop()
                 await startListening()
@@ -2067,7 +2113,7 @@ final class VoiceConversationController: ObservableObject {
         // The barge-in proceeds on the attempt: its local recovery (stop
         // playback, retire the turn, relisten) does not depend on the
         // server-side cancellation result.
-        if turnStillRunning { _ = await interrupt() }
+        if turnStillRunning { await cancelRetiredTurn() }
         // Cancellation is re-checked after the await: the suspension may have
         // engaged while the interruption was in flight, and reopening capture
         // now would hear the assistant's own speaker output.
@@ -2075,6 +2121,16 @@ final class VoiceConversationController: ObservableObject {
         guard isCurrent(generation) else { return }
         guard !isPlaybackCaptureSuspended else { return }
         await startListening(includePreRoll: true)
+    }
+
+    /// Cancels a turn an intentional stop (talking over, Interrupt,
+    /// CarPlay's Stop, a spoken Stop) already retired. The stop proceeds on
+    /// the attempt; when the cancel fails the turn may still be running, so
+    /// it is kept as an orphan and the next submission cancels it first, as
+    /// after a suspension, so its late reply is never taken as the new one.
+    private func cancelRetiredTurn() async {
+        guard !(await interrupt()), isVoiceSessionActive else { return }
+        suspendedInFlightTurnOrphaned = true
     }
 
     /// A spoken End Conversation phrase consumed the utterance locally: the
@@ -2494,4 +2550,11 @@ final class VoiceConversationController: ObservableObject {
     private func isCurrent(_ generation: UInt64) -> Bool {
         generation == operationGeneration && isApplicationForegroundActive && isVoiceSessionActive
     }
+}
+
+/// The classic voice microphone's level, published apart from its
+/// controller so a tick re-renders only the bars reading it (issue 1970).
+@MainActor
+final class VoiceMicrophoneMeter: ObservableObject {
+    @Published fileprivate(set) var level: Float = 0
 }

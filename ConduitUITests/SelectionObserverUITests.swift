@@ -11,7 +11,7 @@ final class SelectionObserverUITests: XCTestCase {
     }
 
     func testLongPressAndDragExtendsSelectionAcrossTableAndCodeBlocks() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launch()
@@ -36,7 +36,7 @@ final class SelectionObserverUITests: XCTestCase {
     /// 1585). The chat draws cells as plain text inside a row whose own tap
     /// puts the keyboard away; a plain cell's link lost the tap to it.
     func testTapOnLinkInChatTableCellOpensIt() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments = ["-conduitSelectionFixture", "-conduitChatTableFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launch()
@@ -44,11 +44,20 @@ final class SelectionObserverUITests: XCTestCase {
         let opened = app.staticTexts.matching(identifier: "fixture.openedURL").firstMatch
         XCTAssertTrue(opened.waitForExistence(timeout: 5))
         XCTAssertEqual(opened.label, "opened:none")
-        let link = app.textViews
-            .matching(NSPredicate(format: "label CONTAINS %@", "skills link")).firstMatch
+        // The cell's text view is all link, so accessibility shows it as a
+        // Link, not a TextView: match either, the outermost first.
+        let link = app.descendants(matching: .any).matching(NSPredicate(
+            format: "(elementType == %lu OR elementType == %lu) AND label CONTAINS %@",
+            XCUIElement.ElementType.textView.rawValue,
+            XCUIElement.ElementType.link.rawValue,
+            "skills link"
+        )).firstMatch
         XCTAssertTrue(link.waitForExistence(timeout: 5), "Link cell not found. Tree:\n\(app.debugDescription)")
 
-        link.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        // On the words, not the cell's middle: a wide cell elsewhere in the
+        // column (the code row) makes the cell wider than its link, and a tap
+        // on blank space beside a link opens nothing, as in a reply.
+        link.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5)).withOffset(CGVector(dx: 16, dy: 0)).tap()
 
         let expected = NSPredicate(format: "label == %@", "opened:https://example.com/skills")
         XCTAssertEqual(
@@ -58,10 +67,30 @@ final class SelectionObserverUITests: XCTestCase {
         )
     }
 
+    /// A repository or a site named in a chat table's code isn't a link: it
+    /// drew like one and opened the Folder on a file the host never had
+    /// (issue 1585).
+    func testInlineCodeInChatTableCellIsNotALink() throws {
+        let app = XCUIApplication.conduit()
+        app.launchArguments = ["-conduitSelectionFixture", "-conduitChatTableFixture"]
+        app.launchEnvironment["CONDUIT_UITEST"] = "1"
+        app.launch()
+
+        let opened = app.staticTexts.matching(identifier: "fixture.openedURL").firstMatch
+        XCTAssertTrue(opened.waitForExistence(timeout: 5))
+        for name in ["coleam00/excalidraw-diagram-skill", "my-app.vercel.app/docs"] {
+            let shown = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
+            XCTAssertTrue(shown.waitForExistence(timeout: 5), "\(name) not found. Tree:\n\(app.debugDescription)")
+            XCTAssertFalse(app.links.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch.exists, name)
+            shown.tap()
+            XCTAssertEqual(opened.label, "opened:none", name)
+        }
+    }
+
     /// Anchoring inside a table cell and dragging out through the rest of the
     /// response must extend the same way a paragraph-anchored drag does.
     func testCellAnchoredLongPressAndDragExtendsAcrossBlocks() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launch()
@@ -88,7 +117,7 @@ final class SelectionObserverUITests: XCTestCase {
     /// observer must be invisible outside selection gestures. (The fixture's
     /// content is shorter than the viewport, so no scroll can occur here.)
     func testPlainDragDoesNotSelectOrCopy() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launch()
 
@@ -167,7 +196,7 @@ final class SelectionObserverUITests: XCTestCase {
     /// A fast, human-like drag produces sparse touch samples; verify the
     /// selection still extends across the blocks at flick velocity.
     func testFastLongPressAndDragStillExtendsAcrossBlocks() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launch()
@@ -193,7 +222,7 @@ final class SelectionObserverUITests: XCTestCase {
     /// selection state survives the drag and copies cross-block text; the
     /// system-menu path itself is verified manually.
     func testCopyAfterDragCapturesCrossBlockText() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launch()
@@ -230,7 +259,7 @@ final class SelectionObserverUITests: XCTestCase {
     /// pill copies the coordinated text (the system menu no longer shows for
     /// cross-segment selections).
     func testCustomHandlesAndCopyPillAppearAfterCrossBlockDrag() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launch()

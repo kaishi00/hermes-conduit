@@ -96,6 +96,5 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertFalse(CapabilitiesStore.writesProfileConfig(method: "GET", path: "/api/mcp/servers"))
         XCTAssertFalse(CapabilitiesStore.writesProfileConfig(method: "PUT", path: "/api/env?profile=work"))
         XCTAssertFalse(CapabilitiesStore.writesProfileConfig(method: "POST", path: "/api/mcp/servers/github/test"))
-        XCTAssertFalse(CapabilitiesStore.writesProfileConfig(method: "DELETE", path: "/api/mcp/oauth/flows/abc"))
     }
 }

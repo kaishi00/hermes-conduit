@@ -66,6 +66,7 @@ final class GrokLiveClient: GrokLiveConnecting {
         do {
             response = try await request(DashboardPath.withProfile(Self.statusPath, profile: profile()), "GET", nil, 30_000)
         } catch let error as DashboardTicketBridgeError {
+            if let remedy = DashboardTicketBridgeError.pluginOffDetail(of: error) { return .unavailable(reason: remedy) }
             if GeminiLiveTokenClient.isMissingRoute(error) { return .pluginMissing }
             throw error
         }

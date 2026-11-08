@@ -175,6 +175,9 @@ extension AppState {
             returnPendingComposerSendToDraft(other)
         }
         pendingComposerSend = pending
+        // A message that waits says why: a reconnect kept quiet after
+        // coming back to the app shows from now (#1624).
+        endQuietReturn()
         // The chat shows it below its rows, the saved copy's included.
         switch composerChatOnScreen {
         case .live, .savedCopy: requestChatScrollToLatest()
@@ -252,6 +255,11 @@ extension AppState {
     }
 
     func dismissComposerNotice() {
+        // A file lookup's notice gives back the one it covered.
+        if let said = workspaceLookupNotice, composerNotice == said {
+            clearWorkspaceLookupNotice()
+            return
+        }
         composerNotice = nil
     }
 

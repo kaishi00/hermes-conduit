@@ -5,11 +5,13 @@
 //  Reads what another app shared (#812) through the documented
 //  NSExtensionItem / NSItemProvider path: text, links, pictures, videos and
 //  files. Files are copied straight into the draft's staging folder (never
-//  read into memory whole), checked against the share's caps, and named by
-//  the collector; the sending app's file name is only a label.
+//  read into memory whole, except a picture whose file can't be read,
+//  which is read as bytes or as an image object and written as PNG), checked against the share's caps, and
+//  named by the collector; the sending app's file name is only a label.
 //
 
 import Foundation
+import os
 import UIKit
 import UniformTypeIdentifiers
 
@@ -24,8 +26,9 @@ enum ShareDraftProblem: Equatable {
     case tooManyFiles(dropped: Int, limit: Int)
     /// Text cut at the character cap.
     case textTruncated(limit: Int)
-    /// Something the sending app offered but couldn't hand over.
-    case unreadable(name: String)
+    /// Something the sending app offered but couldn't hand over, with the
+    /// system's reason when it gave one.
+    case unreadable(name: String, reason: String?)
 }
 
 /// What the collector made of a share.
@@ -83,12 +86,17 @@ struct ShareDraftCollector {
                 if let text = await Self.loadText(provider) { texts.append(text) }
                 continue
             case .link:
-                guard let url = await Self.loadURL(provider) else { continue }
-                // A file handed over as a link is a file like any other.
-                guard url.isFileURL else {
-                    links.append(url.absoluteString)
+                if let url = await Self.loadURL(provider) {
+                    // A file handed over as a link is a file like any other.
+                    guard url.isFileURL else {
+                        links.append(url.absoluteString)
+                        continue
+                    }
+                } else if !Self.offersFileURL(provider) {
                     continue
                 }
+                // A file URL that didn't load as a link is read as a file,
+                // or named as left out.
             case .file:
                 break
             }
@@ -109,8 +117,8 @@ struct ShareDraftCollector {
                 }
             case .tooLarge(let name):
                 problems.append(.fileTooLarge(name: name, limitBytes: fileByteLimit))
-            case .failed(let name):
-                problems.append(.unreadable(name: name))
+            case .failed(let name, let reason):
+                problems.append(.unreadable(name: name, reason: reason))
             }
         }
         if droppedFiles > 0 {
@@ -146,6 +154,9 @@ struct ShareDraftCollector {
         let types = provider.registeredTypeIdentifiers.compactMap(UTType.init)
         if types.contains(where: { $0.conforms(to: .fileURL) }) { return .link }
         if fileType(of: provider) != nil { return .file }
+        // A picture offered only as an image object (the screenshot
+        // editor's Share hands over UIKit's own image type, #1747).
+        if offersImageObjectOnly(provider) { return .file }
         if types.contains(where: { $0.conforms(to: .url) }) { return .link }
         if types.contains(where: { $0.conforms(to: .text) }) { return .text }
         return .unsupported
@@ -154,7 +165,7 @@ struct ShareDraftCollector {
     /// The type a provider's file is read as: a picture, video, audio,
     /// PDF or other document, or plain text that comes with a file name.
     static func fileType(of provider: NSItemProvider) -> UTType? {
-        let types = provider.registeredTypeIdentifiers.compactMap(UTType.init)
+        let types = fileTypeCandidates(provider)
         let media: [UTType] = [.image, .movie, .audio, .pdf]
         if let type = types.first(where: { type in media.contains { type.conforms(to: $0) } }) { return type }
         let hasName = !((provider.suggestedName ?? "") as NSString).pathExtension.isEmpty
@@ -163,6 +174,23 @@ struct ShareDraftCollector {
         }
         if hasName, let type = types.first(where: { $0.conforms(to: .text) && !$0.conforms(to: .url) }) { return type }
         return nil
+    }
+
+    /// UIKit's own type for an image object. Its bytes are an archived
+    /// `UIImage`, not a picture file, so it is never read as a file type.
+    static let imageObjectType = "com.apple.uikit.image"
+
+    private static func fileTypeCandidates(_ provider: NSItemProvider) -> [UTType] {
+        provider.registeredTypeIdentifiers.filter { $0 != imageObjectType }.compactMap(UTType.init)
+    }
+
+    /// Whether a provider's only picture is an image object: it lists no
+    /// file, link or text type but can still be read as a `UIImage`.
+    static func offersImageObjectOnly(_ provider: NSItemProvider) -> Bool {
+        let types = fileTypeCandidates(provider)
+        let readable: [UTType] = [.data, .url, .text]
+        guard !types.contains(where: { type in readable.contains { type.conforms(to: $0) } }) else { return false }
+        return provider.canLoadObject(ofClass: UIImage.self)
     }
 
     // MARK: Reading
@@ -207,52 +235,140 @@ struct ShareDraftCollector {
     enum StagedFile: Equatable {
         case staged(ShareDraftAttachment)
         case tooLarge(String)
-        case failed(String)
+        /// The name, and the system's reason when one was given.
+        case failed(String, reason: String?)
     }
 
     /// Copies one provider's file into the staging folder, size checked
-    /// before and after the copy. A picture only offered as an image
-    /// object (a screenshot's markup) is written as PNG.
+    /// before and after the copy. Each way the provider offers it is tried
+    /// in turn (issue 1747): its file, then a picture's bytes, then the
+    /// picture as an image object (written as PNG), then whatever item it
+    /// hands over. It is left out only when every way failed, with the
+    /// first reason the system gave; each failed step is logged.
     func stageFile(_ provider: NSItemProvider, ordinal: Int) async -> StagedFile {
         let type = Self.fileType(of: provider) ?? Self.fileURLType(of: provider)
         let displayName = Self.displayName(suggested: provider.suggestedName, type: type, ordinal: ordinal)
-        if let type, provider.hasItemConformingToTypeIdentifier(type.identifier) {
-            let copied: StagedFile? = await withCheckedContinuation { continuation in
-                _ = provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, _ in
-                    // The file is only there until this handler returns.
-                    continuation.resume(returning: url.map {
-                        copy($0, type: UTType(filenameExtension: $0.pathExtension) ?? type, displayName: displayName, ordinal: ordinal)
-                    })
-                }
-            }
-            if let copied { return copied }
-        }
-        // A file offered as a file URL, or an image offered as an object.
         let suggestedName = provider.suggestedName
-        return await withCheckedContinuation { continuation in
-            // The type itself when the provider has it, else the file URL it
-            // offers (a file shared by name only).
-            let registered = provider.registeredTypeIdentifiers
-            let fileURL = registered.first { UTType($0)?.conforms(to: .fileURL) == true }
-            let identifier = type.flatMap { type in registered.contains(type.identifier) ? type.identifier : nil }
-                ?? fileURL ?? registered.first ?? UTType.data.identifier
-            provider.loadItem(forTypeIdentifier: identifier, options: nil) { item, _ in
-                switch item {
-                case let url as URL where url.isFileURL:
-                    let accessing = url.startAccessingSecurityScopedResource()
-                    defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-                    let name = Self.displayName(suggested: suggestedName ?? url.lastPathComponent, type: type, ordinal: ordinal)
-                    continuation.resume(returning: copy(url, type: UTType(filenameExtension: url.pathExtension) ?? type, displayName: name, ordinal: ordinal))
-                case let image as UIImage:
-                    let name = Self.displayName(suggested: suggestedName, type: .png, ordinal: ordinal)
-                    continuation.resume(returning: write(image.pngData(), type: .png, displayName: name, ordinal: ordinal))
-                case let data as Data:
-                    continuation.resume(returning: write(data, type: type, displayName: displayName, ordinal: ordinal))
-                default:
-                    continuation.resume(returning: .failed(displayName))
+        var reasons: [String] = []
+        func failed(_ step: String, _ outcome: StagedFile?, error: Error?) {
+            var reason = error?.localizedDescription
+            if case .failed(_, let own)? = outcome { reason = reason ?? own }
+            Self.log.error("Share #\(ordinal, privacy: .public) \(step, privacy: .public) failed: \(reason ?? "no reason given", privacy: .private)")
+            if let reason, !reason.isEmpty { reasons.append(reason) }
+        }
+        Self.log.info("Share #\(ordinal, privacy: .public) types \(provider.registeredTypeIdentifiers.joined(separator: ","), privacy: .public), file type \(type?.identifier ?? "none", privacy: .public), named \(suggestedName != nil, privacy: .public)")
+
+        // 1. Its file.
+        if let type, provider.hasItemConformingToTypeIdentifier(type.identifier) {
+            let (copied, error): (StagedFile?, Error?) = await withCheckedContinuation { continuation in
+                _ = provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, error in
+                    // The file is only there until this handler returns.
+                    continuation.resume(returning: (url.map {
+                        copy($0, type: UTType(filenameExtension: $0.pathExtension) ?? type, displayName: displayName, ordinal: ordinal)
+                    }, error))
                 }
             }
+            if let copied, Self.settles(copied) { return copied }
+            failed("file", copied, error: error)
         }
+
+        // 2. A picture's bytes. Only a picture: a video or document read
+        // into memory whole could take the extension past its memory.
+        if let type, type.conforms(to: .image), provider.hasItemConformingToTypeIdentifier(type.identifier) {
+            let (data, error): (Data?, Error?) = await withCheckedContinuation { continuation in
+                _ = provider.loadDataRepresentation(forTypeIdentifier: type.identifier) { data, error in
+                    continuation.resume(returning: (data, error))
+                }
+            }
+            // Bytes that don't decode as a picture fall through to the
+            // image object, which may hold a good one.
+            // Size first: a payload over the limit is never decoded.
+            let written = data.flatMap { data -> StagedFile? in
+                guard Int64(data.count) <= fileByteLimit else { return .tooLarge(displayName) }
+                return ProviderPicture.decodes(data) ? write(data, type: type, displayName: displayName, ordinal: ordinal) : nil
+            }
+            if let written, Self.settles(written) { return written }
+            failed("data", written, error: error)
+        }
+
+        // 3. The picture as an image object, whatever picture type it
+        // lists too: the screenshot editor's Share hands over UIKit's own
+        // image. Never for a video or document, whose preview would stand
+        // in for the file.
+        if type.map({ $0.conforms(to: .image) }) ?? true, provider.canLoadObject(ofClass: UIImage.self) {
+            let (image, error) = await ProviderPicture.loadImage(provider)
+            let name = Self.pngName(suggested: suggestedName, ordinal: ordinal)
+            let written = image.map { write(ProviderPicture.pngData($0), type: .png, displayName: name, ordinal: ordinal) }
+            if let written, Self.settles(written) { return written }
+            failed("image", written, error: error)
+        }
+
+        // 4. Whatever item it hands over under its type, then the file
+        // URL it offers (a file shared by name only). UIKit's archived
+        // image is never read as a file.
+        let registered = provider.registeredTypeIdentifiers.filter { $0 != Self.imageObjectType }
+        let fileURL = registered.first { UTType($0)?.conforms(to: .fileURL) == true }
+        var identifiers: [String] = []
+        for candidate in [type.flatMap { registered.contains($0.identifier) ? $0.identifier : nil }, fileURL] {
+            if let candidate, !identifiers.contains(candidate) { identifiers.append(candidate) }
+        }
+        if identifiers.isEmpty, let first = registered.first { identifiers = [first] }
+        for identifier in identifiers {
+            let asFileURL = UTType(identifier)?.conforms(to: .fileURL) == true
+            let (item, error): (StagedFile?, Error?) = await withCheckedContinuation { continuation in
+                provider.loadItem(forTypeIdentifier: identifier, options: nil) { item, error in
+                    // A file URL handed over as bytes is the URL, not the file.
+                    var loaded: NSSecureCoding? = item
+                    if asFileURL, let data = item as? Data {
+                        loaded = URL(dataRepresentation: data, relativeTo: nil).map { $0 as NSURL }
+                    }
+                    switch loaded {
+                    case let url as URL where url.isFileURL:
+                        let accessing = url.startAccessingSecurityScopedResource()
+                        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+                        let name = Self.displayName(suggested: suggestedName ?? url.lastPathComponent, type: type, ordinal: ordinal)
+                        continuation.resume(returning: (copy(url, type: UTType(filenameExtension: url.pathExtension) ?? type, displayName: name, ordinal: ordinal), error))
+                    case let image as UIImage:
+                        continuation.resume(returning: (write(ProviderPicture.pngData(image), type: .png, displayName: Self.pngName(suggested: suggestedName, ordinal: ordinal), ordinal: ordinal), error))
+                    case let data as Data where !asFileURL:
+                        // Picture bytes count only when they decode, as in step 2.
+                        let isPicture = type?.conforms(to: .image) == true
+                        if Int64(data.count) > fileByteLimit {
+                            continuation.resume(returning: (.tooLarge(displayName), error))
+                        } else if isPicture, !ProviderPicture.decodes(data) {
+                            continuation.resume(returning: (nil, error))
+                        } else {
+                            continuation.resume(returning: (write(data, type: type, displayName: displayName, ordinal: ordinal), error))
+                        }
+                    default:
+                        continuation.resume(returning: (nil, error))
+                    }
+                }
+            }
+            if let item, Self.settles(item) { return item }
+            failed("item \(identifier)", item, error: error)
+        }
+        return .failed(displayName, reason: reasons.first)
+    }
+
+    /// A picture written as PNG: the suggested name's stem, its own
+    /// extension dropped.
+    private static func pngName(suggested: String?, ordinal: Int) -> String {
+        let stem = ((suggested ?? "") as NSString).deletingPathExtension
+        return displayName(suggested: stem.isEmpty ? nil : "\(stem).png", type: .png, ordinal: ordinal)
+    }
+
+    private static let log = Logger(subsystem: "com.milim.relay", category: "ShareDraft")
+
+    /// Whether a step's outcome is the answer: staged, or too large (the
+    /// same file is no smaller read another way).
+    private static func settles(_ outcome: StagedFile) -> Bool {
+        if case .failed = outcome { return false }
+        return true
+    }
+
+    private static func offersFileURL(_ provider: NSItemProvider) -> Bool {
+        provider.registeredTypeIdentifiers.contains { UTType($0)?.conforms(to: .fileURL) == true }
     }
 
     private static func fileURLType(of provider: NSItemProvider) -> UTType? {
@@ -261,17 +377,26 @@ struct ShareDraftCollector {
     }
 
     private func copy(_ source: URL, type: UTType?, displayName: String, ordinal: Int) -> StagedFile {
-        guard let size = (try? source.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map(Int64.init) else {
-            return .failed(displayName)
+        let size: Int64
+        do {
+            guard let read = try source.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
+                return .failed(displayName, reason: nil)
+            }
+            size = Int64(read)
+        } catch {
+            return .failed(displayName, reason: error.localizedDescription)
         }
         guard size <= fileByteLimit else { return .tooLarge(displayName) }
-        guard size > 0 else { return .failed(displayName) }
+        guard size > 0 else { return .failed(displayName, reason: nil) }
         let storedName = ShareDraftNames.storedName(ordinal: ordinal, pathExtension: Self.pathExtension(displayName: displayName, type: type))
-        guard let destination = ShareDraftInbox.file(named: storedName, in: staging.url) else { return .failed(displayName) }
+        guard let destination = ShareDraftInbox.file(named: storedName, in: staging.url) else { return .failed(displayName, reason: nil) }
         do {
             try FileManager.default.copyItem(at: source, to: destination)
         } catch {
-            return .failed(displayName)
+            // A copy cut short would otherwise ride along in the draft
+            // folder beside a later step's file.
+            try? FileManager.default.removeItem(at: destination)
+            return .failed(displayName, reason: error.localizedDescription)
         }
         // Checked again on the copy: the source could have grown meanwhile.
         guard let copied = (try? destination.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map(Int64.init),
@@ -283,11 +408,15 @@ struct ShareDraftCollector {
     }
 
     private func write(_ data: Data?, type: UTType?, displayName: String, ordinal: Int) -> StagedFile {
-        guard let data, !data.isEmpty else { return .failed(displayName) }
+        guard let data, !data.isEmpty else { return .failed(displayName, reason: nil) }
         guard Int64(data.count) <= fileByteLimit else { return .tooLarge(displayName) }
         let storedName = ShareDraftNames.storedName(ordinal: ordinal, pathExtension: Self.pathExtension(displayName: displayName, type: type))
-        guard let destination = ShareDraftInbox.file(named: storedName, in: staging.url),
-              (try? data.write(to: destination, options: .atomic)) != nil else { return .failed(displayName) }
+        guard let destination = ShareDraftInbox.file(named: storedName, in: staging.url) else { return .failed(displayName, reason: nil) }
+        do {
+            try data.write(to: destination, options: .atomic)
+        } catch {
+            return .failed(displayName, reason: error.localizedDescription)
+        }
         return .staged(ShareDraftAttachment(storedName: storedName, displayName: displayName, typeIdentifier: type?.identifier, byteCount: Int64(data.count)))
     }
 

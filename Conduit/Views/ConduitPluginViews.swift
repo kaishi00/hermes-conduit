@@ -339,49 +339,61 @@ struct NotifierPluginUpdateStatusView: View {
     var body: some View {
         Group {
             if let row = Self.row(for: appState.activeNotifierPluginUpdate, plugin: appState.notifierPlugin) {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        if let symbol = row.symbol {
-                            Image(systemName: symbol).foregroundStyle(row.tint).accessibilityHidden(true)
-                        } else {
-                            ProgressView().controlSize(.small)
-                        }
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(verbatim: row.title)
-                                .scaledFont(.subheadline.weight(.semibold))
-                                .fixedSize(horizontal: false, vertical: true)
-                            if case .updating(let step) = appState.activeNotifierPluginUpdate {
-                                NotifierPluginUpdateProgress(step: step, startedAt: appState.notifierPluginUpdate.startedAt)
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            if let symbol = row.symbol {
+                                Image(systemName: symbol).foregroundStyle(row.tint).accessibilityHidden(true)
+                            } else {
+                                ProgressView().controlSize(.small)
                             }
-                            if let detail = row.detail, !detail.isEmpty {
-                                Text(verbatim: detail)
-                                    .scaledFont(.footnote)
-                                    .foregroundStyle(.secondary)
-                                    .textSelection(.enabled)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(verbatim: row.title)
+                                    .scaledFont(.subheadline.weight(.semibold))
                                     .fixedSize(horizontal: false, vertical: true)
+                                if case .updating(let step) = appState.activeNotifierPluginUpdate {
+                                    NotifierPluginUpdateProgress(step: step, startedAt: appState.notifierPluginUpdate.startedAt)
+                                }
+                                if let detail = row.detail, !detail.isEmpty {
+                                    Text(verbatim: detail)
+                                        .scaledFont(.footnote)
+                                        .foregroundStyle(.secondary)
+                                        .textSelection(.enabled)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
                             }
+                        }
+                        .accessibilityElement(children: .combine)
+                        Spacer(minLength: 0)
+                        if row.symbol != nil {
+                            Button { appState.dismissNotifierPluginUpdateOutcome() } label: {
+                                Image(systemName: "xmark")
+                                    .scaledFont(.footnote.weight(.semibold))
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel(Text(AppLocalization.string("Dismiss")))
+                        } else {
+                            Button(AppLocalization.string("Cancel")) { appState.cancelNotifierPluginUpdate() }
+                                .buttonStyle(.settings)
                         }
                     }
-                    .accessibilityElement(children: .combine)
-                    Spacer(minLength: 0)
-                    if row.symbol != nil {
-                        Button { appState.dismissNotifierPluginUpdateOutcome() } label: {
-                            Image(systemName: "xmark")
-                                .scaledFont(.footnote.weight(.semibold))
-                                .frame(minWidth: 44, minHeight: 44)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel(Text(AppLocalization.string("Dismiss")))
-                    } else {
-                        Button(AppLocalization.string("Cancel")) { appState.cancelNotifierPluginUpdate() }
-                            .buttonStyle(.settings)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    if case .updating(.restartingGateway(.draining)) = appState.activeNotifierPluginUpdate {
+                        GatewayWaitView().padding(.leading, 28)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                // The first step: the change from idle lands before this
+                // row exists to see it.
+                .onAppear {
+                    guard case .updating = appState.activeNotifierPluginUpdate else { return }
+                    AccessibilityNotification.Announcement(row.title).post()
+                }
             }
         }
+        // Held by the row, so only once it shows.
         .onChange(of: appState.activeNotifierPluginUpdate) { previous, state in
             let before = Self.row(for: previous, plugin: appState.notifierPlugin)
             guard let row = Self.row(for: state, plugin: appState.notifierPlugin),
@@ -575,12 +587,21 @@ struct NotifierPluginUpdateBanner: View {
                 }
                 if case .updating(let step) = update {
                     NotifierPluginUpdateProgress(step: step, startedAt: appState.notifierPluginUpdate.startedAt)
+                    if case .restartingGateway(.draining) = step {
+                        GatewayWaitView()
+                    }
                 }
                 if update == .runningOnHost, let detail = row?.detail {
                     Text(verbatim: detail)
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                } else if update != .idle, !update.isInProgress, let detail = row?.detail {
+                    // Why it failed and what to do (Hermes' words, issue 1889); Settings shows it whole.
+                    Text(verbatim: detail)
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(4)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -627,7 +648,10 @@ struct NotifierPluginUpdateBanner: View {
         // The notice and how it ended are announced; each step isn't.
         .task(id: update.isInProgress ? nil : text) {
             guard !update.isInProgress else { return }
-            UIAccessibility.post(notification: .announcement, argument: text)
+            // How it ended, with why when it says (a failure's detail).
+            let detail = update == .idle ? nil : row?.detail
+            UIAccessibility.post(notification: .announcement,
+                                 argument: [text, detail].compactMap { $0 }.joined(separator: ". "))
         }
         // A finished update leaves on its own once Conduit is connected
         // again; with VoiceOver on it stays until closed.

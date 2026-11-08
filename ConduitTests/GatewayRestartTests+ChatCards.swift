@@ -157,6 +157,66 @@ extension GatewayRestartTests {
         XCTAssertNil(cards.plan, "a chat without a plan has no card")
     }
 
+    // MARK: - A workstream's checklist
+
+    private func workItem(_ checklist: [(String, String)]) -> BotWorkItem? {
+        BotWorkItem(row: ["ref": "W3", "kind": "workstream", "status": "running", "session_id": "s1",
+                          "checklist": checklist.map { ["step": $0.0, "state": $0.1] }])
+    }
+
+    func testAWorkstreamsChecklistReadsAsAPlan() throws {
+        let plan = try XCTUnwrap(workItem([("Read the logs", "done"), ("Fix it", "doing"), ("Ship", "todo")])?.checklistPlan)
+        XCTAssertEqual(plan.items.map(\.status), [.completed, .inProgress, .pending])
+        XCTAssertEqual(plan.current?.content, "Fix it")
+        XCTAssertEqual(plan.completedCount, 1)
+        XCTAssertNil(workItem([])?.checklistPlan, "no checklist, no plan")
+        let resolved = BotWorkItem(row: ["ref": "W3", "kind": "workstream", "status": "stopped", "closed": true,
+                                         "checklist": [["step": "Fix it", "state": "doing"]]])
+        XCTAssertEqual(resolved?.checklistPlan?.items.map(\.status), [.pending],
+                       "resolved work's stopped step isn't drawn as under way")
+    }
+
+    func testAWorkstreamsChatShowsItsChecklistAheadOfHermesTodo() throws {
+        let cards = ChatCardsModel(defaults: freshDefaults())
+        cards.transcriptChanged([todoRow("t1", output: result([("1", "Hermes' own", "pending")]))], for: cardsChat)
+        XCTAssertEqual(cards.plan?.items.first?.content, "Hermes' own")
+
+        cards.applyWorkPlan(try XCTUnwrap(workItem([("Read the logs", "doing")])?.checklistPlan), for: cardsChat)
+        XCTAssertEqual(cards.plan?.items.map(\.content), ["Read the logs"], "the worker's checklist is that chat's plan")
+        XCTAssertEqual(cards.announcement, 0, "the checklist the chat opened with isn't news")
+
+        cards.transcriptChanged([todoRow("t2", output: result([("1", "Newer todo", "pending")]), at: nowStamp())],
+                                for: cardsChat)
+        XCTAssertEqual(cards.plan?.items.map(\.content), ["Read the logs"], "a todo row doesn't take its place")
+
+        cards.applyWorkPlan(try XCTUnwrap(workItem([("Read the logs", "done"), ("Fix it", "doing")])?.checklistPlan),
+                            for: cardsChat)
+        XCTAssertEqual(cards.plan?.completedCount, 1)
+
+        cards.applyWorkPlan(nil, for: cardsChat)
+        XCTAssertEqual(cards.plan?.items.map(\.content), ["Newer todo"], "without a checklist, Hermes' plan shows again")
+    }
+
+    func testAResumeKeepsTheChecklistAndItsPlanStandsAfter() throws {
+        let cards = ChatCardsModel(defaults: freshDefaults())
+        cards.applyWorkPlan(try XCTUnwrap(workItem([("Read the logs", "doing")])?.checklistPlan), for: cardsChat)
+        cards.applyServerPlan(AgentPlan(snapshotJSON: result([("1", "From the server", "pending")])), for: cardsChat)
+        XCTAssertEqual(cards.plan?.items.map(\.content), ["Read the logs"], "a resume doesn't replace the checklist")
+
+        cards.clearWorkPlan()
+        XCTAssertEqual(cards.plan?.items.map(\.content), ["From the server"],
+                       "once the work leaves the list, the resume's plan shows")
+    }
+
+    func testANewChecklistWhileTheWorkstreamsChatIsOpenIsAnnounced() throws {
+        let cards = ChatCardsModel(defaults: freshDefaults())
+        cards.applyWorkPlan(nil, for: cardsChat)
+        XCTAssertNil(cards.plan)
+        cards.applyWorkPlan(try XCTUnwrap(workItem([("Read the logs", "doing")])?.checklistPlan), for: cardsChat)
+        XCTAssertEqual(cards.announcement, 1)
+        XCTAssertTrue(cards.showsPlan)
+    }
+
     func testServerPlanStandsUntilTheTranscriptShowsOne() {
         let cards = ChatCardsModel(defaults: freshDefaults())
         let server = AgentPlan(snapshotJSON: result([("1", "From the server", "in_progress")]))

@@ -879,6 +879,78 @@ extension AppStateMultiDashboardTests {
         XCTAssertNotNil(appState.pendingLoginFailure, "...saying why")
     }
 
+    /// A switch runs to its end when the task that asked for it is
+    /// cancelled halfway. A notification tap's route restarts when the
+    /// switch retires the outgoing connection, and cancelling the target's
+    /// sign-in there left Conduit on the login screen, connected to neither
+    /// dashboard (issue 1888).
+    func testCancellingTheCallerDoesNotStopASwitchHalfway() async {
+        let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let vps = dashboard("VPS", "https://hermes.example.com")
+        var caller: Task<Void, Never>?
+        var mintSawCancellation: Bool?
+        let appState = makeAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps]),
+            mintTicket: { _ in
+                caller?.cancel()
+                mintSawCancellation = Task.isCancelled
+                throw DashboardTicketBridgeError.signInRequired
+            }
+        )
+        KeychainHelper.saveNativeOAuthTokens(grant(), dashboardID: track(vps.id))
+
+        caller = Task { await appState.switchDashboard(to: vps.id) }
+        await caller?.value
+
+        XCTAssertEqual(mintSawCancellation, false, "The caller's cancellation never reaches the target's sign-in")
+        XCTAssertEqual(appState.activeDashboardID, vps.id)
+        XCTAssertFalse(appState.isConnecting, "Nothing is left connecting")
+        XCTAssertNotNil(appState.pendingLoginFailure, "The sign-in ran to its answer")
+    }
+
+    /// Removing a dashboard while a switch to it is still signing in ends
+    /// that switch: its answer never adds the dashboard back or selects it.
+    func testRemovingADashboardMidSwitchEndsTheSwitch() async {
+        let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let vps = dashboard("VPS", "https://hermes.example.com")
+        var appState: AppState!
+        appState = makeAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps]),
+            mintTicket: { _ in
+                appState.removeDashboard(vps.id)
+                return "ticket"
+            }
+        )
+        KeychainHelper.saveNativeOAuthTokens(grant(), dashboardID: track(vps.id))
+
+        await appState.switchDashboard(to: vps.id)
+
+        XCTAssertNil(appState.savedDashboardRegistry.dashboard(with: vps.id), "The removed dashboard stays removed")
+        XCTAssertNil(appState.activeDashboardID)
+        XCTAssertNil(appState.connection, "Nothing connects to it")
+    }
+
+    /// Disconnecting while a switch is still signing in ends that switch:
+    /// its answer never connects the dashboard the user just left.
+    func testDisconnectingMidSwitchEndsTheSwitch() async {
+        let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let vps = dashboard("VPS", "https://hermes.example.com")
+        var appState: AppState!
+        appState = makeAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps]),
+            mintTicket: { _ in
+                appState.disconnect()
+                return "ticket"
+            }
+        )
+        KeychainHelper.saveNativeOAuthTokens(grant(), dashboardID: track(vps.id))
+
+        await appState.switchDashboard(to: vps.id)
+
+        XCTAssertNil(appState.connection, "Nothing connects after Disconnect")
+        XCTAssertFalse(appState.isConnecting)
+    }
+
     /// The sign-in screen's row for that dashboard: a tap reaches the grant
     /// and, when it is refused, shows why. It never does nothing.
     func testTappingAGrantOnlyDashboardRowIsNeverADeadTap() async {
@@ -983,6 +1055,24 @@ extension AppStateMultiDashboardTests {
         XCTAssertFalse(FileManager.default.fileExists(
             atPath: avatarsRoot.appendingPathComponent(ProfileAppearanceStore.fileName(for: "default")).path
         ))
+    }
+
+    func testAChatsChecklistIsSavedOnlyThroughItsOwnDashboard() throws {
+        // #1745: a tick queued on one Hermes must not be sent to the other
+        // after a switch, which would accept the chat's ids and answer saved.
+        let primary = dashboard("Primary", "https://mac.tailnet.ts.net")
+        let review = dashboard("Review", "https://review.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: primary.id, dashboards: [primary, review]))
+        let bridge = DashboardTicketBridge(baseURL: primary.normalizedURL)
+        appState.installDashboardTicketBridgeForTesting(bridge)
+        XCTAssertTrue(try appState.richChecklistBridge(for: primary.id) === bridge)
+
+        appState.selectDashboardTarget(review.id)
+        XCTAssertThrowsError(try appState.richChecklistBridge(for: primary.id), "the switch is under way")
+        let reviewBridge = DashboardTicketBridge(baseURL: review.normalizedURL)
+        appState.installDashboardTicketBridgeForTesting(reviewBridge)
+        XCTAssertThrowsError(try appState.richChecklistBridge(for: primary.id), "the other Hermes")
+        XCTAssertTrue(try appState.richChecklistBridge(for: review.id) === reviewBridge)
     }
 
     func testHiddenModelsAreRememberedPerDashboard() {
@@ -1233,6 +1323,97 @@ extension AppStateMultiDashboardTests {
 
     /// Connected to Mac through a bridge whose requests the test answers;
     /// VPS is the dashboard switched to (authless, so nothing connects).
+    /// Helper models read the same kept slots as Voice replies, list
+    /// each slot but Pulse's, and a pick Hermes' price check asks about
+    /// comes back for the user to confirm, not as a refusal.
+    func testHelperModelsShareTheSlotsAndAskBeforeAnExpensivePick() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let load = Task { try await appState.loadHelperModels() }
+        try await held.waitForRequests(1)
+        try await held.answer(["tasks": [
+            ["task": "title_generation", "provider": "auto", "model": ""],
+            ["task": "voice_chat", "provider": "openrouter", "model": "fast/model", "reasoning_effort": "none"],
+            ["task": "pulse_memory", "provider": "auto", "model": "", "label": "Pulse memory", "plugin": "conduit_push"],
+        ]])
+        let slots = try await load.value
+        XCTAssertEqual(slots.map(\.id), ["title_generation", "voice_chat"])
+        XCTAssertEqual(appState.keptHelperModels()?.map(\.id), ["title_generation", "voice_chat"])
+        XCTAssertEqual(appState.keptVoiceReplyModel()?.model, "fast/model", "Voice replies opens on the same read")
+        XCTAssertEqual(appState.keptHelperModel(task: "title_generation")?.followsChats, true)
+
+        let pick = VoiceReplyModelSetting(task: "title_generation", provider: "openrouter", model: "big/model", reasoningEffort: nil)
+        let save = Task { await appState.setHelperModel(pick, confirmed: false) }
+        try await held.waitForRequests(2)
+        try await held.answer(["ok": false, "confirm_required": true, "confirm_message": "big/model costs $75 per million tokens."])
+        let result = await save.value
+        XCTAssertEqual(result, .needsConfirmation("big/model costs $75 per million tokens."))
+        XCTAssertEqual(held.sent.map(\.path), [AppState.KeptRoute.modelAuxiliary, "/api/model/set"])
+
+        // Taken with the user's yes: the kept slots follow the save before
+        // the read after it answers, or if it never does.
+        let confirmed = Task { await appState.setHelperModel(pick, confirmed: true) }
+        try await held.waitForRequests(3)
+        try await held.answer(["ok": true, "scope": "auxiliary", "tasks": ["title_generation"]])
+        let confirmedResult = await confirmed.value
+        XCTAssertEqual(confirmedResult, .saved)
+        XCTAssertEqual(appState.keptHelperModel(task: "title_generation")?.model, "big/model")
+        XCTAssertEqual(appState.keptHelperModel(task: "title_generation")?.provider, "openrouter")
+        XCTAssertEqual(appState.keptVoiceReplyModel()?.model, "fast/model", "the other slots stay as kept")
+        // The read after the save answers before the test ends, so nothing
+        // of this AppState is left running once it's gone.
+        try await held.waitForRequests(4)
+        try await held.answer(["tasks": [
+            ["task": "title_generation", "provider": "openrouter", "model": "big/model"],
+            ["task": "voice_chat", "provider": "openrouter", "model": "fast/model", "reasoning_effort": "none"],
+        ]])
+        for _ in 0..<100 where appState.keptHelperModels(includingSetElsewhere: true)?.count != 2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(appState.keptHelperModels(includingSetElsewhere: true).map { Set($0.map(\.id)) },
+                       Set(["title_generation", "voice_chat"]), "the read after the save is kept")
+    }
+
+    /// The Model page and its Helper models section read together: one
+    /// request answers both.
+    func testHelperModelReadersAskingTogetherShareOneRead() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let page = Task { try await appState.loadHelperModels() }
+        try await held.waitForRequests(1)
+        let section = Task { try await appState.loadHelperModels() }
+        for _ in 0..<5 { await Task.yield() }
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "auto", "model": ""]]])
+        let pageSlots = try await page.value
+        let sectionSlots = try await section.value
+        XCTAssertEqual(pageSlots.map(\.id), ["title_generation"])
+        XCTAssertEqual(sectionSlots.map(\.id), ["title_generation"])
+        XCTAssertEqual(held.sent.map(\.path), [AppState.KeptRoute.modelAuxiliary], "one request for both")
+    }
+
+    /// A read asked after a save isn't answered by one asked before it: it
+    /// joins the read the save starts.
+    func testAHelperModelSaveDropsTheSharedRead() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let before = Task { try await appState.loadHelperModels() }
+        try await held.waitForRequests(1)
+        let pick = VoiceReplyModelSetting(task: "title_generation", provider: "openrouter", model: "big/model", reasoningEffort: nil)
+        let save = Task { await appState.setHelperModel(pick, confirmed: true) }
+        try await held.waitForRequests(2)
+        try await held.answer(["ok": true, "scope": "auxiliary", "tasks": ["title_generation"]], at: 1)
+        let saved = await save.value
+        XCTAssertEqual(saved, .saved)
+        try await held.waitForRequests(3)
+        let after = Task { try await appState.loadHelperModels() }
+        for _ in 0..<5 { await Task.yield() }
+
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "auto", "model": ""]]])
+        _ = try await before.value
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "openrouter", "model": "big/model"]]])
+        let afterSlots = try await after.value
+        XCTAssertEqual(afterSlots.first?.setting.model, "big/model", "the read after the save")
+        XCTAssertEqual(held.sent.map(\.path), [AppState.KeptRoute.modelAuxiliary, "/api/model/set", AppState.KeptRoute.modelAuxiliary],
+                       "the read after the save joined the save's own")
+    }
+
     private func heldSwitchFixture() -> (appState: AppState, held: HeldDashboardRequests, vps: SavedDashboard) {
         let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
         let vps = dashboard("VPS", "https://vps-\(UUID().uuidString.lowercased()).invalid")
@@ -1482,12 +1663,13 @@ extension AppStateMultiDashboardTests {
         let first = WorkspaceExplorer()
         first.attach(appState)
         let open = Task { await first.open(root: "/w/app", profile: appState.activeProfile) }
-        try await held.waitForRequests(1)
-        try await held.answer(["ok": true, "entries": [["name": "src", "path": "/w/app/src", "isDirectory": true]]])
+        // The listing and the recent files are read together (issue 1964),
+        // so either can go first: each is answered by its path.
         try await held.waitForRequests(2)
-        try await held.answer(["ok": true, "entries": [["name": "notes.md", "path": "/w/app/notes.md"]]])
+        try await held.answer(["ok": true, "entries": [["name": "src", "path": "/w/app/src", "isDirectory": true]]], toPathEnding: "/workspace/list")
+        try await held.answer(["ok": true, "entries": [["name": "notes.md", "path": "/w/app/notes.md"]]], toPathEnding: "/workspace/recent")
         await open.value
-        XCTAssertEqual(held.sent.map(\.path), [
+        XCTAssertEqual(Set(held.sent.map(\.path)), [
             "/api/plugins/conduit_push/workspace/list", "/api/plugins/conduit_push/workspace/recent",
         ])
 
@@ -1497,8 +1679,8 @@ extension AppStateMultiDashboardTests {
         try await held.waitForRequests(3)
         XCTAssertEqual(next.rows().map { $0.entry.name }, ["src"], "Shown before Hermes answers")
         XCTAssertEqual(next.recent.map(\.name), ["notes.md"])
-        try await held.answer(["error": "boom"], status: 500)
         try await held.waitForRequests(4)
+        try await held.answer(["error": "boom"], status: 500)
         try await held.answer(["error": "boom"], status: 500)
         await reopen.value
 
@@ -1529,6 +1711,59 @@ extension AppStateMultiDashboardTests {
         }
         XCTAssertTrue(held.sent.contains { $0.path == NotifierPluginStatus.path })
         XCTAssertEqual(asking.rows().map { $0.entry.name }, ["src"], "The kept listing stays while it asks")
+    }
+
+    func testATappedFileNameAsksThePluginAndALaterTapWins() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        appState.setNotifierPluginStateForTesting(.reported(
+            version: "0.132.0",
+            capabilities: [WorkspaceFilesClient.capability, WorkspaceFilesClient.resolveCapability]
+        ))
+        appState.sessions = [macSession("chat-1")]
+        appState.activeSessionId = "chat-1"
+        appState.runtime.cwd = "/w/app"
+        XCTAssertTrue(appState.activeChatArtifactSessionIDs.contains("chat-1"))
+        let resolve = "/workspace/resolve"
+        func lookups() -> Int { held.sent.filter { $0.path.hasSuffix(resolve) }.count }
+
+        appState.revealWorkspaceFile("AppState.swift", line: 3)
+        for _ in 0..<1_000 where lookups() < 1 { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(lookups(), 1, "a bare name is looked up for the chat")
+        let query = held.sent.last(where: { $0.path.hasSuffix(resolve) })?.query ?? ""
+        XCTAssertTrue(query.contains("session_id=chat-1"), "the lookup names the chat: \(query)")
+        XCTAssertNil(appState.workspaceReveal, "nothing opens until the plugin answers")
+
+        // A second tap while the first lookup runs wins over its answer.
+        appState.revealWorkspaceFile("out/gone.xlsx")
+        for _ in 0..<1_000 where lookups() < 2 { try await Task.sleep(for: .milliseconds(10)) }
+        try await held.answer(["ok": true, "path": "/w/app/Conduit/AppState.swift", "via": "chat"], toPathEnding: resolve)
+        try await held.answer(["ok": true, "path": NSNull()], toPathEnding: resolve)
+        for _ in 0..<1_000 where appState.composerNotice == nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(appState.workspaceReveal, "the earlier tap's answer is dropped")
+        XCTAssertEqual(appState.composerNotice?.hasPrefix("gone.xlsx isn"), true, appState.composerNotice ?? "")
+
+        // A found file opens at its line, and takes the notice away.
+        appState.revealWorkspaceFile("AppState.swift", line: 3)
+        try await held.answer(["ok": true, "path": "/w/app/Conduit/AppState.swift", "via": "chat"], toPathEnding: resolve)
+        for _ in 0..<1_000 where appState.workspaceReveal == nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(appState.workspaceReveal?.path, "/w/app/Conduit/AppState.swift")
+        XCTAssertEqual(appState.workspaceReveal?.line, 3)
+        XCTAssertNil(appState.composerNotice)
+
+        // A lookup still running when the chat changes says nothing there.
+        appState.workspaceReveal = nil
+        appState.revealWorkspaceFile("gone.md")
+        for _ in 0..<1_000 where lookups() < 4 { try await Task.sleep(for: .milliseconds(10)) }
+        appState.activeSessionId = "chat-2"
+        try await held.answer(["ok": true, "path": NSNull()], toPathEnding: resolve)
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertNil(appState.composerNotice, "the answer was for the chat left")
+        XCTAssertNil(appState.workspaceReveal)
+
+        // A full path opens at once, without asking.
+        appState.revealWorkspaceFile("/w/app/README.md")
+        XCTAssertEqual(appState.workspaceReveal?.path, "/w/app/README.md")
+        XCTAssertEqual(lookups(), 4)
     }
 
     func testADisplayPreferenceSaveFailingAfterASwitchSaysNothingOnTheNewDashboard() async throws {
@@ -1848,6 +2083,31 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(appState.keptDelegationPaused(), "Another dashboard's page doesn't")
     }
 
+    /// Settings > Passwords & logins opens on the list kept for the
+    /// dashboard and profile: never another profile's vault, or another
+    /// dashboard's.
+    func testThePasswordsPageOpensOnTheProfilesKeptVault() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let snapshot = CredentialVaultSnapshot(
+            items: [VaultItem(id: "a1", kind: "login", label: "GitHub", origin: "https://github.com", identifier: "me@example.com", identifierType: "email", hasOTP: true)],
+            sources: [VaultSource(name: "bitwarden", displayName: "Bitwarden", enabled: true, needsUnlock: true, unlocked: false, installed: true)]
+        )
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
+        appState.offlineChatCacheForTesting.recordAnswer(
+            json, route: AppState.credentialVaultRoute, dashboardID: mac, profile: appState.activeProfile
+        )
+
+        XCTAssertEqual(appState.keptCredentialVault(), snapshot)
+        let profile = appState.activeProfile
+        appState.setActiveProfileForTesting("work")
+        XCTAssertNil(appState.keptCredentialVault(), "Another profile has a vault of its own")
+        appState.setActiveProfileForTesting(profile)
+        XCTAssertEqual(appState.keptCredentialVault(), snapshot)
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertNil(appState.keptCredentialVault(), "Another dashboard's page doesn't")
+    }
+
     /// A config save is what the settings pages open on next, without
     /// another read.
     func testAConfigSaveIsWhatTheSettingsPagesOpenOnNext() async throws {
@@ -1998,8 +2258,8 @@ extension AppStateMultiDashboardTests {
         let save = Task { await appState.setVoiceReplyModel(fast) }
         try await held.waitForRequests(2)       // the save
         try await held.answer(at: 1)
-        let refusal = await save.value
-        XCTAssertNil(refusal)
+        let result = await save.value
+        XCTAssertEqual(result, .saved)
         try await held.waitForRequests(3)       // the read it asks for
         try await held.answer(["tasks": [["task": "voice_chat", "provider": "auto", "model": ""]]])
         _ = try await older.value
@@ -2511,6 +2771,12 @@ extension AppStateMultiDashboardTests {
             $0.catalog = []
         }
         XCTAssertNil(next.keptBotMcpSetup(profile: "nova"))
+
+        // A sign-in Hermes took, from Edit Bot or the Connectors page,
+        // opens the MCP page signed in.
+        XCTAssertEqual(next.keptBotMcpSetup(profile: "atlas")?.servers["github_token"]?.needsSignIn, true)
+        next.keepMcpSignedIn(profile: "atlas", name: "github_token", on: owner)
+        XCTAssertEqual(next.keptBotMcpSetup(profile: "atlas")?.servers["github_token"]?.needsSignIn, false)
 
         // A save whose tools section Hermes turned down keeps the MCP
         // section it took, and the tools as they were.

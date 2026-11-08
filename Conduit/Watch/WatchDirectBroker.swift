@@ -434,7 +434,7 @@ final class WatchDirectBroker {
             var chosen: (session: WatchVoiceWire.DirectSession, packed: (data: Data, bytes: Int))?
             for tools in Self.hostToolChoices(plan.hostTools) {
                 let declared = functions + VoiceHostTool.declarations(tools)
-                let instruction = tools.isEmpty ? plan.systemInstruction : plan.systemInstruction + plan.hostToolsBriefing
+                let instruction = tools.isEmpty ? plan.systemInstruction : plan.systemInstructionWithHostTools
                 let setup = WatchVoiceWire.DirectSetup(systemInstruction: instruction, functions: declared)
                 guard setup.functions.count == declared.count, let attempt = setup.compressed() else { continue }
                 let built = WatchVoiceWire.DirectSession(
@@ -678,7 +678,7 @@ final class WatchDirectBroker {
             var chosen: (reply: WatchVoiceWire.Message, packed: (data: Data, bytes: Int), replyBytes: Int)?
             for tools in Self.hostToolChoices(plan.hostTools) {
                 let declared = functions + VoiceHostTool.declarations(tools)
-                let instruction = tools.isEmpty ? plan.systemInstruction : plan.systemInstruction + plan.hostToolsBriefing
+                let instruction = tools.isEmpty ? plan.systemInstruction : plan.systemInstructionWithHostTools
                 let setup = WatchVoiceWire.DirectSetup(systemInstruction: instruction, functions: declared)
                 guard setup.functions.count == declared.count, let packed = setup.compressed() else {
                     if tools.isEmpty { throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch.")) }
@@ -1857,13 +1857,24 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
         }
         let joins = joinsCall && (profile ?? "").isEmpty
         var waited = false
-        while joins, callChat == nil, startingCallChat {
+        while true {
+            // Its chat was deleted, before or while this request waited: this
+            // request makes the call a new one (issue 1797).
+            if let chat = callChat, base.isDeletedChat(chat) { callChat = nil }
+            guard joins, callChat == nil, startingCallChat else { break }
             waited = true
             await withCheckedContinuation { callChatWaiters.append($0) }
         }
         if waited, callIsLive?() == false { return "The call ended before Hermes took this request." }
         if joins, let callChat {
-            return await base.continueJob(instructions: instructions, in: callChat, onJobCreated: created)
+            // Resumed on another runtime: the call's chat follows it, so a
+            // delete naming that one is found where the chat has no stored
+            // id (a legacy gateway, issue 1797).
+            return await base.continueJob(instructions: instructions, in: callChat, onJobCreated: created, onRuntime: { [weak self] runtimeID in
+                guard let self, var chat = self.callChat, chat == callChat else { return }
+                chat.runtimeSessionID = runtimeID
+                self.callChat = chat
+            })
         }
         let claims = joins
         if claims { startingCallChat = true }
@@ -1883,7 +1894,7 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
         let named = (profile ?? "").isEmpty ? nil : profile
         // The call's own jobs on another profile take that profile's
         // voice-job model; named work runs on its profile's own.
-        let reply = await base.startJob(instructions: instructions, profile: named ?? callProfile, callsModel: named == nil, onJobCreated: { jobID in
+        let reply = await base.startJob(instructions: instructions, profile: named ?? callProfile, callsModel: named == nil, fromWatch: true, onJobCreated: { jobID in
             startedID = jobID
             // Marked before Hermes can answer, so its reply is matched
             // against replays from the start.
@@ -1895,7 +1906,9 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
             switch job.status {
             case .failed, .cancelled: break
             case .starting, .running, .needsInput, .finished:
-                callChat = VoiceThreadTarget(runtimeSessionID: runtimeID, storedSessionID: job.storedSessionID, title: job.title, profile: callProfile)
+                let chat = VoiceThreadTarget(runtimeSessionID: runtimeID, storedSessionID: job.storedSessionID, title: job.title, profile: callProfile)
+                // Not one deleted while its job was starting (issue 1797).
+                if !base.isDeletedChat(chat) { callChat = chat }
             }
         }
         return reply

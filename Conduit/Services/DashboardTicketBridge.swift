@@ -452,6 +452,65 @@ enum DashboardTicketBridgeError: LocalizedError {
         return object["code"] is String
     }
 
+    /// Hermes' whole answer for a request to a plugin the profile it acts
+    /// for turned off (not in its plugins.enabled, or in plugins.disabled).
+    static let pluginRefusedDetail = "Plugin not found"
+
+    /// What to do about `pluginRefusedDetail` on `path`: the plugin it asked
+    /// and the profile it asked for (`?conduit_profile=` or `?profile=`; none
+    /// is the dashboard's own). Nil for a path that isn't a plugin's.
+    static func pluginOffDetail(path: String) -> String? {
+        guard let components = URLComponents(string: path) else { return nil }
+        let parts = components.path.split(separator: "/", omittingEmptySubsequences: true)
+        guard parts.count >= 3, parts[0] == "api", parts[1] == "plugins" else { return nil }
+        let plugin = String(parts[2])
+        let items = components.queryItems ?? []
+        let named = [DashboardPath.conduitProfileParameter, "profile"].lazy
+            .compactMap { name in items.first(where: { $0.name == name })?.value?.trimmingCharacters(in: .whitespaces) }
+            .first(where: { !$0.isEmpty })
+        guard let profile = named, profile != "default" else {
+            return AppLocalization.string("Hermes has the \(plugin) plugin turned off. On the Hermes host, run hermes plugins enable \(plugin), then restart Hermes.")
+        }
+        return AppLocalization.string("Hermes has the \(plugin) plugin turned off for the “\(profile)” profile. On the Hermes host, add \(plugin) to plugins.enabled in that profile's config.yaml (and take it out of plugins.disabled), then restart Hermes.")
+    }
+
+    /// Runs `request` to `path`, turning Hermes' bare "Plugin not found" for
+    /// a plugin the profile turned off into what to do about it (issue
+    /// 1630). Still a 404, so callers fall back as before.
+    static func explainingPluginRefusal<T>(path: String, _ request: () async throws -> T) async throws -> T {
+        do {
+            return try await request()
+        } catch DashboardTicketBridgeError.http(404, let detail) where detail == pluginRefusedDetail {
+            guard let explained = pluginOffDetail(path: path) else { throw DashboardTicketBridgeError.http(status: 404, detail: detail) }
+            pluginOffDetails.withLock { _ = $0.insert(explained) }
+            throw DashboardTicketBridgeError.http(status: 404, detail: explained)
+        }
+    }
+
+    /// The words `explainingPluginRefusal` gave so far, so a caller that maps
+    /// a 404 to "update the plugin" can tell the plugin is only turned off.
+    /// A handful at most: one per plugin and profile.
+    private static let pluginOffDetails = OSAllocatedUnfairLock(initialState: Set<String>())
+
+    /// What to do about a request refused because its profile turned the
+    /// plugin off: the error's own words when `explainingPluginRefusal`
+    /// wrote them, or, for Hermes' bare answer, the words for `path`. Nil
+    /// for any other error, a 404 for a missing route included. Callers
+    /// that read a 404 as "the plugin predates this" ask this first, so the
+    /// remedy they give is turning the plugin on, not updating it (issue 1671).
+    static func pluginOffDetail(of error: Error, path: String? = nil) -> String? {
+        guard case DashboardTicketBridgeError.http(404, let detail) = error else { return nil }
+        if detail == pluginRefusedDetail { return path.flatMap { pluginOffDetail(path: $0) } }
+        return pluginOffDetails.withLock { $0.contains(detail) } ? detail : nil
+    }
+
+    /// Whether a 404's detail is a refusal for a plugin the profile turned
+    /// off (Hermes' own words or `explainingPluginRefusal`'s), not a route
+    /// the host lacks: nothing on the host was read, changed or deleted.
+    static func isPluginOffDetail(_ detail: String) -> Bool {
+        detail == pluginRefusedDetail || pluginOffDetails.withLock { $0.contains(detail) }
+    }
+
     /// The dashboard answered but handed back no session ticket.
     static var noSessionTicketDetail: String {
         AppLocalization.string("The dashboard didn't let Conduit start a session. Try again.")
@@ -474,9 +533,7 @@ enum DashboardTicketBridgeError: LocalizedError {
         if isStructuredDetail(trimmed) {
             return AppLocalization.string("Dashboard request failed (\(String(status))).")
         }
-        let isMeaningful = !trimmed.isEmpty
-            && !genericDetails.contains(trimmed.lowercased())
-            && trimmed != AppLocalization.string("Dashboard request failed (\(String(status))).")
+        let isMeaningful = meaningfulDetail(detail, status: status) != nil
         switch status {
         case 0:
             let lowered = trimmed.lowercased()
@@ -517,6 +574,17 @@ enum DashboardTicketBridgeError: LocalizedError {
             if isMeaningful { return trimmed }
             return AppLocalization.string("Hermes didn't accept this request. Updating Hermes and Conduit usually fixes this.")
         }
+    }
+
+    /// The server's own explanation, trimmed, when it says something: nil
+    /// for a bare status phrase, a browser fetch error, or the "request
+    /// failed" text a response with no words of its own gets.
+    static func meaningfulDetail(_ detail: String, status: Int) -> String? {
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              !genericDetails.contains(trimmed.lowercased()),
+              trimmed != AppLocalization.string("Dashboard request failed (\(String(status))).") else { return nil }
+        return trimmed
     }
 
     /// Whether a dashboard request's failure means its sign-in is gone.
@@ -749,6 +817,27 @@ final class DashboardTicketBridge: NSObject {
     /// background (driving with CarPlay, a locked phone) requests go out
     /// natively with the page's cookies instead (#378). Test seam.
     var webViewCanRun: @MainActor () -> Bool = { PhoneScenePresence.isInForeground }
+    /// Whether reads and the ticket go out without the page while it runs
+    /// too. Only a saved dashboard's own stores say whether it holds a
+    /// session: a bridge built before its dashboard is saved (the login
+    /// screen, tests) shares WebKit's and URLSession's default stores, so it
+    /// keeps the page.
+    var readsWithoutThePageFirst: Bool { dashboardID != nil }
+    /// Requests that change something on the dashboard, counted as each
+    /// starts and as it ends, so a read sent before one or while it was out
+    /// isn't shown after it (StartupReads).
+    private(set) var writesSent = 0
+    /// Writes started and not yet ended. An early read sent while one is out
+    /// may predate it, so it isn't taken (StartupReads).
+    private(set) var writesOut = 0
+    func noteWriteStarted() {
+        writesSent += 1
+        writesOut += 1
+    }
+    func noteWriteEnded() {
+        writesSent += 1
+        writesOut = max(0, writesOut - 1)
+    }
     /// Cookies the dashboard set on requests sent without the page, newest
     /// last, so a rotated session cookie is the one sent next.
     var backgroundIssuedCookies: [HTTPCookie] = []
@@ -994,15 +1083,29 @@ final class DashboardTicketBridge: NSObject {
         return try await requestAuthorizer.mintTicket()
     }
 
-    /// Cookie mode's ticket: through the dashboard page, or natively with the
-    /// page's cookies while the page cannot run.
+    /// Cookie mode's ticket: natively with the page's cookies, as the
+    /// socket's upgrade already goes, so a launch doesn't wait for WebKit
+    /// and the page's load first. Through the page, with its retries, while
+    /// no store holds a cookie yet or when the native ticket was refused as
+    /// signed out and the page can run: a cookie the stores held may be
+    /// older than the one WebKit's page holds, so one native 401 doesn't
+    /// end a durable session.
     private func mintCookieTicket() async throws -> String {
-        if !webViewCanRun() {
-            let response = try await requestJSONWithoutPage(path: "/api/auth/ws-ticket", method: "POST")
-            guard let ticket = response["ticket"] as? String, !ticket.isEmpty else {
-                throw DashboardTicketBridgeError.requestFailed(DashboardTicketBridgeError.noSessionTicketDetail)
+        if !webViewCanRun() || readsWithoutThePageFirst {
+            do {
+                let response = try await requestJSONWithoutPage(path: "/api/auth/ws-ticket", method: "POST")
+                guard let ticket = response["ticket"] as? String, !ticket.isEmpty else {
+                    throw DashboardTicketBridgeError.requestFailed(DashboardTicketBridgeError.noSessionTicketDetail)
+                }
+                return ticket
+            } catch DashboardTicketBridgeError.notReady where webViewCanRun() && !isInvalidated {
+                // No cookie in any store yet: the page's own retries below.
+            } catch DashboardTicketBridgeError.signInRequired where webViewCanRun() && !isInvalidated {
+                // Refused as signed out: the page's reload-and-retry decides.
+            } catch DashboardTicketBridgeError.http(let status, _) where status == 0 && webViewCanRun() && !isInvalidated {
+                // Never answered (a stalled link): the page's retries, as a
+                // ticket had before it went natively.
             }
-            return ticket
         }
         // Retry twice on the two recoverable failures, then let the final
         // attempt's error propagate to the caller unchanged:
@@ -1108,6 +1211,34 @@ final class DashboardTicketBridge: NSObject {
         // GET, rather than being kept through invalidate() as a write is.
         readsOnly: Bool
     ) async throws -> [String: Any] {
+        try await DashboardTicketBridgeError.explainingPluginRefusal(path: path) {
+            try await sendJSON(
+                path: path,
+                method: method,
+                body: body,
+                timeoutMilliseconds: timeoutMilliseconds,
+                maxResponseBytes: maxResponseBytes,
+                readsOnly: readsOnly
+            )
+        }
+    }
+
+    private func sendJSON(
+        path: String,
+        method: String,
+        body: [String: Any]?,
+        timeoutMilliseconds: Int,
+        maxResponseBytes: Int,
+        readsOnly: Bool
+    ) async throws -> [String: Any] {
+        let isRead = readsOnly || ["GET", "HEAD"].contains(method.uppercased())
+        // Counted when it starts and again when it ends, so a read sent while
+        // it was out is never taken for one sent after it (StartupReads).
+        // A ticket changes nothing a read shows, so it doesn't void the
+        // reads sent with it.
+        let countsAsWrite = !isRead && path != "/api/auth/ws-ticket"
+        if countsAsWrite { noteWriteStarted() }
+        defer { if countsAsWrite { noteWriteEnded() } }
         if let nativeOAuthSession {
             guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
             return try await nativeOAuthSession.requestJSON(
@@ -1118,14 +1249,27 @@ final class DashboardTicketBridge: NSObject {
                 maxResponseBytes: maxResponseBytes
             )
         }
-        if !webViewCanRun() {
-            return try await requestJSONWithoutPage(
-                path: path,
-                method: method,
-                body: body,
-                timeoutMilliseconds: timeoutMilliseconds,
-                maxResponseBytes: maxResponseBytes
-            )
+        // Reads go out natively with the page's cookies whenever a store
+        // holds one, so they don't wait for WebKit and the page's load, and
+        // their answers aren't copied through a script on the main actor.
+        // Writes keep the page while it runs: a switch leaves a page write
+        // waiting for its answer, so the caller learns whether the old
+        // dashboard took the change.
+        if !webViewCanRun() || (isRead && readsWithoutThePageFirst) {
+            do {
+                return try await requestJSONWithoutPage(
+                    path: path,
+                    method: method,
+                    body: body,
+                    timeoutMilliseconds: timeoutMilliseconds,
+                    maxResponseBytes: maxResponseBytes
+                )
+            } catch DashboardTicketBridgeError.notReady where webViewCanRun() && !isInvalidated {
+                // No cookie in any store yet: through the page.
+            } catch DashboardTicketBridgeError.signInRequired where webViewCanRun() && !isInvalidated {
+                // Refused as signed out: the page, whose landing decides, as
+                // for the ticket.
+            }
         }
         try await waitUntilReady()
 

@@ -30,6 +30,39 @@ protocol KanbanEventSocket: AnyObject {
     func ping() async throws
     /// Cancellation is final: production cancels with .goingAway.
     func cancel()
+    /// How the server ended this socket, read after a failed confirmation
+    /// or receive. Transport trouble is `.none` and keeps the reconnect
+    /// ladder; a refusal tells the stream the board is gone or the upgrade
+    /// isn't allowed (issue 1971).
+    var refusal: KanbanEventSocketRefusal { get }
+}
+
+/// The server's answer when it ends a live-event socket on purpose. Hermes
+/// closes 1008 for an unknown or deleted board (after accept) and for an
+/// unauthorized upgrade (before accept, which URLSession reports as a
+/// refused handshake); an archived board's tombstone ends with a plain
+/// close instead.
+enum KanbanEventSocketRefusal: Equatable {
+    /// No refusal seen: a timeout, a dropped link, a restart.
+    case none
+    /// Close 1008 (policy violation): this board won't stream. Final.
+    case policy
+    /// A refused upgrade (HTTP 4xx) or another close the server chose.
+    /// Final once it repeats without the socket ever settling.
+    case refused
+
+    static func classify(closeCode: URLSessionWebSocketTask.CloseCode, httpStatus: Int?) -> KanbanEventSocketRefusal {
+        if closeCode == .policyViolation { return .policy }
+        if let httpStatus, (400..<500).contains(httpStatus) { return .refused }
+        switch closeCode {
+        case .invalid, .goingAway, .abnormalClosure, .noStatusReceived, .tlsHandshakeFailure:
+            // .invalid: no close frame (transport). .goingAway: a restart,
+            // or our own cancel. The rest: the link or a proxy failed.
+            return .none
+        default:
+            return .refused
+        }
+    }
 }
 
 /// Production adapter over URLSessionWebSocketTask.
@@ -99,6 +132,13 @@ final class URLSessionKanbanEventSocket: KanbanEventSocket {
         // Cancels the underlying task, which also fails any registered ping
         // continuation through URLSession's own callback path.
         task.cancel(with: .goingAway, reason: nil)
+    }
+
+    var refusal: KanbanEventSocketRefusal {
+        KanbanEventSocketRefusal.classify(
+            closeCode: task.closeCode,
+            httpStatus: (task.response as? HTTPURLResponse)?.statusCode
+        )
     }
 }
 
@@ -285,6 +325,10 @@ final class KanbanEventStreamCoordinator {
     private(set) var cancelledSockets = 0
     private(set) var pingFailures = 0
     private(set) var cursor: Int
+    /// Set when the server refused the stream for good; the loop has ended
+    /// and nothing reconnects until the owner starts a new stream (a new
+    /// board, server, or tab visit).
+    private(set) var endedByRefusal = false
 
     private var runID = 0
     private var loopTask: Task<Void, Never>?
@@ -295,6 +339,9 @@ final class KanbanEventStreamCoordinator {
     private var pendingTaskIDs: Set<String> = []
     private var pendingBoardInvalidation = false
     private var consecutiveFailures = 0
+    /// Refused sockets in a row with no settled connection between them.
+    /// Reset by a frame or a heartbeat the socket answered.
+    private var consecutiveRefusals = 0
     private var revisionCounter = 0
 
     /// Bounded-liveness primitive used for connect-time confirmation and
@@ -350,6 +397,7 @@ final class KanbanEventStreamCoordinator {
         guard loopTask == nil else { return }
         runID += 1
         consecutiveFailures = 0
+        consecutiveRefusals = 0
         let myRun = runID
         loopTask = Task { [weak self] in
             await self?.runLoop(myRun)
@@ -496,7 +544,9 @@ final class KanbanEventStreamCoordinator {
             }
             if !confirmed {
                 pingFailures += 1
+                let refused = endsOnRefusal(socket)
                 retireConnection(socket)
+                if refused { return }
                 await backoff(myRun)
                 continue
             }
@@ -520,9 +570,35 @@ final class KanbanEventStreamCoordinator {
                 guard isCurrent(myRun) else { return }
             }
 
-            // 6. Failure path: retire the connection, reconnect same context.
+            // 6. Failure path: retire the connection, reconnect same context,
+            // unless the server refused this board for good.
+            let refused = endsOnRefusal(socket)
             retireConnection(socket)
+            if refused { return }
             await backoff(myRun)
+        }
+    }
+
+    /// Refusals in a row before a non-1008 refusal ends the stream: one can
+    /// be a dashboard restart's close, three with nothing settling between
+    /// them is the server saying no.
+    static let refusalsBeforeGivingUp = 3
+
+    /// Reads how the server ended `socket`. A 1008 ends the stream at once;
+    /// other refusals end it once they repeat. Ending mints no more tickets
+    /// for this context (issue 1971): REST polling keeps the board current.
+    private func endsOnRefusal(_ socket: KanbanEventSocket) -> Bool {
+        switch socket.refusal {
+        case .none:
+            return false
+        case .policy:
+            endedByRefusal = true
+            return true
+        case .refused:
+            consecutiveRefusals += 1
+            guard consecutiveRefusals >= Self.refusalsBeforeGivingUp else { return false }
+            endedByRefusal = true
+            return true
         }
     }
 
@@ -542,6 +618,7 @@ final class KanbanEventStreamCoordinator {
                 retireConnection(socket)
                 return   // receive loop observes the close and reconnects
             }
+            consecutiveRefusals = 0
         }
     }
 
@@ -569,6 +646,7 @@ final class KanbanEventStreamCoordinator {
         if let frameCursor = frame.cursor, frameCursor > cursor {
             cursor = frameCursor
         }
+        consecutiveRefusals = 0
         guard !frame.events.isEmpty else { return }
         let ids = Set(frame.events.compactMap(\.taskID).filter { !$0.isEmpty })
         pendingTaskIDs.formUnion(ids)

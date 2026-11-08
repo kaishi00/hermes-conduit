@@ -8,6 +8,7 @@
 //  Hermes wants, and the banner after one went in without asking.
 //
 
+import ContactsUI
 import SwiftUI
 import UIKit
 
@@ -29,6 +30,8 @@ struct PhoneSettingsPage: View {
     @State private var askingVoiceMode: LiveVoiceModeName?
     /// Loaded on appear (loading prunes and saves).
     @State private var voiceUses = HealthVoiceReadLog()
+    /// Limited Contacts access's picker, to let Conduit see picked people.
+    @State private var showsContactAccess = false
 
     private var preferences: PhoneSyncPreferences { engine.preferences }
     private var pluginServes: Bool { appState.notifierPlugin.reports(AppState.phoneSyncCapability) }
@@ -293,7 +296,7 @@ struct PhoneSettingsPage: View {
                 Label("Share the people you pick", systemImage: "person.2")
             }
             .accessibilityIdentifier("settings.phone.contacts")
-            Text("Pick the people Hermes should know, and say who they are to you, such as wife or boss, so \"text my wife\" or \"Mum's birthday\" just works. Hermes gets their name, phone numbers, email addresses and birthday. Conduit doesn't read your contacts: only the people you pick here.")
+            Text("Pick the people Hermes should know, and say who they are to you, such as wife or boss, so \"text my wife\" or \"Mum's birthday\" just works. Hermes gets their name, phone numbers, email addresses and birthday. Conduit reads only the people you pick here, nothing else in your contacts.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             Text("Their nickname and company go too, when the contact has them.")
@@ -306,7 +309,8 @@ struct PhoneSettingsPage: View {
             }
             if choices.contacts {
                 ForEach(engine.people) { person in
-                    PhonePersonRow(person: person) { relation in
+                    PhonePersonRow(person: person, problem: engine.peopleProblems[person.id],
+                                   allowAccess: { showsContactAccess = true }) { relation in
                         var people = engine.people
                         guard let index = people.firstIndex(where: { $0.id == person.id }) else { return }
                         people[index].relation = relation.isEmpty ? nil : String(relation.prefix(PhonePerson.relationLength))
@@ -330,7 +334,56 @@ struct PhoneSettingsPage: View {
                 }
                 .disabled(engine.people.count >= PhonePerson.maximum)
                 .accessibilityIdentifier("settings.phone.contacts.add")
+                if !engine.people.isEmpty { peopleUpdates }
             }
+        }
+        .task(id: choices.contacts) {
+            if choices.contacts { await engine.refreshPeople() }
+        }
+        // Back from the Settings app, where access may have changed.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            guard choices.contacts else { return }
+            Task { await engine.refreshPeople() }
+        }
+        .modifier(PhoneContactAccessPicker(isPresented: $showsContactAccess) {
+            Task {
+                await engine.refreshPeople()
+                syncPeople()
+            }
+        })
+    }
+
+    /// Whether edits made in Contacts reach Hermes, and how to let them.
+    @ViewBuilder
+    private var peopleUpdates: some View {
+        switch engine.contactsAccess {
+        case .notAsked:
+            Text("Conduit has what each card said when you picked them. To bring in edits you make in Contacts, let Conduit read the people you pick.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+            Button {
+                Haptics.selection()
+                Task {
+                    await engine.requestContactsAccess()
+                    syncPeople()
+                }
+            } label: {
+                Label("Keep them up to date", systemImage: "arrow.triangle.2.circlepath")
+            }
+            .accessibilityIdentifier("settings.phone.contacts.access")
+        case .denied:
+            Text("Edits you make in Contacts reach Hermes only when you pick the person again. To bring them in at each sync, allow Contacts for Conduit in Settings.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+            Button(AppLocalization.string("Open Settings")) {
+                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(url)
+            }
+            .scaledFont(.subheadline)
+        case .limited, .full:
+            Text("Each sync reads the people you picked again, so edits you make in Contacts reach Hermes.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -537,7 +590,11 @@ struct PhoneSettingsPage: View {
         Task {
             let done = await appState.turnOffPhoneSync(deleteFromHost: delete)
             if !done {
-                errorMessage = AppLocalization.string("Sharing is off. The host couldn't be reached, so Conduit deletes the data there the next time it connects.")
+                // A profile that turned the plugin off was reached and refused:
+                // say how to turn it on (issue 1671).
+                errorMessage = appState.phoneSync.deleteRefusedPluginOff.map {
+                    AppLocalization.string("Sharing is off. \($0) Conduit deletes the data there once it's on.")
+                } ?? AppLocalization.string("Sharing is off. The host couldn't be reached, so Conduit deletes the data there the next time it connects.")
             }
             choices = PhoneSyncPreferences(calendar: .full, reminders: true, status: true, focus: true)
             voiceUses = HealthVoiceReadLog()
@@ -550,6 +607,10 @@ struct PhoneSettingsPage: View {
 /// One picked person in Settings: who they are to the user, editable.
 struct PhonePersonRow: View {
     let person: PhonePerson
+    /// Why the last read from Contacts missed them, if it did.
+    var problem: PhonePersonProblem?
+    /// Opens limited Contacts access's picker.
+    var allowAccess: () -> Void = {}
     let save: (String) -> Void
     let remove: () -> Void
     @State private var relation = ""
@@ -565,6 +626,7 @@ struct PhonePersonRow: View {
                     .submitLabel(.done)
                     .accessibilityLabel(Text(AppLocalization.string("Relation to \(person.name)")))
                     .onSubmit { save(relation.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                if let problem { problemNote(problem) }
             }
             Spacer(minLength: 4)
             Button(role: .destructive, action: remove) {
@@ -583,6 +645,47 @@ struct PhonePersonRow: View {
         .onDisappear {
             let typed = relation.trimmingCharacters(in: .whitespacesAndNewlines)
             if typed != (person.relation ?? "") { save(typed) }
+        }
+    }
+
+    @ViewBuilder
+    private func problemNote(_ problem: PhonePersonProblem) -> some View {
+        switch problem {
+        case .notShared:
+            Label("Conduit can't see this contact, so edits to it don't reach Hermes. Hermes keeps what Conduit last read.",
+                  systemImage: "exclamationmark.triangle.fill")
+                .scaledFont(.caption)
+                .foregroundStyle(.orange)
+            if #available(iOS 18.0, *) {
+                Button("Let Conduit see them", action: allowAccess)
+                    .scaledFont(.caption.weight(.semibold))
+                    .buttonStyle(.borderless)
+            }
+        case .notFound:
+            Label("This contact isn't in Contacts any more. Hermes keeps what Conduit last read.",
+                  systemImage: "exclamationmark.triangle.fill")
+                .scaledFont(.caption)
+                .foregroundStyle(.orange)
+        case .unreadable:
+            Label("Contacts couldn't be read just now. Hermes keeps what Conduit last read.",
+                  systemImage: "exclamationmark.triangle.fill")
+                .scaledFont(.caption)
+                .foregroundStyle(.orange)
+        }
+    }
+}
+
+/// Limited Contacts access's own picker (iOS 18 and later), where the user
+/// adds people Conduit may see.
+private struct PhoneContactAccessPicker: ViewModifier {
+    @Binding var isPresented: Bool
+    let done: () -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.contactAccessPicker(isPresented: $isPresented) { _ in done() }
+        } else {
+            content
         }
     }
 }

@@ -63,6 +63,7 @@ final class LocalLiveClient: LocalLiveConnecting {
         do {
             response = try await request(DashboardPath.withProfile(LocalLiveProtocol.statusPath, profile: profile(), parameter: profileParameter()), "GET", nil, 30_000)
         } catch let error as DashboardTicketBridgeError {
+            if let remedy = DashboardTicketBridgeError.pluginOffDetail(of: error) { return .pluginOff(remedy) }
             if GeminiLiveTokenClient.isMissingRoute(error) { return Self.pluginMissing }
             throw error
         }

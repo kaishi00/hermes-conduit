@@ -397,7 +397,9 @@ final class WatchBridgeCallModel: ObservableObject {
         // dropped; the microphone opens, and GPT-Live stops when it hears
         // the user.
         audio.stopPlayback()
-        suppressingTurn = true
+        // Only a stretch still arriving is dropped: pressed while an ended
+        // one's tail plays, the next must be heard (issue 1790).
+        suppressingTurn = modelSpeaking
         modelSpeaking = false
         lastPlaybackEndedAt = now
         awaitingFirstAudio = false
@@ -822,10 +824,14 @@ final class WatchBridgeCallModel: ObservableObject {
                 return
             }
             // A call from Hermes: the model says what it called about, as
-            // the phone's GPT-Live call asks it to. Once, never on a rejoin,
-            // and only when the host didn't already have it speak first.
-            if WatchAudioBridgeWire.sendsOpeningTurn(rejoining: rejoining, started: info), let openingTurn {
-                pendingSends.insert(Pending(text: openingTurn, channel: .speakable, delegationID: nil), at: 0)
+            // the phone's GPT-Live call asks it to; any other call greets when
+            // the user asked for a greeting. Once, never on a rejoin, and only
+            // when the host didn't already have it speak first (an older
+            // plugin did; the model no longer does from its instructions,
+            // notifier #541).
+            if WatchAudioBridgeWire.sendsOpeningTurn(rejoining: rejoining, started: info),
+               let opening = openingTurn ?? greeting.map(LiveVoiceGreeting.turn) {
+                pendingSends.insert(Pending(text: opening, channel: .speakable, delegationID: nil), at: 0)
             }
             flushPending()
         case .ended(let reason):
@@ -918,12 +924,20 @@ final class WatchBridgeCallModel: ObservableObject {
         audioChunksDown += 1
         guard !samples.isEmpty, endRequestedAt == nil, phase != .needsTap else { return }
         let loud = samples.contains { abs(Int($0)) > Self.speechPeak }
+        // Quiet before this chunk: with no chunks between stretches, a new
+        // stretch's first loud chunk still shows the old one ended.
+        let quietBefore = lastLoudAt.map { now - $0 } ?? .infinity
         if loud { lastLoudAt = now }
         let quietFor = lastLoudAt.map { now - $0 } ?? .infinity
         if suppressingTurn {
-            // Dropped until this stretch of speech ends.
-            if quietFor > Self.speechGap { suppressingTurn = false }
-            return
+            // Dropped until this stretch of speech ends; the next is heard
+            // (issue 1790).
+            if quietBefore > Self.speechGap {
+                suppressingTurn = false
+            } else {
+                if quietFor > Self.speechGap { suppressingTurn = false }
+                return
+            }
         }
         if modelSpeaking {
             audio.enqueue(samples, sampleRate: Self.playbackRate)

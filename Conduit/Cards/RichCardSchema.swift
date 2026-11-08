@@ -3,7 +3,8 @@
 //  Conduit
 //
 //  Rich cards (maps, places, stats, charts, forecasts, comparisons, steps,
-//  media, contacts and statuses) are defined once, in hermes-conduit-notifier's
+//  media, contacts, statuses, and the board kinds: tables, timelines,
+//  checklists, lists, progress and callouts) are defined once, in hermes-conduit-notifier's
 //  cards/card-schema.json. This app ships a byte-identical copy
 //  (card-schema.json beside this file); scripts/check-card-schema.py fails
 //  CI when it differs from the plugin's main. Only the rules name a card's
@@ -11,9 +12,12 @@
 //  copy, and normalizing walks it, the same way the plugin's card_schema.py
 //  does. Both run the plugin's cards/card-vectors.json (RichCardSchemaTests):
 //
+//  - a table's cells and column names are made text first, so each keeps
+//    its place (prepared);
 //  - unknown keys are dropped;
-//  - text has control characters turned into spaces, is trimmed, and is cut
-//    to maxLength code points (a URL that's too long, or holds a space,
+//  - text has control characters turned into spaces and hidden bidi and
+//    zero-width characters dropped (in a line each shows as U+FFFD, and a
+//    line is never trimmed), is trimmed, and is cut to maxLength code points (a URL that's too long, or holds a space,
 //    quote, bracket or parenthesis, is invalid instead);
 //  - an invalid optional value is dropped, an invalid list item is dropped
 //    (then the list is cut to maxItems), and an invalid required value
@@ -30,7 +34,13 @@
 //    recommends one option at most; media needs a source and https links,
 //    and an image has no duration or artwork; a contact keeps only a phone and an email
 //    that look like one, and a person's message only with their phone; a
-//    live name is kept on the first card of a set that has it.
+//    table keeps the rows with one cell per column; a checklist keeps one
+//    item per text; a list item's photo needs an https url; a progress goal
+//    is above 0; a diff hunk keeps the lines that start with +, - or a
+//    space, a binary file no lines, and an id only the host's; a live name
+//    is kept on the first card of a set that has it.
+//  - a diff line (format line) keeps its spaces: never trimmed. The plugin
+//    reads a patch into those lines; the app only ever sees them read.
 //
 
 import Foundation
@@ -79,10 +89,44 @@ struct RichCardSchema {
 
     /// One card, or nil when it isn't valid.
     func normalizeCard(_ raw: Any) -> [String: Any]? {
+        let raw = Self.prepared(raw)
         guard case .valid(let value) = Self.normalize(card, raw), let normalized = value as? [String: Any] else {
             return nil
         }
         return Self.applyRules(normalized, raw: raw as? [String: Any] ?? [:])
+    }
+
+    /// What a table cell with nothing in it reads as.
+    static let blankCell = "\u{2013}"
+
+    /// A table's cells and column names as text, so a number, a blank or a
+    /// null keeps its place in the row (the plugin's _prepared): a string
+    /// stays as it is (an empty one is a dash), a number becomes its digits,
+    /// anything else is a dash.
+    static func prepared(_ raw: Any) -> Any {
+        guard var object = raw as? [String: Any], (object["type"] as? String).map({ cleanText($0).lowercased() }) == "table",
+              var table = object["table"] as? [String: Any] else { return raw }
+        if let columns = table["columns"] as? [Any] {
+            table["columns"] = columns.map(cell)
+        }
+        if let rows = table["rows"] as? [Any] {
+            table["rows"] = rows.map { row -> Any in (row as? [Any]).map { $0.map(cell) } ?? row }
+        }
+        object["table"] = table
+        return object
+    }
+
+    static func cell(_ value: Any) -> Any {
+        if let text = value as? String {
+            return cleanText(text).isEmpty ? blankCell : text
+        }
+        guard let number = value as? NSNumber, !isBoolean(number) else { return blankCell }
+        let double = number.doubleValue
+        guard double.isFinite, abs(double) < 1e15 else { return blankCell }
+        if double.rounded() == double {
+            return String(Int(double))
+        }
+        return "\(double)"
     }
 
     private enum Outcome {
@@ -120,9 +164,16 @@ struct RichCardSchema {
             return .valid(items)
         case "string":
             guard let raw = value as? String else { return .invalid }
+            let limit = schema["maxLength"] as? Int
+            if schema["format"] as? String == "line" {
+                // A line of code or text keeps its spaces: never trimmed.
+                let line = cleanLine(raw)
+                guard !line.isEmpty else { return .invalid }
+                guard let limit, line.unicodeScalars.count > limit else { return .valid(line) }
+                return .valid(String(String.UnicodeScalarView(line.unicodeScalars.prefix(limit))))
+            }
             let text = cleanText(raw)
             guard !text.isEmpty else { return .invalid }
-            let limit = schema["maxLength"] as? Int
             if schema["format"] as? String == "uri" {
                 guard isURI(text), limit.map({ text.unicodeScalars.count <= $0 }) ?? true else { return .invalid }
                 return .valid(text)
@@ -157,13 +208,50 @@ struct RichCardSchema {
         }
     }
 
-    /// Control characters become spaces; trimmed.
+    /// Invisible characters that can make text read differently from what it
+    /// holds (Trojan Source, issue 1852): the bidi embeddings, overrides and
+    /// isolates, and the zero-width space, word joiner and BOM (the plugin's
+    /// _HIDDEN). ZWJ and ZWNJ stay (emoji, Persian and Indic spelling need
+    /// them), and so do the plain marks LRM, RLM and ALM.
+    static func isHidden(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x202A...0x202E, 0x2066...0x2069, 0x200B, 0x2060, 0xFEFF: return true
+        default: return false
+        }
+    }
+
+    /// Control characters become spaces and hidden ones are dropped; trimmed.
     static func cleanText(_ text: String) -> String {
+        cleaned(text, hidden: nil).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Control characters become spaces; a hidden one becomes U+FFFD, so a
+    /// line of code shows where one was and a copied patch doesn't hide it.
+    static func cleanLine(_ text: String) -> String {
+        cleaned(text, hidden: "\u{FFFD}")
+    }
+
+    /// A board's Markdown fallback (issue 1867): a hidden character becomes
+    /// U+FFFD, as in a line, and control characters other than line breaks
+    /// and tabs become spaces, so the Markdown keeps its lines.
+    static func cleanMarkdown(_ text: String) -> String {
+        cleaned(text, hidden: "\u{FFFD}", keeping: ["\n", "\r", "\t"])
+    }
+
+    private static func cleaned(_ text: String, hidden: Unicode.Scalar?, keeping: Set<Unicode.Scalar> = []) -> String {
         var scalars = String.UnicodeScalarView()
         for scalar in text.unicodeScalars {
-            scalars.append(scalar.properties.generalCategory == .control ? " " : scalar)
+            if keeping.contains(scalar) {
+                scalars.append(scalar)
+            } else if scalar.properties.generalCategory == .control {
+                scalars.append(" ")
+            } else if isHidden(scalar) {
+                if let hidden { scalars.append(hidden) }
+            } else {
+                scalars.append(scalar)
+            }
         }
-        return String(scalars).trimmingCharacters(in: .whitespacesAndNewlines)
+        return String(scalars)
     }
 
     private static func trimmingTrailingWhitespace(_ text: String) -> String {
@@ -192,7 +280,9 @@ struct RichCardSchema {
     private static let typeFields: [String: [String]] = [
         "map": ["places", "route"], "place": ["places"], "places": ["places"], "stats": ["stats"],
         "chart": ["chart"], "weather": ["weather"], "comparison": ["options"], "steps": ["steps", "needs"],
-        "media": ["media"], "contact": ["people"], "status": ["status"],
+        "media": ["media"], "contact": ["people"], "status": ["status"], "table": ["table"],
+        "timeline": ["timeline"], "checklist": ["checklist"], "list": ["list", "ranked"],
+        "progress": ["progress"], "callout": ["callout"], "diff": ["diff"], "composed": ["sections"],
     ]
 
     /// The cards about places; every other type can name a source.
@@ -225,10 +315,22 @@ struct RichCardSchema {
     /// The card after the schema's rules, or nil when they drop it.
     private static func applyRules(_ card: [String: Any], raw: [String: Any]) -> [String: Any]? {
         guard let type = card["type"] as? String, let fields = typeFields[type], let field = fields.first else { return nil }
-        var keep = Set(fields).union(["type", "title", "live"])
+        var keep = Set(fields).union(["type", "title", "live", "actions"])
         if !placeTypes.contains(type) { keep.insert("source") }
         var card = card.filter { keep.contains($0.key) }
         guard card[field] != nil else { return nil }
+        // Buttons and fields are checked over the whole card (ids, the one
+        // primary), sections first, then the foot's actions.
+        var controls = Controls()
+        if type == "composed" {
+            let sections = composedRules(card["sections"] as? [[String: Any]] ?? [], controls: &controls)
+            guard !sections.isEmpty else { return nil }
+            card["sections"] = sections
+        }
+        if let given = card["actions"] as? [[String: Any]] {
+            let actions = given.compactMap { buttonRules($0, controls: &controls) }
+            card["actions"] = actions.isEmpty ? nil : actions
+        }
         switch type {
         case "map", "place", "places":
             placeRules(&card, raw: raw)
@@ -279,10 +381,312 @@ struct RichCardSchema {
                 if let photo = person["photo"] as? [String: Any], !isHTTPS(photo["url"]) { person["photo"] = nil }
                 return person
             }
+        case "table":
+            var table = card["table"] as? [String: Any] ?? [:]
+            let width = (table["columns"] as? [Any])?.count ?? 0
+            let rows = (table["rows"] as? [[Any]] ?? []).filter { $0.count == width }
+            guard !rows.isEmpty else { return nil }
+            table["rows"] = rows
+            card["table"] = table
+        case "checklist":
+            var seen: Set<String> = []
+            card["checklist"] = (card["checklist"] as? [[String: Any]] ?? []).filter { item in
+                seen.insert((item["text"] as? String ?? "").lowercased()).inserted
+            }
+        case "list":
+            card["list"] = (card["list"] as? [[String: Any]] ?? []).map { item in
+                var item = item
+                // The phone loads photos over https only.
+                if let photo = item["photo"] as? [String: Any], !isHTTPS(photo["url"]) { item["photo"] = nil }
+                return item
+            }
+        case "progress":
+            let items = (card["progress"] as? [[String: Any]] ?? []).filter {
+                (($0["goal"] as? NSNumber)?.doubleValue ?? 0) > 0
+            }
+            guard !items.isEmpty else { return nil }
+            card["progress"] = items
+        case "diff":
+            card["diff"] = diffRules(card["diff"] as? [String: Any] ?? [:])
         default:
             break
         }
         return card
+    }
+
+    // MARK: Composed cards and buttons
+
+    /// Each element kind's own fields, and those it needs (the plugin's
+    /// _ELEMENT_FIELDS and _ELEMENT_NEEDS).
+    private static let elementFields: [String: Set<String>] = [
+        "text": ["text", "role", "tone"], "metric": ["value", "label", "change", "tone"],
+        "badge": ["text", "tone"], "icon": ["symbol", "tone"], "image": ["url", "label"],
+        "progress": ["progress", "label", "tone"], "divider": [],
+        "field": ["id", "input", "label", "value", "lines", "options", "min", "max", "placeholder"],
+        "button": ["label", "action", "id", "target", "symbol", "style", "confirm"],
+    ]
+    private static let elementNeeds: [String: [String]] = [
+        "text": ["text"], "metric": ["value"], "badge": ["text"], "icon": ["symbol"], "image": ["url"],
+        "progress": ["progress"], "divider": [], "field": ["id", "input"], "button": ["label", "action"],
+    ]
+    /// Which field fits which input.
+    private static let fieldExtras: [String: String] = [
+        "lines": "text", "placeholder": "text", "options": "choice", "min": "number", "max": "number",
+    ]
+    static let maxFields = 6
+    private static let secretParts = ["password", "passcode", "secret", "token", "apikey", "onetime", "privatekey",
+                                      "recoverykey", "licensekey", "seedphrase", "verificationcode", "securitycode",
+                                      "authcode", "backupcode", "passphrase", "totp", "masterkey", "credential",
+                                      "2fa", "twofactor", "logincode", "accesscode", "unlockcode", "securitykey",
+                                      "resetcode", "recoverycode", "activationcode", "authkey", "verificationkey",
+                                      "backupkey",
+                                      // The same in the languages Conduit ships, as a model writes
+                                      // labels in the user's.
+                                      "passwort", "kennwort", "contraseña", "motdepasse", "senha", "пароль",
+                                      "hasło", "şifre", "katasandi", "パスワード", "暗証番号", "認証コード",
+                                      "密码", "密碼", "验证码", "驗證碼", "비밀번호", "인증번호", "인증코드",
+                                      "bestätigungscode", "verifizierungscode", "zugangscode",
+                                      "códigodeverificación", "codigodeverificacion", "códigodeverificação",
+                                      "codedevérification", "codedeverification", "codicediverifica",
+                                      "kodeverifikasi", "doğrulamakodu", "kodweryfikacyjny", "кодподтверждения",
+                                      "clavedeacceso", "contrasena"]
+    private static let secretWords: Set<String> = ["pin", "otp", "cvv", "cvc", "mfa", "pincode", "mfacode"]
+    private static let datePattern = try! NSRegularExpression(pattern: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2})?$"#)
+    private static let numberPattern = try! NSRegularExpression(pattern: #"^-?[0-9]+(\.[0-9]+)?$"#)
+    /// What an open button may open: web pages and the links iOS hands to
+    /// Maps, Phone, Messages, Mail, Calendar and Reminders.
+    static let openSchemes = ["https://", "maps:", "tel:", "sms:", "mailto:", "calshow:", "x-apple-reminderkit:"]
+    private static let openBanned = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'`\\<>"))
+
+    /// What a card's buttons and fields have used so far.
+    private struct Controls {
+        var fields: Set<String> = []
+        var taps: Set<String> = []
+        var primary = false
+    }
+
+    /// Whether a field's id, label or placeholder asks for a secret (the
+    /// plugin's names_secret): read after NFKC, so full-width ＰＩＮ reads as
+    /// pin, in lower case with everything but letters of any script and
+    /// digits as spaces.
+    static func namesSecret(_ text: String) -> Bool {
+        var spaced = String.UnicodeScalarView()
+        for scalar in text.precomposedStringWithCompatibilityMapping.lowercased().unicodeScalars {
+            spaced.append(CharacterSet.alphanumerics.contains(scalar) ? scalar : " ")
+        }
+        let words = String(spaced).split(separator: " ").map(String.init)
+        let joined = words.joined()
+        return secretParts.contains { joined.contains($0) } || words.flatMap(scriptPieces).contains { secretWords.contains($0) }
+    }
+
+    /// A word split where ASCII letters and digits meet another script's
+    /// letters, so "pin码" reads as pin and 码 (the plugin's _SCRIPT_SEAM).
+    private static func scriptPieces(_ word: String) -> [String] {
+        var pieces: [String] = []
+        var piece = String.UnicodeScalarView()
+        var pieceIsASCII: Bool?
+        for scalar in word.unicodeScalars {
+            if let pieceIsASCII, pieceIsASCII != scalar.isASCII {
+                pieces.append(String(piece))
+                piece = String.UnicodeScalarView()
+            }
+            piece.append(scalar)
+            pieceIsASCII = scalar.isASCII
+        }
+        if !piece.isEmpty { pieces.append(String(piece)) }
+        return pieces
+    }
+
+    /// Whether a date value with the shape names a real day and time (the
+    /// plugin's _real_date), so the picker shows what a tap sends.
+    static func isRealDate(_ value: String) -> Bool {
+        guard matches(datePattern, value) else { return false }
+        let digits = Array(value)
+        func number(_ range: Range<Int>) -> Int { Int(String(digits[range])) ?? -1 }
+        let year = number(0..<4), month = number(5..<7), day = number(8..<10)
+        guard year >= 1, (1...12).contains(month) else { return false }
+        let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+        let days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+        guard (1...days).contains(day) else { return false }
+        return digits.count == 10 || (number(11..<13) <= 23 && number(14..<16) <= 59)
+    }
+
+    /// A message a tap may send as the user's: never a command, a file
+    /// reference or a shell line (the plugin's plain_message).
+    static func isPlainMessage(_ text: String) -> Bool {
+        !(text.hasPrefix("/") || text.hasPrefix("!") || text.contains("`") || matches(followUpMention, text))
+    }
+
+    /// Whether an open button's target is a link it may open.
+    static func isOpenable(_ target: String) -> Bool {
+        let lowered = target.lowercased()
+        return openSchemes.contains { lowered.hasPrefix($0) } && !target.unicodeScalars.contains { openBanned.contains($0) }
+    }
+
+    private static func composedRules(_ sections: [[String: Any]], controls: inout Controls) -> [[String: Any]] {
+        sections.compactMap { section in
+            let items = (section["items"] as? [[String: Any]] ?? []).compactMap { elementRules($0, controls: &controls) }
+            guard !items.isEmpty else { return nil }
+            var section = section
+            section["items"] = items
+            return section
+        }
+    }
+
+    private static func elementRules(_ element: [String: Any], controls: inout Controls) -> [String: Any]? {
+        guard let kind = element["kind"] as? String, let fields = elementFields[kind] else { return nil }
+        let element = element.filter { $0.key == "kind" || fields.contains($0.key) }
+        for key in elementNeeds[kind] ?? [] where element[key] == nil { return nil }
+        switch kind {
+        case "image":
+            return isHTTPS(element["url"]) ? element : nil
+        case "field":
+            return fieldRules(element, controls: &controls)
+        case "button":
+            return buttonRules(element, controls: &controls)
+        default:
+            return element
+        }
+    }
+
+    private static func fieldRules(_ field: [String: Any], controls: inout Controls) -> [String: Any]? {
+        guard let id = field["id"] as? String, let input = field["input"] as? String else { return nil }
+        if ([id] + ["label", "placeholder"].compactMap({ field[$0] as? String })).contains(where: namesSecret) {
+            return nil
+        }
+        if controls.fields.contains(id) || controls.fields.count == maxFields { return nil }
+        var field = field
+        for (key, fits) in fieldExtras where fits != input { field[key] = nil }
+        if input == "choice" {
+            // One of each, compared without regard to case: the picker
+            // names its rows by their text.
+            var options: [String] = []
+            for option in field["options"] as? [String] ?? [] where !options.contains(where: { $0.lowercased() == option.lowercased() }) {
+                options.append(option)
+            }
+            guard options.count >= 2 else { return nil }
+            field["options"] = options
+        }
+        if let low = (field["min"] as? NSNumber)?.doubleValue, let high = (field["max"] as? NSNumber)?.doubleValue,
+           low > high {
+            field["min"] = nil
+        }
+        if let value = field["value"] as? String {
+            field["value"] = fieldValue(value, field: field)
+        }
+        controls.fields.insert(id)
+        return field
+    }
+
+    private static func fieldValue(_ value: String, field: [String: Any]) -> String? {
+        switch field["input"] as? String {
+        case "choice":
+            return (field["options"] as? [String] ?? []).first { $0.lowercased() == value.lowercased() }
+        case "toggle":
+            return ["on", "off"].contains(value.lowercased()) ? value.lowercased() : nil
+        case "date":
+            return isRealDate(value) ? value : nil
+        case "number":
+            guard matches(numberPattern, value), let number = Double(value) else { return nil }
+            if let low = (field["min"] as? NSNumber)?.doubleValue, number < low { return nil }
+            if let high = (field["max"] as? NSNumber)?.doubleValue, number > high { return nil }
+            return value
+        default:
+            return value
+        }
+    }
+
+    /// The button tidied, or nil when it's dropped (the plugin's
+    /// _button_rules).
+    private static func buttonRules(_ button: [String: Any], controls: inout Controls) -> [String: Any]? {
+        guard let action = button["action"] as? String else { return nil }
+        var button = button
+        if action == "tap" {
+            guard let id = button["id"] as? String, isPlainMessage(button["label"] as? String ?? "") else { return nil }
+            button["target"] = nil
+            guard !controls.taps.contains(id) else { return nil }
+            controls.taps.insert(id)
+        } else {
+            guard let target = button["target"] as? String else { return nil }
+            button["id"] = nil
+            if action == "open", !isOpenable(target) { return nil }
+            if action == "send", !isPlainMessage(target) { return nil }
+        }
+        if button["style"] as? String == "primary" {
+            if controls.primary { button["style"] = "plain" }
+            controls.primary = true
+        }
+        return button
+    }
+
+    // MARK: Diffs
+
+    private static let diffID = try! NSRegularExpression(pattern: #"^cd-[0-9a-f]{16}$"#)
+
+    /// Whether an id names a diff the host keeps.
+    static func isDiffID(_ text: String) -> Bool {
+        matches(diffID, text)
+    }
+
+    /// A line a patch can hold: + added, - removed, a space unchanged.
+    static func isDiffLine(_ line: String) -> Bool {
+        guard let first = line.unicodeScalars.first else { return false }
+        return first == "+" || first == "-" || first == " "
+    }
+
+    /// A hunk keeps the lines a patch can hold (+, - or a space first) and
+    /// goes when none is left; a binary file has no lines; an id is the
+    /// host's (the plugin's _diff_rules).
+    private static func diffRules(_ diff: [String: Any]) -> [String: Any] {
+        var diff = diff
+        if let id = diff["id"] as? String, !isDiffID(id) { diff["id"] = nil }
+        diff["files"] = (diff["files"] as? [[String: Any]] ?? []).map { file in
+            var file = file
+            if (file["binary"] as? Bool) == true { file["hunks"] = nil }
+            let hunks: [[String: Any]] = (file["hunks"] as? [[String: Any]] ?? []).compactMap { hunk in
+                let lines = (hunk["lines"] as? [String] ?? []).filter(isDiffLine)
+                guard !lines.isEmpty else { return nil }
+                var hunk = hunk
+                hunk["lines"] = lines
+                return hunk
+            }
+            file["hunks"] = hunks.isEmpty ? nil : hunks
+            return file
+        }
+        return diff
+    }
+
+    /// A whole diff the host kept (GET /boards/diffs), checked as a diff
+    /// card's is; nil when it isn't one.
+    func normalizeDiff(_ value: Any?) -> [String: Any]? {
+        guard let value else { return nil }
+        return normalizeCard(["type": "diff", "diff": value])?["diff"] as? [String: Any]
+    }
+
+    // MARK: A board's follow-ups
+
+    /// The most follow-ups a board shows (the schema's board.next).
+    static let maxFollowUps = 4
+    private static let followUpMention = try! NSRegularExpression(pattern: #"@[\w/.~]"#)
+
+    /// The follow-ups worth offering under a board (the plugin's
+    /// normalize_next): plain messages only, each once, the first four.
+    static func followUps(_ value: Any?) -> [String] {
+        guard let list = value as? [Any] else { return [] }
+        var kept: [String] = []
+        for raw in list {
+            guard let given = raw as? String else { continue }
+            var text = cleanText(given)
+            guard !text.isEmpty else { continue }
+            if text.unicodeScalars.count > 200 {
+                text = trimmingTrailingWhitespace(String(String.UnicodeScalarView(text.unicodeScalars.prefix(200))))
+            }
+            if !isPlainMessage(text) { continue }
+            if kept.contains(where: { $0.lowercased() == text.lowercased() }) { continue }
+            if kept.count == maxFollowUps { break }
+            kept.append(text)
+        }
+        return kept
     }
 
     private static func placeRules(_ card: inout [String: Any], raw: [String: Any]) {
@@ -325,13 +729,62 @@ struct RichCardSchema {
     /// The `cards` parameter of a live model's tool, in Gemini's schema
     /// dialect (upper-case types; Grok's and GPT's sessions lower-case them
     /// again). Formats are left out: Gemini knows none of them.
+    /// The kinds a live model isn't offered: a diff comes from a patch
+    /// Hermes read on its host, which a call's model has none of.
+    static let notLiveTypes: Set<String> = ["diff"]
+
     func liveToolParameter(description: String) -> [String: Any] {
-        [
+        var live = card
+        var properties = live["properties"] as? [String: Any] ?? [:]
+        for type in Self.notLiveTypes { properties[type] = nil }
+        if var kind = properties["type"] as? [String: Any], let kinds = kind["enum"] as? [String] {
+            kind["enum"] = kinds.filter { !Self.notLiveTypes.contains($0) }
+            properties["type"] = kind
+        }
+        // A call has no chat to hear a tap or take a message, and nothing to
+        // send a field with: a live model's buttons open and copy only.
+        if var actions = properties["actions"] as? [String: Any] {
+            actions["items"] = Self.openAndCopyOnly(actions["items"])
+            properties["actions"] = actions
+        }
+        if var sections = properties["sections"] as? [String: Any], var section = sections["items"] as? [String: Any],
+           var sectionProperties = section["properties"] as? [String: Any],
+           var items = sectionProperties["items"] as? [String: Any],
+           var element = Self.openAndCopyOnly(items["items"]) as? [String: Any],
+           var elementProperties = element["properties"] as? [String: Any],
+           var kind = elementProperties["kind"] as? [String: Any], let kinds = kind["enum"] as? [String] {
+            kind["enum"] = kinds.filter { $0 != "field" }
+            elementProperties["kind"] = kind
+            for key in ["input", "lines", "options", "min", "max", "placeholder", "id"] { elementProperties[key] = nil }
+            element["properties"] = elementProperties
+            items["items"] = element
+            sectionProperties["items"] = items
+            section["properties"] = sectionProperties
+            sections["items"] = section
+            properties["sections"] = sections
+        }
+        live["properties"] = properties
+        return [
             "type": "ARRAY",
             "maxItems": maxCards,
             "description": description,
-            "items": Self.geminiSchema(card),
+            "items": Self.geminiSchema(live),
         ]
+    }
+
+    /// A button's schema with only open and copy left, and no tap id.
+    private static func openAndCopyOnly(_ value: Any?) -> Any? {
+        guard var button = value as? [String: Any], var properties = button["properties"] as? [String: Any],
+              var action = properties["action"] as? [String: Any], let actions = action["enum"] as? [String] else {
+            return value
+        }
+        action["enum"] = actions.filter { $0 == "open" || $0 == "copy" }
+        action["description"] = "open: open target, an https link or a maps:, tel:, sms:, mailto:, calshow: or x-apple-reminderkit: link. copy: copy target."
+        properties["action"] = action
+        properties["id"] = nil
+        properties["confirm"] = nil
+        button["properties"] = properties
+        return button
     }
 
     private static func geminiSchema(_ schema: [String: Any]) -> [String: Any] {

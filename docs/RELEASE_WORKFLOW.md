@@ -104,6 +104,23 @@ When the release candidate passes final QA:
    ```
 
 4. Archive and upload the app to App Store Connect from that exact tagged commit.
+   Before uploading, check the archive: no shipped binary may weak-import a
+   back-deployed Foundation symbol an early beta lacks (build 251 crashed at
+   launch on iOS 27.2 betas that way; see "Back-deployed Foundation API in
+   shipped targets" in FEATURE_MAP.md), and none may load ActivityKit or
+   ImagePlayground strongly (2.3.0 build 252 didn't launch on macOS 14 that
+   way, issue 1877). Upload only when this passes:
+
+   ```bash
+   python3 scripts/check-weak-imports.py binaries --products <archive>.xcarchive/Products
+   ```
+
+   On the Mac, `conduit-save-dsyms` runs it after shelving the dSYMs. When it
+   fails, it renames the archive to `<name>.xcarchive.blocked-weak-imports`,
+   so `-exportArchive` can't find it, and exits non-zero. The rename is what
+   blocks the upload: the generated per-build scripts don't stop on that exit.
+   A build script that runs the check itself still adds `|| exit 1`, so its own
+   step fails too.
 5. Record the tag, commit SHA, marketing version, and build number in the release PR or release notes.
 6. After the candidate has been uploaded and accepted for release, mark the release PR ready and merge it into `main`.
 

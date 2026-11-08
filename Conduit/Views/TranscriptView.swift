@@ -103,6 +103,8 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
     /// and the old one waits here, hidden, until nothing is presented.
     private var parked: [UIHostingController<TranscriptCellRoot>] = []
     private let parkingView = UIView()
+    /// A pass is asked for after a row resized on its own (`rowResized`).
+    private var passAsked = false
 
     init(appState: AppState, scroller: TranscriptScroller) {
         self.scroller = scroller
@@ -157,10 +159,14 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         dropParkedIfIdle()
+        // Fingers on the transcript and the swipe back over it, in the
+        // recorder (issue 1687).
+        TranscriptTouchTrace.watch(collectionView, navigationController: navigationController)
     }
 
     func detach() {
         scroller.detach(collectionView)
+        TranscriptTouchTrace.unwatch(collectionView)
         attached = false
     }
 
@@ -292,9 +298,30 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
             content: rowContent(row),
             rowEnvironment: rowEnvironment,
             appState: appState,
-            resized: { [weak layout] size in layout?.rowResized(id, to: size) }
+            resized: { [weak self] size in self?.rowResized(id, to: size) }
         )
         cell.host(root, rowID: id, in: self)
+    }
+
+    /// A row changed height on its own (a reply's text revealed a few
+    /// characters at a time, a picture loading). It finds out while UIKit
+    /// lays out the row's cell, after the collection view's own pass, so
+    /// the pass that lays the rows out again, and moves a following reader
+    /// to the new end, is asked for at once: left to UIKit, it waits for
+    /// whatever next wakes the main thread, with the row drawn past its
+    /// cell and the reader a line short of the end meanwhile.
+    private func rowResized(_ id: String, to size: CGSize) {
+        layout.rowResized(id, to: size)
+        guard !passAsked else { return }
+        passAsked = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.passAsked = false
+            // A transcript taken down since lays nothing out: its pass
+            // would attach it to the scroller again.
+            guard self.attached else { return }
+            self.collectionView.layoutIfNeeded()
+        }
     }
 
     /// A cell made ready off screen before the chat's environment changed
@@ -416,8 +443,10 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         guard attached else { return }
         switch recognizer.state {
         case .began:
+            ChatViewportTrace.shared.log(TranscriptTouchTrace.dragLine(.began, offset: collectionView.contentOffset.y))
             scroller.userDragBegan()
         case .ended, .cancelled, .failed:
+            ChatViewportTrace.shared.log(TranscriptTouchTrace.dragLine(recognizer.state, offset: collectionView.contentOffset.y))
             scroller.userDragEnded()
         default:
             break

@@ -137,6 +137,30 @@ extension HermesVoiceGatewayTimeoutTests {
         } catch {}
     }
 
+    func testAReplysFileNameIsResolvedForTheChat() async throws {
+        var asked = ""
+        var answer: [String: Any] = ["ok": true, "path": "/root/audits/Conduit/AppState.swift", "via": "chat"]
+        let client = workspaceClient(answer: { _, _, _ in answer }, requests: { path, method, _ in
+            asked = path
+            XCTAssertEqual(method, "GET")
+        })
+        let found = try await client.resolve(path: "Conduit/App State.swift", sessionIDs: ["live-1", "20261105_a"])
+        XCTAssertEqual(found, "/root/audits/Conduit/AppState.swift")
+        XCTAssertTrue(asked.hasPrefix("/api/plugins/conduit_push/workspace/resolve?path=Conduit%2FApp%20State.swift"), asked)
+        XCTAssertTrue(asked.contains("session_id=live-1&session_id=20261105_a"), asked)
+        XCTAssertTrue(asked.contains("profile=work"), asked)
+
+        answer = ["ok": true, "path": NSNull()]
+        let missing = try await client.resolve(path: "gone.md", sessionIDs: ["live-1"])
+        XCTAssertNil(missing, "no such file on the host")
+
+        answer = ["ok": true]
+        do {
+            _ = try await client.resolve(path: "gone.md", sessionIDs: ["live-1"])
+            XCTFail("an answer without a path is a failed lookup, not a missing file")
+        } catch {}
+    }
+
     func testWorkspaceSaveSendsTheDateItWasReadAt() async throws {
         var sent: [String: Any]?
         var path = ""
@@ -154,7 +178,8 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testCodeThatNamesAPathLinksToTheFile() throws {
-        for path in ["docs/guide.md", "/srv/app/main.py", "~/notes.txt", "README.md", "src/app/", "./run.sh"] {
+        for path in ["docs/guide.md", "/srv/app/main.py", "~/notes.txt", "README.md", "src/app/", "./run.sh",
+                     "src/app/models", "~/projects", "./out"] {
             let url = try XCTUnwrap(WorkspacePathLinks.url(forCode: path), path)
             XCTAssertEqual(ConduitAppLink(url: url), .file(path: path))
         }
@@ -163,10 +188,64 @@ extension HermesVoiceGatewayTimeoutTests {
         }
     }
 
+    /// A repository, image or model named in code isn't a file on the host:
+    /// drawn as a link, a click opened the Folder on a file the host never
+    /// had (issue 1585, a table of GitHub skills). Nor is a site written
+    /// without its scheme.
+    func testCodeThatNamesARepositoryOrASiteIsNotAFileLink() {
+        for code in [
+            "coleam00/excalidraw-diagram-skill", "github/awesome-copilot", "meta-llama/Llama-3.1-8B",
+            "library/nginx", "my-app.vercel.app/docs", "example.com/a.html", "ghcr.io/owner/image",
+        ] {
+            XCTAssertNil(WorkspacePathLinks.url(forCode: code), code)
+        }
+        let text = "See example.com/guide.html or docs/guide.md."
+        let found = WorkspacePathLinks.links(inText: text).map { (text as NSString).substring(with: $0.range) }
+        XCTAssertEqual(found, ["docs/guide.md"])
+    }
+
     func testPlainTextLinksOnlyPathsWithAFolderAndAFileType() {
         let text = "I wrote meta-app-review/tutorial.md and ~/notes/today.txt. Use and/or e.g. v1.2 here."
         let found = WorkspacePathLinks.links(inText: text).map { (text as NSString).substring(with: $0.range) }
         XCTAssertEqual(found, ["meta-app-review/tutorial.md", "~/notes/today.txt"], "a sentence's period stays out")
+    }
+
+    func testMarkdownLinksToHostFilesOpenInTheFolder() throws {
+        let cases: [(String, String)] = [
+            ("clients/acme/report.xlsx", "clients/acme/report.xlsx"),
+            ("report.json", "report.json"),
+            ("/srv/out/summary.pdf", "/srv/out/summary.pdf"),
+            ("~/notes/today.md", "~/notes/today.md"),
+            ("./out/a.csv#L12", "./out/a.csv"),
+            ("file:///srv/data/notes.txt", "/srv/data/notes.txt"),
+            ("Client%20Files/Q3%20report.xlsx", "Client Files/Q3 report.xlsx"),
+            ("C:/work/a.md", "C:/work/a.md"),
+        ]
+        for (destination, path) in cases {
+            let link = try XCTUnwrap(URL(string: destination), destination)
+            let url = try XCTUnwrap(WorkspacePathLinks.url(forLink: link), destination)
+            XCTAssertEqual(ConduitAppLink(url: url), .file(path: path), destination)
+        }
+        for destination in [
+            "https://example.com/a.md", "mailto:me@example.com", "#section-2", "guide", "docs/guide",
+            "example.com/a.html", "conduit://session/abc", "file://nas/share/a.md", "tel:123",
+        ] {
+            let link = try XCTUnwrap(URL(string: destination), destination)
+            XCTAssertNil(WorkspacePathLinks.url(forLink: link), destination)
+        }
+    }
+
+    func testAReplysMarkdownFileLinkIsDrawnAsAFolderLink() throws {
+        let markdown = "Saved [the report](clients/acme/report.xlsx) and [site](https://example.com)."
+        let attributed = try AttributedString(markdown: markdown, options: .init(interpretedSyntax: .full))
+        let bridged = SelectableTextView.bridge(attributed, defaultFont: .systemFont(ofSize: 17), defaultColor: .label, linkColor: .link)
+        var links: [URL] = []
+        bridged.enumerateAttribute(.link, in: NSRange(location: 0, length: bridged.length)) { value, _, _ in
+            if let url = value as? URL { links.append(url) }
+        }
+        XCTAssertEqual(links.count, 2)
+        XCTAssertEqual(links.first.flatMap(ConduitAppLink.init(url:)), .file(path: "clients/acme/report.xlsx"))
+        XCTAssertEqual(links.last?.absoluteString, "https://example.com")
     }
 
     func testFileLinksOpenOnlyInsideTheApp() throws {
@@ -195,6 +274,42 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(appState.workspaceReveal?.line, 3)
     }
 
+    func testAFileLookupOpensTheFileOrSaysItIsntOnTheServer() throws {
+        let suite = "WorkspaceFilesTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.runtime.cwd = "/home/me/app"
+
+        appState.showWorkspaceLookup(.success("/root/audits/AppState.swift"), for: "AppState.swift", line: 4)
+        XCTAssertEqual(appState.workspaceReveal?.path, "/root/audits/AppState.swift")
+        XCTAssertEqual(appState.workspaceReveal?.line, 4)
+
+        appState.workspaceReveal = nil
+        appState.showWorkspaceLookup(.success(nil), for: "out/gone.xlsx", line: nil)
+        XCTAssertNil(appState.workspaceReveal, "nothing to open")
+        // Said above the composer, which shows while the chat is connected.
+        XCTAssertEqual(appState.composerNotice?.hasPrefix("gone.xlsx isn"), true, appState.composerNotice ?? "")
+
+        appState.showWorkspaceLookup(.failure(URLError(.timedOut)), for: "docs/a.md", line: nil)
+        XCTAssertEqual(appState.workspaceReveal?.path, "/home/me/app/docs/a.md", "a failed lookup keeps the chat's folder")
+        XCTAssertNil(appState.composerNotice, "a later tap's answer takes the earlier notice away")
+
+        appState.composerNotice = "Your message wasn't sent. It's back in the composer."
+        appState.showWorkspaceLookup(.success("/w/a.md"), for: "a.md", line: nil)
+        XCTAssertEqual(appState.composerNotice, "Your message wasn't sent. It's back in the composer.", "other notices stay")
+        appState.showWorkspaceLookup(.success(nil), for: "gone.xlsx", line: nil)
+        XCTAssertEqual(appState.composerNotice?.hasPrefix("gone.xlsx isn"), true)
+        appState.showWorkspaceLookup(.success("/w/b.md"), for: "b.md", line: nil)
+        XCTAssertEqual(appState.composerNotice, "Your message wasn't sent. It's back in the composer.",
+                       "the message that came back has its notice again")
+
+        appState.composerNotice = nil
+        appState.showWorkspaceLookup(.success(nil), for: "gone.xlsx", line: nil)
+        appState.activeSessionId = "another-chat"
+        XCTAssertNil(appState.composerNotice, "the notice was about the chat left")
+    }
+
     func testToolsThatChangeFilesRefreshTheFolder() throws {
         let suite = "WorkspaceFilesTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -219,5 +334,77 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(roots.first?.path, "/w/app")
         XCTAssertEqual(roots.first?.kind, .chat)
         XCTAssertTrue(appState.workspaceRoots(includingChat: false).allSatisfy { $0.kind == .project })
+    }
+
+    // MARK: - New Project (issue 1661)
+
+    func testProjectFolderPickerGoesUpToTheTopOfTheDisk() {
+        XCTAssertEqual(AppState.parentWorkspacePath("/home/me/app"), "/home/me")
+        XCTAssertEqual(AppState.parentWorkspacePath("/home/me/app/"), "/home/me")
+        XCTAssertEqual(AppState.parentWorkspacePath("/home"), "/")
+        XCTAssertNil(AppState.parentWorkspacePath("/"))
+        XCTAssertEqual(AppState.parentWorkspacePath("~/work"), "~")
+        XCTAssertNil(AppState.parentWorkspacePath("~"))
+        XCTAssertEqual(AppState.parentWorkspacePath("C:\\Users\\me"), "C:\\Users")
+        XCTAssertEqual(AppState.parentWorkspacePath("C:\\Users"), "C:\\")
+        XCTAssertNil(AppState.parentWorkspacePath("C:\\"))
+        XCTAssertNil(AppState.parentWorkspacePath(""))
+        XCTAssertEqual(AppState.parentWorkspacePath("/home/me/a\\b"), "/home/me", "a backslash in a POSIX name isn't a separator")
+    }
+
+    func testProjectFolderPickerStartsInTheChatsFolderElseHomes() throws {
+        let suite = "WorkspaceFilesTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+
+        XCTAssertEqual(appState.projectFolderPickerRoot, "", "no chat and no projects yet")
+        appState.setProjectsForTesting([
+            ProjectSummary(id: "home", title: "Home", primaryPath: "/home/me", isHome: true, sessionCount: 0, previewSessions: []),
+        ])
+        XCTAssertEqual(appState.projectFolderPickerRoot, "/home/me", "Home's folder with no chat open")
+        appState.runtime.cwd = "/home/me/app"
+        XCTAssertEqual(appState.projectFolderPickerRoot, "/home/me", "a folder left from a chat that's closed isn't used")
+        appState.activeSessionId = "chat"
+        XCTAssertEqual(appState.projectFolderPickerRoot, "/home/me/app", "the open chat's folder first")
+    }
+
+    func testNewProjectRefusesAnotherProjectsNameOrFolder() throws {
+        let suite = "WorkspaceFilesTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.setProjectsForTesting([
+            ProjectSummary(id: "home", title: "Home", primaryPath: "/home/me", isHome: true, sessionCount: 0, previewSessions: []),
+            ProjectSummary(id: "p_1", title: "Skunkworks", primaryPath: "/home/me/skunk", isHome: false, sessionCount: 0, previewSessions: []),
+            ProjectSummary(id: "repo", title: "found-repo", primaryPath: "/home/me/found-repo", isHome: false, isAuto: true,
+                           sessionCount: 0, previewSessions: []),
+        ])
+
+        XCTAssertNil(appState.projectCreationProblem(name: "Atlas", folders: ["/home/me/atlas"]))
+        XCTAssertNotNil(appState.projectCreationProblem(name: " skunkworks ", folders: ["/home/me/atlas"]))
+        XCTAssertNotNil(appState.projectCreationProblem(name: "Atlas", folders: ["/home/me/skunk/"]))
+        XCTAssertNil(appState.projectCreationProblem(name: "Home", folders: ["/home/me"]), "Home has no record to clash with")
+        XCTAssertNil(appState.projectCreationProblem(name: "found-repo", folders: ["/home/me/found-repo"]),
+                     "a repo Hermes found on its own can become a project")
+    }
+
+    func testNewProjectNeverWritesOverAnIdea() {
+        XCTAssertTrue(AppState.folderHasProjectIdea([WorkspaceEntry(name: "idea.MD", path: "/p/idea.MD", isDirectory: false)]))
+        XCTAssertFalse(AppState.folderHasProjectIdea([WorkspaceEntry(name: "README.md", path: "/p/README.md", isDirectory: false)]))
+        XCTAssertFalse(AppState.folderHasProjectIdea([]))
+    }
+
+    func testAFailedCreateFindsTheProjectHermesMadeAnyway() {
+        let old = ProjectSummary(id: "p_1", title: "Atlas", primaryPath: "/home/me/old", isHome: false, sessionCount: 0, previewSessions: [])
+        let other = ProjectSummary(id: "p_2", title: "Atlas", primaryPath: "/home/me/elsewhere", isHome: false, sessionCount: 0, previewSessions: [])
+        let made = ProjectSummary(id: "p_3", title: "Atlas", primaryPath: "/home/me/atlas/", isHome: false, sessionCount: 0, previewSessions: [])
+        let list = [old, other, made]
+
+        XCTAssertEqual(AppState.projectMadeAnyway(name: "atlas", firstFolder: "/home/me/atlas", knownIDs: ["p_1"], in: list)?.id, "p_3")
+        XCTAssertNil(AppState.projectMadeAnyway(name: "Atlas", firstFolder: "/home/me/old", knownIDs: ["p_1"], in: list),
+                     "a project that was there before isn't this one")
+        XCTAssertNil(AppState.projectMadeAnyway(name: "Atlas", firstFolder: "/home/me/new", knownIDs: [], in: list),
+                     "a name alone could be another device's")
     }
 }

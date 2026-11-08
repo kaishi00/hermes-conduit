@@ -11,11 +11,17 @@
 //  Design: /mnt/project-files/designs/hermes-calls-teaching.md
 //
 
+import Contacts
+import ContactsUI
 import SwiftUI
 
 /// What Settings needs to show the profile's call settings.
 struct HermesCallSettingsModel {
     var profile: String
+    /// The server the settings are on; with the profile, whose they are.
+    var dashboardID: UUID?
+    /// The profile's bot as Conduit shows it, the name its contact gets.
+    var botName: String = HermesCallerName.fallback
     /// Nil until read from the host.
     var status: HermesCallsStatus?
     /// Reads them again; false when the host couldn't answer.
@@ -27,6 +33,9 @@ struct HermesCallSettingsModel {
     /// This iPhone's saved places (Settings > Location), for "Don't call me
     /// while I'm at"; their ids are what the host keeps.
     var places: [LocationSavedPlace] = []
+
+    /// Whose settings these are: the server and the profile.
+    var owner: String { "\(dashboardID?.uuidString ?? "")|\(profile)" }
 }
 
 /// Formats for the call settings, in the app's language.
@@ -99,6 +108,9 @@ struct HermesCallsSettingsPage: View {
     var body: some View {
         SettingsDetailContainer {
             HermesCallSettingsSection(model: model, startTestCall: startTestCall, startWatch: startWatch)
+                // Another profile's or server's settings start their own
+                // draft rather than take this one's (issue 1974).
+                .id(model.owner)
             HermesCallsHowToSection(settings: model.status?.settings, hearsMissedCalls: hearsMissedCalls)
         }
         .scrollDismissesKeyboard(.interactively)
@@ -133,6 +145,46 @@ struct HermesCallsHowToSection: View {
     }
 }
 
+/// The system's new-contact screen, filled in with the address Hermes
+/// calls ring from. It runs outside Conduit's process, so it needs no
+/// contacts permission.
+struct HermesNewContactSheet: UIViewControllerRepresentable {
+    let profile: String
+    let name: String
+    @Environment(\.dismiss) private var dismiss
+
+    /// The bot, at the address its calls ring from: its name is what the
+    /// call screen shows once the contact is saved.
+    static func contact(profile: String, name: String) -> CNMutableContact {
+        let contact = CNMutableContact()
+        contact.givenName = name
+        contact.emailAddresses = [CNLabeledValue(label: CNLabelOther, value: HermesCallerName.contactAddress(profile: profile) as NSString)]
+        return contact
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(dismiss: { dismiss() }) }
+
+    func makeUIViewController(context: Context) -> UINavigationController {
+        let controller = CNContactViewController(forNewContact: Self.contact(profile: profile, name: name))
+        controller.delegate = context.coordinator
+        return UINavigationController(rootViewController: controller)
+    }
+
+    func updateUIViewController(_ controller: UINavigationController, context: Context) {}
+
+    final class Coordinator: NSObject, CNContactViewControllerDelegate {
+        let dismiss: () -> Void
+
+        init(dismiss: @escaping () -> Void) {
+            self.dismiss = dismiss
+        }
+
+        func contactViewController(_ viewController: CNContactViewController, didCompleteWith contact: CNContact?) {
+            dismiss()
+        }
+    }
+}
+
 struct HermesCallSettingsSection: View {
     let model: HermesCallSettingsModel
     var startTestCall: (() -> Void)?
@@ -145,7 +197,13 @@ struct HermesCallSettingsSection: View {
     @AppStorage(HermesNativeCalls.ringsKey) private var ringsLikeCall = true
     @ObservedObject private var notifications = PushNotificationService.shared
     @State private var loadFailed = false
+    @State private var addsContact = false
     @State private var saveTask: Task<Void, Never>?
+    /// Whose settings the draft holds, and how they're saved: a switch of
+    /// profile or server can hand this view another's model before it
+    /// goes, and the draft still saves to its own (issue 1974).
+    @State private var draftOwner: String
+    @State private var draftSave: (HermesCallSettings) async -> Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(model: HermesCallSettingsModel, startTestCall: (() -> Void)? = nil, startWatch: ((String) -> Void)? = nil) {
@@ -155,7 +213,12 @@ struct HermesCallSettingsSection: View {
         let settings = model.status?.settings ?? HermesCallSettings()
         _draft = State(initialValue: settings)
         _rulesText = State(initialValue: settings.rules ?? "")
+        _draftOwner = State(initialValue: model.owner)
+        _draftSave = State(initialValue: model.save)
     }
+
+    /// Whether the model shown is the draft's own.
+    private var modelOwnsDraft: Bool { model.owner == draftOwner }
 
     /// Saved once the user stops tapping, so a stepper run is one save.
     /// Saves go one at a time, so the newest change lands last; one the host
@@ -167,9 +230,11 @@ struct HermesCallSettingsSection: View {
         let previous = saveTask
         previous?.cancel()
         let settings = draft
-        let save = model.save
+        // Another's model has no say over this draft: it saves to its own.
+        let ownModel = modelOwnsDraft
+        let save = ownModel ? model.save : draftSave
         let current = model.current
-        let editTimeSettings = model.status?.settings
+        let editTimeSettings = ownModel ? model.status?.settings : nil
         saveTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(500))
             await previous?.value
@@ -178,7 +243,7 @@ struct HermesCallSettingsSection: View {
             guard !Task.isCancelled else { return }
             saveTask = nil
             // What the host holds now, including saves since this edit.
-            if !saved, let hostSettings = current() ?? editTimeSettings {
+            if !saved, ownModel, let hostSettings = current() ?? editTimeSettings {
                 withAnimation(animation) { draft = hostSettings }
             }
         }
@@ -207,6 +272,27 @@ struct HermesCallSettingsSection: View {
         )
     }
 
+    /// A Focus lets a call through only from its allowed people, matched
+    /// by contact, so each bot needs its own contact to be allowed in one
+    /// (#1606, Eric chose one contact per bot).
+    private var focusContactRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                addsContact = true
+            } label: {
+                Label(AppLocalization.string("Add \(model.botName) to Contacts"), systemImage: "person.crop.circle.badge.plus")
+            }
+            .accessibilityIdentifier("hermesCalls.addContact")
+            Text("A Focus or Do Not Disturb silences Hermes' calls. To let them ring through one, save this contact once, then add it to that Focus's People in Settings > Focus. Other callers still follow the Focus's settings.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .sheet(isPresented: $addsContact) {
+            HermesNewContactSheet(profile: model.profile, name: model.botName)
+                .ignoresSafeArea()
+        }
+    }
+
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Calls from Hermes"), symbol: "phone.arrow.down.left", tint: .green) {
             if let status = model.status {
@@ -232,6 +318,9 @@ struct HermesCallSettingsSection: View {
                                 .scaledFont(.caption)
                                 .foregroundStyle(.orange)
                                 .accessibilityIdentifier("hermesCalls.watchElsewhere")
+                        }
+                        if ringsLikeCall {
+                            focusContactRow
                         }
                     }
                     Toggle("Call when I ask", isOn: binding(\.whenAsked))
@@ -318,7 +407,7 @@ struct HermesCallSettingsSection: View {
             // The host's answer, unless a change of this view is on its way.
             // (A change still waiting when the view goes is saved anyway:
             // its task outlives the view.)
-            guard saveTask == nil, let settings = newValue?.settings else { return }
+            guard saveTask == nil, modelOwnsDraft, let settings = newValue?.settings else { return }
             draft = settings
         }
         // The host's note, unless the user is writing one.

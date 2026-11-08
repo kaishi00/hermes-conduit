@@ -42,6 +42,16 @@ enum LiveTurnProgress {
         case .clarify, .inputPrompt:
             next.phase = HermesTurnPhase.input.rawValue
             next.tool = nil
+        case .connection(_, let card):
+            // A connect card waits on the user like an input card; its
+            // settlement hands the turn back to Hermes.
+            if card.isOpen {
+                next.phase = HermesTurnPhase.input.rawValue
+                next.tool = nil
+            } else {
+                guard state.turnPhase.waitsOnUser else { return nil }
+                next.phase = HermesTurnPhase.thinking.rawValue
+            }
         case .approvalWithdrawn, .clarifyExpire, .inputPromptExpire:
             guard state.turnPhase.waitsOnUser else { return nil }
             next.phase = HermesTurnPhase.thinking.rawValue
@@ -179,7 +189,12 @@ enum LiveTurnProgress {
 /// chat's ids).
 @MainActor
 final class LiveTurnActivities {
-    static let shared = LiveTurnActivities()
+    /// Nil on a Mac, which has no Lock Screen or Dynamic Island for an
+    /// iPhone app. ActivityKit is weak-linked (project.yml) because macOS
+    /// 14 has none for iPhone and iPad apps, so nothing may touch it there
+    /// (issue 1877: Conduit didn't launch on Sonoma).
+    static let shared: LiveTurnActivities? = isAvailable ? LiveTurnActivities() : nil
+    nonisolated static var isAvailable: Bool { !ProcessInfo.processInfo.isiOSAppOnMac }
     /// Settings > Notifications "Progress on the Lock Screen"; on unless
     /// turned off.
     nonisolated static let enabledDefaultsKey = "conduit.liveActivities.enabled"
@@ -244,11 +259,11 @@ final class LiveTurnActivities {
         // may have pushed meanwhile.
         for name in [UIApplication.willResignActiveNotification, UIApplication.didEnterBackgroundNotification] {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
-                MainActor.assumeIsolated { LiveTurnActivities.shared.sendAllHeld() }
+                MainActor.assumeIsolated { LiveTurnActivities.shared?.sendAllHeld() }
             }
         }
         NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { LiveTurnActivities.shared.registerUnregistered() }
+            MainActor.assumeIsolated { LiveTurnActivities.shared?.registerUnregistered() }
         }
     }
 
@@ -480,7 +495,8 @@ final class LiveTurnActivities {
     /// cards of `profile` on `dashboardID` count (one naming neither is
     /// from an older build): ids from another workspace say nothing here.
     nonisolated static func sessionIDs(linkedTo id: String, profile: String, dashboardID: String?) -> [String] {
-        sessionIDs(linkedTo: id, profile: profile, dashboardID: dashboardID, in: Activity<HermesTurnAttributes>.activities.map(\.attributes))
+        guard isAvailable else { return [] }
+        return sessionIDs(linkedTo: id, profile: profile, dashboardID: dashboardID, in: Activity<HermesTurnAttributes>.activities.map(\.attributes))
     }
 
     nonisolated static func sessionIDs(linkedTo id: String, profile: String, dashboardID: String?, in cards: [HermesTurnAttributes]) -> [String] {

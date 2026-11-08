@@ -3055,6 +3055,94 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(card?.clarify?.status, .pending)
     }
 
+    /// The reported duplicate (Raiden, 2026-11-04): the Bot Chat opened from
+    /// the notification already holds Hermes' own card for the question, so
+    /// the notification's copy is not added beside it.
+    func testClarifyPushedFromBotChatDoesNotDoubleHermesCard() async {
+        let cacheSuite = "BotModeTests.clarify-double-\(UUID().uuidString)"
+        guard let cacheDefaults = UserDefaults(suiteName: cacheSuite) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: cacheDefaults)
+        defer {
+            cache.clear()
+            cacheDefaults.removePersistentDomain(forName: cacheSuite)
+        }
+        let harness = makeBotHarness(
+            sessionPresentationCache: cache,
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [self.makeSessionSummary(id: "ordinary-1", title: "Design review")] },
+                openSessionWithProfile: { _, id, _, _ in
+                    SessionResumeResult(
+                        sessionId: id,
+                        storedSessionId: "stored-1",
+                        messages: [
+                            ChatMessage(
+                                id: "clarify-gateway-rid-1",
+                                role: .clarify,
+                                content: "Which color?",
+                                timestamp: "1",
+                                clarify: ClarifyActivity(
+                                    requestId: "gateway-rid-1",
+                                    questions: [ClarifyQuestion(
+                                        id: "q0",
+                                        question: "Which color?",
+                                        choices: [ClarifyChoice(label: "Red", value: "Red"),
+                                                  ClarifyChoice(label: "Blue", value: "Blue")]
+                                    )]
+                                )
+                            )
+                        ],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in },
+                botRoster: { _ in
+                    BotRosterSnapshot(
+                        bots: [self.makeBot(name: "atlas", canonicalID: "stored-1")],
+                        supportsBotProtocol: false
+                    )
+                },
+                findBotChat: { _, _ in
+                    [BotChatLookupRow(id: "stored-1", resolvedID: "runtime-1", title: "Bot Chat")]
+                }
+            )
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.connection = connection
+        await harness.appState.refreshBotRoster()
+
+        let routed = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(
+                profile: "atlas",
+                sessionId: "stored-1",
+                type: "input.needed",
+                decision: .clarify(
+                    requestId: "conduit-push-bot1",
+                    question: "Which color?",
+                    choices: ["Red", "Blue"]
+                )
+            )
+        )
+
+        XCTAssertTrue(routed)
+        XCTAssertEqual(harness.appState.activeBotChatProfile, "atlas")
+        let cards = harness.appState.messages.filter { $0.role == .clarify }
+        XCTAssertEqual(cards.map { $0.clarify?.requestId }, ["gateway-rid-1"])
+        let cached = cache.merge(
+            [],
+            profile: "atlas",
+            sessionIDs: ["stored-1", "runtime-1"],
+            includePendingClarifications: true
+        )
+        XCTAssertFalse(
+            cached.contains { $0.clarify?.requestId == "conduit-push-bot1" },
+            "The copy is not kept for a later open either"
+        )
+    }
+
     /// The plain reply push from a Bot Chat (#650): tapping it opens that
     /// bot's chat in Bots, not the workspace chat that was open before.
     func testReplyFromBotChatOpensItsBotChat() async {

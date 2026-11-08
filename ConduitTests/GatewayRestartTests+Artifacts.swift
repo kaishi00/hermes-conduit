@@ -311,4 +311,25 @@ extension GatewayRestartTests {
         XCTAssertEqual(appState.artifactSources(for: .chat(appState.activeChatArtifactSessionIDs)).map(\.profile),
                        ["atlas"])
     }
+
+    /// A Bot Overview's Artifacts read the bot's whole profile: labelled
+    /// as another profile's unless it's the one in use.
+    func testABotOverviewReadsItsBotsWholeProfile() throws {
+        let suite = "Artifacts.AppState.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let other = appState.artifactSources(for: .bot("atlas"))
+        XCTAssertEqual(other.map(\.profile), ["atlas"])
+        XCTAssertEqual(other.map(\.sessionIDs), [[]])
+        XCTAssertNotNil(other.first?.label)
+        let own = appState.artifactSources(for: .bot(appState.activeProfile))
+        XCTAssertEqual(own.map(\.profile), [appState.activeProfile])
+        XCTAssertNil(own.first?.label)
+    }
 }

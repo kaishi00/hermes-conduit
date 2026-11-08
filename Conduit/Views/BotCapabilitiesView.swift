@@ -43,8 +43,9 @@ struct BotCapabilitiesView: View {
     }
 
     var body: some View {
-        List {
-            Section {
+        // Settings' own page, as Edit Bot that pushes it (Eric 2026-11-05).
+        SettingsDetailContainer {
+            ConduitSettingsSection(title: AppLocalization.string("Skills"), symbol: "book", tint: .conduitAccent) {
                 if skillsSkipped {
                     Text(AppLocalization.string("Skip Bundled Skills is on, so this bot starts with no skills."))
                         .foregroundStyle(.secondary)
@@ -53,6 +54,7 @@ struct BotCapabilitiesView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     TextField(AppLocalization.string("Filter skills"), text: $skillFilter)
+                        .textFieldStyle(.roundedBorder)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     // Keyed by name: a filter change must not hand one
@@ -63,14 +65,12 @@ struct BotCapabilitiesView: View {
                         }
                     }
                 }
-            } header: {
-                Text(AppLocalization.string("Skills"))
-            } footer: {
                 if let sourceLabel, !skillsSkipped {
                     Text(AppLocalization.string("Starts from what \(sourceLabel) has installed."))
+                        .settingsCaption()
                 }
             }
-            Section {
+            ConduitSettingsSection(title: AppLocalization.string("Tools"), symbol: "wrench.and.screwdriver", tint: .blue) {
                 if capabilities.toolsets.isEmpty {
                     Text(AppLocalization.string("No tools to choose from."))
                         .foregroundStyle(.secondary)
@@ -89,14 +89,12 @@ struct BotCapabilitiesView: View {
                         }
                     }
                 }
-            } header: {
-                Text(AppLocalization.string("Tools"))
-            } footer: {
                 if !capabilities.toolsets.isEmpty {
                     Text(AppLocalization.string("With every tool on, the bot follows Hermes' default tools. At least one tool stays on."))
+                        .settingsCaption()
                 }
             }
-            Section {
+            ConduitSettingsSection(title: SettingsNames.mcp, symbol: "server.rack", tint: .purple) {
                 if let mcpNotice {
                     Text(verbatim: mcpNotice.text)
                         .scaledFont(.footnote)
@@ -115,34 +113,33 @@ struct BotCapabilitiesView: View {
                         }
                     }
                 }
-            } header: {
-                Text(verbatim: "MCP")
-            } footer: {
-                if mcpProfile == nil {
-                    Text(AppLocalization.string("Add servers from Hermes' catalog in Edit Bot, once the bot is made."))
-                } else if mcpSetup == nil && mcpSetupRead {
-                    Text(AppLocalization.string("Add new MCP servers from Hermes on your computer."))
-                } else if mcpSetupKept && mcpSetupRead {
-                    // Hermes didn't answer: Add and Sign In wait over the
-                    // kept catalog until it does.
-                    VStack(alignment: .leading, spacing: 6) {
+                Group {
+                    if mcpProfile == nil {
+                        Text(AppLocalization.string("Add servers from Hermes' catalog in Edit Bot, once the bot is made."))
+                    } else if mcpSetup == nil && mcpSetupRead {
                         Text(AppLocalization.string("Add new MCP servers from Hermes on your computer."))
-                        Button(AppLocalization.string("Try Again")) {
-                            Task { await readMcpSetup() }
+                    } else if mcpSetupKept && mcpSetupRead {
+                        // Hermes didn't answer: Add and Sign In wait over the
+                        // kept catalog until it does.
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(AppLocalization.string("Add new MCP servers from Hermes on your computer."))
+                            Button(AppLocalization.string("Try Again")) {
+                                Task { await readMcpSetup() }
+                            }
+                            .buttonStyle(.settings)
+                            .disabled(mcpSetupReading)
                         }
-                        .disabled(mcpSetupReading)
                     }
                 }
+                .settingsCaption()
             }
             if let mcpSetup, !offeredServers(mcpSetup).isEmpty {
-                Section {
+                ConduitSettingsSection(title: AppLocalization.string("Hermes' MCP Catalog"), symbol: "square.grid.2x2", tint: .purple) {
                     ForEach(offeredServers(mcpSetup)) { entry in
                         catalogRow(entry)
                     }
-                } header: {
-                    Text(AppLocalization.string("Hermes' MCP Catalog"))
-                } footer: {
                     Text(AppLocalization.string("Adding a server writes it to this bot's profile right away. Its keys and sign-ins stay on Hermes."))
+                        .settingsCaption()
                 }
             }
         }
@@ -230,7 +227,7 @@ struct BotCapabilitiesView: View {
                         keysEntry = entry
                     }
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.settings)
                 .disabled(mcpBusy != nil || !canSetUpServers)
                 .accessibilityLabel(Text(AppLocalization.string("Add \(entry.name)")))
             }
@@ -247,7 +244,7 @@ struct BotCapabilitiesView: View {
                 ProgressView()
             } else {
                 Button(AppLocalization.string("Sign In")) { signIn(name) }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.settings)
                     .disabled(mcpBusy != nil || !canSetUpServers)
                     .accessibilityLabel(Text(AppLocalization.string("Sign in to \(name)")))
             }
@@ -329,6 +326,7 @@ struct BotCapabilitiesView: View {
                 }
             }
         }
+        .tint(.conduitAccent)
         .disabled(!editable)
     }
 }
@@ -384,8 +382,8 @@ struct BotMcpKeysSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
+            SettingsDetailContainer {
+                ConduitSettingsSection(title: AppLocalization.string("Keys"), symbol: "key", tint: .conduitAccent) {
                     ForEach(entry.requires, id: \.self) { envVar in
                         SecureField(
                             text: Binding(
@@ -396,11 +394,12 @@ struct BotMcpKeysSheet: View {
                         ) {
                             Text(verbatim: envVar)
                         }
+                        .textFieldStyle(.roundedBorder)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     }
-                } footer: {
                     Text(AppLocalization.string("Hermes stores these in the bot's profile and checks that \(entry.name) connects. Leave one empty to set it on Hermes instead."))
+                        .settingsCaption()
                 }
             }
             .navigationTitle(Text(verbatim: entry.name))

@@ -86,6 +86,31 @@ struct ChatMessageScrollTargetCache: Equatable {
             return .unchanged
         }
 
+        // Rows put in above the ones already here (Load earlier messages):
+        // the old rows keep their fingerprints, so only the new ones are
+        // hashed. The targets are made again for every row, since a new row
+        // can share a fingerprint with an old one and so change its
+        // occurrence, as the full rebuild below would (issue 1726).
+        if commonPrefix == 0, !targets.isEmpty, messages.count > targets.count {
+            let inserted = messages.count - targets.count
+            var commonSuffix = 0
+            while commonSuffix < targets.count,
+                  targets[targets.count - 1 - commonSuffix].message == messages[messages.count - 1 - commonSuffix] {
+                commonSuffix += 1
+            }
+            if commonSuffix == targets.count {
+                let insertedMessages = Array(messages[..<inserted])
+                let updatedFingerprints = ChatMessageScrollTargets.fingerprints(for: insertedMessages) + fingerprints
+                TranscriptPerf.lastFingerprintedMessageCount = insertedMessages.count
+                TranscriptPerf.lastFingerprintedByteCount = Self.fingerprintedBytes(of: insertedMessages)
+                fingerprints = updatedFingerprints
+                targets = ChatMessageScrollTargets.make(for: messages, fingerprints: updatedFingerprints)
+                placeRuns(from: 0)
+                renderingRevision &+= 1
+                return .semanticsChanged
+            }
+        }
+
         // Hash only the changed suffix.
         let suffixStart = commonPrefix
         let suffixMessages = Array(messages[suffixStart...])

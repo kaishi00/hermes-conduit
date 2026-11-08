@@ -126,6 +126,20 @@ final class NotificationE2ETests: XCTestCase {
         XCTAssertThrowsError(try ChaChaPoly.open(box, using: keys.answer, authenticating: otherQuestion))
     }
 
+    /// Issue 1866: `ChaChaPoly.Nonce()` is a random nonce, so no two answers
+    /// sealed with a pairing's key share a keystream, even the same answer to
+    /// the same question.
+    func testEveryAnswerIsSealedWithItsOwnNonce() throws {
+        let sealed = try (0..<8).map { _ in
+            try NotificationE2E.sealAnswer("Yes", record: record, requestID: "conduit-push-abc123def456", questionID: "q1")
+        }
+        let parts = sealed.map { $0.dropFirst(NotificationE2E.answerPrefix.count).split(separator: ".").map(String.init) }
+        let nonces = try parts.map { try XCTUnwrap(NotificationE2E.base64URLDecoded($0[1])) }
+        XCTAssertEqual(Set(nonces).count, nonces.count, "a fresh nonce each time")
+        XCTAssertFalse(nonces.contains(Data(count: 12)), "never the zero nonce")
+        XCTAssertEqual(Set(parts.map { $0[2] }).count, parts.count, "so the same answer never seals the same way")
+    }
+
     // MARK: Trust
 
     func testTamperedOrStaleOrForeignEnvelopesAreUntrusted() {
@@ -647,3 +661,86 @@ extension NotificationE2ETests {
     }
 }
 
+// MARK: - Room invites (Linked Rooms)
+
+extension NotificationE2ETests {
+    /// e2e.seal_event for notifier 0.105's room.invite (Furina invited you
+    /// to Zoo trip: Link lk1a2b3c4d5e6f, room conduit-7f3e9a, profile "") at
+    /// iat 1760000000. The plugin seals the room whole, ids included.
+    private static let roomInviteEnvelope: [String: Any] = [
+        "v": 1,
+        "kid": kid,
+        "msg": "event:d3a5c0e0b041ad48e882433999e96ce0",
+        "iat": 1_760_000_000,
+        "tok": "e842a6e15927fc0d",
+        "z": 1,
+        "req": "",
+        "n": "BwcHBwcHBwcHBwcH",
+        "ct": "QIqncEYJ_uyt5HGBUiMwPBN1pn7xQ1wIA_-AL89btZ5nGM2VcszWCVNOF2-JjhABnC0MDD1C2GzuldU78RN746B42PL4n-2CUNBntiO6eCbGJLcdb8PycXdYwRMnLYXbyzExm3eVRK3Ijv8iva4JcxXCoiShIj_UQabdr8ycvHnKc2mxACo13iCKYIvlRpgXuxgb5abiZlkWtgErQZ10gJuBMuNOcGSv8Y467BE",
+    ]
+
+    func testRoomInviteTapReadsTheRoomFromTheSealOrThePayload() throws {
+        let sealed = delivered(envelope: Self.roomInviteEnvelope, type: "room.invite")
+        guard case .verified(let verified) = NotificationE2E.evaluate(sealed, records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now) else {
+            return XCTFail("the plugin's invite should verify")
+        }
+        XCTAssertEqual(verified.content["title"] as? String, "Furina invited you to Zoo trip")
+        XCTAssertEqual(verified.content["title_label"] as? String, "room.invite")
+
+        let target = try XCTUnwrap(PushNotificationService.parseRoomInviteTarget(from: sealed, records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now))
+        // The ids from the seal, and the pairing its key belongs to, never
+        // the relay's routing stub.
+        XCTAssertEqual(target, RoomInviteTarget(
+            link: "lk1a2b3c4d5e6f", roomID: "conduit-7f3e9a",
+            dashboardID: UUID(uuidString: Self.dashboardID), relayGatewayID: Self.gatewayID
+        ))
+        XCTAssertTrue(PushNotificationService.isRoomInvitePush(sealed))
+        XCTAssertNil(PushNotificationService.parseNotificationTarget(from: sealed, records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now),
+                     "an invite opens no chat")
+        // The type is bound in the seal, and so is when it was sent.
+        XCTAssertNil(PushNotificationService.parseRoomInviteTarget(
+            from: delivered(envelope: Self.roomInviteEnvelope, type: "response.ready"),
+            records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now
+        ))
+        var redated = Self.roomInviteEnvelope
+        redated["iat"] = 1_760_000_001
+        XCTAssertNil(PushNotificationService.parseRoomInviteTarget(
+            from: delivered(envelope: redated, type: "room.invite"),
+            records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now
+        ))
+
+        // A plain push, from a pairing without a key: the relay's layout,
+        // with the room in body.conduit.
+        func plain(_ room: [String: Any]?, type: String = "room.invite", dashboardID: String = Self.dashboardID,
+                   gatewayID: String = "plain-gateway") -> [AnyHashable: Any] {
+            let routing: [String: Any] = ["type": type, "profile": "", "gateway_id": gatewayID, "dashboard_id": dashboardID]
+            var nested = routing
+            if let room { nested["room"] = room }
+            return [
+                "aps": ["alert": ["title": "Room invite", "body": "Someone you've linked with invited you to a room."]],
+                "conduit": routing,
+                "body": ["conduit": nested],
+            ]
+        }
+        func parse(_ userInfo: [AnyHashable: Any], records: [E2EKeyRecord] = [], known: Set<String> = []) -> RoomInviteTarget? {
+            PushNotificationService.parseRoomInviteTarget(from: userInfo, records: records, knownGatewayIDs: known, keysProvisioned: !records.isEmpty, now: now)
+        }
+        let room: [String: Any] = ["link": "lk1a2b3c4d5e6f", "id": "conduit-7f3e9a"]
+        XCTAssertEqual(parse(plain(room)), RoomInviteTarget(
+            link: "lk1a2b3c4d5e6f", roomID: "conduit-7f3e9a",
+            dashboardID: UUID(uuidString: Self.dashboardID), relayGatewayID: "plain-gateway"
+        ))
+        XCTAssertTrue(PushNotificationService.isRoomInvitePush(plain(room)))
+        XCTAssertNil(parse(plain(nil)), "too big for APNs, the relay dropped the room: nothing to open")
+        XCTAssertNil(parse(plain(room, type: "response.ready")))
+        XCTAssertFalse(PushNotificationService.isRoomInvitePush(plain(room, type: "response.ready")))
+        XCTAssertNil(parse(plain(["link": "lk 1", "id": "conduit-7f3e9a"])), "ids checked as the relay checks them")
+        XCTAssertNil(parse(plain(["link": "lk1a2b3c4d5e6f", "id": "-conduit"])))
+        XCTAssertNil(parse(plain(["link": "lk1a2b3c4d5e6f"])))
+        let malformed = try XCTUnwrap(parse(plain(room, dashboardID: "not-a-uuid")))
+        XCTAssertTrue(malformed.hasMalformedDashboardID, "fails closed, as a chat's tap does")
+        XCTAssertNil(malformed.dashboardID)
+        // Plaintext naming a pairing that has a key is a downgrade.
+        XCTAssertNil(parse(plain(room, gatewayID: Self.gatewayID), records: [record], known: [Self.gatewayID]))
+    }
+}

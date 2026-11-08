@@ -493,7 +493,8 @@ final class HermesVoiceConfigurationService: ObservableObject {
             }
             status = SpeechServerStatus(response: response)
         } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
-            status = .pluginMissing
+            // A profile that turned the plugin off says how to turn it on.
+            status = DashboardTicketBridgeError.pluginOffDetail(of: error).map(SpeechServerStatus.pluginOff) ?? .pluginMissing
         } catch {
             status = .failed(UserFacingError.message(for: error))
         }
@@ -515,7 +516,8 @@ final class HermesVoiceConfigurationService: ObservableObject {
             }
             status = SpeechServerVoiceStatus(response: response, dashboardBaseURL: dashboardBaseURL)
         } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
-            status = .pluginMissing
+            // A profile that turned the plugin off says how to turn it on.
+            status = DashboardTicketBridgeError.pluginOffDetail(of: error).map(SpeechServerVoiceStatus.pluginOff) ?? .pluginMissing
         } catch {
             status = SpeechServerVoiceStatus(unavailable: UserFacingError.message(for: error))
             status.readFailed = true
@@ -559,7 +561,8 @@ final class HermesVoiceConfigurationService: ObservableObject {
                 path: profilePath(SpeechServerTranscription.testPath), method: "POST", body: [:])
             return SpeechServerTestResult(response: response)
         } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
-            return SpeechServerTestResult(connected: false, latencyMilliseconds: nil, reason: SpeechServerStatus.pluginMissingReason)
+            return SpeechServerTestResult(connected: false, latencyMilliseconds: nil,
+                                          reason: DashboardTicketBridgeError.pluginOffDetail(of: error) ?? SpeechServerStatus.pluginMissingReason)
         } catch {
             return SpeechServerTestResult(connected: false, latencyMilliseconds: nil, reason: UserFacingError.message(for: error))
         }

@@ -11,6 +11,7 @@ import CryptoKit
 import Foundation
 import Network
 import OSLog
+import os
 import Security
 import SwiftUI
 import UIKit
@@ -218,6 +219,12 @@ final class NativeOAuthAPIClient {
     let cloudflareAccess: CloudflareAccessCredentials?
     private let session: URLSession
     private let redirectDelegate: SecureRedirectDelegate
+    /// Set by `invalidate()`. The URLSession itself is invalidated only in
+    /// deinit: a task created on an invalidated URLSession raises an
+    /// Objective-C exception, and a refresh Task that started after
+    /// `invalidate()` cancelled it still reaches `session.bytes(for:)`
+    /// (TestFlight crash reports, tokenRequest abort on builds 223 and 244).
+    private let invalidated = OSAllocatedUnfairLock(initialState: false)
 
     init(
         baseURL: String,
@@ -239,8 +246,23 @@ final class NativeOAuthAPIClient {
         session.invalidateAndCancel()
     }
 
+    /// Stops every request: those in flight are cancelled, and later ones
+    /// fail with `URLError(.cancelled)` before they reach the URLSession.
     func invalidate() {
-        session.invalidateAndCancel()
+        invalidated.withLock { $0 = true }
+        session.getAllTasks { tasks in tasks.forEach { $0.cancel() } }
+    }
+
+    var isInvalidated: Bool { invalidated.withLock { $0 } }
+
+    /// `session.bytes(for:)`, unless the client was invalidated.
+    private func bytes(for request: URLRequest) async throws -> (URLSession.AsyncBytes, URLResponse) {
+        guard !isInvalidated else { throw URLError(.cancelled) }
+        let result = try await session.bytes(for: request)
+        // A request that slipped in beside `invalidate()` missed its
+        // getAllTasks sweep; cancel it here instead.
+        guard !isInvalidated else { result.0.task.cancel(); throw URLError(.cancelled) }
+        return result
     }
 
     func exchange(code: String, verifier: String) async throws -> NativeOAuthTokenSet {
@@ -278,7 +300,7 @@ final class NativeOAuthAPIClient {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
-        let (bytes, response) = try await session.bytes(for: request)
+        let (bytes, response) = try await self.bytes(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw DashboardTicketBridgeError.http(status: 0, detail: "No response from the dashboard.")
         }
@@ -327,7 +349,7 @@ final class NativeOAuthAPIClient {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (bytes, response) = try await session.bytes(for: request)
+        let (bytes, response) = try await self.bytes(for: request)
         guard let http = response as? HTTPURLResponse else { throw NativeOAuthError.requestFailed(status: 0) }
         let maximumTokenResponseBytes = 64 * 1024
         if let length = http.value(forHTTPHeaderField: "Content-Length").flatMap(Int.init),
@@ -531,6 +553,9 @@ final class NativeOAuthSession {
         let current = tokens
         let task = Task { @MainActor in
             defer { self.refreshTask = nil }
+            let signposter = ResponsivenessSignposts.signposter
+            let refreshing = signposter.beginInterval("OAuth refresh", id: signposter.makeSignpostID())
+            defer { signposter.endInterval("OAuth refresh", refreshing) }
             do {
                 let refreshed = try await self.client.refresh(current)
                 guard !self.isInvalidated else { throw CancellationError() }

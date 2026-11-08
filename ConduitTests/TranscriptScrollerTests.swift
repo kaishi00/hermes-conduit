@@ -619,6 +619,22 @@ final class TranscriptScrollerTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 3600)
     }
 
+    /// Coming back down tells AppState, so a long chat can let go of its
+    /// oldest loaded pages (issue 1828); following from the start doesn't.
+    func testScrollingBackDownToTheLatestRowSaysSo() {
+        let (scroller, surface) = makeScroller()
+        XCTAssertFalse(events.contains(.reachedLatest))
+        surface.userScroll(to: 1000)
+        XCTAssertFalse(events.contains(.reachedLatest))
+        surface.userScroll(to: 3170)
+        XCTAssertTrue(scroller.isFollowingLatest)
+        XCTAssertEqual(events.filter { $0 == .reachedLatest }.count, 1)
+        XCTAssertEqual(
+            events.filter { if case .browsingOlderRows = $0 { return true } else { return false } },
+            [.browsingOlderRows(true), .browsingOlderRows(false)]
+        )
+    }
+
     func testAFlingThatReachesTheEndResumesFollowing() {
         let (scroller, surface) = makeScroller()
         surface.userScroll(to: 1000)
@@ -1916,6 +1932,107 @@ final class TranscriptScrollerTests: XCTestCase {
         streamReply(surface, 1120)
         XCTAssertEqual(surface.contentOffsetY, 3963)
         XCTAssertEqual(scroller.mode, .browsing)
+    }
+
+    /// The same latest user message under a new id (a refresh bringing
+    /// the chat from Hermes' stored rows after a resume's) isn't a new turn:
+    /// it doesn't arm the hold (#1648). A new message with the same text,
+    /// the last one still there, does.
+    func testTheLatestUserMessageUnderANewIDDoesNotArmTheHold() {
+        let (scroller, surface) = makeScroller()
+        scroller.holdsRepliesAtStart = { true }
+        let rekeyed = Self.messages(0..<10).map { $0.withID("stored-\($0.id)") }
+        scroller.transcriptChanged(
+            messages: rekeyed,
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertFalse(scroller.replyHoldArmed)
+
+        let again = ChatMessage(id: "m10", role: .user, content: "Message 8", timestamp: "2026-01-01T00:00:00Z")
+        scroller.transcriptChanged(
+            messages: rekeyed + [again],
+            transcriptRevision: 3,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertTrue(scroller.replyHoldArmed)
+        withExtendedLifetime(surface) {}
+    }
+
+    /// Text alone doesn't make it the same message: a stored row id that
+    /// differs says it's a new one (the same words sent again).
+    func testTheSameTextUnderADifferentStoredRowArmsTheHold() {
+        let (scroller, surface) = makeScroller()
+        scroller.holdsRepliesAtStart = { true }
+        let stored = Self.messages(0..<10).enumerated().map { index, message -> ChatMessage in
+            var row = message
+            row.rowId = 100 + index
+            return row
+        }
+        scroller.transcriptChanged(messages: stored, transcriptRevision: 2, viewportTransitionGeneration: 1)
+        XCTAssertFalse(scroller.replyHoldArmed)
+
+        var resent = stored
+        let userIndex = resent.lastIndex(where: { $0.role == .user })!
+        var newRow = resent[userIndex].withID("resent")
+        newRow.rowId = 500
+        resent[userIndex] = newRow
+        scroller.transcriptChanged(messages: resent, transcriptRevision: 3, viewportTransitionGeneration: 1)
+        XCTAssertTrue(scroller.replyHoldArmed)
+        withExtendedLifetime(surface) {}
+    }
+
+    /// The same words at another time are another message: a rewind on
+    /// another device that sends them again later arms the hold.
+    func testTheSameTextAtAnotherTimeArmsTheHold() {
+        let (scroller, surface) = makeScroller()
+        scroller.holdsRepliesAtStart = { true }
+        let shown = Self.messages(0..<10)
+        scroller.transcriptChanged(messages: shown, transcriptRevision: 2, viewportTransitionGeneration: 1)
+        XCTAssertFalse(scroller.replyHoldArmed)
+
+        var later = shown
+        var resent = shown[8].withID("12400.0")
+        resent.timestamp = "2026-01-01T01:00:00Z"
+        later[8] = resent
+        scroller.transcriptChanged(messages: later, transcriptRevision: 3, viewportTransitionGeneration: 1)
+        XCTAssertTrue(scroller.replyHoldArmed)
+        withExtendedLifetime(surface) {}
+    }
+
+    /// A send's own row taken over by its stored row is the same message
+    /// even when the phone's clock and Hermes' differ.
+    func testASendsStoredRowAtAnotherClockDoesNotArmTheHoldAgain() {
+        let (scroller, surface) = makeScroller()
+        scroller.holdsRepliesAtStart = { true }
+        let shown = Self.messages(0..<9)
+        let sent = ChatMessage(id: "local-send", role: .user, content: "Message 9", timestamp: "2026-01-01T00:00:00Z")
+        scroller.transcriptChanged(messages: shown + [sent], transcriptRevision: 2, viewportTransitionGeneration: 1)
+        XCTAssertTrue(scroller.replyHoldArmed)
+        scroller.explicitLatestRequested(animated: false)
+        XCTAssertFalse(scroller.replyHoldArmed)
+
+        var stored = sent.withID("12500.0")
+        stored.timestamp = "2026-01-01T00:00:40Z"
+        scroller.transcriptChanged(messages: shown + [stored], transcriptRevision: 4, viewportTransitionGeneration: 1)
+        XCTAssertFalse(scroller.replyHoldArmed)
+        withExtendedLifetime(surface) {}
+    }
+
+    /// A send's own row is new even with the words of the message it
+    /// replaces: a retry takes the last message away and sends it again.
+    func testASendRepeatingARemovedMessageArmsTheHold() {
+        let (scroller, surface) = makeScroller()
+        scroller.holdsRepliesAtStart = { true }
+        let shown = Self.messages(0..<10)
+        scroller.transcriptChanged(messages: shown, transcriptRevision: 2, viewportTransitionGeneration: 1)
+        XCTAssertFalse(scroller.replyHoldArmed)
+
+        var retried = Array(shown.prefix(8))
+        retried.append(shown[8].withID("local-retry"))
+        scroller.transcriptChanged(messages: retried, transcriptRevision: 3, viewportTransitionGeneration: 1)
+        XCTAssertTrue(scroller.replyHoldArmed)
+        withExtendedLifetime(surface) {}
     }
 
     func testOpeningAChatDoesNotArmTheHold() {

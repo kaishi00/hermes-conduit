@@ -3,16 +3,17 @@
 //  Conduit
 //
 //  Settings > Pulse (beta): shown when the dashboard's plugin serves Pulse
-//  (PulseSettings.swift). Pulse lives in the dashboard's own Hermes home, so
-//  its chat is made in the dashboard's default profile, whichever profile
-//  Conduit has open.
+//  (PulseSettings.swift). Pulse lives in the Hermes home of the profile its
+//  plugin runs in, which it names (the default profile from an older
+//  plugin), so its chat is made there, whichever profile Conduit has open.
 //
 
 import Foundation
 
 extension AppState {
-    /// The profile Pulse reads its chat from: the dashboard's own.
-    static let pulseHomeProfile = "default"
+    /// The profile an older plugin's Pulse reads its chat from, which names
+    /// none: the dashboard's default profile (`pulseHomeProfile`).
+    static let pulseDefaultProfile = "default"
 
     /// Wherever the plugin serves it, App Store builds included.
     var showsPulseSettings: Bool {
@@ -70,13 +71,14 @@ extension AppState {
         }
     }
 
-    /// Makes Pulse's chat: a new chat in the dashboard's default profile,
-    /// titled as Pulse looks for it, and pinned so pruning never removes it.
+    /// Makes Pulse's chat: a new chat in the profile Pulse runs in
+    /// (`profile`, as Settings > Pulse's state names it; nil, the default
+    /// profile, for an older plugin), titled as Pulse looks for it, and pinned so pruning never removes it.
     /// A pin Hermes doesn't take leaves the chat made; the page then offers
     /// Pin it.
-    func createPulseHomeChat(title: String) async throws {
+    func createPulseHomeChat(title: String, profile: String?) async throws {
         guard let client, let bridge = dashboardTicketBridge else { throw HermesError.notConnected }
-        let profile = Self.pulseHomeProfile
+        let profile = profile ?? Self.pulseDefaultProfile
         let inUse = profilesMatch(profile, activeProfile)
         let created = try await client.createSession(inProfile: inUse ? nil : profile)
         if let returned = created.profile, !profilesMatch(returned, profile) {
@@ -97,12 +99,12 @@ extension AppState {
     static let pulseMemoryTask = "pulse_memory"
 
     /// Puts Pulse's memory on `model` (nil: Default, its chat's model), in the
-    /// dashboard's default profile where Pulse runs. The user picked it for
+    /// profile Pulse runs in (`profile`, as for createPulseHomeChat). The user picked it for
     /// Pulse, so Hermes' price check doesn't ask again. It goes to the
     /// dashboard in use: the caller checks that's still the one it means.
-    func setPulseMemoryModel(_ model: PulseModel?) async throws {
+    func setPulseMemoryModel(_ model: PulseModel?, profile: String?) async throws {
         guard let bridge = dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        let profile = Self.pulseHomeProfile
+        let profile = profile ?? Self.pulseDefaultProfile
         _ = try await bridge.requestJSON(
             path: DashboardPath.withProfile("/api/model/set", profile: profile),
             method: "POST",
@@ -117,10 +119,11 @@ extension AppState {
         )
     }
 
-    /// Pins Pulse's chat on the host.
-    func pinPulseHomeChat(id: String) async throws {
+    /// Pins Pulse's chat on the host, in the profile Pulse runs in
+    /// (`profile`, as for createPulseHomeChat).
+    func pinPulseHomeChat(id: String, profile: String?) async throws {
         guard let bridge = dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        let profile = Self.pulseHomeProfile
+        let profile = profile ?? Self.pulseDefaultProfile
         try await sendSessionMutation(id, body: ["pinned": true], profile: profile, bridge: bridge)
         if profilesMatch(profile, activeProfile) { await loadSessions(forceRefresh: true) }
     }
@@ -169,6 +172,8 @@ extension AppState {
     /// Whether Pulse said it's quiet.
     func quietPulseForToday(_ target: PulseQuietTarget?, switching: Bool, wait: Duration,
                             timeoutMilliseconds: Int = 15_000) async -> Bool {
+        // A launch waiting for a dashboard pick signs in for it.
+        releaseLaunchDashboardChoice(for: "Pulse's Quiet for Today")
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: wait)
         while dashboardTicketBridge == nil || activeDashboardID == nil, clock.now < deadline, !Task.isCancelled {

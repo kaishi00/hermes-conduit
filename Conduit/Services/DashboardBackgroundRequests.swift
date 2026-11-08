@@ -27,20 +27,44 @@ extension DashboardTicketBridge {
         timeoutMilliseconds: Int = 12_000
     ) async throws -> [String: Any] {
         guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
-        if let nativeOAuthSession {
-            return try await nativeOAuthSession.requestJSON(
+        noteWriteStarted()
+        defer { noteWriteEnded() }
+        return try await DashboardTicketBridgeError.explainingPluginRefusal(path: path) { () async throws -> [String: Any] in
+            if let nativeOAuthSession {
+                return try await nativeOAuthSession.requestJSON(
+                    path: path,
+                    method: method,
+                    encodedBody: encodedBody,
+                    timeoutMilliseconds: timeoutMilliseconds
+                )
+            }
+            return try await requestJSONWithoutPage(
                 path: path,
                 method: method,
                 encodedBody: encodedBody,
                 timeoutMilliseconds: timeoutMilliseconds
             )
         }
-        return try await requestJSONWithoutPage(
-            path: path,
-            method: method,
-            encodedBody: encodedBody,
-            timeoutMilliseconds: timeoutMilliseconds
-        )
+    }
+
+    /// A read that never goes through the page, so it neither waits for the
+    /// page nor loads it: with the native sign-in's token, else with the
+    /// page's cookies (`.notReady` while no store holds one). For reads sent
+    /// as a connection starts (StartupReads).
+    func readWithoutPage(path: String) async throws -> [String: Any] {
+        guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
+        return try await DashboardTicketBridgeError.explainingPluginRefusal(path: path) { () async throws -> [String: Any] in
+            if let nativeOAuthSession {
+                return try await nativeOAuthSession.requestJSON(
+                    path: path,
+                    method: "GET",
+                    body: nil,
+                    timeoutMilliseconds: 12_000,
+                    maxResponseBytes: DataURLLimits.maxJSONResponseBytes
+                )
+            }
+            return try await requestJSONWithoutPage(path: path)
+        }
     }
 
     /// The request the page's `fetch` would send, without the page: same
@@ -244,7 +268,13 @@ extension DashboardTicketBridge {
     /// issued to requests sent without the page.
     func cookiesForRequestsWithoutPage() async -> [HTTPCookie] {
         var cookies = DashboardCookiePersistence.mirroredCookies(dashboardID: dashboardID)
-        if let webKit = await webKitCookies(timeout: .seconds(2)) {
+        // WebKit's store may hold a newer cookie than the mirror, but on
+        // screen, when the mirror already holds one, a slow store mustn't hold
+        // the request up long: it answers in milliseconds there, and a 401 goes
+        // on to the page. Off screen nothing can retry through the page, so it
+        // gets the full wait.
+        let webKitWait: Duration = cookies.isEmpty || !webViewCanRun() ? .seconds(2) : .milliseconds(500)
+        if let webKit = await webKitCookies(timeout: webKitWait) {
             cookies += webKit
         }
         cookies += DashboardCookiePersistence.nativeCookieStorage(for: dashboardID).cookies ?? []

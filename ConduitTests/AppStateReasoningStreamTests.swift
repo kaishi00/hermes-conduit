@@ -133,6 +133,80 @@ final class AppStateReasoningStreamTests: XCTestCase {
         )
     }
 
+    // MARK: - In the background
+
+    /// In the background the live rows aren't drawn at stream cadence: a
+    /// reply streaming in kept the main thread re-rendering it there until
+    /// iOS's watchdog killed Conduit (8BADF00D). What streamed shows in one
+    /// publish when Conduit is back.
+    func testBackgroundHoldsLiveTextUntilActive() async throws {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        state.handleScenePhase(.background)
+
+        var publications = 0
+        let cancellable = state.liveTurn.$streamingText.dropFirst().sink { _ in publications += 1 }
+        ["Two tables ", "and a ", "code block"].forEach {
+            state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: $0))
+        }
+        // Well past the 33 ms publish cadence.
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(publications, 0)
+        XCTAssertEqual(state.streamingText, "")
+
+        state.handleScenePhase(.active)
+        cancellable.cancel()
+        XCTAssertEqual(state.streamingText, "Two tables and a code block")
+        XCTAssertEqual(publications, 1)
+    }
+
+    /// The app switcher is inactive, not background: a swipe away from it
+    /// asks Conduit to quit while the reply would still redraw. An iPad app
+    /// on a Mac keeps streaming while inactive (another app in front).
+    func testInactiveHoldsLiveTextUntilActiveOffAMac() async throws {
+        try XCTSkipIf(ProcessInfo.processInfo.isiOSAppOnMac, "a Mac keeps streaming while inactive")
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        state.handleScenePhase(.inactive)
+
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "In the switcher"))
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(state.streamingText, "")
+
+        state.handleScenePhase(.active)
+        XCTAssertEqual(state.streamingText, "In the switcher")
+    }
+
+    func testInactiveHoldsLiveReasoningUntilActiveOffAMac() async throws {
+        try XCTSkipIf(ProcessInfo.processInfo.isiOSAppOnMac, "a Mac keeps streaming while inactive")
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        feedReasoning(["Step one."], sessionId: "stored-a", state: state)
+
+        state.handleScenePhase(.inactive)
+        feedReasoning([" Step two."], sessionId: "stored-a", state: state)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(liveReasoningContent(on: state), "Step one.")
+
+        state.handleScenePhase(.active)
+        XCTAssertEqual(liveReasoningContent(on: state), "Step one. Step two.")
+    }
+
+    func testBackgroundHoldsLiveReasoningUntilActive() async throws {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        feedReasoning(["Step one."], sessionId: "stored-a", state: state)
+        XCTAssertEqual(liveReasoningContent(on: state), "Step one.")
+
+        state.handleScenePhase(.background)
+        feedReasoning([" Step two.", " Step three."], sessionId: "stored-a", state: state)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(liveReasoningContent(on: state), "Step one.")
+
+        state.handleScenePhase(.active)
+        XCTAssertEqual(liveReasoningContent(on: state), "Step one. Step two. Step three.")
+    }
+
     // MARK: - App-wide publishes
 
     /// Every view that observes AppState, the root of each open sheet
@@ -305,6 +379,335 @@ final class AppStateReasoningStreamTests: XCTestCase {
             .interim(sessionID: "stored-a", text: "Done.", alreadyStreamed: true),
             .completed(sessionID: "stored-a", content: "Done.", alreadyShown: true)
         ])
+    }
+
+    /// A call's chat seed leaves out the running turn's notes by the rows
+    /// it sealed (#1991): each interim row is kept while the turn runs and
+    /// forgotten when it settles, even when the reply takes over the row.
+    func testTheRunningTurnKeepsTheNotesItSealedUntilItSettles() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
+        state.handleStreamEvent(.messageInterim(sessionId: "stored-a", text: "Checking", alreadyStreamed: false))
+        XCTAssertEqual(state.runningTurnNoteIDs.count, 1)
+        let note = state.runningTurnNoteIDs.first
+        XCTAssertEqual(state.messages.first { $0.id == note }?.content, "Checking")
+        state.handleStreamEvent(.messageComplete(sessionId: "stored-a", messageId: nil, content: "Done.", reasoning: nil))
+        XCTAssertTrue(state.runningTurnNoteIDs.isEmpty)
+    }
+
+    /// A resume that finds the turn idle forgets its notes too, so a
+    /// reply that took over a note's row isn't left off the next call's
+    /// seed (#1991's CodeRabbit review).
+    func testAResumeThatFindsTheTurnIdleForgetsItsNotes() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
+        state.handleStreamEvent(.messageInterim(sessionId: "stored-a", text: "Checking", alreadyStreamed: false))
+        XCTAssertEqual(state.runningTurnNoteIDs.count, 1)
+        _ = state.applyChatResume(SessionResumeResult(
+            sessionId: "stored-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(true)])
+        ))
+        XCTAssertEqual(state.runningTurnNoteIDs.count, 1, "a resume that finds it running keeps them")
+        _ = state.applyChatResume(SessionResumeResult(
+            sessionId: "stored-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        ))
+        XCTAssertEqual(state.turnState, .idle)
+        XCTAssertTrue(state.runningTurnNoteIDs.isEmpty)
+    }
+
+    /// A turn Voice cancelled can stream a few words after its cancel; once
+    /// the next question owns the chat they'd read as its reply (#1696).
+    /// They're held back by the turn they name, and the next turn's events
+    /// still reach Voice.
+    func testVoiceNeverHearsTheTurnItCancelled() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 4)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "late words"), turnGeneration: 4)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "older turn"), turnGeneration: 3)
+        XCTAssertEqual(events, [], "The cancelled turn's words never reach Voice")
+
+        // Its end does, with no words: a conversation still waiting on that
+        // turn (stopped from the chat) finishes and listens again without
+        // speaking the rest the user stopped; one waiting on the next
+        // question ignores it until that reply starts.
+        state.handleStreamEvent(.messageInterrupted(sessionId: "stored-a"), turnGeneration: 4)
+        XCTAssertEqual(events, [.completed(sessionID: "stored-a", content: nil)])
+        events.removeAll()
+        state.handleStreamEvent(.messageComplete(
+            sessionId: "stored-a", messageId: nil, content: "late words and the rest", reasoning: nil
+        ), turnGeneration: 4)
+        XCTAssertEqual(events, [.completed(sessionID: "stored-a", content: nil)], "An end with no words: the stopped reply is never spoken from it")
+        events.removeAll()
+        state.handleStreamEvent(.messageError(sessionId: "stored-a", message: "Provider error"), turnGeneration: 4)
+        XCTAssertEqual(events, [.completed(sessionID: "stored-a", content: nil)], "Its failure never fails the next question's wait")
+
+        events.removeAll()
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"), turnGeneration: 5)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "new answer"), turnGeneration: 5)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "after the watch"), turnGeneration: 4)
+        XCTAssertEqual(events, [
+            .started(sessionID: "stored-a"),
+            .delta(sessionID: "stored-a", text: "new answer"),
+            .delta(sessionID: "stored-a", text: "after the watch")
+        ], "The next turn ends the watch")
+
+        // An event naming no turn (`hermes dashboard`) is never held back.
+        events.removeAll()
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 6)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "unnumbered"))
+        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "unnumbered")])
+
+        // Another chat's note doesn't hold this chat's turns.
+        events.removeAll()
+        state.noteVoiceCancelledTurn(sessionId: "stored-b", generation: 9)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "this chat"), turnGeneration: 7)
+        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "this chat")])
+    }
+
+    /// Voice's cancel notes the turn the chat runs, only when it runs one,
+    /// under whichever of the chat's ids the socket knows it by, and only
+    /// when the cancel goes through.
+    func testVoiceCancelNotesTheRunningTurn() async {
+        var interruptFails = false
+        let operations = ChatResumeLifecycleOperations(interrupt: { _, _ in
+            if interruptFails { throw URLError(.timedOut) }
+        })
+        let state = makeAppState(lifecycleOperations: operations)
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        state.connection = connection
+        state.client = HermesClient(connection: connection, profile: "default")
+        state.sessions = [SessionSummary(
+            id: "stored-a", alternateIds: ["runtime-a"], title: "stored-a", model: "Hermes",
+            updatedLabel: "now", profile: "default", source: .chat, isActive: false,
+            isArchived: false, lineageRootId: nil
+        )]
+        state.activeSessionId = "stored-a"
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+        var running: [String: Int] = ["runtime-a": 7]
+        state.runningTurnGenerationLookup = { running[$0] }
+
+        XCTAssertFalse(state.isBusy)
+        _ = await state.interruptForVoice()
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "idle chat"), turnGeneration: 7)
+        XCTAssertEqual(events, [.delta(sessionID: "runtime-a", text: "idle chat")], "Nothing was cancelled, so nothing is held")
+
+        func makeBusy() { state.handleStreamEvent(.messageStart(sessionId: "runtime-a")) }
+
+        events.removeAll()
+        makeBusy()
+        running = [:]
+        _ = await state.interruptForVoice()
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "unknown turn"), turnGeneration: 7)
+        XCTAssertEqual(events.last, .delta(sessionID: "runtime-a", text: "unknown turn"), "No running turn known, none noted")
+
+        events.removeAll()
+        makeBusy()
+        running = ["runtime-a": 7]
+        interruptFails = true
+        _ = await state.interruptForVoice()
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "still running"), turnGeneration: 7)
+        XCTAssertEqual(events.last, .delta(sessionID: "runtime-a", text: "still running"), "A failed cancel notes nothing")
+
+        events.removeAll()
+        makeBusy()
+        interruptFails = false
+        _ = await state.interruptForVoice()
+        events.removeAll()
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "straggler"), turnGeneration: 7)
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "next"), turnGeneration: 8)
+        XCTAssertEqual(events, [.delta(sessionID: "runtime-a", text: "next")])
+    }
+
+    /// A cron chat's runtime id is one of its ids too.
+    func testVoiceCancelNotesACronChatsTurnUnderItsOtherId() async {
+        let operations = ChatResumeLifecycleOperations(interrupt: { _, _ in })
+        let state = makeAppState(lifecycleOperations: operations)
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        state.connection = connection
+        state.client = HermesClient(connection: connection, profile: "default")
+        state.cronSessions = [SessionSummary(
+            id: "stored-c", alternateIds: ["runtime-c"], title: "stored-c", model: "Hermes",
+            updatedLabel: "now", profile: "default", source: .chat, isActive: false,
+            isArchived: false, lineageRootId: nil
+        )]
+        state.activeSessionId = "stored-c"
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+        state.runningTurnGenerationLookup = { ["runtime-c": 3][$0] }
+
+        state.handleStreamEvent(.messageStart(sessionId: "runtime-c"))
+        _ = await state.interruptForVoice()
+        events.removeAll()
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-c", text: "straggler"), turnGeneration: 3)
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-c", text: "next"), turnGeneration: 4)
+        XCTAssertEqual(events, [.delta(sessionID: "runtime-c", text: "next")])
+    }
+
+    /// Each chat keeps its own note: a cancel in another chat doesn't end it.
+    func testVoiceKeepsEachChatsCancelledTurn() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 4)
+        state.noteVoiceCancelledTurn(sessionId: "stored-b", generation: 9)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "straggler"), turnGeneration: 4)
+        XCTAssertEqual(events, [])
+    }
+
+    /// The open chat's events may name it by another of its ids.
+    func testVoiceHoldsTheCancelledTurnUnderTheChatsOtherId() {
+        let state = makeAppState()
+        state.sessions = [SessionSummary(
+            id: "stored-a", alternateIds: ["runtime-a"], title: "stored-a", model: "Hermes",
+            updatedLabel: "now", profile: "default", source: .chat, isActive: false,
+            isArchived: false, lineageRootId: nil
+        )]
+        state.activeSessionId = "stored-a"
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 2)
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "straggler"), turnGeneration: 2)
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "next"), turnGeneration: 3)
+        XCTAssertEqual(events, [.delta(sessionID: "runtime-a", text: "next")])
+    }
+
+    /// The open chat can hold a note under each of its ids: the newest
+    /// counts, and a later turn ends them all.
+    func testVoiceHoldsByTheNewestNoteAmongTheChatsIds() {
+        let state = makeAppState()
+        state.sessions = [SessionSummary(
+            id: "stored-a", alternateIds: ["runtime-a"], title: "stored-a", model: "Hermes",
+            updatedLabel: "now", profile: "default", source: .chat, isActive: false,
+            isArchived: false, lineageRootId: nil
+        )]
+        state.activeSessionId = "stored-a"
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 2)
+        state.noteVoiceCancelledTurn(sessionId: "runtime-a", generation: 5)
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "older"), turnGeneration: 2)
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "straggler"), turnGeneration: 5)
+        XCTAssertEqual(events, [], "Held by the newest note, whichever id it is under")
+
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "next"), turnGeneration: 6)
+        state.handleStreamEvent(.messageDelta(sessionId: "runtime-a", text: "older again"), turnGeneration: 2)
+        XCTAssertEqual(events, [
+            .delta(sessionID: "runtime-a", text: "next"),
+            .delta(sessionID: "runtime-a", text: "older again")
+        ], "The next turn ends every note the chat had")
+    }
+
+    /// A cancel that read the chat again (a stale generation) stopped the
+    /// turn Hermes named there: the note follows it, even when the socket
+    /// never saw that turn, and only for a chat that showed a turn running.
+    func testVoiceNoteFollowsTheTurnTheCancelStopped() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 4)
+        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: 9, wasRunning: true, ifStill: state.voiceCancelNote(in: "stored-a").write)
+        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: nil, wasRunning: true, ifStill: state.voiceCancelNote(in: "stored-a").write)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "stopped turn"), turnGeneration: 9)
+        XCTAssertEqual(events, [], "The note follows the stopped turn")
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "next"), turnGeneration: 10)
+        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "next")])
+
+        // This socket's number was too high: the stale retry stopped a lower
+        // turn, so the note comes down to it and the next turn is heard.
+        events.removeAll()
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 15)
+        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: 11, wasRunning: true, ifStill: state.voiceCancelNote(in: "stored-a").write)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "stopped turn"), turnGeneration: 11)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "next"), turnGeneration: 12)
+        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "next")], "Never held past the stopped turn")
+
+        // A turn this socket never saw start: nothing was noted before the
+        // cancel, and the turn it stopped is noted after.
+        events.removeAll()
+        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: 13, wasRunning: true, ifStill: state.voiceCancelNote(in: "stored-a").write)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "unseen turn"), turnGeneration: 13)
+        XCTAssertEqual(events, [], "The stopped turn is noted though the socket never saw it")
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "next"), turnGeneration: 14)
+        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "next")])
+
+        // A chat that showed nothing running notes nothing.
+        events.removeAll()
+        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: 20, wasRunning: false, ifStill: state.voiceCancelNote(in: "stored-a").write)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "idle chat"), turnGeneration: 20)
+        XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "idle chat")])
+    }
+
+    /// A failed cancel puts back the note an earlier cancel left, and a
+    /// stopped turn's note waits for the cancel that wrote it.
+    func testFailedCancelRestoresAnEarlierNote() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 7)
+        let earlier = state.voiceCancelNote(in: "stored-a")
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 9)
+        state.restoreVoiceCancelNote(in: "stored-a", to: earlier, ifStill: state.voiceCancelNote(in: "stored-a").write)
+        XCTAssertEqual(state.voiceCancelNote(in: "stored-a"), earlier)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "straggler"), turnGeneration: 7)
+        XCTAssertEqual(events, [], "The earlier note still holds its turn")
+
+        // A cancel whose note another cancel replaced doesn't move it.
+        let stale = state.voiceCancelNote(in: "stored-a").write
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 12)
+        state.noteVoiceStoppedTurn(sessionId: "stored-a", generation: 8, wasRunning: true, ifStill: stale)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "newer straggler"), turnGeneration: 12)
+        XCTAssertEqual(events, [], "The other cancel's note stands")
+    }
+
+    /// A failed cancel takes back only its own note: another cancel that
+    /// noted the chat meanwhile keeps its note, even naming the same turn.
+    func testFailedCancelTakesBackOnlyItsOwnNote() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+
+        // Alone, a failed cancel leaves no note.
+        let found = state.voiceCancelNote(in: "stored-a")
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 7)
+        state.restoreVoiceCancelNote(in: "stored-a", to: found, ifStill: state.voiceCancelNote(in: "stored-a").write)
+        XCTAssertEqual(state.voiceCancelNote(in: "stored-a"), found)
+
+        // Overlapping: the first cancel fails after a second one noted.
+        let firstFound = state.voiceCancelNote(in: "stored-a")
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 7)
+        let firstWrite = state.voiceCancelNote(in: "stored-a").write
+        state.noteVoiceCancelledTurn(sessionId: "stored-a", generation: 7)
+        state.restoreVoiceCancelNote(in: "stored-a", to: firstFound, ifStill: firstWrite)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "straggler"), turnGeneration: 7)
+        XCTAssertEqual(events, [], "The second cancel's note still holds the turn")
     }
 
     /// A gateway frame as HermesClient hands it to AppState.

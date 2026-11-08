@@ -493,6 +493,308 @@ extension KanbanTests {
         XCTAssertEqual(store.plugins.first { $0.name == "Weather" }?.isEnabled, true)
     }
 
+    /// A catalog connector's keys go to the profile's .env, only the
+    /// variables its entry declares, never its config.
+    func testAConnectorKeyIsSetInTheProfileEnvOnly() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [["name": "linear", "transport": "http", "url": "https://l", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [
+                ["name": "linear", "description": "Issues", "auth_type": "api_key", "installed": true,
+                 "required_env": [["name": "LINEAR_API_KEY", "prompt": "Linear API key", "required": true]]],
+                ["name": "notion", "description": "Pages", "auth_type": "oauth"],
+            ]],
+            "/api/env": ["ok": true],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        await store.loadConnectors()
+        let linear = try XCTUnwrap(store.connectorCatalog.first { $0.name == "linear" })
+        let notion = try XCTUnwrap(store.connectorCatalog.first { $0.name == "notion" })
+        let fields = try XCTUnwrap(ConnectorKeysSection.fields(linear))
+        XCTAssertEqual(fields.map(\.name), ["LINEAR_API_KEY"])
+        XCTAssertNil(ConnectorKeysSection.fields(notion), "an OAuth connector signs in instead")
+        XCTAssertEqual(ConnectorKeysSection.values(["LINEAR_API_KEY": "  lin-key  ", "OTHER": "x"], fields: fields),
+                       ["LINEAR_API_KEY": "lin-key"])
+        XCTAssertTrue(ConnectorKeysSection.values(["LINEAR_API_KEY": "   "], fields: fields).isEmpty)
+
+        requester.calls.removeAll()
+        try await store.setConnectorKeys("linear", ["LINEAR_API_KEY": "lin-key", "PATH": "/tmp"])
+        let writes = requester.calls.filter { $0.method != "GET" }
+        XCTAssertEqual(writes.count, 1, "an undeclared variable isn't written")
+        XCTAssertEqual(writes.first?.method, "PUT")
+        XCTAssertEqual(writes.first?.path.hasPrefix("/api/env"), true)
+        XCTAssertEqual(writes.first?.body?["key"] as? String, "LINEAR_API_KEY")
+        XCTAssertEqual(writes.first?.body?["value"] as? String, "lin-key")
+        XCTAssertEqual(writes.first?.body?["profile"] as? String, "work")
+    }
+
+    /// After a key save the list is read again from the host, and the server
+    /// is tested only if that read says it's on: a switch turned on another
+    /// device meanwhile counts, and a read that fails tests nothing.
+    func testAKeySaveTestsTheServerOnlyIfTheHostSaysItsOn() async throws {
+        let on: [String: Any] = ["servers": [["name": "linear", "transport": "http", "url": "https://l", "enabled": true]]]
+        let off: [String: Any] = ["servers": [["name": "linear", "transport": "http", "url": "https://l", "enabled": false]]]
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": on,
+            "/api/mcp/catalog": ["entries": []],
+            "/api/mcp/servers/linear/test": ["ok": true],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        await store.loadConnectors()
+        func tests() -> Int { requester.calls.filter { $0.path.hasPrefix("/api/mcp/servers/linear/test") }.count }
+
+        requester.calls.removeAll()
+        await store.testAfterKeySave("linear")
+        XCTAssertEqual(tests(), 1, "on as the save ends")
+
+        requester.calls.removeAll()
+        await store.testAfterKeySave("linear", savedAny: false)
+        XCTAssertTrue(requester.calls.isEmpty, "a save that took no key reads and tests nothing")
+
+        // Turned off elsewhere: the phone's list still says on.
+        requester.responses["/api/mcp/servers"] = off
+        requester.calls.removeAll()
+        await store.testAfterKeySave("linear")
+        XCTAssertEqual(tests(), 0, "turned off on another device meanwhile")
+        XCTAssertEqual(store.servers.first?.enabled, false)
+
+        // A read that fails tests nothing, even where the list showed it on.
+        requester.responses["/api/mcp/servers"] = on
+        await store.loadConnectors()
+        await store.probe("linear")
+        XCTAssertNotNil(store.probes["linear"])
+        requester.failures["/api/mcp/servers"] = URLError(.timedOut)
+        requester.calls.removeAll()
+        await store.testAfterKeySave("linear")
+        XCTAssertEqual(tests(), 0, "no test on a list that couldn't be read again")
+        XCTAssertNil(store.probes["linear"], "the old key's result isn't kept")
+    }
+
+    /// A test already running when a key is saved read the old key: it runs
+    /// again once it's done, on the saved key.
+    func testAConnectorTestRunningWhenAKeyIsSavedRunsAgain() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [["name": "linear", "transport": "http", "url": "https://l", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [
+                ["name": "linear", "description": "Issues", "auth_type": "api_key", "installed": true,
+                 "required_env": [["name": "LINEAR_API_KEY", "prompt": "Linear API key", "required": true]]],
+            ]],
+            "/api/env": ["ok": true],
+            "/api/mcp/servers/linear/test": ["ok": true],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        await store.loadConnectors()
+        requester.calls.removeAll()
+        var held: CheckedContinuation<Void, Never>?
+        requester.beforeAnswering = { path in
+            guard path == "/api/mcp/servers/linear/test", held == nil else { return }
+            await withCheckedContinuation { held = $0 }
+        }
+        let test = Task { await store.probe("linear") }
+        while held == nil { await Task.yield() }
+        try await store.setConnectorKeys("linear", ["LINEAR_API_KEY": "new-key"])
+        held?.resume()
+        await test.value
+        let tests = requester.calls.filter { $0.path.hasPrefix("/api/mcp/servers/linear/test") }
+        XCTAssertEqual(tests.count, 2, "tested again after the key was saved")
+        XCTAssertEqual(store.probes["linear"]?.ok, true)
+    }
+
+    /// A save that fails after its first key still reruns a test running on
+    /// the old key: the key Hermes took is the one the server now reads.
+    func testAConnectorKeySaveThatFailsPartWayRunsARunningTestAgain() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [["name": "jira", "transport": "http", "url": "https://j", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [
+                ["name": "jira", "description": "Issues", "auth_type": "api_key", "installed": true,
+                 "required_env": [["name": "JIRA_EMAIL", "prompt": "Email", "required": true],
+                                  ["name": "JIRA_TOKEN", "prompt": "Token", "required": true]]],
+            ]],
+            "/api/env": ["ok": true],
+            "/api/mcp/servers/jira/test": ["ok": true],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        await store.loadConnectors()
+        requester.calls.removeAll()
+        var held: CheckedContinuation<Void, Never>?
+        var writes = 0
+        requester.beforeAnswering = { path in
+            if path == "/api/env" {
+                writes += 1
+                if writes == 2 { requester.failures["PUT /api/env"] = URLError(.timedOut) }
+                return
+            }
+            guard path == "/api/mcp/servers/jira/test", held == nil else { return }
+            await withCheckedContinuation { held = $0 }
+        }
+        let test = Task { await store.probe("jira") }
+        while held == nil { await Task.yield() }
+        var saved: [String] = []
+        do {
+            try await store.setConnectorKeys("jira", ["JIRA_EMAIL": "me@example.com", "JIRA_TOKEN": "token"]) { saved.append($0) }
+            XCTFail("the second key's write fails")
+        } catch {}
+        XCTAssertEqual(saved, ["JIRA_EMAIL"], "only the key Hermes took is saved")
+        held?.resume()
+        await test.value
+        let tests = requester.calls.filter { $0.path.hasPrefix("/api/mcp/servers/jira/test") }
+        XCTAssertEqual(tests.count, 2, "tested again on the key that was saved")
+    }
+
+    /// A switch to another profile between two keys stops the save: the
+    /// key left isn't written to the profile switched to.
+    func testAConnectorKeySaveStopsWhenTheProfileChanges() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [["name": "jira", "transport": "http", "url": "https://j", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [
+                ["name": "jira", "description": "Issues", "auth_type": "api_key", "installed": true,
+                 "required_env": [["name": "JIRA_EMAIL", "prompt": "Email", "required": true],
+                                  ["name": "JIRA_TOKEN", "prompt": "Token", "required": true]]],
+            ]],
+            "/api/env": ["ok": true],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        await store.loadConnectors()
+        requester.calls.removeAll()
+        requester.beforeAnswering = { path in
+            if path == "/api/env" { store.configure(requester: requester, profile: "home") }
+        }
+        var saved: [String] = []
+        do {
+            try await store.setConnectorKeys("jira", ["JIRA_EMAIL": "me@example.com", "JIRA_TOKEN": "tok"]) { saved.append($0) }
+            XCTFail("the save stops at the switch")
+        } catch {
+            XCTAssertEqual(error as? CapabilitiesStoreError, .profileChanged)
+        }
+        let writes = requester.calls.filter { $0.method == "PUT" }
+        XCTAssertEqual(writes.map { $0.body?["key"] as? String }, ["JIRA_EMAIL"])
+        XCTAssertEqual(saved, ["JIRA_EMAIL"], "the page hears which key Hermes took")
+        XCTAssertFalse(writes.contains { $0.body?["profile"] as? String == "home" })
+    }
+
+    // MARK: Plugin settings
+
+    /// A plugin settings save writes its keys to the profile's `.env` first,
+    /// one by one, then hands the values and the profile to the settings call.
+    func testAPluginSettingsSaveWritesKeysThenTheValues() async throws {
+        let requester = CapabilityMockRequester(responses: ["/api/env": ["ok": true]])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        var order: [String] = []
+        requester.beforeAnswering = { path in order.append(path) }
+        var sent: ([String: Any], String)?
+        let save = PluginSettings.Save(values: ["days": 7], secrets: ["B_KEY": "b", "A_KEY": "a"])
+        _ = try await store.savePluginSettings(save: save) { values, profile in
+            order.append("settings")
+            sent = (values, profile)
+            return nil
+        }
+        XCTAssertEqual(order, ["/api/env", "/api/env", "settings"])
+        let writes = requester.calls.filter { $0.method == "PUT" }
+        XCTAssertEqual(writes.map { $0.body?["key"] as? String }, ["A_KEY", "B_KEY"])
+        XCTAssertEqual(writes.map { $0.body?["profile"] as? String }, [nil, nil], "the default profile is the dashboard's own")
+        XCTAssertEqual(sent?.0["days"] as? Int, 7)
+        XCTAssertEqual(sent?.1, "default")
+    }
+
+    /// Hermes keeps plugin settings for the default profile only: another
+    /// profile's save writes nothing.
+    func testAPluginSettingsSaveOnAnotherProfileWritesNothing() async throws {
+        let requester = CapabilityMockRequester(responses: ["/api/env": ["ok": true]])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        var called = false
+        do {
+            _ = try await store.savePluginSettings(save: PluginSettings.Save(values: ["days": 7], secrets: ["A_KEY": "a"])) { _, _ in
+                called = true
+                return nil
+            }
+            XCTFail("another profile's save is turned down")
+        } catch {
+            guard case .declined = error as? CapabilitiesStoreError else { return XCTFail("\(error)") }
+        }
+        XCTAssertFalse(called)
+        XCTAssertTrue(requester.calls.isEmpty)
+    }
+
+    /// A switch after the first key stops the rest, and the error says some
+    /// keys were saved rather than that nothing was.
+    func testAPluginSettingsSaveStopsAtASwitchAndSaysWhatLanded() async throws {
+        let requester = CapabilityMockRequester(responses: ["/api/env": ["ok": true]])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        requester.beforeAnswering = { path in
+            if path == "/api/env" { store.configure(requester: requester, profile: "home") }
+        }
+        var called = false
+        do {
+            _ = try await store.savePluginSettings(save: PluginSettings.Save(values: ["days": 7], secrets: ["A_KEY": "a", "B_KEY": "b"])) { _, _ in
+                called = true
+                return nil
+            }
+            XCTFail("the save stops at the switch")
+        } catch {
+            let partial = try XCTUnwrap(error as? PluginSettings.PartialSave, "a partial save says so")
+            XCTAssertEqual(partial.saved, ["A_KEY"])
+            XCTAssertTrue(partial.switched)
+        }
+        XCTAssertFalse(called)
+        let writes = requester.calls.filter { $0.method == "PUT" }
+        XCTAssertEqual(writes.map { $0.body?["key"] as? String }, ["A_KEY"])
+        XCTAssertFalse(writes.contains { $0.body?["profile"] as? String == "home" })
+    }
+
+    /// A plugin settings save pressed before a dashboard switch writes
+    /// nothing through the store pointed at the new one.
+    func testAPluginSettingsSavePressedBeforeASwitchWritesNothing() async throws {
+        let requester = CapabilityMockRequester(responses: ["/api/env": ["ok": true]])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        let pressed = store.generation
+        store.configure(requester: requester, profile: "default")
+        var called = false
+        do {
+            _ = try await store.savePluginSettings(save: PluginSettings.Save(values: ["days": 7], secrets: ["A_KEY": "a"]), generation: pressed) { _, _ in
+                called = true
+                return nil
+            }
+            XCTFail("a save from before the switch is turned down")
+        } catch {
+            XCTAssertEqual(error as? CapabilitiesStoreError, .profileChanged)
+        }
+        XCTAssertFalse(called)
+        XCTAssertTrue(requester.calls.isEmpty)
+    }
+
+    /// A save pressed before a switch writes nothing on the profile switched to.
+    func testAConnectorKeySavePressedBeforeASwitchWritesNothing() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [["name": "linear", "transport": "http", "url": "https://l", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [
+                ["name": "linear", "description": "Issues", "auth_type": "api_key", "installed": true,
+                 "required_env": [["name": "LINEAR_API_KEY", "prompt": "Linear API key", "required": true]]],
+            ]],
+            "/api/env": ["ok": true],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        let pressed = store.generation
+        store.configure(requester: requester, profile: "home")
+        await store.loadConnectors()
+        requester.calls.removeAll()
+        do {
+            try await store.setConnectorKeys("linear", ["LINEAR_API_KEY": "lin-key"], generation: pressed)
+            XCTFail("a save from before the switch is turned down")
+        } catch {
+            XCTAssertEqual(error as? CapabilitiesStoreError, .profileChanged)
+        }
+        XCTAssertTrue(requester.calls.filter { $0.method == "PUT" }.isEmpty)
+    }
+
     /// Opening a server from the Connectors list cancels the list's tests;
     /// a test already sent still lands, and isn't shown as interrupted (#1570).
     func testAConnectorTestFinishesWhenTheListThatStartedItGoesAway() async {

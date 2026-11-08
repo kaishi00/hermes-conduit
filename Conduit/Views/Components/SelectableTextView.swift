@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UIKit.UIGestureRecognizerSubclass
 
 /// A non-editable UIKit text surface gives chat text true character-range
 /// selection on the iOS versions Conduit supports. SwiftUI's native text
@@ -750,7 +751,9 @@ struct SelectableTextView: UIViewRepresentable {
                     )
                     continue
                 }
-                bridged.addAttribute(.link, value: link, range: range)
+                // A link to a file on the Hermes host opens in the Folder,
+                // as a path the reply names does, not on this device.
+                bridged.addAttribute(.link, value: WorkspacePathLinks.url(forLink: link) ?? link, range: range)
                 bridged.addAttribute(.foregroundColor, value: linkColor, range: range)
             } else {
                 // A file path a reply names opens in the Folder tab (#1389).
@@ -1018,6 +1021,7 @@ struct SelectableTextView: UIViewRepresentable {
         }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
+            ChatTextSelection.note(textView)
             guard
                 let selectionCoordinator,
                 let selectionSegment,
@@ -1058,6 +1062,39 @@ struct SelectableTextView: UIViewRepresentable {
                 ?? textView.window.map { textView.convert(caretPoint, to: $0) }
                 ?? .zero
         }
+    }
+}
+
+/// Whether text in a chat is selected right now, so a swipe that would
+/// leave the chat waits while one is showing: dragging a selection's handle
+/// toward the trailing edge read as the swipe home from anywhere, and the
+/// Bot Chat closed under the finger (issue 1948). A selection inside one
+/// text view shows while that view is first responder; one across blocks,
+/// which the coordinator draws itself, while its coordinator holds it.
+/// Only the key window's count, the one being swiped: a selection left in
+/// another of an iPad's windows doesn't hold this one's swipe.
+@MainActor
+enum ChatTextSelection {
+    /// The text views whose last selection change left text selected,
+    /// held weakly; each is checked again when asked, since a range set in
+    /// code doesn't tell the delegate.
+    private static let selecting = NSHashTable<UITextView>.weakObjects()
+
+    static func note(_ textView: UITextView) {
+        if textView.selectedRange.length > 0 {
+            selecting.add(textView)
+        } else {
+            selecting.remove(textView)
+        }
+    }
+
+    static var isShowing: Bool {
+        if MarkdownSelectionCoordinator.activeCoordinator?.showsSelectionInKeyWindow == true { return true }
+        return selecting.allObjects.contains(where: showsSelection)
+    }
+
+    static func showsSelection(_ textView: UITextView) -> Bool {
+        textView.window?.isKeyWindow == true && textView.isFirstResponder && textView.selectedRange.length > 0
     }
 }
 
@@ -1164,9 +1201,10 @@ private final class MarkdownSelectionTextView: UITextView {
 
 /// Tracks the finger during a native text-selection drag without ever
 /// recognizing, so UITextView's private selection gesture and the enclosing
-/// scroll views keep their exact stock behavior. A recognizer that never
-/// leaves `.possible`, always allows simultaneous recognition, and never
-/// cancels touches can't be failed or excluded by those gestures — yet it
+/// scroll views keep their exact stock behavior. A recognizer that stays
+/// `.possible` while a finger is down, always allows simultaneous
+/// recognition, and never cancels touches can't be failed or excluded by
+/// those gestures — yet it
 /// still receives the full touch stream, which is the piece every earlier
 /// cross-block attempt was missing (SwiftUI gestures fought the ScrollView,
 /// a coexisting pan was unpredictably failed by the private gesture, and
@@ -1174,6 +1212,13 @@ private final class MarkdownSelectionTextView: UITextView {
 /// active selection drag, each move is forwarded as a window point and the
 /// coordinator resolves it against every registered block/cell text view,
 /// extending the selection across them.
+///
+/// Once the last finger lifts it fails, as InteractionIdleTouchRecognizer
+/// does. UIKit resets the gestures a touch went through only when every one
+/// of them has finished, so one left `.possible` held the chat's scroll and
+/// the swipe back in their ended or failed states: after a flick from the
+/// screen's left edge over a code box or a table, the chat stopped
+/// scrolling until it was opened again (issue 1687).
 final class MarkdownSelectionObserverGestureRecognizer: UIGestureRecognizer, UIGestureRecognizerDelegate {
     private weak var observedTextView: MarkdownSelectionTextView?
     /// Set when a touch begins on this text view's existing selection or its
@@ -1218,11 +1263,20 @@ final class MarkdownSelectionObserverGestureRecognizer: UIGestureRecognizer, UIG
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
         super.touchesEnded(touches, with: event)
         handleTouchEnd()
+        failIfLastTouch(touches, event: event)
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
         super.touchesCancelled(touches, with: event)
         handleTouchEnd()
+        failIfLastTouch(touches, event: event)
+    }
+
+    /// Fails once every finger has lifted, which resets it, and every
+    /// gesture the touch went through, for the next touch.
+    private func failIfLastTouch(_ touches: Set<UITouch>, event: UIEvent) {
+        guard !UIGestureRecognizer.fingerStillDown(besides: touches, among: event.touches(for: self) ?? []) else { return }
+        state = .failed
     }
 
     func handleMove(toWindowPoint windowPoint: CGPoint) {

@@ -93,6 +93,69 @@ extension ComposerDraftStoreTests {
         XCTAssertNil(ComposerBar.slashArgumentQuery(in: "/fast\nu"))
     }
 
+    func testReloadCommandsAreOfferedSinceConduitRunsThem() {
+        let catalog: AnyCodable = .object([
+            "categories": .array([
+                .object([
+                    "name": .string("Tools & Skills"),
+                    "pairs": .array([
+                        .array([.string("/reload"), .string("Reload .env variables")]),
+                        .array([.string("/reload-mcp"), .string("Reload MCP servers from config")]),
+                        .array([.string("/reload-skills"), .string("Re-scan skills")])
+                    ])
+                ])
+            ]),
+            "canon": .object(["/reload_mcp": .string("/reload-mcp"), "/reload_skills": .string("/reload-skills")])
+        ])
+        let commands = AppState.normalizedSlashCatalog(catalog)
+        XCTAssertEqual(Set(commands.map(\.name)).intersection(["reload", "reload-mcp", "reload-skills"]), ["reload-mcp", "reload-skills"])
+        XCTAssertEqual(commands.first { $0.name == "reload-mcp" }?.aliases, ["reload_mcp"])
+        XCTAssertTrue(AppState.builtInSlashCommands.contains { $0.name == "reload-skills" })
+
+        let subs = AppState.slashSubcommandMap(catalog)
+        XCTAssertEqual(subs["reload-mcp"], ["now", "always"])
+        XCTAssertEqual(
+            ComposerBar.slashArgumentSuggestions(for: "/reload-mcp n", commands: commands, subcommands: subs).map(\.name),
+            ["reload-mcp now"]
+        )
+        XCTAssertEqual(AppState.slashSubcommandMap(Self.catalog)["fast"], ["normal", "fast", "ultrafast"], "Hermes' words stand")
+    }
+
+    func testMCPReloadNoteSaysHowToGoAhead() {
+        XCTAssertEqual(
+            AppState.mcpReloadNote(MCPReloadOutcome(needsConfirmation: true, message: "Reloading MCP refreshes every chat of this profile.")),
+            "Reloading MCP refreshes every chat of this profile.\nSend /reload-mcp now to reload."
+        )
+        let dashboard = "⚠️  /reload-mcp invalidates the prompt cache. Reply `/reload-mcp now` to proceed."
+        XCTAssertEqual(AppState.mcpReloadNote(MCPReloadOutcome(needsConfirmation: true, message: dashboard)), dashboard)
+        XCTAssertEqual(AppState.mcpReloadNote(MCPReloadOutcome(needsConfirmation: true, message: nil)), "Send /reload-mcp now to reload.")
+        XCTAssertEqual(AppState.mcpReloadNote(MCPReloadOutcome(needsConfirmation: false, message: nil)), "MCP servers reloaded.")
+        XCTAssertEqual(
+            AppState.mcpReloadNote(MCPReloadOutcome(from: .object([
+                "status": .string("reloaded"),
+                "message": .string("MCP servers reconciled (no server changes)")
+            ]))),
+            "MCP servers reconciled (no server changes)"
+        )
+    }
+
+    func testMCPReloadThatConnectedNothingNamesTheServers() {
+        let refusal = RpcError(
+            code: 4001,
+            message: "mcp_servers_unavailable",
+            reason: "mcp_servers_unavailable",
+            detail: "did not connect: airtable, notion"
+        )
+        XCTAssertEqual(
+            AppState.mcpReloadFailureNote(refusal),
+            "Nothing reloaded: these MCP servers didn't connect: airtable, notion"
+        )
+        XCTAssertEqual(
+            AppState.mcpReloadFailureNote(RpcError(code: 4009, message: "session busy")),
+            "⚠️ Command failed: session busy"
+        )
+    }
+
     func testRefusedCommandSaysSoWithHermesHint() {
         let refusal = RpcError(
             code: 4001,
@@ -156,6 +219,15 @@ extension ComposerDraftStoreTests {
             "An applied rewind without its count still took the target back"
         )
         XCTAssertNil(SessionRewindSnapshot.text(of: .array([])), "No parts is not a text turn")
+        // A stored picture turn held more than text; a text turn's words
+        // come back without any recalled memory left in them.
+        XCTAssertNil(SessionRewindSnapshot.text(of: .string(
+            "look\n[screenshot]\n<memory-context>\n[System note: recalled]\n</memory-context>\n\nA plugin note."
+        )))
+        XCTAssertEqual(
+            SessionRewindSnapshot.text(of: .string("redo this\n\n<memory-context>\nrecalled\n</memory-context>")),
+            "redo this"
+        )
     }
 
     func testRewindRefusalsReadAsWords() {

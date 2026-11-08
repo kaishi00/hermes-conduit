@@ -1,87 +1,102 @@
 import SwiftUI
 
-/// The bot editor's Model page: the gateway's `model.options` inventory as a
-/// provider-grouped list (upstream `model-picker.tsx`). A new bot can also
-/// keep the main profile's model; an edited bot always has a pick of its own.
+/// A bot's Model page: the gateway's `model.options` inventory on the Model
+/// page every model setting opens (ModelChooserPage). A new bot can also
+/// keep the main profile's model; an edited bot always has a pick of its
+/// own. Edit Bot > Work's Workstream Model opens it too, with reasoning.
 struct BotModelPicker: View {
     @Binding var provider: String
     @Binding var model: String
     /// Offers "Same as Main Profile" (empty provider and model).
     let allowsInherit: Bool
+    /// What that choice is called where it inherits something else (Edit
+    /// Bot > Work's Workstream Model: the Bot Chat's).
+    var inheritTitle: String? = nil
+    /// The pick's reasoning, where the setting has one (Workstream Model).
+    var reasoning: ModelChooserReasoning? = nil
 
     @EnvironmentObject private var appState: AppState
-    @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var appLanguage = AppLanguageStore.shared
     /// The models, kept from Hermes' last answer until it answers again
     /// (#1533). Kept ones wait for that answer before they can be picked:
     /// a bot's save pins its pick without Hermes checking it, and a kept
     /// model may be gone.
     @State private var catalog = KeptModelCatalog()
-    @State private var query = ""
+    /// Refresh models is asking Hermes for every provider's live list.
+    @State private var refreshing = false
+    /// Counts the catalog reads, so only the last one asked lands.
+    @State private var catalogRead = 0
+    /// A plain read was asked while Refresh models ran: it runs once the
+    /// refresh lands.
+    @State private var readAfterRefresh = false
+    /// The read that failed was Refresh models, so Try Again asks for the
+    /// live lists again rather than the cached ones.
+    @State private var refreshFailed = false
 
     var body: some View {
-        List {
-            if allowsInherit {
-                Section {
-                    row(
-                        title: AppLocalization.string("Same as Main Profile"),
-                        isSelected: provider.isEmpty && model.isEmpty
-                    ) {
-                        provider = ""
-                        model = ""
-                    }
-                }
+        ModelChooserPage(
+            catalog: ModelChooserCatalog(catalog),
+            retry: { Task { if refreshFailed { await refreshModels() } else { await load() } } },
+            refresh: ModelChooserRefresh(refreshing: refreshing) { Task { await refreshModels() } },
+            defaultChoice: allowsInherit
+                ? ModelChooserDefault(title: inheritTitle ?? AppLocalization.string("Same as Main Profile"))
+                : nil,
+            pick: provider.isEmpty && model.isEmpty ? nil : ModelChooserPick(provider: provider, model: model),
+            reasoning: reasoning,
+            onDefault: {
+                provider = ""
+                model = ""
+            },
+            onPick: { option, item in
+                provider = option.name
+                model = item.id
             }
-            if catalog.loaded {
-                let providers = catalog.providers
-                if providers.isEmpty {
-                    Text(AppLocalization.string("Hermes has no models set up yet."))
-                        .foregroundStyle(.secondary)
-                }
-                if !ModelSearchQuery(query).isEmpty {
-                    searchResults(providers)
-                }
-                ForEach(ModelSearchQuery(query).isEmpty ? providers : [], id: \.name) { option in
-                    Section {
-                        ForEach(option.models, id: \.id) { item in
-                            row(
-                                title: item.label ?? item.id,
-                                isSelected: option.matches(provider) && item.id == model
-                            ) {
-                                provider = option.name
-                                model = item.id
-                            }
-                            .disabled(!catalog.answered)
-                        }
-                    } header: {
-                        Text(verbatim: option.title)
-                    }
-                }
-                if catalog.failed {
-                    loadFailedRows
-                }
-            } else if catalog.failed {
-                loadFailedRows
-            } else {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-            }
-        }
-        .searchable(text: $query, prompt: Text(AppLocalization.string("Search providers or models")))
-        .navigationTitle(AppLocalization.string("Model"))
-        .navigationBarTitleDisplayMode(.inline)
+        )
         // What Hermes listed last time, before the first frame; its answer
         // follows.
-        .onAppear { catalog.showKept(Self.pickable(appState.keptModelProviders())) }
+        .onAppear {
+            catalog.showKept(Self.pickable(appState.keptModelProviders()))
+        }
         .task {
             guard !catalog.answered else { return }
+            await load()
+            // Hermes fetches a stale provider list in the background
+            // meanwhile (issue 1807).
+            await ModelCatalogSettle.readAgain { await load() }
+        }
+    }
+
+    /// Refresh models, from the toolbar or Try Again after one failed.
+    private func refreshModels() async {
+        guard !refreshing else { return }
+        refreshing = true
+        await load(refresh: true)
+        refreshing = false
+        // A refresh that failed stays said: Try Again asks again.
+        let readSkipped = readAfterRefresh
+        readAfterRefresh = false
+        if readSkipped, !catalog.failed {
             await load()
         }
     }
 
-    private func load() async {
+    /// `refresh` is Refresh models: Hermes fetches every provider's live
+    /// list first. The search and the pick stay as they are.
+    private func load(refresh: Bool = false) async {
+        // A Refresh models under way has the newer answer coming.
+        guard refresh || !refreshing else {
+            readAfterRefresh = true
+            return
+        }
+        catalogRead += 1
+        let read = catalogRead
         catalog.readStarted()
-        if let loaded = await appState.loadModelProviders() {
+        let loaded = await appState.loadModelProviders(refresh: refresh)
+        // A read asked since has the newer answer.
+        guard read == catalogRead else { return }
+        // A plain read that fails after a failed refresh keeps the refresh
+        // owed, so Try Again still asks for the live lists.
+        refreshFailed = loaded == nil && (refresh || refreshFailed)
+        if let loaded {
             catalog.hermesAnswered(Self.pickable(loaded))
         } else {
             catalog.readFailed()
@@ -89,63 +104,8 @@ struct BotModelPicker: View {
     }
 
     /// A provider with no models has nothing to pick.
-    private static func pickable(_ providers: [ProviderInfo]) -> [ProviderInfo] {
+    static func pickable(_ providers: [ProviderInfo]) -> [ProviderInfo] {
         providers.filter { !$0.models.isEmpty }
-    }
-
-    /// A read that failed, under the models kept or alone.
-    @ViewBuilder
-    private var loadFailedRows: some View {
-        Text(AppLocalization.string("Could not load models."))
-            .foregroundStyle(.secondary)
-        Button(AppLocalization.string("Try Again")) { Task { await load() } }
-    }
-
-    /// Matches across providers, each naming its provider: several often
-    /// serve the same model.
-    @ViewBuilder
-    private func searchResults(_ providers: [ProviderInfo]) -> some View {
-        let matches = modelSearchMatches(in: providers, query: query)
-        if matches.isEmpty {
-            Text(verbatim: AppLocalization.string("Nothing matches “\(query.trimmingCharacters(in: .whitespacesAndNewlines))”."))
-                .foregroundStyle(.secondary)
-        }
-        ForEach(matches) { match in
-            row(
-                title: match.model.label ?? match.model.id,
-                detail: match.model.label == nil ? nil : match.model.id,
-                providerTitle: match.provider.title,
-                isSelected: match.provider.matches(provider) && match.model.id == model
-            ) {
-                provider = match.provider.name
-                model = match.model.id
-            }
-            .disabled(!catalog.answered)
-        }
-    }
-
-    private func row(title: String, detail: String? = nil, providerTitle: String? = nil, isSelected: Bool, select: @escaping () -> Void) -> some View {
-        Button {
-            Haptics.selection()
-            select()
-            dismiss()
-        } label: {
-            HStack {
-                if let providerTitle {
-                    ModelSearchResultText(title: title, detail: detail, provider: providerTitle)
-                } else {
-                    Text(verbatim: title)
-                        .foregroundStyle(.primary)
-                }
-                Spacer()
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .foregroundStyle(Color.conduitAccent)
-                        .accessibilityHidden(true)
-                }
-            }
-        }
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     /// The Model row's value: the pick, or what an empty pick means.

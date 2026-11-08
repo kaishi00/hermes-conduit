@@ -739,7 +739,16 @@ struct ConnectionSetupView: View {
                     ConnectionSetupListItem(marker: .check, text: check)
                 }
             }
+
+            if topic == .tls {
+                ServerCertificateSection(address: certificateAddress)
+            }
         }
+    }
+
+    /// The address the HTTPS page checks: the one being set up or repaired.
+    private var certificateAddress: String {
+        (try? ConnectionSetupAddressBuilder.build(flow.draft)) ?? flow.draft.existingServerURL
     }
 
     private var topicBinding: Binding<ConnectionHelpDestination> {

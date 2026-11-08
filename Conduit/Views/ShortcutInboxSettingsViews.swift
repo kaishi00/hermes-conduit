@@ -226,6 +226,8 @@ struct ShortcutInboxSettingsPage: View {
     }
 
     private static func message(for error: Error) -> String {
+        // A profile that turned the plugin off says how to turn it on.
+        if let remedy = DashboardTicketBridgeError.pluginOffDetail(of: error) { return remedy }
         if isPluginTooOld(error) {
             return AppLocalization.string("Update the Conduit plugin on your Hermes host to see and delete what was logged.")
         }

@@ -147,6 +147,19 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNil(appState.configuredLiveVoiceEngine(profile: appState.activeProfile))
     }
 
+    func testASwitchFromALocalLiveCallsOwnChatStartsTheNewModeThere() {
+        let own = VoiceThreadTarget(runtimeSessionID: "rt-own", storedSessionID: "st-own", title: "Call", profile: "furina")
+        let attached = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")
+        XCTAssertEqual(AppState.voiceModeSwitchThread(classicChat: nil, classicWasOpen: false, liveThread: nil, localLiveOwnChat: own), own,
+                       "a Home call, or one whose chat was deleted, keeps the chat it made")
+        XCTAssertEqual(AppState.voiceModeSwitchThread(classicChat: nil, classicWasOpen: false, liveThread: attached, localLiveOwnChat: own), attached)
+        XCTAssertNil(AppState.voiceModeSwitchThread(classicChat: nil, classicWasOpen: true, liveThread: attached, localLiveOwnChat: own),
+                     "Classic works in the open chat only")
+        XCTAssertNil(AppState.voiceModeSwitchThread(classicChat: nil, classicWasOpen: false, liveThread: nil, localLiveOwnChat: own,
+                                                    isDeleted: { $0 == own }),
+                     "an own chat deleted since is never handed to the new mode")
+    }
+
     func testSwitchingACallsModeStartsTheNewModeInTheSameChat() async {
         let appState = makeModeSwitchAppState()
         appState.setGPTLiveEnabled(true)

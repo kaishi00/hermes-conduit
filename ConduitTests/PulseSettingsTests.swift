@@ -27,6 +27,14 @@ final class PulseSettingsTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(PulseState(json: json(#"{"enabled": true}"#))).note, "")
     }
 
+    func testStateNamesTheProfilePulseRunsIn() throws {
+        // Issue 1681: Set up Pulse makes the chat in the profile Pulse names.
+        XCTAssertEqual(try XCTUnwrap(PulseState(json: json(#"{"enabled": true, "profile": "rei-ii"}"#))).profile, "rei-ii")
+        // An older plugin names none: its Pulse runs in the default profile.
+        XCTAssertNil(try XCTUnwrap(PulseState(json: json(#"{"enabled": true}"#))).profile)
+        XCTAssertNil(try XCTUnwrap(PulseState(json: json(#"{"enabled": true, "profile": " "}"#))).profile)
+    }
+
     func testStateSaysWhatDefaultRunsOn() throws {
         // Pulse's chat is hidden, so the model picker's Default names its model (0.120.3).
         // The copy is English here, whatever the test host's language.
@@ -192,9 +200,19 @@ final class PulseSettingsTests: XCTestCase {
         XCTAssertEqual(PulseNudge.budgets([100, 300], current: 0), [100, 300])
     }
 
+    func testOnlyAStoppedPulseWithHermesTooOldAsksToUpdateHermes() throws {
+        let older = try XCTUnwrap(PulseState(json: ["enabled": true, "running": false]))
+        XCTAssertEqual(older.hostProblem, "")  // a plugin before 0.127.6: the restart hint
+        XCTAssertFalse(older.hermesTooOld)
+        let running = try XCTUnwrap(PulseState(json: ["enabled": true, "running": true, "host_problem": "hermes_too_old"]))
+        XCTAssertFalse(running.hermesTooOld)
+        let tooOld = try XCTUnwrap(PulseState(json: ["enabled": true, "running": false, "host_problem": "hermes_too_old"]))
+        XCTAssertTrue(tooOld.hermesTooOld)
+    }
+
     func testStateDecodesThePluginsPayload() throws {
         let state = try XCTUnwrap(PulseState(json: json("""
-        {"ok": true, "enabled": true, "running": false, "stale_build": true,
+        {"ok": true, "enabled": true, "running": false, "stale_build": true, "host_problem": "hermes_too_old",
          "home_chat": {"id": "20261021_080000_abc", "title": "Pulse", "pinned": false},
          "home_problem": "pin the \\"Pulse\\" chat so pruning never removes it", "home_title": "Pulse",
          "checks": {"sent": 4, "failed": 1},
@@ -214,6 +232,8 @@ final class PulseSettingsTests: XCTestCase {
         XCTAssertTrue(state.enabled)
         XCTAssertFalse(state.running)
         XCTAssertTrue(state.staleBuild)
+        XCTAssertEqual(state.hostProblem, "hermes_too_old")
+        XCTAssertTrue(state.hermesTooOld)
         XCTAssertEqual(state.homeChat, PulseHomeChat(id: "20261021_080000_abc", title: "Pulse", pinned: false))
         XCTAssertEqual(state.homeProblem, "pin the \"Pulse\" chat so pruning never removes it")
         XCTAssertEqual(state.checks, ["sent": 4, "failed": 1])

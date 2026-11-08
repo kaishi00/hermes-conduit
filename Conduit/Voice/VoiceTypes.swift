@@ -182,6 +182,9 @@ struct VoiceProfilePreferences: Codable, Equatable {
     var grokLiveMemory: Bool? = nil
     /// Whether Grok Live speaks as the profile's SOUL.md persona. Nil is off.
     var grokLivePersonality: Bool? = nil
+    /// Whether Local Live's fast model (agent mode) speaks as the profile's
+    /// SOUL.md persona (issue 583). Nil is off.
+    var localLivePersonality: Bool? = nil
     /// Opt-in Local Live voice mode: a live call through the user's own
     /// speech server, with Hermes answering each turn in the call's chat
     /// (off by default; older blobs decode off). Never on with another live mode.
@@ -217,6 +220,9 @@ struct VoiceProfilePreferences: Codable, Equatable {
     /// Whether live calls start asking before sending a request to Hermes
     /// (#451). Nil is off.
     var liveVoiceAskBeforeSending: Bool? = nil
+    /// The user's own instructions for every live model, after Conduit's
+    /// rules (issue 583). Nil is none.
+    var liveVoiceExtraInstructions: String? = nil
 
     var liveVoiceStyle: LiveVoiceStyle {
         LiveVoiceStyle(
@@ -224,7 +230,8 @@ struct VoiceProfilePreferences: Codable, Equatable {
             backchannels: liveVoiceBackchannels ?? true,
             greeting: liveVoiceGreeting,
             answerLength: liveVoiceAnswerLength ?? .standard,
-            asksBeforeSending: liveVoiceAskBeforeSending ?? false
+            asksBeforeSending: liveVoiceAskBeforeSending ?? false,
+            extraInstructions: liveVoiceExtraInstructions
         )
     }
 
@@ -297,6 +304,7 @@ struct VoiceProfilePreferences: Codable, Equatable {
         grokLivePersonality = (try? container.decodeIfPresent(Bool.self, forKey: .grokLivePersonality)) ?? nil
         localLiveEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .localLiveEnabled)) ?? false
         localLiveAgent = (try? container.decodeIfPresent(Bool.self, forKey: .localLiveAgent)) ?? false
+        localLivePersonality = (try? container.decodeIfPresent(Bool.self, forKey: .localLivePersonality)) ?? nil
         voiceJobModel = try container.decodeIfPresent(String.self, forKey: .voiceJobModel)
         voiceJobProvider = try container.decodeIfPresent(String.self, forKey: .voiceJobProvider)
         voiceJobReasoningEffort = try container.decodeIfPresent(String.self, forKey: .voiceJobReasoningEffort)
@@ -309,6 +317,7 @@ struct VoiceProfilePreferences: Codable, Equatable {
         // An unknown length (a newer build's) is Default.
         liveVoiceAnswerLength = try? container.decodeIfPresent(LiveVoiceAnswerLength.self, forKey: .liveVoiceAnswerLength)
         liveVoiceAskBeforeSending = try? container.decodeIfPresent(Bool.self, forKey: .liveVoiceAskBeforeSending)
+        liveVoiceExtraInstructions = (try? container.decodeIfPresent(String.self, forKey: .liveVoiceExtraInstructions)) ?? nil
     }
 
     /// What a voice job's `session.create` asks for: the chosen voice-job
@@ -642,6 +651,14 @@ enum VoiceAssistantEvent: Equatable {
     case completed(sessionID: String, content: String?, alreadyShown: Bool = false)
     case failed(sessionID: String, message: String)
     case interrupted(sessionID: String)
+
+    var sessionID: String {
+        switch self {
+        case let .started(sessionID), let .delta(sessionID, _), let .interim(sessionID, _, _),
+             let .completed(sessionID, _, _), let .failed(sessionID, _), let .interrupted(sessionID):
+            return sessionID
+        }
+    }
 }
 
 struct VoiceConversationTranscriptEntry: Identifiable, Equatable {
@@ -782,6 +799,12 @@ protocol SpeechPlaybackService: AnyObject {
     /// Conversation playback joins the capture-owned session; standalone
     /// flows (Read Aloud, provider tests) own the session alone.
     var ownershipIntent: VoiceAudioIntent { get set }
+    /// Called, on a later main-actor turn, when something takes the
+    /// microphone while this playback holds the session (composer
+    /// dictation, a voice message, a call): the owner then stops, so the
+    /// microphone never hears it. Read Aloud sets it; conversations, whose
+    /// own capture is what arrives, leave it nil (issue 1770).
+    var onTakenOverByCapture: (@MainActor () -> Void)? { get set }
     /// Speed applied to the next stream or clip; 1.0 is normal speed.
     var playbackRate: Float { get set }
     func start(sampleRate: Double) throws
@@ -791,12 +814,14 @@ protocol SpeechPlaybackService: AnyObject {
     func drain() async
     func stop()
     /// Holds the current audio in place (Now Playing pause, #373). Returns
-    /// false when nothing is playing that can be paused. Scheduled and
-    /// newly enqueued audio waits until `resume()`.
+    /// false when nothing is playing that can be paused; a stream whose
+    /// engine a route change just stopped still pauses. Scheduled and newly
+    /// enqueued audio waits until `resume()`.
     func pause() -> Bool
     func resume()
-    /// Whether audio is currently held by `pause()`. A stream restart (route
-    /// change) clears it even though nobody resumed.
+    /// Whether audio is currently held by `pause()`. A route change keeps
+    /// it (the fresh engine starts paused); a stream that settles clears it
+    /// even though nobody resumed.
     var isPaused: Bool { get }
     /// Builds every stream so `changeRate` can retime it while it plays
     /// (Read Aloud's player, #759). Off for conversations, which keep the
@@ -807,6 +832,12 @@ protocol SpeechPlaybackService: AnyObject {
 }
 
 extension SpeechPlaybackService {
+    /// Services that never give way keep playing.
+    var onTakenOverByCapture: (@MainActor () -> Void)? {
+        get { nil }
+        set {}
+    }
+
     /// Services without a speed control play at normal speed.
     var playbackRate: Float {
         get { 1 }

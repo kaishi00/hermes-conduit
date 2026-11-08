@@ -35,6 +35,10 @@ struct CronJobEditorSheet: View {
     @State private var seeded = false
     @State private var isSaving = false
     @State private var error: String?
+    /// "Let the bot act on it" for a job delivered to a Bot Chat; off, its
+    /// report just shows there (cron_bot_chat).
+    @State private var botActs = false
+    @State private var originalBotActs = false
 
     private var editedJob: CronJob? {
         if case .edit(let job) = target { return job }
@@ -42,7 +46,16 @@ struct CronJobEditorSheet: View {
     }
 
     private var hasChanges: Bool {
-        editedJob == nil || !draft.updates(from: original).isEmpty
+        editedJob == nil || !draft.updates(from: original).isEmpty || botChoiceChanged
+    }
+
+    /// The job goes to a Bot Chat on a host whose plugin keeps the choice.
+    private var offersBotChoice: Bool {
+        appState.offersCronBotChatChoice && CronDeliveryTarget.deliversToBotChat(draft.deliver)
+    }
+
+    private var botChoiceChanged: Bool {
+        offersBotChoice && botActs != originalBotActs
     }
 
     private var zoneLabel: String? {
@@ -51,30 +64,30 @@ struct CronJobEditorSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            // Settings' own page, as Edit Bot (Eric 2026-11-05).
+            SettingsDetailContainer {
                 if let error, !error.isEmpty {
-                    Section {
-                        Text(error)
-                            .scaledFont(.footnote)
-                            .foregroundStyle(.red)
-                    }
+                    Text(error)
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 16)
                 }
-                Section {
+                ConduitSettingsSection(title: AppLocalization.string("Name"), symbol: "textformat", tint: .conduitAccent) {
                     TextField(AppLocalization.string("Name, like Morning brief"), text: $draft.name)
+                        .textFieldStyle(.roundedBorder)
                         .textInputAutocapitalization(.sentences)
-                } header: {
-                    Text(AppLocalization.string("Name"))
                 }
-                Section {
+                ConduitSettingsSection(title: AppLocalization.string("Prompt"), symbol: "text.bubble", tint: .blue) {
                     TextField(AppLocalization.string("What Hermes should do each time"), text: $draft.prompt, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
                         .lineLimit(3...10)
-                } header: {
-                    Text(AppLocalization.string("Prompt"))
                 }
                 CronScheduleEditor(schedule: $draft.schedule, zoneLabel: zoneLabel)
                 deliverySection
+                if offersBotChoice {
+                    botChoiceSection
+                }
             }
-            .scrollDismissesKeyboard(.interactively)
             .tint(.conduitAccent)
             .navigationTitle(editedJob == nil ? AppLocalization.string("New scheduled job") : AppLocalization.string("Edit scheduled job"))
             .navigationBarTitleDisplayMode(.inline)
@@ -95,34 +108,41 @@ struct CronJobEditorSheet: View {
                 }
             }
         }
-        .interactiveDismissDisabled(isSaving || (seeded && draft != original))
+        .interactiveDismissDisabled(isSaving || (seeded && (draft != original || botChoiceChanged)))
         .task { await seed() }
     }
 
     private var deliverySection: some View {
         let choices = CronDeliveryTarget.choices(targets, keeping: draft.deliver)
         let selected = choices.first { $0.id == draft.deliver }
-        return Section {
-            Picker(AppLocalization.string("Deliver to"), selection: $draft.deliver) {
-                ForEach(choices) { target in
-                    Text(verbatim: CronDeliveryTarget.title(target)).tag(target.id)
-                }
+        return ConduitSettingsSection(title: AppLocalization.string("Delivery"), symbol: "paperplane", tint: .green) {
+            ConduitMenuPicker(
+                value: draft.deliver,
+                choices: choices.map { (id: $0.id, title: CronDeliveryTarget.title($0)) },
+                onSelect: { draft.deliver = $0 }
+            ) {
+                Text(AppLocalization.string("Deliver to")).foregroundStyle(.secondary)
             }
-        } header: {
-            Text(AppLocalization.string("Delivery"))
-        } footer: {
             if selected?.homeTargetSet == false {
                 Text(AppLocalization.string("This platform has no home channel yet. Set one in Hermes, or the run is only saved."))
+                    .settingsCaption()
             } else {
                 Text(AppLocalization.string("Each run is also saved as its own conversation."))
+                    .settingsCaption()
             }
         }
+    }
+
+    private var botChoiceSection: some View {
+        CronBotChoiceSection(botActs: $botActs)
     }
 
     private func seed() async {
         if !seeded {
             if let job = editedJob {
                 draft = CronJobDraft(job: job)
+                botActs = appState.cronJobLetsBotAct(job.id)
+                originalBotActs = botActs
             }
             original = draft
             seeded = true
@@ -130,6 +150,15 @@ struct CronJobEditorSheet: View {
         // The list Hermes offers; without it the picker keeps Local and the
         // job's own target.
         targets = (try? await appState.loadCronDeliveryTargets()) ?? []
+        // Whether this Hermes shows a Bot Chat job's report without a turn,
+        // and the job's choice, when the Cron tab hasn't read them yet.
+        if !appState.offersCronBotChatChoice, appState.supportsCronBotChatReports {
+            await appState.refreshCronNotifications()
+            if let job = editedJob, !botChoiceChanged {
+                botActs = appState.cronJobLetsBotAct(job.id)
+                originalBotActs = botActs
+            }
+        }
     }
 
     private func save() {
@@ -139,10 +168,34 @@ struct CronJobEditorSheet: View {
         Task {
             defer { isSaving = false }
             do {
+                let profile = appState.activeProfile
+                var jobID: String?
                 if let job = editedJob {
                     try await appState.updateCronJob(job, updates: draft.updates(from: original))
+                    jobID = job.id
                 } else if let body = draft.createBody {
-                    _ = try await appState.createCronJob(body)
+                    jobID = try await appState.createCronJob(body)?.id
+                }
+                // A new job just shows by default, so only "act" is sent for
+                // it, which needs the id Hermes gave it.
+                if offersBotChoice, editedJob == nil, botActs, jobID == nil {
+                    Haptics.mutationCompleted(false)
+                    appState.errorMessage = AppLocalization.string("The job is saved, but not whether the bot acts on it: \(HermesError.invalidResponse.localizedDescription)")
+                    dismiss()
+                    return
+                }
+                if offersBotChoice, let jobID, editedJob == nil ? botActs : botChoiceChanged {
+                    do {
+                        try await appState.setCronJobLetsBotAct(botActs, jobID: jobID, profile: profile)
+                    } catch {
+                        // The job itself is saved, so the sheet closes (a
+                        // second Create would make it twice); the banner says
+                        // what wasn't.
+                        Haptics.mutationCompleted(false)
+                        appState.errorMessage = AppLocalization.string("The job is saved, but not whether the bot acts on it: \(UserFacingError.message(for: error))")
+                        dismiss()
+                        return
+                    }
                 }
                 Haptics.mutationCompleted(true)
                 dismiss()
@@ -155,6 +208,15 @@ struct CronJobEditorSheet: View {
 }
 
 extension CronDeliveryTarget {
+    /// Whether a job's `deliver` names a Bot Chat (`bot-chat`, or
+    /// `bot-chat:<profile>`), alone or among other targets.
+    static func deliversToBotChat(_ deliver: String) -> Bool {
+        deliver.split(separator: ",").contains { part in
+            let token = part.trimmingCharacters(in: .whitespaces).lowercased()
+            return token == "bot-chat" || token.hasPrefix("bot-chat:")
+        }
+    }
+
     /// A target's name in the pickers: Local and the blueprint's "origin"
     /// in words, a platform by the name Hermes gives it.
     static func title(_ target: CronDeliveryTarget) -> String {
@@ -192,7 +254,7 @@ private struct CronScheduleEditor: View {
     }
 
     var body: some View {
-        Section {
+        ConduitSettingsSection(title: AppLocalization.string("Schedule"), symbol: "calendar.badge.clock", tint: .orange) {
             Picker(AppLocalization.string("Repeats"), selection: $schedule.mode) {
                 Text(AppLocalization.string("At a time")).tag(CronScheduleDraft.Mode.time)
                 Text(AppLocalization.string("Every…")).tag(CronScheduleDraft.Mode.interval)
@@ -225,11 +287,9 @@ private struct CronScheduleEditor: View {
                 TextField(AppLocalization.string("0 9 * * 1 or every monday 9am"), text: $schedule.custom)
                     .scaledFont(.callout.monospaced())
                     .textInputAutocapitalization(.never)
+                    .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
             }
-        } header: {
-            Text(AppLocalization.string("Schedule"))
-        } footer: {
             VStack(alignment: .leading, spacing: 4) {
                 Text(preview)
                     .scaledFont(.footnote.weight(.semibold))
@@ -322,6 +382,7 @@ struct CronBlueprintGallerySheet: View {
                         Text(error)
                     } actions: {
                         Button(AppLocalization.string("Try Again")) { Task { await load() } }
+                            .buttonStyle(.settings)
                     }
                 } else if blueprints.isEmpty {
                     ContentUnavailableView(
@@ -330,9 +391,13 @@ struct CronBlueprintGallerySheet: View {
                         description: Text(AppLocalization.string("This Hermes doesn't offer any ready-made jobs."))
                     )
                 } else {
-                    List {
+                    SettingsDetailContainer {
                         ForEach(categories, id: \.self) { category in
-                            Section {
+                            ConduitSettingsSection(
+                                title: category.isEmpty ? AppLocalization.string("Blueprints") : category.prefix(1).uppercased() + category.dropFirst(),
+                                symbol: "square.grid.2x2",
+                                tint: .conduitAccent
+                            ) {
                                 ForEach(blueprints.filter { $0.category == category }) { blueprint in
                                     NavigationLink {
                                         CronBlueprintForm(blueprint: blueprint, targets: targets) { job in
@@ -340,12 +405,14 @@ struct CronBlueprintGallerySheet: View {
                                             dismiss()
                                         }
                                     } label: {
-                                        blueprintRow(blueprint)
+                                        HStack {
+                                            blueprintRow(blueprint)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                            SettingsChevron()
+                                        }
+                                        .contentShape(Rectangle())
                                     }
-                                }
-                            } header: {
-                                if !category.isEmpty {
-                                    Text(verbatim: category.prefix(1).uppercased() + category.dropFirst())
+                                    .buttonStyle(.plain)
                                 }
                             }
                         }
@@ -401,8 +468,35 @@ struct CronBlueprintGallerySheet: View {
             blueprints = try await appState.loadCronBlueprints()
             // Only widens the delivery choices; the blueprint's own stay.
             targets = (try? await appState.loadCronDeliveryTargets()) ?? []
+            // Whether a blueprint delivered to a Bot Chat offers "When it
+            // runs", when the Cron tab hasn't read it yet.
+            if !appState.offersCronBotChatChoice, appState.supportsCronBotChatReports {
+                await appState.refreshCronNotifications()
+            }
         } catch {
             self.error = UserFacingError.message(for: error)
+        }
+    }
+}
+
+/// A Bot Chat job's "When it runs": Just show it (no turn, the default)
+/// or Let the bot act on it (Hermes' turn). The editor's and a
+/// blueprint's.
+struct CronBotChoiceSection: View {
+    @Binding var botActs: Bool
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("When it runs"), symbol: "person.crop.circle.badge.checkmark", tint: .purple) {
+            Picker(AppLocalization.string("When it runs"), selection: $botActs) {
+                Text(AppLocalization.string("Just show it")).tag(false)
+                Text(AppLocalization.string("Let the bot act on it")).tag(true)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            Text(botActs
+                 ? AppLocalization.string("The bot reads each report, acts on what needs it and answers in its Bot Chat. Each run costs a reply from its model.")
+                 : AppLocalization.string("Each report shows in the bot's Bot Chat as it is, with no reply. The bot sees it the next time you write."))
+                .settingsCaption()
         }
     }
 }
@@ -418,6 +512,13 @@ private struct CronBlueprintForm: View {
     @State private var values: [String: String] = [:]
     @State private var isSaving = false
     @State private var error: String?
+    /// "Let the bot act on it", for a blueprint delivered to a Bot Chat.
+    @State private var botActs = false
+
+    /// A Bot Chat delivery offers "When it runs", as the editor does.
+    private var offersBotChoice: Bool {
+        appState.offersCronBotChatChoice && CronDeliveryTarget.deliversToBotChat(values["deliver"] ?? "")
+    }
 
     init(blueprint: CronBlueprint, targets: [CronDeliveryTarget], onCreated: @escaping (CronJob?) -> Void) {
         self.blueprint = blueprint
@@ -427,34 +528,32 @@ private struct CronBlueprintForm: View {
     }
 
     var body: some View {
-        Form {
+        SettingsDetailContainer {
             if !blueprint.summary.isEmpty {
-                Section {
-                    Text(verbatim: blueprint.summary)
-                        .scaledFont(.callout)
-                        .foregroundStyle(.secondary)
-                }
+                Text(verbatim: blueprint.summary)
+                    .scaledFont(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 16)
             }
             if let error, !error.isEmpty {
-                Section {
-                    Text(error)
-                        .scaledFont(.footnote)
-                        .foregroundStyle(.red)
-                }
+                Text(error)
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 16)
             }
-            ForEach(blueprint.fields) { field in
-                Section {
+            SettingsCard {
+                ForEach(blueprint.fields) { field in
                     control(field)
-                } header: {
-                    Text(verbatim: field.label)
-                } footer: {
                     if !field.help.isEmpty {
                         Text(verbatim: field.help)
+                            .settingsCaption()
                     }
                 }
             }
+            if offersBotChoice {
+                CronBotChoiceSection(botActs: $botActs)
+            }
         }
-        .scrollDismissesKeyboard(.interactively)
         .navigationTitle(Text(verbatim: blueprint.title))
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(isSaving)
@@ -481,7 +580,7 @@ private struct CronBlueprintForm: View {
         switch field.kind {
         case .time:
             DatePicker(
-                AppLocalization.string("Time"),
+                field.label,
                 selection: Binding(
                     get: {
                         let clock = CronBlueprint.clock(values[field.name] ?? "") ?? (hour: 8, minute: 0)
@@ -495,19 +594,23 @@ private struct CronBlueprintForm: View {
                 displayedComponents: .hourAndMinute
             )
         case .weekdays, .choice:
-            Picker(selection: binding(field)) {
-                if field.optional {
-                    Text(AppLocalization.string("None")).tag("")
-                }
-                ForEach(options(field), id: \.self) { option in
-                    Text(verbatim: optionTitle(option, field: field)).tag(option)
-                }
-            } label: {
-                Text(verbatim: field.label)
+            ConduitMenuPicker(
+                value: values[field.name] ?? "",
+                choices: (field.optional ? [(id: "", title: AppLocalization.string("None"))] : [])
+                    + options(field).map { (id: $0, title: optionTitle($0, field: field)) },
+                onSelect: { values[field.name] = $0 }
+            ) {
+                Text(verbatim: field.label).foregroundStyle(.secondary)
             }
         case .text:
-            TextField(field.label, text: binding(field), axis: .vertical)
-                .lineLimit(1...6)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(verbatim: field.label)
+                    .scaledFont(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                TextField(field.label, text: binding(field), axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(1...6)
+            }
         }
     }
 
@@ -548,7 +651,23 @@ private struct CronBlueprintForm: View {
         Task {
             defer { isSaving = false }
             do {
+                let profile = appState.activeProfile
+                let acts = offersBotChoice && botActs
                 let job = try await appState.instantiateCronBlueprint(blueprint, values: values)
+                // A new job just shows by default, so only "act" is sent.
+                if acts {
+                    do {
+                        guard let id = job?.id else { throw HermesError.invalidResponse }
+                        try await appState.setCronJobLetsBotAct(true, jobID: id, profile: profile)
+                    } catch {
+                        // The job is made, so the form closes (a second
+                        // Create would make it twice); the banner says what wasn't.
+                        Haptics.mutationCompleted(false)
+                        appState.errorMessage = AppLocalization.string("The job is saved, but not whether the bot acts on it: \(UserFacingError.message(for: error))")
+                        onCreated(job)
+                        return
+                    }
+                }
                 Haptics.mutationCompleted(true)
                 onCreated(job)
             } catch {

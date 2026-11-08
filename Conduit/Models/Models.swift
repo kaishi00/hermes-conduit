@@ -24,6 +24,10 @@ enum MessageRole: String, Codable, Equatable {
     /// password, skill/setup secret, password-manager unlock, a website's
     /// login or its one-time code.
     case inputPrompt
+    /// Hermes connecting something for the model and waiting on the user:
+    /// an app sign-in, an MCP server's setup, a catalog install or the
+    /// apps directory (`connection.request`, ConnectionActivity).
+    case connection
 }
 
 enum SessionSource: String, Codable, CaseIterable {
@@ -818,6 +822,8 @@ struct ChatMessage: Identifiable, Equatable {
     var clarify: ClarifyActivity?
     var approval: ApprovalActivity?
     var inputPrompt: InputPromptActivity?
+    /// The connect card on a `.connection` row. Live-only, like inputPrompt.
+    var connection: ConnectionActivity?
     var attachments: [Attachment]?
     var code: String?
     /// Canonical Hermes `display_kind` when the persisted row arrived with
@@ -876,6 +882,32 @@ struct ChatMessage: Identifiable, Equatable {
         self.displayKind = displayKind
         self.rowId = rowId
         self.reactions = reactions
+    }
+
+    /// The same message under another id.
+    func withID(_ id: String) -> ChatMessage {
+        var copy = ChatMessage(
+            id: id,
+            role: role,
+            content: content,
+            rawContent: rawContent,
+            timestamp: timestamp,
+            author: author,
+            reasoning: reasoning,
+            tool: tool,
+            review: review,
+            clarify: clarify,
+            approval: approval,
+            inputPrompt: inputPrompt,
+            attachments: attachments,
+            code: code,
+            displayKind: displayKind,
+            rowId: rowId,
+            reactions: reactions
+        )
+        copy.stepDuration = stepDuration
+        copy.connection = connection
+        return copy
     }
 
     /// Hermes' `display_kind` for a mid-turn steer row, also used for the
@@ -1222,12 +1254,67 @@ struct CronRun: Codable, Identifiable {
     var profile: String?
     var startedAt: Int?
     var title: String?
+    /// The job the gateway says ran it (`job_id` or `cron_job_id`), when it says.
+    var jobID: String?
 
     enum CodingKeys: String, CodingKey {
         case id, model, preview, profile
         case lastActive = "last_active"
         case startedAt = "started_at"
         case title
+        case jobID = "job_id"
+        case cronJobID = "cron_job_id"
+    }
+
+    init(id: String, lastActive: Int?, model: String?, preview: String?, profile: String?, startedAt: Int?, title: String?, jobID: String? = nil) {
+        self.id = id
+        self.lastActive = lastActive
+        self.model = model
+        self.preview = preview
+        self.profile = profile
+        self.startedAt = startedAt
+        self.title = title
+        self.jobID = jobID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        lastActive = try container.decodeIfPresent(Int.self, forKey: .lastActive)
+        model = try container.decodeIfPresent(String.self, forKey: .model)
+        preview = try container.decodeIfPresent(String.self, forKey: .preview)
+        profile = try container.decodeIfPresent(String.self, forKey: .profile)
+        startedAt = try container.decodeIfPresent(Int.self, forKey: .startedAt)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        // The first that names a job: an empty or non-string one doesn't.
+        jobID = [CodingKeys.jobID, .cronJobID].lazy
+            .compactMap { try? container.decodeIfPresent(String.self, forKey: $0) }
+            .first { !$0.isEmpty }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encodeIfPresent(lastActive, forKey: .lastActive)
+        try container.encodeIfPresent(model, forKey: .model)
+        try container.encodeIfPresent(preview, forKey: .preview)
+        try container.encodeIfPresent(profile, forKey: .profile)
+        try container.encodeIfPresent(startedAt, forKey: .startedAt)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encodeIfPresent(jobID, forKey: .jobID)
+    }
+
+    /// Whether this is a run of the job (#1707): the job the gateway names,
+    /// else Hermes' run session id, `cron_<job id>_<YYYYMMDD>_<HHMMSS>` (the
+    /// only form Hermes writes, cron/scheduler.py). A run
+    /// that says neither is no job's, so a list of every job's runs never
+    /// lends one to a job that didn't make it.
+    func isRun(ofJob job: String) -> Bool {
+        if let jobID, !jobID.isEmpty { return jobID == job }
+        let prefix = "cron_\(job)_"
+        guard !job.isEmpty, id.hasPrefix(prefix) else { return false }
+        let stamp = id.dropFirst(prefix.count).split(separator: "_", omittingEmptySubsequences: false)
+        return stamp.map(\.count) == [8, 6] && stamp.allSatisfy { part in part.allSatisfy { $0.isASCII && $0.isNumber } }
     }
 }
 
@@ -1256,6 +1343,12 @@ enum TurnState: Equatable {
 
     var isRunning: Bool {
         self == .running
+    }
+
+    /// Running, or still being read back (a sync, a reconnect), so a reply
+    /// may be running: a chat call's seed leaves the running turn off.
+    var mayBeRunning: Bool {
+        self == .running || self == .synchronizing || self == .reconnecting
     }
 
     static func fromGatewayRunning(_ running: Bool?) -> TurnState {
@@ -1564,6 +1657,25 @@ struct ProfileConfigSchema: Equatable {
     }
 
     subscript(key: String) -> Field? { fields[key] }
+}
+
+/// A fallback list that may follow another one: the subagents'
+/// (`delegation.fallback_providers`) follow the chat's while unset (null);
+/// an empty list of their own turns fallback off.
+struct ProfileFallbackChain: Equatable {
+    var inherits = false
+    var entries: [ProfileFallbackModel] = []
+
+    init(inherits: Bool = false, entries: [ProfileFallbackModel] = []) {
+        self.inherits = inherits
+        self.entries = entries
+    }
+
+    /// The subagents' chain in a profile's config.
+    init(delegationIn config: [String: Any]) {
+        let value = (config["delegation"] as? [String: Any])?["fallback_providers"]
+        self.init(inherits: value == nil || value is NSNull, entries: ProfileFallbackModel.list(from: value))
+    }
 }
 
 /// One `fallback_providers` entry: the model Hermes tries when the default

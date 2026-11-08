@@ -607,6 +607,247 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertNil(appState.newChatAwaitingListing)
     }
 
+    /// Hermes keeps no row for a chat until its first message, so a Hermes
+    /// before v0.22.0 that dropped the runtime of an empty new chat answers
+    /// "session not found" for it forever (an App Store review, 2026-11-02):
+    /// a refresh puts a fresh chat in its place instead of an error.
+    func testAnEmptyNewChatHermesLostIsReplacedOnRefresh() async {
+        var lost: Set<String> = []
+        var created = 0
+        let appState = makeLostChatAppState(lost: { lost }, onCreate: { created += 1 }) { _, _ in }
+
+        let first = await appState.createNewSession()
+        XCTAssertEqual(first, "created-runtime-1")
+        lost = ["created-runtime-1", "created-stored-1"]
+        await appState.refreshActiveSession()
+
+        XCTAssertEqual(created, 2)
+        XCTAssertEqual(appState.activeSessionId, "created-runtime-2")
+        XCTAssertNil(appState.errorMessage, "nothing was said in it, so nothing to report")
+        XCTAssertEqual(appState.turnState, .idle)
+        XCTAssertEqual(appState.sessions.map(\.id), ["created-stored-2"], "the lost chat's row goes")
+        // A draft typed in the lost chat is the fresh chat's (the composer
+        // moves it on the switch, as from New Chat to the chat it made).
+        let lostDraft = ComposerBar.composerDraftKey(for: "created-runtime-1", profile: "default")
+        let freshDraft = ComposerBar.composerDraftKey(for: "created-runtime-2", profile: "default")
+        XCTAssertTrue(appState.composerDraftKeysAreSameChat(lostDraft, freshDraft))
+        XCTAssertTrue(appState.composerDraftKeysAreSameChat(freshDraft, lostDraft))
+    }
+
+    /// The chat a sync opens when there is nothing to resume is made here
+    /// and empty too: the same dead end, the same fresh chat, still not
+    /// listed before Hermes lists it.
+    func testTheEmptyChatASyncOpenedIsReplacedToo() async {
+        var lost: Set<String> = []
+        var created = 0
+        let appState = makeLostChatAppState(lost: { lost }, onCreate: { created += 1 }) { _, _ in }
+
+        await appState.syncSession()
+        XCTAssertEqual(appState.activeSessionId, "created-runtime-1")
+        XCTAssertNil(appState.newChatAwaitingListing)
+        lost = ["created-runtime-1", "created-stored-1"]
+        await appState.refreshActiveSession()
+
+        XCTAssertEqual(created, 2)
+        XCTAssertEqual(appState.activeSessionId, "created-runtime-2")
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertNil(appState.newChatAwaitingListing, "waits for Hermes, as the chat it replaces did")
+    }
+
+    /// A New Chat started in a folder is replaced in that folder, and its
+    /// row stays listed beside the chat until Hermes lists it, as the lost
+    /// one's did.
+    func testALostEmptyNewChatInAFolderIsReplacedInThatFolder() async {
+        var lost: Set<String> = []
+        var folders: [String?] = []
+        let appState = makeLostChatAppState(lost: { lost }, onCreateIn: { folders.append($0) }) { _, _ in }
+
+        await appState.createNewSession(cwd: "/repo/app")
+        XCTAssertEqual(appState.newChatAwaitingListing?.cwd, "/repo/app")
+        lost = ["created-runtime-1", "created-stored-1"]
+        await appState.refreshActiveSession()
+
+        XCTAssertEqual(folders, ["/repo/app", "/repo/app"])
+        XCTAssertEqual(appState.activeSessionId, "created-runtime-2")
+        XCTAssertEqual(appState.newChatAwaitingListing?.cwd, "/repo/app")
+        XCTAssertEqual(appState.newChatAwaitingListing?.ids, ["created-runtime-2", "created-stored-2"])
+        XCTAssertEqual(appState.sessions.map(\.id), ["created-stored-2"])
+        XCTAssertNil(appState.errorMessage)
+    }
+
+    func testTheFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne() async {
+        var lost: Set<String> = []
+        var prompts: [(String, String)] = []
+        let appState = makeLostChatAppState(lost: { lost }) { prompts.append(($0, $1)) }
+
+        await appState.createNewSession()
+        lost = ["created-runtime-1", "created-stored-1"]
+        let sent = await appState.sendMessage("hello")
+
+        XCTAssertTrue(sent)
+        XCTAssertEqual(prompts.map(\.0), ["created-runtime-2"])
+        XCTAssertEqual(prompts.map(\.1), ["hello"])
+        XCTAssertEqual(appState.activeSessionId, "created-runtime-2")
+        XCTAssertEqual(appState.messages.filter { $0.role == .user }.map(\.content), ["hello"], "one bubble, in the new chat")
+        XCTAssertNil(appState.errorMessage)
+    }
+
+    /// Queue is a first message too: it goes into the fresh chat, still as
+    /// Queue.
+    func testAQueuedFirstMessageIntoALostEmptyNewChatGoesIntoAFreshOne() async {
+        var lost: Set<String> = []
+        var queuedPrompts: [(String, String)] = []
+        var prompts: [String] = []
+        let appState = makeLostChatAppState(
+            lost: { lost },
+            onQueuedPrompt: { queuedPrompts.append(($0, $1)) }
+        ) { session, _ in prompts.append(session) }
+
+        await appState.createNewSession()
+        lost = ["created-runtime-1", "created-stored-1"]
+        let sent = await appState.sendMessage("later", queued: true)
+
+        XCTAssertTrue(sent)
+        XCTAssertEqual(queuedPrompts.map(\.0), ["created-runtime-2"])
+        XCTAssertEqual(queuedPrompts.map(\.1), ["later"])
+        XCTAssertEqual(prompts, [])
+        XCTAssertEqual(appState.activeSessionId, "created-runtime-2")
+        XCTAssertNil(appState.errorMessage)
+    }
+
+    /// What an action left waiting on the empty chat (a screenshot, a
+    /// prompt for the composer, its focus) waits on the fresh chat instead.
+    func testWhatWaitsOnALostEmptyNewChatWaitsOnTheFreshOne() async {
+        var lost: Set<String> = []
+        var prompts: [String] = []
+        let appState = makeLostChatAppState(lost: { lost }) { session, _ in prompts.append(session) }
+        let shot = Attachment(id: UUID().uuidString, name: "screen.png", uri: "file:///tmp/screen.png", mimeType: "image/png", kind: .image)
+
+        await appState.createNewSession()
+        appState.pendingScreenshots = [PendingScreenshot(sessionID: "created-runtime-1", attachment: shot, dashboardID: appState.activeDashboardID)]
+        appState.prefillComposer("What is on my screen?")
+        appState.requestComposerFocus(on: "created-runtime-1")
+        appState.pendingComposerSend = PendingComposerSend(
+            draftText: "typed while it reconnected",
+            replyReference: nil,
+            dashboardID: appState.activeDashboardID ?? UUID(),
+            profile: "default",
+            sessionIDs: ["created-runtime-1", "created-stored-1"],
+            draftSessionID: "created-stored-1",
+            isNewChat: false,
+            title: ""
+        )
+        lost = ["created-runtime-1", "created-stored-1"]
+        await appState.refreshActiveSession()
+
+        XCTAssertEqual(appState.activeSessionId, "created-runtime-2")
+        XCTAssertEqual(appState.pendingScreenshots.map(\.sessionID), ["created-runtime-2"])
+        XCTAssertEqual(appState.pendingScreenshots.map(\.attachment), [shot])
+        XCTAssertEqual(appState.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "created-runtime-2", profile: "default"))
+        XCTAssertEqual(appState.composerPrefillText, "What is on my screen?")
+        XCTAssertEqual(appState.composerFocusRequest?.sessionID, "created-runtime-2")
+        // The waiting message is the fresh chat's: still waiting on it, or
+        // already sent there, never into the lost one.
+        XCTAssertFalse(prompts.contains("created-runtime-1"))
+        if let pending = appState.pendingComposerSend {
+            XCTAssertEqual(pending.draftSessionID, "created-stored-2")
+            XCTAssertEqual(pending.sessionIDs, ["created-runtime-2", "created-stored-2"])
+        } else {
+            XCTAssertEqual(prompts, ["created-runtime-2"])
+        }
+    }
+
+    func testAFirstMessageWithAFileIntoALostEmptyNewChatIsStagedInTheFreshOne() async {
+        var lost: Set<String> = []
+        var uploads: [String] = []
+        var prompts: [(String, String)] = []
+        let appState = makeLostChatAppState(lost: { lost }, onUpload: { uploads.append($0) }) { prompts.append(($0, $1)) }
+        let notes = Attachment(id: UUID().uuidString, name: "notes.txt", uri: "file:///tmp/notes.txt", mimeType: "text/plain", kind: .document)
+
+        await appState.createNewSession()
+        lost = ["created-runtime-1", "created-stored-1"]
+        let sent = await appState.sendMessage("read this", attachments: [notes])
+
+        XCTAssertTrue(sent)
+        XCTAssertEqual(uploads, ["created-runtime-2"], "staged once, in the fresh chat")
+        XCTAssertEqual(prompts.map(\.0), ["created-runtime-2"])
+        XCTAssertTrue(prompts.first?.1.contains("/uploads/notes.txt") == true)
+        XCTAssertEqual(appState.messages.filter { $0.role == .user }.first?.attachments?.map(\.name), ["notes.txt"])
+    }
+
+    func testAnEmptyNewChatLeftAndReopenedIsNotReplaced() async {
+        var lost: Set<String> = []
+        var created = 0
+        let appState = makeLostChatAppState(lost: { lost }, onCreate: { created += 1 }) { _, _ in }
+
+        await appState.createNewSession()
+        appState.activeSessionId = "other-chat"
+        appState.activeSessionId = "created-runtime-1"
+        lost = ["created-runtime-1", "created-stored-1"]
+        await appState.refreshActiveSession()
+
+        XCTAssertEqual(created, 1, "only the chat New Chat made, still open since")
+        XCTAssertNotNil(appState.errorMessage)
+    }
+
+    func testAFailedFreshChatKeepsTheFirstMessagesWords() async {
+        var lost: Set<String> = []
+        var createFails = false
+        var created = 0
+        var attempts = 0
+        let appState = makeLostChatAppState(
+            lost: { lost },
+            onCreate: { created += 1 },
+            onCreateAttempt: { attempts += 1 },
+            createFails: { createFails }
+        ) { _, _ in }
+
+        await appState.createNewSession()
+        lost = ["created-runtime-1", "created-stored-1"]
+        createFails = true
+        let sent = await appState.sendMessage("hello")
+
+        XCTAssertFalse(sent)
+        XCTAssertEqual(created, 1)
+        XCTAssertEqual(attempts, 2, "New Chat's create, then one try at a fresh chat, not one per retry")
+        XCTAssertTrue(appState.messages.contains { $0.role == .user && $0.content == "hello" }, "the words stay, as for any failed send")
+        XCTAssertNotNil(appState.errorMessage)
+    }
+
+    /// A slash command's answer (/btw's among them) is the user's, and
+    /// Hermes keeps no copy: the chat isn't empty, so it stays with its
+    /// error.
+    func testANewChatWithASlashAnswerIsNotReplaced() async {
+        var lost: Set<String> = []
+        var created = 0
+        let appState = makeLostChatAppState(lost: { lost }, onCreate: { created += 1 }) { _, _ in }
+
+        await appState.createNewSession()
+        appState.messages.append(ChatMessage(id: "slash-answer", role: .system, content: "The answer", timestamp: "2026-11-04T11:00:00Z"))
+        lost = ["created-runtime-1", "created-stored-1"]
+        await appState.refreshActiveSession()
+
+        XCTAssertEqual(created, 1)
+        XCTAssertEqual(appState.activeSessionId, "created-runtime-1")
+        XCTAssertTrue(appState.messages.contains { $0.id == "slash-answer" })
+    }
+
+    func testANewChatWithMessagesIsNeverReplaced() async {
+        var lost: Set<String> = []
+        var created = 0
+        let appState = makeLostChatAppState(lost: { lost }, onCreate: { created += 1 }) { _, _ in }
+
+        await appState.createNewSession()
+        let sent = await appState.sendMessage("hello")
+        XCTAssertTrue(sent)
+        lost = ["created-runtime-1", "created-stored-1"]
+        await appState.refreshActiveSession()
+
+        XCTAssertEqual(created, 1, "a chat with something in it is the user's: its error shows")
+        XCTAssertEqual(appState.activeSessionId, "created-runtime-1")
+        XCTAssertNotNil(appState.errorMessage)
+    }
+
     func testANewChatBelongsToTheProjectItStartedIn() {
         let awaiting = NewChatAwaitingListing(ids: ["rt", "st"], profile: "default", cwd: "/repo/app/")
         let project = ProjectSummary(id: "p", title: "App", primaryPath: "/repo/app", isHome: false, sessionCount: 0, previewSessions: [])
@@ -686,6 +927,69 @@ final class SessionRenameTests: XCTestCase {
             method == "GET" ? ["runtime_revision": 3, "runtime_generation": 1] : ["ok": true]
         }
         appState.widgetSessionCreatorOverride = { _, _ in ("created-runtime", "created-stored", "default") }
+        return appState
+    }
+
+    /// Each create makes `created-runtime-N`/`created-stored-N`; a resume or
+    /// a send to an id in `lost` answers as Hermes does for a dropped,
+    /// never-saved chat.
+    private func makeLostChatAppState(
+        lost: @escaping @MainActor () -> Set<String>,
+        onCreate: @escaping @MainActor () -> Void = {},
+        onCreateIn: @escaping @MainActor (String?) -> Void = { _ in },
+        onCreateAttempt: @escaping @MainActor () -> Void = {},
+        createFails: @escaping @MainActor () -> Bool = { false },
+        onUpload: @escaping @MainActor (String) -> Void = { _ in },
+        onQueuedPrompt: @escaping @MainActor (String, String) -> Void = { _, _ in },
+        onPrompt: @escaping @MainActor (String, String) -> Void
+    ) -> AppState {
+        let defaults = makeScratchDefaults("LostEmptyNewChatTests")
+        var operations = ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [] },
+                openSession: { _, sessionID, _ in
+                    if lost().contains(sessionID) { throw RpcError(code: 4007, message: "session not found") }
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in },
+                sendPrompt: { _, sessionID, text in
+                    if lost().contains(sessionID) { throw RpcError(code: 4001, message: "session not found") }
+                    onPrompt(sessionID, text)
+                    return .accepted
+                }
+            )
+        operations.sendQueuedPrompt = { _, sessionID, text in
+            if lost().contains(sessionID) { throw RpcError(code: 4001, message: "session not found") }
+            onQueuedPrompt(sessionID, text)
+            return .accepted
+        }
+        operations.uploadAttachment = { _, sessionID, attachment in
+            if lost().contains(sessionID) { throw RpcError(code: 4001, message: "session not found") }
+            onUpload(sessionID)
+            return "/uploads/\(attachment.name)"
+        }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            chatResumeLifecycleOperations: operations,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.isConnected = true
+        var count = 0
+        appState.widgetSessionCreatorOverride = { _, cwd in
+            onCreateAttempt()
+            if createFails() { throw URLError(.notConnectedToInternet) }
+            count += 1
+            onCreate()
+            onCreateIn(cwd)
+            return ("created-runtime-\(count)", "created-stored-\(count)", "default")
+        }
         return appState
     }
 

@@ -43,6 +43,23 @@ struct RootView: View {
             ConnectLinkSheet(link: link)
                 .environmentObject(appState)
         }
+        // A Link invite, the same way: it waits there for Conduit to
+        // connect when it opened Conduit.
+        .sheet(item: $appState.pendingRoomLink) { invite in
+            RoomLinkOpenedSheet(invite: invite)
+                .environmentObject(appState)
+        }
+        // An invite to a room whose notification was tapped: its join card.
+        .sheet(item: $appState.presentedRoomInvite) { invite in
+            RoomInviteSheet(invite: invite)
+                .environmentObject(appState)
+        }
+        // An approval in a room hosted elsewhere whose notification was
+        // tapped: its card.
+        .sheet(item: $appState.presentedRoomApproval) { approval in
+            RoomApprovalSheet(approval: approval)
+                .environmentObject(appState)
+        }
         // A draft shared from another app before Conduit listed any chats,
         // with more than one dashboard it could be for (#812). An alert, so
         // it shows the same on iPad, where a dialog would need an anchor.
@@ -122,6 +139,10 @@ struct MainView: View {
     @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var availableWindowWidth: CGFloat = 0
+    /// The window's side safe area, read here outside every navigation
+    /// stack: the drawer shell's screens take it in place of what UIKit
+    /// hands their stack (`windowSideContent`, #1900). V2 reads its own.
+    @State private var windowSideInsets: WindowSideInsets?
     @State private var settingsPresentation: SettingsSnapshot?
     @State private var shouldPresentSettingsAfterSidebarDismissal = false
     /// The page Settings opens at next, for an in-app settings link.
@@ -174,6 +195,11 @@ struct MainView: View {
                 NotifierPluginUpdateBanner()
                 // Send the report of a crash or freeze? (CrashReportOffer.swift)
                 CrashReportBanner()
+                // Another chat started waiting on the user (NeedsYou.swift);
+                // a call's screen shows it over the call.
+                if !appState.isVoiceCallScreenPresented {
+                    NeedsYouBanner(store: appState.needsYou)
+                }
                 // Calendar changes Hermes asked for (AppState+PhoneSync.swift);
                 // a call's screen shows them over the call.
                 if !appState.isVoiceCallScreenPresented {
@@ -181,6 +207,8 @@ struct MainView: View {
                 }
             }
         }
+        // Every profile's waiting chats, read while Conduit is on screen.
+        .task { await appState.runNeedsYouPoll() }
         // Confirmations Hermes asks to present (PresentedScreens.swift); a
         // call's screen shows its own over the call.
         .overlay(alignment: .bottom) {
@@ -426,6 +454,14 @@ struct MainView: View {
         }
         // A widget's New Chat or Talk asks Settings out of the way
         // (revealChatForWidgetLaunch); the chat it opens must end up on top.
+        // The sheet's pages belong to the dashboard it opened on, as the
+        // V2 tab's start over on a switch (V2SettingsTab): a switch made
+        // under it, by a notification's route, closes it (issue 2016).
+        .onChange(of: appState.activeDashboardID) { _, _ in
+            shouldPresentSettingsAfterSidebarDismissal = false
+            settingsOpensAt = nil
+            settingsPresentation = nil
+        }
         .onChange(of: appState.settingsDismissRequest) { _, _ in
             // A drawer closing on its way to Settings doesn't open it either.
             shouldPresentSettingsAfterSidebarDismissal = false
@@ -503,6 +539,8 @@ struct MainView: View {
                     presentation: .persistent
                 )
                 .frame(width: persistentSidebarWidth)
+                // The leading column's share of the window's side insets.
+                .environment(\.windowSideInsets, windowSideInsets?.reaching(.leading, width: persistentSidebarWidth))
 
                 // Drags the sidebar's width, as V2's list (#1487).
                 ColumnDivider(
@@ -516,9 +554,11 @@ struct MainView: View {
                 )
 
                 chatNavigationContent
+                    .environment(\.windowSideInsets, windowSideInsets?.reaching(.trailing, width: availableWindowWidth - persistentSidebarWidth - 1))
             }
         } else {
             chatNavigationContent
+                .environment(\.windowSideInsets, windowSideInsets)
         }
     }
 
@@ -549,6 +589,7 @@ struct MainView: View {
                 // the backdrop still fills it.
                 .readableChatColumn()
             }
+            .windowSideContent()
             .overlay(alignment: .leading) {
                 if !isPersistentSidebarActive {
                     EdgePanGesture { appState.showSidebar = true }
@@ -707,6 +748,8 @@ struct MainView: View {
             voiceScreenshotBanner
             PhoneChangeOverlay(engine: appState.phoneSync)
                 .environmentObject(appState)
+            NeedsYouBanner(store: appState.needsYou)
+                .environmentObject(appState)
             // Only V2 draws notices, as its shell does under the call.
             if useV2Shell, let notice = appState.pinSyncNotice {
                 V2NoticeBanner(notice: notice) { appState.dismissPinSyncNotice(notice.id) }
@@ -728,6 +771,10 @@ struct MainView: View {
             },
             onEdit: inCall ? nil : { prompt in
                 Task { await appState.editPresentedConfirm(prompt) }
+            },
+            // Typed on the panel, so it stays open over a call too.
+            onSayInstead: { prompt, text in
+                Task { await appState.answerPresentedConfirm(prompt, outcome: .edit, via: .tap, editText: text) }
             }
         )
     }
@@ -735,6 +782,9 @@ struct MainView: View {
     private var windowWidthReader: some View {
         GeometryReader { proxy in
             Color.clear.preference(key: MainViewWindowWidthKey.self, value: proxy.size.width)
+                .onGeometryChange(for: WindowSideInsets.self) { WindowSideInsets($0.safeAreaInsets, width: $0.size.width) } action: { insets in
+                    if windowSideInsets != insets { windowSideInsets = insets }
+                }
         }
     }
 
@@ -834,9 +884,13 @@ struct ConnectionStatusIndicator: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject var appState: AppState
 
+    /// Grey while a reconnect back in the app is still kept quiet, as the
+    /// V2 conversation menu's dot is (#1624).
     private var color: Color {
         if appState.isConnected {
             return .green
+        } else if appState.hidesBriefReconnect {
+            return .secondary
         } else if appState.isRecoveringConnection {
             return .orange
         } else {

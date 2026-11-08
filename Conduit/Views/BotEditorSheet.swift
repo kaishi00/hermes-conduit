@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 /// New Bot / Edit Bot: Desktop's bot editor, minus its generated block faces.
@@ -33,9 +34,19 @@ struct BotEditorSheet: View {
     @State private var error: String?
     @State private var showingImagePicker = false
     @State private var pickedImage: UIImage?
+    /// Choose GIF or Video: the Photos picker, which hands over a GIF's own
+    /// file (Choose Photo's crop keeps one frame).
+    @State private var showingMotionPicker = false
+    @State private var pickedMotion: PhotosPickerItem?
+    /// A picked GIF or video is being made into a moving picture.
+    @State private var isPreparingAnimation = false
     /// Whether Hermes can generate pictures; nil until asked.
     @State private var canGeneratePictures: Bool?
     @State private var showingGenerator = false
+    /// Apple's Image Playground (ImagePlaygroundPicture), as the system
+    /// says now.
+    @State private var playground: ImagePlaygroundPicture.Availability = .unavailable
+    @State private var showingPlayground = false
     @State private var seeded = false
     @State private var showsAdvanced = false
     /// The gateway's message for a model pick it wants confirmed.
@@ -74,35 +85,32 @@ struct BotEditorSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            // Settings' own page: cards with their names over them, so the
+            // sheet reads like the Settings tab (Eric 2026-11-05).
+            SettingsDetailContainer {
                 if let error, !error.isEmpty {
-                    Section {
-                        Text(error)
-                            .scaledFont(.footnote)
-                            .foregroundStyle(.red)
-                    }
+                    Text(error)
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 16)
                 }
-                Section {
-                    avatarHeader
-                }
-                .listRowBackground(Color.clear)
+                avatarHeader
                 colorSection
                 nameSection
-                Section {
+                ConduitSettingsSection(title: AppLocalization.string("Description"), symbol: "text.alignleft", tint: .blue) {
                     TextField(
                         AppLocalization.string("What this bot is for"),
                         text: $draft.description,
                         axis: .vertical
                     )
+                    .textFieldStyle(.roundedBorder)
                     .lineLimit(2...5)
-                } header: {
-                    Text(AppLocalization.string("Description"))
                 }
                 personalitySection
+                workSection
                 advancedSection
             }
             .navigationTitle(isCreating ? AppLocalization.string("New Bot") : AppLocalization.string("Edit Bot"))
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(AppLocalization.string("Cancel")) { dismiss() }
@@ -143,6 +151,17 @@ struct BotEditorSheet: View {
         .sheet(isPresented: $showingImagePicker) {
             ImagePicker(image: $pickedImage)
         }
+        .photosPicker(
+            isPresented: $showingMotionPicker,
+            selection: $pickedMotion,
+            matching: .any(of: [.images, .videos]),
+            preferredItemEncoding: .current
+        )
+        .onChange(of: pickedMotion) { _, item in
+            guard let item else { return }
+            pickedMotion = nil
+            useAnimation(item)
+        }
         .sheet(isPresented: $showingGenerator) {
             GeneratePictureSheet(
                 defaultPrompt: PictureGeneration.botPrompt(
@@ -155,6 +174,14 @@ struct BotEditorSheet: View {
             }
             .environmentObject(appState)
         }
+        .imagePlaygroundPicture(
+            isPresented: $showingPlayground,
+            prompt: playgroundPrompt,
+            source: previewImage,
+            onImage: usePicture,
+            onFailure: { error = AppLocalization.string("That picture could not be used.") }
+        )
+        .readsImagePlaygroundAvailability($playground)
         .onChange(of: pickedImage) { _, image in
             guard let image else { return }
             usePicture(image)
@@ -181,32 +208,46 @@ struct BotEditorSheet: View {
                     label: avatarLabel,
                     colorString: draft.color,
                     image: previewImage,
-                    size: 88
+                    size: 88,
+                    playback: previewPlayback
                 )
+                if isPreparingAnimation {
+                    ProgressView()
+                        .frame(width: 88, height: 88)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
             }
             // The avatar itself is decorative everywhere else; here it is the
             // only sign of whether the bot will have a picture.
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(AppLocalization.string("Picture")))
             .accessibilityValue(Text(pictureStateDescription))
-            AdaptiveStack(spacing: 12) {
+            // One menu for every way to set the picture: side by side they
+            // wrapped letter by letter on a phone (Eric, 2026-11-06).
+            Menu {
                 Button {
                     Haptics.light()
                     showingImagePicker = true
                 } label: {
                     Label(AppLocalization.string("Choose Photo"), systemImage: "photo")
                 }
-                .buttonStyle(.bordered)
-                if canGeneratePictures == true {
+                Button {
+                    Haptics.light()
+                    showingMotionPicker = true
+                } label: {
+                    Label(AppLocalization.string("Choose GIF or Video"), systemImage: "film")
+                }
+                generateItems
+                if let still = previewImage, previewPlayback == nil {
                     Button {
                         Haptics.light()
-                        showingGenerator = true
+                        bringToLife(still)
                     } label: {
-                        Label(AppLocalization.string("Generate"), systemImage: "sparkles")
+                        Label(AppLocalization.string("Bring to Life"), systemImage: "wand.and.stars")
                     }
-                    .buttonStyle(.bordered)
                 }
                 if previewImage != nil || (hasStoredAvatar && !draft.removesAvatar) {
+                    Divider()
                     Button(role: .destructive) {
                         Haptics.light()
                         if draft.newAvatarPNG != nil {
@@ -219,19 +260,34 @@ struct BotEditorSheet: View {
                     } label: {
                         Label(AppLocalization.string("Remove Photo"), systemImage: "trash")
                     }
-                    .buttonStyle(.bordered)
                 } else if draft.removesAvatar {
+                    Divider()
                     Button {
                         Haptics.light()
                         draft.removesAvatar = false
                     } label: {
                         Label(AppLocalization.string("Keep Photo"), systemImage: "arrow.uturn.backward")
                     }
-                    .buttonStyle(.bordered)
                 }
+            } label: {
+                Label(AppLocalization.string("Edit Picture"), systemImage: "photo.badge.plus")
             }
+            .buttonStyle(.settings)
+            .accessibilityIdentifier("bot-editor-picture-menu")
             .scaledFont(.subheadline)
-            if canGeneratePictures == false {
+            // A picked GIF or video lands in the draft once it's made, so
+            // nothing else may change the picture meanwhile.
+            .disabled(isPreparingAnimation)
+            Text(AppLocalization.string("A GIF, a short video or a picture brought to life moves on Bots Home and in Hermes Desktop."))
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            if playground == .canTurnOn {
+                Text(AppLocalization.string("Turn on Apple Intelligence in Settings > Apple Intelligence & Siri to create pictures with Image Playground."))
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            } else if canGeneratePictures == false, playground != .available {
                 Text(AppLocalization.string("Set up image generation in Hermes to generate pictures."))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
@@ -242,6 +298,50 @@ struct BotEditorSheet: View {
         .padding(.vertical, 4)
     }
 
+    /// Generate, in the picture menu: Image Playground, Hermes' own image
+    /// generation, or a submenu of both when both can.
+    @ViewBuilder
+    private var generateItems: some View {
+        let hermes = canGeneratePictures == true
+        // Not before an edited bot's SOUL has loaded, which the sheet starts from.
+        let apple = playground == .available && (isCreating || showsKeptDetails || detailsState == .loaded || detailsState == .failed)
+        if hermes && apple {
+            Menu {
+                Button {
+                    Haptics.light()
+                    showingPlayground = true
+                } label: {
+                    Label(AppLocalization.string("Image Playground"), systemImage: "apple.image.playground")
+                }
+                Button {
+                    Haptics.light()
+                    showingGenerator = true
+                } label: {
+                    Label(AppLocalization.string("With Hermes"), systemImage: "sparkles")
+                }
+            } label: {
+                Label(AppLocalization.string("Generate"), systemImage: "sparkles")
+            }
+        } else if apple || hermes {
+            Button {
+                Haptics.light()
+                if apple { showingPlayground = true } else { showingGenerator = true }
+            } label: {
+                Label(AppLocalization.string("Generate"), systemImage: "sparkles")
+            }
+        }
+    }
+
+    /// What Image Playground starts from: the bot's name, and its
+    /// description and SOUL to pick ideas out of.
+    private var playgroundPrompt: ImagePlaygroundPicture.Prompt {
+        ImagePlaygroundPicture.Prompt(
+            name: draft.name.isEmpty ? editedBot?.displayLabel ?? "" : draft.name,
+            // The SOUL shown, kept from last time until Hermes answers.
+            details: [draft.description, showsKeptDetails ? keptDetails?.soul ?? "" : draft.soul]
+        )
+    }
+
     /// A chosen or generated picture, scaled to the stored square.
     private func usePicture(_ image: UIImage) {
         if let png = BotAvatarImage.normalizedPNG(from: image) {
@@ -250,6 +350,51 @@ struct BotEditorSheet: View {
             error = nil
         } else {
             error = AppLocalization.string("That picture could not be used.")
+        }
+    }
+
+    /// A picked GIF or video, made into a looping APNG (AnimatedAvatar) and
+    /// saved like any picture; a still picked there is used as one.
+    private func useAnimation(_ item: PhotosPickerItem) {
+        isPreparingAnimation = true
+        error = nil
+        Task { @MainActor in
+            let source: AnimatedAvatar.Source?
+            switch await AnimatedAvatar.pick(from: item) {
+            case .animation(let picked): source = picked
+            case .still(let image):
+                isPreparingAnimation = false
+                usePicture(image)
+                return
+            case .unreadable: source = nil
+            }
+            let result = await AnimatedAvatar.picture(fromPicked: source)
+            isPreparingAnimation = false
+            switch result {
+            case .success(let apng):
+                draft.newAvatarPNG = apng
+                draft.removesAvatar = false
+            case .failure(let failure):
+                error = AnimatedAvatar.message(for: failure)
+            }
+        }
+    }
+
+    /// Bring to Life: the still shown, its subject swaying (LivingPortrait),
+    /// as a fresh pick the person saves or discards like any other.
+    private func bringToLife(_ image: UIImage) {
+        isPreparingAnimation = true
+        error = nil
+        Task { @MainActor in
+            let result = await LivingPortrait.picture(from: image)
+            isPreparingAnimation = false
+            switch result {
+            case .success(let apng):
+                draft.newAvatarPNG = apng
+                draft.removesAvatar = false
+            case .failure(let failure):
+                error = LivingPortrait.message(for: failure)
+            }
         }
     }
 
@@ -265,7 +410,7 @@ struct BotEditorSheet: View {
 
     private var colorSection: some View {
         let names = swatchNames
-        return Section {
+        return ConduitSettingsSection(title: AppLocalization.string("Color"), symbol: "paintpalette", tint: .pink) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 8) {
                 swatch(nil, name: AppLocalization.string("Automatic color"))
                 ForEach(Array(BotAvatarColor.swatches.enumerated()), id: \.element) { item in
@@ -275,11 +420,9 @@ struct BotEditorSheet: View {
                     )
                 }
             }
-            .padding(.vertical, 4)
-        } header: {
-            Text(AppLocalization.string("Color"))
-        } footer: {
             Text(AppLocalization.string("Shown behind the bot's initial when it has no picture."))
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -336,23 +479,23 @@ struct BotEditorSheet: View {
     @ViewBuilder
     private var nameSection: some View {
         if let bot = editedBot {
-            Section {
+            ConduitSettingsSection(title: AppLocalization.string("Display Name"), symbol: "person.text.rectangle", tint: .conduitAccent) {
                 TextField(bot.displayName.isEmpty ? bot.name : bot.displayName, text: $draft.name)
+                    .textFieldStyle(.roundedBorder)
                     .textInputAutocapitalization(.words)
-            } header: {
-                Text(AppLocalization.string("Display Name"))
-            } footer: {
                 Text(AppLocalization.string("Profile ID: \(bot.name)"))
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
             }
         } else {
-            Section {
+            ConduitSettingsSection(title: AppLocalization.string("Name"), symbol: "person.text.rectangle", tint: .conduitAccent) {
                 TextField(AppLocalization.string("Name"), text: $draft.name)
+                    .textFieldStyle(.roundedBorder)
                     .textInputAutocapitalization(.words)
                     .autocorrectionDisabled()
-            } header: {
-                Text(AppLocalization.string("Name"))
-            } footer: {
                 createNameFooter
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -373,15 +516,29 @@ struct BotEditorSheet: View {
         }
     }
 
+    /// The bot's SOUL.md as one row with its opening lines, edited on a
+    /// page of its own: a long one inline pushed Work and Advanced out of
+    /// sight (Eric 2026-11-05).
     @ViewBuilder
     private var personalitySection: some View {
-        Section {
+        ConduitSettingsSection(title: AppLocalization.string("Personality"), symbol: "theatermasks", tint: .purple) {
             if isCreating || detailsState == .loaded || keptDetails != nil {
-                // The kept SOUL can't be edited: Hermes' own comes first.
-                TextEditor(text: showsKeptDetails ? Binding.constant(keptDetails?.soul ?? "") : $draft.soul)
-                    .frame(minHeight: 160)
-                    .scaledFont(.callout.monospaced())
-                    .disabled(showsKeptDetails)
+                NavigationLink {
+                    BotSoulEditorPage(
+                        // The kept SOUL can't be edited: Hermes' own comes first.
+                        soul: showsKeptDetails ? Binding.constant(keptDetails?.soul ?? "") : $draft.soul,
+                        isReadOnly: showsKeptDetails,
+                        footer: personalityFooter
+                    )
+                } label: {
+                    HStack(alignment: .firstTextBaseline) {
+                        personalityPreview(showsKeptDetails ? keptDetails?.soul ?? "" : draft.soul)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        SettingsChevron()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
                 if showsKeptDetails, detailsState == .failed {
                     Text(AppLocalization.string("Could not load this bot's personality."))
                         .foregroundStyle(.secondary)
@@ -393,12 +550,55 @@ struct BotEditorSheet: View {
                 ProgressView()
                     .frame(maxWidth: .infinity)
             }
-        } header: {
-            Text(AppLocalization.string("Personality"))
-        } footer: {
-            Text(isCreating
-                ? AppLocalization.string("Optional. Leave empty to start from a short identity built from the name and description.")
-                : AppLocalization.string("Saved as the bot's SOUL.md."))
+            Text(personalityFooter)
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var personalityFooter: String {
+        isCreating
+            ? AppLocalization.string("Optional. Leave empty to start from a short identity built from the name and description.")
+            : AppLocalization.string("Saved as the bot's SOUL.md.")
+    }
+
+    /// The row's opening lines of the SOUL, or what an empty one means.
+    private func personalityPreview(_ soul: String) -> some View {
+        let trimmed = soul.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Group {
+            if trimmed.isEmpty {
+                Text(isCreating
+                    ? AppLocalization.string("Built from the name and description")
+                    : AppLocalization.string("Not set"))
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(verbatim: trimmed)
+                    .scaledFont(.callout.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    /// Edit Bot > Work: how the bot's Bot Chat coordinates its work, kept
+    /// by the plugin and saved as it's changed there. Only for a bot that
+    /// exists, on a plugin that serves it.
+    @ViewBuilder
+    private var workSection: some View {
+        if let bot = editedBot, appState.servesBotWorkSettings {
+            // No name over it: its one row is Work.
+            SettingsCard {
+                NavigationLink {
+                    BotWorkSettingsView(profile: bot.name, botName: bot.displayLabel)
+                } label: {
+                    SettingsLinkRow(title: AppLocalization.string("Work"))
+                }
+                .buttonStyle(.plain)
+                Text(AppLocalization.string("How \(bot.displayLabel) hands tasks to workstreams and keeps track of them in its Bot Chat."))
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -409,7 +609,8 @@ struct BotEditorSheet: View {
     @ViewBuilder
     private var advancedSection: some View {
         if isCreating || detailsState == .loaded || showsKeptDetails {
-            Section {
+            // No name over it: its own row names it and opens it.
+            SettingsCard {
                 Button {
                     Haptics.light()
                     withAnimation { showsAdvanced.toggle() }
@@ -425,38 +626,56 @@ struct BotEditorSheet: View {
                             .rotationEffect(.degrees(showsAdvanced ? 90 : 0))
                             .accessibilityHidden(true)
                     }
+                    .contentShape(Rectangle())
                 }
+                // A row like Work's above it, not an accent link.
+                .buttonStyle(.plain)
                 .accessibilityValue(Text(showsAdvanced ? AppLocalization.string("Shown") : AppLocalization.string("Hidden")))
                 if showsAdvanced {
                     if isCreating {
-                        Picker(AppLocalization.string("Start From"), selection: startFromSelection) {
-                            Text(AppLocalization.string("Main Profile")).tag(BotCreateRequest.mainProfile)
-                            ForEach(cloneSources, id: \.name) { bot in
-                                Text(verbatim: bot.displayLabel).tag(bot.name)
-                            }
-                            Text(AppLocalization.string("Fresh Profile")).tag("")
+                        ConduitMenuPicker(
+                            value: startFromSelection.wrappedValue,
+                            choices: [(id: BotCreateRequest.mainProfile, title: AppLocalization.string("Main Profile"))]
+                                + cloneSources.map { (id: $0.name, title: $0.displayLabel) }
+                                + [(id: "", title: AppLocalization.string("Fresh Profile"))],
+                            onSelect: { startFromSelection.wrappedValue = $0 }
+                        ) {
+                            Text(AppLocalization.string("Start From")).foregroundStyle(.secondary)
                         }
                     }
                     NavigationLink {
                         BotModelPicker(provider: $draft.provider, model: $draft.model, allowsInherit: isCreating)
                     } label: {
-                        LabeledContent(AppLocalization.string("Model")) {
-                            Text(verbatim: BotModelPicker.summary(
-                                model: showsKeptDetails ? keptDetails?.model ?? "" : draft.model,
-                                allowsInherit: isCreating
-                            ))
+                        let model = showsKeptDetails ? keptDetails?.model ?? "" : draft.model
+                        let provider = showsKeptDetails ? keptDetails?.provider ?? "" : draft.provider
+                        if model.isEmpty {
+                            ModelChooserLinkRow(
+                                title: AppLocalization.string("Model"),
+                                value: BotModelPicker.summary(model: model, allowsInherit: isCreating),
+                                detail: nil
+                            )
+                        } else {
+                            // The model and provider as the catalog names them.
+                            let lines = ModelChooserLinkRow.lines(
+                                pick: ModelChooserPick(provider: provider, model: model),
+                                providers: appState.keptModelProviders(),
+                                defaultTitle: ""
+                            )
+                            ModelChooserLinkRow(title: AppLocalization.string("Model"), value: lines.value, detail: lines.detail)
                         }
                     }
+                    .buttonStyle(.plain)
                     .disabled(showsKeptDetails)
                     capabilitiesRow
                     if isCreating {
                         Toggle(AppLocalization.string("Share Keys and Accounts"), isOn: $draft.shareAuth)
+                            .tint(.conduitAccent)
+                        Text(AppLocalization.string("Shared keys and accounts stay one set with the main profile, so a sign-in refresh in one never signs the other out. Turn it off for a separate copy."))
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.secondary)
                         Toggle(AppLocalization.string("Skip Bundled Skills"), isOn: $draft.noSkills)
+                            .tint(.conduitAccent)
                     }
-                }
-            } footer: {
-                if showsAdvanced, isCreating {
-                    Text(AppLocalization.string("Shared keys and accounts stay one set with the main profile, so a sign-in refresh in one never signs the other out. Turn it off for a separate copy."))
                 }
             }
         }
@@ -487,8 +706,9 @@ struct BotEditorSheet: View {
                     editable: draft.capabilities != nil
                 )
             } label: {
-                Text(AppLocalization.string("Skills, Tools and MCP"))
+                SettingsLinkRow(title: AppLocalization.string("Skills, Tools and MCP"))
             }
+            .buttonStyle(.plain)
             if draft.capabilities == nil, capabilitiesLoadFailed {
                 capabilitiesFailure
             }
@@ -508,6 +728,7 @@ struct BotEditorSheet: View {
             Button(AppLocalization.string("Try Again")) {
                 Task { await loadStartFromCapabilities() }
             }
+            .buttonStyle(.settings)
         }
     }
 
@@ -583,7 +804,7 @@ struct BotEditorSheet: View {
 
     /// Bots a new one can copy its settings from, besides the main profile.
     private var cloneSources: [BotProfile] {
-        appState.botRoster.filter { !BotManagement.isDefaultProfile($0.name) }
+        appState.orderedBots(appState.botRoster).filter { !BotManagement.isDefaultProfile($0.name) }
     }
 
     // MARK: State
@@ -608,6 +829,16 @@ struct BotEditorSheet: View {
         editedBot.flatMap { appState.botAvatarImage(for: $0) }
     }
 
+    /// The picture plays here as it will on Bots Home: a fresh pick, else
+    /// the stored one.
+    private var previewPlayback: AnimatedAvatarPlayback? {
+        if let png = draft.newAvatarPNG {
+            return AnimatedAvatar.isAnimated(png) ? .data(png) : nil
+        }
+        if draft.removesAvatar { return nil }
+        return editedBot.flatMap { appState.botAvatarPlayback(for: $0) }
+    }
+
     private var previewImage: UIImage? {
         if let png = draft.newAvatarPNG { return UIImage(data: png) }
         if draft.removesAvatar { return nil }
@@ -615,7 +846,8 @@ struct BotEditorSheet: View {
     }
 
     private var canSave: Bool {
-        guard !isSaving else { return false }
+        // A picked GIF or video lands in the draft once it's made.
+        guard !isSaving, !isPreparingAnimation else { return false }
         // An edit saves only once the editor snapshot settled: before it,
         // the form still holds placeholders that would overwrite the bot.
         guard isCreating else { return detailsState == .loaded || detailsState == .failed }
@@ -709,6 +941,51 @@ struct BotEditorSheet: View {
     }
 }
 
+/// Edit Bot > Personality: the SOUL.md on a page of its own, the whole
+/// height to write in.
+private struct BotSoulEditorPage: View {
+    @Binding var soul: String
+    let isReadOnly: Bool
+    let footer: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // A field the page's height, drawn as the editor's rows are,
+            // so it reads as something to type in.
+            Group {
+                if isReadOnly {
+                    // The kept SOUL, shown until Hermes answers: still
+                    // scrolls and selects, but can't be changed.
+                    ScrollView {
+                        Text(verbatim: soul)
+                            .scaledFont(.callout.monospaced())
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(5)
+                    }
+                    .foregroundStyle(.secondary)
+                } else {
+                    TextEditor(text: $soul)
+                        .scaledFont(.callout.monospaced())
+                        .scrollContentBackground(.hidden)
+                }
+            }
+                .padding(8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .settingsCard()
+            Text(footer)
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+        .background { SettingsBackdrop().ignoresSafeArea() }
+        .navigationTitle(AppLocalization.string("Personality"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
 /// A bot's face: its picture when it has one, else its initial on its color
 /// (the explicit pick, else Desktop's name-derived hue).
 struct BotAvatarView: View {
@@ -717,13 +994,21 @@ struct BotAvatarView: View {
     let colorString: String?
     let image: UIImage?
     let size: CGFloat
+    /// The moving picture to play over `image`, where the face is the focus
+    /// (AnimatedAvatarFrames); nil keeps the still.
+    var playback: AnimatedAvatarPlayback? = nil
 
     var body: some View {
         Group {
             if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
+                ZStack {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                    if let playback {
+                        AnimatedAvatarFrames(playback: playback)
+                    }
+                }
             } else {
                 ZStack {
                     Self.color(for: colorString, name: name)

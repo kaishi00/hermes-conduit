@@ -145,9 +145,19 @@ final class TranscriptLayout: UICollectionViewLayout {
         ChatViewportWatch.shared.rowResized()
         markDirty(from: index)
         let context = UICollectionViewLayoutInvalidationContext()
-        context.invalidateItems(at: [IndexPath(item: index, section: 0)])
+        context.invalidateItems(at: Self.items(from: index, count: rows.count))
         context.contentSizeAdjustment = CGSize(width: 0, height: adjustment)
         invalidateLayout(with: context)
+    }
+
+    /// The row at `index` and every row under it: its new height moves
+    /// them all, and UIKit asks again only for the items a context names,
+    /// keeping the frames it has for the rest. Naming the resized row
+    /// alone left the rows under it where they were (an opened Thinking
+    /// row drawn over them, a closed one's old height left empty) until a
+    /// scroll or another visit laid them out afresh.
+    private static func items(from index: Int, count: Int) -> [IndexPath] {
+        (index..<count).map { IndexPath(item: $0, section: 0) }
     }
 
     /// Keeps a row's new height and returns how much the content's height
@@ -342,7 +352,12 @@ final class TranscriptLayout: UICollectionViewLayout {
         context.contentOffsetAdjustment = .zero
         context.contentSizeAdjustment = CGSize(width: 0, height: preferredAdjustment)
         preferredAdjustment = 0
-        markDirty(from: originalAttributes.indexPath.item)
+        let index = originalAttributes.indexPath.item
+        // The rows under it move too (`items(from:count:)`).
+        if index + 1 < rows.count {
+            context.invalidateItems(at: Self.items(from: index + 1, count: rows.count))
+        }
+        markDirty(from: index)
         return context
     }
 
@@ -437,11 +452,17 @@ final class TranscriptLayout: UICollectionViewLayout {
     /// its name and buttons around it; a caption is a line.
     private static func estimatedHeight(of row: GroupRoomRow, width: CGFloat) -> CGFloat {
         switch row {
-        case .event(let event, _, _):
-            guard let text = event.messageText else { return 24 }
-            if event.isUserMessage { return textHeight(text, width: width * 0.8) }
-            return textHeight(text, width: width - 70) + 44
-        case .pending(let text, _, _):
+        case .event(let event, _, _, let boards, let byline):
+            let boardsHeight = CGFloat(boards.count) * 280
+            // A scheduled job's post draws on the members' side, under its name, text or not.
+            guard let text = event.workUpdateText ?? event.messageText ?? (event.isScheduledPost ? "" : nil)
+            else { return 24 + boardsHeight }
+            // A person's message in a room over Links draws on the members' side.
+            if event.isUserMessage && !event.isScheduledPost && byline.host == nil && byline.attribution == .none {
+                return textHeight(text, width: width * 0.8)
+            }
+            return textHeight(text, width: width - 70) + 44 + boardsHeight
+        case .pending(let text, _, _, _):
             return textHeight(text, width: width * 0.8)
         case .responding:
             return 60
@@ -455,14 +476,24 @@ final class TranscriptLayout: UICollectionViewLayout {
     /// split off, and no taller for a script of several bytes a character.
     private static func textHeight(_ text: String, width: CGFloat) -> CGFloat {
         let charactersPerLine = max(20, width / 8)
+        // The height is capped at 6,000 points, and lines only ever add up:
+        // once the counted lines reach the cap, the rest of the text cannot
+        // change the answer, so a long paste costs no more than about 270
+        // lines' worth of bytes, even when it is one paragraph.
+        let capLines = (6_000 - 24) / CGFloat(22)
         var lines: CGFloat = 0
         var paragraphCharacters = 0
+        var paragraphBudget = capLines * charactersPerLine
         for byte in text.utf8 {
             if byte == UInt8(ascii: "\n") {
                 lines += max(1, (CGFloat(paragraphCharacters) / charactersPerLine).rounded(.up))
                 paragraphCharacters = 0
+                if lines >= capLines { return 6_000 }
+                paragraphBudget = (capLines - lines) * charactersPerLine
             } else if (byte & 0xC0) != 0x80 {
                 paragraphCharacters += 1
+                // This paragraph alone takes the lines past the cap.
+                if CGFloat(paragraphCharacters) > paragraphBudget { return 6_000 }
             }
         }
         lines += max(1, (CGFloat(paragraphCharacters) / charactersPerLine).rounded(.up))

@@ -41,6 +41,19 @@ extension MessageNormalizerTests {
         """#))
 
         XCTAssertEqual(messages.map(\.rowId), [41, 42])
+        // Spelled as the stored row's `id` is, so a refresh switching between
+        // the two sources keeps the transcript's rows (#1648).
+        let stored = MessageNormalizer.normalizeMessages(rows(#"""
+        [{"id": 41, "role": "user", "content": "Ship it?"}, {"id": 42, "role": "assistant", "content": "Shipped."}]
+        """#))
+        XCTAssertEqual(messages.map(\.id), stored.map(\.id))
+        // `row_id` names the stored row even beside another id.
+        let both = MessageNormalizer.normalizeMessages(rows(#"""
+        [{"id": "msg-a", "message_id": "m-1", "role": "user", "text": "Ship it?", "row_id": 41}]
+        """#))
+        XCTAssertEqual(both.map(\.id), [stored[0].id])
+        XCTAssertEqual(AppState.durablePersistedRowID(from: ["id": "msg-a", "row_id": 41]), stored[0].id)
+        XCTAssertEqual(AppState.durablePersistedRowID(from: ["id": 41, "row_id": true]), stored[0].id)
         XCTAssertEqual(messages[0].reactions, [MessageReaction(emoji: "👍", author: "agent", at: 1700000000.5)])
         XCTAssertEqual(messages[1].reactions, [MessageReaction(emoji: "❤️", author: "user", at: nil)])
     }

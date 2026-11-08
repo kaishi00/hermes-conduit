@@ -343,7 +343,7 @@ final class GeminiLiveToolBridge {
 
     static let showOnScreenDeclaration = GeminiLiveProtocol.FunctionDeclaration(
         name: Tool.showOnScreen.rawValue,
-        description: "Show something on the user's phone screen during the call. Use it for anything better seen than heard: charts, tables, forecasts, recipes and other step-by-step instructions, lists, comparisons, images and links, and whenever the user asks to see, show or chart something. Write Markdown: tables for data, numbered lists for steps, ```mermaid blocks for charts (pie for shares; xychart-beta for bar and line charts, written exactly like: xychart-beta / title \"Sales\" / x-axis [\"Mon\", \"Tue\"] / y-axis \"Count\" 0 --> 20 / bar [5, 9], one statement per line; an axis range uses -->, never \"to\"), ![description](url) for images using only direct image URLs you actually found, and [title](url) for links. Prefer cards, which the phone draws natively: a map with pins and a route, one place in detail, several places to swipe through, big numbers (stats), a line, bar or pie chart, a weather forecast, a comparison of two to four options, steps the user can tick off (with timers), photos, videos or audio to play, people to call, message or email, or the status of something in progress (a delivery, a flight, a match). When the user asks you to text someone, show a contact card with their phone and the message you wrote: the phone offers Send text, and the user taps Send in Messages, so say it's ready, never that it was sent. To keep a card up to date, give it a live name and show the whole card again with that name as things change: it replaces the earlier one. For places, the phone adds the address, phone, website and travel time from Apple Maps itself, so give names and addresses or coordinates, and only ratings, hours, prices and photos you actually found, each with its source. Name the source of numbers, forecasts, media and statuses you looked up; a forecast and media need one, and media must be direct https links to files you actually found. Then tell the user in a sentence that it's on their screen and give the gist; don't read it out. If it says the screen isn't available, tell the user instead and don't retry the same thing; the screen can come back later in the call.",
+        description: "Show something on the user's phone screen during the call. Use it for anything better seen than heard: charts, tables, forecasts, recipes and other step-by-step instructions, lists, comparisons, images and links, and whenever the user asks to see, show or chart something. Write Markdown: tables for data, numbered lists for steps, ```mermaid blocks for charts (pie for shares; xychart-beta for bar and line charts, written exactly like: xychart-beta / title \"Sales\" / x-axis [\"Mon\", \"Tue\"] / y-axis \"Count\" 0 --> 20 / bar [5, 9], one statement per line; an axis range uses -->, never \"to\"), ![description](url) for images using only direct image URLs you actually found, and [title](url) for links. Prefer cards, which the phone draws natively: a map with pins and a route, one place in detail, several places to swipe through, big numbers (stats), a line, bar or pie chart, a weather forecast, a comparison of two to four options, steps the user can tick off (with timers), photos, videos or audio to play, people to call, message or email, the status of something in progress (a delivery, a flight, a match), a table the user can sort, a day-by-day plan with times and places (timeline), a checklist the user ticks, a list (ranked for top picks), progress toward a goal, or a tip or warning (callout). Up to 12 cards; put real numbers only, never guesses. When the user asks you to text someone, show a contact card with their phone and the message you wrote: the phone offers Send text, and the user taps Send in Messages, so say it's ready, never that it was sent. To keep a card up to date, give it a live name and show the whole card again with that name as things change: it replaces the earlier one. For places, the phone adds the address, phone, website and travel time from Apple Maps itself, so give names and addresses or coordinates, and only ratings, hours, prices and photos you actually found, each with its source. Name the source of numbers, forecasts, media and statuses you looked up; a forecast and media need one, and media must be direct https links to files you actually found. Then tell the user in a sentence that it's on their screen and give the gist; don't read it out. If it says the screen isn't available, tell the user instead and don't retry the same thing; the screen can come back later in the call.",
         parameters: showOnScreenParameters(RichCardSchema.bundled),
         behavior: .blocking
     )
@@ -368,7 +368,7 @@ final class GeminiLiveToolBridge {
         return ["type": "OBJECT", "properties": properties, "required": ["title"]]
     }
 
-    static let invalidCardsNote = "None of the cards could be shown: each needs a type and that type's field (places with names for map, place and places, people for contact; stats, chart, weather, options, steps, media or status for the others), and a forecast and media need their source."
+    static let invalidCardsNote = "None of the cards could be shown: each needs a type and that type's field (places with names for map, place and places, people for contact; stats, chart, weather, options, steps, media, status, table, timeline, checklist, list, progress or callout for the others), and a forecast and media need their source."
 
     /// call_me_when_done's scope: a job_id names one job, scope all asks
     /// about everything; anything else is the newest request.
@@ -624,6 +624,9 @@ final class GeminiLiveToolBridge {
             }
         }
         if !confirmed, let held = heldForOK(call, request: request, profile: "", toChat: true) { return held }
+        // The call's chat was deleted (issue 1797): the request makes the
+        // call a new chat, as an unattached call's first request does.
+        if supervisor.liveThread == nil { return await startBackgroundJob(call, instructions: request, profile: "") }
         let sent = supervisor.startThreadTurn(request: request)
         guard let jobID = sent.jobID else {
             return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_sent", "message": sent.refusal ?? "Hermes couldn't take the request."], scheduling: .whenIdle)]
@@ -890,8 +893,11 @@ final class GeminiLiveToolBridge {
                 // A deny never needs their yes; letting it through is never
                 // the risk.
                 if choice == "once" {
+                    let call = self.callGeneration
                     let saidYes = await VoiceCallDecisionOutcome.userSaysYes(self.lastUserWords, wait: self.lateYesWait)
-                    guard saidYes else { return .notAYes }
+                    // A yes from the next call never answers this one's
+                    // (#1792): the answer below is dropped with it.
+                    guard saidYes, self.callGeneration == call else { return .notAYes }
                 }
                 return await self.supervisor.answerApproval(choice: choice)
             }
@@ -941,13 +947,14 @@ final class GeminiLiveToolBridge {
     /// spoken in the call (an approval, only on their yes): never from the
     /// model's own judgment or the reason Hermes gave.
     private func answerDecision(_ call: GeminiLiveProtocol.FunctionCall, _ answer: () async -> VoiceCallDecisionOutcome) async -> [Outgoing] {
+        let generation = callGeneration
         let outcome: VoiceCallDecisionOutcome
         if lastUserSpeechAt() == nil {
             outcome = .userHasNotSpoken
         } else {
             outcome = await answer()
         }
-        guard !isEnding else { return [] }
+        guard callGeneration == generation, !isEnding else { return [] }
         return [.toolResponse(id: call.id, name: call.name, result: ["status": outcome.status, "message": outcome.modelMessage], scheduling: .whenIdle)]
     }
 
@@ -965,11 +972,16 @@ final class GeminiLiveToolBridge {
     /// A new connection replaced the one these calls were opened on: they
     /// can no longer be answered, so results go out as text updates.
     func connectionReplaced() {
+        callGeneration &+= 1
         openCalls.removeAll()
         callNames.removeAll()
         withdrawnCallIDs.removeAll()
         isEnding = false
     }
+
+    /// Bumped by each replaced connection: an answer still waiting on the
+    /// user's words when it changes belongs to a call that's gone (#1792).
+    private(set) var callGeneration = 0
 
     /// A new server session starts (a call, or a retry after a failure): the
     /// model there never asked about an earlier draft.
@@ -1136,9 +1148,11 @@ final class GeminiLiveToolBridge {
                 break
             }
             // A cancel the user just heard confirmed (cancel_job) needs no
-            // second report; everything else — including a start that failed
-            // — is told once the conversation is quiet.
-            let scheduling: GeminiLiveProtocol.Scheduling = job.status == .cancelled && alreadyAnnounced ? .silent : .whenIdle
+            // second report, nor a request the call let go of when its chat
+            // was deleted (issue 1797); everything else — including a start
+            // that failed — is told once the conversation is quiet.
+            let quiet = (job.status == .cancelled && alreadyAnnounced) || job.isDetachedThreadTurn
+            let scheduling: GeminiLiveProtocol.Scheduling = quiet ? .silent : .whenIdle
             let name = callNames.removeValue(forKey: callID) ?? (job.isThreadTurn ? Tool.askThread.rawValue : Tool.startJob.rawValue)
             outgoing.append(.toolResponse(id: callID, name: name, result: result, scheduling: scheduling))
         }

@@ -160,8 +160,12 @@ extension ShareDraftProblem {
                 + AppLocalization.string("One share can carry \(limitCount) files.")
         case .textTruncated(let limitCount):
             return AppLocalization.string("The text was cut to its first \(limitCount) characters.")
-        case .unreadable(let name):
-            return AppLocalization.string("\(name) couldn't be read.")
+        case .unreadable(let name, let reason):
+            // The system's own words, already in the phone's language, so
+            // one try on a device shows which step failed (issue 1747).
+            let line = AppLocalization.string("\(name) couldn't be read.")
+            guard let reason, !reason.isEmpty else { return line }
+            return line + "\n" + reason
         }
     }
 }

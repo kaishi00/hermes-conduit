@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 6,
   "about": "Shared examples for card-schema.json: normalize_cards(input) must equal output, in the plugin (tests/test_cards.py) and in Conduit (RichCardSchemaTests). Regenerate only when the schema changes, and copy both files to Conduit together.",
   "cases": [
     {
@@ -518,7 +518,7 @@
       ]
     },
     {
-      "name": "At most four cards and ten places",
+      "name": "At most twelve cards and ten places",
       "input": [
         {
           "type": "map",
@@ -565,44 +565,532 @@
           }
         },
         {
-          "type": "place",
+          "type": "map",
           "places": [
             {
-              "name": "C0"
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
             }
-          ]
+          ],
+          "route": {
+            "to": 3
+          }
         },
         {
-          "type": "place",
+          "type": "map",
           "places": [
             {
-              "name": "C1"
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
             }
-          ]
+          ],
+          "route": {
+            "to": 3
+          }
         },
         {
-          "type": "place",
+          "type": "map",
           "places": [
             {
-              "name": "C2"
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
             }
-          ]
+          ],
+          "route": {
+            "to": 3
+          }
         },
         {
-          "type": "place",
+          "type": "map",
           "places": [
             {
-              "name": "C3"
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
             }
-          ]
+          ],
+          "route": {
+            "to": 3
+          }
         },
         {
-          "type": "place",
+          "type": "map",
           "places": [
             {
-              "name": "C4"
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
             }
-          ]
+          ],
+          "route": {
+            "to": 3
+          }
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
+            }
+          ],
+          "route": {
+            "to": 3
+          }
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
+            }
+          ],
+          "route": {
+            "to": 3
+          }
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
+            }
+          ],
+          "route": {
+            "to": 3
+          }
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
+            }
+          ],
+          "route": {
+            "to": 3
+          }
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
+            }
+          ],
+          "route": {
+            "to": 3
+          }
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
+            }
+          ],
+          "route": {
+            "to": 3
+          }
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
+            }
+          ],
+          "route": {
+            "to": 3
+          }
         }
       ],
       "output": [
@@ -642,26 +1130,387 @@
           ]
         },
         {
-          "type": "place",
+          "type": "map",
           "places": [
             {
-              "name": "C0"
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
             }
           ]
         },
         {
-          "type": "place",
+          "type": "map",
           "places": [
             {
-              "name": "C1"
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
             }
           ]
         },
         {
-          "type": "place",
+          "type": "map",
           "places": [
             {
-              "name": "C2"
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
             }
           ]
         }
@@ -2014,6 +2863,1634 @@
             },
             {
               "name": "Cy"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A table's numbers, blanks and nulls become text in their places, and a row that doesn't fit is dropped",
+      "input": [
+        {
+          "type": "table",
+          "title": "Top companies",
+          "source": {
+            "name": "Yahoo Finance"
+          },
+          "table": {
+            "columns": [
+              "Company",
+              "Cap ($T)",
+              "Change",
+              4
+            ],
+            "rows": [
+              [
+                "Apple",
+                3.1,
+                "+1.2%",
+                1
+              ],
+              [
+                "Nvidia",
+                2.95,
+                -0.5,
+                null
+              ],
+              [
+                "Microsoft",
+                "",
+                "  ",
+                true
+              ],
+              [
+                "Alphabet",
+                2
+              ],
+              [
+                " Meta\n",
+                1.5,
+                0.25,
+                -7
+              ]
+            ]
+          },
+          "places": [
+            {
+              "name": "x"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "table",
+          "title": "Top companies",
+          "source": {
+            "name": "Yahoo Finance"
+          },
+          "table": {
+            "columns": [
+              "Company",
+              "Cap ($T)",
+              "Change",
+              "4"
+            ],
+            "rows": [
+              [
+                "Apple",
+                "3.1",
+                "+1.2%",
+                "1"
+              ],
+              [
+                "Nvidia",
+                "2.95",
+                "-0.5",
+                "–"
+              ],
+              [
+                "Microsoft",
+                "–",
+                "–",
+                "–"
+              ],
+              [
+                "Meta",
+                "1.5",
+                "0.25",
+                "-7"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "A table with no row that fits is dropped",
+      "input": [
+        {
+          "type": "table",
+          "table": {
+            "columns": [
+              "A",
+              "B"
+            ],
+            "rows": [
+              [
+                "1"
+              ],
+              [
+                "1",
+                "2",
+                "3"
+              ]
+            ]
+          }
+        },
+        {
+          "type": "table",
+          "table": {
+            "columns": [],
+            "rows": [
+              [
+                "1"
+              ]
+            ]
+          }
+        }
+      ],
+      "output": []
+    },
+    {
+      "name": "A timeline keeps days with stops and stops with text",
+      "input": [
+        {
+          "type": "timeline",
+          "title": "Yosemite in May",
+          "timeline": [
+            {
+              "label": "Day 1",
+              "title": "The Valley",
+              "stops": [
+                {
+                  "time": "09:00",
+                  "text": "Mist Trail to Vernal Fall",
+                  "place": "Vernal Fall, Yosemite",
+                  "note": "Start early"
+                },
+                {
+                  "text": ""
+                },
+                {
+                  "time": "Evening",
+                  "text": "Dinner at the Ahwahnee"
+                }
+              ]
+            },
+            {
+              "label": "Day 2",
+              "stops": []
+            },
+            {
+              "title": "No label",
+              "stops": [
+                {
+                  "text": "x"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "timeline",
+          "title": "Yosemite in May",
+          "timeline": [
+            {
+              "label": "Day 1",
+              "title": "The Valley",
+              "stops": [
+                {
+                  "time": "09:00",
+                  "text": "Mist Trail to Vernal Fall",
+                  "place": "Vernal Fall, Yosemite",
+                  "note": "Start early"
+                },
+                {
+                  "time": "Evening",
+                  "text": "Dinner at the Ahwahnee"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A checklist keeps one item per text, whatever its case",
+      "input": [
+        {
+          "type": "checklist",
+          "title": "Iceland in June",
+          "live": "packing",
+          "checklist": [
+            {
+              "text": "Rain jacket",
+              "group": "Clothes"
+            },
+            {
+              "text": "rain jacket",
+              "group": "Gear"
+            },
+            {
+              "text": "Swimsuit",
+              "group": "Clothes"
+            },
+            {
+              "text": "Passport"
+            },
+            {
+              "group": "Gear"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "checklist",
+          "title": "Iceland in June",
+          "live": "packing",
+          "checklist": [
+            {
+              "text": "Rain jacket",
+              "group": "Clothes"
+            },
+            {
+              "text": "Swimsuit",
+              "group": "Clothes"
+            },
+            {
+              "text": "Passport"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A list keeps https photos and its ranking",
+      "input": [
+        {
+          "type": "list",
+          "ranked": true,
+          "title": "Biggest companies",
+          "list": [
+            {
+              "title": "Apple",
+              "detail": "Phones and services",
+              "value": "$3.1T",
+              "url": "https://apple.com",
+              "photo": {
+                "url": "https://img.test/a.jpg",
+                "source": "Wikimedia"
+              }
+            },
+            {
+              "title": "Nvidia",
+              "value": "$2.9T",
+              "photo": {
+                "url": "http://img.test/n.jpg",
+                "source": "Wikimedia"
+              }
+            },
+            {
+              "title": "Microsoft",
+              "photo": {
+                "url": "https://img.test/m.jpg"
+              }
+            },
+            {
+              "detail": "no title"
+            }
+          ]
+        },
+        {
+          "type": "list",
+          "ranked": "yes",
+          "list": [
+            {
+              "title": "Only"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "list",
+          "title": "Biggest companies",
+          "list": [
+            {
+              "title": "Apple",
+              "detail": "Phones and services",
+              "value": "$3.1T",
+              "url": "https://apple.com",
+              "photo": {
+                "url": "https://img.test/a.jpg",
+                "source": "Wikimedia"
+              }
+            },
+            {
+              "title": "Nvidia",
+              "value": "$2.9T"
+            },
+            {
+              "title": "Microsoft"
+            }
+          ],
+          "ranked": true
+        },
+        {
+          "type": "list",
+          "list": [
+            {
+              "title": "Only"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A progress card keeps goals above 0",
+      "input": [
+        {
+          "type": "progress",
+          "title": "Goals",
+          "progress": [
+            {
+              "label": "Savings",
+              "value": 1250,
+              "goal": 5000,
+              "unit": "USD"
+            },
+            {
+              "label": "Pages",
+              "value": 12,
+              "goal": 0
+            },
+            {
+              "label": "Runs",
+              "value": -1,
+              "goal": 10
+            },
+            {
+              "label": "Over",
+              "value": 12,
+              "goal": 10
+            }
+          ]
+        },
+        {
+          "type": "progress",
+          "progress": [
+            {
+              "label": "None",
+              "value": 1,
+              "goal": 0
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "progress",
+          "title": "Goals",
+          "progress": [
+            {
+              "label": "Savings",
+              "value": 1250,
+              "goal": 5000,
+              "unit": "USD"
+            },
+            {
+              "label": "Over",
+              "value": 12,
+              "goal": 10
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A callout's tone matches without regard to case",
+      "input": [
+        {
+          "type": "callout",
+          "callout": {
+            "text": "Book Half Dome permits months ahead.",
+            "tone": "WARNING"
+          }
+        },
+        {
+          "type": "callout",
+          "callout": {
+            "text": "No tone",
+            "tone": "loud"
+          }
+        },
+        {
+          "type": "callout",
+          "callout": {
+            "tone": "tip"
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "callout",
+          "callout": {
+            "text": "Book Half Dome permits months ahead.",
+            "tone": "warning"
+          }
+        },
+        {
+          "type": "callout",
+          "callout": {
+            "text": "No tone"
+          }
+        }
+      ]
+    },
+    {
+      "name": "A diff keeps its files, hunks and totals, and a renamed file its old path",
+      "input": [
+        {
+          "type": "diff",
+          "title": "Fix the login retry",
+          "source": {
+            "name": "PR #1713",
+            "url": "https://github.com/example/app/pull/1713"
+          },
+          "diff": {
+            "files": [
+              {
+                "path": "Sources/Login.swift",
+                "status": "modified",
+                "added": 2,
+                "removed": 1,
+                "hunks": [
+                  {
+                    "old_start": 40,
+                    "new_start": 40,
+                    "context": "func retry() {",
+                    "lines": [
+                      "     let delay = 2.0",
+                      "-    attempts += 2",
+                      "+    attempts += 1",
+                      "+    log(attempts)",
+                      "     return delay"
+                    ]
+                  }
+                ]
+              },
+              {
+                "path": "docs/login.md",
+                "old_path": "docs/sign-in.md",
+                "status": "renamed",
+                "added": 0,
+                "removed": 0
+              },
+              {
+                "path": "Assets/logo.png",
+                "status": "ADDED",
+                "binary": true,
+                "added": 0,
+                "removed": 0
+              }
+            ],
+            "added": 2,
+            "removed": 1,
+            "more_files": 3,
+            "id": "cd-0123456789abcdef"
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "diff",
+          "title": "Fix the login retry",
+          "source": {
+            "name": "PR #1713",
+            "url": "https://github.com/example/app/pull/1713"
+          },
+          "diff": {
+            "files": [
+              {
+                "path": "Sources/Login.swift",
+                "status": "modified",
+                "added": 2,
+                "removed": 1,
+                "hunks": [
+                  {
+                    "old_start": 40,
+                    "new_start": 40,
+                    "context": "func retry() {",
+                    "lines": [
+                      "     let delay = 2.0",
+                      "-    attempts += 2",
+                      "+    attempts += 1",
+                      "+    log(attempts)",
+                      "     return delay"
+                    ]
+                  }
+                ]
+              },
+              {
+                "path": "docs/login.md",
+                "old_path": "docs/sign-in.md",
+                "status": "renamed",
+                "added": 0,
+                "removed": 0
+              },
+              {
+                "path": "Assets/logo.png",
+                "status": "added",
+                "binary": true,
+                "added": 0,
+                "removed": 0
+              }
+            ],
+            "added": 2,
+            "removed": 1,
+            "more_files": 3,
+            "id": "cd-0123456789abcdef"
+          }
+        }
+      ]
+    },
+    {
+      "name": "A hunk keeps lines starting with +, - or a space, with their spaces; a binary file and a bad id keep nothing",
+      "input": [
+        {
+          "type": "diff",
+          "diff": {
+            "files": [
+              {
+                "path": "a.py",
+                "status": "modified",
+                "added": 1,
+                "removed": 0,
+                "hunks": [
+                  {
+                    "old_start": 1,
+                    "new_start": 1,
+                    "lines": [
+                      "  indented\t context",
+                      "@@ not a line",
+                      "+added",
+                      ""
+                    ]
+                  },
+                  {
+                    "old_start": 9,
+                    "new_start": 10,
+                    "lines": [
+                      "no prefix"
+                    ]
+                  }
+                ]
+              },
+              {
+                "path": "b.bin",
+                "status": "modified",
+                "binary": true,
+                "added": 0,
+                "removed": 0,
+                "hunks": [
+                  {
+                    "old_start": 1,
+                    "new_start": 1,
+                    "lines": [
+                      "+x"
+                    ]
+                  }
+                ]
+              },
+              {
+                "path": "c.txt",
+                "added": 1,
+                "removed": 0
+              }
+            ],
+            "added": 1,
+            "removed": 0,
+            "id": "cd-XYZ"
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "diff",
+          "diff": {
+            "files": [
+              {
+                "path": "a.py",
+                "status": "modified",
+                "added": 1,
+                "removed": 0,
+                "hunks": [
+                  {
+                    "old_start": 1,
+                    "new_start": 1,
+                    "lines": [
+                      "  indented  context",
+                      "+added"
+                    ]
+                  }
+                ]
+              },
+              {
+                "path": "b.bin",
+                "status": "modified",
+                "binary": true,
+                "added": 0,
+                "removed": 0
+              }
+            ],
+            "added": 1,
+            "removed": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "A diff line longer than 1001 characters is cut there, never trimmed",
+      "input": [
+        {
+          "type": "diff",
+          "diff": {
+            "files": [
+              {
+                "path": "min.js",
+                "status": "modified",
+                "added": 1,
+                "removed": 0,
+                "hunks": [
+                  {
+                    "old_start": 1,
+                    "new_start": 1,
+                    "lines": [
+                      "+ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx "
+                    ]
+                  }
+                ]
+              }
+            ],
+            "added": 1,
+            "removed": 0
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "diff",
+          "diff": {
+            "files": [
+              {
+                "path": "min.js",
+                "status": "modified",
+                "added": 1,
+                "removed": 0,
+                "hunks": [
+                  {
+                    "old_start": 1,
+                    "new_start": 1,
+                    "lines": [
+                      "+ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "added": 1,
+            "removed": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "Hidden bidi and zero-width characters are dropped from text and shown as � in a line; ZWJ, ZWNJ and RLM stay",
+      "input": [
+        {
+          "type": "diff",
+          "title": "\ufeffFix the \u202eadmin\u202c check 👨\u200d👩\u200d👧",
+          "diff": {
+            "files": [
+              {
+                "path": "src/auth\u200b.py",
+                "status": "modified",
+                "added": 1,
+                "removed": 1,
+                "hunks": [
+                  {
+                    "old_start": 3,
+                    "new_start": 3,
+                    "context": "def is\u2060_admin(user):",
+                    "lines": [
+                      "-    if user.role != \"admin\":",
+                      "+    if user.role != \"user\u202e \u2066// admin\u2069 \u2066\":",
+                      "     return \u200fTrue"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "added": 1,
+            "removed": 1
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "diff",
+          "title": "Fix the admin check 👨\u200d👩\u200d👧",
+          "diff": {
+            "files": [
+              {
+                "path": "src/auth.py",
+                "status": "modified",
+                "added": 1,
+                "removed": 1,
+                "hunks": [
+                  {
+                    "old_start": 3,
+                    "new_start": 3,
+                    "context": "def is_admin(user):",
+                    "lines": [
+                      "-    if user.role != \"admin\":",
+                      "+    if user.role != \"user� �// admin� �\":",
+                      "     return \u200fTrue"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "added": 1,
+            "removed": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "A diff with no file left is dropped",
+      "input": [
+        {
+          "type": "diff",
+          "diff": {
+            "files": [
+              {
+                "path": "a",
+                "added": 1,
+                "removed": 0
+              }
+            ],
+            "added": 1,
+            "removed": 0
+          }
+        },
+        {
+          "type": "diff",
+          "diff": {
+            "files": [],
+            "added": 0,
+            "removed": 0
+          }
+        }
+      ],
+      "output": []
+    },
+    {
+      "name": "A composed card keeps its sections, fields and buttons",
+      "input": [
+        {
+          "type": "composed",
+          "title": "Email to Mei",
+          "live": "email-mei",
+          "source": {
+            "name": "Gmail"
+          },
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "badge",
+                  "text": "Not sent",
+                  "tone": "warning"
+                }
+              ]
+            },
+            {
+              "layout": "row",
+              "items": [
+                {
+                  "kind": "field",
+                  "id": "to",
+                  "input": "text",
+                  "label": "To",
+                  "value": "mei@example.com"
+                },
+                {
+                  "kind": "field",
+                  "id": "subject",
+                  "input": "text",
+                  "label": "Subject",
+                  "value": "Friday"
+                }
+              ]
+            },
+            {
+              "more": true,
+              "items": [
+                {
+                  "kind": "field",
+                  "id": "body",
+                  "input": "text",
+                  "lines": 6,
+                  "placeholder": "Message",
+                  "value": "Hi Mei, see you Friday."
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "kind": "text",
+                  "text": "Nothing is sent until you tap Send.",
+                  "role": "caption"
+                },
+                {
+                  "kind": "divider"
+                },
+                {
+                  "kind": "metric",
+                  "value": "3",
+                  "label": "Attachments",
+                  "change": "+1",
+                  "tone": "accent"
+                },
+                {
+                  "kind": "icon",
+                  "symbol": "paperclip"
+                },
+                {
+                  "kind": "progress",
+                  "progress": 0.5,
+                  "label": "Uploaded"
+                },
+                {
+                  "kind": "image",
+                  "url": "https://a.test/p.png",
+                  "label": "Preview"
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "label": "Send",
+              "action": "tap",
+              "id": "send",
+              "style": "primary",
+              "symbol": "paperplane.fill",
+              "confirm": "Send to Mei?"
+            },
+            {
+              "label": "Discard",
+              "action": "tap",
+              "id": "discard",
+              "style": "destructive"
+            },
+            {
+              "label": "Open Gmail",
+              "action": "open",
+              "target": "https://mail.google.com/"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "composed",
+          "title": "Email to Mei",
+          "live": "email-mei",
+          "source": {
+            "name": "Gmail"
+          },
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "badge",
+                  "text": "Not sent",
+                  "tone": "warning"
+                }
+              ]
+            },
+            {
+              "layout": "row",
+              "items": [
+                {
+                  "kind": "field",
+                  "value": "mei@example.com",
+                  "input": "text",
+                  "label": "To",
+                  "id": "to"
+                },
+                {
+                  "kind": "field",
+                  "value": "Friday",
+                  "input": "text",
+                  "label": "Subject",
+                  "id": "subject"
+                }
+              ]
+            },
+            {
+              "more": true,
+              "items": [
+                {
+                  "kind": "field",
+                  "value": "Hi Mei, see you Friday.",
+                  "input": "text",
+                  "lines": 6,
+                  "placeholder": "Message",
+                  "id": "body"
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "kind": "text",
+                  "text": "Nothing is sent until you tap Send.",
+                  "role": "caption"
+                },
+                {
+                  "kind": "divider"
+                },
+                {
+                  "kind": "metric",
+                  "tone": "accent",
+                  "value": "3",
+                  "change": "+1",
+                  "label": "Attachments"
+                },
+                {
+                  "kind": "icon",
+                  "symbol": "paperclip"
+                },
+                {
+                  "kind": "progress",
+                  "progress": 0.5,
+                  "label": "Uploaded"
+                },
+                {
+                  "kind": "image",
+                  "url": "https://a.test/p.png",
+                  "label": "Preview"
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "label": "Send",
+              "action": "tap",
+              "id": "send",
+              "symbol": "paperplane.fill",
+              "style": "primary",
+              "confirm": "Send to Mei?"
+            },
+            {
+              "label": "Discard",
+              "action": "tap",
+              "id": "discard",
+              "style": "destructive"
+            },
+            {
+              "label": "Open Gmail",
+              "action": "open",
+              "target": "https://mail.google.com/"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "An element keeps only its kind's fields and needs its own",
+      "input": [
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "text",
+                  "text": "Hi",
+                  "url": "https://a.test/",
+                  "progress": 0.3,
+                  "role": "heading"
+                },
+                {
+                  "kind": "metric",
+                  "label": "No value"
+                },
+                {
+                  "kind": "divider",
+                  "text": "x",
+                  "tone": "bad"
+                },
+                {
+                  "kind": "image",
+                  "url": "http://a.test/p.png"
+                },
+                {
+                  "kind": "badge",
+                  "text": "New",
+                  "tone": "good",
+                  "symbol": "star"
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "kind": "icon"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "text",
+                  "text": "Hi",
+                  "role": "heading"
+                },
+                {
+                  "kind": "divider"
+                },
+                {
+                  "kind": "badge",
+                  "text": "New",
+                  "tone": "good"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Fields drop secrets, repeats, extras for other inputs and values they can't hold",
+      "input": [
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "id": "pw",
+                  "input": "text",
+                  "label": "Your Password"
+                },
+                {
+                  "kind": "field",
+                  "id": "api_key",
+                  "input": "text"
+                },
+                {
+                  "kind": "field",
+                  "id": "pin",
+                  "input": "number"
+                },
+                {
+                  "kind": "field",
+                  "id": "spin",
+                  "input": "text",
+                  "label": "Spin class",
+                  "lines": 2,
+                  "options": [
+                    "a",
+                    "b"
+                  ],
+                  "min": 1
+                },
+                {
+                  "kind": "field",
+                  "id": "spin",
+                  "input": "text"
+                },
+                {
+                  "kind": "field",
+                  "id": "when",
+                  "input": "choice",
+                  "options": [
+                    "Now",
+                    "Tonight"
+                  ],
+                  "value": "TONIGHT"
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "id": "remind",
+                  "input": "toggle",
+                  "value": "ON",
+                  "placeholder": "x"
+                },
+                {
+                  "kind": "field",
+                  "id": "day",
+                  "input": "date",
+                  "value": "Friday"
+                },
+                {
+                  "kind": "field",
+                  "id": "at",
+                  "input": "date",
+                  "value": "2026-11-08T09:30"
+                },
+                {
+                  "kind": "field",
+                  "id": "guests",
+                  "input": "number",
+                  "min": 4,
+                  "max": 2,
+                  "value": "3"
+                },
+                {
+                  "kind": "field",
+                  "id": "seats",
+                  "input": "number",
+                  "min": 1,
+                  "max": 8,
+                  "value": "12"
+                },
+                {
+                  "kind": "field",
+                  "id": "extra",
+                  "input": "text"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "input": "text",
+                  "lines": 2,
+                  "label": "Spin class",
+                  "id": "spin"
+                },
+                {
+                  "kind": "field",
+                  "value": "Tonight",
+                  "input": "choice",
+                  "options": [
+                    "Now",
+                    "Tonight"
+                  ],
+                  "id": "when"
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "value": "on",
+                  "input": "toggle",
+                  "id": "remind"
+                },
+                {
+                  "kind": "field",
+                  "input": "date",
+                  "id": "day"
+                },
+                {
+                  "kind": "field",
+                  "value": "2026-11-08T09:30",
+                  "input": "date",
+                  "id": "at"
+                },
+                {
+                  "kind": "field",
+                  "input": "number",
+                  "max": 2,
+                  "id": "guests"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Buttons need their target or id, open only safe links and send only plain messages",
+      "input": [
+        {
+          "type": "callout",
+          "callout": {
+            "text": "Your vet visit is due."
+          },
+          "actions": [
+            {
+              "label": "Book",
+              "action": "tap",
+              "id": "book",
+              "target": "x",
+              "style": "primary"
+            },
+            {
+              "label": "Call",
+              "action": "open",
+              "target": "tel:+14155550100",
+              "id": "call",
+              "style": "primary"
+            },
+            {
+              "label": "Remind",
+              "action": "send",
+              "target": "Remind me tomorrow"
+            }
+          ]
+        },
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "button",
+                  "label": "Do it",
+                  "action": "tap"
+                },
+                {
+                  "kind": "button",
+                  "label": "Bad",
+                  "action": "open",
+                  "target": "javascript:alert(1)"
+                },
+                {
+                  "kind": "button",
+                  "label": "Spaces",
+                  "action": "open",
+                  "target": "https://a.test/a b"
+                },
+                {
+                  "kind": "button",
+                  "label": "Map",
+                  "action": "open",
+                  "target": "MAPS:?q=Vet"
+                },
+                {
+                  "kind": "button",
+                  "label": "Reset",
+                  "action": "send",
+                  "target": "/reset"
+                },
+                {
+                  "kind": "button",
+                  "label": "Copy",
+                  "action": "copy"
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "kind": "button",
+                  "label": "Done",
+                  "action": "tap",
+                  "id": "done"
+                },
+                {
+                  "kind": "text",
+                  "text": "Then"
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "label": "Done again",
+              "action": "tap",
+              "id": "done"
+            },
+            {
+              "label": "Copy",
+              "action": "copy",
+              "target": "VET-2231"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "callout",
+          "callout": {
+            "text": "Your vet visit is due."
+          },
+          "actions": [
+            {
+              "label": "Book",
+              "action": "tap",
+              "id": "book",
+              "style": "primary"
+            },
+            {
+              "label": "Call",
+              "action": "open",
+              "target": "tel:+14155550100",
+              "style": "plain"
+            },
+            {
+              "label": "Remind",
+              "action": "send",
+              "target": "Remind me tomorrow"
+            }
+          ]
+        },
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "button",
+                  "label": "Map",
+                  "action": "open",
+                  "target": "MAPS:?q=Vet"
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "kind": "button",
+                  "label": "Done",
+                  "action": "tap",
+                  "id": "done"
+                },
+                {
+                  "kind": "text",
+                  "text": "Then"
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "label": "Copy",
+              "action": "copy",
+              "target": "VET-2231"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A composed card with no element left is dropped",
+      "input": [
+        {
+          "type": "composed",
+          "title": "Empty",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "image",
+                  "url": "http://a.test/p.png"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "id": "pick",
+                  "input": "choice"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "text",
+                  "text": "Kept"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "text",
+                  "text": "Kept"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Fields read joined, full-width and mixed-script secret words, and keep only real days",
+      "input": [
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "id": "pincode",
+                  "input": "number"
+                },
+                {
+                  "kind": "field",
+                  "id": "mfa",
+                  "input": "text",
+                  "label": "MFA code"
+                },
+                {
+                  "kind": "field",
+                  "id": "code",
+                  "input": "text",
+                  "label": "PIN码"
+                },
+                {
+                  "kind": "field",
+                  "id": "spin",
+                  "input": "text",
+                  "label": "Spinning クラス"
+                },
+                {
+                  "kind": "field",
+                  "id": "fullwidth",
+                  "input": "text",
+                  "label": "ＰＩＮコード"
+                },
+                {
+                  "kind": "field",
+                  "id": "spincode",
+                  "input": "text",
+                  "label": "Spin code"
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "id": "day",
+                  "input": "date",
+                  "value": "2026-02-31"
+                },
+                {
+                  "kind": "field",
+                  "id": "leap",
+                  "input": "date",
+                  "value": "2028-02-29"
+                },
+                {
+                  "kind": "field",
+                  "id": "at",
+                  "input": "date",
+                  "value": "2026-11-08T24:00"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "input": "text",
+                  "label": "Spinning クラス",
+                  "id": "spin"
+                },
+                {
+                  "kind": "field",
+                  "input": "text",
+                  "label": "Spin code",
+                  "id": "spincode"
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "input": "date",
+                  "id": "day"
+                },
+                {
+                  "kind": "field",
+                  "value": "2028-02-29",
+                  "input": "date",
+                  "id": "leap"
+                },
+                {
+                  "kind": "field",
+                  "input": "date",
+                  "id": "at"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A choice field keeps one of each option and needs two",
+      "input": [
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "id": "when",
+                  "input": "choice",
+                  "options": [
+                    "Now",
+                    "Tonight",
+                    "now",
+                    "Tonight"
+                  ],
+                  "value": "NOW"
+                },
+                {
+                  "kind": "field",
+                  "id": "sure",
+                  "input": "choice",
+                  "options": [
+                    "Yes",
+                    "yes"
+                  ]
+                },
+                {
+                  "kind": "text",
+                  "text": "Pick one"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "value": "Now",
+                  "input": "choice",
+                  "options": [
+                    "Now",
+                    "Tonight"
+                  ],
+                  "id": "when"
+                },
+                {
+                  "kind": "text",
+                  "text": "Pick one"
+                }
+              ]
             }
           ]
         }

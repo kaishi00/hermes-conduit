@@ -114,7 +114,7 @@ struct NewChatAwaitingListing: Equatable {
 
     private static func folder(_ path: String?) -> String? {
         var trimmed = path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        while trimmed.count > 1, trimmed.hasSuffix("/") { trimmed.removeLast() }
+        while trimmed.count > 1, trimmed.hasSuffix("/") || trimmed.hasSuffix("\\") { trimmed.removeLast() }
         return trimmed.isEmpty ? nil : trimmed
     }
 }

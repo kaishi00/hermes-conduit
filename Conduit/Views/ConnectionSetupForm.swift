@@ -298,6 +298,11 @@ struct ConnectionSetupForm: View {
                         .buttonStyle(.settings)
                         .accessibilityIdentifier("setup.test.retry")
                 }
+                if plan.offersCertificateHelp {
+                    Button(ConnectionHelpDestination.tls.displayName) { flow.showTroubleshooting(.tls) }
+                        .buttonStyle(.settings)
+                        .accessibilityIdentifier("setup.test.certificate-help")
+                }
             }
         }
     }
@@ -391,6 +396,17 @@ struct ConnectionSetupForm: View {
         }
     }
 
+    /// A certificate failure's way to HTTPS & certificates, where Conduit
+    /// can save the server's root to install. Back returns here.
+    @ViewBuilder
+    private func certificateHelpButton(for failure: ConnectionFailure) -> some View {
+        if failure.helpDestination == .tls {
+            Button(ConnectionHelpDestination.tls.displayName) { flow.showTroubleshooting(.tls) }
+                .buttonStyle(.settings)
+                .accessibilityIdentifier("setup.review.certificate-help")
+        }
+    }
+
     private var useSettingsTitle: String {
         flow.testedSettingsUnchanged ? AppLocalization.string("Done") : AppLocalization.string("Use these settings")
     }
@@ -411,6 +427,7 @@ struct ConnectionSetupForm: View {
                         .foregroundStyle(Color.red)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("setup.review.sign-in-again-failure")
+                    certificateHelpButton(for: failure)
                 }
             }
             if review.showsPrivateSignInSwitch {
@@ -445,6 +462,7 @@ struct ConnectionSetupForm: View {
                         .foregroundStyle(Color.red)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("setup.review.reconnect-failure")
+                    certificateHelpButton(for: failure)
                 }
             }
             if repair.isInteractive {

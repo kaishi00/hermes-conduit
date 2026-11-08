@@ -62,13 +62,30 @@ extension AppState {
         return trimmed
     }
 
+    /// The folder holding `path`, or nil at the top of the disk: what the
+    /// project folder picker's Enclosing Folder opens (issue 1661). Hermes
+    /// gives a Windows host's paths with backslashes.
+    static func parentWorkspacePath(_ path: String) -> String? {
+        let normalized = normalizedWorkspacePath(path.trimmingCharacters(in: .whitespacesAndNewlines))
+        let posix = normalized.hasPrefix("/") || normalized.hasPrefix("~")
+        guard !normalized.isEmpty, normalized != "/", normalized != "~",
+              normalized.range(of: #"^[A-Za-z]:[\\/]?$"#, options: .regularExpression) == nil,
+              // A POSIX path's name may hold a backslash: only a slash
+              // separates there.
+              let cut = normalized.lastIndex(where: { $0 == "/" || (!posix && $0 == "\\") }) else { return nil }
+        let parent = String(normalized[..<cut])
+        if parent.isEmpty { return "/" }
+        if parent.range(of: #"^[A-Za-z]:$"#, options: .regularExpression) != nil {
+            return parent + String(normalized[cut])
+        }
+        return parent
+    }
+
     /// A path a reply named, made absolute: a relative one is in the open
     /// chat's working folder, as Hermes wrote it there.
     func absoluteWorkspacePath(_ path: String) -> String {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.hasPrefix("/") || trimmed.hasPrefix("~") || trimmed.range(of: #"^[A-Za-z]:[\\/]"#, options: .regularExpression) != nil {
-            return trimmed
-        }
+        if Self.isAbsoluteWorkspacePath(trimmed) { return trimmed }
         guard let folder = chatWorkspaceFolder else { return trimmed }
         var relative = trimmed
         while relative.hasPrefix("./") { relative.removeFirst(2) }
@@ -79,10 +96,83 @@ extension AppState {
     /// A file path tapped in a reply: the open chat shows it in the Folder
     /// tab (beside the chat on a wide window, in its Artifacts sheet on a
     /// phone).
+    ///
+    /// A bare name or a relative path (`AppState.swift`) is often not in the
+    /// chat's folder: the folder is unset, or the agent worked elsewhere. The
+    /// plugin finds where the chat's own tool calls had it (issue 1809), and
+    /// says so plainly when the host has no such file.
     func revealWorkspaceFile(_ path: String, line: Int? = nil) {
-        let absolute = absoluteWorkspacePath(path)
-        guard !absolute.isEmpty else { return }
-        workspaceReveal = WorkspaceReveal(path: absolute, line: line)
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        // A later tap wins over a lookup still running for an earlier one.
+        workspaceRevealGeneration &+= 1
+        let generation = workspaceRevealGeneration
+        // Each id the open chat goes by; none in a group room, whose tap
+        // opens the projects' folders as before.
+        let ids = activeChatArtifactSessionIDs
+        guard !Self.isAbsoluteWorkspacePath(trimmed), !ids.isEmpty,
+              notifierPlugin.reports(WorkspaceFilesClient.resolveCapability),
+              let owner = currentDashboardRuntimeOwner() else {
+            clearWorkspaceLookupNotice()
+            workspaceReveal = WorkspaceReveal(path: absoluteWorkspacePath(trimmed), line: line)
+            return
+        }
+        let client = workspaceFilesClient(profile: workspaceProfile)
+        let session = activeSessionId
+        Task { @MainActor [weak self] in
+            let answer: Result<String?, Error>
+            do {
+                answer = .success(try await client.resolve(path: trimmed, sessionIDs: ids))
+            } catch {
+                answer = .failure(error)
+            }
+            guard let self, self.workspaceRevealGeneration == generation, self.ownsDashboardRuntime(owner),
+                  self.activeSessionId == session else { return }
+            self.showWorkspaceLookup(answer, for: trimmed, line: line)
+        }
+    }
+
+    /// What the plugin's lookup of a tapped name says: the file it found,
+    /// that the host has none (said above the composer, which shows while
+    /// the chat is open and connected), or, when the lookup itself failed,
+    /// the chat's folder as before.
+    func showWorkspaceLookup(_ answer: Result<String?, Error>, for path: String, line: Int?) {
+        // An earlier tap's "isn't on the server" goes once a later one
+        // answers; any other notice stays.
+        clearWorkspaceLookupNotice()
+        switch answer {
+        case .success(let found?):
+            workspaceReveal = WorkspaceReveal(path: found, line: line)
+        case .success(nil):
+            let name = (path as NSString).lastPathComponent
+            let notice = AppLocalization.string("\(name) isn’t on the server. It may have been deleted, or it’s on another computer.")
+            // A notice already up (a message that came back) waits under
+            // this one and comes back when it goes.
+            if let shown = composerNotice {
+                workspaceNoticeUnder = (shown, composerNoticeSystemImage)
+            }
+            composerNotice = notice
+            composerNoticeSystemImage = "questionmark.folder"
+            workspaceLookupNotice = notice
+        case .failure:
+            workspaceReveal = WorkspaceReveal(path: absoluteWorkspacePath(path), line: line)
+        }
+    }
+
+    /// Takes away the last file lookup's notice, if it's still the one shown.
+    func clearWorkspaceLookupNotice() {
+        if let said = workspaceLookupNotice, composerNotice == said {
+            composerNotice = workspaceNoticeUnder?.text
+            if let under = workspaceNoticeUnder { composerNoticeSystemImage = under.systemImage }
+        }
+        workspaceLookupNotice = nil
+        workspaceNoticeUnder = nil
+    }
+
+    /// A path from the top of a disk or a home folder, as opposed to one
+    /// inside a folder.
+    static func isAbsoluteWorkspacePath(_ path: String) -> Bool {
+        path.hasPrefix("/") || path.hasPrefix("~") || path.range(of: #"^[A-Za-z]:[\\/]"#, options: .regularExpression) != nil
     }
 
     /// Hermes finished a tool that may have changed files: an open Folder

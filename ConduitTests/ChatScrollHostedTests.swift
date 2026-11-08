@@ -151,6 +151,38 @@ final class ChatScrollHostedTests: XCTestCase {
         XCTAssertLessThanOrEqual(abs(distance), 1, "\(message) (distance \(distance))", file: file, line: line)
     }
 
+    /// `assertAtLatest` while a reply streams in. Its text comes out a few
+    /// characters at a time, and its row reports each growth while UIKit
+    /// lays out its cell, after the collection view's own pass, so the pass
+    /// that follows the growth comes after it: TranscriptViewController
+    /// queues it on the main queue at once, and `settle` can end between
+    /// the two. Checked from a block queued after that pass, once no row's
+    /// growth still owes one.
+    private func assertAtLatestWhileStreaming(
+        _ mounted: Mounted,
+        _ message: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let checked = expectation(description: "checked after the queued pass")
+        func check(_ attempt: Int) {
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    // Text that came out after this block was queued owes a
+                    // pass queued after it: check after that one.
+                    if mounted.scrollView.layer.needsLayout(), attempt < 5 {
+                        check(attempt + 1)
+                        return
+                    }
+                    self.assertAtLatest(mounted, message, file: file, line: line)
+                    checked.fulfill()
+                }
+            }
+        }
+        check(0)
+        wait(for: [checked], timeout: 2)
+    }
+
     /// What a finger would do: begin a drag, move the content, let go.
     private func browse(_ mounted: Mounted, to offsetY: CGFloat) {
         mounted.scroller.userDragBegan()
@@ -335,8 +367,63 @@ final class ChatScrollHostedTests: XCTestCase {
                 count: tick * 3
             ))
             settle(mounted.host.view, seconds: 0.1)
-            assertAtLatest(mounted, "streaming growth tick \(tick) is followed")
+            assertAtLatestWhileStreaming(mounted, "streaming growth tick \(tick) is followed")
         }
+    }
+
+    func testARowThatGrowsOnItsOwnIsLaidOutAndFollowedRightAfter() throws {
+        // A row whose content grows by itself (a reply's text coming out, a
+        // picture arriving) reports it from inside its cell's layout, after
+        // the collection view's own pass. The transcript asks for the next
+        // pass at once, on the main queue, so a block queued after the
+        // report runs after that pass. The run loop is only polled, so it
+        // drains the main queue before Core Animation's commit, the other
+        // thing that would lay the rows out.
+        let mounted = try mount(Self.transcript(0..<40))
+        let collectionView = try XCTUnwrap(mounted.scrollView as? UICollectionView)
+        let lastID = try XCTUnwrap(mounted.layout.rows.last?.id)
+        let cell = try XCTUnwrap(
+            collectionView.visibleCells.compactMap { $0 as? TranscriptCell }.first { $0.hostedRowID == lastID },
+            "the latest row is on screen"
+        )
+        let hosting = try XCTUnwrap(cell.hosting)
+        let root = hosting.rootView
+        let before = try XCTUnwrap(mounted.layout.rowFrame(lastID))
+
+        // The row's content grows by 120 pt, measured as its cell measures
+        // it and reported as its geometry observer reports it.
+        hosting.rootView = TranscriptCellRoot(
+            rowID: root.rowID,
+            content: AnyView(VStack(spacing: 0) {
+                root.content
+                Color.clear.frame(height: 120)
+            }),
+            rowEnvironment: root.rowEnvironment,
+            appState: root.appState,
+            resized: root.resized
+        )
+        let grown = hosting.sizeThatFits(in: CGSize(width: mounted.layout.itemWidth, height: .greatestFiniteMagnitude))
+        root.resized(grown)
+
+        final class Ran { var value = false }
+        let checked = Ran()
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                let height = mounted.layout.rowFrame(lastID).map { $0.maxY - $0.minY } ?? 0
+                XCTAssertEqual(
+                    height, before.maxY - before.minY + 120, accuracy: 1,
+                    "the row is laid out at its new height right after its report"
+                )
+                let distance = self.maxOffset(collectionView) - collectionView.contentOffset.y
+                XCTAssertLessThanOrEqual(abs(distance), 1, "and the reader is at its new end (distance \(distance))")
+                checked.value = true
+            }
+        }
+        let deadline = Date().addingTimeInterval(2)
+        while !checked.value, Date() < deadline {
+            _ = CFRunLoopRunInMode(.defaultMode, 0, true)
+        }
+        XCTAssertTrue(checked.value, "the block queued after the report ran")
     }
 
     func testARunningReplyOpenedAgainShowsWhatWasWrittenAtOnce() throws {
@@ -547,7 +634,7 @@ final class ChatScrollHostedTests: XCTestCase {
         appState.setStreamingTextForTesting(String(repeating: "The final answer streams in with several lines. ", count: 30))
         settle(mounted.host.view, seconds: 0.3)
         checkpoint("completion before", mounted, recorder)
-        assertAtLatest(mounted, "the live turn is followed")
+        assertAtLatestWhileStreaming(mounted, "the live turn is followed")
 
         let mark = recorder.mark()
         // finalizeStreamingCompletion: partials out, one settled reply in,
@@ -711,6 +798,61 @@ final class ChatScrollHostedTests: XCTestCase {
         XCTAssertEqual(after, before, accuracy: 1, "the tapped row stays put\n\(recorder.dump(since: mark))")
         XCTAssertEqual(mounted.scroller.mode, .browsing)
         XCTAssertTrue(mounted.scroller.showsJumpToLatest)
+    }
+
+    /// Eric's report (build 246): a Thinking row opened in place drew over
+    /// the rows under it, and closing it left its open height empty, until a
+    /// scroll or another visit laid the chat out again. A row opened and
+    /// closed by its own state (no new rows, no forced layout, only the run
+    /// loop turning as on a phone) takes its new height in its cell, and the
+    /// row under it follows.
+    func testARowOpenedAndClosedInPlaceTakesItsHeightAndMovesTheRowsUnder() throws {
+        let mounted = try mount(Self.transcript(0..<40))
+        let collectionView = try XCTUnwrap(mounted.scrollView as? UICollectionView)
+        // A row in the middle of the screen, with one under it on screen.
+        let cells = collectionView.visibleCells.compactMap { $0 as? TranscriptCell }.sorted { $0.frame.minY < $1.frame.minY }
+        XCTAssertGreaterThanOrEqual(cells.count, 3)
+        let cell = cells[cells.count / 2]
+        let id = try XCTUnwrap(cell.hostedRowID)
+        let hosting = try XCTUnwrap(cell.hosting)
+        let root = hosting.rootView
+        let model = OpeningRowState()
+        hosting.rootView = TranscriptCellRoot(
+            rowID: root.rowID,
+            content: AnyView(OpeningRow(model: model, content: root.content)),
+            rowEnvironment: root.rowEnvironment,
+            appState: root.appState,
+            resized: root.resized
+        )
+        turnRunLoop(seconds: 0.6)
+
+        func frames() -> (cell: CGRect, below: CGRect?) {
+            let visible = collectionView.visibleCells.compactMap { $0 as? TranscriptCell }
+            let mine = visible.first { $0.hostedRowID == id }?.frame ?? .null
+            let below = visible.filter { $0.frame.minY > mine.minY }.min { $0.frame.minY < $1.frame.minY }?.frame
+            return (mine, below)
+        }
+        let closed = frames()
+
+        model.toggle(true)
+        turnRunLoop(seconds: 1.0)
+        let opened = frames()
+        XCTAssertEqual(opened.cell.height, closed.cell.height + OpeningRow.openHeight, accuracy: 1, "the opened row's cell takes its height")
+        XCTAssertEqual(opened.below?.minY ?? 0, opened.cell.maxY, accuracy: 1, "the row under it moves down")
+
+        model.toggle(false)
+        turnRunLoop(seconds: 1.0)
+        let shut = frames()
+        XCTAssertEqual(shut.cell.height, closed.cell.height, accuracy: 1, "the closed row's cell gives its height back")
+        XCTAssertEqual(shut.below?.minY ?? 0, shut.cell.maxY, accuracy: 1, "the row under it moves back up")
+    }
+
+    /// The run loop turning as on a phone: no layout forced.
+    private func turnRunLoop(seconds: TimeInterval) {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
     }
 
     /// A tester's report: at the bottom of a chat, a band of empty space
@@ -1019,5 +1161,32 @@ final class ChatScrollHostedTests: XCTestCase {
         XCTAssertNotNil(mounted.layout.rowFrame(landedID), "the event took the row in place")
         assertAtLatest(mounted, "the room stays at its end")
         XCTAssertTrue(mounted.scroller.isFollowingLatest)
+    }
+}
+
+/// A row that opens and closes by its own state, as Thinking and the tool
+/// cards do: in an animation, its extra part fading in and out.
+@MainActor
+private final class OpeningRowState: ObservableObject {
+    @Published var expanded = false
+
+    func toggle(_ expanded: Bool) {
+        withAnimation(ConduitMotion.response) { self.expanded = expanded }
+    }
+}
+
+private struct OpeningRow: View {
+    static let openHeight: CGFloat = 300
+    @ObservedObject var model: OpeningRowState
+    let content: AnyView
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content
+            if model.expanded {
+                Color.orange.frame(height: Self.openHeight)
+                    .transition(.opacity)
+            }
+        }
     }
 }

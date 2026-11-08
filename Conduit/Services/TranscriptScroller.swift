@@ -74,6 +74,11 @@ enum TranscriptScrollerEvent: Equatable {
     case cancelAutomaticRestoration
     case completeRestoration(generation: UInt64)
     case abandonRestoration(generation: UInt64)
+    /// The reader scrolled back down to the newest row.
+    case reachedLatest
+    /// The reader is up in the older rows (true) or follows the newest
+    /// again (false).
+    case browsingOlderRows(Bool)
 }
 
 /// The viewport values ChatView renders from. Published only when one of
@@ -316,6 +321,11 @@ final class TranscriptScroller: ObservableObject {
     /// The user message the latest turn answers, by id, so a new one (a
     /// turn started on another device) arms the hold.
     private var latestUserRowID: String?
+    /// Its text and stored row id, so the same message under a new id isn't
+    /// taken for a new one.
+    private var latestUserRowText: String?
+    private var latestUserStoredRowID: Int?
+    private var latestUserRowTime: String?
     /// A group room's new member message the hold stops at the start of
     /// (`roomTranscriptChanged`): the message itself goes to the top, where
     /// a chat's stop puts the user's message above its reply.
@@ -669,6 +679,9 @@ final class TranscriptScroller: ObservableObject {
         // stays.
         replyHoldArmed = false
         latestUserRowID = nil
+        latestUserRowText = nil
+        latestUserStoredRowID = nil
+        latestUserRowTime = nil
         if replyStartLandingGeneration == nil || replyStartLandingGeneration != viewportTransitionGeneration {
             replyStartLandingPending = false
         }
@@ -881,6 +894,9 @@ final class TranscriptScroller: ObservableObject {
         guard mode == .following, !isUserScrolling, restoration == nil else { return }
         let userRowID = targets[userIndex].id
         latestUserRowID = userRowID
+        latestUserRowText = targets[userIndex].message.content
+        latestUserStoredRowID = targets[userIndex].message.rowId
+        latestUserRowTime = targets[userIndex].message.timestamp
         replyHoldArmed = true
         // The reply is already there: no room under it.
         replyRoomArmed = false
@@ -1336,15 +1352,43 @@ final class TranscriptScroller: ObservableObject {
 
     /// Follows the transcript's latest user message. A new one in a live
     /// transcript (a turn started on another device, or a send's row) arms
-    /// the hold; the first transcript of a conversation only names it.
+    /// the hold; the first transcript of a conversation only names it, and
+    /// so does the same message under a new id: the last one gone from the
+    /// rows and its text the same, as when a refresh brings the chat from
+    /// Hermes' stored rows after a resume's (#1648).
     private func noteLatestUserRow(arming: Bool) {
-        let latest = targetCache.targets.last(where: { $0.message.role == .user })?.id
+        let latestTarget = targetCache.targets.last(where: { $0.message.role == .user })
+        let latest = latestTarget?.id
+        let previousText = latestUserRowText
+        let previousStoredRowID = latestUserStoredRowID
+        let previousTime = latestUserRowTime
+        // A time the same row stops saying is kept, as its stored row is.
+        let latestTime = latestTarget?.message.timestamp.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        latestUserRowTime = latestTime.isEmpty && latest == latestUserRowID ? previousTime : latestTarget?.message.timestamp
+        // Kept current under the same id too: a row whose text fills in
+        // later is compared by what it says now.
+        latestUserRowText = latestTarget?.message.content
+        latestUserStoredRowID = latestTarget?.message.rowId ?? (latest == latestUserRowID ? previousStoredRowID : nil)
         guard latest != latestUserRowID else { return }
         let previous = latestUserRowID
         latestUserRowID = latest
         // No user message left to stop under (the transcript was cleared).
         if latest == nil { replyHoldArmed = false }
-        if arming, previous != nil, latest != nil {
+        // The same message: the old row is gone, the text is the same, and
+        // neither a stored row id nor the time says they differ. A send's
+        // own row (`local-`) is always new: a retry or an edit takes the
+        // last message away and sends the same words again.
+        let storedRowsDiffer = previousStoredRowID != nil && latestTarget?.message.rowId != nil
+            && previousStoredRowID != latestTarget?.message.rowId
+        let rekeyed = latest?.hasPrefix("local-") == false
+            && previous.map { !targetIDs.contains($0) } == true
+            && latestTarget?.message.content == previousText
+            && !storedRowsDiffer
+            // A send's own row carries the phone's clock, its stored row
+            // Hermes', so their times aren't compared.
+            && (previous?.hasPrefix("local-") == true
+                || MessageTimestampFormatter.sameMoment(previousTime ?? "", latestTarget?.message.timestamp ?? ""))
+        if arming, previous != nil, latest != nil, !rekeyed {
             replyHoldArmed = true
             replyRoomArmed = true
         }
@@ -1372,7 +1416,12 @@ final class TranscriptScroller: ObservableObject {
     /// pin owed to following.
     private func setMode(_ newMode: Mode, anchoringOn choice: AnchorChoice? = .firstOnScreen) {
         guard mode != newMode else { return }
+        let cameBackDown = mode == .browsing && newMode == .following
         mode = newMode
+        if newMode == .browsing || newMode == .following {
+            emit(.browsingOlderRows(newMode == .browsing))
+        }
+        if cameBackDown { emit(.reachedLatest) }
         if newMode == .browsing {
             pinOwed = false
             if let surface, let choice { captureAnchor(on: surface, choosing: choice) }

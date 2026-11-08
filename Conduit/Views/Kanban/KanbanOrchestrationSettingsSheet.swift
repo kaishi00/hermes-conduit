@@ -56,8 +56,9 @@ struct KanbanOrchestrationSettingsSheet: View {
         )
     }
 
+    /// The Default row's own label, never the pinned profile's: that one
+    /// has its row below, so the menu doesn't list it twice.
     private var orchestratorSelectionLabel: String {
-        if !orchestratorProfile.isEmpty { return orchestratorProfile }
         return KanbanOrchestrationDisplay.defaultOptionLabel(
             configured: "",
             resolved: store.orchestration?.resolvedOrchestratorProfile ?? ""
@@ -65,7 +66,6 @@ struct KanbanOrchestrationSettingsSheet: View {
     }
 
     private var assigneeSelectionLabel: String {
-        if !defaultAssignee.isEmpty { return defaultAssignee }
         return KanbanOrchestrationDisplay.defaultOptionLabel(
             configured: "",
             resolved: store.orchestration?.resolvedDefaultAssignee ?? ""
@@ -82,57 +82,60 @@ struct KanbanOrchestrationSettingsSheet: View {
                         description: Text("Load a Kanban board to read the server's orchestration settings.")
                     )
                 } else {
-                    Form {
-                        Section {
+                    SettingsDetailContainer {
+                        SettingsCard {
                             Toggle("Auto Decompose", isOn: $autoDecompose)
                                 .accessibilityHint("Fans eligible triage tasks into child task graphs")
                             Toggle("Auto Promote Children", isOn: $autoPromoteChildren)
                                 .accessibilityHint("Promotes parent-free decomposed children to Ready")
-                        } footer: {
                             Text("Auto Decompose lets the dispatcher decompose eligible triage tasks. Auto Promote Children moves parent-free children to Ready instead of leaving them in To Do.")
+                                .settingsCaption()
                         }
 
-                        Section("Orchestrator Profile") {
-                            Picker("Orchestrator Profile", selection: $orchestratorProfile) {
-                                Text(orchestratorSelectionLabel).tag("")
-                                ForEach(store.profiles) { profile in
-                                    Text(profile.name).tag(profile.name)
-                                }
+                        ConduitSettingsSection(title: AppLocalization.string("Orchestrator Profile"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
+                            ConduitMenuPicker(
+                                value: orchestratorProfile,
+                                choices: [(id: "", title: orchestratorSelectionLabel)]
+                                    + store.profiles.map { (id: $0.name, title: $0.name) },
+                                onSelect: { orchestratorProfile = $0 }
+                            ) {
+                                Text("Profile").foregroundStyle(.secondary)
                             }
-                            .pickerStyle(.menu)
                             Text(footnote(configured: orchestratorProfile, resolved: store.orchestration?.resolvedOrchestratorProfile ?? ""))
-                                .scaledFont(.caption)
-                                .foregroundStyle(.secondary)
+                                .settingsCaption()
                         }
 
-                        Section("Default Assignee") {
-                            Picker("Default Assignee", selection: $defaultAssignee) {
-                                Text(assigneeSelectionLabel).tag("")
-                                ForEach(store.profiles) { profile in
-                                    Text(profile.name).tag(profile.name)
-                                }
+                        ConduitSettingsSection(title: AppLocalization.string("Default Assignee"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
+                            ConduitMenuPicker(
+                                value: defaultAssignee,
+                                choices: [(id: "", title: assigneeSelectionLabel)]
+                                    + store.profiles.map { (id: $0.name, title: $0.name) },
+                                onSelect: { defaultAssignee = $0 }
+                            ) {
+                                Text("Assignee").foregroundStyle(.secondary)
                             }
-                            .pickerStyle(.menu)
                             Text(footnote(configured: defaultAssignee, resolved: store.orchestration?.resolvedDefaultAssignee ?? ""))
-                                .scaledFont(.caption)
-                                .foregroundStyle(.secondary)
+                                .settingsCaption()
                         }
 
                         if let errorMessage {
-                            Section {
+                            SettingsCard {
                                 Label(errorMessage, systemImage: "exclamationmark.triangle")
                                     .scaledFont(.footnote)
                                     .foregroundStyle(.red)
                             }
                         }
                         if let notice {
-                            Section {
+                            SettingsCard {
                                 Label(notice, systemImage: "checkmark.circle")
                                     .scaledFont(.footnote)
                                     .foregroundStyle(.secondary)
                             }
                         }
                     }
+                    // Text fields as Settings draws them.
+                    .textFieldStyle(.roundedBorder)
+                    .tint(.conduitAccent)
                     // V3A final pass: no control may be edited while a Save is
                     // in flight, so a completion can structurally never
                     // clobber a post-submit edit. The busy state itself is

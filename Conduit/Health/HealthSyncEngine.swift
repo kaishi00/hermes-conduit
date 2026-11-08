@@ -147,6 +147,9 @@ final class HealthSyncEngine: ObservableObject {
     @Published private(set) var state: HealthSyncState
     @Published private(set) var isSyncing = false
     @Published private(set) var lastError: String?
+    /// What to do when the last turn-off's delete met a profile that turned
+    /// the plugin off (nothing was deleted), or nil (issue 1671).
+    private(set) var deleteRefusedPluginOff: String?
 
     let source: HealthDataSource
     private let store: HealthSyncStateStore
@@ -263,15 +266,19 @@ final class HealthSyncEngine: ObservableObject {
         // and the host alone rather than wipe or save under a new one.
         guard readStateIfNeeded() else { return false }
         var deleted = false
+        deleteRefusedPluginOff = nil
         if let request {
             do {
                 _ = try await request("\(Self.base)/wipe", "POST", ["device_id": state.deviceID])
                 deleted = true
-            } catch DashboardTicketBridgeError.http(let status, _) where status == 404 {
+            } catch DashboardTicketBridgeError.http(let status, let detail)
+                        where status == 404 && !DashboardTicketBridgeError.isPluginOffDetail(detail) {
                 // No health sync on this host any more: nothing left to delete.
+                // A profile that turned the plugin off deleted nothing.
                 deleted = true
             } catch {
                 lastError = Self.describe(error)
+                deleteRefusedPluginOff = DashboardTicketBridgeError.pluginOffDetail(of: error)
             }
         }
         state.startOver()
@@ -328,8 +335,10 @@ final class HealthSyncEngine: ObservableObject {
                 state.pause = .signInRequired
                 return .paused(.signInRequired)
             case .http(let status, _) where status == 404:
-                state.pause = .pluginMissing
-                return .paused(.pluginMissing)
+                // A profile that turned the plugin off says how to turn it on.
+                let pause = DashboardTicketBridgeError.pluginOffDetail(of: error).map(HealthSyncPause.pluginOff) ?? .pluginMissing
+                state.pause = pause
+                return .paused(pause)
             case .http(let status, let detail) where status == 409 && HostKeyConflict.isKeyLoss(detail):
                 // The host lost or replaced this phone's key (a wipe, a
                 // reinstall of the plugin's store): set it up again next pass.
@@ -580,7 +589,10 @@ private struct Session {
                 let page = try await engine.source.changes(stream, since: since, anchor: engine.state.anchors[stream.key],
                                                            limit: HealthSyncLimits.samplesPerQuery)
                 var batch = newBatch()
-                batch.events = page.added
+                // Years of Apple Health hold a few readings that end before
+                // they start or run for weeks: those stay here, never the
+                // batch with them (notifier issue 555).
+                batch.events = page.added.filter(\.fitsHost)
                 batch.deleted = page.deleted
                 if !batch.isEmpty { try await send(batch) }
                 engine.acknowledged { $0.anchors[stream.key] = page.anchor }

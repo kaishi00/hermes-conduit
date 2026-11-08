@@ -7,6 +7,9 @@ import Foundation
 /// file contents are read through Hermes' own `/api/fs/*` routes.
 final class WorkspaceFilesClient {
     static let capability = "workspace-files"
+    /// `GET /workspace/resolve` (plugin 0.132): where a file a reply names
+    /// by its name or a relative path is (issue 1809).
+    static let resolveCapability = "workspace-resolve"
     static let path = "/api/plugins/conduit_push/workspace"
 
     typealias Request = @MainActor (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
@@ -124,6 +127,25 @@ final class WorkspaceFilesClient {
     func upload(root: String, in folder: String, name: String, data: Data, replacing: Bool = false) async throws -> WorkspaceEntry? {
         try await change("upload", ["root": root, "path": folder, "name": name,
                                     "data": data.base64EncodedString(), "overwrite": replacing])
+    }
+
+    /// Where the file a chat's reply names as `path` (a bare name or a
+    /// relative path) is: the chat's folder, else the full path the chat's
+    /// own tool calls used for it. Nil when the host has no such file.
+    @MainActor
+    func resolve(path: String, sessionIDs: [String]) async throws -> String? {
+        guard let encoded = DashboardPath.encodedQueryComponent(path) else { return nil }
+        let ids = sessionIDs.compactMap { DashboardPath.encodedQueryComponent($0).map { "session_id=\($0)" } }
+        let route = DashboardPath.withProfile("\(Self.path)/resolve?" + (["path=\(encoded)"] + ids).joined(separator: "&"),
+                                             profile: profile)
+        let response = try await request(route, "GET", nil)
+        guard response["ok"] as? Bool == true else { throw Failure.malformed }
+        // `path: null` is the host's "no such file"; an answer without one
+        // is a failed lookup, which falls back to the chat's folder.
+        if response["path"] is NSNull { return nil }
+        guard let path = response["path"] as? String else { throw Failure.malformed }
+        let found = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        return found.isEmpty ? nil : found
     }
 
     // MARK: - Requests
@@ -259,9 +281,11 @@ struct WorkspaceReveal: Equatable, Identifiable {
 
 /// File paths in a reply, made tappable: they open in the Folder tab.
 /// Inline code that names a path (`docs/guide.md`, `/srv/app/main.py`,
-/// `~/notes.txt`), and in plain text only a path with a folder and a file
-/// type (`meta-app-review/tutorial.md`), so ordinary words with a slash
-/// ("and/or") stay text.
+/// `~/notes.txt`, `src/app/`), and in plain text only a path with a folder
+/// and a file type (`meta-app-review/tutorial.md`), so ordinary words with a
+/// slash ("and/or") stay text. A name like `owner/repo` (a GitHub
+/// repository, a Docker image, a model) isn't a path: drawn as a link, it
+/// opened the Folder on a file the host never had (issue 1585).
 enum WorkspacePathLinks {
     static let maxLength = 512
 
@@ -271,6 +295,59 @@ enum WorkspacePathLinks {
         guard isPathShaped(text, needsFolder: false) else { return nil }
         return ConduitAppLink.file(path: text).url
     }
+
+    /// The Folder link for a Markdown link whose destination is a file on
+    /// the Hermes host (`[report](clients/acme/report.xlsx)`, `/srv/a.md`,
+    /// `~/a.md`, `file:///srv/a.md`), or nil for a web address, an anchor or
+    /// any other scheme. Without it the system would look for the file on
+    /// this device (issue 1809).
+    static func url(forLink link: URL) -> URL? {
+        guard let path = hostPath(forLink: link) else { return nil }
+        return ConduitAppLink.file(path: path).url
+    }
+
+    private static func hostPath(forLink link: URL) -> String? {
+        let scheme = link.scheme?.lowercased()
+        var path: String
+        if scheme == "file" {
+            // `file:///srv/a.md`; a `file://host/…` names another machine.
+            guard link.host.map({ $0.isEmpty || $0 == "localhost" }) ?? true else { return nil }
+            path = link.path
+            // `file:///C:/work/a.md` on a Windows host.
+            if path.range(of: #"^/[A-Za-z]:/"#, options: .regularExpression) != nil { path.removeFirst() }
+        } else if scheme == nil || (scheme?.count == 1 && scheme?.first?.isLetter == true) {
+            // No scheme, or a Windows drive read as one (`C:/work/a.md`).
+            let raw = link.absoluteString
+            guard !raw.hasPrefix("#"), !raw.hasPrefix("?"), !raw.hasPrefix("//") else { return nil }
+            // A `#L12` or `?` after the file isn't part of its name.
+            let cut = raw.firstIndex(where: { $0 == "#" || $0 == "?" }) ?? raw.endIndex
+            path = String(raw[..<cut])
+            path = path.removingPercentEncoding ?? path
+        } else {
+            return nil
+        }
+        path = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty, path.count <= maxLength, !path.contains("://"),
+              path.rangeOfCharacter(from: .newlines) == nil,
+              path.rangeOfCharacter(from: .letters) != nil else { return nil }
+        if scheme == "file" { return path }
+        let rooted = path.hasPrefix("/") || path.hasPrefix("~/") || path.hasPrefix("./") || path.hasPrefix("../")
+            || path.range(of: #"^[A-Za-z]:[\\/]"#, options: .regularExpression) != nil
+        if rooted { return path }
+        // A relative link needs a file type, so `[docs](guide)` or
+        // `[site](example.com/page)` stay as they were.
+        let name = (path as NSString).lastPathComponent
+        let ext = (name as NSString).pathExtension.lowercased()
+        guard !ext.isEmpty, fileTypes.contains(ext), name.count > ext.count + 1 else { return nil }
+        // `example.com/a.html` is a site written without its scheme.
+        if path.contains("/"), startsWithWebHost(path) { return nil }
+        return path
+    }
+
+    /// Endings that make a link's first segment a web host, not a folder.
+    private static let webSuffixes: Set<String> = [
+        "com", "org", "net", "io", "dev", "app", "ai", "co", "edu", "gov", "me", "info", "uk", "de",
+    ]
 
     /// Ranges of plain text that name a path, with each one's link.
     static func links(inText text: String) -> [(range: NSRange, url: URL)] {
@@ -299,6 +376,9 @@ enum WorkspacePathLinks {
               !text.contains("://"), !text.hasPrefix("@"), !text.contains("`"),
               text.rangeOfCharacter(from: .letters) != nil else { return false }
         let hasFolder = text.contains("/") && text != "/" && !text.hasSuffix("//")
+        // `vercel.app/docs` or `example.com/a.html` is a site written
+        // without its scheme.
+        if hasFolder, startsWithWebHost(text) { return false }
         let name = (text as NSString).lastPathComponent
         let ext = (name as NSString).pathExtension.lowercased()
         let hasType = !ext.isEmpty && fileTypes.contains(ext) && name.count > ext.count + 1
@@ -306,10 +386,22 @@ enum WorkspacePathLinks {
         // In code: a folder path (`src/app/`), or a file name with a known type.
         if hasType { return true }
         guard hasFolder else { return false }
-        // `a/b` in code still needs to look like a path rather than a ratio
-        // or a command option.
-        return text.hasPrefix("/") || text.hasPrefix("~/") || text.hasPrefix("./") || text.hasPrefix("../")
-            || text.split(separator: "/").count >= 2 && text.range(of: #"^[\w.~-]+(/[\w.@+-]+)+/?$"#, options: .regularExpression) != nil
+        // A folder in code with no file type: rooted (`/srv/app`, `~/notes`,
+        // `./out`), or relative and shaped like a path rather than a ratio
+        // or a command option, with a trailing slash (`src/app/`) or three
+        // parts (`src/app/models`). Two bare parts (`coleam00/excalidraw-skill`,
+        // `github/awesome-copilot`) name a repository, an image or a model
+        // far more often than a folder (issue 1585).
+        if text.hasPrefix("/") || text.hasPrefix("~/") || text.hasPrefix("./") || text.hasPrefix("../") { return true }
+        guard text.range(of: #"^[\w.~-]+(/[\w.@+-]+)+/?$"#, options: .regularExpression) != nil else { return false }
+        return text.hasSuffix("/") || text.split(separator: "/").count >= 3
+    }
+
+    /// Whether a path's first part is a web host (`example.com/…`).
+    private static func startsWithWebHost(_ path: String) -> Bool {
+        guard let first = path.split(separator: "/", omittingEmptySubsequences: false).first.map(String.init),
+              first.contains("."), !first.hasPrefix(".") else { return false }
+        return webSuffixes.contains((first as NSString).pathExtension.lowercased())
     }
 
     /// Nil only if the pattern were mistyped: plain text then links nothing.

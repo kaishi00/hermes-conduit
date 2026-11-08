@@ -54,6 +54,55 @@ final class AppStateReadAloudTests: XCTestCase {
         harness.readAloudController.stop()
     }
 
+    func testReadAloudIsRefusedDuringACallFromHermes() {
+        let harness = makeHarness(snapshot: ttsOnlySnapshot)
+        let messageA = ChatMessage(id: "msg-a", role: .assistant, content: "Response A", timestamp: "1")
+        XCTAssertNil(harness.appState.readAloudUnavailableReason)
+        let voiceStops = harness.voicePlayback.stopCount
+
+        // Issue 1770: a call's microphone would hear Read Aloud as the user.
+        harness.appState.isNativeHermesCallActive = true
+        harness.appState.toggleReadAloud(message: messageA)
+
+        XCTAssertEqual(harness.appState.readAloudUnavailableReason, "Read aloud can't play during a call.")
+        XCTAssertEqual(harness.appState.errorMessage, "Read aloud can't play during a call.")
+        XCTAssertEqual(harness.readAloudController.state, .idle)
+        XCTAssertEqual(harness.readAloudGateway.openCount, 0)
+        XCTAssertEqual(harness.voicePlayback.stopCount, voiceStops, "the call's voice is left alone")
+        // The gateway stays: the refusal is about the call, not Hermes.
+        harness.appState.refreshReadAloudGateway()
+        XCTAssertNotNil(harness.appState.messageReadAloudController.gateway)
+
+        harness.appState.isNativeHermesCallActive = false
+        XCTAssertNil(harness.appState.readAloudUnavailableReason)
+    }
+
+    func testACallFromHermesStartingEndsAReadingStillOpening() {
+        let harness = makeHarness(snapshot: ttsOnlySnapshot)
+        let messageA = ChatMessage(id: "msg-a", role: .assistant, content: "Response A", timestamp: "1")
+        harness.appState.toggleReadAloud(message: messageA)
+        XCTAssertEqual(harness.readAloudController.state, .preparing(messageID: "msg-a"))
+
+        // Issue 1770: it holds no audio yet, so CallKit wouldn't interrupt it.
+        harness.appState.setNativeHermesCallActive(true)
+
+        XCTAssertEqual(harness.readAloudController.state, .idle)
+        harness.appState.setNativeHermesCallActive(false)
+    }
+
+    func testSpeechTestsRefuseToRunDuringACall() async {
+        let harness = makeHarness(snapshot: ttsOnlySnapshot)
+        harness.appState.isNativeHermesCallActive = true
+
+        let speech = await harness.appState.runVoiceTTSTest()
+        let transcription = await harness.appState.runVoiceASRTest()
+
+        XCTAssertFalse(speech.passed)
+        XCTAssertFalse(transcription.passed)
+        XCTAssertEqual(speech, .failure("End the call to run this test."))
+        harness.appState.isNativeHermesCallActive = false
+    }
+
     func testStoppingActiveReadAloudDoesNotResetVoiceController() async {
         let harness = makeHarness(snapshot: ttsOnlySnapshot)
         let messageA = ChatMessage(id: "msg-a", role: .assistant, content: "Response A", timestamp: "1")

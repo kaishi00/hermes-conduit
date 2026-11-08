@@ -225,6 +225,9 @@ struct LiveVoiceCallTimeline<Line: View>: View {
         jobs: [VoiceBackgroundJob],
         screens: [VoiceScreenCard] = []
     ) -> [Item] {
+        // Most calls start no job and show no card: just the lines, with no
+        // index to build (issue 1960).
+        if jobs.isEmpty, screens.isEmpty { return transcript.map(Item.line) }
         var positions: [UUID: Int] = [:]
         for (index, entry) in transcript.enumerated() where positions[entry.id] == nil {
             positions[entry.id] = index
@@ -449,7 +452,8 @@ struct LiveVoiceWaitingPanel: View {
     }
 
     static func waits(_ job: VoiceBackgroundJob) -> Bool {
-        guard job.status == .needsInput else { return false }
+        // One the call let go of (its chat deleted, issue 1797) isn't the call's to answer.
+        guard job.status == .needsInput, !job.isDetachedThreadTurn else { return false }
         return job.waitingApproval != nil || job.waitingQuestion.flatMap { HermesCallWaiting(clarify: $0)?.openQuestion } != nil
     }
 }

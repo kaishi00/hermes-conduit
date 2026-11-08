@@ -177,13 +177,14 @@ extension AppState {
 
     // MARK: - Asking
 
-    /// Asks the plugin; nil when it can't answer (no plugin, an error, too
-    /// slow), which shows nothing.
-    func askPredictive(_ body: [String: Any], profile: String, wait: TimeInterval) async -> [String: Any]? {
-        if let predictiveSender { return try? await predictiveSender(body) }
-        guard let bridge = dashboardTicketBridge else { return nil }
+    /// Asks the plugin. It throws when it can't answer (no connection, an
+    /// error, too slow): guesses then show nothing, and a follow-up check
+    /// reads the error (checkPredictiveFollowUp).
+    func askPredictive(_ body: [String: Any], profile: String, wait: TimeInterval) async throws -> [String: Any] {
+        if let predictiveSender { return try await predictiveSender(body) }
+        guard let bridge = dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         let path = DashboardPath.withProfile(Predictive.path, profile: profile, parameter: notifierPlugin.dashboardProfileParameter)
-        return try? await bridge.requestJSON(
+        return try await bridge.requestJSON(
             path: path, method: "POST", body: body,
             timeoutMilliseconds: Int((wait + 2) * 1_000)
         )
@@ -202,7 +203,7 @@ extension AppState {
         let profile = activeProfile
         let generation = predictiveGeneration
         Task { [weak self] in
-            guard let answer = await self?.askPredictive(body, profile: profile, wait: Predictive.repliesWait),
+            guard let answer = try? await self?.askPredictive(body, profile: profile, wait: Predictive.repliesWait),
                   let self, self.predictiveGeneration == generation, Predictive.repliesEnabled(),
                   self.predictiveAnchor == anchor else { return }
             let guesses = Array(Predictive.guesses(answer["replies"]).prefix(count))
@@ -252,6 +253,7 @@ extension AppState {
         }
         guard Predictive.pauseEnabled(), predictiveIsServed, !isEmpty, !text.hasPrefix("/"),
               text.trimmingCharacters(in: .whitespacesAndNewlines).count >= Predictive.minimumDraftCharacters,
+              Predictive.fitsQuestion(text),
               let sessionID = activeSessionId, !sessionID.isEmpty,
               predictiveDraftAsked?.sessionID != sessionID || predictiveDraftAsked?.draft != text,
               !predictive.hiddenSessions.contains(sessionID), !isBusy, !turnState.isRunning,
@@ -273,8 +275,10 @@ extension AppState {
     /// Asks about `draft` once. The answer counts while it comes within
     /// the wait and the draft still starts with what was asked.
     private func askAboutDraft(_ draft: String, sessionID: String) {
-        // Asked once per draft in each chat.
-        guard predictiveDraftAsked?.sessionID != sessionID || predictiveDraftAsked?.draft != draft else { return }
+        // Over the plugin's limit, Refresh included (issue 1670). Asked once
+        // per draft in each chat.
+        guard Predictive.fitsQuestion(draft),
+              predictiveDraftAsked?.sessionID != sessionID || predictiveDraftAsked?.draft != draft else { return }
         predictiveDraftAsked = (sessionID, draft)
         let body = Predictive.body(
             kind: .draft, sessionID: sessionID, count: Predictive.replyCount(), draft: draft,
@@ -286,7 +290,7 @@ extension AppState {
         // Not cancelled by more typing: an answer for the start of the draft
         // still offers the rest of a continuation the user is typing.
         Task { [weak self] in
-            guard let answer = await self?.askPredictive(body, profile: profile, wait: Predictive.draftWait),
+            guard let answer = try? await self?.askPredictive(body, profile: profile, wait: Predictive.draftWait),
                   let self, self.predictiveGeneration == generation, self.activeSessionId == sessionID,
                   Date().timeIntervalSince(asked) <= Predictive.draftWait + 1 else { return }
             self.predictive.showDraftGuesses(
@@ -315,14 +319,21 @@ extension AppState {
               // A follow-up still waiting its turn here: another can't be
               // told from it.
               predictiveFollowUpTurn?.sessionID != anchor.sessionID else { return }
-        let due = predictiveFollowUp.nextCheck
-            ?? predictiveFollowUp.idleSince.addingTimeInterval(TimeInterval(Predictive.followUpDelay()))
+        let due = predictiveFollowUpDue
         predictiveFollowUpTask?.cancel()
         predictiveFollowUpTask = Task { [weak self] in
             let wait = max(0, due.timeIntervalSinceNow)
             do { try await Task.sleep(for: .seconds(wait)) } catch { return }
             await self?.checkPredictiveFollowUp(for: anchor)
         }
+    }
+
+    /// When the next check is due: the chosen wait from when the chat was
+    /// last idle again, or the time Hermes (or a busy host) set, whichever is
+    /// later, so writing or coming back meanwhile starts the wait over.
+    var predictiveFollowUpDue: Date {
+        let idleDue = predictiveFollowUp.idleSince.addingTimeInterval(TimeInterval(Predictive.followUpDelay()))
+        return predictiveFollowUp.nextCheck.map { max($0, idleDue) } ?? idleDue
     }
 
     func stopPredictiveFollowUpClock() {
@@ -337,7 +348,7 @@ extension AppState {
 
     /// One check: asks whether Hermes wants a turn, with what Conduit
     /// measured, and sends the hidden turn or waits as Hermes asked.
-    private func checkPredictiveFollowUp(for anchor: PredictiveStore.Anchor) async {
+    func checkPredictiveFollowUp(for anchor: PredictiveStore.Anchor) async {
         guard predictiveAnchor == anchor, predictiveFollowUp.anchor == anchor,
               Predictive.followUpEnabled(),
               predictive.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -357,15 +368,33 @@ extension AppState {
             language: ChatStepSummaries.languageName, model: Predictive.model(), wait: Predictive.turnWait
         )
         let generation = predictiveGeneration
-        let answer = await askPredictive(body, profile: activeProfile, wait: Predictive.turnWait)
+        let asked: Result<[String: Any], Error>
+        do {
+            asked = .success(try await askPredictive(body, profile: activeProfile, wait: Predictive.turnWait))
+        } catch {
+            asked = .failure(error)
+        }
         // Still the same reply on screen, nobody writing, nothing started,
         // the switch still on and the chat not hidden meanwhile.
         guard !Task.isCancelled, predictiveGeneration == generation, predictiveAnchor == anchor, predictiveFollowUp.anchor == anchor,
               Predictive.followUpEnabled(), !predictive.hiddenSessions.contains(anchor.sessionID),
               predictive.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        guard let answer else {
-            // A failed check isn't retried for this reply.
-            predictiveFollowUp.stopped = true
+        let answer: [String: Any]
+        switch asked {
+        case .success(let value):
+            answer = value
+        case .failure(let error):
+            // The host busy for a while (a guess for this chat still running,
+            // too many at once), too slow, or the connection down: asked again
+            // after the shortest wait Hermes may ask for, within the reply's
+            // checks. Anything else (the chat closed on the host, a refusal)
+            // won't change for this reply (#1669).
+            if DictationUploadRetry.isTransient(error), predictiveFollowUp.checks < Predictive.maximumChecks {
+                predictiveFollowUp.nextCheck = Date().addingTimeInterval(TimeInterval(Predictive.askAgainRange.lowerBound))
+                startPredictiveFollowUpClock(for: anchor)
+            } else {
+                predictiveFollowUp.stopped = true
+            }
             return
         }
         let decision = Predictive.turnAnswer(answer)

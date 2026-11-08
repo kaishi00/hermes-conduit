@@ -26,6 +26,12 @@ struct TranscriptCellEnvironment: Equatable {
         "markupDrawsInPlace",
         "markdownReferences",
         "chatPinReplyAction",
+        "richChecklistContext",
+        "richChecklistInChat",
+        "richCardActions",
+        // The call screen's control row sets it for its own buttons; no
+        // transcript row reads it.
+        "liveVoiceCallButtonSlotWidth",
     ]
 
     // Conduit's
@@ -45,9 +51,16 @@ struct TranscriptCellEnvironment: Equatable {
     var gatewayMediaFiles: GatewayMediaDataURLResolver?
     var v2Shell: V2ShellContext
     var v2OpenBeside: V2OpenBeside?
+    var botZoomNamespace: Namespace.ID?
+    var botsHomeCovered: Bool
+    var botChatZoomed: Bool
+    var rosterRowsInScroll: Bool
     var v2TabBarClearance: CGFloat
+    /// The side safe area the chat's column takes (#1900); no row reads it yet.
+    var windowSideInsets: WindowSideInsets?
     var v2ComposerRests: Bool
     var groupMemberTints: [String: CustomAccentColor]
+    var groupRoomLooks: RoomLooks
     var conduitAccent: ConduitAccent
     var settingsGlowTint: Color?
     // SwiftUI's that the chat or the app sets (traits carry the rest)
@@ -81,9 +94,15 @@ struct TranscriptCellEnvironment: Equatable {
         gatewayMediaFiles = values.gatewayMediaFiles
         v2Shell = values.v2Shell
         v2OpenBeside = values.v2OpenBeside
+        botZoomNamespace = values.botZoomNamespace
+        botsHomeCovered = values.botsHomeCovered
+        botChatZoomed = values.botChatZoomed
+        rosterRowsInScroll = values.rosterRowsInScroll
         v2TabBarClearance = values.v2TabBarClearance
+        windowSideInsets = values.windowSideInsets
         v2ComposerRests = values.v2ComposerRests
         groupMemberTints = values.groupMemberTints
+        groupRoomLooks = values.groupRoomLooks
         conduitAccent = values.conduitAccent
         settingsGlowTint = values.settingsGlowTint
         locale = values.locale
@@ -120,9 +139,15 @@ struct TranscriptCellEnvironment: Equatable {
             && lhs.gatewayMediaFiles === rhs.gatewayMediaFiles
             && lhs.v2Shell == rhs.v2Shell
             && lhs.v2OpenBeside == rhs.v2OpenBeside
+            && lhs.botZoomNamespace == rhs.botZoomNamespace
+            && lhs.botsHomeCovered == rhs.botsHomeCovered
+            && lhs.botChatZoomed == rhs.botChatZoomed
+            && lhs.rosterRowsInScroll == rhs.rosterRowsInScroll
             && lhs.v2TabBarClearance == rhs.v2TabBarClearance
+            && lhs.windowSideInsets == rhs.windowSideInsets
             && lhs.v2ComposerRests == rhs.v2ComposerRests
             && lhs.groupMemberTints == rhs.groupMemberTints
+            && lhs.groupRoomLooks == rhs.groupRoomLooks
             && lhs.conduitAccent == rhs.conduitAccent
             && lhs.settingsGlowTint == rhs.settingsGlowTint
             && lhs.locale == rhs.locale
@@ -174,9 +199,15 @@ private struct TranscriptCellConduitEnvironmentMore: ViewModifier {
             .environment(\.gatewayMediaFiles, values.gatewayMediaFiles)
             .environment(\.v2Shell, values.v2Shell)
             .environment(\.v2OpenBeside, values.v2OpenBeside)
+            .environment(\.botZoomNamespace, values.botZoomNamespace)
+            .environment(\.botsHomeCovered, values.botsHomeCovered)
+            .environment(\.botChatZoomed, values.botChatZoomed)
+            .environment(\.rosterRowsInScroll, values.rosterRowsInScroll)
             .environment(\.v2TabBarClearance, values.v2TabBarClearance)
+            .environment(\.windowSideInsets, values.windowSideInsets)
             .environment(\.v2ComposerRests, values.v2ComposerRests)
             .environment(\.groupMemberTints, values.groupMemberTints)
+            .environment(\.groupRoomLooks, values.groupRoomLooks)
             .environment(\.conduitAccent, values.conduitAccent)
             .environment(\.settingsGlowTint, values.settingsGlowTint)
     }

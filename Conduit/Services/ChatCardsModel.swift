@@ -61,6 +61,12 @@ final class ChatCardsModel: ObservableObject {
     private var transcriptPlan: AgentPlan?
     /// The transcript row the shown plan ends at; nil for the server's.
     private var planRowID: String?
+    /// A workstream's own checklist (`work_progress`), when the open chat
+    /// is one: it is the plan that chat shows, ahead of Hermes' `todo`.
+    private var workPlan: AgentPlan?
+    /// The open chat's work checklist has been read once, so a change to
+    /// it after that is news.
+    private var workPlanRead = false
     private var planTimer: Task<Void, Never>?
 
     init(
@@ -87,6 +93,8 @@ final class ChatCardsModel: ObservableObject {
         serverPlan = nil
         transcriptPlan = nil
         planRowID = nil
+        workPlan = nil
+        workPlanRead = false
         planTimer?.cancel()
         plan = nil
         planExpanded = false
@@ -106,8 +114,33 @@ final class ChatCardsModel: ObservableObject {
         // The plan the transcript showed outranks the snapshot, even once its
         // rows have left the loaded page: a resume may carry no `todo_state`
         // (before Hermes 0.21) or an older one.
-        guard planRowID == nil else { return }
-        present(transcriptPlan ?? serverPlan, rowTimestamp: nil)
+        guard planRowID == nil, workPlan == nil else { return }
+        present(transcriptPlan ?? serverPlan, live: false)
+    }
+
+    /// The open chat is no longer a workstream the bot's work lists (it
+    /// was resolved and left the list): its checklist goes, and the chat's
+    /// own plan shows again.
+    func clearWorkPlan() {
+        guard workPlan != nil else { return }
+        workPlan = nil
+        present(transcriptPlan ?? serverPlan, live: false)
+    }
+
+    /// The open chat is a workstream's, and this is its checklist as the
+    /// Work panel reads it (nil once it keeps none). The first read is
+    /// the chat opening; a later change is news, as a `todo` row is.
+    func applyWorkPlan(_ checklist: AgentPlan?, for chat: ChatCardsChat?) {
+        show(chat)
+        guard self.chat != nil else { return }
+        let live = workPlanRead
+        workPlanRead = true
+        workPlan = checklist?.isEmpty == false ? checklist : nil
+        if let workPlan {
+            present(workPlan, live: live)
+        } else {
+            present(transcriptPlan ?? serverPlan, live: false)
+        }
     }
 
     /// The transcript on screen changed.
@@ -151,18 +184,23 @@ final class ChatCardsModel: ObservableObject {
             // last plan they showed stands, else the resume snapshot.
             if planRowID != nil {
                 planRowID = nil
-                present(transcriptPlan ?? serverPlan, rowTimestamp: nil)
+                guard workPlan == nil else { return }
+                present(transcriptPlan ?? serverPlan, live: false)
             }
             return
         }
         transcriptPlan = latest.plan
+        guard workPlan == nil else {
+            planRowID = latest.messageID
+            return
+        }
         guard latest.messageID != planRowID || latest.plan != plan else { return }
         planRowID = latest.messageID
-        present(latest.plan, rowTimestamp: latest.timestamp)
+        present(latest.plan, live: isLive(latest.timestamp))
     }
 
-    /// `rowTimestamp` nil: read when the chat opened, not news.
-    private func present(_ next: AgentPlan?, rowTimestamp: String?) {
+    /// `live` false: read when the chat opened, not news.
+    private func present(_ next: AgentPlan?, live: Bool) {
         let previous = plan
         guard next != previous else { return }
         guard let next, !next.isEmpty else {
@@ -172,7 +210,6 @@ final class ChatCardsModel: ObservableObject {
             planRetired = false
             return
         }
-        let live = rowTimestamp.map(isLive) ?? false
         plan = next
         if !next.isFinished { planRetired = false }
         if pinsPlan {

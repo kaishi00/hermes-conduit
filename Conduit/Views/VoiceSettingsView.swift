@@ -729,7 +729,9 @@ struct VoiceSettingsView: View {
                     Text("Microphone input")
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
-                    VoiceInputLevelMeter(level: conversationController.microphoneLevel, isActive: true)
+                    VoiceMicrophoneLevelReader(meter: conversationController.microphoneMeter) { level in
+                        VoiceInputLevelMeter(level: level, isActive: true)
+                    }
                         .frame(height: 20)
                 }
                 .accessibilityElement(children: .combine)
@@ -860,8 +862,8 @@ struct VoiceSettingsView: View {
                 liveModeKey(Self.xAIKeys, note: AppLocalization.string("Not needed when your Hermes server is signed in with SuperGrok."))
             }
         case .local:
-            if localLive != nil {
-                LocalLiveSettingsSection(service: service, agent: true)
+            if let localLive {
+                LocalLiveSettingsSection(service: service, agent: true, model: localLive)
             }
         }
     }
@@ -1225,27 +1227,33 @@ struct VoiceSettingsView: View {
     /// The big button beside this profile's chats, or the app's choice.
     private func chatVoiceButtonSection(_ model: ChatVoiceButtonSettingsModel) -> some View {
         ConduitSettingsSection(title: AppLocalization.string("Chat voice button"), symbol: "mic.circle", tint: .conduitAccent) {
-            Picker("Chat voice button", selection: Binding(
-                get: { chatVoiceButtonOverride },
-                set: { requested in
+            Text("What the round button beside this profile's chats does. App setting follows Settings > Appearance.")
+                .settingsCaption()
+            ConduitMenuPicker(
+                value: chatVoiceButtonOverride,
+                choices: Self.chatVoiceButtonChoices(appChoice: model.appChoice),
+                onSelect: { requested in
+                    Haptics.selection()
                     let previous = chatVoiceButtonOverride
                     chatVoiceButtonOverride = requested
                     if !model.setChoice(requested) {
                         chatVoiceButtonOverride = previous
                     }
                 }
-            )) {
-                Text(AppLocalization.string("App setting (\(model.appChoice.title))"))
-                    .tag(ChatVoiceButtonAction?.none)
-                ForEach(ChatVoiceButtonAction.offered, id: \.self) { action in
-                    Text(action.title).tag(Optional(action))
-                }
+            ) {
+                Text("Tap").foregroundStyle(.secondary)
             }
             .onChange(of: model.choice) { _, newValue in chatVoiceButtonOverride = newValue }
-            Text("What the round button beside this profile's chats does. App setting follows Settings > Appearance.")
-                .scaledFont(.caption)
-                .foregroundStyle(.secondary)
         }
+    }
+
+    /// The app's choice first, named, then each button action.
+    static func chatVoiceButtonChoices(appChoice: ChatVoiceButtonAction) -> [(id: ChatVoiceButtonAction?, title: String)] {
+        let appSetting: (id: ChatVoiceButtonAction?, title: String) = (
+            id: nil,
+            title: AppLocalization.string("App setting (\(appChoice.title))")
+        )
+        return [appSetting] + ChatVoiceButtonAction.offered.map { (id: Optional($0), title: $0.title) }
     }
 
     private var conversationSection: some View {
@@ -1322,7 +1330,7 @@ struct VoiceSettingsView: View {
                     }
                 ))
                 .onChange(of: speakerTalkOver.enabled) { _, newValue in speakerTalkOverEnabled = newValue }
-                Text("Experimental. Keeps the microphone open while Hermes reads its reply on the phone's speaker or in the car, with iOS echo cancellation, so you can speak over it to start a new turn. Headphones and AirPods always allow this. Turn it off if Hermes keeps cutting itself off. Shared with Gemini Live and Grok Live. Applies to the next conversation.")
+                Text(AppLocalization.string("Experimental. Keeps the microphone open while Hermes reads its reply on the phone's speaker or in the car, with iOS echo cancellation, so you can speak over it to start a new turn. Headphones and AirPods always allow this. Turn it off if Hermes keeps cutting itself off. Shared with Gemini Live and Grok Live. Applies to the next conversation.") + " " + AppLocalization.string("Calls from Hermes don't use it, so their voice starts right away."))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1430,7 +1438,10 @@ struct VoiceSettingsView: View {
             Label(AppLocalization.string("Replies are spoken with the voices built into iOS, on this iPhone. Nothing to set up or pay for on Hermes."), systemImage: "iphone")
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
-            Text(AppLocalization.string("For a more natural voice, download an Enhanced or Premium voice in iPhone Settings > Accessibility: search Settings for “Voices” to find them. Conduit uses the best one installed for the reply's language."))
+            IPhoneVoiceSettingsView(onPickedAppLanguageVoice: {
+                if actions.runTTSTest != nil, !isRunningTest { runTest(kind: .tts) }
+            })
+            Text(AppLocalization.string("Conduit uses the best voice installed for the reply's language, or the one you pick. Siri's own voices aren't open to apps, and Premium voices come closest: search iPhone Settings for “Voices” to download them."))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }

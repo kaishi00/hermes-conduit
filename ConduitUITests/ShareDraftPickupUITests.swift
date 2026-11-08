@@ -58,7 +58,7 @@ final class ShareDraftPickupUITests: XCTestCase {
     }
 
     private func launchApp(mode: String) -> XCUIApplication {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launchArguments += [
             Identity.connectedDashboard, "https://conduit-ui-test.invalid",

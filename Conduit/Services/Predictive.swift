@@ -90,6 +90,19 @@ enum Predictive {
 
     /// A draft shorter than this says too little to guess from.
     static let minimumDraftCharacters = 3
+
+    /// The plugin takes a draft of at most this many characters, counted
+    /// as Python counts them (Unicode scalars, not the graphemes Swift's
+    /// `count` gives: one family emoji is 1 Character but 7 scalars).
+    static let maximumDraftScalars = 2_000
+
+    /// Whether a draft is short enough to ask about. A longer one isn't
+    /// asked about rather than cut: continuations start where the draft
+    /// stops, so a guess for its first part couldn't follow the rest
+    /// (issue 1670).
+    static func fitsQuestion(_ draft: String) -> Bool {
+        draft.unicodeScalars.count <= maximumDraftScalars
+    }
     /// Follow-up checks for one reply; "not again" ends them sooner.
     static let maximumChecks = 4
     /// The plugin holds "ask again" to this window too (predict.py).
@@ -159,7 +172,7 @@ enum Predictive {
             "model": model.rawValue,
             "wait_s": wait,
         ]
-        if let draft { body["draft"] = String(draft.prefix(2_000)) }
+        if let draft { body["draft"] = draft }
         if let facts {
             var measured: [String: Any] = [
                 "last_reply_s": max(0, facts.lastReplySeconds),
@@ -259,6 +272,24 @@ final class PredictiveStore: ObservableObject {
     @Published private(set) var answeredDraft: String?
     /// The composer's draft as it stands.
     @Published private(set) var draft = ""
+    /// Photos, files or a screenshot staged in the composer, which a send
+    /// from a card would take along: its send and tap buttons wait, as for
+    /// a draft.
+    @Published private(set) var hasStagedAttachments = false
+
+    /// Nothing in the composer that a message sent in its place would take
+    /// along: no words, nothing staged.
+    var isEmpty: Bool {
+        draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !hasStagedAttachments
+    }
+
+    func stagedAttachmentsChanged(_ staged: Bool) {
+        guard staged != hasStagedAttachments else { return }
+        hasStagedAttachments = staged
+        // Replies coming back into view start their tap guard again, so a
+        // tap meant for what was there doesn't send one.
+        if !staged { shownAt = Date() }
+    }
     /// Typing since the last guesses: the row folds to its ✦ button.
     @Published private(set) var isFolded = false
     /// The row hidden in these chats with "Hide for this chat".
@@ -366,6 +397,7 @@ final class PredictiveStore: ObservableObject {
         clear()
         forgetFollowUps()
         draft = ""
+        // What's staged stays the composer's: it reports it again on any change.
     }
 
     /// Whether a tap now would be on a row that only just appeared.
@@ -416,7 +448,8 @@ struct PredictiveFollowUpState {
     /// The reply the checks are for; another reply starts over.
     var anchor: PredictiveStore.Anchor?
     var checks = 0
-    /// Hermes said "not again", the checks ran out, or one failed.
+    /// Hermes said "not again", the checks ran out, or one failed in a way
+    /// that won't change for this reply (a busy host is asked again).
     var stopped = false
     /// When the next check is due, as Hermes asked; nil: the first wait.
     var nextCheck: Date?

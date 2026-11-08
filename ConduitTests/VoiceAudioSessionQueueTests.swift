@@ -170,6 +170,7 @@ private final class FakeAudioSessionBackend: VoiceAudioSessionBackend, @unchecke
         case activate
         case deactivate(AVAudioSession.SetActiveOptions)
         case speaker
+        case clearSpeaker
     }
 
     private let lock = NSLock()
@@ -213,6 +214,10 @@ private final class FakeAudioSessionBackend: VoiceAudioSessionBackend, @unchecke
 
     func overrideOutputToSpeaker() throws {
         record(.speaker)
+    }
+
+    func clearOutputOverride() throws {
+        record(.clearSpeaker)
     }
 
     private func record(_ op: Op) {

@@ -41,13 +41,14 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 
 - Streaming replies with Markdown, highlighted code, math, Mermaid diagrams and task lists
 - Thinking, tool calls and each turn's steps, shown live or folded away; delegated-agent progress
-- Map, place, travel, media, contact and info cards that Hermes draws in the chat
+- Map, place, travel, media, contact and info cards that Hermes draws in the chat, and diff cards for the changes it shows you (a review, a commit, a config): files with their +added −removed counts in the chat, and a sheet with every file's colored lines, line numbers and changed words
+- HTML pages Hermes draws with `::preview` (charts, small dashboards) show in the reply up to 900 points tall, their foot fading when there's more; tap one to open it full screen, where you can touch and scroll it. A page's `window.hermes.send` answers `undelivered`: Conduit doesn't send prompts from a page
 - Answer Hermes' questions with a tap, or in a short form when it needs several details: fill in what you know and leave the rest blank
 - Attach photos, camera shots and any file, or drag them onto a chat (Finder on a Mac, Files on an iPad); a long paste becomes a text attachment you can open, edit or put back as text; quote a message, react to it, copy it
 - Open a picture full screen and swipe through the chat's pictures (or Artifacts' or a folder's): pinch or double-tap to zoom, swipe down to close, share or save
 - Steer, queue or stop a running turn; context meter; slash commands
-- Branch, pin (in the order you set), archive and delete sessions; project chats, with a dot on a project that holds an unread reply; Artifacts browser for every file and page Hermes made
-- Browse the chat's folder and your projects' folders beside Artifacts: preview and edit files, search names and contents, make, rename, move and delete files, upload from the phone, and tap a file path in a reply to open it (the folder's search and changes need the plugin)
+- Branch, pin (in the order you set), archive and delete sessions; project chats, with a dot on a project that holds an unread reply, and a project's page gathering every profile's chats in its folder with a filter by profile; make a project from the Projects heading's +, from a new or an existing folder on the Hermes host; Artifacts browser for every file and page Hermes made, Markdown files opening in the app's reader with their source a tap away
+- Browse the chat's folder and your projects' folders beside Artifacts: preview and edit files, search names and contents, make, rename, move and delete files, upload from the phone, and tap a file path or a link to a file in a reply to open it (the folder's search and changes need the plugin)
 - Saved chats open instantly, and you can type while Conduit reconnects
 
 **Voice**
@@ -62,7 +63,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 **Tasks, bots and groups**
 
 - Tasks board for Hermes' Kanban tasks
-- Bots and their Bot Chats, with each bot's model, skills, tools and MCP servers, pictures Hermes can generate, and @mentions that bring another bot in; gateway-hosted group chats with @mentions, files and approvals
+- Bots Home, the first tab: your bots as portraits, each opening its Bot Chat, dragged into your own order or dropped on each other to start a room, their faces flying into it, the group chats as small portraits under them, each with its own menu and dragged into your own order too (a room linked with other people's Conduits wears a two-people mark and draws their agents as they do; one someone else hosts sits after yours, with Delete once it's over), with an overview of its chat, work and artifacts, and its screen on a Linux host (watch the bot's desktop, take over for a sign-in, install it from the phone); Bots and their Bot Chats, with each bot's model, skills, tools and MCP servers, pictures Hermes or Apple's Image Playground can generate or a GIF, a short video or a still brought to life that moves on its portrait, and @mentions that bring another bot in; gateway-hosted group chats with @mentions, files and approvals, a purpose and shared notes, who answers a message that names nobody (everyone, a lead bot, or picked automatically) and Continue at the turn limit, bots that start work from the room and bring the result back there, and a pill per bot under the title saying whether it replied, passed or is responding, with a crown on the lead's
 - Scheduled jobs: review runs, run now, edit, mute their notifications, delete
 - Pulse (beta): once you turn it on, Hermes brings things up on its own (a morning brief, follow-ups on what you said you'd do, deadlines and birthdays) as cards you can act on, rate or put off, and learns what's worth raising
 
@@ -82,8 +83,10 @@ Each is off until you turn it on, and goes only to your own Hermes host, encrypt
 - Live Activities on the Lock Screen and in the Dynamic Island while a reply runs
 - Home Screen widgets to start a chat or talk in one tap
 - Provider, model and reasoning effort switching mid-conversation
-- Multiple dashboards and profiles, each with its own credentials and settings; rename a profile or change its photo and glow in Settings > Profiles; All in the profile row lists every profile's chats together, newest first with each row's profile picture, or grouped by profile with each profile's pinned chats and five newest until Show more
-- Capabilities: skills, tools, connectors (MCP servers you can test and edit, by form or as JSON) and plugins, plus Hermes settings and gateway logs
+- Connect model providers in Settings > Models & providers: sign in, paste an API key once for every profile (or give one profile its own), or add your own OpenAI-compatible server. Keys stay on your Hermes host and are never shown again
+- Pick the helper models Hermes runs smaller jobs on (chat titles, compaction, reading images, Conduit predictions and the rest) in Settings > Models & providers > Helper models, and the order a provider's keys take turns in on its page
+- Multiple dashboards and profiles, each with its own credentials and settings (Settings > Saved Dashboards can ask which dashboard to open each time Conduit launches); rename a profile or change its photo (a GIF, a short video or a still brought to life moves, or make one with Image Playground) and glow in Settings > Profiles; All in the profile row lists every profile's chats together, newest first with each row's profile picture, or grouped by profile with each profile's pinned chats and five newest until Show more
+- Capabilities: skills (and Hermes' skill hub to search and install from, with its security scan), tools, connectors (apps such as Gmail or Slack signed in through Nous Portal, and MCP servers you can test and edit, by form or as JSON) and plugins (Hermes' plugin catalog to browse by tier and category, with pictures, and each plugin's own settings), plus Hermes settings and gateway logs
 - Native OAuth sign-in through your dashboard, QR code and setup links, Cloudflare Access service tokens
 - Face ID or Touch ID lock, credentials in the Keychain
 - Available in English, French, German, Indonesian, Italian, Japanese, Korean, Polish, Portuguese (Brazil), Russian, Simplified Chinese, Spanish, Traditional Chinese and Turkish
@@ -161,7 +164,7 @@ On your home network the address is then `http://<nas-ip>:9119`; through Tailsca
 4. **Sign in.** Open Conduit, enter the address and sign in with the username and password from step 1.
 5. **Add the plugin** as described in [Notifications, voice and phone features](#notifications-voice-and-phone-features), or from **Settings > Conduit plugin** once you're signed in.
 
-**Note:** Conduit connects to the native Hermes dashboard, not the separate Hermes WebUI project. The default port is 9119.
+**Note:** Conduit connects to the native Hermes dashboard, not the separate Hermes WebUI project. The default port is 9119. The address of the gateway's own web listener (the one `hermes webapp` serves, port 9120 by default) works too. It serves the gateway's own profile's chats; Bot Chats in other profiles need the dashboard, or a gateway that serves several profiles.
 
 Plain HTTP over Tailscale (MagicDNS `.ts.net` domains and `100.64.0.0/10` tailnet IPs) is supported, since that traffic is already WireGuard-encrypted.
 
@@ -216,12 +219,12 @@ See [the iOS release workflow](docs/RELEASE_WORKFLOW.md) for the TestFlight and 
 
 Conduit is SwiftUI, generated with xcodegen from `project.yml`. Targets: the iPhone and iPad app, the Watch app and its widgets, Home Screen widgets and Live Activities, a Notification Service Extension (decrypts end-to-end encrypted notifications), a Location Push extension, and a share extension.
 
-The app connects to the Hermes dashboard's WebSocket (`/api/ws`) and REST routes after authenticating through the dashboard, as the desktop client does. Plugin features use the notifier's routes under `/api/plugins/conduit_push/`, behind the same dashboard auth.
+The app connects to the Hermes dashboard's WebSocket (`/api/ws`) and REST routes after authenticating through the dashboard, as the desktop client does. On the gateway's own listener the same socket is answered by Hermes' session authority, which takes other shapes for the same requests; Conduit reads which one it reached from the socket's `gateway.ready` and sends each its own. Plugin features use the notifier's routes under `/api/plugins/conduit_push/`, behind the same dashboard auth.
 
 Key places:
 - `Conduit/Services/HermesClient.swift` - WebSocket client and RPC layer
 - `Conduit/Services/AppState.swift` (and its `AppState+*.swift` extensions) - state and session lifecycle
-- `Conduit/Views/V2/` - the app shell: Chats, Tasks, Bots, Settings
+- `Conduit/Views/V2/` - the app shell: Bots, Sessions, Tasks, Settings
 - `Conduit/Voice/` - Classic voice, dictation and the live voice engines (Gemini Live, Qwen Live, GPT-Live, Grok Live, Local Live)
 - `Conduit/Health`, `Conduit/Location`, `Conduit/Phone` - opt-in phone data sync
 - `ConduitWatch/` - the Apple Watch app

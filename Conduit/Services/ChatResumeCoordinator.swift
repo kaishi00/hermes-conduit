@@ -4,13 +4,14 @@ import Foundation
 enum PendingDecisionKind: Equatable {
     case question
     case approval
-    /// A password, secret, website login or code (an input card).
+    /// A password, secret, website login or code (an input card), or an
+    /// app, server or plugin to connect (a connect card).
     case input
 
     init(message: ChatMessage) {
         if message.approval != nil {
             self = .approval
-        } else if message.inputPrompt != nil {
+        } else if message.inputPrompt != nil || message.connection != nil {
             self = .input
         } else {
             self = .question
@@ -69,6 +70,10 @@ final class ChatResumeCoordinator {
             if let prompt = message.inputPrompt {
                 // A password, login or code Hermes is waiting for.
                 return prompt.isAnswerable
+            }
+            if let connection = message.connection {
+                // Something to connect Hermes is waiting on.
+                return connection.needsUser
             }
             guard let clarify = message.clarify else { return false }
             return clarify.needsAnswer
@@ -143,7 +148,8 @@ final class ChatResumeCoordinator {
         purpose: ChatResumeSyncPurpose,
         currentSessionID: String?,
         botOwnedSessionIDs: Set<String> = [],
-        savedSelectionIsAuthoritative: Bool = true
+        savedSelectionIsAuthoritative: Bool = true,
+        unlistedSessionIDs: Set<String> = []
     ) -> SessionSummary? {
         let savedSessionID = store.lastSessionID(for: profile)
         let selected = ChatResumeSessionResolver.target(
@@ -154,7 +160,8 @@ final class ChatResumeCoordinator {
             currentSessionID: currentSessionID,
             activeProfile: profile,
             botOwnedSessionIDs: botOwnedSessionIDs,
-            savedSelectionIsAuthoritative: savedSelectionIsAuthoritative
+            savedSelectionIsAuthoritative: savedSelectionIsAuthoritative,
+            unlistedSessionIDs: unlistedSessionIDs
         )
 
         guard purpose == .automaticReturn else { return selected }

@@ -14,7 +14,8 @@ import Foundation
 @MainActor
 extension AppState {
     func sendFromShortcut(_ request: ShortcutSendRequest, deadline: Date) async throws -> ShortcutSendOutcome {
-        try await ShortcutSender(backend: makeShortcutSendBackend()).send(request, deadline: deadline)
+        releaseLaunchDashboardChoice(for: "a shortcut")
+        return try await ShortcutSender(backend: makeShortcutSendBackend()).send(request, deadline: deadline)
     }
 
     func makeShortcutSendBackend() -> ShortcutSendBackend {
@@ -75,7 +76,12 @@ extension AppState {
                     let errorWrites = self.$errorMessage.dropFirst().sink { wroteError = $0 != nil }
                     let sent = await self.submitComposer(text: text, onBusy: {})
                     errorWrites.cancel()
-                    if sent { return .accepted }
+                    if sent {
+                        // Admitted behind a turn a restart cut off: no reply
+                        // comes until the chat's card is answered.
+                        if self.client?.chatIsHeldByLostTurn(runtimeID) == true { return .queued }
+                        return .accepted
+                    }
                     // A runtime that died after the check (or a check that
                     // couldn't read): the composer showed "Failed to send".
                     if wroteError, let error = self.errorMessage { failedTry.error = error }
@@ -84,7 +90,12 @@ extension AppState {
                 // take it (still synchronizing): Hermes takes it, queues it or
                 // joins the turn running.
                 await self.reportTurnSurface(.shortcut, runtimeSessionID: runtimeID, text: text)?.value
-                return try await self.sendShortcutPrompt(runtimeID, text: text)
+                do {
+                    return try await self.sendShortcutPrompt(runtimeID, text: text)
+                } catch {
+                    self.discardTurnSurface(runtimeSessionID: runtimeID, text: text, after: error)
+                    throw error
+                }
             },
             liveSessions: { [weak self] profile in
                 guard let self, let client = self.client else { throw HermesError.notConnected }

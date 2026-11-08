@@ -13,7 +13,7 @@ name: Nightly
 #              so a flaky UI test shows up here instead of hiding in a PR run
 # plan-tests.py hosted puts every discovered unit class in exactly one unit
 # shard or the timing list, and every UI class in one UI shard, so no class
-# is left out of both workflows (ci.yml's plan job checks the same partition
+# is left out of both workflows (ci.yml's self-test job checks the same partition
 # on every PR).
 #
 # Runs on main every night and on demand (Actions > Nightly > Run workflow).

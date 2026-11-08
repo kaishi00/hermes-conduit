@@ -36,7 +36,7 @@ enum MapsVoiceTool {
         description: "Apple Maps on the user's iPhone, answered at once. search: places matching a query or category near "
             + "somewhere (default near the user). lookup: one named place or address, best match first. reverse_geocode: "
             + "what is at a place (default the user's position). directions: routes with times, distances and turns from "
-            + "one place to another (default from the user). travel_times: how long from one place to up to 10 others. "
+            + "one place to another (default from the user; no turns to or from a saved place). travel_times: how long from one place to up to 10 others. "
             + "navigate: open Apple Maps with directions to one place from where the user is, when they ask to go there "
             + "or to open it in Maps (on the car screen in CarPlay; behind a notification when the phone is locked). "
             + "Places are \"me\" (where the user is), one of their saved places by name, an address or a place's name, "
@@ -79,7 +79,7 @@ enum MapsVoiceTool {
     static func run(_ arguments: [String: Any], mode: LiveVoiceModeName,
                     controller: LocationSharingController, sharedHere: Bool) async -> [String: String] {
         // Checked at each call: the user may have turned it off mid-call.
-        let locationAllowed = sharedHere && controller.letsVoiceRead(mode) && controller.settings.talking
+        let locationAllowed = sharedHere && allowsLocation(mode: mode, controller: controller)
         let places = locationAllowed ? controller.places : []
         if (arguments["action"] as? String)?.lowercased() == "navigate" {
             return await navigate(arguments, mode: mode, controller: controller, places: places, locationAllowed: locationAllowed)
@@ -95,9 +95,10 @@ enum MapsVoiceTool {
         }
         if !locationAllowed, usesLocation(request) { return ["error": notShared] }
 
+        let detail = controller.settings.talkingPrecision
         var me: MapsMe?
         if request.usesMe {
-            var precision = controller.settings.talkingPrecision
+            var precision = detail
             if controller.approximate || controller.fixes.isApproximate { precision = precision.capped(at: .area) }
             if precision == .places {
                 me = .unavailable(.noLocation("Location detail is Places only, so nothing can be worked out from where the user is."))
@@ -108,9 +109,15 @@ enum MapsVoiceTool {
                 me = .unavailable(.noLocation())
             }
         }
+        // And again after each wait: turned off, or its detail lowered, while
+        // the fix or the lookup was on its way, nothing from it reaches the
+        // model (issue 1881).
+        let readsLocation = usesLocation(request)
+        if readsLocation, !allowsLocation(mode: mode, controller: controller, detail: detail) { return ["error": notShared] }
         let answer = await MapsEngine.answer(request, context: MapsContext(me: me, places: places), deadline: lookupDeadline)
         // Listed whatever the outcome: a lookup was attempted.
         HealthVoiceReadLog.record(mode: mode, action: "maps \(action.rawValue)", key: HealthVoiceReadLog.locationStorageKey)
+        if readsLocation, !allowsLocation(mode: mode, controller: controller, detail: detail) { return ["error": notShared] }
         switch answer {
         case .failure(let failure):
             return ["error": "\(failure.code): \(failure.note)"]
@@ -142,9 +149,17 @@ enum MapsVoiceTool {
         if locationAllowed, controller.settings.talkingPrecision != .places {
             hint = await controller.fixes.currentFix(accuracy: LocationFixProvider.desiredAccuracy(for: .area),
                                                      maxAge: 300, timeout: .seconds(2))?.coordinate
+            // Turned off during the wait: nothing found near the user (issue 1881).
+            guard allowsLocation(mode: mode, controller: controller) else { return ["error": notShared] }
+            if controller.settings.talkingPrecision == .places { hint = nil }
         }
-        let outcome = await MapsNavigator.open(place, mode: travel, places: places, near: hint)
+        let outcome = await MapsNavigator.open(place, mode: travel, places: places, near: hint) {
+            !locationAllowed || allowsLocation(mode: mode, controller: controller)
+        }
         HealthVoiceReadLog.record(mode: mode, action: "maps navigate", key: HealthVoiceReadLog.locationStorageKey)
+        // The place's name is the model's only once more: after the car
+        // screen's or the notification's wait too.
+        if locationAllowed, !allowsLocation(mode: mode, controller: controller) { return ["error": notShared] }
         switch outcome {
         case .openedInCar(let name):
             return ["result": "Apple Maps is open on the car screen with directions to \(name). The call keeps going."]
@@ -155,6 +170,16 @@ enum MapsVoiceTool {
         case .failed(let failure):
             return ["error": "\(failure.code): \(failure.note)"]
         }
+    }
+
+    /// Whether `mode` may use the user's position and saved places now: its
+    /// location voice consent and the "while I'm talking" layer, not paused,
+    /// and, with `detail`, at that detail still (not lowered since).
+    static func allowsLocation(mode: LiveVoiceModeName, controller: LocationSharingController,
+                               detail: LocationPrecision? = nil) -> Bool {
+        guard controller.letsVoiceRead(mode), controller.settings.talking else { return false }
+        guard let detail else { return true }
+        return controller.settings.talkingPrecision.capped(at: detail) == detail
     }
 
     /// Whether a request reads the user's position or saved places.

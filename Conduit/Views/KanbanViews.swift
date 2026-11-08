@@ -6,15 +6,32 @@ enum KanbanPollingPolicy {
 
     /// The board's poll: 8 s, or 60 s while the live event stream is
     /// connected and says when to read; stretched in Low Power and Low Data
-    /// Mode.
-    static func boardInterval(streaming: Bool, conditions: DeviceConditions) -> UInt64 {
-        nanoseconds(PollCadence.stretched(streaming ? PollCadence.kanbanWhileStreaming : PollCadence.kanbanBoard, by: conditions))
+    /// Mode. Without the stream, a board that stays the same read after read
+    /// is read less often (`withoutStream`).
+    static func boardInterval(streaming: Bool, unchangedReads: Int = 0, conditions: DeviceConditions) -> UInt64 {
+        nanoseconds(PollCadence.stretched(
+            streaming ? PollCadence.kanbanWhileStreaming : withoutStream(PollCadence.kanbanBoard, unchangedReads: unchangedReads),
+            by: conditions
+        ))
     }
 
     /// The open task's poll: 4 s, or 60 s while the stream is connected (a
-    /// batch touching the task reads it at once).
-    static func detailInterval(streaming: Bool, conditions: DeviceConditions) -> UInt64 {
-        nanoseconds(PollCadence.stretched(streaming ? PollCadence.kanbanWhileStreaming : PollCadence.kanbanTaskDetail, by: conditions))
+    /// batch touching the task reads it at once), and less often without the
+    /// stream while it stays the same (`withoutStream`).
+    static func detailInterval(streaming: Bool, unchangedReads: Int = 0, conditions: DeviceConditions) -> UInt64 {
+        nanoseconds(PollCadence.stretched(
+            streaming ? PollCadence.kanbanWhileStreaming : withoutStream(PollCadence.kanbanTaskDetail, unchangedReads: unchangedReads),
+            by: conditions
+        ))
+    }
+
+    /// A poll standing in for the live stream (a network that refuses the
+    /// socket): its usual interval, then 15 s after 15 reads that found
+    /// nothing new, 30 s after 45, and its usual interval again once a read
+    /// finds a change (issue 1728).
+    static func withoutStream(_ interval: TimeInterval, unchangedReads: Int) -> TimeInterval {
+        let steps: [TimeInterval] = [interval, 15, 15, 30]
+        return max(interval, steps[min(max(unchangedReads, 0) / 15, steps.count - 1)])
     }
 
     private static func nanoseconds(_ seconds: TimeInterval) -> UInt64 {
@@ -726,6 +743,7 @@ struct KanbanView: View {
         .sheet(item: $selectedTask) { task in
             KanbanTaskDetailView(task: task)
                 .environment(store)
+                .environmentObject(appState)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
@@ -949,17 +967,27 @@ struct KanbanView: View {
             if store.loadedBoardSlug != nil, !store.liveStreamConnected {
                 await store.poll(includeArchived: includeArchived)
             }
+            // Without the stream, reads that find nothing new space
+            // themselves out.
+            var unchangedReads = 0
             while !Task.isCancelled {
                 do {
                     try await Task.sleep(nanoseconds: KanbanPollingPolicy.boardInterval(
                         streaming: store.liveStreamConnected,
+                        unchangedReads: unchangedReads,
                         conditions: DeviceConditionsMonitor.shared.current
                     ))
                 } catch {
                     break
                 }
                 guard !Task.isCancelled else { break }
+                // poll skips a read under a write or another load: that tick
+                // isn't a read, so it doesn't count.
+                guard !store.isMutating, !store.isLoading else { continue }
+                let before = store.board
                 await store.poll(includeArchived: includeArchived)
+                // A failed read keeps the base pace, so a recovery shows soon.
+                unchangedReads = store.errorMessage == nil && store.board == before ? unchangedReads + 1 : 0
             }
         }
     }
@@ -1479,21 +1507,26 @@ struct KanbanView: View {
 
     private var bulkMoveSheet: some View {
         NavigationStack {
-            List {
-                ForEach(KanbanBulkDestinationPolicy.moveDestinations(), id: \.id) { presentation in
-                    Button {
-                        commitBulkFromStage { staged in
-                            PendingBulkOperation(ids: staged.ids, context: staged.context, action: .move(presentation.rawValue))
+            SettingsDetailContainer {
+                SettingsCard {
+                    ForEach(KanbanBulkDestinationPolicy.moveDestinations(), id: \.id) { presentation in
+                        Button {
+                            commitBulkFromStage { staged in
+                                PendingBulkOperation(ids: staged.ids, context: staged.context, action: .move(presentation.rawValue))
+                            }
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: presentation.systemImage)
+                                    .foregroundStyle(presentation.tint)
+                                Text(presentation.displayName)
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                            }
+                            .frame(minHeight: 36)
+                            .contentShape(Rectangle())
                         }
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: presentation.systemImage)
-                                .foregroundStyle(presentation.tint)
-                            Text(presentation.displayName)
-                            Spacer()
-                        }
+                        .buttonStyle(.plain)
                     }
-                    .foregroundStyle(.primary)
                 }
             }
             .navigationTitle(moveSheetTitle)
@@ -1514,30 +1547,36 @@ struct KanbanView: View {
 
     private var bulkAssignSheet: some View {
         NavigationStack {
-            List {
-                if store.profiles.isEmpty {
-                    Text("No profiles on this server yet.")
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(store.profiles) { profile in
-                    Button {
-                        commitBulkFromStage { staged in
-                            PendingBulkOperation(ids: staged.ids, context: staged.context, action: .assign(profile.name))
-                        }
-                    } label: {
-                        HStack(spacing: 10) {
-                            Text(profile.name)
-                            Spacer()
-                        }
+            SettingsDetailContainer {
+                ConduitSettingsSection(title: AppLocalization.string("Profiles"), symbol: "person.2", tint: .conduitAccent) {
+                    if store.profiles.isEmpty {
+                        Text("No profiles on this server yet.")
+                            .foregroundStyle(.secondary)
                     }
-                    .foregroundStyle(.primary)
+                    ForEach(store.profiles) { profile in
+                        Button {
+                            commitBulkFromStage { staged in
+                                PendingBulkOperation(ids: staged.ids, context: staged.context, action: .assign(profile.name))
+                            }
+                        } label: {
+                            HStack(spacing: 10) {
+                                Text(profile.name)
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                            }
+                            .frame(minHeight: 36)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                Section {
+                SettingsCard {
                     Button("Unassign") {
                         commitBulkFromStage { staged in
                             PendingBulkOperation(ids: staged.ids, context: staged.context, action: .assign(nil))
                         }
                     }
+                    .buttonStyle(.settings)
                 }
             }
             .navigationTitle(assignSheetTitle)
@@ -1563,8 +1602,8 @@ struct KanbanView: View {
 
     private var bulkPrioritySheet: some View {
         NavigationStack {
-            Form {
-                Section {
+            SettingsDetailContainer {
+                SettingsCard {
                     HStack(spacing: 12) {
                         Button {
                             // Clamped at Int bounds: the numeric field can
@@ -1593,11 +1632,11 @@ struct KanbanView: View {
                         .accessibilityLabel("Increase priority")
                     }
                     .padding(.vertical, 4)
-                } footer: {
                     // Audited contract: upstream applies the verbatim
                     // integer (direct SQL) - NO bounds exist; this control
                     // validates only that the value parses as Int.
                     Text("Any integer is valid; Hermes stores it verbatim (no bounds upstream).")
+                        .settingsCaption()
                 }
             }
             .navigationTitle(prioritySheetTitle)
@@ -1632,15 +1671,17 @@ struct KanbanView: View {
 
     private var bulkFailuresSheet: some View {
         NavigationStack {
-            List {
+            SettingsDetailContainer {
                 if let outcome = lastBulkOutcome {
-                    ForEach(KanbanBulkResultPolicy.failures(from: outcome), id: \.id) { failure in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Task \(failure.id)")
-                                .scaledFont(.subheadline.weight(.semibold))
-                            Text(failure.reason)
-                                .scaledFont(.caption)
-                                .foregroundStyle(.secondary)
+                    SettingsCard {
+                        ForEach(KanbanBulkResultPolicy.failures(from: outcome), id: \.id) { failure in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Task \(failure.id)")
+                                    .scaledFont(.subheadline.weight(.semibold))
+                                Text(failure.reason)
+                                    .scaledFont(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }

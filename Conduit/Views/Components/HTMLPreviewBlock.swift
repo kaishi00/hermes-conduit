@@ -44,10 +44,30 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     @StateObject private var cardHeight = ChatCardHeight()
     /// Counts the file's loads; each page reports under its own number.
     @State private var load = 0
-    @State private var showsFullScreen = false
     /// The page the sheet shows, kept apart from `state` so a reload
-    /// underneath doesn't blank an open sheet.
-    @State private var sheetHTML: String?
+    /// underneath doesn't blank an open sheet. The sheet is presented by
+    /// this value itself: a flag beside it let the sheet build before it
+    /// saw the page and open blank, as What's New did (#1227).
+    @State private var sheetPage: SheetPage?
+    /// The page measured taller than a message shows; its foot fades so it
+    /// reads as continuing full screen.
+    @State private var isCut = false
+
+    struct SheetPage: Identifiable {
+        let id = UUID()
+        let html: String
+
+        init(html: String) {
+            self.html = html
+        }
+
+        /// The page a tap opens: the loaded file, or none while it loads or
+        /// has fallen back.
+        init?(_ state: LoadState) {
+            guard case .loaded(let html) = state else { return nil }
+            self.html = html
+        }
+    }
 
     enum LoadState: Equatable {
         case loading
@@ -90,6 +110,11 @@ struct HTMLPreviewBlock<Fallback: View>: View {
         .task(id: LoadKey(path: path, draws: draws)) {
             await loadDocument()
         }
+        // On the block, not the card: a page that falls back to the file
+        // card while the sheet is open leaves the sheet up.
+        .sheet(item: $sheetPage) { page in
+            HTMLPreviewSheet(name: name, html: page.html)
+        }
     }
 
     private var card: some View {
@@ -119,11 +144,6 @@ struct HTMLPreviewBlock<Fallback: View>: View {
         .padding(12)
         .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         .overlay { RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Color.secondary.opacity(0.20), lineWidth: 1) }
-        .sheet(isPresented: $showsFullScreen, onDismiss: { sheetHTML = nil }) {
-            if let sheetHTML {
-                HTMLPreviewSheet(name: name, html: sheetHTML)
-            }
-        }
     }
 
     private var header: some View {
@@ -166,6 +186,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             interactive: false,
             onHeight: { height in
                 let clamped = HTMLPreviewPage.clampedInlineHeight(height)
+                isCut = HTMLPreviewPage.isCutInline(height)
                 TranscriptPictureMemory.rememberHeight(clamped, for: heightKey)
                 cardHeight.pageMeasured(clamped, page: load)
             },
@@ -174,6 +195,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             onFailed: { fallBack() }
         )
         .opacity(drawn ? 1 : 0)
+        .modifier(CutFootFade(isCut: isCut))
         .overlay {
             if drawn {
                 Color.clear
@@ -199,9 +221,8 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     }
 
     private func openFullScreen() {
-        guard case .loaded(let html) = state else { return }
-        sheetHTML = html
-        showsFullScreen = true
+        guard let page = SheetPage(state) else { return }
+        sheetPage = page
     }
 
     private func loadDocument() async {
@@ -213,16 +234,45 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             state = .unavailable
             return
         }
-        // Read on every appearance, so a file the agent rewrote for a later
-        // reply shows its new version; the card keeps its room meanwhile,
-        // and a block showing its file card keeps that until the file reads.
+        // A row scrolled back into view shows the page it read moments
+        // ago at once, and reads the file again only once that copy is
+        // `HTMLPreviewDocuments.freshFor` old, so a file the agent rewrote
+        // for a later reply still shows its new version. Each appearance
+        // used to read and decode the file again (issue 1961).
+        let documents = HTMLPreviewDocuments.shared
+        let key = heightKey
+        let files = gatewayMediaFiles
+        // Said why a read found nothing where the row's files can say it.
+        let read: () async -> GatewayMediaRead = {
+            if let files { return await files.read(for: path) }
+            return await gatewayMediaDataURL(path).map(GatewayMediaRead.dataURL) ?? .gone
+        }
+        if let kept = documents.kept(key) {
+            if state != .loaded(kept.html) { show(kept.html) }
+            guard !documents.isFresh(kept) else { return }
+            let html = await documents.read(key, fetch: read)
+            guard !Task.isCancelled else { return }
+            // The file is gone or can't be read any more: the file card,
+            // as for a page never kept, rather than a dead file's page
+            // (issue 2003). One Hermes couldn't be asked for just now keeps
+            // its page, and the next appearance asks again (issue 2015).
+            guard let html else {
+                if documents.kept(key) == nil { fallBack() }
+                return
+            }
+            if html != kept.html { show(html) }
+            return
+        }
+        // The card keeps its room meanwhile, and a block showing its file
+        // card keeps that until the file reads.
         let showsFileCard = state == .unavailable
         if !showsFileCard { state = .loading }
         load += 1
+        isCut = false
         cardHeight.pageReplaced()
-        let dataURL = await gatewayMediaDataURL(path)
+        let html = await documents.read(key, fetch: read)
         guard !Task.isCancelled else { return }
-        guard let dataURL, let html = HTMLPreviewPage.decodedDocument(fromDataURL: dataURL) else {
+        guard let html else {
             if !showsFileCard { fallBack() }
             return
         }
@@ -230,9 +280,36 @@ struct HTMLPreviewBlock<Fallback: View>: View {
         state = .loaded(html)
     }
 
+    /// Draws `html` as a new page, measured afresh.
+    private func show(_ html: String) {
+        load += 1
+        isCut = false
+        cardHeight.pageReplaced()
+        state = .loaded(html)
+    }
+
     /// The page can't be drawn: the file card takes the card's place.
     private func fallBack() {
         state = .unavailable
+    }
+
+    /// The foot of a page cut at the message's height fades out; a page
+    /// that fits keeps a fully opaque mask. One view either way, so the
+    /// page's web view is never rebuilt when it turns out to be cut.
+    private struct CutFootFade: ViewModifier {
+        let isCut: Bool
+
+        func body(content: Content) -> some View {
+            content.mask {
+                LinearGradient(
+                    stops: isCut
+                        ? [.init(color: .black, location: 0.82), .init(color: .black.opacity(0.15), location: 1)]
+                        : [.init(color: .black, location: 0), .init(color: .black, location: 1)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+        }
     }
 
     private struct LoadKey: Hashable {
@@ -275,6 +352,130 @@ struct HTMLPreviewTheme: Equatable {
 /// The page around an agent's HTML: the theme first (so the file's own
 /// styles win), then the scripts that report its height and stand in for
 /// Desktop's `window.hermes`.
+/// The preview pages read lately, so a row scrolled away and back shows
+/// its page without reading and decoding the file again, and two rows
+/// naming one file share one read (issue 1961). Keyed by the file on the
+/// connected Hermes, as the kept heights are.
+@MainActor
+final class HTMLPreviewDocuments {
+    static let shared = HTMLPreviewDocuments()
+
+    /// A kept page this young is shown without asking the host again.
+    static let freshFor: TimeInterval = 30
+    /// The pages kept, at most, and their size together (a page is at most
+    /// `HTMLPreviewPage.maximumDocumentBytes`).
+    static let capacity = 8
+    static let byteBudget = 16 * 1024 * 1024
+
+    struct Kept: Equatable {
+        let html: String
+        let readAt: Date
+    }
+
+    private var pages: [String: Kept] = [:]
+    /// Least recently read first.
+    private var order: [String] = []
+    private var inFlight: [String: (id: UUID, task: Task<(html: String?, gone: Bool), Never>)] = [:]
+    /// Files that couldn't be read just now: not asked again until they're
+    /// `freshFor` old. A file Hermes can't give drops its kept page too;
+    /// one it couldn't be asked for keeps it (issue 2015).
+    private var failedAt: [String: Date] = [:]
+    private let now: () -> Date
+
+    init(now: @escaping () -> Date = { Date() }) {
+        self.now = now
+    }
+
+    /// The kept page, which counts as just used: the page dropped at
+    /// capacity is the one shown longest ago, not read longest ago.
+    func kept(_ key: String) -> Kept? {
+        guard let page = pages[key] else { return nil }
+        if order.last != key {
+            order.removeAll { $0 == key }
+            order.append(key)
+        }
+        return page
+    }
+
+    func isFresh(_ kept: Kept) -> Bool {
+        now().timeIntervalSince(kept.readAt) < Self.freshFor
+    }
+
+    /// The file's page from `fetch`'s data URL, decoded off the main
+    /// thread. A read already running for `key` is joined, not repeated,
+    /// and a page read within `freshFor` is answered as kept.
+    /// Nil when there's no page: the file's kept page is still there when
+    /// Hermes only couldn't be asked.
+    func read(_ key: String, fetch: @escaping () async -> GatewayMediaRead) async -> String? {
+        if let running = inFlight[key] { return await running.task.value.html }
+        // A row that asks just after another's read finished takes its page.
+        if let page = pages[key], isFresh(page) { return page.html }
+        if let failed = failedAt[key], now().timeIntervalSince(failed) < Self.freshFor { return nil }
+        let id = UUID()
+        let task = Task { () -> (html: String?, gone: Bool) in
+            let answer = await fetch()
+            if case .gone = answer { return (nil, true) }
+            guard case .dataURL(let dataURL) = answer else { return (nil, false) }
+            let html = await Task.detached(priority: .userInitiated) {
+                HTMLPreviewPage.decodedDocument(fromDataURL: dataURL)
+            }.value
+            return (html, html == nil)
+        }
+        inFlight[key] = (id, task)
+        let answer = await task.value
+        if inFlight[key]?.id == id {
+            inFlight[key] = nil
+            if let html = answer.html {
+                keep(html, for: key)
+            } else {
+                // A kept page of a file that no longer reads is dropped, so
+                // no row shows it again (issue 2003); one Hermes couldn't
+                // be asked for stays (issue 2015).
+                if answer.gone { drop(key) }
+                failedAt[key] = now()
+            }
+        }
+        return answer.html
+    }
+
+    /// Every page and read: they go with the saved chats, since the next
+    /// sign-in may be another account. Given a dashboard, only its pages
+    /// go, with any page not tied to a dashboard.
+    func removeAll(dashboardID: UUID? = nil) {
+        guard let dashboardID else {
+            pages.removeAll()
+            order.removeAll()
+            inFlight.removeAll()
+            failedAt.removeAll()
+            return
+        }
+        let tied = "preview|path|"
+        let its = tied + dashboardID.uuidString + "|"
+        let goes: (String) -> Bool = { $0.hasPrefix(its) || !$0.hasPrefix(tied) }
+        pages = pages.filter { !goes($0.key) }
+        order.removeAll(where: goes)
+        inFlight = inFlight.filter { !goes($0.key) }
+        failedAt = failedAt.filter { !goes($0.key) }
+    }
+
+    private func drop(_ key: String) {
+        pages[key] = nil
+        order.removeAll { $0 == key }
+    }
+
+    func keep(_ html: String, for key: String) {
+        failedAt[key] = nil
+        pages[key] = Kept(html: html, readAt: now())
+        order.removeAll { $0 == key }
+        order.append(key)
+        var bytes = pages.values.reduce(0) { $0 + $1.html.utf8.count }
+        while order.count > 1, order.count > Self.capacity || bytes > Self.byteBudget {
+            let dropped = order.removeFirst()
+            bytes -= pages.removeValue(forKey: dropped)?.html.utf8.count ?? 0
+        }
+    }
+}
+
 enum HTMLPreviewPage {
     enum Presentation {
         case inline
@@ -309,6 +510,11 @@ enum HTMLPreviewPage {
 
     static func clampedInlineHeight(_ height: CGFloat) -> CGFloat {
         min(maximumInlineHeight, max(minimumInlineHeight, height.rounded(.up)))
+    }
+
+    /// A page taller than a message shows, whose foot fades in the message.
+    static func isCutInline(_ height: CGFloat) -> Bool {
+        height.rounded(.up) > maximumInlineHeight
     }
 
     /// The file's text from the dashboard's data URL, or nil when it isn't

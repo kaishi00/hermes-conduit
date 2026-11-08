@@ -9,12 +9,16 @@
 //  steady, adaptive pace and retain individual reveal timestamps, allowing
 //  the Markdown renderer to fade the newest glyphs independently.
 //
-//  Once the accumulated text crosses the large-document threshold, the
-//  component switches to a bounded mode: everything behind the live tail is
-//  promoted into immutable chunks (rendered once through the ordinary
-//  cached path) and only the tail — a window of a few KB — keeps
+//  Once the accumulated text crosses the stream chunking threshold (16 KB),
+//  the component switches to a bounded mode: everything behind the live
+//  tail is promoted into immutable chunks (rendered once through the
+//  ordinary cached path) and only the tail — a window of a few KB — keeps
 //  re-rendering per tick. Without this, a 1 MB stream re-parses and
-//  re-lays-out the whole document at 30 fps (measured 0.8–3.3 s per frame).
+//  re-lays-out the whole document at 30 fps (measured 0.8–3.3 s per frame),
+//  and a 50 KB one pays 45–160 ms a tick (issue 1720).
+//
+//  One clock paces it: the timer reveals characters and moves the fade on,
+//  and each tick draws once.
 //
 
 import Combine
@@ -29,6 +33,7 @@ struct StreamingText: View {
     var gatewayMediaDataURL: ((String) async -> String?)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.markupDrawsInPlace) private var markupDrawsInPlace
 
     // MARK: Small-stream state (existing behavior)
 
@@ -36,6 +41,9 @@ struct StreamingText: View {
     @State private var visibleCharacters: [Character] = []
     @State private var revealDates: [Date] = []
     @State private var isAnimating = false
+    /// The time the newest characters' fade is drawn at, moved on by the
+    /// timer only while something fades, so an idle reply doesn't redraw.
+    @State private var fadeClock = Date()
 
     // MARK: Large-stream state
     //
@@ -43,7 +51,7 @@ struct StreamingText: View {
     // arithmetic) so a tick never walks the accumulated megabytes; index
     // math happens only at promotion boundaries, which are rare.
 
-    /// True once the accumulated text has crossed the large-document
+    /// True once the accumulated text has crossed the stream chunking
     /// threshold; the component never switches back mid-stream (a message
     /// only grows while streaming).
     @State private var isLargeStream = false
@@ -96,19 +104,12 @@ struct StreamingText: View {
     // MARK: Small stream
 
     private var smallBody: some View {
-        TimelineView(
-            .animation(
-                minimumInterval: 1.0 / 30.0,
-                paused: reduceMotion || !isAnimating
-            )
-        ) { timeline in
-            MarkdownText(
-                source: String(visibleCharacters),
-                gatewayMediaDataURL: gatewayMediaDataURL,
-                newestCharacterOpacities: characterOpacities(at: timeline.date),
-                isStreaming: true
-            )
-        }
+        MarkdownText(
+            source: String(visibleCharacters),
+            gatewayMediaDataURL: gatewayMediaDataURL,
+            newestCharacterOpacities: characterOpacities(at: fadeClock),
+            isStreaming: true
+        )
         .onAppear {
             updateTarget(text)
             // Text that was already there when the bubble came on screen
@@ -148,7 +149,7 @@ struct StreamingText: View {
         // machinery past the threshold: seed the large state with everything
         // accumulated so far (revealed wholesale — the animation that
         // matters is the tail that keeps streaming).
-        if MarkdownLargeDocumentPolicy.isLargeDocument(newText) {
+        if MarkdownLargeDocumentPolicy.isChunkedStream(newText) {
             enterLargeMode(with: newText)
             return
         }
@@ -173,15 +174,15 @@ struct StreamingText: View {
     private func revealCharacters(at date: Date) {
         guard !reduceMotion else { return }
 
-        revealDates.removeAll {
-            date.timeIntervalSince($0) >= fadeDuration
-        }
+        dropFadedRevealDates(at: date)
         let remaining = targetCharacters.count - visibleCharacters.count
         guard remaining > 0 else {
             let shouldAnimate = !revealDates.isEmpty
             if isAnimating != shouldAnimate {
                 isAnimating = shouldAnimate
             }
+            // Only a fade still running needs this tick drawn.
+            if shouldAnimate { fadeClock = date }
             return
         }
 
@@ -196,6 +197,17 @@ struct StreamingText: View {
             revealDates.append(baseDate.addingTimeInterval(Double(offset) * stagger))
         }
         isAnimating = true
+        fadeClock = date
+    }
+
+    /// Drops the reveal dates whose fade has finished. The dates only grow,
+    /// so an idle tick, with nothing finished, writes nothing and draws
+    /// nothing.
+    private func dropFadedRevealDates(at date: Date) {
+        guard let first = revealDates.first, date.timeIntervalSince(first) >= fadeDuration else { return }
+        revealDates.removeAll {
+            date.timeIntervalSince($0) >= fadeDuration
+        }
     }
 
     /// Characters left to fade in when the bubble appears with `count`
@@ -233,42 +245,48 @@ struct StreamingText: View {
     // MARK: Large stream
 
     private var largeBody: some View {
-        TimelineView(
-            .animation(
-                minimumInterval: 1.0 / 30.0,
-                paused: reduceMotion || !isAnimating
-            )
-        ) { timeline in
-            VStack(alignment: .leading, spacing: 10) {
-                // Chunks and the tail parse in isolation, so reference
-                // definitions elsewhere in the stream do not resolve while
-                // streaming — they render literally until the message
-                // settles, at which point the settled view parses the whole
-                // message and resolves them message-wide.
-                ForEach(Array(largeStableChunks.enumerated()), id: \.offset) { _, chunk in
-                    MarkdownText(
-                        source: chunk,
-                        gatewayMediaDataURL: gatewayMediaDataURL,
-                        isStreaming: false
-                    )
-                }
+        VStack(alignment: .leading, spacing: 10) {
+            // Chunks and the tail parse in isolation, so reference
+            // definitions elsewhere in the stream do not resolve while
+            // streaming — they render literally until the message
+            // settles, at which point the settled view parses the whole
+            // message and resolves them message-wide.
+            ForEach(Array(largeStableChunks.enumerated()), id: \.offset) { _, chunk in
                 MarkdownText(
-                    source: largeTailSource,
+                    source: chunk,
                     gatewayMediaDataURL: gatewayMediaDataURL,
-                    newestCharacterOpacities: characterOpacities(at: timeline.date),
-                    isStreaming: true
+                    isStreaming: false
                 )
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            // Finished chunks pile up for the whole stream, so diagrams and
-            // formulas show their source until the reply settles; the
-            // settled large-document view draws them, a window at a time.
-            .environment(\.markupDrawsInPlace, false)
+            MarkdownText(
+                source: largeTailSource,
+                gatewayMediaDataURL: gatewayMediaDataURL,
+                newestCharacterOpacities: characterOpacities(at: fadeClock),
+                isStreaming: true
+            )
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Finished chunks of a very large stream pile up for the whole
+        // stream, so past the large-document size diagrams and formulas show
+        // their source until the reply settles; the settled large-document
+        // view draws them, a window at a time. A smaller reply's chunks draw
+        // them as it would whole.
+        .environment(
+            \.markupDrawsInPlace,
+            markupDrawsInPlace && !MarkdownLargeDocumentPolicy.isLargeDocument(largeAccumulated)
+        )
         .onChange(of: reduceMotion) { _, shouldReduceMotion in
             if shouldReduceMotion {
                 revealAllLargeImmediately()
             }
+        }
+        // Under Reduce Motion no reveal tick runs to drain the scanner when
+        // the stream ends, so the end itself does it: a reply whose last line
+        // closes a fence still promotes instead of staying one live tail.
+        .onChange(of: active) { _, isActive in
+            guard !isActive, reduceMotion, largeScanner.hasPendingLine else { return }
+            largeScanner.finish()
+            promoteLargeChunks()
         }
     }
 
@@ -355,20 +373,21 @@ struct StreamingText: View {
     private func largeReveal(at date: Date) {
         guard !reduceMotion else { return }
 
-        revealDates.removeAll {
-            date.timeIntervalSince($0) >= fadeDuration
-        }
+        dropFadedRevealDates(at: date)
 
         guard var revealedEnd = largeRevealedEnd else { return }
         let remaining = largeAccumulatedChars - largeRevealedChars
         if remaining <= 0 {
             let shouldAnimate = !revealDates.isEmpty
             if isAnimating != shouldAnimate { isAnimating = shouldAnimate }
-            if !active {
+            if shouldAnimate { fadeClock = date }
+            if !active, largeScanner.hasPendingLine {
                 // The stream is finished and fully revealed: drain the
                 // scanner's trailing partial line so a document ending in a
                 // closing fence (without a final newline) still promotes at
                 // real boundaries instead of hard-cutting inside the block.
+                // Once only: an idle tick then writes no state, so it draws
+                // nothing.
                 largeScanner.finish()
             }
             promoteLargeChunks()
@@ -402,6 +421,7 @@ struct StreamingText: View {
             largeRevealedBytes = largeAccumulated.utf8.count
         }
         isAnimating = true
+        fadeClock = date
         promoteLargeChunks()
     }
 

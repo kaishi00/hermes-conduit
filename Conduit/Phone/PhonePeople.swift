@@ -7,7 +7,10 @@
 //  access), each with how they're related to the user ("wife", "boss").
 //  Kept on the phone and sent as the `contacts` list when the user shares
 //  them (phone-v1-contract.md section 6). Picking someone again refreshes
-//  what Conduit has.
+//  what Conduit has; with Contacts access (limited or full) each sync reads
+//  the picked people again, by their contact identifier, so edits made in
+//  Contacts reach Hermes, and a person Conduit can't read is flagged on
+//  their row with what Hermes keeps.
 //
 
 import Contacts
@@ -38,6 +41,9 @@ struct PhonePerson: Codable, Equatable, Identifiable {
     var emails: [Email] = []
     /// `YYYY-MM-DD`, or `--MM-DD` without a year.
     var birthday: String?
+    /// The contact's identifier on this phone, to read them again. Never
+    /// sent. Nil for someone picked before Conduit kept it.
+    var contactID: String?
 
     static let maximum = 200
     static let relationLength = 40
@@ -115,6 +121,7 @@ extension PhonePerson {
         guard !name.isEmpty else { return nil }
         self.init(id: Self.id(forContact: contact.identifier), name: String(name.prefix(120)))
         self.relation = relation
+        contactID = contact.identifier
         if has(CNContactNicknameKey), !contact.nickname.isEmpty { nickname = String(contact.nickname.prefix(60)) }
         if !organization.isEmpty, organization != name { self.organization = String(organization.prefix(120)) }
         if has(CNContactPhoneNumbersKey) {
@@ -128,6 +135,109 @@ extension PhonePerson {
             }.filter { $0.address.contains("@") && !$0.address.contains(" ") && $0.address.count <= 254 }.prefix(10))
         }
         if has(CNContactBirthdayKey), let parts = contact.birthday { birthday = Self.birthday(parts) }
+    }
+}
+
+/// Whether Conduit may read the picked people again from Contacts.
+enum PhoneContactsAccess: Equatable, Sendable {
+    case notAsked, denied, limited, full
+
+    var canRead: Bool { self == .limited || self == .full }
+}
+
+/// Why a picked person couldn't be read again. Hermes keeps what Conduit
+/// last read for them.
+enum PhonePersonProblem: Equatable, Sendable {
+    /// Limited Contacts access that leaves them out.
+    case notShared
+    /// No longer in Contacts (deleted, or their card merged into another).
+    case notFound
+    /// Contacts didn't answer.
+    case unreadable
+}
+
+enum PhoneContactRead: Equatable, Sendable {
+    case person(PhonePerson)
+    case problem(PhonePersonProblem)
+}
+
+/// Reads picked people again, and nothing else of the address book.
+protocol PhoneContactsSource: Sendable {
+    var access: PhoneContactsAccess { get }
+    func requestAccess() async -> PhoneContactsAccess
+    /// Each identifier's person as the contact says now, or why not.
+    func read(_ identifiers: [String]) async -> [String: PhoneContactRead]
+    /// For people picked before Conduit kept their contact's identifier:
+    /// the identifier whose hash is each person's id. Reads identifiers only.
+    /// Nil when Contacts couldn't be searched.
+    func identifiers(for ids: Set<String>) async -> [String: String]?
+}
+
+struct SystemContactsSource: PhoneContactsSource {
+    var access: PhoneContactsAccess {
+        let status = CNContactStore.authorizationStatus(for: .contacts)
+        if #available(iOS 18.0, *), status == .limited { return .limited }
+        switch status {
+        case .authorized: return .full
+        case .notDetermined: return .notAsked
+        default: return .denied
+        }
+    }
+
+    func requestAccess() async -> PhoneContactsAccess {
+        _ = try? await CNContactStore().requestAccess(for: .contacts)
+        return access
+    }
+
+    /// What PhonePerson(contact:) reads.
+    private static func keys() -> [CNKeyDescriptor] {
+        [CNContactFormatter.descriptorForRequiredKeys(for: .fullName)]
+            + [CNContactGivenNameKey, CNContactFamilyNameKey, CNContactNicknameKey, CNContactOrganizationNameKey,
+               CNContactPhoneNumbersKey, CNContactEmailAddressesKey, CNContactBirthdayKey].map { $0 as CNKeyDescriptor }
+    }
+
+    func read(_ identifiers: [String]) async -> [String: PhoneContactRead] {
+        let limited = access == .limited
+        return await Task.detached(priority: .utility) {
+            let store = CNContactStore()
+            let keys = Self.keys()
+            var reads: [String: PhoneContactRead] = [:]
+            for identifier in identifiers {
+                do {
+                    // The unified contact, so a card linked to another one still reads.
+                    let contact = try store.unifiedContact(withIdentifier: identifier, keysToFetch: keys)
+                    // A card left with no name and no company has nothing to
+                    // show: the last copy stays, with nothing wrong to say.
+                    if let person = PhonePerson(contact: contact) { reads[identifier] = .person(person) }
+                } catch let error as CNError where error.code == .recordDoesNotExist {
+                    // Limited access answers the same for a contact it leaves out.
+                    reads[identifier] = .problem(limited ? .notShared : .notFound)
+                } catch {
+                    reads[identifier] = .problem(.unreadable)
+                }
+            }
+            return reads
+        }.value
+    }
+
+    func identifiers(for ids: Set<String>) async -> [String: String]? {
+        await Task.detached(priority: .utility) { () -> [String: String]? in
+            let request = CNContactFetchRequest(keysToFetch: [CNContactIdentifierKey as CNKeyDescriptor])
+            // Each card on its own: the picker may have handed back any of a
+            // linked contact's cards.
+            request.unifyResults = false
+            var found: [String: String] = [:]
+            do {
+                try CNContactStore().enumerateContacts(with: request) { contact, stop in
+                    let id = PhonePerson.id(forContact: contact.identifier)
+                    if ids.contains(id), found[id] == nil { found[id] = contact.identifier }
+                    if found.count == ids.count { stop.pointee = true }
+                }
+            } catch {
+                return nil
+            }
+            return found
+        }.value
     }
 }
 
@@ -162,6 +272,39 @@ enum PhonePeopleStore {
             }
         }
         return Array(result.prefix(PhonePerson.maximum))
+    }
+
+    /// `people` with what Contacts says now, each keeping their id and
+    /// relation; someone not read keeps what Conduit last read, with why
+    /// in `problems`. `found`: identifiers found for people picked before
+    /// Conduit kept them, nil when Contacts couldn't be searched for them.
+    static func refreshed(_ people: [PhonePerson], reads: [String: PhoneContactRead], found: [String: String]?,
+                          access: PhoneContactsAccess) -> (people: [PhonePerson], problems: [String: PhonePersonProblem]) {
+        var problems: [String: PhonePersonProblem] = [:]
+        let refreshed = people.map { person -> PhonePerson in
+            guard let identifier = person.contactID ?? found?[person.id] else {
+                // Picked before Conduit kept the identifier, and not found
+                // (or the search failed).
+                problems[person.id] = found == nil ? .unreadable : access == .limited ? .notShared : .notFound
+                return person
+            }
+            var kept = person
+            kept.contactID = identifier
+            switch reads[identifier] {
+            case .person(var fresh)?:
+                fresh.id = person.id
+                fresh.contactID = identifier
+                fresh.relation = person.relation
+                return fresh
+            case .problem(let problem)?:
+                problems[person.id] = problem
+                return kept
+            case nil:
+                // Picked while the read ran: the picker's copy is current.
+                return kept
+            }
+        }
+        return (refreshed, problems)
     }
 }
 

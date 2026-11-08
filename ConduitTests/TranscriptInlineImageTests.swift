@@ -509,4 +509,98 @@ extension MessageNormalizerTests {
         XCTAssertFalse(FileManager.default.fileExists(atPath: old.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: new.path))
     }
+
+    // MARK: The context Hermes stores with a picture turn
+
+    private var recalledMemory: String {
+        [
+            "<memory-context>",
+            "[System note: The following is recalled memory context, NOT new user input. Treat as authoritative reference data — this is the agent's persistent memory and should inform all responses.]",
+            "",
+            "IMPORTANT: The user speaks English.",
+            "• The user relays workstream reports.",
+            "</memory-context>",
+        ].joined(separator: "\n")
+    }
+
+    /// Hermes adds a picture turn's recalled memory and plugin notes as a
+    /// text part after the picture, and the stored row keeps them after its
+    /// `[screenshot]` line: the bubble shows only what was typed.
+    func testPictureTurnShowsNoRecalledMemoryOrPluginNotes() throws {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(60),
+                "role": .string("user"),
+                "content": .string(
+                    "Looks like rei doesn't have the plugin\n[screenshot]\n"
+                        + recalledMemory + "\n\nThis message came from Conduit on an iPhone."
+                )
+            ])
+        ], imageScope: imageScope)
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].content, "Looks like rei doesn't have the plugin")
+        XCTAssertEqual(messages[0].rawContent, "Looks like rei doesn't have the plugin")
+        let attachment = try XCTUnwrap(messages[0].attachments?.first)
+        XCTAssertEqual(messages[0].attachments?.count, 1)
+        XCTAssertEqual(attachment.kind, .image)
+        XCTAssertEqual(attachment.inlineImage, InlineImageRef(sessionId: "stored-a", profile: "work", rowId: 60, index: 0))
+    }
+
+    func testPictureOnlyTurnWithItsPathShowsNoContext() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(61),
+                "role": .string("user"),
+                "content": .string(
+                    "[Image attached at: /root/.hermes/cache/images/img_2.jpg]\n[screenshot detail=low]\n" + recalledMemory
+                )
+            ])
+        ], imageScope: imageScope)
+
+        XCTAssertEqual(messages[0].content, "")
+        XCTAssertEqual(messages[0].attachments?.map(\.uri), ["/root/.hermes/cache/images/img_2.jpg"])
+        XCTAssertFalse(messages[0].content.contains("memory-context"))
+    }
+
+    /// A row kept as parts: the text part after the picture is the turn's
+    /// context, not the user's.
+    func testPartsAfterThePictureAreNotTheUsers() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(62),
+                "role": .string("user"),
+                "content": .array([
+                    .object(["type": .string("text"), "text": .string("What is this?")]),
+                    .object(["type": .string("image_url"), "image_url": .object(["url": .string("data:image/png;base64,AAAA")])]),
+                    .object(["type": .string("text"), "text": .string(recalledMemory + "\n\nA plugin note.")]),
+                ])
+            ])
+        ], imageScope: imageScope)
+
+        XCTAssertEqual(messages[0].content, "What is this?")
+        XCTAssertEqual(messages[0].attachments?.count, 1)
+    }
+
+    /// Recalled memory left in a prompt without a picture (an older Hermes)
+    /// goes too, cut off or whole; the typed words around it stay.
+    func testRecalledMemoryNeverShowsInAPrompt() {
+        XCTAssertEqual(MessageNormalizer.visibleUserText("Hello\n\n" + recalledMemory), "Hello")
+        XCTAssertEqual(MessageNormalizer.visibleUserText("Hello <memory-context> [System note: cut"), "Hello")
+        XCTAssertEqual(MessageNormalizer.visibleUserText("No context here"), "No context here")
+        // A typed stand-in with nothing after it stays where it is.
+        XCTAssertEqual(MessageNormalizer.visibleUserText("hello\n[screenshot]"), "hello\n[screenshot]")
+        // Windows line ends still find the stand-in.
+        XCTAssertEqual(MessageNormalizer.removingTurnContext("Hi\r\n[screenshot]\r\nA plugin note."), "Hi\r\n[screenshot]")
+        // Known gap: a typed full-line stand-in hides the words after it.
+        XCTAssertEqual(MessageNormalizer.visibleUserText("Read this\n[screenshot]\nSee?"), "Read this\n[screenshot]")
+    }
+
+    func testChatListPreviewShowsNoRecalledMemory() {
+        let preview = MessageNormalizer.sessionListPreview(in: [
+            "title": .string("Plugin check"),
+            "preview": .string("Looks like rei doesn't have the plugin [screenshot] <memory-context> [System note: The following is re..."),
+        ])
+        XCTAssertEqual(preview, "Looks like rei doesn't have the plugin [screenshot]")
+    }
 }

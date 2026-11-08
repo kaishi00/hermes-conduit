@@ -16,8 +16,11 @@ import SwiftUI
 
 /// Where the voice button sits, which decides what a tap starts.
 enum V2VoiceContext: Equatable {
-    /// Chats, Tasks, Bots and Settings: a new call in the current profile.
+    /// Sessions, Tasks and Settings: a new call in the current profile.
     case home
+    /// Bots Home: a tap lists the bots, the one used last first, and
+    /// picking one calls it in its Bot Chat (Eric 2026-11-03).
+    case bots
     /// A project's page: a new chat in that project's folder, in voice.
     case project(ProjectSummary)
     /// The open conversation: voice in it (a Bot Chat calls its bot, a
@@ -131,6 +134,24 @@ struct V2VoiceButton: View {
         context == .home && !returnsToCall && !needsSetup && !recentSessions.isEmpty
     }
 
+    /// Bots Home's button: which bot to call, never a call of its own.
+    private var showsBotMenu: Bool {
+        context == .bots && !returnsToCall && !needsSetup && !callableBots.isEmpty
+    }
+
+    /// The bots shown on Bots Home, the one that talked last first.
+    private var callableBots: [BotProfile] {
+        Self.botsToCall(appState.shownBotRoster)
+    }
+
+    static func botsToCall(_ roster: [BotProfile]) -> [BotProfile] {
+        let shown = roster.filter { !$0.isHiddenByMeta }
+        return shown.enumerated().sorted { a, b in
+            let left = a.element.lastActive ?? 0, right = b.element.lastActive ?? 0
+            return left != right ? left > right : a.offset < b.offset
+        }.map(\.element)
+    }
+
     /// Touch and hold on the chat's big button: a live call or dictation,
     /// whichever the tap doesn't do.
     private var showsChatMenu: Bool { isChatButton && !returnsToCall && !recordsMessage }
@@ -151,6 +172,8 @@ struct V2VoiceButton: View {
         if needsSetup { return AppLocalization.string("Set up voice") }
         switch context {
         case .home: return AppLocalization.string("New voice call")
+        case .bots:
+            return callableBots.isEmpty ? AppLocalization.string("New voice call") : AppLocalization.string("Call a bot")
         case .project(let project):
             return Self.folder(of: project) == nil
                 ? AppLocalization.string("New voice call")
@@ -173,12 +196,32 @@ struct V2VoiceButton: View {
         }
         if !canAct { return appState.phoneVoiceUnavailableReason }
         if showsChatMenu { return AppLocalization.string("Touch and hold to dictate instead") }
+        if showsBotMenu { return AppLocalization.string("Lists your bots to call one") }
         return showsRecentMenu ? AppLocalization.string("Touch and hold for recent conversations") : nil
     }
 
     var body: some View {
         Group {
-            if showsRecentMenu {
+            if showsBotMenu {
+                Menu {
+                    ForEach(callableBots) { bot in
+                        Button {
+                            call(bot)
+                        } label: {
+                            Label {
+                                Text(verbatim: bot.displayLabel)
+                            } icon: {
+                                Image(systemName: "waveform")
+                            }
+                        }
+                    }
+                } label: {
+                    face
+                }
+                .menuIndicator(.hidden)
+                // The one used last stays nearest the button.
+                .menuOrder(.fixed)
+            } else if showsRecentMenu {
                 Menu {
                     Button {
                         tap()
@@ -402,7 +445,7 @@ struct V2VoiceButton: View {
         Haptics.medium()
         isStarting = true
         switch context {
-        case .home:
+        case .home, .bots:
             // A call of its own, like the old drawer's New voice call. Its
             // screen covers the tabs; the list stays where it was.
             Task { @MainActor in
@@ -462,6 +505,25 @@ struct V2VoiceButton: View {
         appState.errorMessage = appState.isConnected
             ? AppLocalization.string("Couldn't open that chat for voice.")
             : AppLocalization.string("Reconnect to Hermes to start voice.")
+    }
+
+    /// Opens a bot's Bot Chat and calls the bot in it.
+    private func call(_ bot: BotProfile) {
+        guard !isStarting else { return }
+        Haptics.medium()
+        isStarting = true
+        Task { @MainActor in
+            defer { isStarting = false }
+            appState.beginOpeningBotChat(bot.name)
+            let opened = await appState.openBotChat(for: bot)
+            appState.endOpeningBotChat(bot.name)
+            // A failed open says why itself; a superseded one (a newer
+            // navigation took over) is no failure, so nothing more is said.
+            guard opened else { return }
+            await startVoice(
+                PendingVoiceIntent(profile: appState.activeProfile, startsFreshConversation: false, source: .composer)
+            )
+        }
     }
 
     /// Opens a recent conversation and talks in it.

@@ -94,6 +94,18 @@ enum MarkdownLargeDocumentPolicy {
         source.utf8.count >= documentThresholdBytes
     }
 
+    /// A streaming reply at least this long renders as promoted chunks and a
+    /// live tail rather than whole each tick: a whole pass costs about a
+    /// chunk's milliseconds per 8 KB and runs up to 30 times a second while
+    /// the reply streams, so past two chunks the tick outgrows a frame
+    /// (issue 1720). The settled reply still renders whole below
+    /// `documentThresholdBytes`.
+    static let streamChunkingThresholdBytes = 2 * chunkTargetBytes
+
+    static func isChunkedStream(_ source: String) -> Bool {
+        source.utf8.count >= streamChunkingThresholdBytes
+    }
+
     static func isLargeCodeBlock(_ source: String) -> Bool {
         source.utf8.count >= codeBlockThresholdBytes
     }
@@ -639,7 +651,7 @@ extension MarkdownBlock {
 ///
 /// With no boundary in the window:
 /// - if the stable target sits inside a known construct span (fence/math/
-///   directive), promotion WAITS — a hard cut must never split a construct;
+///   directive/table), promotion WAITS — a hard cut must never split a construct;
 /// - otherwise the text is genuinely unstructured prose and a bounded,
 ///   grapheme-aligned hard cut advances one piece.
 enum LargeStreamPromotion {
@@ -779,8 +791,8 @@ enum MarkdownReferenceResolver {
 
 /// Incremental scanner that finds *safe* split points in a growing streamed
 /// document — positions where slicing the source leaves both sides as
-/// well-formed Markdown (never inside a fenced code block, math block, or
-/// `:::` directive). Used by the large streaming path to promote a stable
+/// well-formed Markdown (never inside a fenced code block, math block,
+/// `:::` directive, or table). Used by the large streaming path to promote a stable
 /// prefix into immutable chunks while only re-parsing the live tail.
 ///
 /// The scanner is resumable: it consumes only complete new lines each call,
@@ -795,19 +807,28 @@ struct MarkdownStableBoundaryScanner {
     private(set) var consumedOffset: Int = 0
     /// Trailing partial line awaiting its newline.
     private var pendingLine = ""
+    /// Whether a partial last line waits for `finish()`.
+    var hasPendingLine: Bool { !pendingLine.isEmpty }
     private var fenceMarker: MarkdownFence?
     /// The close marker the open math region expects (`$$` or `\]`), so a
     /// block opened with one cannot close on the other.
     private var mathClose: String?
     private var inDirective = false
+    /// The open table's span in `constructIntervals`. A table has no blank
+    /// line in it, so a long one would otherwise take a hard cut mid-table
+    /// and leave the tail's rows without their header.
+    private var openTableIndex: Int?
+    /// Where the line before started, when it had a `|` and no table was
+    /// open: a table's header, if the line after it is a separator row.
+    private var previousPipeLineStart: Int?
 
     /// True when the scanner sits inside a fenced/math/directive region at
     /// the end of everything consumed — callers avoid promoting a prefix
     /// that ends mid-construct.
     var isInOpenConstruct: Bool { fenceMarker != nil || mathClose != nil || inDirective }
 
-    /// Absolute byte spans of every fenced/math/directive construct seen so
-    /// far (an open construct has a nil end). The streaming promotion policy
+    /// Absolute byte spans of every fenced/math/directive construct and
+    /// table seen so far (an open construct has a nil end). The streaming promotion policy
     /// refuses to hard-cut through a span that contains the current stable
     /// target. One interval per construct — bounded by construct count.
     private(set) var constructIntervals: [(start: Int, end: Int?)] = []
@@ -872,12 +893,14 @@ struct MarkdownStableBoundaryScanner {
         let normalized = line.hasSuffix("\r") ? String(line.dropLast()) : line
         let wasInConstruct = fenceMarker != nil || mathClose != nil || inDirective
         let lineStartOffset = consumedOffset
+        if !wasInConstruct {
+            noteTableRow(normalized.trimmingCharacters(in: .whitespaces), lineStartOffset: lineStartOffset)
+        }
         updateStateForLine(normalized.trimmingCharacters(in: .whitespaces), lineStartOffset: lineStartOffset, lineBytes: lineBytes)
         let isInConstruct = fenceMarker != nil || mathClose != nil || inDirective
         if wasInConstruct && !isInConstruct, !constructIntervals.isEmpty {
             constructIntervals[constructIntervals.count - 1].end = consumedOffset + lineBytes
         }
-        _ = boundaries
 
         // A blank line outside every construct ends a block: everything
         // after this line is a fresh block, so the split point moves to the
@@ -902,6 +925,14 @@ struct MarkdownStableBoundaryScanner {
         pendingLine = ""
         let normalized = line.hasSuffix("\r") ? String(line.dropLast()) : line
         let wasInConstruct = fenceMarker != nil || mathClose != nil || inDirective
+        if !wasInConstruct {
+            noteTableRow(normalized.trimmingCharacters(in: .whitespaces), lineStartOffset: consumedOffset)
+        }
+        // The stream ended: a table still open ends with it.
+        if let index = openTableIndex {
+            constructIntervals[index].end = consumedOffset + line.utf8.count
+            openTableIndex = nil
+        }
         updateStateForLine(
             normalized.trimmingCharacters(in: .whitespaces),
             lineStartOffset: consumedOffset,
@@ -917,6 +948,32 @@ struct MarkdownStableBoundaryScanner {
             lastSafeBoundary = consumedOffset + line.utf8.count
         }
         consumedOffset += line.utf8.count
+    }
+
+    /// Opens a table span at its header once the separator row under it
+    /// confirms it, as the parser reads a table, and closes it at the start
+    /// of the first line without a `|`, so a cut lands before or after a
+    /// table, never inside it. A row is any line with a `|` (a table may
+    /// leave out its outer pipes); prose with a `|` and no separator under
+    /// it opens nothing. A fence opener is never a row, even with a `|` in
+    /// its info string. Called only outside fences, math and directives.
+    private mutating func noteTableRow(_ trimmedLine: String, lineStartOffset: Int) {
+        let hasPipe = trimmedLine.contains("|") && MarkdownFence.opening(trimmedLine) == nil
+        if let index = openTableIndex {
+            guard !hasPipe else { return }
+            constructIntervals[index].end = lineStartOffset
+            openTableIndex = nil
+        } else if hasPipe, let headerStart = previousPipeLineStart, Self.isTableSeparator(trimmedLine) {
+            constructIntervals.append((start: headerStart, end: nil))
+            openTableIndex = constructIntervals.count - 1
+        }
+        previousPipeLineStart = hasPipe && openTableIndex == nil ? lineStartOffset : nil
+    }
+
+    /// A table's separator row: dashes, colons, pipes and spaces only.
+    static func isTableSeparator(_ trimmedLine: String) -> Bool {
+        trimmedLine.contains("-") && trimmedLine.contains("|")
+            && trimmedLine.allSatisfy { "|:- \t".contains($0) }
     }
 
     private mutating func updateStateForLine(_ trimmedLine: String, lineStartOffset: Int, lineBytes: Int) {

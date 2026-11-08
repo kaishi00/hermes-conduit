@@ -418,7 +418,7 @@ final class LocationSharingController: ObservableObject {
     /// the host has it.
     @discardableResult
     func shareFix(source: LocationFixSource, events: [LocationPlaceEvent] = []) async -> Bool {
-        guard settings.shares(source, at: now()) else { return false }
+        guard let bound = config.binding, settings.shares(source, at: now()) else { return false }
         // A background relaunch gets a few seconds: the fix, place name and
         // send run inside an assertion, and an arrive/leave is kept before
         // the fix so a suspension can't lose it.
@@ -440,6 +440,17 @@ final class LocationSharingController: ObservableObject {
                 timeout: source.isTalking ? .seconds(8) : .seconds(15)
             )
         }
+        // Sharing ended or moved to another dashboard while the fix came:
+        // it and these events were taken for the old one, so the events
+        // kept above leave too, or a rebind's flush would send them there.
+        guard config.binding == bound else {
+            if !events.isEmpty {
+                unsent.remove(fixID: nil, eventIDs: Set(events.map(\.id)))
+                saveUnsent()
+            }
+            return false
+        }
+        guard settings.shares(source, at: now()) else { return false }
         // The place the host already has from a message moments ago: the
         // message goes without sending it again (or looking up its area).
         if source == .message, events.isEmpty, unsent.fix == nil, let location,
@@ -487,12 +498,16 @@ final class LocationSharingController: ObservableObject {
         guard readConfigIfNeeded(), config.binding != nil, settings.shares(source, at: now()) else { return false }
         let endBackground = beginBackgroundWork(for: source)
         defer { endBackground() }
+        let bound = config.binding
         var record: LocationFixRecord?
         if let location {
             // Any fix may move the shops watched along (walking past).
             spots.moved(location)
             let precision = settings.precision(for: source)
             let area = precision == .places ? nil : await fixes.area(for: location)
+            // Sharing ended or moved to another dashboard during the lookup:
+            // this fix and its events were taken for the old one.
+            guard config.binding == bound, settings.shares(source, at: now()) else { return false }
             record = LocationFixRecord(source: source, raw: LocationRawFix(location), area: area)
         }
         guard record != nil || !events.isEmpty else { return false }
@@ -811,6 +826,34 @@ final class LocationSharingController: ObservableObject {
     func hostRequest() async -> LocationSyncEngine.Request? {
         guard let binding = config.binding else { return nil }
         return await requestProvider?(binding)
+    }
+
+    /// The dashboard sharing is bound to is no longer saved in Conduit, so
+    /// nothing can reconnect to it: sharing with it ends here, as turning
+    /// both layers off would, and is unbound, so turning a layer on binds to
+    /// the dashboard in use (issue 1800). What the host kept stays there:
+    /// it can't be reached to delete it.
+    func endSharing(unlessBoundTo saved: Set<UUID>) {
+        // The host pass is the only way to reach a dashboard that isn't the
+        // one in use: forgotten even while the config can't be read, so
+        // nothing reaches the removed host before the next connect unbinds.
+        if let pass = LocationKeychain.loadHostPass(), !saved.contains(pass.dashboardID) {
+            LocationKeychain.clearHostPass()
+        }
+        guard readConfigIfNeeded(), config.isBound(outside: saved) else { return }
+        voiceCallEnded()
+        lastTalkingUpload = nil
+        unsent.fix = nil
+        unsent.events = []
+        unsent.spotEntries = []
+        saveUnsent()
+        engine.forgetHost()
+        LocationKeychain.clearHostPass()
+        // A reply still coming from the removed host lists its shops.
+        spotsForgotten += 1
+        save { $0.unbind() }
+        // Unbound, the monitors stop and the shops' monitor is emptied.
+        reconfigureMonitors()
     }
 
     /// Deletes what this phone (or, with `everything`, every device and the

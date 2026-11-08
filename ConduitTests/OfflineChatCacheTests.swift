@@ -471,6 +471,46 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(store.loadChatList(dashboardID: dashboard, profile: "default"), list)
     }
 
+    /// A copy that isn't in memory is read on the store's queue and handed
+    /// back on the main queue, so an open never reads and decodes it on the
+    /// tap (issue 1826); one in memory answers at once, and a removal while
+    /// the read is out hands back nothing.
+    func testACopyNotInMemoryIsReadOffTheMainThread() throws {
+        let writer = makeStore(writesAsynchronously: true)
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        writer.record(dashboardID: dashboard, profile: "default", sessionID: "a", title: "A", messages: row, sessions: [session("a"), session("b")])
+        writer.record(dashboardID: dashboard, profile: "default", sessionID: "b", title: "B", messages: row, sessions: [session("a"), session("b")])
+        writer.waitForPendingWrites()
+        let directory = writer.fileURL(dashboardID: dashboard, profile: "default").deletingLastPathComponent()
+
+        // The next launch's store holds nothing in memory yet.
+        let store = OfflineChatCacheStore(directory: directory, writesAsynchronously: true)
+        var answered: OfflineCachedTranscript??
+        let read = expectation(description: "the copy comes back")
+        store.readTranscript("a", dashboardID: dashboard, profile: "default") { transcript in
+            answered = .some(transcript)
+            read.fulfill()
+        }
+        XCTAssertNil(answered, "The file is read on the store's queue, not on the caller")
+        wait(for: [read], timeout: 5)
+        XCTAssertEqual(answered??.messages.map(\.id), ["m"])
+
+        // Now in memory: it answers before the call returns.
+        var kept: OfflineCachedTranscript?
+        store.readTranscript("a", dashboardID: dashboard, profile: "default") { kept = $0 }
+        XCTAssertEqual(kept?.messages.map(\.id), ["m"])
+
+        // A chat deleted while its copy is read shows nothing.
+        let gone = expectation(description: "nothing comes back")
+        store.readTranscript("b", dashboardID: dashboard, profile: "default") { transcript in
+            XCTAssertNil(transcript)
+            gone.fulfill()
+        }
+        store.removeTranscripts(sessionIDs: ["b"], dashboardID: dashboard, profile: "default")
+        wait(for: [gone], timeout: 5)
+    }
+
     /// A removal waits for the saves queued before it, so a copy or held
     /// rows queued just before a delete or a sign-out never land after it,
     /// and what it took is gone when it returns.
@@ -578,6 +618,31 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNotNil(store.loadTranscript("b", dashboardID: dashboard, profile: "default"))
         XCTAssertNil(store.loadTranscript("a", dashboardID: dashboard, profile: "default"), "Past the limit: not read ahead")
         XCTAssertEqual(store.loadChatList(dashboardID: dashboard, profile: "default"), list, "Its saved list too")
+    }
+
+    /// A row that shows warms its chat's copy (issue 1725): the tap then
+    /// opens it from memory, with no file read on the main thread.
+    func testARowThatShowsWarmsItsChatsCopy() throws {
+        let writer = makeStore()
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        for id in ["a", "b"] {
+            writer.record(dashboardID: dashboard, profile: "default", sessionID: id, title: id, messages: row, sessions: [])
+        }
+        let directory = writer.fileURL(dashboardID: dashboard, profile: "default").deletingLastPathComponent()
+        let store = OfflineChatCacheStore(directory: directory, writesAsynchronously: true)
+
+        // Warmed by an alias the row answers to, after an id with no copy.
+        store.warmTranscript(["runtime-a", "a"], dashboardID: dashboard, profile: "default")
+        store.warmTranscript(["never-saved"], dashboardID: dashboard, profile: "default")
+        store.waitForPendingWrites()
+
+        for id in ["a", "b"] {
+            try FileManager.default.removeItem(at: store.transcriptFileURL(id, dashboardID: dashboard, profile: "default"))
+        }
+        XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: "default")?.messages.map(\.id), ["m"], "The warmed copy is in memory")
+        XCTAssertNil(store.loadTranscript("b", dashboardID: dashboard, profile: "default"), "Only the row that showed is warmed")
+        XCTAssertNil(store.loadTranscript("never-saved", dashboardID: dashboard, profile: "default"))
     }
 
     /// A profile read ahead for a switch (its last chat) is read further
@@ -1812,6 +1877,55 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(appState.chatRowsOnScreen.map(\.id), ["live-stored-a"])
     }
 
+    /// A chat whose saved copy isn't in memory (a cold launch's store, a
+    /// notification's chat) still shows it while it opens: the copy is read
+    /// on the store's queue and comes up while the resume waits, never
+    /// feeding the live transcript, and Hermes' rows take over (issue 1826).
+    func testACopyReadOffTheMainThreadShowsWhileTheChatOpens() async throws {
+        useInMemoryKeychain()
+        let gate = ControlledSuspension()
+        var gated = false
+        let live = [session("stored-a"), session("stored-b")]
+        let opened = OpenedChats()
+        let dashboard = UUID()
+        let writer = makeStore()
+        seedCopy(writer, dashboard: dashboard)
+        let directory = writer.fileURL(dashboardID: dashboard, profile: "default").deletingLastPathComponent()
+        let coldStore = OfflineChatCacheStore(directory: directory, writesAsynchronously: true)
+        addTeardownBlock { coldStore.waitForPendingWrites() }
+        let saved = SavedDashboard(id: dashboard, label: "One", normalizedURL: "https://one.example")
+        let (appState, _, _) = makeAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: dashboard, dashboards: [saved]),
+            store: coldStore,
+            configureDefaults: { defaults in
+                ChatResumeStore(defaults: defaults).setLastSessionID("stored-b", for: "default")
+            },
+            lifecycleOperations: connectedLifecycle(
+                catalog: { _ in live },
+                opened: opened,
+                beforeOpen: { sessionID in
+                    guard sessionID == "stored-a", !gated else { return }
+                    gated = true
+                    await gate.suspend()
+                }
+            )
+        )
+        addTeardownBlock { appState.client?.disconnect() }
+        await appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"))
+        await waitUntil { appState.activeSessionId == "stored-b" && appState.messages.map(\.id) == ["live-stored-b"] }
+
+        let opening = Task { @MainActor in await appState.openSession("stored-a") }
+        await gate.waitUntilSuspended()
+        await waitUntil { appState.offlineChatPresentation?.displayedMessages.map(\.id) == ["u1", "a1"] }
+        XCTAssertTrue(appState.messages.isEmpty, "The copy never feeds the live transcript")
+
+        gate.resume()
+        let landed = await opening.value
+        XCTAssertTrue(landed)
+        XCTAssertNil(appState.offlineChatPresentation)
+        XCTAssertEqual(appState.messages.map(\.id), ["live-stored-a"])
+    }
+
     /// An unread chat left while its turn ran lands at that turn's reply
     /// start from its saved rows as it opens: Hermes' rows start there too,
     /// so nothing moves when they land, and they don't land it again
@@ -2276,6 +2390,22 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(appState.messages.isEmpty, "Nothing went into the live transcript")
     }
 
+    /// Back in the app, a reconnect stays quiet until a message waits for
+    /// it: then the header says why the message hasn't gone (#1624).
+    func testAMessageThatWaitsEndsTheQuietReturn() {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        appState.beginQuietReturnForTesting()
+        XCTAssertTrue(appState.hidesBriefReconnect)
+
+        XCTAssertTrue(appState.sendWhenConnected("Hello", replyReference: nil))
+
+        XCTAssertFalse(appState.isReturningQuietly)
+        XCTAssertFalse(appState.hidesBriefReconnect)
+    }
+
     /// Typing over the copy picks its chat, so the one being typed in is
     /// the one that opens.
     func testTypingOverTheCopyPicksItsChat() throws {
@@ -2608,6 +2738,31 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(store.loadPendingSends(dashboardID: dashboard).map(\.id), [newer.id])
     }
 
+    func testACardsChatIsTheSameUnderItsOtherIds() throws {
+        let (appState, _, _) = makeAppState()
+        var row = session("stored-a")
+        row.storedSessionId = "stored-a"
+        row.alternateIds = ["runtime-a"]
+        appState.sessions = [row]
+        func chat(_ dashboard: String, _ profile: String, _ id: String) throws -> String {
+            try XCTUnwrap(RichCardActionContext.chat(dashboard: dashboard, profile: profile, sessionID: id))
+        }
+        XCTAssertTrue(appState.richCardChatsAreSame(try chat("d", "default", "runtime-a"), try chat("d", "default", "stored-a")),
+                      "a new chat's durable id is the same chat, so its card keeps what was typed")
+        XCTAssertFalse(appState.richCardChatsAreSame(try chat("d", "default", "runtime-a"), try chat("e", "default", "stored-a")))
+        XCTAssertFalse(appState.richCardChatsAreSame(try chat("d", "default", "stored-a"), try chat("d", "work", "stored-a")))
+        XCTAssertFalse(appState.richCardChatsAreSame(try chat("d", "default", "stored-a"), try chat("d", "default", "stored-b")))
+        XCTAssertFalse(RichCardActionContext.mayFollowUp(tappedIn: try chat("d", "default", "runtime-a"),
+                                                         openChat: try chat("d", "default", "stored-b"),
+                                                         composerIsEnabled: true, draft: "",
+                                                         sameChat: appState.richCardChatsAreSame))
+        XCTAssertTrue(RichCardActionContext.mayFollowUp(tappedIn: try chat("d", "default", "runtime-a"),
+                                                        openChat: try chat("d", "default", "stored-a"),
+                                                        composerIsEnabled: true, draft: "",
+                                                        sameChat: appState.richCardChatsAreSame),
+                      "a tap's message still goes once the chat gets its durable id")
+    }
+
     func testAWaitingSendCannotFollowAReattributedRuntimeAlias() throws {
         let (appState, _, dashboard) = makeAppState()
         let pending = PendingComposerSend(
@@ -2637,6 +2792,25 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(appState.pendingComposerSend)
         XCTAssertEqual(appState.composerRestoreRequests.first?.key.sessionID, "stored-a")
         XCTAssertTrue(appState.messages.isEmpty)
+    }
+
+    func testACardTapKeepsToItsChatAcrossARotationButNotAReattribution() throws {
+        let (appState, _, _) = makeAppState()
+        var original = session("stored-a")
+        original.storedSessionId = "stored-a"
+        original.alternateIds = ["runtime-old", "runtime-new"]
+        appState.sessions = [original]
+        appState.activeSessionId = "runtime-old"
+        let tapped = try XCTUnwrap(appState.richCardChat)
+        appState.activeSessionId = "runtime-new"
+        XCTAssertEqual(appState.richCardChat, tapped, "the same chat under its next runtime id")
+        var other = session("stored-b")
+        other.storedSessionId = "stored-b"
+        other.alternateIds = ["runtime-new"]
+        appState.sessions = [other]
+        XCTAssertNotEqual(appState.richCardChat, tapped, "the runtime id now belongs to B")
+        XCTAssertFalse(RichCardActionContext.mayFollowUp(
+            tappedIn: tapped, openChat: appState.richCardChat, composerIsEnabled: true, draft: ""))
     }
 
     func testANewChatsWaitingMessageCannotFollowAReattributedCreatedRuntime() throws {
@@ -3454,5 +3628,20 @@ extension OfflineChatCacheTests {
         XCTAssertNil((fields["model.default"] as? [String: Any])?["api_key"], "What a field holds is filtered")
         XCTAssertNil(kept["api_key"], "Only the names under fields are spared")
         XCTAssertEqual(kept["category_order"] as? [String], ["model", "providers"])
+    }
+
+    /// A copy keeps the last saved rows, mapping only those (issue 1725):
+    /// rows that aren't saved, at the end, don't shorten it.
+    func testACopyKeepsTheLastRowsItSaves() {
+        let limit = OfflineChatCacheStore.maxMessagesPerTranscript
+        var messages = (0..<(limit + 100)).map { index in
+            ChatMessage(id: "m\(index)", role: index.isMultiple(of: 2) ? .user : .assistant, content: "row \(index)", timestamp: "\(index)")
+        }
+        messages.append(ChatMessage(id: "approval", role: .approval, content: "Approve?", timestamp: "x"))
+        let rows = OfflineChatCacheStore.keptRows(of: messages)
+        XCTAssertEqual(rows.count, limit)
+        XCTAssertEqual(rows.first?.id, "m100")
+        XCTAssertEqual(rows.last?.id, "m\(limit + 99)")
+        XCTAssertEqual(OfflineChatCacheStore.keptRows(of: Array(messages.prefix(3))).map(\.id), ["m0", "m1", "m2"])
     }
 }

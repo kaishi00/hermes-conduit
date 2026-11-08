@@ -220,6 +220,8 @@ final class LoginFlowModel {
     var extraHeadersRequest: LoginExtraHeadersRequest?
     var extraHeadersRevision = 0
     var showsScanner = false
+    /// Diagnostics & logs, from the sign-in screen's footer.
+    var showsDiagnostics = false
     /// A scanned sign-in code, asked about in its own sheet.
     var pendingLink: DashboardConnectLink?
 

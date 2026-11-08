@@ -27,6 +27,11 @@ final class AppStoreScreenshotTests: XCTestCase {
         }
         app = XCUIApplication()
         app.launchEnvironment["TZ"] = Self.timeZoneNearStatusBarTime()
+        // No tips over the screens (BotsHomeGesturesTip).
+        app.launchEnvironment["CONDUIT_HIDE_TIPS"] = "1"
+        // A still backdrop, so XCUITest's settle wait doesn't hang on its
+        // drift and every shot shows the glows in the same place.
+        app.launchEnvironment["CONDUIT_STILL_BACKDROP"] = "1"
         app.launch()
     }
 
@@ -46,6 +51,7 @@ final class AppStoreScreenshotTests: XCTestCase {
 
     func testCaptureAppStoreScreens() throws {
         signInIfNeeded()
+        openSessions()
         dismissFinishSetupCard()
         // The list fills from the dashboard; wait for the newest chat.
         if !app.staticTexts["Weekend trip to Big Sur"].waitForExistence(timeout: 30) {
@@ -89,7 +95,7 @@ final class AppStoreScreenshotTests: XCTestCase {
                 }
             }
         }
-        app.buttons["Chats"].tap()
+        app.buttons["Sessions"].tap()
 
         // Live voice: the real call screen over a scripted conversation
         // (Conduit/Services/ScreenshotCallFixture.swift); the sign-in is saved.
@@ -124,11 +130,12 @@ final class AppStoreScreenshotTests: XCTestCase {
     }
 
     /// The App Preview: the workflow records the screen while this runs.
-    /// Starts on the Chats list, opens a new chat, asks, and lets the
+    /// Starts on the Sessions list, opens a new chat, asks, and lets the
     /// scripted answer stream in.
     /// setUp skips it unless the recording asked for it.
     func testRecordPreview() throws {
         signInIfNeeded()
+        openSessions()
         dismissFinishSetupCard()
         guard app.staticTexts["Weekend trip to Big Sur"].waitForExistence(timeout: 30) else {
             XCTFail("The seeded chats never showed, so the preview would start on an empty list")
@@ -192,7 +199,13 @@ final class AppStoreScreenshotTests: XCTestCase {
         return true
     }
 
-    /// Back to the Chats list. The list and tab bar stay in the hierarchy
+    /// The app opens on Bots; the chats are the Sessions tab.
+    private func openSessions() {
+        let sessions = app.buttons["Sessions"].firstMatch
+        if sessions.waitForExistence(timeout: 10) { sessions.tap() }
+    }
+
+    /// Back to the Sessions list. The list and tab bar stay in the hierarchy
     /// under a pushed chat, so the chat's own menu button is the sign a
     /// chat is still showing. Beside the list on an iPad, the chat's Close.
     private func backToTabs() {

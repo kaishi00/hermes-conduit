@@ -609,6 +609,34 @@ final class OfflineChatCacheStore {
         }
     }
 
+    /// `loadTranscript` off the main thread (issue 1826): a copy kept in
+    /// memory, or a store that works on its caller (tests), answers at once;
+    /// any other is read and decoded on the store's queue and handed to
+    /// `completion` on the main queue, or nil when a removal (a deleted
+    /// chat, a wipe) ran meanwhile.
+    @MainActor
+    func readTranscript(
+        _ sessionID: String,
+        dashboardID: UUID,
+        profile: String,
+        completion: @escaping @MainActor (OfflineCachedTranscript?) -> Void
+    ) {
+        let url = transcriptFileURL(sessionID, dashboardID: dashboardID, profile: profile)
+        guard let ioQueue, memoryLock.withLock({ keptTranscripts[url] == nil }) else {
+            completion(loadTranscript(sessionID, dashboardID: dashboardID, profile: profile))
+            return
+        }
+        let removalsBefore = removals
+        ioQueue.async { [self] in
+            let transcript = loadTranscript(sessionID, dashboardID: dashboardID, profile: profile)
+            // Weighed on the main queue, after any removal the main thread
+            // made while the file was read.
+            DispatchQueue.main.async { [self] in
+                completion(removals == removalsBefore ? transcript : nil)
+            }
+        }
+    }
+
     /// Keeps a copy as the most recently used, then lets the least recently
     /// used go past `maxKeptTranscripts` or `maxKeptTranscriptBytes` (the
     /// newest always stays). Under `memoryLock`.
@@ -694,6 +722,21 @@ final class OfflineChatCacheStore {
         return snapshot
     }
 
+    /// The rows a copy keeps: the last `maxMessagesPerTranscript` that are
+    /// saved at all, mapped from the end, so a long transcript maps only
+    /// what is kept (issue 1725).
+    static func keptRows(of messages: [ChatMessage]) -> [OfflineCachedMessage] {
+        var rows: [OfflineCachedMessage] = []
+        rows.reserveCapacity(min(messages.count, maxMessagesPerTranscript))
+        for message in messages.reversed() {
+            guard let row = OfflineCachedMessage(message) else { continue }
+            rows.append(row)
+            if rows.count == maxMessagesPerTranscript { break }
+        }
+        rows.reverse()
+        return rows
+    }
+
     /// Records the newest page of `messages` (moved to the front of the
     /// recent list) together with the current session list.
     ///
@@ -717,16 +760,16 @@ final class OfflineChatCacheStore {
         sessions: [SessionSummary],
         now: Date = Date()
     ) {
-        let rows = Array(messages.compactMap(OfflineCachedMessage.init)
-            .suffix(Self.maxMessagesPerTranscript))
+        let rows = Self.keptRows(of: messages)
         guard !rows.isEmpty else { return }
-        let catalogRows = sessions
-            .filter { $0.source != .cron && !$0.isArchived }
-            .map(OfflineCachedSession.init)
         perform { [self] in
             let signposter = ResponsivenessSignposts.signposter
             let saving = signposter.beginInterval("Save chat copy", id: signposter.makeSignpostID())
             defer { signposter.endInterval("Save chat copy", saving) }
+            // On the store's queue: the caller is the main thread.
+            let catalogRows = sessions
+                .filter { $0.source != .cron && !$0.isArchived }
+                .map(OfflineCachedSession.init)
             recordRows(
                 rows,
                 dashboardID: dashboardID,
@@ -1444,6 +1487,30 @@ final class OfflineChatCacheStore {
                     prefetchTranscript(entry, dashboardID: dashboardID, profile: profile)
                 }
             }
+        }
+    }
+
+    /// Reads one chat's saved copy into memory off the main thread, as the
+    /// list shows its row, so opening the chat takes the copy from memory
+    /// instead of reading and decoding its file on the main thread
+    /// (issue 1725). Like the read-ahead, only while there is room, and the
+    /// first copy to go.
+    /// `sessionIDs` are the ids the chat's row answers to, the one its copy
+    /// is most likely saved under first; the first one the index lists is
+    /// read.
+    func warmTranscript(_ sessionIDs: [String], dashboardID: UUID, profile: String) {
+        guard let ioQueue, !sessionIDs.isEmpty else { return }
+        // Already in memory under one of its ids, or no room: nothing to do,
+        // without a hop to the store's queue for every row that shows.
+        let urls = sessionIDs.map { transcriptFileURL($0, dashboardID: dashboardID, profile: profile) }
+        guard memoryLock.withLock({ urls.allSatisfy { fitsAheadLocked($0, bytes: 0) } }) else { return }
+        ioQueue.async { [self] in
+            guard memoryLock.withLock({ waitingRemovals == 0 }),
+                  // Only a chat the scope's index lists has a copy to read.
+                  let transcripts = load(dashboardID: dashboardID, profile: profile)?.transcripts,
+                  let entry = sessionIDs.lazy.compactMap({ id in transcripts.first(where: { $0.sessionID == id }) }).first,
+                  (entry.bytes ?? 0) <= Self.maxPrefetchedTranscriptBytes else { return }
+            prefetchTranscript(entry, dashboardID: dashboardID, profile: profile)
         }
     }
 

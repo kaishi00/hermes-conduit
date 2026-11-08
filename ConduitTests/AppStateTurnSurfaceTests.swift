@@ -122,6 +122,77 @@ final class AppStateTurnSurfaceTests: XCTestCase {
         XCTAssertEqual(recorder.events.last, "prompt rt-failed Hello")
     }
 
+    func testARefusedSendDiscardsItsReport() async throws {
+        let recorder = TurnSurfaceRecorder()
+        recorder.sendError = RpcError(code: 4001, message: "invalid_params")
+        let harness = makeHarness(recorder: recorder)
+        openChat("rt-refused", in: harness)
+
+        _ = await harness.appState.submitComposer(text: "yes")
+
+        for _ in 0..<50 where recorder.discards.isEmpty { await Task.yield() }
+        XCTAssertEqual(recorder.discards, ["rt-refused \(recorder.digests.first ?? "?")"],
+                       "No turn of it is coming: the same words from another client mustn't take its line")
+    }
+
+    func testADiscardThatFailedToGoIsTriedAgain() async {
+        // Notifier issue 610: a discard lost to a passing failure left the
+        // report for another client's turn of the same words.
+        let recorder = TurnSurfaceRecorder()
+        recorder.sendError = RpcError(code: 4001, message: "invalid_params")
+        recorder.discardErrors = [URLError(.timedOut), DashboardTicketBridgeError.http(status: 503, detail: "")]
+        let harness = makeHarness(recorder: recorder)
+        harness.appState.turnSurfaceDiscardRetryDelays = [.milliseconds(1), .milliseconds(1), .milliseconds(1)]
+        openChat("rt-retry", in: harness)
+
+        _ = await harness.appState.submitComposer(text: "yes")
+
+        for _ in 0..<200 where recorder.discards.isEmpty { try? await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(recorder.discardTries, 3)
+        XCTAssertEqual(recorder.discards, ["rt-retry \(recorder.digests.first ?? "?")"])
+    }
+
+    func testADiscardThePluginRefusedIsNotTriedAgain() {
+        XCTAssertFalse(TurnSurface.discardMayGoLater(DashboardTicketBridgeError.http(status: 400, detail: "")))
+        XCTAssertFalse(TurnSurface.discardMayGoLater(DashboardTicketBridgeError.http(status: 404, detail: "")))
+        XCTAssertFalse(TurnSurface.discardMayGoLater(DashboardTicketBridgeError.answeredAfterSwitch),
+                       "The old dashboard took it")
+        XCTAssertTrue(TurnSurface.discardMayGoLater(DashboardTicketBridgeError.http(status: 0, detail: "")))
+        XCTAssertTrue(TurnSurface.discardMayGoLater(DashboardTicketBridgeError.signInRequired))
+        XCTAssertTrue(TurnSurface.discardMayGoLater(URLError(.timedOut)))
+        XCTAssertTrue(TurnSurface.discardMayGoLater(DashboardTicketBridgeError.http(status: 408, detail: "")))
+        XCTAssertTrue(TurnSurface.discardMayGoLater(DashboardTicketBridgeError.http(status: 429, detail: "")))
+        XCTAssertFalse(TurnSurface.discardMayGoLater(DashboardTicketBridgeError.oversizedResponse(limit: 0)))
+    }
+
+    func testARefusedDiscardIsSentOnce() async {
+        let recorder = TurnSurfaceRecorder()
+        recorder.sendError = RpcError(code: 4001, message: "invalid_params")
+        recorder.discardErrors = [DashboardTicketBridgeError.http(status: 400, detail: "")]
+        let harness = makeHarness(recorder: recorder)
+        harness.appState.turnSurfaceDiscardRetryDelays = [.milliseconds(1), .milliseconds(1), .milliseconds(1)]
+        openChat("rt-refused-discard", in: harness)
+
+        _ = await harness.appState.submitComposer(text: "yes")
+
+        for _ in 0..<200 where recorder.discardTries == 0 { try? await Task.sleep(for: .milliseconds(5)) }
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(recorder.discardTries, 1, "The plugin refused it: trying again changes nothing")
+        XCTAssertEqual(recorder.discards, [])
+    }
+
+    func testASendWhoseReplyWasLostKeepsItsReport() async {
+        let recorder = TurnSurfaceRecorder()
+        recorder.sendError = URLError(.networkConnectionLost)
+        let harness = makeHarness(recorder: recorder)
+        openChat("rt-lost", in: harness)
+
+        _ = await harness.appState.submitComposer(text: "yes")
+
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(recorder.discards, [], "It may have started: its turn still takes the line")
+    }
+
     func testOnlyAPluginThatReportsTheCapabilityTakesReports() {
         var plugin = NotifierPluginStatus()
         XCTAssertFalse(TurnSurface.isTaken(by: plugin), "Nothing reported yet")
@@ -143,6 +214,7 @@ final class AppStateTurnSurfaceTests: XCTestCase {
         let operations = ChatResumeLifecycleOperations(
             sendPrompt: { _, sessionID, text in
                 recorder?.events.append("prompt \(sessionID) \(text)")
+                if let error = recorder?.sendError { throw error }
                 return .accepted
             }
         )
@@ -158,6 +230,11 @@ final class AppStateTurnSurfaceTests: XCTestCase {
         )
         if let recorder {
             appState.turnSurfaceSender = { body in try await recorder.report(body) }
+            appState.turnSurfaceDiscarder = { body in
+                recorder.discardTries += 1
+                if !recorder.discardErrors.isEmpty { throw recorder.discardErrors.removeFirst() }
+                recorder.discards.append("\(body["session_id"] as? String ?? "?") \(body["text_sha256"] as? String ?? "?")")
+            }
         }
         return (appState, defaults)
     }
@@ -189,6 +266,10 @@ private final class TurnSurfaceRecorder {
     var digests: [String] = []
     var reportDelay: Duration?
     var reportError: Error?
+    var sendError: Error?
+    var discards: [String] = []
+    var discardErrors: [Error] = []
+    var discardTries = 0
 
     func report(_ body: [String: Any]) async throws {
         if let reportDelay { try await Task.sleep(for: reportDelay) }

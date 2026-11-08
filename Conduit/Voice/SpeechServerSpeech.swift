@@ -455,6 +455,9 @@ struct SpeechServerVoiceStatus: Equatable {
     /// The speech server's address the Hermes host dials (Speech to text's).
     var speechServerURL: String?
     var pluginMissing: Bool
+    /// `pluginMissing` because the profile turned the plugin off: `reason`
+    /// says how to turn it on (issue 1671).
+    var pluginOff = false
     /// Local's fast model (agent mode); nil from a plugin before it.
     var frontModel: LocalLiveFrontModelStatus?
     /// Hermes didn't answer; `reason` says why. The fast model shown stays
@@ -468,6 +471,14 @@ struct SpeechServerVoiceStatus: Equatable {
     static var pluginMissing: SpeechServerVoiceStatus {
         var status = SpeechServerVoiceStatus(unavailable: pluginMissingReason)
         status.pluginMissing = true
+        return status
+    }
+
+    /// The profile turned the plugin off: `remedy` (DashboardTicketBridgeError.pluginOffDetail).
+    static func pluginOff(_ remedy: String) -> SpeechServerVoiceStatus {
+        var status = SpeechServerVoiceStatus(unavailable: remedy)
+        status.pluginMissing = true
+        status.pluginOff = true
         return status
     }
 

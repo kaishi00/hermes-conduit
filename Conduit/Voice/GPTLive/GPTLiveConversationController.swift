@@ -19,6 +19,7 @@
 //
 
 import AVFAudio
+import Combine
 import Foundation
 
 // MARK: - Seams
@@ -127,16 +128,20 @@ final class GPTLiveConversationController: ObservableObject {
     static let maxBriefingCharacters = 32 * 1024 - 64
 
     /// Conduit's briefing for a call, with `followedBy` (the call's own
-    /// blocks: its chat, the rules for Hermes' tools, the style) after it.
-    /// Kept under `maxBriefingCharacters`: what Hermes remembers is cut
-    /// first, then the persona, so the rules always go out whole.
-    static func briefing(memory: GeminiLiveMemoryContext? = nil, personality: String? = nil, answerLength: LiveVoiceAnswerLength = .standard, onWatch: Bool = false, watchChats: Bool = false, followedBy tail: String = "") -> String {
+    /// blocks: its chat, the rules for Hermes' tools, the style) after it,
+    /// then the call's language, last of all. Kept under
+    /// `maxBriefingCharacters`: what Hermes remembers is cut first, then the
+    /// persona, so the rules always go out whole.
+    static func briefing(memory: GeminiLiveMemoryContext? = nil, personality: String? = nil, answerLength: LiveVoiceAnswerLength = .standard, onWatch: Bool = false, watchChats: Bool = false, language: String? = LiveVoiceLanguage.current, followedBy tail: String = "") -> String {
         let rules = briefingRules(answerLength: answerLength, onWatch: onWatch, watchChats: watchChats)
         // Escaped before counting, so the count is what goes out.
         var persona = (personality ?? "").replacingOccurrences(of: "</hermes_persona>", with: "</ hermes_persona>", options: .caseInsensitive)
         var memoryText = (memory?.text ?? "").replacingOccurrences(of: "</hermes_memory>", with: "</ hermes_memory>", options: .caseInsensitive)
         func assembled() -> String {
-            rules + personaBlock(persona) + memoryBlock(memoryText) + tail
+            // The language last, after the persona, the memory and the
+            // call's own blocks, which may be in another one: a rule stated
+            // only before them loses (issue 1868).
+            rules + personaBlock(persona) + memoryBlock(memoryText) + tail + LiveVoiceLanguage.rule(language: language)
         }
         var text = assembled()
         var excess = text.unicodeScalars.count - maxBriefingCharacters
@@ -183,7 +188,7 @@ final class GPTLiveConversationController: ObservableObject {
         """
         [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through \(onWatch ? "Conduit on their Apple Watch" : "the Conduit iPhone app"). This is speech, not text: talk naturally, in full spoken sentences.
         \(answerLength.instructions(readsBack: !onWatch)) This replaces any other guidance on reply length in these instructions, the persona's included; it doesn't change what you delegate.
-        Answer yourself, without delegating: greetings and small talk, repeating or rephrasing something already said on this call, and questions you can fully answer from this conversation, from the context Conduit sends you, from what Hermes remembers, or from settled general knowledge. Delegate real work to the client: anything to do, check, find, send, change or remember; current information (news, weather, prices, anything that may have changed); anything about their files, code, systems, accounts or earlier work that isn't in your context; and complex reasoning or research. This takes precedence over any other delegation policy in these instructions. Each delegation runs as a background job on Hermes. Never say something was done, sent, saved or changed unless Conduit or Hermes told you it was. Before delegating, acknowledge it out loud. \(LiveVoiceAcknowledgement.rule) Then keep talking; the job's result arrives later on that delegation. When it arrives, tell the user what Hermes found or did, with the details that matter.\(onWatch ? (watchChats ? "\n" + watchFindChat : "") : "\n" + phoneReadBack + "\n" + phoneFindChat)
+        Answer yourself, without delegating: greetings and small talk, repeating or rephrasing something already said on this call, and questions you can fully answer from this conversation, from the context Conduit sends you, from what Hermes remembers, or from settled general knowledge. Delegate real work to the client: anything to do, check, find, send, change or remember; current information (news, weather, prices, anything that may have changed); anything about their files, code, systems, accounts or earlier work that isn't in your context; and complex reasoning or research. This takes precedence over any other delegation policy in these instructions. Each delegation runs as a background job on Hermes. Never say something was done, sent, saved or changed unless Conduit or Hermes told you it was. Before delegating, acknowledge it out loud. \(LiveVoiceAcknowledgement.delegationRule) Then keep talking; the job's result arrives later on that delegation. When it arrives, tell the user what Hermes found or did, with the details that matter.\(onWatch ? (watchChats ? "\n" + watchFindChat : "") : "\n" + phoneReadBack + "\n" + phoneFindChat)
         Never delegate questions about the background jobs themselves: their status is in the context Conduit sends you, each job with its number. \(onWatch ? watchFollowUps : phoneFollowUps)
         \(onWatch ? watchApprovals : "Never approve, deny, or answer anything on a job's behalf yourself. For an approval a job update asks for, follow the Approvals rule; if a job needs any other input, tell the user to open it in Conduit.")
         Only say you're sending or passing something to Hermes in a turn where you delegate it: saying so sends nothing, only the delegation does.
@@ -243,7 +248,17 @@ final class GPTLiveConversationController: ObservableObject {
     /// The mode still needing the user's OK before this call may reach its
     /// provider, or nil (`LiveVoiceProviderConsent.missing`).
     private let missingConsent: @MainActor () -> LiveVoiceModeName?
-    @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
+    ///
+    /// Published through `transcriptPacer`: a new or removed line at once,
+    /// a line growing word by word at most ten times a second (issue 1960).
+    private(set) var transcript: [VoiceConversationTranscriptEntry] = [] {
+        didSet { transcriptPacer.changed(count: transcript.count) }
+    }
+    /// Fires after `transcript` changes, at the pace it publishes.
+    var transcriptChanges: AnyPublisher<Void, Never> { transcriptPacer.changes.eraseToAnyPublisher() }
+    private lazy var transcriptPacer = LiveTranscriptPublishPacer { [weak self] in
+        self?.objectWillChange.send()
+    }
     @Published private(set) var isMicrophoneMuted = false { didSet { syncHeadsetMute() } }
     /// Whether a call starting now starts with the microphone off: a call
     /// from Hermes the user muted in CallKit before this call was running.
@@ -308,6 +323,10 @@ final class GPTLiveConversationController: ObservableObject {
     private var openingRequestedAt: Date?
     private var openingAskedAgain = false
     private var openingTask: Task<Void, Never>?
+    /// Whether this call's trace already has the first words each side
+    /// said (#1611).
+    private var tracedModelSpeech = false
+    private var tracedUserSpeech = false
     private let bridge: GPTLiveDelegationBridge
     private let supervisor: GeminiLiveJobSupervising
     private let requestPermission: @MainActor () async -> Bool
@@ -453,6 +472,9 @@ final class GPTLiveConversationController: ObservableObject {
         hasSentOpening = false
         clearOpeningHold()
         openingAskedAgain = false
+        tracedModelSpeech = false
+        tracedUserSpeech = false
+        if let traceName { LiveCallTrace.shared.begin(traceName) }
         finishedTurn = nil
         endTask?.cancel()
         endTask = nil
@@ -671,7 +693,11 @@ final class GPTLiveConversationController: ObservableObject {
             // Given with the call when the host takes it there: appended after
             // the call starts, the model answers each piece out loud.
             if session?.briefingApplied != true {
-                session?.appendContext(briefing(), channel: .commentary, delegationID: nil)
+                let text = briefing()
+                let sent = session?.appendContext(text, channel: .commentary, delegationID: nil) == true
+                trace(sent
+                    ? "Briefing sent after the start: \(text.unicodeScalars.count) characters"
+                    : "Briefing not sent after the start")
             }
             sendOpeningIfNeeded()
             phase = endRequestedAt != nil ? .ending : audioPaused ? .paused : modelTurnActive ? .speaking : .listening
@@ -727,15 +753,21 @@ final class GPTLiveConversationController: ObservableObject {
         }
     }
 
-    /// An older plugin keeps the model silent until the user speaks: ask
-    /// for the greeting instead. Paused, a greeting nobody can hear waits
-    /// for the audio to return.
+    /// The call's opening (a greeting, or why Hermes called) as a speakable
+    /// turn: the model doesn't speak first from its instructions, so the
+    /// plugin reports the greeting unapplied (notifier #541). A host that
+    /// still reports it applied gets the timed ask below instead. Paused, a
+    /// greeting nobody can hear waits for the audio to return.
     private func sendOpeningIfNeeded() {
         guard endRequestedAt == nil, !audioPaused, !hasSentOpening, session?.isReady == true,
               let opening = openingPrompt() else { return }
         // Not sent (the channel failed): the next ready tries again.
-        hasSentOpening = session?.greetingApplied == true
-            || session?.appendContext(opening, channel: .speakable, delegationID: nil) == true
+        if session?.greetingApplied == true {
+            hasSentOpening = true
+        } else {
+            hasSentOpening = session?.appendContext(opening, channel: .speakable, delegationID: nil) == true
+            trace(hasSentOpening ? "Opening asked for as a turn" : "Opening not sent")
+        }
         guard hasSentOpening, lastModelTurnEndedAt == nil, lastUserSpeechAt == nil else { return }
         let current = now()
         openingRequestedAt = current
@@ -768,7 +800,8 @@ final class GPTLiveConversationController: ObservableObject {
               let opening = openingPrompt() else { return }
         // Once, sent or not: a channel that refuses it is failing anyway.
         openingAskedAgain = true
-        session?.appendContext(opening, channel: .speakable, delegationID: nil)
+        let sent = session?.appendContext(opening, channel: .speakable, delegationID: nil) == true
+        trace(sent ? "Opening asked for again: the model hadn't spoken" : "Opening not sent again")
     }
 
     private func clearOpeningHold() {
@@ -779,6 +812,30 @@ final class GPTLiveConversationController: ObservableObject {
     }
 
     var isHoldingForOpeningForTesting: Bool { openingHeldUntil != nil }
+
+    // MARK: Call trace
+
+    /// The call's name in Gateway Diagnostics' call trace ("GPT-Live").
+    /// Nil keeps the call out of the trace (#1611).
+    var traceName: String?
+
+    private func trace(_ label: String) {
+        guard traceName != nil else { return }
+        LiveCallTrace.shared.note(label)
+    }
+
+    /// Notes the first words each side says, once a piece has words in
+    /// it: an empty delta isn't speech.
+    private func traceFirstSpeech(of speaker: VoiceConversationTranscriptEntry.Speaker, _ text: String) {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        if speaker == .user, !tracedUserSpeech {
+            tracedUserSpeech = true
+            trace(tracedModelSpeech ? "User started speaking" : "User started speaking, before the model")
+        } else if speaker == .assistant, !tracedModelSpeech {
+            tracedModelSpeech = true
+            trace(tracedUserSpeech ? "Model started speaking" : "Model started speaking, before the user")
+        }
+    }
 
     private func finishEnd() {
         let close = onEndConversation
@@ -808,11 +865,13 @@ final class GPTLiveConversationController: ObservableObject {
     private func handle(_ event: GPTLiveProtocol.ServerEvent) {
         switch event {
         case .inputTranscript(let text):
+            traceFirstSpeech(of: .user, text)
             lastUserSpeechAt = now()
             // Someone is talking: the opening is under way or not wanted.
             clearOpeningHold()
             appendTranscript(text, speaker: .user)
         case .outputTranscript(let text):
+            traceFirstSpeech(of: .assistant, text)
             // Kept while paused: GPT-Live can't be told to hold its turn, so
             // what it said into the pause stays readable.
             modelTurnActive = true
@@ -827,6 +886,8 @@ final class GPTLiveConversationController: ObservableObject {
         case .turnDone(let role, let text):
             switch role {
             case "user":
+                // A turn can arrive whole, with no pieces before it.
+                traceFirstSpeech(of: .user, text)
                 lastUserSpeechAt = now()
                 clearOpeningHold()
                 let finished = finishTurn(userTurnEntries, speaker: .user, text: text)
@@ -837,6 +898,7 @@ final class GPTLiveConversationController: ObservableObject {
                     userFinished(finished)
                 }
             case "assistant":
+                traceFirstSpeech(of: .assistant, text)
                 modelTurnActive = false
                 lastModelTurnEndedAt = now()
                 clearOpeningHold()
@@ -1001,30 +1063,188 @@ final class GPTLiveConversationController: ObservableObject {
     /// Hermes you're set."), rather than asking, offering or saying it
     /// won't. A turn that is only an acknowledgement ("On it.", "One
     /// moment, checking.") counts too: the briefing asks for one before
-    /// each delegation without naming Hermes every time. English only: the
-    /// phrases GPT-Live uses.
-    static func claimsToSendToHermes(_ text: String) -> Bool {
+    /// each delegation without naming Hermes every time. A call speaks the
+    /// user's language (LiveVoiceLanguage), so a sentence sending something
+    /// to Hermes is also read in the turn's detected language and the
+    /// call's, when Conduit ships them ("Ich schicke das an Hermes."), with
+    /// the verb and Hermes in one clause; an acknowledgement alone is read
+    /// in English only.
+    /// `callLanguage`: the call's language, for a turn too short to tell.
+    static func claimsToSendToHermes(_ text: String, callLanguage: String? = LiveVoiceLanguage.current) -> Bool {
         let normalized = text.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         // A turn that ends asking ("… Send it?") waits for the user.
-        guard !normalized.hasSuffix("?") else { return false }
-        let sentences = normalized.split(omittingEmptySubsequences: true) { ".!?\n".contains($0) }
+        guard !normalized.hasSuffix("?"), !normalized.hasSuffix("？") else { return false }
+        let sentences = normalized.split(omittingEmptySubsequences: true) { ".!?\n。！？".contains($0) }
         let acknowledgements = sentences.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         if !acknowledgements.isEmpty, acknowledgements.count <= 3,
            acknowledgements.allSatisfy({ $0.range(of: Self.acknowledgementOnly, options: .regularExpression) != nil }),
+           // "I'll send nothing." reads like "I'll send it." to the
+           // acknowledgement's words: a refusal is no acknowledgement.
+           normalized.range(of: Self.sendsNothing, options: .regularExpression) == nil,
            acknowledgements.contains(where: { $0.range(of: Self.workUnderway, options: .regularExpression) != nil }) {
             return true
         }
         for sentence in sentences {
             // A question ("Shall I send that to Hermes?") asks, it doesn't send.
-            if normalized[sentence.endIndex...].first == "?" { continue }
+            if let next = normalized[sentence.endIndex...].first, next == "?" || next == "？" { continue }
             let line = String(sentence)
             guard line.contains("hermes") else { continue }
             if line.range(of: Self.sendClaimHedge, options: .regularExpression) != nil { continue }
-            if line.range(of: Self.sendClaimPattern, options: .regularExpression) != nil { return true }
+            guard line.range(of: Self.sendClaimPattern, options: .regularExpression) != nil else { continue }
+            // A "nothing" holds only the clause that sends ("I'll send
+            // nothing to Hermes."), not another one ("I'll send that to
+            // Hermes; there's nothing to check.").
+            let clauses = line.split(omittingEmptySubsequences: true) { ",;".contains($0) }.map(String.init)
+            let sending = clauses.first { $0.range(of: Self.sendClaimPattern, options: .regularExpression) != nil } ?? line
+            if sending.range(of: Self.sendsNothing, options: .regularExpression) != nil { continue }
+            return true
+        }
+        // Another language's stems ("pas", "send") also start English
+        // words: an English turn, or one too short to tell on an English
+        // call, is read by the English rules alone. Otherwise the turn is
+        // read in its own language and the call's, never in all at once:
+        // "se" is Italian's "if" and Spanish's pronoun.
+        let detected = OnDeviceSpeechStream.language(of: text)
+        guard detected?.hasPrefix("en") != true else { return false }
+        var codes: [String] = []
+        for tag in [detected, callLanguage].compactMap({ $0 }) {
+            let code = String(tag.prefix { $0 != "-" && $0 != "_" })
+            if code != "en", !codes.contains(code) { codes.append(code) }
+        }
+        // Every candidate's offers, noes and conditions hold a send: a
+        // detector that takes "Lo mando a Hermes se serve." for Spanish
+        // mustn't lose Italian's "se". A missed send is the old behavior; a
+        // wrong one sends words the user didn't mean to send.
+        let candidates = codes.compactMap { Self.sendClaimWords[$0] }
+        guard !candidates.isEmpty else { return false }
+        func holds(_ text: Substring, _ pattern: KeyPath<SendClaimWords, String>) -> Bool {
+            candidates.contains { text.range(of: $0[keyPath: pattern], options: .regularExpression) != nil }
+        }
+        for sentence in sentences {
+            if let next = normalized[sentence.endIndex...].first, next == "?" || next == "？" { continue }
+            // A condition anywhere holds it ("…, sobald du ja sagst").
+            guard !holds(sentence, \.condition) else { continue }
+            // Then clause by clause: an offer or a no before the send holds
+            // it, a reassurance after it doesn't ("… se lo envío a Hermes,
+            // no te preocupes").
+            for clause in sentence.split(omittingEmptySubsequences: true, whereSeparator: { ",;，、；".contains($0) }) {
+                // "Kein Problem," and "Keine Sorge," open a yes, not a no.
+                if clause.range(of: Self.reassuranceOpener, options: .regularExpression) != nil { continue }
+                if holds(clause, \.hedge) { break }
+                // The send has to go to Hermes: "Hermes sagt, …" only
+                // reports what Hermes said.
+                if holds(clause, \.claim) {
+                    // "Ich schicke nichts an Hermes." refuses in the send's
+                    // own clause (issue 1869); "Nichts weiter, …" doesn't.
+                    if candidates.contains(where: { words in
+                        words.refusal.map { clause.range(of: $0, options: .regularExpression) != nil } ?? false
+                    }) { break }
+                    return true
+                }
+            }
         }
         return false
     }
+
+    /// A clause that is only "no problem" or "don't worry", whose no is a yes.
+    private static let reassuranceOpener = #"^\s*(?:no problem|no worries|kein problem|keine sorge|no hay problema|no pasa nada|no te preocupes|pas de problème|pas de souci|aucun problème|ne t'inquiète pas|ne vous inquiétez pas|non c'è problema|nessun problema|non preoccuparti|não tem problema|sem problema|não se preocupe|não te preocupes|nie ma problemu|nie martw się|без проблем|нет проблем|не волнуйся|не переживай|sorun değil|sorun yok|merak etme|tidak masalah|tidak apa-apa|jangan khawatir|問題ありません|問題ない|心配しないで|문제없어요|문제없습니다|걱정 마세요|没问题|沒問題|别担心|別擔心)\s*$"#
+
+    /// What reads as a send to Hermes in each language Conduit ships, by
+    /// language code: `claim`, a send, pass-on, ask or tell verb aimed at
+    /// Hermes (before the name in most, after it with the dative in
+    /// Turkish, Japanese and Korean); `hedge`, an offer or a no, which holds
+    /// a send in its clause or after it; `condition`, which holds it
+    /// anywhere in the sentence; `refusal`, a "nothing" that refuses
+    /// without a negation, which holds only the send's own clause.
+    /// Lowercased, like the text.
+    private struct SendClaimWords {
+        let claim: String
+        let hedge: String
+        let condition: String
+        let refusal: String?
+
+        /// A verb from `verbs` before Hermes' name in the same clause.
+        init(verbsBefore verbs: String, hedge: String, condition: String, refusal: String? = nil) {
+            claim = verbs + #"[^,;.!?]{0,60}?(?:hermes|гермес|赫尔墨斯|赫爾墨斯)"#
+            self.hedge = hedge
+            self.condition = condition
+            self.refusal = refusal
+        }
+
+        init(claim: String, hedge: String, condition: String) {
+            self.claim = claim
+            self.hedge = hedge
+            self.condition = condition
+            refusal = nil
+        }
+    }
+
+    private static let sendClaimWords: [String: SendClaimWords] = [
+        // "Ich schicke das an Hermes.", "Ich frage Hermes."
+        "de": SendClaimWords(
+            verbsBefore: #"\b(?:schick\w*|sende|gebe|gib|leite|weiterleit\w*|frage|sage|reiche|übergeb\w*|übermittl\w*)\b"#,
+            hedge: #"\b(?:soll|sollte|kann|könnte|würde|möchtest|willst|darf|nicht|kein|keine|nie|niemals)\b"#,
+            condition: #"\b(?:wenn|falls|sobald|bevor|nachdem)\b"#,
+            // Other shipped languages put a negation before their "nothing"
+            // (no, ne, non, não, не, nie), which already holds it.
+            refusal: #"\bnichts\b(?![^.!?,;]{0,40}\b(?:außer|ausser|bis auf|mit ausnahme)\b)"#),
+        // "Se lo envío a Hermes.", "Le pregunto a Hermes."
+        "es": SendClaimWords(
+            verbsBefore: #"\b(?:env[ií]o|enviar\w*|envi[ée]|mando|mandar\w*|mand[ée]|paso|pasar\w*|pas[ée]|pregunto|preguntar\w*|pregunt[ée]|digo|decir\w*|dir[ée]|aviso|avisar\w*|avis[ée]|reenv[ií]o|reenviar\w*|consulto|consultar\w*|traslado|trasladar\w*)\b"#,
+            hedge: #"\b(?:puedo|podr[ií]a|deber[ií]a|quieres|quiere|no|nunca)\b"#,
+            condition: #"\b(?:si|cuando|antes)\b"#),
+        // "J'envoie ça à Hermes.", "Je demande à Hermes."
+        "fr": SendClaimWords(
+            verbsBefore: #"(?:\b|')(?:envoie|envoyer\w*|envoie\w*|transmets|transmettre\w*|transmettrai\w*|passe|passer\w*|passerai\w*|demande|demander\w*|demanderai\w*|dis|dire|dirai\w*|préviens|prévenir|préviendrai\w*|transfère|transférer\w*)\b"#,
+            hedge: #"\b(?:peux|pourrais|pourrait|devrais|veux|voulez|voudrais|ne|pas|jamais)\b|n'"#,
+            condition: #"\b(?:si|quand|avant)\b"#),
+        // "Lo mando a Hermes.", "Chiedo a Hermes."
+        "it": SendClaimWords(
+            verbsBefore: #"\b(?:invio|inviare|invierò|inviarl\w*|mando|mandare|manderò|mandarl\w*|passo|passare|passerò|passarl\w*|chiedo|chiedere|chiederò|dico|dire|dirò|giro|girare|girerò|girarl\w*|inoltro|inoltrare|inoltrerò|inoltrarl\w*|avviso|avvisare|avviserò)\b"#,
+            hedge: #"\b(?:posso|puoi|potrei|dovrei|vuoi|vuole|non|mai)\b"#,
+            condition: #"\bse\b(?!\s+(?:lo|la|li|le|ne)\b)|\b(?:quando|prima)\b"#),
+        // "Vou enviar isso ao Hermes.", "Pergunto ao Hermes."
+        "pt": SendClaimWords(
+            verbsBefore: #"\b(?:envio|enviar\w*|enviei|mando|mandar\w*|mandei|passo|passar\w*|passei|pergunto|perguntar\w*|perguntei|digo|dizer|direi|aviso|avisar\w*|avisei|encaminho|encaminhar\w*|encaminhei|repasso|repassar\w*|repassei)\b"#,
+            hedge: #"\b(?:posso|poderia|deveria|quer|queres|quiser|não|nunca)\b"#,
+            condition: #"\b(?:se|quando|antes)\b"#),
+        // "Przekażę to Hermesowi.", "Zapytam Hermesa."
+        "pl": SendClaimWords(
+            verbsBefore: #"\b(?:wyśl|wysył|przekaż|przekazuj|zapyt|pyta|powiem|mówię|dam znać|daję znać)\w*"#,
+            hedge: #"\b(?:mogę|mógłbym|mogłabym|czy|chcesz|nie|nigdy)\b"#,
+            condition: #"\b(?:jeśli|jeżeli|gdy|kiedy|zanim)\b"#),
+        // "Передам это Гермесу.", "Спрошу у Гермеса."
+        "ru": SendClaimWords(
+            verbsBefore: #"\b(?:отправ|переда|перешл|спрош|спрашива|скаж|сообщ)\w*"#,
+            hedge: #"\b(?:могу|мог|могла|хочешь|хотите|не|никогда)\b"#,
+            condition: #"\b(?:если|когда|прежде)\b"#),
+        // "Saya kirim ke Hermes.", "Saya tanyakan ke Hermes."
+        "id": SendClaimWords(
+            verbsBefore: #"\b(?:kirim|mengirim|terus|meneruskan|tanya|menanya|bilang|sampaikan|menyampaikan|kasih tahu|beri tahu|memberi tahu)\w*"#,
+            hedge: #"\b(?:bisa|boleh|mau|ingin|apakah|tidak|nggak|enggak|jangan|belum)\b"#,
+            condition: #"\b(?:kalau|jika|setelah|sebelum)\b"#),
+        // "Bunu Hermes'e gönderiyorum.", "Hermes'e soracağım."
+        "tr": SendClaimWords(
+            claim: #"hermes'?(?:e|a|ye|ya)\b[^,;.!?]{0,60}?\b(?:gönderiyor|göndereceğ|gönderdim|iletiyor|ileteceğ|soruyor|soracağ|söylüyor|söyleyeceğ|aktarıyor|aktaracağ|haber veriyor|haber vereceğ)"#,
+            hedge: #"\b(?:istersen|ister misin|yapabilirim|gönderebilirim|iletebilirim|sorabilirim)\b"#,
+            condition: #"\beğer\b"#),
+        // 「ヘルメスに送ります。」「ヘルメスに聞いてみます。」
+        "ja": SendClaimWords(
+            claim: #"(?:ヘルメス|hermes)(?:さん)?に[^,;。]{0,30}?(?:送|伝え|聞|訊|頼|渡|回し|転送|確認|問い合わせ)"#,
+            hedge: #"ましょうか|ませんか|でしょうか|ません|ない|できます"#,
+            condition: #"たら|れば|なら|前に"#),
+        // "헤르메스에게 보낼게요.", "헤르메스에게 물어볼게요."
+        "ko": SendClaimWords(
+            claim: #"(?:헤르메스|hermes)(?:에게|한테|께|에)[^,;.]{0,30}?(?:보내|보낼|보냈|전달|물어|알려|넘길|넘겨|확인)"#,
+            hedge: #"까요|할까|않|못|안 |수 있"#,
+            condition: #"면 |전에"#),
+        // "我把这个发给赫尔墨斯。", "我问一下 Hermes。"
+        "zh": SendClaimWords(
+            claim: #"(?:发|發|传|傳|转|轉|告诉|告訴|问|問|交给|交給|让|讓)[^,;，。]{0,10}?(?:赫尔墨斯|赫爾墨斯|hermes)"#,
+            hedge: #"吗|嗎|要不要|可以|能|不|没|沒"#,
+            condition: #"如果|的话|的話|之前"#),
+    ]
 
     private static let sendClaimPattern = #"\b(send|sending|pass|passing|forward|forwarding|hand|handing|relay|relaying|give|giving|get|getting|take|taking|put|putting)\b[^.!?]{0,40}?\bto hermes\b|\b(tell|telling|ask|asking|let|letting|ping|pinging|update|updating)\s+hermes\b|\b(check|checking) with hermes\b"#
     /// A sentence that is nothing but an acknowledgement ("Okay, I'm on
@@ -1037,6 +1257,12 @@ final class GPTLiveConversationController: ObservableObject {
     private static let workUnderway = #"\b(?:(?:let me|i'll|i will) (?:do|check|look|find|get|pull up|send|set up|book|add|put in|sort out)|on it|on that|right away|check|checking|look|looking|find out|finding out|work|working|take care|taking care|handle|handling|sort|sorting|dig|digging|sec|second|moment|hang on|hold on|bear with me)\b"#
     /// An offer, a condition or a no: nothing is being sent yet.
     private static let sendClaimHedge = #"\b(can|could|should|shall|would|might|may|want me|do you|if you|once you|when you|after you|before|not|never|won't|didn't|don't|can't|couldn't|haven't|hasn't|wasn't)\b|n't\b"#
+    /// A refusal in "nothing" (issue 1869): "I'll send nothing to Hermes.",
+    /// "I'll tell Hermes nothing.", "I'll send absolutely nothing to Hermes.",
+    /// "There's nothing to send." "Nothing but …" and an "except …"
+    /// later in the clause are still a send; a "but" further on starts a
+    /// clause of its own ("… nothing to Hermes but look it up myself").
+    private static let sendsNothing = #"\b(?:send|sending|pass|passing|forward|forwarding|hand|handing|relay|relaying|give|giving|get|getting|take|taking|put|putting|tell|telling|ask|asking|ping|pinging|update|updating)(?: (?:hermes|her|him|them|you|us|me))?(?: (?:absolutely|simply|just|really))? nothing\b(?! but\b)(?![^.!?,;]{0,40}\b(?:except|other than|besides|apart from|beyond)\b)|\bnothing (?:at all )?(?:else |more )?(?:for (?:me|us|you) )?to (?:send|pass|forward|hand|relay|give|tell|ask|check|ping|update)\b(?! but\b)(?![^.!?,;]{0,40}\b(?:except|other than|besides|apart from|beyond)\b)|\blet(?:ting)? hermes know nothing\b(?! but\b)(?![^.!?,;]{0,40}\b(?:except|other than|besides|apart from|beyond)\b)"#
 
     /// The user finished an utterance: an end phrase ends the call, and the
     /// spoken job commands ("job status", "cancel background jobs") are

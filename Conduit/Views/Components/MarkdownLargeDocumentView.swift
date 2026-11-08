@@ -470,8 +470,22 @@ struct LargeMarkdownExpandedView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let prepared {
+                let pictures = Self.pictureRanges(prepared.chunks)
                 ForEach(0..<renderedChunkCount, id: \.self) { index in
-                    chunkView(prepared, chunk: prepared.chunks[index], index: index)
+                    // Two or more pictures in a row draw as one grid of the
+                    // ones mounted (issue 1801), at the first of them.
+                    switch MarkdownProseRun.pictureSlot(at: index, in: pictures, shown: 0..<renderedChunkCount) {
+                    case .single:
+                        chunkView(prepared, chunk: prepared.chunks[index], index: index)
+                    case .grid(let range):
+                        MarkdownPictureGrid(
+                            blocks: range.compactMap { Self.pictureBlock(prepared.chunks[$0]) },
+                            gatewayMediaDataURL: gatewayMediaDataURL
+                        )
+                        .id("\(prepared.sourceIdentity)-\(index)")
+                    case .covered:
+                        EmptyView()
+                    }
                 }
                 if renderedChunkCount < prepared.chunks.count {
                     progressFooter(remainingCount: prepared.chunks.count - renderedChunkCount)
@@ -514,6 +528,17 @@ struct LargeMarkdownExpandedView: View {
         .onDisappear {
             selectionCoordinator.clearSelection()
         }
+    }
+
+    /// The picture a chunk is, when it is one that can share a grid.
+    static func pictureBlock(_ chunk: MarkdownLargeChunk) -> MarkdownBlock? {
+        guard case .block(let block, _) = chunk, MarkdownProseRun.isGridPicture(block) else { return nil }
+        return block
+    }
+
+    /// The runs of two or more pictures among a document's chunks.
+    static func pictureRanges(_ chunks: [MarkdownLargeChunk]) -> [Range<Int>] {
+        MarkdownProseRun.pictureRanges(flags: chunks.map { pictureBlock($0) != nil })
     }
 
     private func registerSegments() {

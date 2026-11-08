@@ -99,6 +99,12 @@ struct LoginAddressStep: View {
                     focusedField = nil
                     flow.connectionSetupDestination = .start
                 }
+                if context == .firstLaunch {
+                    LoginDiagnosticsLink(identifier: "\(prefix).diagnostics") {
+                        focusedField = nil
+                        flow.showsDiagnostics = true
+                    }
+                }
             }
         }
         .loginReadableWidth()
@@ -558,7 +564,7 @@ struct LoginDashboardsScreen: View {
                 pendingRemoval = nil
             }
         } message: {
-            Text("This dashboard's saved sign-in and cookies will be deleted from this device. Other dashboards are not affected.")
+            Text("This dashboard's saved sign-in and cookies will be deleted from this device, and location, health and phone sharing with it stops. Other dashboards are not affected.")
         }
     }
 
@@ -618,6 +624,9 @@ struct LoginDashboardsScreen: View {
             VStack(spacing: 4) {
                 LoginHelpLink(identifier: "login.connection-setup") {
                     flow.connectionSetupDestination = .start
+                }
+                LoginDiagnosticsLink(identifier: "login.diagnostics") {
+                    flow.showsDiagnostics = true
                 }
                 Text("Your sign-in stays on this device.")
                     .scaledFont(.caption)
@@ -995,6 +1004,28 @@ struct LoginHelpLink: View {
     }
 }
 
+/// Diagnostics & logs with no dashboard connected: the last connection's
+/// steps, device reports and chat traces, to copy, share or send.
+struct LoginDiagnosticsLink: View {
+    let identifier: String
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            Haptics.selection()
+            action()
+        } label: {
+            Label(AppLocalization.string("Diagnostics & logs"), systemImage: "doc.text.magnifyingglass")
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(identifier)
+    }
+}
+
 /// A failure where it happened, with what can be done about it.
 struct LoginFailureCard: View {
     @EnvironmentObject private var appState: AppState
@@ -1209,6 +1240,10 @@ struct LoginFlowPresentations: ViewModifier {
                         flow.nativeOAuthFailed(error)
                     }
                 )
+            }
+            .sheet(isPresented: $flow.showsDiagnostics) {
+                GatewayDiagnosticsSheet(placement: .signIn)
+                    .environmentObject(appState)
             }
             .sheet(isPresented: $flow.showsScanner, onDismiss: { flow.scannerDismissed() }) {
                 DashboardCodeScannerSheet { text in

@@ -60,9 +60,11 @@ final class LocalLiveTurnRunner {
         /// Answers one question of the clarify the followed reply waits on
         /// (`questionID` nil for a single question; `answer` nil leaves one
         /// of a form blank); the card as it stands after, or nil when
-        /// Hermes didn't take it.
-        var respondToClarify: @MainActor (_ clarify: ClarifyActivity, _ questionID: String?, _ answer: String?) async -> ClarifyActivity?
-            = { _, _, _ in nil }
+        /// Hermes didn't take it. `sessionID` and `profile` are the reply's
+        /// chat, where the session authority reads a question this socket
+        /// never saw asked.
+        var respondToClarify: @MainActor (_ clarify: ClarifyActivity, _ questionID: String?, _ answer: String?, _ sessionID: String?, _ profile: String?) async -> ClarifyActivity?
+            = { _, _, _, _, _ in nil }
     }
 
     var onDelta: (@MainActor (_ turnID: String, _ text: String) -> Void)?
@@ -111,6 +113,8 @@ final class LocalLiveTurnRunner {
     private var showedCard = false
     /// What the open turn said so far ends a line (or nothing was said).
     private var endedLine = true
+    /// Connect cards the call already said wait in the chat.
+    private var saidConnections: Set<String> = []
     private var task: Task<Void, Never>?
     /// Bumped by every new turn and reset, so older work stops at its next step.
     private var generation = 0
@@ -203,7 +207,7 @@ final class LocalLiveTurnRunner {
         // next question.
         if let clarify = reply?.waitingQuestion, let question = HermesCallWaiting(clarify: clarify)?.openQuestion {
             let value = HermesCallWaiting.answerValue(for: words, question: question)
-            if let after = await backend.respondToClarify(clarify, clarify.questions.count == 1 ? nil : question.id, value) {
+            if let after = await backend.respondToClarify(clarify, clarify.questions.count == 1 ? nil : question.id, value, reply?.runtimeID, reply?.profile) {
                 guard reply?.waitingQuestion?.requestId == clarify.requestId else { return }
                 if let next = HermesCallWaiting(clarify: after)?.openQuestion {
                     reply?.waitingQuestion = after
@@ -359,6 +363,12 @@ final class LocalLiveTurnRunner {
             // Hermes waits on the user: the call says where to answer, and
             // the reply is still followed for the turn after.
             say(Self.needsInputLine, to: turn.id, generation: generation)
+        case .connection(let id, let card):
+            // A connect card: said once, when it opens (its updates come
+            // every few seconds).
+            guard id == current.runtimeID, card.isOpen, let turn,
+                  saidConnections.insert(card.opID).inserted else { return }
+            say(Self.needsInputLine, to: turn.id, generation: generation)
         default:
             return
         }
@@ -415,6 +425,36 @@ final class LocalLiveTurnRunner {
         endedLine = true
         turn = nil
         onDone?(turnID)
+    }
+
+    /// Where a call's next turn runs: the chat the call is attached to, or
+    /// else the one it made for itself, while `runtime` finds it (nil: the
+    /// chat was deleted); else a chat `create` makes on the profile of the
+    /// chat it lost, kept as the call's own for the rest of the call (issue
+    /// 1797). `own` is the call's own chat after this turn, on the runtime
+    /// it was found on: a delete of the resumed chat names that one, even
+    /// where it has no stored id (a legacy gateway).
+    static func callChat(
+        attached: VoiceThreadTarget?,
+        own: VoiceThreadTarget?,
+        runtime: @MainActor (VoiceThreadTarget) async throws -> String?,
+        create: @MainActor (_ profile: String?) async throws -> VoiceThreadTarget
+    ) async throws -> (chat: Chat, own: VoiceThreadTarget?) {
+        var profile: String?
+        if let attached {
+            if let runtimeID = try await runtime(attached) { return (Chat(runtimeID: runtimeID, profile: attached.profile), own) }
+            profile = attached.profile
+        }
+        if let own {
+            if let runtimeID = try await runtime(own) {
+                var found = own
+                found.runtimeSessionID = runtimeID
+                return (Chat(runtimeID: runtimeID, profile: own.profile), found)
+            }
+            profile = own.profile
+        }
+        let made = try await create(profile)
+        return (Chat(runtimeID: made.runtimeSessionID, profile: made.profile), made)
     }
 
     // Spoken to the user by their speech server.

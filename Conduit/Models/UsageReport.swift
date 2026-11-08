@@ -23,6 +23,10 @@ struct UsageTokens: Equatable {
 
     var total: Int { input + output }
 
+    /// Every token the period counted: input, output and cache reads.
+    /// Reasoning is already inside output, so it isn't added again.
+    var allTokens: Int { input + output + cacheRead }
+
     /// What the provider billed when Hermes knows it, else Hermes' estimate.
     /// Hermes sums a missing billed cost as 0 (COALESCE), so a reported $0
     /// and an unreported one look the same; both fall back to the estimate.
@@ -147,13 +151,18 @@ struct UsageReport: Equatable {
         return formatter
     }()
 
+    /// The most one count can hold: a quarter of Int.max, so adding up to
+    /// three counts (`allTokens`) can never overflow, whatever Hermes sends.
+    static let countCap = Int.max / 4
+
     /// JSON numbers arrive as NSNumber; SQLite's SUM over no rows is null.
     static func int(_ value: Any?) -> Int {
         switch value {
         case let number as NSNumber:
             let double = number.doubleValue
-            return double.isFinite ? Int(max(0, min(double, Double(Int.max / 2)))) : 0
-        case let text as String: return Int(text) ?? 0
+            // Double(countCap) rounds up to 2^61, one past the cap, so cap the Int too.
+            return double.isFinite ? min(Int(max(0, min(double, Double(countCap)))), countCap) : 0
+        case let text as String: return Int(text).map { max(0, min($0, countCap)) } ?? 0
         default: return 0
         }
     }

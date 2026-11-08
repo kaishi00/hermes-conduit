@@ -98,18 +98,23 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(first["greeting"] as? String, "Say hi.")
         XCTAssertNil(first["history"])
         XCTAssertNil(first["call_opening"])
-        // A call Hermes placed: the host has the model speak first (#544).
+        // A call Hermes placed: the host leaves the opening to the Watch's turn (#544, notifier #541).
         let called = try XCTUnwrap(JSONSerialization.jsonObject(with: WatchAudioBridgeWire.start(
             engine: "gpt_live", voice: nil, briefing: "About this call", greeting: nil, callOpening: true, history: []
         )) as? [String: Any])
         XCTAssertEqual(called["call_opening"] as? Bool, true)
-        // The Watch's own opening turn: only when the host didn't open, never on a rejoin.
-        let hostOpened = WatchAudioBridgeWire.Started(engine: "gpt_live", voice: nil, inputRate: 16_000, outputRate: 24_000, briefingApplied: true, greetingApplied: true)
-        var olderHost = hostOpened
-        olderHost.greetingApplied = false
-        XCTAssertFalse(WatchAudioBridgeWire.sendsOpeningTurn(rejoining: false, started: hostOpened))
-        XCTAssertTrue(WatchAudioBridgeWire.sendsOpeningTurn(rejoining: false, started: olderHost))
-        XCTAssertFalse(WatchAudioBridgeWire.sendsOpeningTurn(rejoining: true, started: olderHost))
+        // The Watch's own opening turn: only when the host didn't open (an
+        // older plugin did), never on a rejoin.
+        let olderHostOpened = WatchAudioBridgeWire.Started(engine: "gpt_live", voice: nil, inputRate: 16_000, outputRate: 24_000, briefingApplied: true, greetingApplied: true)
+        var host = olderHostOpened
+        host.greetingApplied = false
+        XCTAssertFalse(WatchAudioBridgeWire.sendsOpeningTurn(rejoining: false, started: olderHostOpened))
+        XCTAssertTrue(WatchAudioBridgeWire.sendsOpeningTurn(rejoining: false, started: host))
+        XCTAssertFalse(WatchAudioBridgeWire.sendsOpeningTurn(rejoining: true, started: host))
+        // A call with no reason of its own greets as the user's setting asks, as on the iPhone.
+        XCTAssertFalse(LiveVoiceGreeting.turn("").contains("Say:"))
+        XCTAssertTrue(LiveVoiceGreeting.turn("Hi Neal").contains(#"Say: "Hi Neal""#))
+        XCTAssertEqual(LiveVoiceStyle(greeting: "Hi Neal").openingPrompt, LiveVoiceGreeting.turn("Hi Neal"))
         // A rejoin: the conversation so far, no second greeting.
         let rejoin = try XCTUnwrap(JSONSerialization.jsonObject(with: WatchAudioBridgeWire.start(
             engine: "gpt_live", voice: nil, briefing: nil, greeting: nil,

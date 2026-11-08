@@ -54,6 +54,8 @@ struct ChatView: View {
     /// the scroller never retains this view.
     @State private var scrollEventRouter = ChatScrollEventRouter()
     @Environment(\.scenePhase) private var scenePhase
+    /// The V2 shell keeps a tab's screens mounted while another tab shows.
+    @Environment(\.v2Shell) private var shell
     /// Load earlier's fetch, cancelled when the view disappears. (The
     /// session/profile staleness of the response itself is AppState's
     /// concern — this is view-lifetime only.)
@@ -189,36 +191,28 @@ struct ChatView: View {
     }
 
     /// What the working line says: the tool running in this turn and when
-    /// the turn began.
+    /// the turn began. The body reads it on every AppState change, so the
+    /// turn's rows are looked through once (issue 1722).
     private var workingLine: TranscriptWorkingLine {
-        TranscriptWorkingLine(
-            toolName: runningToolName,
-            toolInput: runningToolInput,
-            toolTitle: runningToolTitle,
+        let tool = appState.isBusy ? Self.runningTool(in: appState.messages) : nil
+        return TranscriptWorkingLine(
+            toolName: tool?.name,
+            // Its input, so a Tool Search batch names what it runs.
+            toolInput: tool?.input,
+            toolTitle: tool.flatMap(runningToolTitle(for:)),
             startedAt: turnStartedAt
         )
     }
 
-    /// The tool running in this turn, for the working line. Looks back only
-    /// to the turn's own rows.
-    private var runningToolName: String? {
-        guard appState.isBusy else { return nil }
-        return Self.runningToolName(in: appState.messages)
-    }
-
-    /// Its input, so a Tool Search batch names what it runs.
-    private var runningToolInput: String? {
-        guard appState.isBusy else { return nil }
-        return Self.runningTool(in: appState.messages)?.input
-    }
-
-    /// "Messaging Atlas…" while a delivery to a teammate runs, as its step
-    /// says; nil for any other tool.
-    private var runningToolTitle: String? {
-        guard appState.isBusy, let tool = Self.runningTool(in: appState.messages),
-              let key = BotTeammateMessages.deliveryTarget(toolName: tool.name, input: tool.input) else { return nil }
-        let name = BotTeammateMessages.displayName(for: key, in: appState.shownBotRoster)
-        return AppLocalization.string("Messaging \(name)…")
+    /// "Messaging Atlas…" while a delivery to a teammate runs, "Starting
+    /// work…" while a work tool does, as their steps say; nil for any other
+    /// tool.
+    private func runningToolTitle(for tool: ToolActivity) -> String? {
+        if let key = BotTeammateMessages.deliveryTarget(toolName: tool.name, input: tool.input) {
+            let name = BotTeammateMessages.displayName(for: key, in: appState.shownBotRoster)
+            return AppLocalization.string("Messaging \(name)…")
+        }
+        return BotWorkCall.parse(toolName: tool.name, input: tool.input, output: nil)?.title(running: true)
     }
 
     static func runningToolName(in messages: [ChatMessage]) -> String? {
@@ -317,6 +311,9 @@ struct ChatView: View {
             planDock
             // Predictive guesses (off unless turned on in Settings > Chat).
             PredictiveRow(store: appState.predictive, appState: appState)
+            // The chat's queue on the Webapp's listener: messages waiting
+            // their turn, and a turn a gateway restart cut off.
+            AuthorityQueueDock(store: appState.authorityQueue, appState: appState, openChatID: appState.activeSessionId)
             // Composer + control bar. Equatable: it redraws for what it
             // shows, not for every redraw of this view.
             ComposerBar(appState: appState).equatable()
@@ -511,7 +508,8 @@ struct ChatView: View {
             transcriptTopBar
                 .animation(.easeInOut(duration: 0.2), value: showsOfflineBanner)
         }
-        .overlay(alignment: .bottomTrailing) {
+        // Centered over the composer, so either thumb reaches it.
+        .overlay(alignment: .bottom) {
             ChatJumpControls(
                 chrome: scroller.chrome,
                 pendingClarifyMessageID: appState.pendingClarifyMessageID,
@@ -595,6 +593,9 @@ struct ChatView: View {
             .onAppear {
                 appState.refreshChatCards()
                 installScrollerCallbacks()
+                // A new chat view's scroller says where the reader is from
+                // here; the last one's word went with it (a room, a sheet).
+                appState.chatReaderIsUpInOlderRows = scroller.mode == .browsing
                 scroller.setPaused(scenePhase == .background)
                 scroller.renderedSessionChanged(
                     to: drawnScrollSessionKey,
@@ -642,9 +643,11 @@ struct ChatView: View {
             // The same chat open on another device: a turn that went quiet
             // here, or one the other device ran, is checked against the
             // live registry while this chat shows. Each turn edge checks at
-            // once.
-            .task(id: "\(appState.activeSessionId ?? "")|\(appState.isBusy)|\(scenePhase == .active)|\(appState.showSidebar)") {
-                guard scenePhase == .active, !appState.showSidebar else { return }
+            // once. A tab hiding it stops the check (#1827), and showing
+            // it again checks at once.
+            .task(id: "\(appState.activeSessionId ?? "")|\(appState.isBusy)|\(scenePhase == .active)|\(appState.showSidebar && !shell.hasChatBeside)|\(shell.isTabActive)") {
+                // Split, a page in the list column (Pulse) leaves it showing.
+                guard scenePhase == .active, !appState.showSidebar || shell.hasChatBeside, shell.isTabActive else { return }
                 appState.openChatSyncBecameVisible()
                 while !Task.isCancelled {
                     await appState.openChatSyncTick()
@@ -688,16 +691,20 @@ struct ChatView: View {
             }
             .onChange(of: appState.pendingClarifyMessageID) { _, id in
                 scroller.trackMessageVisibility(of: id)
+                revealPendingNeedsYou()
             }
             // An Artifacts screen's "Show in chat": once the row is in and
             // any restore is done.
             .onChange(of: appState.chatTranscriptRevision) { _, _ in
                 revealPendingArtifact()
                 revealPendingPinnedReply()
+                revealPendingNeedsYou()
                 appState.refreshOpenChatPinnedReplies()
             }
             .onChange(of: appState.pendingArtifactReveal) { _, _ in revealPendingArtifact() }
             .onChange(of: appState.pendingPinnedReplyReveal) { _, _ in revealPendingPinnedReply() }
+            // The Needs you list's or banner's Open: the chat's waiting card.
+            .onChange(of: appState.pendingNeedsYouReveal) { _, _ in revealPendingNeedsYou() }
             // A "Replying to" card's tap (issue 1420): the reply it quoted.
             .onChange(of: appState.pendingQuotedReplyJump) { _, jump in
                 guard let jump else { return }
@@ -707,16 +714,18 @@ struct ChatView: View {
             .onAppear {
                 revealPendingArtifact()
                 revealPendingPinnedReply()
+                revealPendingNeedsYou()
             }
             .onChange(of: appState.chatResumeRestorationRequest) { oldRequest, newRequest in
                 guard oldRequest != nil, newRequest == nil else { return }
                 // The published request disappeared on the AppState side
                 // (completed/abandoned/cancelled elsewhere).
                 scroller.restorationSystemCancelled()
-                // A pinned reply, artifact or Pulse card waiting on the
-                // restore goes now.
+                // A pinned reply, artifact, Pulse card or waiting card
+                // waiting on the restore goes now.
                 revealPendingArtifact()
                 revealPendingPinnedReply()
+                revealPendingNeedsYou()
             }
     }
 
@@ -729,6 +738,22 @@ struct ChatView: View {
         guard appState.chatResumeRestorationRequest == nil, appState.isShowingChat(for: reveal),
               let id = ArtifactReveal.rowID(for: reveal.messageID, in: appState.messages) else { return }
         appState.pendingArtifactReveal = nil
+        // After this update's layout, so the scroller knows the row.
+        DispatchQueue.main.async { scroller.explicitMessageRequested(id: id) }
+    }
+
+    /// A waiting chat opened from the Needs you list or banner: its newest
+    /// question, approval or input card, the one the jump button goes to,
+    /// once its chat shows and has the card.
+    private func revealPendingNeedsYou() {
+        guard let reveal = appState.pendingNeedsYouReveal else { return }
+        guard reveal.expires > Date() else {
+            appState.pendingNeedsYouReveal = nil
+            return
+        }
+        guard appState.chatResumeRestorationRequest == nil, appState.isShowingChat(for: reveal),
+              let id = appState.pendingClarifyMessageID else { return }
+        appState.pendingNeedsYouReveal = nil
         // After this update's layout, so the scroller knows the row.
         DispatchQueue.main.async { scroller.explicitMessageRequested(id: id) }
     }
@@ -983,6 +1008,11 @@ private final class ChatScrollEventRouter {
             appState.completeChatResumeRestoration(generation: generation)
         case .abandonRestoration(let generation):
             appState.abandonChatResumeRestoration(generation: generation)
+        case .browsingOlderRows(let isUp):
+            appState.chatReaderIsUpInOlderRows = isUp
+        case .reachedLatest:
+            // After the scroller has finished coming back down.
+            DispatchQueue.main.async { [weak appState] in appState?.trimLoadedHistoryIfLong() }
         }
     }
 
@@ -1044,7 +1074,7 @@ private struct ChatJumpControls: View {
         let hasPendingClarify = pendingClarifyMessageID != nil
             && inputs.visibilityTrackedMessageID == pendingClarifyMessageID
             && inputs.isVisibilityTrackedMessageOffscreen
-        ZStack(alignment: .bottomTrailing) {
+        ZStack(alignment: .bottom) {
             // Keeps the onChange below in place while no button shows.
             Color.clear.frame(width: 0, height: 0)
             // Both actions share this overlay slot; the offscreen pending
@@ -1093,7 +1123,7 @@ private struct ChatJumpControls: View {
                         ? AppLocalization.string("Scrolls to the pending question in the conversation")
                         : nil
                 ))
-                .padding(.trailing, 18)
+                .padding(.horizontal, 18)
                 .padding(.bottom, 14)
             }
         }
@@ -1183,12 +1213,39 @@ struct MessageBubble: View, Equatable {
     @Environment(\.openURL) private var openURL
     @Environment(\.chatRowDisclosure) private var rowDisclosure
 
+    /// A reply's bubble; in a Bot Chat, one naming its work ("W50 found …")
+    /// links each ref to that workstream's chat once the bot's work list has it.
+    @ViewBuilder
+    private func botChatReply(_ message: ChatMessage) -> some View {
+        if let profile = appState.activeBotChatProfile, BotWorkLinks.mayNameWork(message.content) {
+            BotChatWorkReply(
+                work: appState.botWork,
+                profile: profile,
+                message: message,
+                readAloudController: appState.messageReadAloudController,
+                gatewayResolver: gatewayResolver,
+                stepsAbove: stepsAbove
+            )
+        } else {
+            AssistantBubble(
+                message: message,
+                readAloudController: appState.messageReadAloudController,
+                gatewayResolver: gatewayResolver,
+                stepsAbove: stepsAbove
+            )
+        }
+    }
+
     var body: some View {
         let _ = TranscriptPerf.note(.settledBubbleBody)
         switch message.role {
         case .user:
             if message.isSteer {
                 SteerBubble(message: message)
+            } else if let brief = WorkstreamBrief.parse(message.content) {
+                // A workstream's brief from the bot coordinating it: a card,
+                // not something the user typed (Bot workstreams).
+                WorkstreamBriefCard(brief: brief, timestamp: message.timestamp, disclosureID: message.id)
             } else if let inbound = BotTeammateMessages.inbound(message.content) {
                 // A teammate bot's delivery is an event in the chat, not
                 // something the user said (Desktop's agent message note).
@@ -1236,24 +1293,32 @@ struct MessageBubble: View, Equatable {
                         gatewayResolver: gatewayResolver
                     )
                 }
+            } else if let split = BotWorkLinks.split(message.content) {
+                // A Bot Chat reply's links to its work: cards under the
+                // reply, not plain links among its words.
+                VStack(alignment: .leading, spacing: 8) {
+                    if let why = rowState.followUpReasons[message.id] {
+                        PredictiveFollowUpTag(why: why)
+                    }
+                    if !split.text.isEmpty {
+                        botChatReply(message.withContent(split.text))
+                    }
+                    ForEach(split.links, id: \.ref) { link in
+                        BotWorkLinkCard(work: appState.botWork, link: link,
+                                        profile: link.profile ?? appState.activeProfile) {
+                            openURL(link.url)
+                        }
+                        .frame(maxWidth: 560, alignment: .leading)
+                    }
+                }
             } else if let why = rowState.followUpReasons[message.id] {
                 // A reply Hermes wrote on its own (Predictive follow-ups).
                 VStack(alignment: .leading, spacing: 4) {
                     PredictiveFollowUpTag(why: why)
-                    AssistantBubble(
-                        message: message,
-                        readAloudController: appState.messageReadAloudController,
-                        gatewayResolver: gatewayResolver,
-                        stepsAbove: stepsAbove
-                    )
+                    botChatReply(message)
                 }
             } else {
-                AssistantBubble(
-                    message: message,
-                    readAloudController: appState.messageReadAloudController,
-                    gatewayResolver: gatewayResolver,
-                    stepsAbove: stepsAbove
-                )
+                botChatReply(message)
             }
         case .reasoning:
             if let step {
@@ -1269,19 +1334,31 @@ struct MessageBubble: View, Equatable {
             if let tool = message.tool,
                let clarify = ClarifyActivity.historyRecord(for: tool, rowID: message.id) {
                 ClarifyCard(message: message.presenting(clarify))
-            } else if let tool = message.tool, case let cards = RichCard.cards(for: tool), !cards.isEmpty {
-                // Maps and places Hermes showed (conduit_show): drawn from
-                // the call's saved answer, so they come back with the chat,
+            } else if let tool = message.tool, let board = RichBoard.board(for: tool) {
+                // The board Hermes showed (conduit_show): drawn from the
+                // call's saved answer, so it comes back with the chat,
                 // whatever the tool-progress setting. A live card shows
-                // only where it was last brought up to date.
-                let current = RichCard.current(cards, row: message.id, latestLiveRows: rowState.latestLiveRows)
-                Group {
-                    if current.isEmpty {
-                        RichLiveUpdatedLine(title: cards.first?.title)
+                // only where it was last brought up to date. A board this
+                // Conduit can't draw every card of shows as its Markdown.
+                let current = RichCard.current(board.cards, row: message.id, latestLiveRows: rowState.latestLiveRows)
+                VStack(alignment: .leading, spacing: 10) {
+                    if board.cards.isEmpty, let markdown = board.markdown {
+                        RichBoardMarkdown(markdown: markdown)
+                    } else if current.isEmpty {
+                        RichLiveUpdatedLine(title: board.cards.first?.title)
                     } else {
-                        RichCardsView(cards: current)
+                        RichCardsView(cards: current, tabs: board.tabs && current.count > 1)
+                    }
+                    if message.id == rowState.followUpBoardRowID, !board.followUps.isEmpty {
+                        RichBoardFollowUps(followUps: board.followUps, composer: appState.predictive,
+                                           send: { appState.requestBoardFollowUp(.send, text: $0) },
+                                           edit: { appState.requestBoardFollowUp(.edit, text: $0) })
                     }
                 }
+                .environment(\.richChecklistContext, appState.richChecklistContext)
+                .environment(\.richChecklistInChat, true)
+                // The row state carries cardTaps, so a card-taps report redraws this row.
+                .environment(\.richCardActions, appState.richCardActionContext(canSend: rowState.cardsCanSend))
                 .frame(maxWidth: 560, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else if let step {
@@ -1295,6 +1372,8 @@ struct MessageBubble: View, Equatable {
             ApprovalCard(message: message)
         case .inputPrompt:
             InputPromptCard(message: message)
+        case .connection:
+            ConnectionCard(message: message)
         case .system:
             // A call card finds its call through AppState: this redraws it
             // when the links change.
@@ -1307,6 +1386,10 @@ struct MessageBubble: View, Equatable {
                 VoiceCallMarkerCard(link: link, origin: true) {
                     appState.openVoiceCallChat(markerID: link.originMarkerID)
                 }
+            } else if let report = CronBotChatReport.parse(message.content) {
+                // A cron job's report the bot wasn't asked to act on: the
+                // report itself, not a system line (cron_bot_chat).
+                CronReportCard(report: report, timestamp: message.timestamp, disclosureID: message.id)
             } else if let review = message.review ?? MessageNormalizer.reviewActivity(fromText: message.content) {
                 if let reviewRun, reviewRun.run.count >= 2, reviewRun.index == 0, let disclosure = rowDisclosure {
                     ReviewRunCard(run: reviewRun.run, disclosure: disclosure, toggles: disclosure.groupToggles) {
@@ -1766,11 +1849,26 @@ struct UserMessageContent: View, Equatable {
         return equal
     }
 
+    /// One picture shows whole; two or more go side by side as tiles
+    /// (issue 1801), then the files.
     @ViewBuilder private var attachmentViews: some View {
         if let attachments = message.attachments {
+            let pictures = attachments.filter { $0.kind == .image }
+            if pictures.count > 1 {
+                let shown = PictureGrid.shownCount(pictures.count)
+                let more = PictureGrid.moreCount(total: pictures.count)
+                PictureGridLayout {
+                    ForEach(Array(pictures.prefix(shown).enumerated()), id: \.element.id) { index, picture in
+                        UserImageAttachmentPreview(attachment: picture, gatewayResolver: gatewayResolver, isTile: true)
+                            .modifier(PictureGridMoreBadge(more: index == shown - 1 ? more : nil))
+                    }
+                }
+            }
             ForEach(attachments) { attachment in
                 if attachment.kind == .image {
-                    UserImageAttachmentPreview(attachment: attachment, gatewayResolver: gatewayResolver)
+                    if pictures.count == 1 {
+                        UserImageAttachmentPreview(attachment: attachment, gatewayResolver: gatewayResolver)
+                    }
                 } else {
                     UserDocumentAttachmentChip(attachment: attachment, gatewayResolver: gatewayResolver)
                 }
@@ -1887,6 +1985,9 @@ private struct UserImageAttachmentPreview: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let attachment: Attachment
     let gatewayResolver: GatewayMediaDataURLResolver?
+    /// A square tile of a message's picture grid, filling the size it is
+    /// proposed, instead of the picture at its own shape (issue 1801).
+    var isTile = false
     @State private var gatewayImage: UIImage?
     /// The cache key `gatewayImage` was loaded for, so a reused view never
     /// shows the picture it held before.
@@ -1970,7 +2071,9 @@ private struct UserImageAttachmentPreview: View {
 
     var body: some View {
         Group {
-            if let image = cachedLocalImage ?? currentLocalPreview ?? currentGatewayImage {
+            if isTile {
+                tileContent
+            } else if let image = cachedLocalImage ?? currentLocalPreview ?? currentGatewayImage {
                 imagePreview(image)
             } else if loadsFromHermes && localFileURL == nil && !gatewayLoadFailed {
                 placeholder
@@ -2163,6 +2266,37 @@ private struct UserImageAttachmentPreview: View {
         isGatewayImage || attachment.inlineImage != nil
     }
 
+    /// The tile: the picture cropped to its square, else its place with a
+    /// spinner while it loads or a symbol when it won't. Every state takes
+    /// the same square, so the row never changes height as it loads.
+    @ViewBuilder private var tileContent: some View {
+        if let image = cachedLocalImage ?? currentLocalPreview ?? currentGatewayImage {
+            PictureTileImage(image: image, onAccent: true)
+                .opensMediaPreview { openPreview(showing: image) }
+                .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
+                .accessibilityLabel("Attached image: \(attachment.imageDescription ?? attachment.name)")
+                .accessibilityAddTraits(.isImage)
+        } else {
+            // `localPreviewFailed` compares paths, so without a local file
+            // it would say a picture from Hermes still loading had failed.
+            let failed = gatewayLoadFailed || (localFileURL != nil && localPreviewFailed)
+            let loading = !failed && (loadsFromHermes || localFileURL != nil)
+            // A tile still loading, or one that won't, opens the viewer too:
+            // the viewer fetches the picture itself, and the "+N" tile is
+            // the only way to the pictures without a tile.
+            // One element first, so VoiceOver keeps the tap's button trait.
+            PictureTilePlaceholder(state: loading ? .loading : failed ? .unavailable : .attached, onAccent: true)
+                .accessibilityElement()
+                .accessibilityLabel(
+                    loading ? AppLocalization.string("Loading image…")
+                        : failed ? AppLocalization.string("Image unavailable") : AppLocalization.string("Image attached")
+                )
+                .opensMediaPreview { openPreview(showing: nil) }
+                .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
+                .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
+        }
+    }
+
     private func imagePreview(_ image: UIImage) -> some View {
         Image(uiImage: image)
                 .resizable()
@@ -2184,7 +2318,7 @@ private struct UserImageAttachmentPreview: View {
     /// bytes re-fetched from Hermes, with the row's copy shown meanwhile.
     /// The row keeps only the downsampled/decoded image, never the original
     /// bytes, so an image-heavy transcript doesn't pin them all in memory.
-    private func openPreview(showing image: UIImage) {
+    private func openPreview(showing image: UIImage?) {
         guard let item = ImageGalleryItem.attachment(attachment, resolver: gatewayResolver) else { return }
         ImageGallery.open(item, in: imageGallery, placeholder: image)
     }
@@ -2422,6 +2556,7 @@ struct AssistantMessageActions: View {
     /// Acted on, not observed: what a row shows comes from `rowState`.
     private var appState: AppState { rowActions.required }
     @State private var copied = false
+    @State private var resetTask: Task<Void, Never>?
 
     var body: some View {
         Button {
@@ -2429,18 +2564,30 @@ struct AssistantMessageActions: View {
         } label: {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
                 .scaledFont(.subheadline.weight(.semibold))
-                .frame(width: 34, height: 34)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(copied ? Color.conduitAccent : Color.secondary)
         .accessibilityLabel(copied ? AppLocalization.string("Response copied") : AppLocalization.string("Copy response"))
+        .onDisappear {
+            resetTask?.cancel()
+            resetTask = nil
+            copied = false
+        }
     }
 
     private func copyResponse() {
+        let copiedTitle = AppLocalization.string("Response copied")
         UIPasteboard.general.string = message.content
         Haptics.light()
         copied = true
-        Task {
+        // Copying says so out loud, as the same button does in a group room,
+        // and a second tap keeps the checkmark up for the full moment rather
+        // than letting the first tap's timer take it down.
+        UIAccessibility.post(notification: .announcement, argument: copiedTitle)
+        resetTask?.cancel()
+        resetTask = Task {
             try? await Task.sleep(for: .seconds(1.4))
             guard !Task.isCancelled else { return }
             copied = false
@@ -2524,7 +2671,7 @@ struct AssistantMessageMoreMenu: View {
         } label: {
             Image(systemName: "ellipsis")
                 .scaledFont(.subheadline.weight(.semibold))
-                .frame(width: 34, height: 34)
+                .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -2571,7 +2718,7 @@ private struct AssistantMessageMoreMenuWithThinking: View {
 
 /// The read-aloud control surface. This is deliberately the ONLY part of
 /// an assistant row that observes the shared read-aloud controller, so a
-/// playback state transition re-renders a 34pt button instead of every
+/// playback state transition re-renders a 44 pt button instead of every
 /// response's Markdown in the transcript.
 struct ReadAloudButton: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
@@ -2618,7 +2765,8 @@ struct ReadAloudButton: View {
                 }
             }
             .scaledFont(.subheadline.weight(.semibold))
-            .frame(width: 34, height: 34)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(isActive ? Color.conduitAccent : Color.secondary)
@@ -2632,6 +2780,33 @@ struct ReadAloudButton: View {
     }
 }
 
+/// A Bot Chat reply whose words name the bot's workstreams: each ref a
+/// link to its chat. It watches the bot's work list, so a ref links once
+/// the list that has it is read.
+struct BotChatWorkReply: View {
+    @ObservedObject var work: BotWorkStore
+    let profile: String
+    let message: ChatMessage
+    let readAloudController: MessageReadAloudController
+    let gatewayResolver: GatewayMediaDataURLResolver?
+    var stepsAbove: ChatStepGroup? = nil
+
+    var body: some View {
+        let items = (work.snapshot(profile)?.items ?? []) + (work.resolvedList(profile)?.items ?? [])
+        let shown = BotWorkLinks.linkingNamedRefs(message.content) { ref in
+            guard let item = items.first(where: { $0.ref == ref && !$0.sessionID.isEmpty }) else { return nil }
+            return ConduitAppLink.session(id: item.sessionID, profile: profile).url
+        }
+        AssistantBubble(
+            message: message,
+            readAloudController: readAloudController,
+            gatewayResolver: gatewayResolver,
+            stepsAbove: stepsAbove,
+            shownContent: shown == message.content ? nil : shown
+        )
+    }
+}
+
 struct AssistantBubble: View {
     let message: ChatMessage
     /// Held as a plain reference (not @ObservedObject): forwarding a
@@ -2641,6 +2816,9 @@ struct AssistantBubble: View {
     let gatewayResolver: GatewayMediaDataURLResolver?
     /// The run of steps above the reply, when it has thinking.
     var stepsAbove: ChatStepGroup? = nil
+    /// Other words to draw (a Bot Chat reply with its work refs linked);
+    /// Copy, Read Aloud and the rest keep the reply's own.
+    var shownContent: String? = nil
     @Environment(\.chatRowState) private var rowState
     @Environment(\.chatRowActions) private var rowActions
     @Environment(\.chatRowDisclosure) private var disclosure
@@ -2660,7 +2838,7 @@ struct AssistantBubble: View {
         let identity = rowState.agentIdentity
         VStack(alignment: .leading, spacing: 6) {
             SettledAssistantMessageContent(
-                message: message,
+                message: shownContent.map(message.withContent) ?? message,
                 identity: identity,
                 gatewayResolver: gatewayResolver,
                 sizeCategory: sizeCategory,
@@ -2710,7 +2888,7 @@ struct AssistantBubble: View {
                 }
             }
             .padding(.top, 2)
-            // Fixed 34 pt buttons: larger glyphs would overlap each other.
+            // Keep footer glyphs fixed within their reserved button frames.
             .conduitFixedGlyph()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -3184,7 +3362,7 @@ private struct MessageTimestampLabel: View {
 /// time that doesn't parse truncates only past the row's width), and at
 /// the accessibility text
 /// sizes the time goes under the caption, as on VoiceJobLinkCard.
-private struct CardHeaderCaption<Caption: View>: View {
+struct CardHeaderCaption<Caption: View>: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let timestamp: String
     @ViewBuilder let caption: Caption
@@ -3238,6 +3416,19 @@ enum MessageTimestampFormatter {
             return date.formatted(date: .omitted, time: .shortened)
         }
         return date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+    }
+
+    /// Whether two rows' times can be the same message's: true when either
+    /// doesn't say one, or they're within a couple of seconds (Hermes'
+    /// stored rows and a resume's spell the same time differently). Times
+    /// this can't read match only when spelled the same. The same text at
+    /// another time is another message (#1648).
+    static func sameMoment(_ lhs: String, _ rhs: String) -> Bool {
+        let left = lhs.trimmingCharacters(in: .whitespacesAndNewlines)
+        let right = rhs.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !left.isEmpty, !right.isEmpty else { return true }
+        guard let leftDate = date(from: left), let rightDate = date(from: right) else { return left == right }
+        return abs(leftDate.timeIntervalSince(rightDate)) <= 2
     }
 
     static func date(from rawTimestamp: String) -> Date? {
@@ -3323,8 +3514,11 @@ private struct SettledToolCardContent: View, Equatable {
     /// it; otherwise the step's own words.
     private func stepTitle(
         _ delivery: BotTeammateMessages.Delivery?,
+        work: BotWorkCall? = nil,
         running: Bool
     ) -> String {
+        // A Bot Chat's work tools draw as work cards ("Started W3: Login bug").
+        if let title = work?.title(running: running) { return title }
         guard let delivery else { return running ? label.runningTitle : label.doneTitle }
         let name = teammateName(delivery.target)
         return running
@@ -3343,6 +3537,7 @@ private struct SettledToolCardContent: View, Equatable {
             let style = ChatStepStyle(toolName: tool.name)
             let running = tool.status == .running
             let delivery = delivery(tool)
+            let work = BotWorkCall.parse(toolName: tool.name, input: tool.input, output: tool.output)
             VStack(alignment: .leading, spacing: 0) {
                 Button {
                     let opens = !expanded
@@ -3362,7 +3557,7 @@ private struct SettledToolCardContent: View, Equatable {
                             // Large text: the time goes under the words
                             // instead of squeezing them.
                             AdaptiveStack(spacing: 6) {
-                                Text(stepTitle(delivery, running: running))
+                                Text(stepTitle(delivery, work: work, running: running))
                                     .scaledFont(.body)
                                     .foregroundStyle(running ? Color.conduitAccent : Color.primary)
                                     .lineLimit(sizeCategory.isAccessibilityCategory ? nil : 1)
@@ -3373,9 +3568,15 @@ private struct SettledToolCardContent: View, Equatable {
                                     tone: .supporting
                                 )
                             }
-                            // A delivery's subject is what was said, not the
-                            // command that sent it.
-                            if !expanded, let subject = delivery?.message.flatMap({ ChatStepSubject.line(from: $0) })
+                            // A started workstream's card says where it is
+                            // now ("Working · Running df -h /", "Done ·
+                            // 7.6G free"), so its answer needn't repeat it.
+                            if !expanded, !running, work?.tool == .start, let ref = work?.ref,
+                               let appState = rowActions?.appState,
+                               let profile = work?.profile ?? appState.activeBotChatProfile {
+                                WorkStartStatusLine(work: appState.botWork, profile: profile, ref: ref,
+                                                    fallback: label.action ?? ChatStepSubject.line(from: tool.input))
+                            } else if !expanded, let subject = delivery?.message.flatMap({ ChatStepSubject.line(from: $0) })
                                 ?? label.action
                                 ?? ChatStepSubject.line(from: tool.input)
                                 ?? ChatStepSubject.line(from: tool.output) {
@@ -3414,6 +3615,18 @@ private struct SettledToolCardContent: View, Equatable {
                         Text(tool.name)
                             .scaledFont(.caption2.monospaced().weight(.semibold))
                             .foregroundStyle(.conduitTertiary)
+                        if let work, let session = work.sessionID, let ref = work.ref {
+                            // The workstream it started or reached, opened on its bot's profile.
+                            Button {
+                                Haptics.light()
+                                rowActions?.appState.openAppLink(.session(id: session, profile: work.profile))
+                            } label: {
+                                Label(AppLocalization.string("Open \(ref)"), systemImage: "arrow.up.right.square")
+                                    .scaledFont(.caption.weight(.semibold))
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
                         if let detail = label.detail {
                             Text(detail)
                                 .scaledFont(.caption)

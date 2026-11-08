@@ -36,6 +36,15 @@ struct ChatRowState: Equatable {
     /// Each live card's last row: earlier rows with that live name show
     /// that it was updated below.
     var latestLiveRows: [String: String] = [:]
+    /// The board whose follow-ups show: the newest one, while nothing has
+    /// been sent after it.
+    var followUpBoardRowID: String?
+    /// A card's send and tap buttons can go: Hermes is free and connected
+    /// and the composer is on, as for a board's follow-ups.
+    var cardsCanSend = false
+    /// The plugin takes card taps (/boards/taps): a report that lands
+    /// after a card is drawn redraws its row, showing or hiding tap buttons.
+    var cardTaps = false
     /// The open chat's messages that have a Pulse card, by Hermes' message
     /// id (PulseFeed.swift): they show a Pulse mark that opens it.
     var pulseCards: [Int: Int] = [:]
@@ -80,6 +89,10 @@ struct ChatRowState: Equatable {
         displayPreferences = appState.displayPreferences
         voiceCallLinksRevision = appState.voiceCallChatLinksRevision
         latestLiveRows = facts.latestLiveRows
+        // A tap sends, so the chips show only while a send can go.
+        cardsCanSend = !(isOffline || isBusy || !appState.isConnected || !appState.composerIsEnabled)
+        followUpBoardRowID = cardsCanSend ? facts.followUpBoardRowID : nil
+        cardTaps = appState.notifierPlugin.reports(RichCardActionContext.capability)
         pulseCards = appState.pulseCards(forChat: appState.activeSessionId)
         canPinReplies = appState.canPinReplies
         pinnedMessageIDs = appState.openChatPinnedMessageIDs
@@ -114,6 +127,7 @@ struct ChatRowFacts: Equatable {
     var latestAssistantMessageID: String?
     var retryableReplyID: String?
     var latestLiveRows: [String: String] = [:]
+    var followUpBoardRowID: String?
     var teammateReplies: [String: String] = [:]
 
     init() {}
@@ -125,6 +139,7 @@ struct ChatRowFacts: Equatable {
         latestAssistantMessageID = rows.last(where: { $0.role == .assistant })?.id
         retryableReplyID = AppState.retryableReplyID(in: rows)
         latestLiveRows = RichCard.latestLiveRows(rows)
+        followUpBoardRowID = RichBoard.followUpRow(in: rows)
         teammateReplies = BotTeammateMessages.teammateReplies(
             in: rows,
             streamingMessageID: isBusy ? BotTeammateMessages.runningReplyID(in: rows) : nil

@@ -13,22 +13,35 @@
 
 import Combine
 import SwiftUI
+import os
 
 /// The shell's four destinations.
 enum V2Tab: String, Identifiable, Hashable {
+    /// The tab an opened conversation is pushed in. Bots is the launch tab,
+    /// so a plain session opened over it (a notification, a widget, a
+    /// Shortcut) still goes to Sessions; only a bot's own chats, and chats
+    /// opened from a page in Bots, stay in Bots.
+    /// A chat opened from a page pushed in Bots (Pulse, Artifacts) stays
+    /// there too, so Back returns to that page.
+    static func conversationTab(selected: V2Tab, isBotsChat: Bool, fromBotsPage: Bool = false) -> V2Tab {
+        selected == .bots && (isBotsChat || fromBotsPage) ? .bots : .chats
+    }
+
     case chats
     case tasks
     case bots
     case settings
 
-    /// The tabs the bar lists.
-    static let destinations: [V2Tab] = [.chats, .tasks, .bots, .settings]
+    /// The tabs the bar lists. Bots comes first: picking a bot and
+    /// talking to it is Conduit's home, and direct sessions are a tab
+    /// over (designs/bot-mode-coordinator/bots-home-ui.md).
+    static let destinations: [V2Tab] = [.bots, .chats, .tasks, .settings]
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .chats: return AppLocalization.string("Chats")
+        case .chats: return AppLocalization.string("Sessions")
         case .tasks: return AppLocalization.string("Tasks")
         case .bots: return AppLocalization.string("Bots")
         case .settings: return AppLocalization.string("Settings")
@@ -403,16 +416,18 @@ struct V2Shell: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.layoutDirection) private var layoutDirection
-    @State private var selectedTab: V2Tab = .chats
-    /// The app opens on the Chats list, or on the chat iOS closed it on
+    @State private var selectedTab: V2Tab = .bots
+    /// The app opens on Bots, or on the chat iOS closed it on
     /// (`V2ReopenedConversation`). Nothing is pushed during the launch's
     /// first layout: a push then, even without animation, left the app
     /// never idle, so a reopened chat is in the path from the start.
     @State private var chatsPath: [V2Route] = []
     @State private var botsPath: [V2Route] = []
+    /// Bots Home's portraits and the Bot Chats they open (BotZoomSource).
+    @Namespace private var botZoom
     /// The custom bar keeps a tab alive once it has been opened, so its
     /// scroll position and pushed screens survive switching away.
-    @State private var visitedTabs: Set<V2Tab> = [.chats]
+    @State private var visitedTabs: Set<V2Tab> = [.chats, .bots]
     @State private var contentFaded = false
     @State private var contentShift: CGFloat = 0
     @State private var profileSwitchToken = 0
@@ -436,6 +451,12 @@ struct V2Shell: View {
     /// The floating bar's height as last laid out (the capsule and the
     /// voice button, with their bottom padding).
     @State private var tabBarHeight: CGFloat = 62
+    /// An iPhone Duo's side status strip, where the tabs stand instead of
+    /// floating over the screens' bottom (`V2StatusStrip`).
+    @State private var statusStrip: V2StatusStrip?
+    /// The room a screen keeps under the floating bar: none while the tabs
+    /// stand in the status strip.
+    private var barClearance: CGFloat { statusStrip == nil ? tabBarHeight : 0 }
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
     @AppStorage(V2ChatListPreference.key) private var chatListBeside = V2ChatListPreference.defaultValue
     @AppStorage(V2SplitLayout.listWidths.key) private var storedListWidth = Double(V2SplitLayout.listWidths.standard)
@@ -446,7 +467,7 @@ struct V2Shell: View {
     ///   - conversationOnLeave: the window's record of the chat showing,
     ///     kept current here.
     ///   - reopening: where this launch opens, from that record
-    ///     (`V2ReopenedConversation.launch`); nil opens on Chats.
+    ///     (`V2ReopenedConversation.launch`); nil opens on Bots.
     init(conversationOnLeave: Binding<String> = .constant(""), reopening launch: V2ReopenedConversation.Launch? = nil) {
         _conversationOnLeave = conversationOnLeave
         _roomToReopen = State(initialValue: launch?.roomID == nil ? nil : launch)
@@ -456,6 +477,7 @@ struct V2Shell: View {
             _botsPath = State(initialValue: launch?.path ?? [])
             _visitedTabs = State(initialValue: [.chats, .bots])
         case .chats?:
+            _selectedTab = State(initialValue: .chats)
             _chatsPath = State(initialValue: launch?.path ?? [])
         case .tasks?, .settings?, nil:
             break
@@ -475,7 +497,7 @@ struct V2Shell: View {
     /// whole window as a chat does: no tabs or voice button. Split, it is a
     /// page in the list column, over the bar like Artifacts.
     private var pulseVisible: Bool {
-        selectedTab == .chats && chatsPath.last == .pulse
+        (selectedTab == .chats && chatsPath.last == .pulse) || (selectedTab == .bots && botsPath.last == .pulse)
     }
 
     /// What the window keeps for a launch after iOS ends Conduit: where
@@ -592,6 +614,11 @@ struct V2Shell: View {
         if selectedTab == .chats, case .project(let project)? = V2SplitLayout.listRoutes(chatsPath).last {
             return .project(project)
         }
+        // Bots Home itself, not Pulse or Artifacts over it: a call to one
+        // of the bots.
+        if selectedTab == .bots, V2SplitLayout.listRoutes(botsPath).isEmpty {
+            return .bots
+        }
         return .home
     }
 
@@ -610,7 +637,19 @@ struct V2Shell: View {
             let canSplit = V2SplitLayout.isSplit(width: proxy.size.width)
             let split = V2SplitLayout.isSplit(width: proxy.size.width, showsList: chatListBeside)
             let list = V2SplitLayout.ListColumn(window: proxy.size.width, stored: storedListWidth, dragged: draggedListWidth)
+            let strip = V2StatusStrip(insets: proxy.safeAreaInsets, isPhone: UIDevice.current.userInterfaceIdiom == .phone)
             tabs(split: split, canSplit: canSplit, list: list)
+                // The bars and the screens' clearance under them read it
+                // from here together, so they change in the same pass.
+                .onChange(of: strip, initial: true) { _, strip in
+                    if statusStrip != strip { statusStrip = strip }
+                }
+                // The window's side safe area as the shell has it, outside
+                // every stack: each tab's screens take it, or their
+                // column's share of it, in place of what UIKit hands their
+                // stack, and never grow past the column's width
+                // (`windowSideContent`, #1900).
+                .environment(\.windowSideInsets, WindowSideInsets(proxy.safeAreaInsets, width: proxy.size.width))
                 .environment(\.v2Shell, V2ShellContext(pickProfile: { pickProfile($0) }, dropQueuedProfilePick: { queuedProfilePick = V2QueuedProfilePick() }, showScheduledRuns: showScheduledRuns, values: .init(contentFaded: contentFaded, contentShift: contentShift, isSplit: split, canSplit: canSplit, isPickingProfile: isPickingProfile)))
         }
     }
@@ -691,6 +730,10 @@ struct V2Shell: View {
                 }
             }
             .onChange(of: selectedTab) { _, tab in
+                // A marker for the device trace: the tap's frame, or the
+                // screen that asked for the tab, so an Animation Hitches
+                // track can be lined up with what the person saw.
+                ResponsivenessSignposts.signposter.emitEvent("Tab selected", "\(tab.rawValue, privacy: .public)")
                 visitedTabs.insert(tab)
                 giveUpRoomIfLeft()
                 // Only a tab the user picked clicks; a chat or link that
@@ -798,7 +841,12 @@ struct V2Shell: View {
     /// under it rather than sitting alone in the corner.
     /// Under a list the user widened, the bar keeps its own width, centered
     /// under the list's column.
+    /// On an iPhone Duo the tabs stand in the side status strip instead,
+    /// under the clock and wifi, the main button at their foot
+    /// (`V2StatusStrip`, Eric 2026-11-07): the screens beside it keep
+    /// their whole height, nothing floating over their last rows.
     private func tabs(split: Bool, canSplit: Bool, list: V2SplitLayout.ListColumn) -> some View {
+        let strip = statusStrip
         let settingsBeside = V2SplitLayout.settingsBesideList(split: split)
         let underList = V2SplitLayout.tabBarUnderList(split: split, tab: selectedTab)
         return ZStack {
@@ -843,7 +891,7 @@ struct V2Shell: View {
         // (`tabBarClearance`).
         .overlay(alignment: .bottom) {
             ZStack(alignment: .bottom) {
-                if split || (!conversationVisible && !pulseVisible) {
+                if strip == nil, split || (!conversationVisible && !pulseVisible) {
                     HStack(spacing: 10) {
                         V2CapsuleTabBar(selection: $selectedTab)
                         voiceButton(chatVoiceBeside: V2SplitLayout.hasChatVoiceBeside(split: split, path: path(of: selectedTab), inRoom: appState.activeRoomSurface != nil))
@@ -871,6 +919,11 @@ struct V2Shell: View {
             }
             .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: conversationVisible || pulseVisible)
         }
+        .overlay {
+            if let strip {
+                stripTabs(strip, split: split)
+            }
+        }
         .overlay(alignment: .top) {
             // Animated on its own, so the notice slides in without
             // animating the screen under it.
@@ -886,18 +939,49 @@ struct V2Shell: View {
         }
     }
 
+    /// The tabs and the main button standing in the status strip, at its
+    /// foot, clear of the clock and wifi at its top. Any page pushed over
+    /// the tab's root on one column hides them, not just a chat or Pulse
+    /// as with the floating bar: iOS lays the page's Back and a search
+    /// toolbar button out in the same strip, over the tabs and the main
+    /// button. Beside the list they stay.
+    private func stripTabs(_ strip: V2StatusStrip, split: Bool) -> some View {
+        ZStack(alignment: .bottom) {
+            if split || path(of: selectedTab).isEmpty {
+                VStack(spacing: 12) {
+                    V2StripTabBar(selection: $selectedTab, width: strip.barWidth)
+                    voiceButton(chatVoiceBeside: V2SplitLayout.hasChatVoiceBeside(split: split, path: path(of: selectedTab), inRoom: appState.activeRoomSurface != nil))
+                }
+                .padding(.bottom, 6)
+                .transition(.move(edge: strip.edge == .trailing ? .trailing : .leading).combined(with: .opacity))
+            }
+        }
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: path(of: selectedTab).isEmpty)
+        .frame(width: strip.width)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: strip.edge == .trailing ? .bottomTrailing : .bottomLeading)
+        // Out past the shell's frame, into the strip itself.
+        .ignoresSafeArea(.container, edges: strip.edge == .trailing ? .trailing : .leading)
+    }
+
     /// Room under the floating bar for a screen that shows it: its lists
     /// scroll under the bar and stop above it. The same height whether or
     /// not the bar is up, so pushing or popping a chat never re-lays out
     /// the screen under it.
     /// The clearance is a bar to the lists, so they fade out under the
     /// floating bar (`v2EdgeBar`): the system's soft edge on iOS 26.
+    /// With the tabs in a Duo's status strip there's no bar to clear, and
+    /// no bottom edge either, as Settings' pages (`V2TabBarClearance`).
+    @ViewBuilder
     private func tabBarClearance<Content: View>(_ content: Content) -> some View {
-        content.v2EdgeBar(.bottom) {
-            Color.clear
-                .frame(height: tabBarHeight)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+        if barClearance > 0 {
+            content.v2EdgeBar(.bottom) {
+                Color.clear
+                    .frame(height: barClearance)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        } else {
+            content
         }
     }
 
@@ -917,24 +1001,50 @@ struct V2Shell: View {
                 // Only the list's own changes redraw it, not the shell's
                 // (`V2ShownUpdates`).
                 listRoot(tabBarClearance(V2ChatsView(appState: appState).equatable()), alone: canSplit)
-                    .navigationDestination(for: V2Route.self) { destination($0, alone: canSplit) }
+                    .windowSideContent()
+                    .navigationDestination(for: V2Route.self) { destination($0, alone: canSplit).windowSideContent() }
             }
         case .tasks:
             // Inside the stack, as on Chats and Bots: the lists in it stop
             // above the bar and fade under it.
             NavigationStack {
                 tabBarClearance(V2TasksView())
+                    .windowSideContent()
             }
         case .bots:
             NavigationStack(path: $botsPath) {
+                // A Bot Chat or a room grows out of its portrait
+                // (BotZoomDestination).
                 listRoot(tabBarClearance(V2BotsView()), alone: canSplit)
-                    .navigationDestination(for: V2Route.self) { destination($0, alone: canSplit) }
+                    .windowSideContent()
+                    .environment(\.botZoomNamespace, botZoom)
+                    .navigationDestination(for: V2Route.self) { route in
+                        destination(route, alone: canSplit)
+                            .windowSideContent()
+                            // Only straight from Bots Home: under Pulse or
+                            // Artifacts the portrait isn't on screen.
+                            .modifier(BotZoomDestination(route: route, namespace: botZoom,
+                                                         fromHome: botsPath.first == .conversation))
+                    }
+            }
+            // The tapped portrait's chat lands after the push (#1700); a
+            // room has landed by its push.
+            .onChange(of: appState.botZoomRoomKey ?? appState.activeBotChatProfile) { _, open in
+                appState.botZoom.opened(open)
+            }
+            // The tapped portrait's chat has left: the next open pushes.
+            .onChange(of: botsPath) { old, path in
+                if path == [.conversation], !old.contains(.conversation) {
+                    appState.botZoom.pushed(open: appState.botZoomRoomKey ?? appState.activeBotChatProfile)
+                } else if !path.contains(.conversation) {
+                    appState.botZoom.left()
+                }
             }
         case .settings:
             // Settings puts the clearance inside its own stack, on its home
             // and on every page it pushes (`v2TabBarClearance()`).
             V2SettingsTab(link: $settingsLink)
-                .environment(\.v2TabBarClearance, tabBarHeight)
+                .environment(\.v2TabBarClearance, barClearance)
         }
     }
 
@@ -972,15 +1082,23 @@ struct V2Shell: View {
         return HStack(spacing: 0) {
             NavigationStack(path: V2SplitLayout.listPath(path)) {
                 list
+                    .leadingColumnContent()
                     .navigationDestination(for: V2Route.self) { route in
-                        if route == .pulse {
-                            tabBarClearance(V2PulsePage())
-                        } else {
-                            destination(route)
+                        Group {
+                            if route == .pulse {
+                                tabBarClearance(V2PulsePage())
+                            } else {
+                                destination(route)
+                            }
                         }
+                        .leadingColumnContent()
                     }
             }
             .frame(width: column.width)
+            // The list's screens take the window's leading inset, never
+            // its trailing one (`leadingColumnContent`), and keep to the
+            // column's width.
+            .transformEnvironment(\.windowSideInsets) { $0 = $0?.reaching(.leading, width: column.width) }
             // Each column's backdrop stays in its own column.
             .v2ClippedToColumn(outerEdge: .leading)
             ColumnDivider(
@@ -997,6 +1115,7 @@ struct V2Shell: View {
                     if path.wrappedValue.contains(.conversation) {
                         NavigationStack {
                             V2ConversationScreen()
+                                .windowSideContent()
                         }
                         // Pushed or popped on a phone, VoiceOver follows; beside
                         // the list the column says so itself, opening or closing.
@@ -1028,6 +1147,12 @@ struct V2Shell: View {
                 }
             }
             .animation(nil, value: selectedTab)
+            // The chat's column (and Settings in it) takes the window's
+            // trailing inset, never its leading one, and keeps to the room
+            // the list and the line between them leave.
+            .transformEnvironment(\.windowSideInsets) { insets in
+                insets = insets?.reaching(.trailing, width: insets?.width.map { $0 - column.width - 1 })
+            }
             .v2ClippedToColumn(outerEdge: .trailing)
         }
     }
@@ -1052,15 +1177,30 @@ struct V2Shell: View {
 
     // MARK: - Conversation routing
 
-    /// Pushes the conversation: in Bots when a bot's chat opened from there,
-    /// otherwise in Chats. Only one tab ever holds it, since both would show
-    /// the same active session.
+    /// Pushes the conversation: in Bots when a bot's chat (its Bot Chat or
+    /// one of its workstreams) opened while Bots shows, otherwise in
+    /// Sessions. Only one tab ever holds it, since both would show the same
+    /// active session.
     private func openConversation() {
-        let target: V2Tab = selectedTab == .bots ? .bots : .chats
+        let target = V2Tab.conversationTab(
+            selected: selectedTab,
+            isBotsChat: appState.placesConversationAsBotChat,
+            fromBotsPage: botsPath.last == .pulse || botsPath.last == .artifacts
+        )
+        appState.botChatOpeningPlaced()
+        // The push itself, before the path moves: paired with the
+        // destination's "Conversation appeared" in a device trace, and with
+        // the "Chat open" interval AppState already runs.
+        ResponsivenessSignposts.signposter.emitEvent("Chat pushed")
         switch target {
         case .bots:
             chatsPath.removeAll { $0 == .conversation }
-            if botsPath.last != .conversation { botsPath.append(.conversation) }
+            if botsPath.last != .conversation {
+                // As in Chats: a chat opened from Pulse over another chat
+                // moves to the top.
+                botsPath.removeAll { $0 == .conversation }
+                botsPath.append(.conversation)
+            }
         default:
             botsPath.removeAll { $0 == .conversation }
             if chatsPath.last != .conversation {
@@ -1096,11 +1236,15 @@ struct V2Shell: View {
     private func closeConversation() {
         switch selectedTab {
         case .chats:
+            appState.botZoom.left()
             if chatsPath.last == .conversation { chatsPath.removeLast() }
         case .bots:
-            if botsPath.last == .conversation { botsPath.removeLast() }
+            // The zoom stays armed through the pop, so the chat shrinks back
+            // into its portrait; the path's change lets it go after
+            // (build 248: clearing it first made Back a plain pop).
+            if botsPath.last == .conversation { botsPath.removeLast() } else { appState.botZoom.left() }
         case .tasks, .settings:
-            break
+            appState.botZoom.left()
         }
     }
 
@@ -1260,6 +1404,35 @@ struct V2QueuedProfilePick: Equatable {
         }
         guard self.dashboardID == dashboardID else { return nil }
         return profile == landed ? nil : profile
+    }
+}
+
+extension View {
+    /// A leading column's screens (the split window's Chats or Bots list
+    /// and the pages it pushes, the drawer shell's persistent sidebar)
+    /// inside the column's own navigation stack. The column never reaches
+    /// the window's trailing edge, but UIKit can still hand its stack the
+    /// window's trailing safe area: an iPhone Duo's inner screen gave the
+    /// 375 pt list its 84 pt side status bar, the list's bar no longer fit
+    /// in what was left, and centering the overflow cut the profile pill,
+    /// section headers and row icons off on the left (#1765). The screen
+    /// takes the column's share of the window's safe area, the leading
+    /// side's only (`windowSideContent`), and keeps to the column's
+    /// leading edge. Where no shell read the window's (nil), it still
+    /// drops the trailing inset.
+    func leadingColumnContent() -> some View {
+        modifier(LeadingColumnContent())
+    }
+}
+
+private struct LeadingColumnContent: ViewModifier {
+    @Environment(\.windowSideInsets) private var insets
+
+    func body(content: Content) -> some View {
+        content
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            .ignoresSafeArea(.container, edges: insets == nil ? Edge.Set.trailing : Edge.Set())
+            .windowSideContent()
     }
 }
 
@@ -1607,6 +1780,90 @@ private struct V2CapsuleTabBar: View {
     }
 }
 
+/// An iPhone Duo's side status strip: the clock, wifi and battery stand in
+/// a column along one side of the window instead of across its top, and
+/// the rest of that column is empty. The window's safe area shows it: a
+/// wide inset on one side and none on the other. A landscape iPhone's
+/// sensor gives both sides an inset, and an iPad or Mac window none, so
+/// they keep the floating bar.
+struct V2StatusStrip: Equatable {
+    /// Narrower than this, a side inset is a sensor's or a corner's, not a
+    /// strip with room for the tabs. The Duo's is 84 pt.
+    static let minimumWidth: CGFloat = 72
+
+    let edge: HorizontalEdge
+    let width: CGFloat
+
+    init?(insets: EdgeInsets, isPhone: Bool) {
+        guard isPhone else { return nil }
+        if insets.trailing >= Self.minimumWidth, insets.leading < 1 {
+            edge = .trailing
+            width = insets.trailing
+        } else if insets.leading >= Self.minimumWidth, insets.trailing < 1 {
+            edge = .leading
+            width = insets.leading
+        } else {
+            return nil
+        }
+    }
+
+    /// The tabs' glass column, a margin in from the strip's sides.
+    var barWidth: CGFloat { width - 12 }
+}
+
+/// The tab bar standing in a Duo's status strip: the same four items as
+/// the capsule, one above another, the selection sliding between them.
+private struct V2StripTabBar: View {
+    @Binding var selection: V2Tab
+    let width: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var highlight
+
+    var body: some View {
+        VStack(spacing: 2) {
+            ForEach(V2Tab.destinations) { tab in
+                let isSelected = selection == tab
+                Button {
+                    withAnimation(ConduitMotion.overshoot(reduceMotion: reduceMotion)) {
+                        selection = tab
+                    }
+                } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: tab.symbol)
+                            .font(.system(size: 18, weight: .semibold))
+                            .conduitFixedGlyph()
+                        Text(tab.title)
+                            .scaledFont(.caption2.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    .foregroundStyle(isSelected ? Color.conduitAccent : Color.secondary)
+                    .padding(.horizontal, 2)
+                    .frame(maxWidth: .infinity, minHeight: 54)
+                    .background {
+                        if isSelected {
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .fill(Color.primary.opacity(0.08))
+                                .matchedGeometryEffect(id: "selection", in: highlight)
+                        }
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityLabel(tab.title)
+                .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+                .accessibilityShowsLargeContentViewer {
+                    Label(tab.title, systemImage: tab.symbol)
+                }
+            }
+        }
+        .padding(4)
+        .frame(width: width)
+        .conduitGlassControl(cornerRadius: 22, interactive: false)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+    }
+}
+
 /// The chat a launch opens on (#1559). A window keeps where its chat was
 /// showing (the tab, the pages under the chat, a group room) as
 /// SceneStorage, which iOS restores when it ended Conduit in the background
@@ -1769,8 +2026,12 @@ extension View {
     /// Room under the V2 floating tab bar, set inside a tab's own
     /// NavigationStack on each screen it shows, as the shell's
     /// `tabBarClearance` does for the other tabs. Nothing outside V2.
+    /// Each such screen also takes the window's side safe area
+    /// (`windowSideContent`, #1900): Settings' pages pushed by a link
+    /// (Diagnostics, a provider, a skill) come only through here.
     func v2TabBarClearance() -> some View {
         modifier(V2TabBarClearance())
+            .windowSideContent()
     }
 }
 

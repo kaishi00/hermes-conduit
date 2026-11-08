@@ -13,6 +13,7 @@
 //
 
 import CallKit
+import Contacts
 import CryptoKit
 import XCTest
 @testable import Conduit
@@ -117,6 +118,20 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(calls.watches.first?.hold, VoiceBackgroundJobSupervisor.callbackHoldSeconds)
         XCTAssertNotNil(calls.watches.first?.within, "The host skips turns that ended before the request")
         XCTAssertEqual(supervisor.jobs.map(\.callsBackWhenDone), [false, true])
+    }
+
+    /// A start whose acknowledgement was lost after Hermes began its turn
+    /// still calls back when it's done.
+    func testCallMeWatchesAJobWhoseStartAcknowledgementWasLost() async {
+        let (supervisor, jobs, calls) = hermesCallSupervisor()
+        beginHermesCall(supervisor)
+        XCTAssertEqual(supervisor.requestCallback(), .marked(titles: [], later: .next))
+        jobs.submitError = HermesError.timeout("prompt.submit")
+        jobs.onSubmit = { id in supervisor.observe(.messageStart(sessionId: id)) }
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
+        await supervisor.callbackPassesSettled()
+
+        XCTAssertEqual(calls.watches.map(\.target.runtimeSessionID), ["rt-1"])
     }
 
     func testCallMeBeforeTheWorkMarksOnlyTheNextJob() async {
@@ -509,6 +524,38 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(HermesCallsClient.refusal(from: URLError(.timedOut)))
     }
 
+    /// A watch for a profile that turned the plugin off tells the live model
+    /// how to turn it on there, not that the plugin needs an update (issue
+    /// 1671). The bridge words Hermes' bare 404; the client keeps them.
+    func testWatchForAProfileWithThePluginOffSaysHowToTurnItOn() async throws {
+        let client = HermesCallsClient(request: { path, _, _ in
+            try await DashboardTicketBridgeError.explainingPluginRefusal(path: path) { () async throws -> [String: Any] in
+                throw DashboardTicketBridgeError.http(status: 404, detail: DashboardTicketBridgeError.pluginRefusedDetail)
+            }
+        })
+        let path = DashboardPath.withProfile(HermesCallsClient.watchesPath, profile: "fam")
+        let remedy = try XCTUnwrap(DashboardTicketBridgeError.pluginOffDetail(path: path))
+        do {
+            _ = try await client.watch(sessionIDs: ["s1"], title: "The report", profile: "fam", holdSeconds: 0, endedWithinSeconds: nil)
+            XCTFail("The watch was refused")
+        } catch let refusal as HermesCallRefusal {
+            XCTAssertEqual(refusal, .unavailable(.pluginOff(remedy)))
+        }
+        let told = VoiceCallbackRequestOutcome.unavailable(.pluginOff(remedy)).modelMessage
+        XCTAssertTrue(told.contains(remedy), told)
+        XCTAssertFalse(told.contains("needs an update"), told)
+        XCTAssertFalse(HermesCallRefusal.unavailable(.pluginOff(remedy)).modelNote(title: "The report").contains("needs an update"))
+
+        // Hermes' bare words name the plugin and profile from the path.
+        XCTAssertEqual(HermesCallsClient.refusal(from: DashboardTicketBridgeError.http(status: 404, detail: "Plugin not found"), path: path),
+                       .unavailable(.pluginOff(remedy)))
+        // A plugin without the route still needs the update.
+        XCTAssertEqual(HermesCallsClient.refusal(from: DashboardTicketBridgeError.http(status: 404, detail: "Not Found"), path: path),
+                       .unavailable(.unsupported))
+        XCTAssertEqual(HermesCallsClient.refusal(from: DashboardTicketBridgeError.http(status: 405, detail: "Method Not Allowed")),
+                       .unavailable(.unsupported))
+    }
+
     /// GPT-Live's "Call me: <work>" asks for the job that takes the work,
     /// even a running one taking it as a change; never a later job.
     func testGPTLiveCallMeWithAChangeCallsAboutTheJobThatTookIt() async {
@@ -816,6 +863,23 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(HermesNativeCalls.stopsWatchRing(after: nil))
     }
 
+    func testEachBotRingsFromTheAddressItsContactHolds() {
+        // A Focus lets a call through only from a contact in its allowed
+        // people (#1606): each profile's calls ring from its own address,
+        // which the contact its call settings add holds, under its name.
+        let handle = HermesCallerName.callHandle(profile: "Furina")
+        XCTAssertEqual(handle.type, .emailAddress)
+        XCTAssertEqual(handle.value, "hermes+furina@hermesconduit.app")
+        XCTAssertEqual(HermesCallerName.contactAddress(profile: "default"), "hermes+default@hermesconduit.app")
+        XCTAssertNotEqual(HermesCallerName.contactAddress(profile: "nova"), handle.value, "One contact per bot")
+        XCTAssertEqual(HermesCallerName.contactAddress(profile: nil), "hermes@hermesconduit.app", "A call naming no profile matches no bot's contact")
+        XCTAssertEqual(HermesCallerName.contactAddress(profile: "a b/ü"), "hermes+ab@hermesconduit.app")
+        XCTAssertEqual(HermesCallerName.handleTypes, [.emailAddress])
+        let contact = HermesNewContactSheet.contact(profile: "furina", name: "Furina")
+        XCTAssertEqual(contact.givenName, "Furina")
+        XCTAssertEqual(contact.emailAddresses.map { $0.value as String }, [handle.value])
+    }
+
     func testACallSaysWhichProfileIsCalling() throws {
         XCTAssertEqual(HermesCallCopy.callerName(profile: "research", mainName: "Ada", title: nil), "Research")
         XCTAssertEqual(HermesCallCopy.callerName(profile: "research", mainName: nil, title: "Deploy"), "Research · Deploy")
@@ -1025,6 +1089,58 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(GPTLiveDelegationBridge.decisionMarker(in: "Please approve: it"))
     }
 
+    func testAYesFromTheNextCallNeverAnswersTheLastCallsApproval() async {
+        // #1792: the call is replaced while its approval waits on a yes
+        // still being transcribed, and the next call's user says yes.
+        let (supervisor, _, _) = hermesCallSupervisor()
+        let decisions = FakeCallDecisions()
+        supervisor.callDecisions = decisions.decisions
+
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        bridge.lastUserSpeechAt = { Date() }
+        bridge.lateYesWait = .seconds(2)
+        var reads = 0
+        bridge.lastUserWords = {
+            reads += 1
+            guard reads > 1 else {
+                bridge.connectionReplaced()
+                return "hmm"
+            }
+            return "yes"
+        }
+        let replaced = await bridge.handle(.init(id: "c1", name: "answer_approval", arguments: ["choice": "once"]))
+        XCTAssertEqual(replaced, [], "The call that asked is gone")
+        XCTAssertGreaterThan(reads, 1, "The next call's yes was heard")
+        XCTAssertTrue(decisions.choices.isEmpty, "Its yes answers nothing of the last call's")
+        bridge.lastUserWords = { "yes" }
+        _ = await bridge.handle(.init(id: "c2", name: "answer_approval", arguments: ["choice": "once"]))
+        XCTAssertEqual(decisions.choices, ["once"], "Asked in this call, its yes approves")
+
+        let gpt = GPTLiveDelegationBridge(supervisor: supervisor)
+        let words = FakeGPTLiveSpokenWords()
+        gpt.spokenWords = words
+        gpt.lateYesWait = .seconds(2)
+        words.mark = 1
+        var lineReads = 0
+        words.readLastLine = {
+            lineReads += 1
+            guard lineReads > 1 else {
+                gpt.connectionReplaced()
+                return "hmm"
+            }
+            return "yes"
+        }
+        let gone = await gpt.handleDelegation(id: "d1", request: "Approve:", userWords: "hmm")
+        XCTAssertEqual(gone, [], "The call that asked is gone")
+        XCTAssertGreaterThan(lineReads, 1, "The next call's yes was heard")
+        XCTAssertEqual(decisions.choices, ["once"], "Its yes answers nothing of the last call's")
+        XCTAssertTrue(words.settled.isEmpty, "The next call's words stay its own")
+        words.readLastLine = nil
+        words.lastLine = "yes"
+        _ = await gpt.handleDelegation(id: "d2", request: "Approve:", userWords: "yes")
+        XCTAssertEqual(decisions.choices, ["once", "once"], "Asked in this call, its yes approves")
+    }
+
     func testCallRulesGoToHostsThatKeepThemWithinTheirLimit() throws {
         let old = HermesCallSettings(json: ["enabled": true, "when_asked": true, "decides": true, "min_gap_s": 120, "per_hour": 6, "per_day": 20])
         XCTAssertNil(old?.rules, "A plugin before 0.16 has no note, so the field stays hidden")
@@ -1137,6 +1253,76 @@ extension VoiceConversationControllerTests {
 
     private func waitingOutcomes(_ defaults: UserDefaults) -> [String] {
         HermesCallOutcomeOutbox.load(from: defaults).entries.map(\.callID)
+    }
+
+    // MARK: Ring records (#1780)
+
+    private func ringRecord(_ id: String = "ring-a1b2c3d4", target: ConduitNotificationTarget? = nil, at: Date) throws -> HermesRingRecords.Entry {
+        let ring = HermesRing(id: id, token: "tok-\(id)", url: URL(string: "https://relay.example/v1/rings/\(id)/settled")!)
+        let dashboard = UUID(uuidString: "6F9619FF-8B86-D011-B42D-00C04FC964FF")
+        return try XCTUnwrap(HermesRingRecords.Entry(ring: ring, target: target ?? outcomeTarget(dashboard: dashboard), sentAt: at.addingTimeInterval(-2), at: at))
+    }
+
+    func testARingRecordOutlivesTheProcessThatRangSoAWatchAnswerCanBeHandedOff() throws {
+        // A stop that launches Conduit afresh reads the record the call push
+        // left. A second UserDefaults on the suite reads it as a relaunch
+        // would; in one process the two share a cache, so surviving a kill
+        // itself is left to the device check.
+        let suite = "HermesCallsTests.ringRecords.\(UUID().uuidString)"
+        addTeardownBlock { UserDefaults.standard.removePersistentDomain(forName: suite) }
+        let now = Date()
+        let record = try ringRecord(at: now)
+        HermesRingRecords.record(record, in: try XCTUnwrap(UserDefaults(suiteName: suite)), now: now)
+
+        let relaunched = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let found = try XCTUnwrap(HermesRingRecords.entry(ringID: "ring-a1b2c3d4", in: relaunched, now: now.addingTimeInterval(40)))
+        XCTAssertEqual(found.ring, HermesRing(id: "ring-a1b2c3d4", token: "tok-ring-a1b2c3d4", url: URL(string: "https://relay.example/v1/rings/ring-a1b2c3d4/settled")!))
+        let target = found.target
+        XCTAssertEqual(found.sentAt, now.addingTimeInterval(-2), "Hermes hears how long ago the relay sent it")
+        XCTAssertEqual(target.profile, "work")
+        XCTAssertEqual(target.sessionId, "rt-1")
+        XCTAssertEqual(target.durableSessionID, "st-1")
+        XCTAssertEqual(target.dashboardID, UUID(uuidString: "6F9619FF-8B86-D011-B42D-00C04FC964FF"))
+        XCTAssertEqual(target.call, outcomeTarget().call, "The call it rang for: a missed call and its outcome name it")
+        XCTAssertEqual(HermesNativeCalls.watchMissedNotice(for: target), .missed, "A failed handoff posts the call's own missed call")
+        XCTAssertNotNil(HermesCallNotifications.callRequest(for: target, missed: true))
+        XCTAssertNotNil(HermesCallOutcomeOutbox.Entry(.missed, target: target, at: now), "and tells Hermes it wasn't taken")
+        XCTAssertNotNil(HermesCallOutcomeOutbox.Entry(.declined, target: target, at: now), "or, declined on the Watch, that it was declined")
+        XCTAssertEqual(HermesNativeCalls.watchMissedNotice(for: nil), .unreadable, "No record: only that Hermes called")
+        XCTAssertNil(HermesRingRecords.entry(ringID: "ring-other", in: relaunched, now: now))
+    }
+
+    func testRingRecordsLastAsLongAsTheRelaysRingAndNoLonger() throws {
+        let defaults = makeScratchDefaults("HermesCallsTests.ringRecords")
+        let now = Date()
+        HermesRingRecords.record(try ringRecord("ring-old", at: now.addingTimeInterval(-HermesRingRecords.life)), in: defaults, now: now)
+        XCTAssertNil(HermesRingRecords.entry(ringID: "ring-old", in: defaults, now: now), "Ten minutes on, the relay has forgotten the ring")
+        XCTAssertNil(defaults.data(forKey: HermesRingRecords.storageKey), "and its token is gone from disk")
+        for index in 0..<(HermesRingRecords.maximumEntries + 2) {
+            HermesRingRecords.record(try ringRecord("ring-\(index)", at: now), in: defaults, now: now)
+        }
+        let kept = HermesRingRecords.load(from: defaults, now: now).entries.map(\.ringID)
+        XCTAssertEqual(kept.count, HermesRingRecords.maximumEntries)
+        XCTAssertEqual(kept.last, "ring-\(HermesRingRecords.maximumEntries + 1)", "The newest rings are kept")
+        HermesRingRecords.record(try ringRecord("ring-3", target: outcomeTarget(profile: "home"), at: now), in: defaults, now: now)
+        XCTAssertEqual(HermesRingRecords.entry(ringID: "ring-3", in: defaults, now: now)?.profile, "home", "A ring pushed again keeps its latest call")
+        XCTAssertEqual(HermesRingRecords.load(from: defaults, now: now).entries.filter { $0.ringID == "ring-3" }.count, 1)
+        let notACall = ConduitNotificationTarget(profile: "work", sessionId: "rt-1", type: "turn.done")
+        XCTAssertNil(HermesRingRecords.Entry(ring: try ringRecord(at: now).ring, target: notACall, at: now))
+        let malformed = ConduitNotificationTarget(profile: "work", sessionId: "rt-1", hasMalformedDashboardID: true,
+                                                  type: HermesCallRequest.type, call: outcomeTarget().call)
+        XCTAssertNil(HermesRingRecords.entry(ringID: "ring-5", in: defaults, now: now)?.handled, "A ring nothing has taken or noticed yet")
+        HermesRingRecords.markHandled(ringID: "ring-5", in: defaults, now: now)
+        XCTAssertEqual(HermesRingRecords.entry(ringID: "ring-5", in: defaults, now: now)?.handled, true,
+                       "Taken or noticed here: a later stop for it leaves no second missed call, after a relaunch too")
+        HermesRingRecords.record(try ringRecord("ring-5", at: now), in: defaults, now: now)
+        XCTAssertEqual(HermesRingRecords.entry(ringID: "ring-5", in: defaults, now: now)?.handled, true, "A push sent again keeps it handled")
+        HermesRingRecords.markHandled(ringID: "ring-none", in: defaults, now: now)
+        XCTAssertNil(HermesRingRecords.entry(ringID: "ring-none", in: defaults, now: now))
+        let unreadable = try XCTUnwrap(HermesRingRecords.Entry(ring: try ringRecord(at: now).ring, target: malformed, at: now)).target
+        XCTAssertTrue(unreadable.hasMalformedDashboardID, "A dashboard Conduit can't read is still unreadable after a relaunch")
+        XCTAssertEqual(HermesNativeCalls.watchMissedNotice(for: unreadable), .unreadable, "so its missed call routes nowhere")
+        XCTAssertNil(HermesCallOutcomeOutbox.Entry(.missed, target: unreadable, at: now), "and no host is told")
     }
 
     func testADeclinedCallTellsTheHostWhatItWasAboutAndHowLongAgo() async throws {

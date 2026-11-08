@@ -120,6 +120,7 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
         do {
             response = try await fetch(scoped(provider() == .qwen ? "/api/plugins/conduit_push/qwen-live/status" : Self.statusPath), "GET", nil)
         } catch let error as DashboardTicketBridgeError {
+            if let remedy = DashboardTicketBridgeError.pluginOffDetail(of: error) { return .unavailable(reason: remedy) }
             if Self.isMissingRoute(error) { return .pluginMissing }
             throw error
         }
@@ -131,6 +132,9 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
         do {
             response = try await fetch(scoped(provider() == .qwen ? "/api/plugins/conduit_push/qwen-live/token" : Self.tokenPath), "POST", [:], timeoutMilliseconds: Self.tokenTimeoutMilliseconds)
         } catch let error as DashboardTicketBridgeError {
+            if let remedy = DashboardTicketBridgeError.pluginOffDetail(of: error) {
+                throw provider() == .gemini ? GeminiLiveTokenError.unavailable(.unavailable(reason: remedy)) : GeminiLiveTokenError.providerUnavailable(.unavailable(reason: remedy), .qwen)
+            }
             if Self.isMissingRoute(error) { throw provider() == .gemini ? GeminiLiveTokenError.unavailable(.pluginMissing) : GeminiLiveTokenError.providerUnavailable(.pluginMissing, .qwen) }
             throw error
         }

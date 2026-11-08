@@ -2,14 +2,14 @@ import XCTest
 
 /// Round-6 Repair Connection UI coverage. All paths are deterministic:
 /// `-CONDUIT_UI_TEST_FAILED_CONNECTION` starts the app on a failed stubbed
-/// session (Repair Connection visible at the top of V2's Chats, where the
+/// session (Repair Connection visible at the top of Bots Home, where the
 /// app opens), `-CONNECTION_SETUP_TEST_RESULT`
 /// scripts the staged probe, and `-CONDUIT_REPAIR_ACTIVATION` scripts the
 /// explicit activation outcome. No test touches a real Hermes server.
 final class ConnectionRepairUITests: XCTestCase {
     private enum Identity {
         static let stubDashboardURL = "https://repair-uitest.example"
-        static let repairButton = "chats.repair-connection"
+        static let repairButton = "bots.repair-connection"
         static let urlField = "setup.url"
         static let username = "setup.username"
         static let password = "setup.password"
@@ -29,7 +29,7 @@ final class ConnectionRepairUITests: XCTestCase {
     func testFailedConnectionOffersRepairSeededWithTheCurrentURL() {
         // The stable failure surfaces the Repair entry; the wizard opens
         // seeded from the failed connection's exact URL.
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments += [
             "-CONDUIT_UI_TEST_FAILED_CONNECTION", Identity.stubDashboardURL,
             "-CONNECTION_SETUP_TEST_RESULT", "server:hostNotFound"
@@ -50,7 +50,7 @@ final class ConnectionRepairUITests: XCTestCase {
         // required) → credentials → staged success → Reconnect Now
         // (scripted activation) → back on chat, never bounced to the login
         // card.
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments += [
             "-CONDUIT_UI_TEST_FAILED_CONNECTION", Identity.stubDashboardURL,
             "-CONNECTION_SETUP_TEST_RESULT", "auth:password",
@@ -94,7 +94,7 @@ final class ConnectionRepairUITests: XCTestCase {
         XCTAssertFalse(app.buttons["setup.use-settings"].exists, "Repair mode must not show the login handoff")
         tapVisible(app.buttons[Identity.reconnectNow], in: app)
 
-        // Back on Chats: still the (stubbed) failed session in its stable
+        // Back on Bots Home: still the (stubbed) failed session in its stable
         // state — never the login card.
         XCTAssertTrue(app.buttons[Identity.repairButton].waitForExistence(timeout: 5), "Wizard did not return to chat. Tree:\n\(app.debugDescription)")
         XCTAssertFalse(app.textFields["login.server-url"].exists, "Repair must never strand the user on the login card")
@@ -105,7 +105,7 @@ final class ConnectionRepairUITests: XCTestCase {
         // dashboard and the staged test stops at Credentials required —
         // Enter Credentials routes to the credentials step. No empty-credential
         // login ever fires.
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments += [
             "-CONDUIT_UI_TEST_FAILED_CONNECTION", Identity.stubDashboardURL,
             "-CONDUIT_UI_TEST_FAILURE_KIND", "none",
@@ -136,7 +136,7 @@ final class ConnectionRepairUITests: XCTestCase {
         // A browser-auth deployment: the review offers Sign In to Reconnect
         // (the existing AuthWebView runs on tap) and never claims login
         // success.
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments += [
             "-CONDUIT_UI_TEST_FAILED_CONNECTION", Identity.stubDashboardURL,
             "-CONDUIT_UI_TEST_FAILURE_KIND", "none",
@@ -164,7 +164,7 @@ final class ConnectionRepairUITests: XCTestCase {
         // The browser sign-in sheet closes with its Cancel button, not only
         // the swipe down: the sheet goes, Review is left as it was, and Sign
         // In to Reconnect opens the sheet again.
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments += [
             "-CONDUIT_UI_TEST_FAILED_CONNECTION", Identity.stubDashboardURL,
             "-CONDUIT_UI_TEST_FAILURE_KIND", "none",
@@ -201,7 +201,7 @@ final class ConnectionRepairUITests: XCTestCase {
         // explicit activation fails, the classified failure is shown on
         // Review, the candidate is consumed, and the only way forward is a
         // fresh Test Connection — no automatic retry.
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments += [
             "-CONDUIT_UI_TEST_FAILED_CONNECTION", Identity.stubDashboardURL,
             "-CONNECTION_SETUP_TEST_RESULT", "auth:password",

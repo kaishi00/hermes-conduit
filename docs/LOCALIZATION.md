@@ -148,7 +148,7 @@ writes it to `HermesApprovalText` and translate it in both catalogs.
 
 ## What CI checks
 
-`check-l10n-coverage.py` runs in the `Plan & validate` job:
+`check-l10n-coverage.py` runs in CI's `Validate & self-test` job:
 
 - every localizable call site resolves to a catalog key whose placeholder
   types (`%@` vs `%lld`) match what the code passes;

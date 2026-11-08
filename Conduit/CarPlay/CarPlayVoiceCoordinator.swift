@@ -975,13 +975,23 @@ final class CarPlayVoiceCoordinator {
         showsBrowseButtons = shows
         guard let template, #available(iOS 26.4, *) else { return }
         if shows {
+            // Fenced like the voice buttons: a tap queued across a
+            // reconnect never pushes onto the new connection, nor one
+            // queued before the buttons hid (a turn started) over the call.
+            let generation = connectionGeneration
             // Two buttons rather than four words crowding the bar: Chats,
             // the one a driver needs most, and More for the rest.
             template.leadingNavigationBarButtons = [
-                CarPlayBrowseTemplateFactory.barButton(.chats) { [weak self] in self?.showChats() },
+                CarPlayBrowseTemplateFactory.barButton(.chats) { [weak self] in
+                    guard let self, self.isCurrent(generation), self.showsBrowseButtons else { return }
+                    self.showChats()
+                },
             ]
             template.trailingNavigationBarButtons = [
-                CarPlayBrowseTemplateFactory.barButton(.more) { [weak self] in self?.showMore() },
+                CarPlayBrowseTemplateFactory.barButton(.more) { [weak self] in
+                    guard let self, self.isCurrent(generation), self.showsBrowseButtons else { return }
+                    self.showMore()
+                },
             ]
         } else {
             template.leadingNavigationBarButtons = []
@@ -1175,7 +1185,9 @@ final class CarPlayVoiceCoordinator {
             appState.$activeSessionId.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             // Which chats are this agent's, and which are bots'.
             appState.$activeProfile.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
-            appState.$botRoster.map { _ in () }.dropFirst().eraseToAnyPublisher()
+            appState.$botRoster.map { _ in () }.dropFirst().eraseToAnyPublisher(),
+            // Which chat is Pulse's, left out (the feed names it).
+            appState.$pulseHomeChatID.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher()
         )
         .sink { [weak self] _ in self?.scheduleChatsRefresh() }
         loadChatsIfMissing(appState)
@@ -1192,8 +1204,9 @@ final class CarPlayVoiceCoordinator {
     }
 
     private static func chatList(in appState: AppState) -> CarPlayChatList {
+        // Pulse's chat stays behind the Pulse screen, as in Chats.
         CarPlayBrowse.chatList(
-            from: appState.activeProfileSessions,
+            from: appState.activeProfileSessions.filter { !appState.isPulseHomeChat($0) },
             isPinned: { appState.isSessionPinned($0) },
             arrangePinned: { appState.arrangePinned($0, session: { $0 }) }
         )

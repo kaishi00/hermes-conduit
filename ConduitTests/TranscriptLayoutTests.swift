@@ -116,6 +116,35 @@ final class TranscriptLayoutTests: XCTestCase {
         XCTAssertGreaterThan(layout.generation, generation, "The scroller hears of the pass")
     }
 
+    /// Eric's report (build 246): an opened Thinking row drew over the rows
+    /// under it, and a closed one left its old height empty. The layout had
+    /// the new frames, but the context named only the row that resized, and
+    /// UIKit asks again only for the items a context names: the cells under
+    /// it kept their old frames until a scroll or another visit.
+    func testTheCellsUnderARowThatResizedMoveWithIt() throws {
+        show(["a", "b", "c", "d"])
+        measure(["a": 100, "b": 100, "c": 100, "d": 100])
+        let cTop = try XCTUnwrap(view.cellForItem(at: IndexPath(item: 2, section: 0))).frame.minY
+        let dTop = try XCTUnwrap(view.cellForItem(at: IndexPath(item: 3, section: 0))).frame.minY
+
+        measure(["b": 250])
+        XCTAssertEqual(try XCTUnwrap(view.cellForItem(at: IndexPath(item: 1, section: 0))).frame.height, 250)
+        XCTAssertEqual(try XCTUnwrap(view.cellForItem(at: IndexPath(item: 2, section: 0))).frame.minY, cTop + 150, "opened")
+        XCTAssertEqual(try XCTUnwrap(view.cellForItem(at: IndexPath(item: 3, section: 0))).frame.minY, dTop + 150, "every row under it")
+
+        measure(["b": 100])
+        XCTAssertEqual(try XCTUnwrap(view.cellForItem(at: IndexPath(item: 2, section: 0))).frame.minY, cTop, "closed")
+        XCTAssertEqual(try XCTUnwrap(view.cellForItem(at: IndexPath(item: 3, section: 0))).frame.minY, dTop)
+
+        // A cell's own measurement names the rows under it too.
+        let original = try XCTUnwrap(layout.layoutAttributesForItem(at: IndexPath(item: 1, section: 0)))
+        let preferred = try XCTUnwrap(original.copy() as? UICollectionViewLayoutAttributes)
+        preferred.size.height = 180
+        XCTAssertTrue(layout.shouldInvalidateLayout(forPreferredLayoutAttributes: preferred, withOriginalAttributes: original))
+        let context = layout.invalidationContext(forPreferredLayoutAttributes: preferred, withOriginalAttributes: original)
+        XCTAssertEqual(Set(context.invalidatedItemIndexPaths ?? []).intersection([IndexPath(item: 2, section: 0), IndexPath(item: 3, section: 0)]).count, 2)
+    }
+
     func testAHeightMeasuredAtAnotherWidthIsNotTaken() throws {
         show(["a"])
         measure(["a": 100])
@@ -293,23 +322,41 @@ final class TranscriptLayoutTests: XCTestCase {
         func guess(_ row: GroupRoomRow) -> CGFloat {
             TranscriptLayout.estimatedHeight(of: TranscriptRow(id: "r", kind: .room(row)), width: width)
         }
-        func event(_ kind: String, _ text: String?) -> GroupRoomRow {
+        func event(_ kind: String, _ text: String?, boards: [RichBoard] = [],
+                   actor: GroupActor = GroupActor(kind: "member", id: "furina", profile: "furina",
+                                                  displayName: nil, connectionID: nil)) -> GroupRoomRow {
             var payload: [String: AnyCodable] = [:]
             if let text { payload["text"] = .string(text) }
             let event = GroupEvent(
                 roomID: "room-1", seq: 1, eventID: "e1", kind: kind,
-                actor: GroupActor(kind: "member", id: "furina", profile: "furina", displayName: nil, connectionID: nil),
+                actor: actor,
                 authorityEpoch: nil, payload: payload, createdAt: 1
             )
-            return .event(event, members: [], continuesRun: false)
+            return .event(event, members: [], continuesRun: false, boards: boards)
         }
         XCTAssertEqual(guess(event("turn.failed", nil)), TranscriptLayout.rowGap + 24, "a caption is a line")
         let long = String(repeating: "A member's reply runs on for a while. ", count: 30)
         XCTAssertGreaterThan(guess(event("message.member", long)), guess(event("message.member", "Hi")))
+        let board = RichBoard(cards: [], tabs: false, followUps: [], markdown: "Book early")
+        XCTAssertGreaterThan(guess(event("message.member", "Hi", boards: [board])), guess(event("message.member", "Hi")),
+                             "a message's boards are guessed under it")
+        XCTAssertGreaterThan(guess(event("message.member", nil, boards: [board])), guess(event("message.member", nil)),
+                             "a message with no text still guesses its boards")
         XCTAssertEqual(
             guess(.pending(text: long, members: [], isSending: true)),
             guess(event("message.user", long)),
             "the message on its way is guessed as its event"
         )
+        func job(_ id: String) -> GroupActor {
+            GroupActor(kind: "user", id: id, profile: nil, displayName: "Nightly", connectionID: nil)
+        }
+        XCTAssertGreaterThan(guess(event("message.user", long, actor: job("cron:job42"))), guess(event("message.user", long)),
+                             "a scheduled post is guessed on the members' side, under its name")
+        XCTAssertGreaterThan(guess(event("message.user", nil, actor: job("cron:job42"))), TranscriptLayout.rowGap + 24 + 44,
+                             "a scheduled post with no text is still a member bubble, not a caption")
+        let update = "@Furina Work update.\n" + long + "\n- W1 finished.\nTell the room."
+        XCTAssertEqual(guess(event("message.user", update, actor: job("cron:conduit-work-default-W1"))),
+                       guess(event("message.member", "W1 finished.")),
+                       "a work update is guessed from its \"- \" lines, not the whole post")
     }
 }

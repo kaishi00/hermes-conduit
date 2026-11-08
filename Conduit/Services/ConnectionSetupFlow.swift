@@ -76,6 +76,9 @@ enum ConnectionSetupPrompt: CaseIterable {
     case reverseProxyDetails
     /// A `conduit://connect` sign-in code to scan (DashboardConnectLink).
     case signInCode
+    /// The dashboard certificate's fingerprint, to check before installing
+    /// it (ServerCertificateSection).
+    case certificateFingerprint
 
     var title: String {
         switch self {
@@ -87,6 +90,7 @@ enum ConnectionSetupPrompt: CaseIterable {
         case .tailscaleServe: return AppLocalization.string("Ask Hermes to configure Tailscale Serve")
         case .reverseProxyDetails: return AppLocalization.string("Ask Hermes to confirm your HTTPS address")
         case .signInCode: return AppLocalization.string("Ask Hermes for a sign-in code")
+        case .certificateFingerprint: return AppLocalization.string("Ask Hermes for the certificate’s fingerprint")
         }
     }
 
@@ -113,6 +117,8 @@ enum ConnectionSetupPrompt: CaseIterable {
             // The code carries the password: a terminal QR code keeps it out
             // of a chat's history, which a link sent in a chat can't.
             return AppLocalization.string("Please make me a sign-in code for Hermes Conduit. It is this link, with each value percent-encoded: conduit://connect?url=ADDRESS&username=USERNAME&password=PASSWORD. For ADDRESS, use the full dashboard address my iPhone reaches, with http:// or https://, such as its Tailscale or local network address, never localhost. Leave out the password if you don't know it. If we are talking in a terminal, show the link there as a QR code so the password stays out of chat history; otherwise send me the link. Keep dashboard authentication enabled.")
+        case .certificateFingerprint:
+            return AppLocalization.string("Please tell me the SHA-256 fingerprint of the TLS certificate my Hermes dashboard serves, and of the root certificate that issued it if there is one, so I can check it before I trust it on my iPhone. Only read the certificates; don't change them. Keep dashboard authentication enabled.")
         }
     }
 }

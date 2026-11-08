@@ -306,6 +306,7 @@ final class PulseFeedTests: XCTestCase {
         let active = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "http://127.0.0.1:1")
         let other = SavedDashboard(id: UUID(), label: "Office", normalizedURL: "http://127.0.0.1:2")
         defaults.set([active.id.uuidString: "p", other.id.uuidString: "q"], forKey: AppState.pulseHomesKey)
+        defaults.set([active.id.uuidString: "rei-ii", other.id.uuidString: "work"], forKey: AppState.pulseProfilesKey)
         let appState = AppState(defaults: defaults, loadSavedConnection: false,
                                 dashboardRegistry: SavedDashboardRegistry(activeDashboardID: active.id,
                                                                           dashboards: [active, other]),
@@ -315,7 +316,115 @@ final class PulseFeedTests: XCTestCase {
 
         XCTAssertEqual(defaults.dictionary(forKey: AppState.pulseHomesKey) as? [String: String],
                        [active.id.uuidString: "p"])
+        XCTAssertEqual(defaults.dictionary(forKey: AppState.pulseProfilesKey) as? [String: String],
+                       [active.id.uuidString: "rei-ii"])
         XCTAssertEqual(appState.pulseHomeChat, "p")
+        XCTAssertEqual(appState.pulseHomeProfile, "rei-ii")
+    }
+
+    /// Pulse's chat, left out of Chats, is never the chat Conduit opens on
+    /// by itself, though Pulse's turns make it the newest: Jump to latest
+    /// activity, and Continue, pick the newest listed chat, even over a saved
+    /// Pulse chat; the chat on screen stays. A call's chat search never finds
+    /// it either.
+    func testTheChatConduitResumesIsNeverPulsesHiddenChat() throws {
+        let suite = "PulseFeedTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let store = ChatResumeStore(defaults: defaults)
+        store.setBehavior(.latestActivity)
+        let coordinator = ChatResumeCoordinator(store: store)
+        let state = AppState(defaults: defaults, chatResumeCoordinator: coordinator, loadSavedConnection: false)
+        let now = Date().timeIntervalSince1970
+        func row(_ id: String, stored: String? = nil, at: TimeInterval) -> SessionSummary {
+            SessionSummary(id: id, storedSessionId: stored, alternateIds: [], title: "Chat", model: "Hermes",
+                           updatedLabel: "now", lastActivityAt: at, profile: nil, source: .chat,
+                           isActive: false, isArchived: false)
+        }
+        let catalog = [row("runtime-p", stored: "20261105_pulse", at: now), row("plain", at: now - 600)]
+        func pick() -> String? {
+            state.selectChatResumeTarget(in: catalog, profile: "default", purpose: .automaticReturn,
+                                         currentSessionID: nil)?.id
+        }
+        // Before the feed names Pulse's chat nothing hides it, so it can be
+        // resumed and saved for the next launch.
+        XCTAssertEqual(pick(), "runtime-p")
+        coordinator.rememberSession(.dashboard(profile: "default", sessionID: "20261105_pulse"), for: "default")
+
+        // Once the feed names it, the next pick drops that saved choice.
+        state.applyPulseFeed(try XCTUnwrap(PulseFeedPage(json: json(
+            #"{"home_chat_id": "20261105_pulse", "cards": []}"#))))
+        XCTAssertTrue(state.showsPulseScreen)
+        XCTAssertEqual(pick(), "plain")
+        XCTAssertNil(coordinator.lastSessionID(for: "default"))
+        XCTAssertEqual(
+            state.selectChatResumeTarget(in: catalog, profile: "default", purpose: .preserveCurrent,
+                                         currentSessionID: nil)?.id,
+            "plain"
+        )
+
+        coordinator.setBehavior(.continueWhereLeftOff)
+        XCTAssertEqual(pick(), "plain")
+        // Saved by its runtime id (opened from a push, or by an older build):
+        // still never resumed by itself, and the saved choice goes.
+        coordinator.rememberSession(.dashboard(profile: "default", sessionID: "runtime-p"), for: "default")
+        XCTAssertEqual(pick(), "plain")
+        XCTAssertNil(coordinator.lastSessionID(for: "default"))
+        // The chat on screen stays across a reconnect.
+        XCTAssertEqual(
+            state.selectChatResumeTarget(in: catalog, profile: "default", purpose: .preserveCurrent,
+                                         currentSessionID: "runtime-p")?.id,
+            "runtime-p"
+        )
+
+        // With only Pulse's chat listed there's no chat to pick: a new one starts.
+        coordinator.setBehavior(.latestActivity)
+        XCTAssertNil(state.selectChatResumeTarget(in: [catalog[0]], profile: "default",
+                                                  purpose: .automaticReturn, currentSessionID: nil))
+
+        // A call's chat search: by id, in Pulse's profile only.
+        XCTAssertTrue(state.isUnlistedChat(id: "20261105_pulse", profile: "default"))
+        XCTAssertFalse(state.isUnlistedChat(id: "20261105_pulse", profile: "work"))
+        XCTAssertFalse(state.isUnlistedChat(id: "plain", profile: "default"))
+
+        // A branch of Pulse's chat is a chat of its own: its saved choice stays.
+        var branch = row("branch", at: now - 60)
+        branch.lineageRootId = "20261105_pulse"
+        coordinator.setBehavior(.continueWhereLeftOff)
+        coordinator.rememberSession(.dashboard(profile: "default", sessionID: "branch"), for: "default")
+        state.forgetResumedPulseChat("20261105_pulse", profile: "default", among: catalog + [branch])
+        XCTAssertEqual(coordinator.lastSessionID(for: "default"), "branch")
+        // Another profile's saved choice is never Pulse's chat.
+        coordinator.rememberSession(.dashboard(profile: "work", sessionID: "runtime-p"), for: "work")
+        state.forgetResumedPulseChat("20261105_pulse", profile: "work", among: catalog)
+        XCTAssertEqual(coordinator.lastSessionID(for: "work"), "runtime-p")
+        // Switching to Pulse's profile doesn't reopen its chat either.
+        coordinator.rememberSession(.dashboard(profile: "default", sessionID: "20261105_pulse"), for: "default")
+        state.restoreActiveSessionState(for: "default")
+        XCTAssertNil(coordinator.lastSessionID(for: "default"))
+    }
+
+    func testPulsesChatIsInTheProfileTheFeedNames() throws {
+        // Issue 1681: a plugin in a named profile runs Pulse there.
+        let suite = "PulseFeedTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let dashboard = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "http://127.0.0.1:1")
+        let registry = SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard])
+        let first = AppState(defaults: defaults, loadSavedConnection: false, dashboardRegistry: registry,
+                             clearSessionPresentationCache: {})
+        XCTAssertEqual(first.pulseHomeProfile, "default")
+        first.applyPulseFeed(try XCTUnwrap(PulseFeedPage(json: json(
+            #"{"home_chat_id": "p", "profile": "rei-ii", "cards": []}"#))))
+        XCTAssertEqual(first.pulseHomeProfile, "rei-ii")
+
+        // Kept across a launch, until the feed is read again.
+        let next = AppState(defaults: defaults, loadSavedConnection: false, dashboardRegistry: registry,
+                            clearSessionPresentationCache: {})
+        XCTAssertEqual(next.pulseHomeProfile, "rei-ii")
+        // An older plugin's feed names none: the default profile.
+        next.applyPulseFeed(try XCTUnwrap(PulseFeedPage(json: json(#"{"home_chat_id": "p", "cards": []}"#))))
+        XCTAssertEqual(next.pulseHomeProfile, "default")
     }
 
     func testDoneAndActedPostTheCardToThePlugin() async throws {
@@ -603,6 +712,41 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertFalse(state.showSidebar)
         XCTAssertEqual(state.composerPrefillText, date.actionMessage)
         XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "fresh", profile: "default"))
+    }
+
+    func testDoItsCallCheckGoesByTheProfilePulseRunsIn() throws {
+        // Issue 1681: Pulse in a named profile; Do it's new chat is made there.
+        let suite = "PulseFeedTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let dashboard = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "http://127.0.0.1:1")
+        let state = AppState(defaults: defaults, loadSavedConnection: false,
+                             dashboardRegistry: SavedDashboardRegistry(activeDashboardID: dashboard.id,
+                                                                       dashboards: [dashboard]),
+                             clearSessionPresentationCache: {})
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"home_chat_id": "pulse_chat", "profile": "rei-ii", "cards": [
+          {"id": 1, "kind": "noticed", "topic": "date", "level": "screen", "news": "Dentist Friday", "chat_id": "pulse_chat"}
+        ]}
+        """)))
+        state.setNotifierPluginStateForTesting(.reported(version: "0.126.2", capabilities: [
+            PulseClient.feedCapability, PulseClient.doneCapability, PulseClient.actedCapability,
+            PulseClient.foundActionsCapability
+        ]))
+        state.applyPulseFeed(page)
+        let date = try XCTUnwrap(page.cards.first)
+        XCTAssertEqual(state.pulseHomeProfile, "rei-ii")
+        state.isConnected = true
+        state.client = HermesClient(connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+                                    profile: "rei-ii")
+        state.isNativeHermesCallActive = true
+        // From the default profile, Do it has to switch, which a call stops.
+        XCTAssertEqual(state.pulseNewChatRefusal(for: date),
+                       AppLocalization.string("End the call to open a chat in another profile."))
+        // With Pulse's own profile open, it needs no switch.
+        state.setActiveProfileForTesting("rei-ii")
+        XCTAssertNotEqual(state.pulseNewChatRefusal(for: date),
+                          AppLocalization.string("End the call to open a chat in another profile."))
     }
 
     func testACardFromAKanbanWorkerShowsItsTaskAndDoItStartsANewChatAboutIt() async throws {

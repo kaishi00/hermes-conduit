@@ -10,6 +10,7 @@
 //
 
 import SwiftUI
+import os
 
 private struct V2ComposerRestsKey: EnvironmentKey {
     static let defaultValue = false
@@ -55,11 +56,46 @@ struct V2ComposerTypingKey: PreferenceKey {
     }
 }
 
+/// A Bot Chat and its workstreams show in one pushed screen (the
+/// conversation in the Bots stack), so going between them pushes nothing:
+/// the screen slides the new chat in instead, a workstream from the
+/// trailing edge and Back to its Bot Chat from the leading one.
+enum BotChatSwap: Equatable {
+    case forward
+    case back
+
+    struct Shown: Equatable {
+        /// The bot whose Bot Chat shows, if one does.
+        var botChat: String?
+        /// The bot whose workstream shows, if one does.
+        var workstreamOf: String?
+    }
+
+    static func direction(from old: Shown, to new: Shown) -> BotChatSwap? {
+        if let bot = old.botChat ?? old.workstreamOf, same(bot, new.workstreamOf) { return .forward }
+        if let bot = old.workstreamOf, same(bot, new.botChat) { return .back }
+        return nil
+    }
+
+    /// A swipe toward the trailing edge, mostly sideways and far enough.
+    static func isBackSwipe(_ translation: CGSize) -> Bool {
+        translation.width > 80 && abs(translation.height) < translation.width * 0.6
+    }
+
+    private static func same(_ a: String, _ b: String?) -> Bool {
+        guard let b else { return false }
+        return a.caseInsensitiveCompare(b) == .orderedSame
+    }
+}
+
 struct V2ConversationScreen: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.v2Shell) private var shell
     @State private var composerExpanded = false
+    /// Someone is typing in the composer, which stays expanded on a wide
+    /// window: the swipe back waits, so a caret dragged along a line stays.
+    @State private var composerTyping = false
     /// The last resting bar's height: kept while the composer is expanded,
     /// so the button doesn't move as it steps aside.
     @State private var restingComposerHeight: CGFloat = 0
@@ -73,9 +109,21 @@ struct V2ConversationScreen: View {
     @State private var chatTitlePendingRename: SessionSummary?
     @State private var chatTitlePendingDeletion: SessionSummary?
     @State private var confirmsRoomDisband = false
+    @State private var showsRoomInfo = false
     @State private var choosesRoomPicture: GroupRoomPictureRequest?
+    @State private var showsRoomSettings = false
     /// The open chat's ids while its Artifacts sheet shows.
     @State private var artifactSessionIDs: ArtifactSheetIDs?
+    /// Edit Bot from a Bot Chat's ⋯ menu (Eric 2026-11-03).
+    @State private var editedBot: BotEditorSheet.Mode?
+    /// The bot's screen, opened from the menu (Bot Screen).
+    @State private var screenTarget: BotScreenTarget?
+    /// What a save from there couldn't do, said as the Bots list says it.
+    @State private var editBotWarning: String?
+    @State private var pendingEditBotWarning: String?
+    /// Edit Bot tapped in the bot's overview: the editor opens once the
+    /// overview has gone.
+    @State private var editAfterOverview: BotProfile?
     /// Artifacts beside the chat, on a window wide enough for both.
     @AppStorage(ChatSidePanel.key) private var sidePanelOpen = false
     @AppStorage(ChatSidePanel.widths.key) private var storedSidePanelWidth = Double(ChatSidePanel.widths.standard)
@@ -85,6 +133,25 @@ struct V2ConversationScreen: View {
     /// The chat's ids when the panel opened.
     @State private var sidePanelIDs: [String] = []
     @State private var screenWidth: CGFloat = 0
+    /// The Bot Chat's Work panel: beside the chat on a window with room,
+    /// else a sheet.
+    @State private var workPanelOpen = false
+    /// Which Bot Chat or workstream the screen showed last, so going from
+    /// one to the other slides (`BotChatSwap`).
+    @State private var shownChat = BotChatSwap.Shown()
+    /// The chat sliding in, as a share of the column's width: 1 from the
+    /// trailing edge (a workstream opening), -1 from the leading edge (Back
+    /// to its Bot Chat).
+    @State private var swapShift: CGFloat = 0
+    /// This Bot Chat grew out of its portrait on Bots Home.
+    @Environment(\.botChatZoomed) private var botChatZoomed
+    @Environment(\.dismiss) private var dismiss
+
+    /// The bot whose Work panel can open: the open Bot Chat's.
+    private var workProfile: String? {
+        appState.activeRoomSurface == nil && appState.servesBotWorkstreams ? appState.activeBotChatProfile : nil
+    }
+    private var showsWorkPanel: Bool { workPanelOpen && fitsSidePanel && workProfile != nil }
 
     private var fitsSidePanel: Bool { ChatSidePanel.fits(width: screenWidth) }
     /// As wide as the user dragged it, less on a window without the room.
@@ -93,7 +160,7 @@ struct V2ConversationScreen: View {
         ChatSidePanel.widths.resolved(draggedSidePanelWidth.map { Double($0) } ?? storedSidePanelWidth, window: screenWidth, keeping: V2SplitLayout.minimumChatWidth)
     }
     private var showsSidePanel: Bool {
-        sidePanelOpen && fitsSidePanel && appState.activeRoomSurface == nil
+        sidePanelOpen && fitsSidePanel && appState.activeRoomSurface == nil && !showsWorkPanel
     }
 
     private var parent: SessionSummary? {
@@ -104,7 +171,7 @@ struct V2ConversationScreen: View {
 
     /// The chat column's width, beside Artifacts when they show.
     private var chatColumnWidth: CGFloat {
-        showsSidePanel ? screenWidth - sidePanelWidth - 1 : screenWidth
+        showsSidePanel || showsWorkPanel ? screenWidth - sidePanelWidth - 1 : screenWidth
     }
 
     /// Expanded on a Mac and on an iPad with the room, so the voice button
@@ -147,8 +214,17 @@ struct V2ConversationScreen: View {
                 .frame(width: sidePanelWidth)
                 .transition(.move(edge: .trailing))
             }
+            if showsWorkPanel, let workProfile {
+                Divider()
+                BotWorkPanel(work: appState.botWork, profile: workProfile) {
+                    workPanelOpen = false
+                }
+                .frame(width: sidePanelWidth)
+                .transition(.move(edge: .trailing))
+            }
         }
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: showsSidePanel)
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: showsWorkPanel)
         .background {
             GeometryReader { proxy in
                 Color.clear
@@ -162,38 +238,133 @@ struct V2ConversationScreen: View {
             guard id != nil, appState.activeRoomSurface == nil else { return }
             openArtifacts(tab: .folder)
         }
-        .onAppear { sidePanelIDs = appState.activeChatArtifactSessionIDs }
+        .onAppear {
+            // The other end of the shell's "Chat pushed" marker. It is the
+            // screen being on screen, not its first painted frame; the
+            // Animation Hitches track says whether that frame came late.
+            ResponsivenessSignposts.signposter.emitEvent("Conversation appeared")
+            sidePanelIDs = appState.activeChatArtifactSessionIDs
+            shownChat = currentShownChat
+        }
         .onChange(of: appState.activeSessionId) { _, _ in
             sidePanelIDs = appState.activeChatArtifactSessionIDs
+            let shown = currentShownChat
+            if !shell.isSplit, !reduceMotion, let swap = BotChatSwap.direction(from: shownChat, to: shown) {
+                slideIn(swap)
+            }
+            shownChat = shown
+            // A workstream opened from the panel shows its own chat, and
+            // the Bot Chat opens again without it, on any window.
+            workPanelOpen = false
         }
         .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in
             composerExpanded = expanded
+        }
+        .onPreferenceChange(V2ComposerTypingKey.self) { typing in
+            composerTyping = typing
         }
         .onPreferenceChange(V2RestingComposerHeightKey.self) { height in
             if height > 0 { restingComposerHeight = height }
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        // A workstream's chat goes back to the Bot Chat that started it,
+        // by Back and by the edge swipe, not to the list under both.
+        .navigationBarBackButtonHidden(workstreamGoesBack != nil)
+        // Hiding Back doesn't stop the system's own swipes off the screen:
+        // a Bot Chat's zoom from its portrait (a slow swipe went to Bots
+        // Home, a quick one to the Bot Chat), and iOS 26's swipe from
+        // anywhere. Only `backSwipe` goes back from a workstream.
+        .background { SystemBackSwipeGate(blocked: workstreamGoesBack != nil) }
+        // A swipe back let go can leave the list's hidden bar over the
+        // chat (a Bot Chat or room grown from its portrait, Eric
+        // 2026-11-06): the chat's title, Back and ⋯ come back.
+        .background { NavigationBarKeeper() }
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
-        .onChange(of: artifactSessionIDs != nil || chatTitlePendingRename != nil
-                  || chatTitlePendingDeletion != nil) { _, covered in
+        // The bot's overview and Edit Bot cover the chat too.
+        .onChange(of: screenTarget != nil || artifactSessionIDs != nil || chatTitlePendingRename != nil
+                  || chatTitlePendingDeletion != nil || editedBot != nil
+                  || (workPanelOpen && !fitsSidePanel && workProfile != nil)) { _, covered in
             appState.chatCoveredBySheet = covered
             // What came in under the sheet is read once it closes (#1579).
             if !covered { appState.clearShownChatNotifications() }
         }
         .onDisappear { appState.chatCoveredBySheet = false }
+        .sheet(isPresented: Binding(
+            get: { workPanelOpen && !fitsSidePanel && workProfile != nil },
+            set: { if !$0 { workPanelOpen = false } }
+        ), onDismiss: {
+            if let bot = editAfterOverview {
+                editAfterOverview = nil
+                editedBot = .edit(bot)
+            }
+        }) {
+            if let workProfile {
+                // On a phone, the bot's overview: the same Work list, its
+                // artifacts, and Chat, which is this chat.
+                BotOverviewSheet(
+                    work: appState.botWork,
+                    profile: workProfile,
+                    onEdit: appState.botModePhase == .available && appState.isConnected
+                        ? { (bot: BotProfile) in
+                            editAfterOverview = bot
+                            workPanelOpen = false
+                        } : nil,
+                    onChat: { workPanelOpen = false },
+                    onClose: { workPanelOpen = false }
+                )
+                .environmentObject(appState)
+            }
+        }
+        .sheet(item: $screenTarget) { target in
+            BotScreenSheet(target: target)
+                .environmentObject(appState)
+        }
         .sheet(item: $artifactSessionIDs) { sheet in
             ChatArtifactsSheet(sessionIDs: sheet.ids, tab: sheet.tab) { artifactSessionIDs?.tab = $0 }
                 .environmentObject(appState)
+        }
+        .sheet(item: $editedBot, onDismiss: {
+            // Shown once the sheet is gone: an alert can't come up over it.
+            editBotWarning = pendingEditBotWarning
+            pendingEditBotWarning = nil
+        }) { mode in
+            // Editing makes no new chat: nothing to open when it closes.
+            BotEditorSheet(mode: mode) { _, warning, _ in pendingEditBotWarning = warning }
+                .environmentObject(appState)
+        }
+        .alert(AppLocalization.string("Edit Bot"), isPresented: Binding(
+            get: { editBotWarning != nil }, set: { if !$0 { editBotWarning = nil } }
+        )) {
+            Button(AppLocalization.string("OK"), role: .cancel) { editBotWarning = nil }
+        } message: {
+            Text(verbatim: editBotWarning ?? "")
         }
         .modifier(ConversationDialogs(
             chatTitlePendingRename: $chatTitlePendingRename,
             chatTitlePendingDeletion: $chatTitlePendingDeletion,
             confirmsRoomDisband: $confirmsRoomDisband,
-            choosesRoomPicture: $choosesRoomPicture
+            choosesRoomPicture: $choosesRoomPicture,
+            showsRoomSettings: $showsRoomSettings,
+            showsRoomInfo: $showsRoomInfo
         ))
+        // Group Settings asked for from a room's tile on Bots Home: once
+        // that room is open here and Hermes has read its settings.
+        .onChange(of: roomSettingsKey, initial: true) { _, _ in showRequestedRoomSettings() }
+    }
+
+    private var roomSettingsKey: String {
+        "\(appState.activeRoomSurface?.room.roomID ?? "")|\(appState.canEditActiveRoomSettings)|\(appState.groupSettingsOnOpen.map { "\($0.roomID)@\($0.at.timeIntervalSinceReferenceDate)" } ?? "")|\(shell.isTabActive)"
+    }
+
+    private func showRequestedRoomSettings() {
+        guard let request = appState.groupSettingsOnOpen, shell.isTabActive,
+              request.shows(openRoomID: appState.activeRoomSurface?.room.roomID,
+                            canEdit: appState.canEditActiveRoomSettings) else { return }
+        appState.groupSettingsOnOpen = nil
+        showsRoomSettings = true
     }
 
     /// The chat's ⋯ › Artifacts, or a tapped file path: beside the chat
@@ -204,6 +375,8 @@ struct V2ConversationScreen: View {
             sidePanelIDs = ids
             sidePanelTab = tab
             sidePanelOpen = true
+            // One column beside the chat: Artifacts take the Work panel's.
+            workPanelOpen = false
         } else if artifactSessionIDs?.tab != tab || tab == .made {
             // An open sheet on the other tab comes back on this one, where
             // its Folder takes the tapped path.
@@ -226,6 +399,18 @@ struct V2ConversationScreen: View {
             // a group room keeps the profile in use.
             V2Backdrop(glowProfile: appState.activeRoomSurface == nil ? appState.conversationIdentityProfile : nil)
             conversation
+                // The bar over a workstream's own chat while it needs a
+                // tap (Bot workstreams); a Bot Chat's work shows under
+                // its title.
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if appState.activeRoomSurface == nil, appState.servesBotWorkstreams {
+                        BotWorkHeader(work: appState.botWork)
+                    }
+                }
+                // A Bot Chat and its workstreams share this screen: one
+                // slides in over the other as a push or a pop would.
+                .offset(x: swapShift * chatColumnWidth)
+                .opacity(1 - Double(abs(swapShift)) * 0.6)
                 .overlay(alignment: .bottomTrailing) {
                     if appState.activeRoomSurface == nil {
                         // Beside the resting composer; it slides aside,
@@ -248,10 +433,83 @@ struct V2ConversationScreen: View {
                 // it does; the backdrop still fills it.
                 .readableChatColumn()
         }
+        // The chat's column only: a drag in a panel beside it (Artifacts,
+        // its divider, the Work panel's swipes) is that panel's.
+        .simultaneousGesture(backSwipe, including: swipesBack ? .all : .subviews)
+    }
+
+    /// The bot whose Bot Chat a workstream's Back returns to; nil for any
+    /// other chat, a room shown over the workstream (its Back leaves the
+    /// room), or beside the list on a wide window, which has no Back.
+    private var workstreamGoesBack: String? {
+        guard !shell.isSplit, appState.activeRoomSurface == nil else { return nil }
+        return appState.activeWorkstream?.profile
+    }
+
+    private func backToCoordinator() {
+        guard let profile = workstreamGoesBack else { return }
+        Haptics.light()
+        appState.openCoordinator(profile: profile)
+    }
+
+    /// A Bot Chat or a room grown from its portrait goes home by a swipe from
+    /// anywhere, as a session's chat does: the zoom's own swipe starts only
+    /// where the transcript has no text. A workstream's chat goes to its Bot
+    /// Chat by this swipe alone, slow or quick: `SystemBackSwipeGate` holds
+    /// the system's and the zoom's swipes back there.
+    /// Not while the composer is in use (a caret or selection dragged
+    /// along a line) or a held voice message slides to cancel.
+    private var swipesBack: Bool {
+        guard !composerExpanded, !composerTyping, !voiceMessages.isActive else { return false }
+        return workstreamGoesBack != nil || (botChatZoomed && !shell.isSplit
+            && (appState.activeBotChatProfile != nil || appState.activeRoomSurface != nil))
+    }
+
+    private var backSwipe: some Gesture {
+        DragGesture(minimumDistance: 20).onEnded { drag in
+            // Nor while text in the chat is selected: a handle dragged
+            // toward the trailing edge read as this swipe, and the chat
+            // closed under the finger (issue 1948). Asked as the drag ends,
+            // since a selection doesn't redraw the screen.
+            guard swipesBack, BotChatSwap.isBackSwipe(drag.translation),
+                  !ChatTextSelection.isShowing else { return }
+            if workstreamGoesBack != nil {
+                backToCoordinator()
+            } else {
+                dismiss()
+            }
+        }
+    }
+
+    private var currentShownChat: BotChatSwap.Shown {
+        BotChatSwap.Shown(botChat: appState.activeBotChatProfile, workstreamOf: appState.activeWorkstream?.profile)
+    }
+
+    /// The new chat starts off to one side, then slides into place.
+    private func slideIn(_ swap: BotChatSwap) {
+        var start = Transaction()
+        start.disablesAnimations = true
+        withTransaction(start) { swapShift = swap == .forward ? 1 : -1 }
+        Task { @MainActor in
+            withAnimation(.smooth(duration: 0.32)) { swapShift = 0 }
+        }
     }
 
     @ToolbarContentBuilder
     private var toolbarItems: some ToolbarContent {
+        if workstreamGoesBack != nil {
+            ToolbarItem(placement: .topBarLeading) {
+                Button(action: backToCoordinator) {
+                    Image(systemName: "chevron.backward")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Color.primary)
+                        .frame(width: 40, height: 40)
+                        .modifier(V2PreGlassToolbarControl())
+                }
+                .accessibilityLabel(AppLocalization.string("Back"))
+                .accessibilityIdentifier("workstream.backButton")
+            }
+        }
         // Beside the list on a wide window there is no Back: this
         // closes the chat, as Back does on a phone, and the column goes
         // back to offering a new one.
@@ -323,6 +581,15 @@ struct V2ConversationScreen: View {
                         .accessibilityLabel(AppLocalization.string("From \(parent.title)"))
                         .accessibilityHint(AppLocalization.string("Opens the conversation this one came from"))
                     }
+                    // A Bot Chat's work, or whose work a workstream is.
+                    if appState.servesBotWorkstreams {
+                        BotWorkTitleStatus(work: appState.botWork, isPanelOpen: workPanelOpen) {
+                            workPanelOpen.toggle()
+                            // One column beside the chat: the Work panel
+                            // takes Artifacts'.
+                            if workPanelOpen, fitsSidePanel { sidePanelOpen = false }
+                        }
+                    }
                     V2ConnectionLine()
                 }
                 .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isConnected)
@@ -342,9 +609,14 @@ struct V2ConversationScreen: View {
             V2ConversationMenu(
                 onRename: { chatTitlePendingRename = $0 },
                 onDelete: { chatTitlePendingDeletion = $0 },
+                onShowRoomInfo: { showsRoomInfo = true },
                 onDisbandRoom: { confirmsRoomDisband = true },
                 onChooseRoomPicture: { choosesRoomPicture = $0 },
-                onArtifacts: { openArtifacts(tab: .made) }
+                onRoomSettings: { showsRoomSettings = true },
+                onArtifacts: { openArtifacts(tab: .made) },
+                onEditBot: { editedBot = .edit($0) },
+                onScreen: { screenTarget = $0 },
+                screens: appState.botScreens
             )
         }
         // Artifacts beside the chat, on a window with room for both.
@@ -352,7 +624,7 @@ struct V2ConversationScreen: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     Haptics.light()
-                    if sidePanelOpen {
+                    if showsSidePanel {
                         sidePanelOpen = false
                     } else {
                         openArtifacts(tab: sidePanelTab)
@@ -360,30 +632,40 @@ struct V2ConversationScreen: View {
                 } label: {
                     Image(systemName: "sidebar.right")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(sidePanelOpen ? Color.conduitAccent : Color.primary)
+                        .foregroundStyle(showsSidePanel ? Color.conduitAccent : Color.primary)
                         .frame(width: 40, height: 40)
                         .modifier(V2PreGlassToolbarControl())
                 }
                 .keyboardShortcut("a", modifiers: [.command, .option])
                 .disabled(!shell.isTabActive)
-                .accessibilityLabel(sidePanelOpen ? AppLocalization.string("Hide artifacts") : AppLocalization.string("Show artifacts"))
+                .accessibilityLabel(showsSidePanel ? AppLocalization.string("Hide artifacts") : AppLocalization.string("Show artifacts"))
                 .accessibilityIdentifier("conversation.sidePanelToggle")
             }
         }
     }
 }
 
-/// The conversation's rename sheet, delete alert, room picture picker and
-/// disband confirmation.
+/// The conversation's rename sheet, delete alert, room picture picker, room
+/// settings and info, and disband confirmation.
 private struct ConversationDialogs: ViewModifier {
     @EnvironmentObject private var appState: AppState
     @Binding var chatTitlePendingRename: SessionSummary?
     @Binding var chatTitlePendingDeletion: SessionSummary?
     @Binding var confirmsRoomDisband: Bool
     @Binding var choosesRoomPicture: GroupRoomPictureRequest?
+    @Binding var showsRoomSettings: Bool
+    @Binding var showsRoomInfo: Bool
 
     func body(content: Content) -> some View {
         content
+            .sheet(isPresented: $showsRoomSettings) {
+                GroupRoomSettingsSheet()
+                    .environmentObject(appState)
+            }
+            .sheet(isPresented: $showsRoomInfo) {
+                GroupRoomInfoSheet()
+                    .environmentObject(appState)
+            }
             .sheet(item: $chatTitlePendingRename) { session in
                 RenameSheet.conversation(session) { title in
                     Task { await appState.renameSession(session, to: title) }
@@ -415,9 +697,7 @@ private struct ConversationDialogs: ViewModifier {
                 }
                 Button(AppLocalization.string("Cancel"), role: .cancel) {}
             } message: {
-                Text(AppLocalization.string(
-                    "The room, its history, and every member's session end permanently. This cannot be undone."
-                ))
+                Text(GroupRoomDisband.warning(members: appState.activeRoomSurface?.room.members ?? []))
             }
     }
 }
@@ -474,7 +754,8 @@ struct ChatSidePanel: View {
 
 /// Shown under the title only while the gateway isn't connected, so the
 /// header stays quiet when all is well. Coming back to the app, a
-/// reconnect gets a few seconds to land before it shows (#296).
+/// reconnect gets a few seconds to land before it shows, until a message
+/// waits for it (#296, #1624).
 private struct V2ConnectionLine: View {
     @EnvironmentObject private var appState: AppState
 
@@ -506,12 +787,36 @@ private struct V2ConversationMenu: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onRename: (SessionSummary) -> Void
     let onDelete: (SessionSummary) -> Void
+    let onShowRoomInfo: () -> Void
     let onDisbandRoom: () -> Void
     let onChooseRoomPicture: (GroupRoomPictureRequest) -> Void
+    let onRoomSettings: () -> Void
     let onArtifacts: () -> Void
+    let onEditBot: (BotProfile) -> Void
+    let onScreen: (BotScreenTarget) -> Void
+    @ObservedObject var screens: BotScreenSupport
 
+    /// The bot whose screen this chat can open: a Bot Chat's or a
+    /// workstream's, once its host said it can have one.
+    private var screenProfile: String? {
+        guard appState.activeRoomSurface == nil,
+              let profile = appState.activeBotChatProfile ?? appState.activeWorkstream?.profile else { return nil }
+        return profile
+    }
+
+    /// The bot whose chat this is, once the roster has it.
+    private var chatBot: BotProfile? {
+        guard let profile = appState.activeBotChatProfile else { return nil }
+        return appState.botRoster.first { $0.name == profile }
+    }
+
+    /// The dot stays a neutral grey while a reconnect back in the app is
+    /// still kept quiet, as the line under the title does: calm, without
+    /// claiming Connected. The menu's own words say what is happening to
+    /// anyone who opens it (#1624).
     private var statusColor: Color {
         if appState.isConnected { return .green }
+        if appState.hidesBriefReconnect { return .secondary }
         return appState.isRecoveringConnection ? .orange : .red
     }
 
@@ -523,7 +828,10 @@ private struct V2ConversationMenu: View {
     var body: some View {
         Menu {
             if appState.activeRoomSurface != nil {
-                GroupRoomActionItems(onDisband: onDisbandRoom, onChoosePicture: onChooseRoomPicture)
+                GroupRoomActionItems(
+                    onShowInfo: onShowRoomInfo,
+                    onDisband: onDisbandRoom, onChoosePicture: onChooseRoomPicture, onOpenSettings: onRoomSettings
+                )
             } else {
                 Button {
                     Task { await appState.refreshActiveSession() }
@@ -537,6 +845,23 @@ private struct V2ConversationMenu: View {
                 }
                 // A saved copy has no host to ask.
                 .disabled(appState.activeChatArtifactSessionIDs.isEmpty)
+                if let bot = chatBot {
+                    Button { onEditBot(bot) } label: {
+                        Label(AppLocalization.string("Edit Bot"), systemImage: "pencil")
+                    }
+                    // As the Bots list's Edit Bot: Hermes answers its reads and saves.
+                    .disabled(appState.botModePhase != .available || !appState.isConnected)
+                }
+                if let profile = screenProfile, screens.isSupported(profile) {
+                    Button {
+                        onScreen(BotScreenTarget(profile: profile,
+                                                 botName: appState.botWork.snapshot(profile)?.botName
+                                                     ?? appState.profileDisplayName(profile)))
+                    } label: {
+                        Label(AppLocalization.string("Bot's Screen"), systemImage: "display")
+                    }
+                    .disabled(!appState.isConnected)
+                }
                 if let session = appState.activeChatSessionSummary {
                     Section {
                         SessionActionMenuItems(
@@ -585,6 +910,13 @@ private struct V2ConversationMenu: View {
         .accessibilityLabel(AppLocalization.string("Conversation options"))
         .accessibilityValue(statusWord)
         .accessibilityIdentifier("conversation.menu")
+        // Asks the bot's host once whether it can have a screen, so the
+        // entry shows only where it can (never on Windows or macOS hosts).
+        .task(id: "\(screenProfile ?? "")\u{1F}\(appState.isConnected)") {
+            if let profile = screenProfile, appState.isConnected {
+                screens.check(profile, client: appState.client)
+            }
+        }
     }
 }
 

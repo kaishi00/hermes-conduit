@@ -9,6 +9,53 @@ import XCTest
 @MainActor
 final class SessionPresentationCacheTests: XCTestCase {
 
+    // MARK: - Merge: matching rows by the pool's index (issue 1826)
+
+    /// The merge finds each row's cached match through an index of the pool
+    /// rather than scoring every cached row for every row. Over transcripts
+    /// of repeated text, repeated tools with and without ids, re-rendered
+    /// replies and rows with no match at all, it picks the same rows the
+    /// full scan did, in the same order.
+    func testTheIndexedMatcherPicksWhatTheFullScanDid() {
+        var seed: UInt64 = 0x1826
+        func next(_ bound: Int) -> Int {
+            seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            return Int((seed >> 33) % UInt64(bound))
+        }
+        let roles: [MessageRole] = [.user, .assistant, .tool]
+        let texts = ["OK", "Done.", "Here it is", "  here   it is ", "Thinking", ""]
+        let tools = ["read_file", "Read_File ", "terminal", "search"]
+        func row(_ index: Int, prefix: String) -> ChatMessage {
+            let role = roles[next(roles.count)]
+            let id = next(4) == 0 ? "shared-\(next(6))" : "\(prefix)-\(index)"
+            let tool: ToolActivity? = role == .tool && next(5) != 0
+                ? ToolActivity(
+                    id: next(3) == 0 ? nil : (next(2) == 0 ? " call-\(next(5)) " : "call-\(next(5))"),
+                    name: tools[next(tools.count)],
+                    input: next(3) == 0 ? nil : texts[next(texts.count)],
+                    output: next(2) == 0 ? nil : texts[next(texts.count)],
+                    status: next(4) == 0 ? .running : .complete
+                )
+                : nil
+            return ChatMessage(
+                id: id,
+                role: role,
+                content: texts[next(texts.count)],
+                timestamp: next(3) == 0 ? "" : "t\(index)",
+                tool: tool
+            )
+        }
+        let cache = SessionPresentationCache.shared
+        for round in 0..<200 {
+            let pool = (0..<next(40)).map { row($0, prefix: "cached") }
+            let transcript = (0..<next(60)).map { row($0, prefix: "live") }
+            XCTAssertTrue(
+                cache.indexedMatchesAgreeWithScanForTesting(transcript, pool: pool),
+                "Round \(round) matched other rows than the full scan"
+            )
+        }
+    }
+
     // MARK: - Merge: timestamp restoration
 
     func testMergeRestoresMissingTimestamp() {
@@ -3763,6 +3810,78 @@ extension SessionPresentationCacheTests {
         XCTAssertEqual(restoredTimestamp("Hello, all done"), "2024-01-01T10:00:05Z", "The streamed row's new text and time")
     }
 
+    /// A saved row takes its kept presentation from the first cached row
+    /// that matches it by id or by content, whichever comes first: here
+    /// the content match, ahead of the row with its id.
+    func testASavedRowKeepsTheEarliestMatchingRowsPresentation() throws {
+        let suiteName = "conduit.tests.presentation-first-match-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let cache = SessionPresentationCache(defaults: defaults)
+        cache.save(
+            [
+                ChatMessage(id: "old", role: .assistant, content: "Same words", timestamp: "2024-01-01T10:00:00Z"),
+                ChatMessage(id: "new", role: .assistant, content: "Other words", timestamp: "2024-01-01T10:00:09Z")
+            ],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        cache.save(
+            [ChatMessage(id: "new", role: .assistant, content: "Same words", timestamp: "")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+
+        let restored = SessionPresentationCache(defaults: defaults).merge(
+            [ChatMessage(id: "new", role: .assistant, content: "Same words", timestamp: "")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        XCTAssertEqual(restored.map(\.timestamp), ["2024-01-01T10:00:00Z"])
+    }
+
+    /// The chats are written in key order, in both stores the move out of
+    /// UserDefaults compares byte for byte, so the same chats always write
+    /// the same bytes, whatever order they were saved in.
+    func testChatsAreWrittenInKeyOrder() throws {
+        let suiteName = "conduit.tests.presentation-key-order-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let cache = SessionPresentationCache(defaults: defaults)
+        let chats = (10...21).map { "chat-\($0)" }
+        for sessionID in chats.reversed() {
+            cache.save(
+                [ChatMessage(id: "row-\(sessionID)", role: .user, content: sessionID, timestamp: "2024-01-01T10:00:00Z")],
+                profile: "default",
+                sessionIDs: [sessionID]
+            )
+        }
+        let stored = String(decoding: try XCTUnwrap(defaults.data(forKey: "conduit.sessionPresentation.v1")), as: UTF8.self)
+        let positions = try chats.map { sessionID in
+            try XCTUnwrap(stored.range(of: "\"default|\(sessionID)\":")?.lowerBound, sessionID)
+        }
+        XCTAssertEqual(positions, positions.sorted(), "Chats in key order")
+
+        for sessionID in chats.reversed() {
+            cache.recordPendingToolStart(
+                ChatMessage(
+                    id: "tool-\(sessionID)", role: .tool, content: "", timestamp: "now",
+                    tool: ToolActivity(id: "call-\(sessionID)", name: "terminal", input: "pwd", output: nil, status: .running)
+                ),
+                profile: "default",
+                sessionIDs: [sessionID]
+            )
+        }
+        let pendingTools = String(
+            decoding: try XCTUnwrap(defaults.data(forKey: "conduit.sessionPresentation.pendingTools.v1")),
+            as: UTF8.self
+        )
+        let pendingPositions = try chats.map { sessionID in
+            try XCTUnwrap(pendingTools.range(of: "\"default|\(sessionID)\":")?.lowerBound, sessionID)
+        }
+        XCTAssertEqual(pendingPositions, pendingPositions.sorted(), "Pending tools in key order")
+    }
+
     /// The suspend path must not block the main thread on the write queue
     /// (a UserDefaults write there can wait on SwiftUI's lock, which the
     /// main thread holds during a view update: a watchdog-killed deadlock).
@@ -3811,6 +3930,54 @@ extension SessionPresentationCacheTests {
         XCTAssertEqual(
             first.merge(gatewayRow, profile: "default", sessionIDs: ["session-a"]).first?.timestamp,
             ""
+        )
+    }
+
+    /// A save re-encodes only the rows that changed (#1730); the store it
+    /// writes must still read back whole, for every chat, as a fresh
+    /// instance reads it at launch.
+    func testStreamingSavesWriteAStoreAnotherInstanceReadsWhole() throws {
+        let suiteName = "conduit.tests.presentation-rows-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let writer = SessionPresentationCache(defaults: defaults)
+        let quietChat = #"quiet "chat"/1"#
+        writer.save(
+            [ChatMessage(id: "q-1", role: .user, content: "Hi", timestamp: "2024-01-01T09:00:00Z")],
+            profile: "default",
+            sessionIDs: [quietChat]
+        )
+        var streamed = [
+            ChatMessage(id: "s-1", role: .user, content: "Tell me", timestamp: "2024-01-01T10:00:00Z"),
+            ChatMessage(id: "s-2", role: .assistant, content: "Once", timestamp: "2024-01-01T10:00:01Z")
+        ]
+        for word in ["upon", "a", "time"] {
+            streamed[1].content += " " + word
+            writer.save(streamed, profile: "default", sessionIDs: ["streaming"])
+        }
+        streamed.append(ChatMessage(id: "s-3", role: .user, content: "More", timestamp: "2024-01-01T10:00:09Z"))
+        writer.save(streamed, profile: "default", sessionIDs: ["streaming"])
+
+        let stored = try XCTUnwrap(defaults.data(forKey: "conduit.sessionPresentation.v1"))
+        let sessions = try XCTUnwrap(JSONSerialization.jsonObject(with: stored) as? [String: [String: Any]])
+        XCTAssertEqual(Set(sessions.keys), ["default|" + quietChat, "default|streaming"])
+        XCTAssertEqual((sessions["default|streaming"]?["messages"] as? [Any])?.count, 3)
+
+        let reader = SessionPresentationCache(defaults: defaults)
+        let gatewayStream = streamed.map {
+            ChatMessage(id: $0.id, role: $0.role, content: $0.content, timestamp: "")
+        }
+        XCTAssertEqual(
+            reader.merge(gatewayStream, profile: "default", sessionIDs: ["streaming"]).map(\.timestamp),
+            ["2024-01-01T10:00:00Z", "2024-01-01T10:00:01Z", "2024-01-01T10:00:09Z"]
+        )
+        XCTAssertEqual(
+            reader.merge(
+                [ChatMessage(id: "q-1", role: .user, content: "Hi", timestamp: "")],
+                profile: "default",
+                sessionIDs: [quietChat]
+            ).map(\.timestamp),
+            ["2024-01-01T09:00:00Z"]
         )
     }
 }

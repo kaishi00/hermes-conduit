@@ -137,6 +137,22 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(host.keyRequests, 2)
     }
 
+    func testAWorkoutTheHostCantKeepStaysOffTheBatch() async throws {
+        // Issue 555: one that ends before it starts, or runs past a week,
+        // made an older plugin refuse the whole batch and pause sync.
+        let source = FakeHealthSource()
+        source.withUnusableWorkouts = true
+        let host = FakeHealthHost()
+        let engine = makeHealthEngine(source: source)
+
+        let outcome = await engine.sync(preferences: healthPreferences(history: .days30), deadline: .distantFuture,
+                                        request: host.handle)
+        XCTAssertEqual(outcome, .synced)
+        let sent = host.batches.flatMap { ($0["events"] as? [[String: Any]] ?? []).compactMap { $0["id"] as? String } }
+        XCTAssertEqual(sent, ["W1"])
+        XCTAssertEqual(engine.state.anchors["workouts"], Data("w-anchor".utf8), "Moves past them all the same")
+    }
+
     func testRecentDaysSendOnlyTheWindowsThatChanged() async throws {
         let source = FakeHealthSource()
         let host = FakeHealthHost()
@@ -429,6 +445,31 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(offlineDeleted)
     }
 
+    /// A profile that turned the plugin off answers the delete with a 404,
+    /// but nothing was deleted: it isn't counted as done, and says how to
+    /// turn the plugin on (issue 1671). A route the host lacks still is.
+    func testTurningOffOnAProfileWithThePluginOffDeletesNothing() async {
+        let host = FakeHealthHost()
+        let engine = makeHealthEngine(source: FakeHealthSource())
+        _ = await engine.sync(preferences: healthPreferences(history: .days30), deadline: .distantFuture, request: host.handle)
+        let deleted = await engine.turnOff(deleteFromHost: { path, _, _ in
+            try await DashboardTicketBridgeError.explainingPluginRefusal(path: path) { () async throws -> [String: Any] in
+                throw DashboardTicketBridgeError.http(status: 404, detail: DashboardTicketBridgeError.pluginRefusedDetail)
+            }
+        })
+        XCTAssertFalse(deleted)
+        XCTAssertNotNil(engine.deleteRefusedPluginOff)
+        XCTAssertEqual(engine.deleteRefusedPluginOff, DashboardTicketBridgeError.pluginOffDetail(path: "\(HealthSyncEngine.base)/wipe"))
+
+        let gone = makeHealthEngine(source: FakeHealthSource())
+        _ = await gone.sync(preferences: healthPreferences(history: .days30), deadline: .distantFuture, request: host.handle)
+        let goneDeleted = await gone.turnOff(deleteFromHost: { _, _, _ in
+            throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found")
+        })
+        XCTAssertTrue(goneDeleted)
+        XCTAssertNil(gone.deleteRefusedPluginOff)
+    }
+
     func testHealthSettingsLinkOpensOnlyInsideTheApp() throws {
         let url = try XCTUnwrap(URL(string: "conduit://settings/health"))
         XCTAssertEqual(ConduitAppLink(url: url), .settings(.health))
@@ -496,7 +537,17 @@ private final class FakeHealthSource: HealthDataSource {
         guard stream == .workouts, anchor == nil else { return HealthEventChanges(added: [], deleted: [], anchor: anchor ?? Data("\(stream.key)".utf8), more: false) }
         let workout = HealthEvent(id: "W1", kind: .workout, metric: "workout", start: since, end: since.addingTimeInterval(1800),
                                   data: ["activity": .text("running")])
-        return HealthEventChanges(added: [workout], deleted: [], anchor: Data("w-anchor".utf8), more: false)
+        return HealthEventChanges(added: [workout] + unusable(since), deleted: [], anchor: Data("w-anchor".utf8), more: false)
+    }
+
+    /// Workouts the host can't keep, as years of Apple Health hold a few of.
+    var withUnusableWorkouts = false
+    private func unusable(_ since: Date) -> [HealthEvent] {
+        guard withUnusableWorkouts else { return [] }
+        return [HealthEvent(id: "W2", kind: .workout, metric: "workout", start: since, end: since.addingTimeInterval(-60),
+                            data: ["activity": .text("running")]),
+                HealthEvent(id: "W3", kind: .workout, metric: "workout", start: since,
+                            end: since.addingTimeInterval(HealthSyncLimits.longestEvent + 1), data: ["activity": .text("walking")])]
     }
 
     var earliest = Date(timeIntervalSince1970: 1_600_000_000)

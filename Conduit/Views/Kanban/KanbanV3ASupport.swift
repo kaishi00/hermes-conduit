@@ -253,9 +253,10 @@ enum KanbanTriagePolicy {
 /// both honestly — e.g. `Default (coder)` — instead of implying that `coder`
 /// was explicitly persisted.
 enum KanbanOrchestrationDisplay {
-    /// Picker option label for the Default row of a profile selector.
-    /// `configured` is the wire value ("" = unset); `resolved` is the
-    /// effective profile named by the backend.
+    /// Picker option label for the Default row of a profile selector:
+    /// "Default (resolved)", naming the effective profile the backend
+    /// resolves to. The row always reads Default, so `configured` doesn't
+    /// change it, even when a profile is pinned: the pin has its own row.
     static func defaultOptionLabel(configured: String, resolved: String) -> String {
         if resolved.trimmingCharacters(in: .whitespaces).isEmpty {
             return AppLocalization.string("Default")

@@ -24,6 +24,21 @@
 
 import SwiftUI
 
+/// A gateway file read: its data URL, or why there's none.
+enum GatewayMediaRead: Equatable, Sendable {
+    case dataURL(String)
+    /// Hermes answered and can't give it: gone, unreadable or too large.
+    case gone
+    /// Hermes couldn't be asked just now; a later ask may read it.
+    case failed
+
+    /// An HTTP status saying the file itself can't be given, rather than
+    /// that the gateway is in trouble (408, 429 and 5xx).
+    static func isRefusal(status: Int) -> Bool {
+        (400..<500).contains(status) && status != 408 && status != 429
+    }
+}
+
 @MainActor
 final class GatewayMediaDataURLResolver {
     private weak var appState: AppState?
@@ -53,6 +68,13 @@ final class GatewayMediaDataURLResolver {
         guard let appState = currentAppState else { return nil }
         let result = await appState.gatewayMediaDataURL(for: path, profile: profile)
         return appState.activeDashboardID == dashboardID ? result : nil
+    }
+
+    /// As `dataURL(for:)`, saying why there's none (issue 2015).
+    func read(for path: String) async -> GatewayMediaRead {
+        guard let appState = currentAppState else { return .failed }
+        let result = await appState.gatewayMediaRead(for: path, profile: profile)
+        return appState.activeDashboardID == dashboardID ? result : .failed
     }
 
     /// The file itself on disk, for media too large for a data URL (#569).

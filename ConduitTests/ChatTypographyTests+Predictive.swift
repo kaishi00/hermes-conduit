@@ -51,6 +51,33 @@ extension ChatTypographyTests {
         XCTAssertEqual(Predictive.guesses("not a list"), [])
     }
 
+    func testADraftIsMeasuredAsThePluginMeasuresIt() {
+        // One family emoji: 1 Character, 7 Unicode scalars (Python's len).
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}"
+        XCTAssertEqual(family.count, 1)
+        XCTAssertEqual(family.unicodeScalars.count, 7)
+        // 300 of them is 300 Characters but 2,100 scalars: over the plugin's
+        // limit, so it isn't asked about (it would get a 400).
+        XCTAssertFalse(Predictive.fitsQuestion(String(repeating: family, count: 300)))
+        XCTAssertTrue(Predictive.fitsQuestion(String(repeating: family, count: 285)))
+        XCTAssertTrue(Predictive.fitsQuestion(String(repeating: "a", count: Predictive.maximumDraftScalars)))
+        XCTAssertFalse(Predictive.fitsQuestion(String(repeating: "a", count: Predictive.maximumDraftScalars + 1)))
+        // A draft that fits is sent whole, never cut.
+        let draft = String(repeating: family, count: 285)
+        let body = Predictive.body(
+            kind: .draft, sessionID: "s1", count: 3, draft: draft,
+            language: "English", model: .fast, wait: Predictive.draftWait
+        )
+        XCTAssertEqual(body["draft"] as? String, draft)
+    }
+
+    func testAGuessUpToTheLimitIsKept() {
+        // The plugin keeps replies up to 200 code points (issue 1670); one of
+        // 200 ASCII characters is a chip.
+        let longest = String(repeating: "a", count: Predictive.maxGuessLength)
+        XCTAssertEqual(Predictive.guesses([["text": longest, "p": 0.5]]).map(\.text), [longest])
+    }
+
     func testAFollowUpIsOnlyTakenWithItsHiddenTurn() {
         let yes = Predictive.turnAnswer(["take_turn": true, "why": "Worth a check.", "nudge": "[Conduit] …", "ask_again_in_seconds": NSNull()])
         XCTAssertTrue(yes.takeTurn)
@@ -183,6 +210,32 @@ extension ChatTypographyTests {
         XCTAssertNil(state.predictiveFollowUpTurn)
     }
 
+    /// A draft over the plugin's limit is never asked about, by ⋯ > Refresh
+    /// either; one at the limit is (issue 1670).
+    @MainActor
+    func testADraftOverThePluginsLimitIsNeverAskedAbout() {
+        let defaults = makeScratchDefaults("PredictiveDraftLimitTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.predictiveSender = { _ in [:] }
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        XCTAssertNotNil(state.predictiveAnchor)
+
+        let over = String(repeating: "a", count: Predictive.maximumDraftScalars + 1)
+        state.predictive.draftChanged(over)
+        state.refreshPredictions()
+        XCTAssertNil(state.predictiveDraftAsked, "a draft over the limit isn't asked about")
+
+        let atLimit = String(repeating: "a", count: Predictive.maximumDraftScalars)
+        state.predictive.draftChanged(atLimit)
+        state.refreshPredictions()
+        XCTAssertEqual(state.predictiveDraftAsked?.draft, atLimit, "one at the limit is")
+    }
+
     /// A system notice merged into the last row anchors no guesses and no
     /// follow-up clock.
     @MainActor
@@ -225,6 +278,76 @@ extension ChatTypographyTests {
         state.startPredictiveFollowUpClock(for: anchor)
         XCTAssertNotNil(state.predictiveFollowUpTask, "the clock runs once nothing waits")
         state.stopPredictiveFollowUpClock()
+    }
+
+    /// A follow-up check the host couldn't answer for a while (a guess for
+    /// the chat still running, too many at once, a timeout, the connection
+    /// dropping) is asked again after the shortest wait Hermes may ask for,
+    /// within the reply's checks. One that won't change (the chat closed on
+    /// the host, a bad request) ends the checks for the reply (#1669).
+    @MainActor
+    func testAFollowUpCheckTheHostWasTooBusyForIsAskedAgain() async throws {
+        UserDefaults.standard.set(true, forKey: Predictive.followUpKey)
+        defer { UserDefaults.standard.removeObject(forKey: Predictive.followUpKey) }
+        let defaults = makeScratchDefaults("PredictiveCheckRetryTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        defer { state.stopPredictiveFollowUpClock() }
+        state.predictiveSender = { _ in [:] }
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        let anchor = try XCTUnwrap(state.predictiveAnchor)
+        let busy: [Error] = [
+            DashboardTicketBridgeError.http(status: 429, detail: "A prediction for this chat is still running"),
+            DashboardTicketBridgeError.http(status: 503, detail: "The host is busy with other predictions; try again shortly"),
+            DashboardTicketBridgeError.http(status: 504, detail: "The prediction took too long"),
+            DashboardTicketBridgeError.http(status: 0, detail: ""),
+            DashboardTicketBridgeError.notReady,
+            URLError(.networkConnectionLost),
+        ]
+        for error in busy {
+            state.predictiveSender = { _ in throw error }
+            state.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor)
+            let asked = Date()
+            await state.checkPredictiveFollowUp(for: anchor)
+            XCTAssertFalse(state.predictiveFollowUp.stopped, "\(error)")
+            let next = try XCTUnwrap(state.predictiveFollowUp.nextCheck, "\(error)")
+            XCTAssertEqual(next.timeIntervalSince(asked), TimeInterval(Predictive.askAgainRange.lowerBound), accuracy: 5)
+            XCTAssertNotNil(state.predictiveFollowUpTask, "the next check is on the clock: \(error)")
+            state.stopPredictiveFollowUpClock()
+        }
+        // Writing meanwhile starts the idle time over: the retry waits the
+        // chosen time from when the composer is empty again.
+        state.predictiveSender = { _ in throw DashboardTicketBridgeError.http(status: 429, detail: "") }
+        state.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor)
+        await state.checkPredictiveFollowUp(for: anchor)
+        XCTAssertNotNil(state.predictiveFollowUp.nextCheck)
+        state.predictiveDraftChanged("Actually")
+        state.predictiveDraftChanged("")
+        XCTAssertFalse(state.predictiveFollowUp.stopped)
+        XCTAssertGreaterThan(TimeInterval(Predictive.followUpDelay()), TimeInterval(Predictive.askAgainRange.lowerBound))
+        XCTAssertEqual(state.predictiveFollowUpDue.timeIntervalSinceNow, TimeInterval(Predictive.followUpDelay()),
+                       accuracy: 5, "the chosen wait applies again, not the sooner retry")
+        state.stopPredictiveFollowUpClock()
+        // The reply's last check isn't followed by another.
+        state.predictiveSender = { _ in throw DashboardTicketBridgeError.http(status: 429, detail: "") }
+        state.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor, checks: Predictive.maximumChecks - 1)
+        await state.checkPredictiveFollowUp(for: anchor)
+        XCTAssertTrue(state.predictiveFollowUp.stopped, "the checks ran out")
+        let final: [Error] = [
+            DashboardTicketBridgeError.http(status: 404, detail: "That chat isn't open on the host"),
+            DashboardTicketBridgeError.http(status: 400, detail: "bad request"),
+            DashboardTicketBridgeError.signInRequired,
+        ]
+        for error in final {
+            state.predictiveSender = { _ in throw error }
+            state.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor)
+            await state.checkPredictiveFollowUp(for: anchor)
+            XCTAssertTrue(state.predictiveFollowUp.stopped, "\(error)")
+        }
     }
 
     /// A turn ending while the hidden prompt is still on its way is the one

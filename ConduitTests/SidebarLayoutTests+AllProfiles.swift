@@ -207,4 +207,43 @@ extension SidebarLayoutTests {
         // Outside All the ids stay the chats' own.
         XCTAssertEqual(V2ChatsListItem.items(nodes, expanded: []).map(\.id), ["same", "same"])
     }
+
+    // MARK: - A project page gathering profiles (issue 1761)
+
+    private func project(_ id: String, path: String?, home: Bool = false) -> ProjectSummary {
+        ProjectSummary(id: id, title: id, primaryPath: path, icon: nil, colorHex: nil,
+                       isHome: home, sessionCount: 0, previewSessions: [])
+    }
+
+    func testAProjectPageFindsTheSameFolderInAnotherProfile() {
+        let repo = project("p_atlas", path: "/srv/app/")
+        let theirs = [project("home", path: nil, home: true), project("p_other", path: "/srv/other"),
+                      project("p_app", path: " /srv/app ")]
+        XCTAssertEqual(ProjectAcrossProfiles.match(repo, in: theirs)?.id, "p_app", "same folder, slash and spaces aside")
+        XCTAssertEqual(ProjectAcrossProfiles.match(project("home-a", path: nil, home: true), in: theirs)?.id, "home",
+                       "Home is Home")
+        XCTAssertNil(ProjectAcrossProfiles.match(project("p_none", path: nil), in: theirs), "no folder, no match")
+        XCTAssertNil(ProjectAcrossProfiles.match(project("p_x", path: "/srv"), in: theirs))
+        XCTAssertEqual(ProjectAcrossProfiles.folderKey("C:\\work\\app\\"), "C:\\work\\app", "a Windows host's folder too")
+    }
+
+    func testAProjectPageMergesEachProfilesLanesNewestFirst() {
+        let atlas = ProjectProfileLanes(profile: "atlas", lanes: [
+            ProjectSessionLane(id: "a-root", title: "app", sessions: [allRow("a1", profile: "atlas", at: 10)], path: "/srv/app"),
+            ProjectSessionLane(id: "a-wt", title: "wt", sessions: [allRow("a2", profile: "atlas", at: 5)], path: "/srv/app/.worktrees/wt")
+        ])
+        let hermes = ProjectProfileLanes(profile: "default", lanes: [
+            ProjectSessionLane(id: "h-root", title: "app", sessions: [allRow("h1", profile: "default", at: 20)], path: "/srv/app/")
+        ])
+        let empty = ProjectProfileLanes(profile: "bot", lanes: [])
+
+        XCTAssertEqual(ProjectAcrossProfiles.profilesWithChats([atlas, empty, hermes]), ["atlas", "default"])
+        let merged = ProjectAcrossProfiles.lanes([atlas, hermes, empty])
+        XCTAssertEqual(merged.map(\.id), ["a-root", "a-wt"], "one lane per folder, where the page's profile put it")
+        XCTAssertEqual(merged[0].sessions.map(\.id), ["h1", "a1"], "newest first across profiles")
+
+        let picked = ProjectAcrossProfiles.lanes([atlas, hermes], filter: "default")
+        XCTAssertEqual(picked.map(\.id), ["h-root"], "a pick shows only that profile's lanes")
+        XCTAssertEqual(ProjectAcrossProfiles.lanes([atlas]), atlas.lanes, "one profile's lanes as Hermes gave them")
+    }
 }

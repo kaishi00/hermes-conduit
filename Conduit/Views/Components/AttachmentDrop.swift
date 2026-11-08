@@ -26,9 +26,25 @@ enum AttachmentDrop {
     /// comes as a named file (a .txt from Finder); a dragged selection of
     /// words has no name and goes into the draft as text.
     static func isFile(registeredTypeIdentifiers identifiers: [String], suggestedName: String?) -> Bool {
+        // A web link stays a link, even when a browser also offers its page
+        // as HTML or a picture under a name (#1695).
+        if isWebLink(registeredTypeIdentifiers: identifiers) { return false }
         guard let type = fileType(registeredTypeIdentifiers: identifiers) else { return false }
         guard type.conforms(to: .text) else { return true }
         return !(suggestedName ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Whether an item is a link to somewhere other than a file, offered
+    /// at most with its page or title as text. A picture dragged from a
+    /// page, which also carries its address, is still a file.
+    static func isWebLink(registeredTypeIdentifiers identifiers: [String]) -> Bool {
+        let types = identifiers.compactMap { UTType($0) }
+        let isLink = types.contains { $0.conforms(to: .url) && !$0.conforms(to: .fileURL) }
+        let hasFile = types.contains { type in
+            type.conforms(to: .fileURL)
+                || (type.conforms(to: .data) && !type.conforms(to: .url) && !type.conforms(to: .text) && type != .data)
+        }
+        return isLink && !hasFile
     }
 
     static func isFile(_ provider: NSItemProvider) -> Bool {
@@ -99,14 +115,27 @@ enum AttachmentDrop {
         )
     }
 
+    /// A drop on a chat or room: hands its files to `onDrop` and says
+    /// whether it was taken. Words and links, or a locked composer, turn
+    /// it down.
+    static func take(_ providers: [NSItemProvider], isEnabled: Bool, onDrop: ([NSItemProvider]) -> Void) -> Bool {
+        guard isEnabled else { return false }
+        let found = files(in: providers)
+        guard !found.isEmpty else { return false }
+        onDrop(found)
+        return true
+    }
+
     /// Copies one dropped item into the staging folder under its own name.
     /// The system's copy is only readable inside the load callback, so the
-    /// copy happens there.
+    /// copy happens there. A picture whose file can't be read is taken as
+    /// an image object and written as PNG, as the share sheet does (issue
+    /// 1747).
     static func stage(_ provider: NSItemProvider, ordinal: Int, limitMegabytes: Int) async -> AttachmentStaging.StagedImport {
         let type = fileType(registeredTypeIdentifiers: provider.registeredTypeIdentifiers)
         let fallbackName = AttachmentTypePolicy.filename(suggested: provider.suggestedName, type: type, ordinal: ordinal)
         guard let type else { return .failed(fallbackName) }
-        return await withCheckedContinuation { continuation in
+        let copied: AttachmentStaging.StagedImport = await withCheckedContinuation { continuation in
             _ = provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, _ in
                 guard let url else {
                     continuation.resume(returning: .failed(fallbackName))
@@ -125,6 +154,21 @@ enum AttachmentDrop {
                 ))
             }
         }
+        guard case .failed = copied, type.conforms(to: .image) else { return copied }
+        return await stageImageObject(provider, ordinal: ordinal, limitMegabytes: limitMegabytes) ?? copied
+    }
+
+    /// A dropped picture read as an image object and staged as PNG; nil
+    /// when the provider can't hand one over either.
+    static func stageImageObject(_ provider: NSItemProvider, ordinal: Int, limitMegabytes: Int) async -> AttachmentStaging.StagedImport? {
+        guard let image = await ProviderPicture.loadImage(provider).image,
+              let data = ProviderPicture.pngData(image) else { return nil }
+        let stem = ((provider.suggestedName ?? "") as NSString).deletingPathExtension
+        let name = AttachmentTypePolicy.filename(suggested: stem.isEmpty ? nil : "\(stem).png", type: .png, ordinal: ordinal)
+        guard AttachmentSizeLimit.allows(byteCount: Int64(data.count), megabytes: limitMegabytes) else { return .tooLarge(name) }
+        guard let staged = try? AttachmentStaging.destination(for: name),
+              (try? data.write(to: staged, options: .atomic)) != nil else { return .failed(name) }
+        return AttachmentStaging.finishStaging(fileAt: staged, name: name, type: .png, limitMegabytes: limitMegabytes)
     }
 
     /// Stages every dropped file in order, one at a time like a picked
@@ -151,6 +195,13 @@ struct AttachmentDropRequest: Equatable {
     }
 }
 
+extension Notification.Name {
+    /// A drag that reached a composer field has ended, dropped or not.
+    /// The drop target around the field clears its outline on it: a drag
+    /// that ends on the field never tells the target it left (issue 1689).
+    static let attachmentDragEnded = Notification.Name("ConduitAttachmentDragEnded")
+}
+
 /// A chat or room that takes dropped files: the whole screen is the
 /// target, outlined while something is dragged over it.
 struct AttachmentDropTarget: ViewModifier {
@@ -161,12 +212,18 @@ struct AttachmentDropTarget: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            // SwiftUI raises and lowers the outline as the drag comes and
+            // goes, and lowers it when a drag over the chat is called off.
+            // But a drag that moves onto the composer field and is dropped
+            // there never reaches this target again, so the outline stayed
+            // up until a restart (issue 1689). So the drop here and the
+            // field's drag ending lower it too.
             .onDrop(of: [.item], isTargeted: $isTargeted) { providers in
-                guard isEnabled else { return false }
-                let files = AttachmentDrop.files(in: providers)
-                guard !files.isEmpty else { return false }
-                onDrop(files)
-                return true
+                isTargeted = false
+                return AttachmentDrop.take(providers, isEnabled: isEnabled, onDrop: onDrop)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .attachmentDragEnded)) { _ in
+                isTargeted = false
             }
             .overlay {
                 if isTargeted && isEnabled {

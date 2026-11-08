@@ -181,6 +181,9 @@ final class PhoneSyncEngine: ObservableObject {
     @Published private(set) var state: PhoneSyncState
     @Published private(set) var isSyncing = false
     @Published private(set) var lastError: String?
+    /// What to do when the last turn-off's delete met a profile that turned
+    /// the plugin off (nothing was deleted), or nil (issue 1671).
+    private(set) var deleteRefusedPluginOff: String?
     @Published private(set) var preferences: PhoneSyncPreferences
     /// Changes waiting for the user's answer, oldest first.
     @Published private(set) var prompts: [PhoneChangePrompt] = []
@@ -188,10 +191,15 @@ final class PhoneSyncEngine: ObservableObject {
     @Published var autoAdded: PhoneAutoAdded?
     /// The people the user picked for Hermes.
     @Published private(set) var people: [PhonePerson]
+    /// Picked people the last read from Contacts missed, by id, with why.
+    @Published private(set) var peopleProblems: [String: PhonePersonProblem] = [:]
+    /// Whether the picked people can be read again from Contacts.
+    @Published private(set) var contactsAccess: PhoneContactsAccess
 
     let calendarSource: PhoneCalendarSource
     let statusSource: PhoneStatusSource
     let alarmSource: PhoneAlarmSource
+    let contactsSource: PhoneContactsSource
     private let store: PhoneSyncStateStore
     private let keys: PhoneSyncKeyStore
     private let defaults: UserDefaults
@@ -221,6 +229,7 @@ final class PhoneSyncEngine: ObservableObject {
         calendarSource: PhoneCalendarSource,
         statusSource: PhoneStatusSource,
         alarmSource: PhoneAlarmSource = PhoneAlarmSources.system(),
+        contactsSource: PhoneContactsSource = SystemContactsSource(),
         store: PhoneSyncStateStore = .standard,
         keys: PhoneSyncKeyStore = .keychain,
         defaults: UserDefaults = .standard,
@@ -231,6 +240,8 @@ final class PhoneSyncEngine: ObservableObject {
         self.calendarSource = calendarSource
         self.statusSource = statusSource
         self.alarmSource = alarmSource
+        self.contactsSource = contactsSource
+        contactsAccess = contactsSource.access
         self.store = store
         self.keys = keys
         self.defaults = defaults
@@ -257,6 +268,34 @@ final class PhoneSyncEngine: ObservableObject {
         let kept = Array(people.prefix(PhonePerson.maximum))
         PhonePeopleStore.save(kept, to: defaults)
         self.people = kept
+        peopleProblems = peopleProblems.filter { id, _ in kept.contains { $0.id == id } }
+    }
+
+    /// Reads the picked people again from Contacts, when Conduit may: what a
+    /// contact says now replaces what Conduit had (their relation stays),
+    /// and someone who can't be read keeps their last copy and is listed in
+    /// `peopleProblems`.
+    func refreshPeople() async {
+        contactsAccess = contactsSource.access
+        guard contactsAccess.canRead, !people.isEmpty else {
+            peopleProblems = [:]
+            return
+        }
+        let missing = Set(people.filter { $0.contactID == nil }.map(\.id))
+        let found = missing.isEmpty ? [:] : await contactsSource.identifiers(for: missing)
+        let identifiers = people.compactMap { $0.contactID ?? found?[$0.id] }
+        let reads = await contactsSource.read(identifiers)
+        // People changed while Contacts was read are matched by id, so an
+        // edit or removal made meanwhile stands.
+        let (refreshed, problems) = PhonePeopleStore.refreshed(people, reads: reads, found: found, access: contactsAccess)
+        if refreshed != people { savePeople(refreshed) }
+        peopleProblems = problems
+    }
+
+    /// Asks once for Contacts access, then reads the picked people again.
+    func requestContactsAccess() async {
+        contactsAccess = await contactsSource.requestAccess()
+        await refreshPeople()
     }
 
     /// Runs a pass, or joins the one already running and runs once more
@@ -327,14 +366,17 @@ final class PhoneSyncEngine: ObservableObject {
         keys.clear()
         guard readStateIfNeeded() else { return false }
         var deleted = false
+        deleteRefusedPluginOff = nil
         if let request {
             do {
                 _ = try await request("\(Self.base)/wipe", "POST", ["device_id": state.deviceID])
                 deleted = true
-            } catch DashboardTicketBridgeError.http(let status, _) where status == 404 {
+            } catch DashboardTicketBridgeError.http(let status, let detail)
+                        where status == 404 && !DashboardTicketBridgeError.isPluginOffDetail(detail) {
                 deleted = true
             } catch {
                 lastError = Self.describe(error)
+                deleteRefusedPluginOff = DashboardTicketBridgeError.pluginOffDetail(of: error)
             }
         }
         state.startOver()
@@ -379,8 +421,10 @@ final class PhoneSyncEngine: ObservableObject {
                 state.pause = .signInRequired
                 return .paused(.signInRequired)
             case .http(let status, _) where status == 404:
-                state.pause = .pluginMissing
-                return .paused(.pluginMissing)
+                // A profile that turned the plugin off says how to turn it on.
+                let pause = DashboardTicketBridgeError.pluginOffDetail(of: error).map(PhoneSyncPause.pluginOff) ?? .pluginMissing
+                state.pause = pause
+                return .paused(pause)
             case .http(let status, let detail) where status == 409 && HostKeyConflict.isKeyLoss(detail):
                 // The host lost or replaced this phone's key: set it up again.
                 keys.clear()
@@ -561,6 +605,7 @@ final class PhoneSyncEngine: ObservableObject {
             newAlarmsHash = nil
         }
         if preferences.contacts {
+            await refreshPeople()
             let contacts = people.map(\.json)
             let hash = Self.hash(contacts)
             if full || hash != state.contactsHash {

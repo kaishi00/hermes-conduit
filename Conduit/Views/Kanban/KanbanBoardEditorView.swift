@@ -120,35 +120,36 @@ struct KanbanBoardEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            SettingsDetailContainer {
                 basicsSection
                 projectSection
                 workspaceSection
                 if let effective = effectiveDirectory {
-                    Section {
+                    ConduitSettingsSection(title: AppLocalization.string("Effective Directory"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
                         Label(effective, systemImage: "folder")
                             .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
-                    } header: {
-                        Text("Effective Directory")
                     }
                 }
                 if let errorMessage {
-                    Section {
+                    SettingsCard {
                         Label(errorMessage, systemImage: "exclamationmark.triangle")
                             .scaledFont(.footnote)
                             .foregroundStyle(.red)
                     }
                 }
                 if let notice {
-                    Section {
+                    SettingsCard {
                         Label(notice, systemImage: "checkmark.circle")
                             .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
             }
+            // Text fields as Settings draws them.
+            .textFieldStyle(.roundedBorder)
+            .tint(.conduitAccent)
             .navigationTitle(isCreate ? AppLocalization.string("New Board") : AppLocalization.string("Board Settings"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -184,7 +185,7 @@ struct KanbanBoardEditorView: View {
     }
 
     private var basicsSection: some View {
-        Section {
+        ConduitSettingsSection(title: AppLocalization.string("Basics"), symbol: "square.and.pencil", tint: .conduitAccent) {
             TextField("Name", text: $name)
                 .accessibilityLabel("Board name")
             if isCreate {
@@ -215,38 +216,38 @@ struct KanbanBoardEditorView: View {
             }
             TextEditor(text: $descriptionText)
                 .frame(minHeight: 90)
+                .settingsEditorBox()
                 .accessibilityLabel("Board description")
-        } header: {
-            Text("Basics")
-        } footer: {
-            if isCreate && !trimmedName.isEmpty && !hasValidSlug {
-                Text("The slug must be 1-64 lowercase letters or numbers, with hyphens or underscores after the first character.")
-            } else if isCreate {
-                Text("The slug is generated from the name (like Desktop) and cannot be changed after creation.")
-            } else {
-                Text("The slug is immutable after creation.")
+            Group {
+                if isCreate && !trimmedName.isEmpty && !hasValidSlug {
+                    Text("The slug must be 1-64 lowercase letters or numbers, with hyphens or underscores after the first character.")
+                } else if isCreate {
+                    Text("The slug is generated from the name (like Desktop) and cannot be changed after creation.")
+                } else {
+                    Text("The slug is immutable after creation.")
+                }
             }
+            .settingsCaption()
         }
         .disabled(isSaving)
     }
 
     private var projectSection: some View {
-        Section {
-            Picker("Project", selection: projectBinding) {
-                Text("No Project").tag(String?.none)
-                ForEach(store.projects) { project in
-                    Text(project.name).tag(String?.some(project.id))
-                }
+        ConduitSettingsSection(title: AppLocalization.string("Project"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
+            ConduitMenuPicker(
+                value: projectBinding.wrappedValue,
+                choices: [(id: String?.none, title: AppLocalization.string("No Project"))]
+                    + store.projects.map { (id: String?.some($0.id), title: $0.name) },
+                onSelect: { projectBinding.wrappedValue = $0 }
+            ) {
+                Text("Project").foregroundStyle(.secondary)
             }
-            .pickerStyle(.menu)
             .accessibilityLabel("Project scope")
             if store.projects.isEmpty {
                 Text("No projects on this server yet — the board stays unscoped (scratch workspaces).")
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
-        } header: {
-            Text("Project")
         }
         .disabled(isSaving)
     }
@@ -271,21 +272,24 @@ struct KanbanBoardEditorView: View {
     }
 
     private var workspaceSection: some View {
-        Section {
-            Picker("Default Workspace", selection: $workspaceRow) {
-                if projectID != nil {
-                    // With a project selected, "None/Scratch" is not
-                    // representable upstream: the server mirrors the project's
-                    // primary repo whenever a project is set without an
-                    // explicit workdir (review B-1). The row is hidden so the
-                    // editor can never submit that phantom combination.
-                    Text("Project Default").tag(WorkspaceRow.projectDefault)
-                } else {
-                    Text("None / Scratch").tag(WorkspaceRow.none)
-                }
-                Text("Custom Directory…").tag(WorkspaceRow.custom)
+        ConduitSettingsSection(title: AppLocalization.string("Default Workspace"), symbol: "folder", tint: .conduitAccent) {
+            ConduitMenuPicker(
+                value: workspaceRow,
+                // With a project selected, "None/Scratch" is not
+                // representable upstream: the server mirrors the project's
+                // primary repo whenever a project is set without an
+                // explicit workdir (review B-1). The row is hidden so the
+                // editor can never submit that phantom combination.
+                choices: [
+                    projectID != nil
+                        ? (id: WorkspaceRow.projectDefault, title: AppLocalization.string("Project Default"))
+                        : (id: WorkspaceRow.none, title: AppLocalization.string("None / Scratch")),
+                    (id: WorkspaceRow.custom, title: AppLocalization.string("Custom Directory…")),
+                ],
+                onSelect: { workspaceRow = $0 }
+            ) {
+                Text("Default Workspace").foregroundStyle(.secondary)
             }
-            .pickerStyle(.menu)
             .accessibilityLabel("Default workspace")
             if workspaceRow == .custom {
                 TextField("Absolute directory path", text: $customPath)
@@ -293,14 +297,14 @@ struct KanbanBoardEditorView: View {
                     .autocorrectionDisabled()
                     .accessibilityLabel("Custom workspace directory")
             }
-        } header: {
-            Text("Default Workspace")
-        } footer: {
-            if projectID != nil, workspaceRow == .projectDefault {
-                Text("New tasks mirror the project's primary repository.")
-            } else if workspaceRow == .none {
-                Text("New tasks use scratch workspaces.")
+            Group {
+                if projectID != nil, workspaceRow == .projectDefault {
+                    Text("New tasks mirror the project's primary repository.")
+                } else if workspaceRow == .none {
+                    Text("New tasks use scratch workspaces.")
+                }
             }
+            .settingsCaption()
         }
         .disabled(isSaving)
     }

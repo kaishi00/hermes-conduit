@@ -1,0 +1,1410 @@
+//
+//  BotWorkViews.swift
+//  Conduit
+//
+//  Bot workstreams in the app: the line under a Bot Chat's title ("2
+//  working · 1 needs you"), the Work panel it opens (a sheet on a phone, a
+//  column beside the chat on a wide window), with Pinned, Active, Recent and
+//  the Resolved list, and what a workstream's own chat shows: whose work it
+//  is under its title, and Stop, Continue or Check first while it needs
+//  them. The user's actions go straight to the workstream through the
+//  plugin, with no Bot Chat turn.
+//
+
+import SwiftUI
+
+/// Reads a bot's work while something shows it: often while work runs,
+/// now and then otherwise, and once for a bot whose workstreams are off.
+/// Its tab hidden, the chat it's in covered (Settings in the chat column,
+/// Back to the list) or the app in the background, it stops, and reads
+/// again at once when it shows (#1827).
+private struct BotWorkRefresh: ViewModifier {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.v2Shell) private var shell
+    @Environment(\.scenePhase) private var scenePhase
+    let profile: String
+    /// In a chat, so covering the chat hides it. Bots Home's overview isn't.
+    let inChat: Bool
+
+    static let busyInterval: UInt64 = 5_000_000_000
+    static let idleInterval: UInt64 = 20_000_000_000
+
+    func body(content: Content) -> some View {
+        // Keyed on the bot's work being on too: turned on in Edit Bot,
+        // its reads start again.
+        let isOn = appState.botWork.snapshot(profile)?.isOn ?? true
+        let shows = shell.isTabActive && scenePhase != .background
+            && !(inChat && appState.showSidebar && !shell.hasChatBeside)
+        content.task(id: "\(profile)\u{1F}\(appState.isConnected)\u{1F}\(appState.servesBotWorkstreams)\u{1F}\(isOn)\u{1F}\(shows)") {
+            guard shows else { return }
+            while !Task.isCancelled {
+                await appState.refreshBotWork(profile: profile)
+                let snapshot = appState.botWork.snapshot(profile)
+                // Off: nothing to watch until the chat opens again.
+                if snapshot?.isOn == false { return }
+                let busy = (snapshot?.workingCount ?? 0) > 0 || (snapshot?.items.contains { $0.status == "starting" } ?? false)
+                try? await Task.sleep(nanoseconds: busy ? Self.busyInterval : Self.idleInterval)
+            }
+        }
+    }
+}
+
+extension View {
+    func refreshesBotWork(profile: String, inChat: Bool = true) -> some View {
+        modifier(BotWorkRefresh(profile: profile, inChat: inChat))
+    }
+}
+
+/// How a piece of work looks: its color and its mark.
+enum BotWorkLook {
+    static func tint(_ item: BotWorkItem) -> Color {
+        if item.isResolvedUnfinished { return .secondary }
+        if !item.screenAsk.isEmpty, !item.isClosed { return .orange }
+        switch item.status {
+        case "needs_you", "interrupted": return .orange
+        case "failed": return .red
+        case "ready", "done": return .green
+        case "starting", "running", "waiting": return .conduitAccent
+        default: return .secondary
+        }
+    }
+
+    static func symbol(_ item: BotWorkItem) -> String {
+        if item.isResolvedUnfinished { return "archivebox" }
+        if !item.screenAsk.isEmpty, !item.isClosed { return "display" }
+        switch item.status {
+        case "needs_you", "interrupted": return "exclamationmark"
+        case "failed": return "xmark"
+        case "ready", "done": return "checkmark"
+        case "stopped": return "stop.fill"
+        case "waiting": return "hourglass"
+        case "starting", "running": return "arrow.triangle.2.circlepath"
+        default: return "circle"
+        }
+    }
+
+    /// A model's reply as the panel shows it: inline Markdown (bold, code,
+    /// links) drawn, headings' marks and list dashes tidied.
+    static func rendered(_ text: String) -> AttributedString {
+        let lines = text.components(separatedBy: "\n").map { line -> String in
+            var line = line
+            if let range = line.range(of: #"^\s{0,3}#{1,6}\s+"#, options: .regularExpression) {
+                line.removeSubrange(range)
+            }
+            if let range = line.range(of: #"^\s*[-*+]\s+"#, options: .regularExpression) {
+                line.replaceSubrange(range, with: "• ")
+            }
+            return line
+        }
+        let tidy = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        return (try? AttributedString(markdown: tidy, options: options)) ?? AttributedString(tidy)
+    }
+}
+
+/// Under a Bot Chat's title while the bot has work: what's working and
+/// what needs the user. It opens the Work panel.
+struct BotWorkTitleLine: View {
+    @ObservedObject var work: BotWorkStore
+    let profile: String
+    let isPanelOpen: Bool
+    let onOpen: () -> Void
+
+    var body: some View {
+        // A stack, not a Group, so the read runs while nothing shows yet.
+        VStack(spacing: 0) {
+            if let snapshot = work.snapshot(profile), snapshot.isOn, let text = snapshot.stripText {
+                let needsYou = snapshot.needsYouCount > 0
+                Button {
+                    Haptics.light()
+                    onOpen()
+                } label: {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(needsYou ? Color.orange : snapshot.workingCount > 0 ? Color.conduitAccent : Color.secondary)
+                            .frame(width: 7, height: 7)
+                            .accessibilityHidden(true)
+                        Text(text)
+                            .scaledFont(.caption.weight(.semibold))
+                            .foregroundStyle(needsYou ? Color.orange : Color.secondary)
+                            .lineLimit(1)
+                        Image(systemName: isPanelOpen ? "chevron.up" : "chevron.down")
+                            .scaledFont(.caption2.weight(.bold))
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                    }
+                    .frame(minHeight: 18)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                // Capped as the chat's other title lines are: the title
+                // bar has one line's room; the panel it opens scales fully.
+                .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+                .accessibilityLabel(text)
+                .accessibilityHint(AppLocalization.string("Shows this bot's work"))
+                .accessibilityIdentifier("botWork.titleLine")
+            }
+        }
+        .refreshesBotWork(profile: profile)
+    }
+}
+
+/// Under a workstream's title: whose work it is and where it stands. It
+/// goes back to the Bot Chat coordinating it.
+struct WorkstreamTitleLine: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject var work: BotWorkStore
+    let profile: String
+    let item: BotWorkItem
+
+    private var botName: String {
+        work.snapshot(profile)?.botName ?? appState.profileDisplayName(profile)
+    }
+
+    var body: some View {
+        let text = AppLocalization.string("\(botName)’s work · \(item.ref) · \(item.statusText)")
+        Button {
+            Haptics.light()
+            appState.openCoordinator(profile: profile)
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: BotWorkLook.symbol(item))
+                    .scaledFont(.caption2.weight(.bold))
+                    .foregroundStyle(BotWorkLook.tint(item))
+                    .accessibilityHidden(true)
+                Text(text)
+                    .scaledFont(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(minHeight: 18)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        // Capped as the chat's other title lines are (one line's room).
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .accessibilityLabel(text)
+        .accessibilityHint(AppLocalization.string("Back to \(botName)"))
+        .accessibilityIdentifier("workstream.back")
+    }
+}
+
+/// What the chat's title shows of a bot's work: the Bot Chat's line, or a
+/// workstream's. Watches the bots' work itself, so the toolbar redraws only
+/// when this does.
+struct BotWorkTitleStatus: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject var work: BotWorkStore
+    let isPanelOpen: Bool
+    let onOpenPanel: () -> Void
+
+    var body: some View {
+        if let profile = appState.activeBotChatProfile {
+            BotWorkTitleLine(work: work, profile: profile, isPanelOpen: isPanelOpen, onOpen: onOpenPanel)
+        } else if let workstream = appState.activeWorkstream {
+            WorkstreamTitleLine(work: work, profile: workstream.profile, item: workstream.item)
+        }
+    }
+}
+
+/// The bot's work: Pinned, Active, then Recent, and the way to what was
+/// resolved. Each row opens to its checklist and what the user can do with
+/// it; a swipe or a long press pins or resolves it.
+struct BotWorkPanel: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject var work: BotWorkStore
+    let profile: String
+    let onClose: () -> Void
+    /// The Bot Overview draws the bot's own header above the list.
+    var showsHeader = true
+    /// Rows opened and replies being typed, by ref, here rather than in
+    /// each row: a row that moves between sections keeps them.
+    @State private var expanded: Set<String> = []
+    @State private var replies: [String: String] = [:]
+    @State private var showsAllRecent = false
+    @State private var showsResolved = false
+    /// Runs just before a row opens a workstream's chat (the Bots Home
+    /// overview arms the zoom with it).
+    var onWillOpen: (() -> Void)? = nil
+
+    static let recentShown = 3
+
+    private var botName: String {
+        work.snapshot(profile)?.botName ?? appState.profileDisplayName(profile)
+    }
+
+    private func row(_ item: BotWorkItem) -> some View {
+        BotWorkRow(
+            item: item, profile: profile, isActing: work.isActing(item.ref, profile: profile),
+            expanded: Binding(
+                get: { expanded.contains(item.ref) },
+                set: { if $0 { expanded.insert(item.ref) } else { expanded.remove(item.ref) } }
+            ),
+            reply: Binding(
+                get: { replies[item.ref] ?? "" },
+                set: { replies[item.ref] = $0.isEmpty ? nil : $0 }
+            ),
+            willOpen: onWillOpen
+        )
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            if item.manage.contains(.pin) {
+                manageButton(item, .pin)
+            } else if item.manage.contains(.unpin) {
+                manageButton(item, .unpin)
+            }
+        }
+        // Resolve takes a tap after the swipe, so a long swipe never files
+        // work away by accident.
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if item.manage.contains(.resolve) {
+                manageButton(item, .resolve)
+            } else if item.manage.contains(.reopen) {
+                manageButton(item, .reopen)
+            }
+        }
+        .contextMenu {
+            ForEach(item.manage, id: \.self) { action in
+                manageButton(item, action)
+            }
+            if item.kind == .workstream, !item.sessionID.isEmpty {
+                Button {
+                    onWillOpen?()
+                    appState.openWorkstream(item, profile: profile)
+                } label: {
+                    Label(AppLocalization.string("Open \(item.ref)’s chat"), systemImage: "bubble.left.and.bubble.right")
+                }
+            }
+        }
+    }
+
+    private func manageButton(_ item: BotWorkItem, _ action: BotWorkItem.Action) -> some View {
+        let (title, symbol, tint): (String, String, Color) = {
+            switch action {
+            case .pin: return (AppLocalization.string("Pin"), "pin", .orange)
+            case .unpin: return (AppLocalization.string("Unpin"), "pin.slash", .gray)
+            case .resolve: return (AppLocalization.string("Resolve"), "checkmark.circle", .green)
+            default: return (AppLocalization.string("Reopen"), "arrow.uturn.backward.circle", .conduitAccent)
+            }
+        }()
+        return Button {
+            Haptics.light()
+            Task { await appState.actOnWorkstream(item, profile: profile, action: action) }
+        } label: {
+            Label(title, systemImage: symbol)
+        }
+        .tint(tint)
+        .disabled(work.isActing(item.ref, profile: profile) || !appState.isConnected)
+    }
+
+    /// Settings' group name over its cards (see Sheets in Settings' look),
+    /// as a row rather than a section header: a plain list pins headers,
+    /// and this one, with no fill, would float over the cards scrolling
+    /// under it.
+    private func sectionHeader(_ title: String, symbol: String, tint: Color) -> some View {
+        SettingsSectionHeader(title: title, symbol: symbol, tint: tint)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 10, leading: 4, bottom: 2, trailing: 16))
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if showsHeader || showsResolved {
+                header
+            }
+            if let refusal = work.refusal(profile) {
+                Text(refusal)
+                    .scaledFont(.footnote)
+                    .foregroundStyle(Color.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 6)
+            }
+            if showsResolved {
+                resolvedList
+            } else {
+                openList
+            }
+        }
+        // Settings' backdrop beside a Bot Chat (see Sheets in Settings'
+        // look). In the Bot Overview the sheet's own shows through, so the
+        // header and the list are one surface, with no seam between them.
+        .background {
+            if showsHeader { SettingsBackdrop().ignoresSafeArea() }
+        }
+        .refreshesBotWork(profile: profile, inChat: showsHeader)
+        // A refusal belongs to the panel it was tapped in. The Resolved
+        // list stays, so a resolved workstream opened from it knows its
+        // chat; it's read again when it shows.
+        .onDisappear { work.setRefusal(nil, profile: profile) }
+        .accessibilityIdentifier("botWork.panel")
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            if showsResolved {
+                Button {
+                    Haptics.light()
+                    withAnimation(ConduitMotion.response) { showsResolved = false }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.conduitAccent)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(AppLocalization.string("Back"))
+            } else {
+                ProfileAvatarView(
+                    profile: profile,
+                    displayName: botName,
+                    url: appState.profileAvatarURL(for: profile),
+                    size: 36
+                )
+                .background(Circle().fill(Color.conduitAccent.opacity(0.14)))
+                .clipShape(Circle())
+                .accessibilityHidden(true)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(showsResolved ? AppLocalization.string("Resolved") : AppLocalization.string("\(botName)’s work"))
+                    .scaledFont(.headline)
+                    .lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
+                if !showsResolved, let text = work.snapshot(profile)?.stripText {
+                    Text(text)
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 4)
+            Button {
+                Haptics.light()
+                onClose()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(Color.primary.opacity(0.08)))
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(AppLocalization.string("Close"))
+        }
+        .padding(.leading, 20)
+        .padding(.trailing, 14)
+        .padding(.top, 14)
+        .padding(.bottom, 6)
+    }
+
+    private func countChip(_ title: String, _ count: Int, tint: Color) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .scaledFont(.caption.weight(.semibold))
+            Text("\(count)")
+                .scaledFont(.caption.weight(.bold))
+                .monospacedDigit()
+                .foregroundStyle(count > 0 ? tint : Color.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(count > 0 ? tint.opacity(0.14) : Color.primary.opacity(0.06)))
+        .foregroundStyle(count > 0 ? Color.primary : Color.secondary)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var openList: some View {
+        List {
+            if let snapshot = work.snapshot(profile) {
+                if snapshot.items.isEmpty == false {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            countChip(AppLocalization.string("Needs you"), snapshot.needsYouCount, tint: .orange)
+                            countChip(AppLocalization.string("Working"), snapshot.workingCount, tint: .conduitAccent)
+                            countChip(AppLocalization.string("Ready"), snapshot.readyCount, tint: .green)
+                        }
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 0, trailing: 16))
+                } else if snapshot.resolvedCount == 0 {
+                    Text("No work yet")
+                        .scaledFont(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
+                if !snapshot.pinned.isEmpty {
+                    sectionHeader(AppLocalization.string("Pinned"), symbol: "pin.fill", tint: .orange)
+                    ForEach(snapshot.pinned) { row($0) }
+                }
+                if !snapshot.active.isEmpty {
+                    sectionHeader(AppLocalization.string("Active"), symbol: "bolt.fill", tint: .conduitAccent)
+                    ForEach(snapshot.active) { row($0) }
+                }
+                let recent = snapshot.recent
+                if !recent.isEmpty {
+                    sectionHeader(AppLocalization.string("Recent"), symbol: "clock.fill", tint: .green)
+                    ForEach(showsAllRecent ? recent : Array(recent.prefix(Self.recentShown))) { row($0) }
+                    if recent.count > Self.recentShown {
+                        Button {
+                            Haptics.light()
+                            withAnimation(ConduitMotion.response) { showsAllRecent.toggle() }
+                        } label: {
+                            Text(showsAllRecent ? AppLocalization.string("Show less")
+                                 : AppLocalization.string("Show all \(String(recent.count))"))
+                                .scaledFont(.subheadline.weight(.semibold))
+                                .foregroundStyle(Color.conduitAccent)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 16))
+                    }
+                }
+                if snapshot.resolvedCount > 0 {
+                    Button {
+                        Haptics.light()
+                        withAnimation(ConduitMotion.response) { showsResolved = true }
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "checkmark.circle")
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+                            Text("Resolved")
+                                .scaledFont(.body.weight(.semibold))
+                                .foregroundStyle(Color.primary)
+                            Spacer(minLength: 4)
+                            Text("\(snapshot.resolvedCount)")
+                                .scaledFont(.subheadline)
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                            SettingsChevron()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 6)
+                        .frame(minHeight: 50)
+                        .settingsCard()
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 12, trailing: 16))
+                    .accessibilityIdentifier("botWork.resolved")
+                }
+            } else {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+    }
+
+    private var resolvedList: some View {
+        List {
+            let list = work.resolvedList(profile)
+            ForEach(list?.items ?? []) { row($0) }
+            if list?.isLoading ?? true {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            } else if list?.failed == true {
+                Text("Couldn't reach this bot's work. Try again in a moment.")
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            } else if list?.items.isEmpty == true {
+                Text("Nothing resolved yet")
+                    .scaledFont(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
+            // Also after a failed page, so it can be tried again.
+            if list?.isLoading == false, list?.more == true {
+                Button {
+                    Task { await appState.loadResolvedWork(profile: profile, more: true) }
+                } label: {
+                    Text("Show more")
+                        .scaledFont(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.conduitAccent)
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .task(id: "\(profile)\u{1F}\(appState.isConnected)") {
+            await appState.loadResolvedWork(profile: profile)
+        }
+    }
+}
+
+/// One piece of work as a card: its mark, title and where it is, its last
+/// result, and its checklist and actions once opened.
+private struct BotWorkRow: View {
+    @EnvironmentObject private var appState: AppState
+    let item: BotWorkItem
+    let profile: String
+    let isActing: Bool
+    @Binding var expanded: Bool
+    @Binding var reply: String
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    var willOpen: (() -> Void)? = nil
+    @State private var screenTarget: BotScreenTarget?
+
+    private var tint: Color { BotWorkLook.tint(item) }
+
+    /// The line under the title: what it's doing, else why it stopped,
+    /// else where it stands.
+    private var subtitle: String {
+        // Resolved before it finished: "Resolved", not where it was left.
+        if item.isResolvedUnfinished { return item.statusText }
+        if item.isClosed {
+            return item.resolvedBy == "bot" ? AppLocalization.string("\(item.statusText) · resolved by the bot")
+                : AppLocalization.string("\(item.statusText) · resolved by you")
+        }
+        if !item.screenAsk.isEmpty {
+            return AppLocalization.string("Needs you on the screen · \(item.screenAsk)")
+        }
+        if let doing = item.doing { return doing }
+        if item.needsYou, !item.error.isEmpty {
+            return AppLocalization.string("Needs you · \(item.error)")
+        }
+        if !item.error.isEmpty, item.status != "done" { return "\(item.statusText) · \(item.error)" }
+        return item.statusText
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                Haptics.light()
+                withAnimation(ConduitMotion.response) { expanded.toggle() }
+            } label: {
+                summary
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityValue(expanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
+            .accessibilityHint(expanded ? AppLocalization.string("Shows less") : AppLocalization.string("Shows more"))
+            if item.status == "needs_you", !item.isClosed, item.kind == .workstream, !item.sessionID.isEmpty {
+                // Its approval, answered here or in its chat.
+                WorkstreamApprovalBox(item: item, profile: profile, isActing: isActing)
+            }
+            if !item.isClosed, item.kind == .workstream, !item.screenAsk.isEmpty || !item.screen.isEmpty {
+                screenBox
+            }
+            if expanded {
+                // At the top, where it shows without scrolling past a long
+                // checklist (Eric 2026-11-04).
+                if item.kind == .workstream, !item.sessionID.isEmpty {
+                    openChatButton
+                }
+                if listedRoom != nil {
+                    openRoomButton
+                }
+                if !item.branch.isEmpty {
+                    branchLine
+                }
+                if !item.checklist.isEmpty {
+                    checklist
+                }
+                actions
+            }
+        }
+        .padding(14)
+        // Settings' card, or orange while it needs the user.
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(item.needsYou ? Color.orange.opacity(0.09) : Color.primary.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(item.needsYou ? Color.orange.opacity(0.32) : Color.primary.opacity(0.07),
+                              lineWidth: item.needsYou ? 1 : 0.5)
+        )
+        .accessibilityIdentifier("botWork.row.\(item.ref)")
+        .sheet(item: $screenTarget) { target in
+            BotScreenSheet(target: target)
+                .environmentObject(appState)
+        }
+    }
+
+    /// The bot's screen as this workstream uses it: driving it now, waiting
+    /// for it, or waiting on the user to do something there (a sign-in, a
+    /// CAPTCHA), with the screen a tap away and Continue once it's done.
+    private var screenBox: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label {
+                Text(item.screen == "controlling" ? AppLocalization.string("Using the bot's screen now")
+                     : item.screen == "waiting" ? AppLocalization.string("Waiting for the bot's screen")
+                     : AppLocalization.string("Needs you on the bot's screen"))
+                    .scaledFont(.footnote.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "display")
+            }
+            .foregroundStyle(item.screenAsk.isEmpty ? Color.secondary : Color.orange)
+            HStack(spacing: 8) {
+                BotScreenButton(support: appState.botScreens, profile: profile, open: {
+                    Haptics.light()
+                    screenTarget = BotScreenTarget(profile: profile,
+                                                   botName: appState.botWork.snapshot(profile)?.botName
+                                                       ?? appState.profileDisplayName(profile))
+                })
+                .buttonStyle(.settings)
+                if !item.screenAsk.isEmpty, item.actions.contains(.send) {
+                    Button {
+                        Haptics.light()
+                        Task {
+                            await appState.actOnWorkstream(item, profile: profile, action: .send,
+                                                           text: AppLocalization.string("I did it on the screen. Carry on."))
+                        }
+                    } label: {
+                        Text(AppLocalization.string("Done, Carry On"))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.settingsPrimary)
+                    .disabled(isActing || !appState.isConnected)
+                }
+            }
+        }
+        .accessibilityIdentifier("botWork.screen.\(item.ref)")
+    }
+
+    private var summary: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(item.needsYou ? Color.orange : tint.opacity(0.16))
+                Image(systemName: BotWorkLook.symbol(item))
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(item.needsYou ? Color.black.opacity(0.85) : tint)
+            }
+            .frame(width: 30, height: 30)
+            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(item.ref)
+                        .scaledFont(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(item.shownTitle)
+                        .scaledFont(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.primary)
+                        .lineLimit(expanded ? nil : 1)
+                    Spacer(minLength: 4)
+                    if item.isPinned {
+                        Image(systemName: "pin.fill")
+                            .scaledFont(.caption2)
+                            .foregroundStyle(.orange)
+                            .accessibilityLabel(AppLocalization.string("Pinned"))
+                    }
+                    Text(item.closedAt ?? item.updatedAt, format: .relative(presentation: .numeric, unitsStyle: .narrow))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+                Text(subtitle)
+                    .scaledFont(.footnote)
+                    .foregroundStyle(item.needsYou ? Color.orange : Color.secondary)
+                    .lineLimit(expanded ? nil : 1)
+                if !item.call.isEmpty {
+                    fromCallLine
+                }
+                if !item.room.isEmpty {
+                    fromRoomLine
+                }
+                if !item.result.isEmpty {
+                    Text(BotWorkLook.rendered(item.result))
+                        .scaledFont(.footnote)
+                        .foregroundStyle(Color.primary.opacity(0.85))
+                        .lineLimit(expanded ? 12 : 2)
+                        .padding(.top, 1)
+                } else if item.kind != .workstream, !item.goal.isEmpty {
+                    Text(BotWorkLook.rendered(item.goal))
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(expanded ? 8 : 2)
+                }
+                if !expanded, !item.checklist.isEmpty, !item.isClosed {
+                    progressBar
+                        .padding(.top, 4)
+                }
+            }
+        }
+        .contentShape(Rectangle())
+    }
+
+    /// A voice call's job: the call tells the user what it found.
+    private var fromCallLine: some View {
+        Label(item.call == "watch" ? AppLocalization.string("From a Watch call")
+                  : AppLocalization.string("From a voice call"),
+              systemImage: item.call == "watch" ? "applewatch" : "waveform")
+            .scaledFont(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// Work a bot started from a group room: what it reports is posted
+    /// back there, so the line names the room, by its name when Hermes
+    /// lists it.
+    private var fromRoomLine: some View {
+        Label(roomName.map { AppLocalization.string("From the group chat “\($0)”") }
+                  ?? AppLocalization.string("From a group chat"),
+              systemImage: "person.3")
+            .scaledFont(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var roomName: String? {
+        let name = listedRoom?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? nil : name
+    }
+
+    /// The room as the rooms list shows it (kept from last time until Hermes
+    /// lists them); a disbanded one never opens, so it's left out.
+    private var listedRoom: GroupRoom? {
+        guard !item.room.isEmpty else { return nil }
+        return appState.shownGroupRooms.first(where: { $0.roomID == item.room && $0.disbandedAt == nil })
+    }
+
+    /// Opens the room it reports to, which Hermes still lists.
+    private var openRoomButton: some View {
+        Button {
+            guard let room = listedRoom else { return }
+            Haptics.light()
+            willOpen?()
+            Task { await appState.openGroupRoom(room) }
+        } label: {
+            Label(AppLocalization.string("Open the group chat"), systemImage: "person.3")
+                .frame(maxWidth: .infinity, minHeight: 36)
+        }
+        .buttonStyle(.settings)
+        .accessibilityIdentifier("botWork.openRoom.\(item.ref)")
+    }
+
+    /// The branch its own worktree is on, to merge once it's done. The
+    /// whole name wraps, at any text size; Copy Branch copies it.
+    private var branchLine: some View {
+        Label {
+            Text(verbatim: item.branch)
+                .scaledFont(.footnote.monospaced())
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "arrow.triangle.branch")
+                .scaledFont(.footnote)
+                .foregroundStyle(tint)
+        }
+        .contextMenu {
+            Button {
+                UIPasteboard.general.string = item.branch
+                Haptics.light()
+            } label: {
+                Label(AppLocalization.string("Copy Branch"), systemImage: "doc.on.doc")
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(AppLocalization.string("Branch \(item.branch)"))
+    }
+
+    /// How far its checklist is: a bar and "1 of 3".
+    private var progressBar: some View {
+        let total = max(1, item.checklist.count)
+        return HStack(spacing: 8) {
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.1))
+                    Capsule().fill(tint)
+                        .frame(width: proxy.size.width * CGFloat(item.doneCount) / CGFloat(total))
+                }
+            }
+            .frame(height: 4)
+            Text(AppLocalization.string("\(String(item.doneCount)) of \(String(item.checklist.count))"))
+                .scaledFont(.caption2.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(AppLocalization.string("\(String(item.doneCount)) of \(String(item.checklist.count))"))
+    }
+
+    /// Drawn as a chat's Tasks plan is (PlanItemRow), so a checklist reads
+    /// the same here and in the workstream's chat.
+    private var checklist: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(item.checklistPlan?.items ?? []) { line in
+                PlanItemRow(item: line, depth: 0)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.05)))
+    }
+
+    @ViewBuilder private var actions: some View {
+        if item.kind == .workstream {
+            let controls: [BotWorkItem.Action] = [.check, .continue, .stop].filter { item.actions.contains($0) }
+            if !controls.isEmpty {
+                // Side by side while every label fits on one line, each
+                // button as wide as its label needs ("Check first" was cut
+                // when they split the row equally); stacked otherwise, and
+                // always at accessibility Text Sizes.
+                let buttons = ForEach(controls, id: \.self) { action in
+                    controlButton(action, prominent: action == controls.first && action != .stop)
+                }
+                Group {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        VStack(spacing: 8) { buttons }
+                    } else {
+                        FittedRowOrStack(spacing: 8) { buttons }
+                    }
+                }
+                .disabled(isActing || !appState.isConnected)
+            }
+            if item.actions.contains(.send) {
+                replyField
+            }
+        }
+    }
+
+    /// Its chat, as a button at the top of the opened row.
+    private var openChatButton: some View {
+        Button {
+            Haptics.light()
+            willOpen?()
+            appState.openWorkstream(item, profile: profile)
+        } label: {
+            Label(AppLocalization.string("Open \(item.ref)’s chat"), systemImage: "bubble.left.and.bubble.right")
+                .frame(maxWidth: .infinity, minHeight: 36)
+        }
+        .buttonStyle(.settings)
+        .accessibilityIdentifier("botWork.open.\(item.ref)")
+    }
+
+    private func controlButton(_ action: BotWorkItem.Action, prominent: Bool) -> some View {
+        let title: String = {
+            switch action {
+            case .check: return AppLocalization.string("Check first")
+            case .continue: return AppLocalization.string("Continue")
+            default: return AppLocalization.string("Stop")
+            }
+        }()
+        let act: () -> Void = {
+            Haptics.light()
+            Task { await appState.actOnWorkstream(item, profile: profile, action: action) }
+        }
+        let text = Text(title)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+            .frame(maxWidth: .infinity)
+        // Settings' buttons; Stop the same capsule in red.
+        return Button(action: act) { text }
+            .buttonStyle(action == .stop ? SettingsButtonStyle.settingsDestructive
+                         : prominent ? SettingsButtonStyle.settingsPrimary : SettingsButtonStyle.settings)
+    }
+
+    private var replyField: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            TextField(AppLocalization.string("Reply to \(item.ref)…"), text: $reply, axis: .vertical)
+                .scaledFont(.body)
+                .lineLimit(2...6)
+                .padding(.vertical, 6)
+            Button {
+                let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else { return }
+                Task {
+                    if await appState.actOnWorkstream(item, profile: profile, action: .send, text: text) {
+                        reply = ""
+                    }
+                }
+            } label: {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Color.black.opacity(0.85))
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(Color.conduitAccent))
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 4)
+            .disabled(isActing || !appState.isConnected
+                      || reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .accessibilityLabel(AppLocalization.string("Send to \(item.ref)"))
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, 6)
+        .padding(.vertical, 4)
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color.primary.opacity(0.06)))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
+    }
+}
+
+/// Over a workstream's own chat when a restart cut it off: Continue or
+/// Check first, and what the plugin said when a tap here or the
+/// composer's Stop did nothing. A running or waiting workstream shows no
+/// bar: the composer's Stop stops it, and its approval card is in the chat.
+struct WorkstreamBar: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject var work: BotWorkStore
+    let profile: String
+    let item: BotWorkItem
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// Only after a restart cut it off: a workstream the user stopped
+    /// carries on from the Work panel or a reply in its chat.
+    private var controls: [BotWorkItem.Action] {
+        guard item.status == "interrupted" else { return [] }
+        return [.check, .continue].filter { item.actions.contains($0) }
+    }
+
+    var body: some View {
+        // A stack, not a Group, so the read runs while nothing shows. A
+        // compact pill under the title, not a strip across the chat; no
+        // room at all while neither it nor a refusal shows.
+        let refusal = work.refusal(profile, ref: item.ref)
+        VStack(spacing: 4) {
+            if !controls.isEmpty {
+                let layout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(spacing: 6)) : AnyLayout(HStackLayout(spacing: 10))
+                layout {
+                    HStack(spacing: 6) {
+                        Image(systemName: BotWorkLook.symbol(item))
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(BotWorkLook.tint(item))
+                            .accessibilityHidden(true)
+                        Text(item.needsYou ? AppLocalization.string("Needs you") : item.statusText)
+                            .scaledFont(.footnote.weight(.semibold))
+                            .foregroundStyle(item.needsYou ? Color.orange : Color.secondary)
+                            .lineLimit(1)
+                    }
+                    HStack(spacing: 6) {
+                        ForEach(controls, id: \.self) { action in
+                            barButton(action)
+                        }
+                    }
+                    .disabled(work.isActing(item.ref, profile: profile) || !appState.isConnected)
+                }
+                .padding(.leading, 14)
+                .padding(.trailing, 6)
+                .padding(.vertical, 5)
+                .conduitGlassSurface(cornerRadius: 20)
+                .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: false)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("workstream.bar")
+            }
+            if let refusal {
+                    Text(refusal)
+                        .scaledFont(.footnote)
+                        .foregroundStyle(Color.orange)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, controls.isEmpty && refusal == nil ? 0 : 4)
+        .refreshesBotWork(profile: profile)
+        .onDisappear { work.setRefusal(nil, profile: profile) }
+    }
+
+    private func barButton(_ action: BotWorkItem.Action) -> some View {
+        let title: String = {
+            switch action {
+            case .check: return AppLocalization.string("Check first")
+            case .continue: return AppLocalization.string("Continue")
+            default: return AppLocalization.string("Stop")
+            }
+        }()
+        let tint: Color = action == .stop ? .red : .conduitAccent
+        return Button {
+            Haptics.light()
+            Task { await appState.actOnWorkstream(item, profile: profile, action: action) }
+        } label: {
+            // A small capsule, with a full-size place to tap that doesn't
+            // make the pill around it taller.
+            Text(title)
+                .scaledFont(.footnote.weight(.semibold))
+                .foregroundStyle(tint)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(tint.opacity(0.15)))
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+                .padding(.vertical, -8)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// What shows over the open chat: the bar over one of a bot's workstreams
+/// while it needs a tap. Watches the bots' work itself, so the chat screen
+/// redraws only when this does.
+struct BotWorkHeader: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject var work: BotWorkStore
+
+    /// Reads for a bot's chat its list doesn't name yet, a few seconds
+    /// apart: a workstream the bot just started shows in one of them.
+    static let unmatchedReads = 4
+    static let unmatchedInterval: UInt64 = 3_000_000_000
+
+    var body: some View {
+        if appState.activeBotChatProfile != nil {
+            // Its work shows under the title.
+            EmptyView()
+        } else if let workstream = appState.activeWorkstream {
+            // One bar per workstream: another's refusal never shows on it.
+            WorkstreamBar(work: work, profile: workstream.profile, item: workstream.item)
+                .id("\(workstream.profile)\u{1F}\(workstream.item.ref)")
+        } else if let id = appState.activeSessionId, !id.isEmpty,
+                  appState.shownBotRoster.contains(where: { $0.name == appState.activeProfile }) {
+            // A chat on a bot that its last list didn't name: a workstream
+            // opened from a card, a link or a push before the list showed
+            // it. Read it again a few times, so its title line shows once
+            // it does.
+            let profile = appState.activeProfile
+            Color.clear
+                .frame(height: 0)
+                .task(id: "\(profile)\u{1F}\(id)") {
+                    // A workstream the list knows but doesn't show is a
+                    // resolved one, opened from a card or a link: its
+                    // Resolved page names it.
+                    if appState.isWorkstreamSession(id) {
+                        await appState.loadResolvedWork(profile: profile)
+                        return
+                    }
+                    for attempt in 0..<Self.unmatchedReads {
+                        if attempt > 0 {
+                            try? await Task.sleep(nanoseconds: Self.unmatchedInterval)
+                        }
+                        guard !Task.isCancelled else { return }
+                        await appState.refreshBotWork(profile: profile)
+                        if work.snapshot(profile)?.isOn == false { return }
+                    }
+                }
+        }
+    }
+}
+
+/// A workstream's brief in its chat: "Brief from Hermes", the task, and
+/// the user's words it answers, folded to a few lines until tapped.
+struct WorkstreamBriefCard: View {
+    let brief: WorkstreamBrief
+    let timestamp: String
+    /// The row's key in `disclosure`, so a rebuilt row stays open.
+    let disclosureID: String
+    @Environment(\.chatRowDisclosure) private var disclosure
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Nil until tapped here: a rebuilt row takes what the reader chose
+    /// from `disclosure`.
+    @State private var tapped: Bool?
+
+    private var expanded: Bool {
+        tapped ?? disclosure?.isExpanded(disclosureID, default: false) ?? false
+    }
+
+    var body: some View {
+        Button {
+            Haptics.selection()
+            let opens = !expanded
+            // Tells the scroller first, as every row that opens does.
+            disclosure?.willToggle(disclosureID, to: opens)
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { tapped = opens }
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text(AppLocalization.string("Brief from \(brief.bot)"))
+                        .scaledFont(.caption.weight(.bold))
+                        .textCase(.uppercase)
+                        .foregroundStyle(Color.conduitAccent)
+                    Spacer(minLength: 4)
+                    Text(expanded ? AppLocalization.string("Show less") : AppLocalization.string("Show all"))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                        .scaledFont(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
+                if expanded {
+                    MarkdownText(source: brief.task)
+                        .scaledFont(.subheadline)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(BotWorkLook.rendered(brief.task))
+                        .scaledFont(.subheadline)
+                        .foregroundStyle(Color.primary)
+                        .lineLimit(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if let words = brief.userWords {
+                    Text(AppLocalization.string("For: “\(words)”"))
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(expanded ? nil : 1)
+                }
+                if let time = MessageTimestampFormatter.displayString(for: timestamp) {
+                    Text(time)
+                        .scaledFont(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .multilineTextAlignment(.leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.conduitAccent.opacity(0.07))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.conduitAccent.opacity(0.18), lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: 560, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityValue(expanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
+        .accessibilityHint(expanded ? AppLocalization.string("Shows less") : AppLocalization.string("Shows more"))
+        .accessibilityIdentifier("workstream.brief")
+    }
+}
+
+/// Under a Bot Chat's "Started W3" card: where that workstream is now, as
+/// the bot's last list says. Watches the bots' work itself, so the
+/// transcript row redraws only when this does.
+struct WorkStartStatusLine: View {
+    @ObservedObject var work: BotWorkStore
+    let profile: String
+    let ref: String
+    /// What the card said before the list named the workstream.
+    var fallback: String?
+
+    private var item: BotWorkItem? {
+        work.snapshot(profile)?.items.first { $0.ref == ref }
+            ?? work.resolvedList(profile)?.items.first { $0.ref == ref }
+    }
+
+    var body: some View {
+        if let item {
+            let detail = (item.doing ?? (item.result.isEmpty ? nil : String(BotWorkLook.rendered(item.result).characters)))?
+                .replacingOccurrences(of: "\n", with: " ")
+            HStack(spacing: 5) {
+                Image(systemName: BotWorkLook.symbol(item))
+                    .scaledFont(.caption2.weight(.bold))
+                    .foregroundStyle(BotWorkLook.tint(item))
+                    .accessibilityHidden(true)
+                Text(detail.map { "\(item.statusText) · \($0)" } ?? item.statusText)
+                    .scaledFont(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+        } else if let fallback {
+            Text(fallback)
+                .scaledFont(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+    }
+}
+
+/// A link to a workstream in a Bot Chat reply, drawn as a card under it:
+/// its mark, ref and task, where it is now, and a tap opens its chat.
+struct BotWorkLinkCard: View {
+    @ObservedObject var work: BotWorkStore
+    let link: BotWorkLinks.Link
+    let profile: String
+    let open: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var item: BotWorkItem? {
+        work.snapshot(profile)?.items.first { $0.ref == link.ref }
+            ?? work.resolvedList(profile)?.items.first { $0.ref == link.ref }
+    }
+
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 12) {
+                let item = item
+                Image(systemName: item.map(BotWorkLook.symbol) ?? "arrow.triangle.branch")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(item.map(BotWorkLook.tint) ?? .conduitAccent)
+                    .frame(width: 30, height: 30)
+                    .background((item.map(BotWorkLook.tint) ?? .conduitAccent).opacity(0.16), in: Circle())
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(verbatim: link.ref)
+                            .scaledFont(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        Text(item?.shownTitle ?? AppLocalization.string("Open \(link.ref)’s chat"))
+                            .scaledFont(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    }
+                    WorkStartStatusLine(work: work, profile: profile, ref: link.ref)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.primary.opacity(0.06)))
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(AppLocalization.string("Open \(link.ref)’s chat"))
+        .accessibilityIdentifier("botWork.link.\(link.ref)")
+    }
+}
+
+/// A workstream's approval on its Work panel card: what it wants to run,
+/// with Approve and Deny. Its chat keeps the same card, so either answers
+/// it. Shows nothing while none can be read.
+private struct WorkstreamApprovalBox: View {
+    @EnvironmentObject private var appState: AppState
+    let item: BotWorkItem
+    let profile: String
+    let isActing: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        // The plugin reads it from Hermes with the list: only one Hermes
+        // names by its request, which an answer reaches alone.
+        if let approval = item.approval {
+            VStack(alignment: .leading, spacing: 10) {
+                if !approval.description.isEmpty {
+                    // Drawn as the chat's card draws it, hidden characters shown.
+                    Text(ApprovalDisplayText.revealingHidden(HermesApprovalText.description(approval.description)))
+                        .scaledFont(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.primary)
+                }
+                if !approval.command.isEmpty {
+                    // Whole, as written: Approve approves what it shows.
+                    Text(ApprovalDisplayText.revealingHidden(HermesApprovalText.command(approval.command)))
+                        .scaledFont(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.primary.opacity(0.06)))
+                }
+                let layout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+                if !approval.isApprovable {
+                    Text(AppLocalization.string("This card can’t show all of it. Approve it in its chat, or deny it here."))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                layout {
+                    if approval.isApprovable {
+                        answerButton(approval, AppLocalization.string("Approve"), approve: true)
+                    }
+                    answerButton(approval, AppLocalization.string("Deny"), approve: false)
+                }
+                .disabled(isActing || !appState.isConnected)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("botWork.approval.\(item.ref)")
+        }
+    }
+
+    private func answerButton(_ approval: BotWorkItem.Approval, _ title: String, approve: Bool) -> some View {
+        let prominent = approve
+        return Button {
+            Haptics.light()
+            Task { await appState.answerWorkstreamApproval(approval, item: item, profile: profile, approve: approve) }
+        } label: {
+            Text(title)
+                .scaledFont(.subheadline.weight(.semibold))
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .foregroundStyle(prominent ? Color.black.opacity(0.85) : Color.red)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(prominent ? Color.orange : Color.red.opacity(0.12))
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Buttons in a row while all their labels fit on one line, each as wide
+/// as its label plus an even share of the room left; one under another
+/// otherwise. (An HStack of full-width buttons splits the row equally, so
+/// the widest label, "Check first", was cut while the others had room.)
+struct FittedRowOrStack: Layout {
+    var spacing: CGFloat = 8
+
+    private func ideals(_ subviews: Subviews) -> [CGFloat] {
+        subviews.map { $0.sizeThatFits(.unspecified).width }
+    }
+
+    private func gaps(_ subviews: Subviews) -> CGFloat {
+        spacing * CGFloat(max(subviews.count - 1, 0))
+    }
+
+    /// Each button's width in the row, or nil when they don't fit in one.
+    private func rowWidths(_ width: CGFloat?, _ subviews: Subviews) -> [CGFloat]? {
+        let ideal = ideals(subviews)
+        guard let width else { return ideal }
+        let room = width - gaps(subviews) - ideal.reduce(0, +)
+        guard room >= 0, !subviews.isEmpty else { return nil }
+        let extra = room / CGFloat(subviews.count)
+        return ideal.map { $0 + extra }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        if let widths = rowWidths(proposal.width, subviews) {
+            let height = zip(subviews, widths)
+                .map { $0.sizeThatFits(ProposedViewSize(width: $1, height: nil)).height }.max() ?? 0
+            return CGSize(width: proposal.width ?? widths.reduce(0, +) + gaps(subviews), height: height)
+        }
+        let width = proposal.width ?? 0
+        let heights = subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height }
+        return CGSize(width: width, height: heights.reduce(0, +) + gaps(subviews))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        if let widths = rowWidths(bounds.width, subviews) {
+            var x = bounds.minX
+            for (subview, width) in zip(subviews, widths) {
+                subview.place(at: CGPoint(x: x, y: bounds.minY),
+                              proposal: ProposedViewSize(width: width, height: bounds.height))
+                x += width + spacing
+            }
+        } else {
+            var y = bounds.minY
+            for subview in subviews {
+                let height = subview.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil)).height
+                subview.place(at: CGPoint(x: bounds.minX, y: y),
+                              proposal: ProposedViewSize(width: bounds.width, height: height))
+                y += height + spacing
+            }
+        }
+    }
+}

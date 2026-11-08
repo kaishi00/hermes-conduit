@@ -92,6 +92,13 @@ extension AppState {
                 return [ArtifactSource(profile: activeProfile, sessionIDs: ids)]
             }
             return [ArtifactSource(profile: bot, sessionIDs: ids, label: botLabel(bot), isBotChat: true)]
+        case .bot(let name):
+            // The bot's whole profile, as `.profile` reads the one in use.
+            let bot = botRoster.first { Self.profilesMatch($0.name, name) }
+            let inUse = Self.profilesMatch(name, activeProfile)
+            return [ArtifactSource(profile: name, sessionIDs: [],
+                                   label: inUse ? nil : (bot?.displayLabel ?? profileDisplayName(name)),
+                                   botChatIDs: bot.map(Self.botChatIDs) ?? [], botLabel: bot?.displayLabel)]
         case .profile:
             // The profile in use is read even when All leaves it out.
             var listed = [activeProfile]

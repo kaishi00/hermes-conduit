@@ -45,6 +45,23 @@ struct HermesRing: Equatable {
 /// capitalized profile id.
 enum HermesCallerName {
     static let fallback = "Hermes"
+    /// The address a call from a profile rings from, on the iPhone and the
+    /// Watch: `hermes+<profile>@hermesconduit.app`, one per bot. A Focus
+    /// lets a call through only from a caller it matches to a contact in
+    /// its allowed people, so a user who saves a bot's contact (Settings >
+    /// Calls from Hermes) can let that bot ring through one Focus and not
+    /// others, and the call screen shows the contact's name, which is the
+    /// bot's. A call that names no profile (a sealed push on the Watch)
+    /// rings from `hermes@hermesconduit.app`, which no contact holds.
+    /// Nothing is ever sent to these addresses (#1606).
+    static func contactAddress(profile: String?) -> String {
+        let id = (profile ?? "").lowercased().unicodeScalars.filter { allowedAddressCharacters.contains($0) }
+        guard !id.isEmpty else { return "hermes@\(addressDomain)" }
+        return "hermes+\(String(id).prefix(64))@\(addressDomain)"
+    }
+
+    private static let addressDomain = "hermesconduit.app"
+    private static let allowedAddressCharacters = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789._-")
     static let maximumNameCharacters = 40
 
     /// `mainName`: the name the user gave the main profile on the call's
@@ -697,3 +714,18 @@ enum HermesRingHandoffKey {
         return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
     }
 }
+
+#if canImport(CallKit)
+import CallKit
+
+extension HermesCallerName {
+    /// Who a call from this profile rings from in CallKit, on the iPhone
+    /// and the Watch: the address its bot's contact holds (#1606).
+    static func callHandle(profile: String?) -> CXHandle {
+        CXHandle(type: .emailAddress, value: contactAddress(profile: profile))
+    }
+
+    /// The handle types both CallKit providers take.
+    static let handleTypes: Set<CXHandle.HandleType> = [.emailAddress]
+}
+#endif

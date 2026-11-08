@@ -1852,6 +1852,35 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertFalse(harness.appState.isGPTLiveEnabled, "a stale list never changes the saved mode")
     }
 
+    /// Issue 1935: a live mode turned on during a classic conversation in
+    /// the car (Settings > Voice, an agent's config write) ends it, so the
+    /// call never goes on listening behind the new mode's idle screen.
+    func testTurningOnALiveModeDuringAClassicCallEndsTheCall() async {
+        for enable in [
+            { (appState: AppState) in appState.setGeminiLiveEnabled(true) },
+            { (appState: AppState) in appState.setQwenLiveEnabled(true) },
+            { (appState: AppState) in appState.setGPTLiveEnabled(true) },
+            { (appState: AppState) in appState.setGrokLiveEnabled(true) },
+        ] {
+            let harness = makeHarness()
+            harness.coordinator.handleConnect(harness.spy)
+            harness.openVoice(session: "session-1")
+            await harness.controller.startListening()
+            XCTAssertTrue(harness.controller.hasLiveVoiceSession)
+            XCTAssertEqual(harness.coordinator.observedVoiceMode, .classic)
+
+            enable(harness.appState)
+            // The setters tell `CarPlayVoiceCoordinator.shared`; the
+            // harness's own coordinator gets the same notice here.
+            harness.coordinator.voiceModeChanged(in: harness.appState)
+
+            XCTAssertFalse(harness.controller.hasLiveVoiceSession, "the classic call ends with the switch")
+            XCTAssertFalse(harness.appState.showVoiceSheet)
+            XCTAssertNotEqual(harness.coordinator.observedVoiceMode, .classic, "the car shows the new mode")
+            harness.coordinator.handleDisconnect()
+        }
+    }
+
     func testPickingAVoiceModeFromTheCarSwitchesTheProfileMode() async {
         let harness = makeHarness()
         harness.coordinator.handleConnect(harness.spy)
@@ -3507,5 +3536,74 @@ extension CarPlayVoiceCoordinatorTests {
 
         XCTAssertEqual(opens, 2, "the driver's pick is tried once more")
         XCTAssertEqual(harness.activations.last, .ready, "\(harness.activations)")
+    }
+}
+
+// MARK: - Handlers on the main thread
+
+extension CarPlayVoiceTemplateFactoryTests {
+    /// CarPlay called the voice template's End from a dispatch worker on
+    /// iOS 26, and ending the call ran SwiftUI's update on that worker's
+    /// 512 KB stack until it overflowed: every template handler reaches the
+    /// app on the main thread.
+    func testATemplateHandlerCalledOffTheMainThreadRunsOnTheMainThread() async {
+        let ran = expectation(description: "handler ran")
+        var ranOnMain: Bool?
+        DispatchQueue.global().async {
+            CarPlayMainThread.run {
+                ranOnMain = Thread.isMainThread
+                ran.fulfill()
+            }
+        }
+        await fulfillment(of: [ran], timeout: 5)
+        XCTAssertEqual(ranOnMain, true)
+    }
+
+    func testATemplateHandlerOnTheMainThreadRunsAtOnce() {
+        var ran = false
+        CarPlayMainThread.run { ran = true }
+        XCTAssertTrue(ran, "a tap on the main thread acts in the same turn")
+    }
+
+    /// The handler CarPlay holds, not just the helper: a chat row tapped
+    /// from CarPlay's worker opens the chat on the main thread.
+    func testAChatRowTappedOffTheMainThreadOpensOnTheMainThread() async throws {
+        let opened = expectation(description: "chat opened")
+        var openedOnMain: Bool?
+        let list = CarPlayChatList(
+            pinned: [],
+            recent: [CarPlayChatRow(sessionID: "r", storedSessionID: nil, title: "Recent chat", detail: "now")]
+        )
+        let template = CarPlayBrowseTemplateFactory.chatsTemplate(
+            chats: list,
+            handlers: CarPlayBrowseHandlers(openChat: { _ in
+                openedOnMain = Thread.isMainThread
+                opened.fulfill()
+            })
+        )
+        let row = try XCTUnwrap(template.sections.last?.items.first as? CPListItem)
+        DispatchQueue.global().async { row.handler?(row, {}) }
+        await fulfillment(of: [opened], timeout: 5)
+        XCTAssertEqual(openedOnMain, true)
+    }
+
+    /// A tap on the main thread waits behind one CarPlay already queued
+    /// from its worker, so End then Listen never runs as Listen then End.
+    func testAMainThreadTapNeverOvertakesAQueuedOne() async {
+        var order: [String] = []
+        let queuedEnd = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            CarPlayMainThread.run { order.append("end") }
+            queuedEnd.signal()
+        }
+        queuedEnd.wait()
+        let ran = expectation(description: "both ran")
+        CarPlayMainThread.run {
+            order.append("listen")
+            ran.fulfill()
+        }
+        XCTAssertEqual(order, [], "the main-thread tap waits its turn")
+        await fulfillment(of: [ran], timeout: 5)
+        XCTAssertEqual(order, ["end", "listen"])
     }
 }

@@ -1,3 +1,5 @@
+import CoreImage
+import UIKit
 import UniformTypeIdentifiers
 import XCTest
 @testable import Conduit
@@ -343,6 +345,243 @@ final class ShareDraftTests: XCTestCase {
             XCTAssertTrue(FileManager.default.fileExists(atPath: staging.url.appendingPathComponent(attachment.storedName).path))
         }
         XCTAssertTrue(result.problems.isEmpty)
+    }
+
+    /// The screenshot editor's Share offers the picture only as an image
+    /// object, under UIKit's own type (#1747): it's attached as a PNG.
+    func testAPictureOfferedOnlyAsAnImageObjectIsAttachedAsPNG() async throws {
+        let (collector, staging) = try collector()
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+        let archived = try NSKeyedArchiver.archivedData(withRootObject: image, requiringSecureCoding: true)
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: ShareDraftCollector.imageObjectType, visibility: .all) { completion in
+            completion(archived, nil)
+            return nil
+        }
+        XCTAssertTrue(provider.canLoadObject(ofClass: UIImage.self), "UIKit reads its own image type")
+        XCTAssertNil(ShareDraftCollector.fileType(of: provider), "an archived image object is not a picture file")
+        XCTAssertEqual(ShareDraftCollector.kind(of: provider), .file)
+
+        let result = await collector.collect(providers: [provider])
+
+        XCTAssertEqual(result.problems, [])
+        XCTAssertEqual(result.attachments.map(\.storedName), ["1.png"])
+        XCTAssertEqual(result.attachments.map(\.displayName), ["photo.png"])
+        XCTAssertEqual(result.attachments.first?.typeIdentifier, UTType.png.identifier)
+        let stored = try Data(contentsOf: staging.url.appendingPathComponent("1.png"))
+        XCTAssertEqual(Array(stored.prefix(4)), [0x89, 0x50, 0x4E, 0x47], "written as PNG")
+
+        // A suggested name keeps its stem and takes .png, multi-dot names too.
+        for (suggested, expected) in [("shot.jpg", "shot.png"), ("photo.edited.heic", "photo.edited.png")] {
+            let (named, _) = try self.collector()
+            provider.suggestedName = suggested
+            let renamed = await named.collect(providers: [provider])
+            XCTAssertEqual(renamed.attachments.map(\.displayName), [expected])
+            XCTAssertEqual(renamed.attachments.map(\.storedName), ["1.png"])
+        }
+    }
+
+    /// A provider that also offers the picture as a file is read as that
+    /// file, never as UIKit's archived object.
+    func testAPictureFileWinsOverItsImageObject() async throws {
+        let (collector, _) = try collector()
+        let provider = try fileProvider(named: "shot.png", bytes: 10, type: .png)
+        provider.registerDataRepresentation(forTypeIdentifier: ShareDraftCollector.imageObjectType, visibility: .all) { completion in
+            completion(Data([1]), nil)
+            return nil
+        }
+        XCTAssertEqual(ShareDraftCollector.fileType(of: provider), .png)
+
+        let result = await collector.collect(providers: [provider])
+
+        XCTAssertEqual(result.attachments.map(\.displayName), ["shot.png"])
+        XCTAssertEqual(result.attachments.map(\.byteCount), [10], "the PNG file, not the image object")
+    }
+
+    private func redSquare() -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+    }
+
+    private struct ProviderFailure: LocalizedError {
+        var errorDescription: String? { "The picture went away." }
+    }
+
+    /// A provider that lists a picture file it can't hand over.
+    private func brokenPictureProvider(named name: String) -> NSItemProvider {
+        let provider = NSItemProvider()
+        provider.registerFileRepresentation(forTypeIdentifier: UTType.png.identifier, fileOptions: [], visibility: .all) { completion in
+            completion(nil, false, ProviderFailure())
+            return nil
+        }
+        provider.suggestedName = name
+        return provider
+    }
+
+    /// The screenshot editor on build 251 (issue 1747): the provider lists
+    /// a PNG but can't hand its file over. The picture is still read, as
+    /// the image object it also offers.
+    func testAPictureWhoseFileCantBeReadIsTakenAsItsImageObject() async throws {
+        let (collector, staging) = try collector()
+        let provider = brokenPictureProvider(named: "Screenshot 2026-11-05 at 13.19.47.png")
+        let archived = try NSKeyedArchiver.archivedData(withRootObject: redSquare(), requiringSecureCoding: true)
+        provider.registerDataRepresentation(forTypeIdentifier: ShareDraftCollector.imageObjectType, visibility: .all) { completion in
+            completion(archived, nil)
+            return nil
+        }
+        XCTAssertEqual(ShareDraftCollector.fileType(of: provider), .png)
+
+        let result = await collector.collect(providers: [provider])
+
+        XCTAssertEqual(result.problems, [])
+        XCTAssertEqual(result.attachments.map(\.storedName), ["1.png"])
+        XCTAssertEqual(result.attachments.map(\.displayName), ["Screenshot 2026-11-05 at 13.19.47.png"])
+        let stored = try Data(contentsOf: staging.url.appendingPathComponent("1.png"))
+        XCTAssertEqual(Array(stored.prefix(4)), [0x89, 0x50, 0x4E, 0x47], "written as PNG")
+    }
+
+    /// A document whose file fails is never replaced by a picture of it.
+    func testADocumentWhoseFileFailsIsNotTakenAsItsPreview() async throws {
+        let (collector, _) = try collector()
+        let provider = NSItemProvider()
+        provider.registerFileRepresentation(forTypeIdentifier: UTType.pdf.identifier, fileOptions: [], visibility: .all) { completion in
+            completion(nil, false, ProviderFailure())
+            return nil
+        }
+        let archived = try NSKeyedArchiver.archivedData(withRootObject: redSquare(), requiringSecureCoding: true)
+        provider.registerDataRepresentation(forTypeIdentifier: ShareDraftCollector.imageObjectType, visibility: .all) { completion in
+            completion(archived, nil)
+            return nil
+        }
+        provider.suggestedName = "Report.pdf"
+
+        let result = await collector.collect(providers: [provider])
+
+        XCTAssertTrue(result.attachments.isEmpty, "\(result.attachments)")
+        XCTAssertEqual(result.problems.count, 1)
+    }
+
+    /// When every way fails, the sheet says so with the system's reason.
+    func testAPictureNoWayReadsIsLeftOutWithTheReason() async throws {
+        let (collector, staging) = try collector()
+
+        let result = await collector.collect(providers: [brokenPictureProvider(named: "shot.png")])
+
+        XCTAssertTrue(result.attachments.isEmpty)
+        guard case .unreadable(let name, let reason)? = result.problems.first, result.problems.count == 1 else {
+            return XCTFail("\(result.problems)")
+        }
+        XCTAssertEqual(name, "shot.png")
+        XCTAssertFalse(reason?.isEmpty ?? true, "the system's reason is kept")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: staging.url.path), [], "nothing left on disk")
+    }
+
+    /// A picture with no bitmap of its own (drawn from a CIImage) has no
+    /// pngData(); it is drawn once and that is written.
+    func testAPictureWithoutABitmapIsDrawnBeforeItIsWritten() throws {
+        let ciImage = CIImage(color: CIColor(red: 1, green: 0, blue: 0)).cropped(to: CGRect(x: 0, y: 0, width: 4, height: 4))
+        let data = try XCTUnwrap(ProviderPicture.pngData(UIImage(ciImage: ciImage)))
+        XCTAssertEqual(Array(data.prefix(4)), [0x89, 0x50, 0x4E, 0x47])
+        let decoded = try XCTUnwrap(UIImage(data: data)?.cgImage)
+        XCTAssertEqual(decoded.width, 4 * Int(UIImage(ciImage: ciImage).scale), "the whole picture is drawn")
+        // Its pixel is the red that was drawn, not a blank redraw.
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let drawn = pixel.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.draw(decoded, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+            return true
+        }
+        XCTAssertTrue(drawn)
+        XCTAssertGreaterThan(pixel[0], 200, "red")
+        XCTAssertLessThan(pixel[1], 60, "not green")
+        XCTAssertEqual(pixel[3], 255, "opaque")
+        XCTAssertNotNil(ProviderPicture.pngData(redSquare()))
+    }
+
+    /// A provider whose file can't be handed over whatever it registers,
+    /// as the screenshot editor's was on build 251.
+    private final class FileFailingProvider: NSItemProvider {
+        override func loadFileRepresentation(forTypeIdentifier typeIdentifier: String, completionHandler: @escaping @Sendable (URL?, Error?) -> Void) -> Progress {
+            completionHandler(nil, ProviderFailure())
+            return Progress(totalUnitCount: 0)
+        }
+    }
+
+    private func picturePNG() throws -> Data {
+        try XCTUnwrap(redSquare().pngData())
+    }
+
+    /// When the file fails, the picture's own bytes are taken next, as
+    /// they are: a PNG stays the PNG it was.
+    func testAPictureWhoseFileFailsIsTakenAsItsBytes() async throws {
+        let (collector, staging) = try collector()
+        let png = try picturePNG()
+        let provider = FileFailingProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.png.identifier, visibility: .all) { completion in
+            completion(png, nil)
+            return nil
+        }
+        provider.suggestedName = "shot.png"
+
+        let result = await collector.collect(providers: [provider])
+
+        XCTAssertEqual(result.problems, [])
+        XCTAssertEqual(result.attachments.map(\.displayName), ["shot.png"])
+        XCTAssertEqual(result.attachments.map(\.byteCount), [Int64(png.count)])
+        XCTAssertEqual(try Data(contentsOf: staging.url.appendingPathComponent("1.png")), png, "the bytes as handed over")
+    }
+
+    /// Bytes over the limit are refused as too large, not decoded, and
+    /// nothing else is tried: the same picture is no smaller another way.
+    func testAPictureWhoseBytesAreOverTheLimitIsTooLarge() async throws {
+        let png = try picturePNG()
+        let (collector, staging) = try collector(fileLimit: Int64(png.count) - 1)
+        let provider = FileFailingProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.png.identifier, visibility: .all) { completion in
+            completion(png, nil)
+            return nil
+        }
+        provider.suggestedName = "shot.png"
+
+        let result = await collector.collect(providers: [provider])
+
+        XCTAssertTrue(result.attachments.isEmpty)
+        XCTAssertEqual(result.problems, [.fileTooLarge(name: "shot.png", limitBytes: Int64(png.count) - 1)])
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: staging.url.path), [], "nothing left on disk")
+    }
+
+    /// Bytes that aren't a picture, or whose header claims more pixels
+    /// than a redraw may take, are not taken as one.
+    func testPictureBytesMustDecodeWithinTheBound() throws {
+        XCTAssertTrue(ProviderPicture.decodes(try picturePNG()))
+        XCTAssertFalse(ProviderPicture.decodes(Data(repeating: 7, count: 64)))
+        XCTAssertFalse(ProviderPicture.decodes(Self.pngHeader(width: 20_000, height: 20_000)), "400 megapixels is never decoded")
+    }
+
+    /// A PNG signature and header chunk alone: enough for ImageIO to read
+    /// the size it claims.
+    private static func pngHeader(width: UInt32, height: UInt32) -> Data {
+        func bigEndian(_ value: UInt32) -> [UInt8] { [24, 16, 8, 0].map { UInt8((value >> $0) & 0xFF) } }
+        func crc32(_ bytes: [UInt8]) -> UInt32 {
+            var crc: UInt32 = 0xFFFF_FFFF
+            for byte in bytes {
+                crc ^= UInt32(byte)
+                for _ in 0..<8 { crc = (crc >> 1) ^ (0xEDB8_8320 & (0 &- (crc & 1))) }
+            }
+            return ~crc
+        }
+        let chunk: [UInt8] = Array("IHDR".utf8) + bigEndian(width) + bigEndian(height) + [8, 6, 0, 0, 0]
+        var bytes: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+        bytes += bigEndian(13) + chunk + bigEndian(crc32(chunk))
+        return Data(bytes)
     }
 
     func testCapsLeaveFilesOutAndSayWhy() async throws {

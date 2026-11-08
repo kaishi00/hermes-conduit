@@ -18,36 +18,38 @@ struct KanbanBoardFilterSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Assignee") {
-                    Picker("Assignee", selection: assigneeBinding) {
-                        Text("All Profiles").tag(String?.none)
-                        ForEach(assignees, id: \.self) { name in
-                            Text(name).tag(String?.some(name))
-                        }
+            SettingsDetailContainer {
+                ConduitSettingsSection(title: AppLocalization.string("Assignee"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
+                    ConduitMenuPicker(
+                        value: assigneeBinding.wrappedValue,
+                        choices: [(id: String?.none, title: AppLocalization.string("All Profiles"))]
+                            + assignees.map { (id: String?.some($0), title: $0) },
+                        onSelect: { assigneeBinding.wrappedValue = $0 }
+                    ) {
+                        Text("Assignee").foregroundStyle(.secondary)
                     }
-                    .pickerStyle(.menu)
                 }
                 if !tenants.isEmpty {
-                    Section("Tenant") {
-                        Picker("Tenant", selection: tenantBinding) {
-                            Text("All Tenants").tag(String?.none)
-                            ForEach(tenants, id: \.self) { name in
-                                Text(name).tag(String?.some(name))
-                            }
+                    ConduitSettingsSection(title: AppLocalization.string("Tenant"), symbol: "person.2", tint: .conduitAccent) {
+                        ConduitMenuPicker(
+                            value: tenantBinding.wrappedValue,
+                            choices: [(id: String?.none, title: AppLocalization.string("All Tenants"))]
+                                + tenants.map { (id: String?.some($0), title: $0) },
+                            onSelect: { tenantBinding.wrappedValue = $0 }
+                        ) {
+                            Text("Tenant").foregroundStyle(.secondary)
                         }
-                        .pickerStyle(.menu)
                     }
                 }
-                Section {
+                SettingsCard {
                     Toggle("Show Archived", isOn: $includeArchived)
                         .accessibilityLabel("Show archived tasks")
                     Toggle("Group Running by Profile", isOn: $groupRunningByProfile)
                         .accessibilityLabel("Group the Running lane by assignee")
-                } footer: {
                     Text("Group Running by Profile is a saved preference. Show Archived applies to the board fetch. Assignee and tenant filters are temporary until changed.")
+                        .settingsCaption()
                 }
-                Section {
+                SettingsCard {
                     Button("Reset Filters") {
                         // Transient filters only: the persisted grouping
                         // preference is NOT part of a transient reset.
@@ -57,6 +59,9 @@ struct KanbanBoardFilterSheet: View {
                     }
                 }
             }
+            // Text fields as Settings draws them.
+            .textFieldStyle(.roundedBorder)
+            .tint(.conduitAccent)
             .navigationTitle("Filters")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

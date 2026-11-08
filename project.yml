@@ -71,6 +71,15 @@ targets:
         ENABLE_USER_SCRIPT_SANDBOXING: NO
     dependencies:
       - package: WebRTC
+      # Image Playground makes bot, profile and group pictures on iOS 18.1+
+      # (ImagePlaygroundPicture.swift); weak, since iOS 17 has no framework.
+      - sdk: ImagePlayground.framework
+        weak: true
+      # Lock Screen progress (LiveTurnActivities.swift); weak, since macOS
+      # 14 has no ActivityKit for iPhone and iPad apps and Conduit didn't
+      # launch there (issue 1877). Never touched on a Mac.
+      - sdk: ActivityKit.framework
+        weak: true
       - target: ConduitWatch
       # Embedded as Conduit.app/PlugIns/ConduitNotificationService.appex.
       - target: ConduitNotificationService
@@ -126,6 +135,9 @@ targets:
       # Hermes' approval texts in the user's language (#1589), for the
       # Watch's approval card.
       - path: Shared/Approvals
+      # Date's <= and >= without Foundation's back-deployed ones
+      # (Shared/DateOrder/DateOrder.swift); in every shipped target.
+      - path: Shared/DateOrder
       # GPT-Live's events, which the Watch reads and answers through the
       # host's audio bridge (designs/apple-watch-gpt-live.md).
       - path: Conduit/Voice/GPTLive/GPTLiveProtocol.swift
@@ -169,6 +181,7 @@ targets:
           - "Info.plist"
       # The control's intent runs in the app, so both build it.
       - path: ConduitWatch/TalkToHermesIntent.swift
+      - path: Shared/DateOrder
       - path: ConduitWatch/Localizable.xcstrings
         buildPhase: resources
     settings:
@@ -276,6 +289,7 @@ targets:
       - path: ConduitWidgets/Resources/Assets.xcassets
         buildPhase: resources
       - path: Shared/Widgets
+      - path: Shared/DateOrder
       - path: Conduit/Localizable.xcstrings
         buildPhase: resources
     settings:
@@ -291,6 +305,11 @@ targets:
         SKIP_INSTALL: YES
         TARGETED_DEVICE_FAMILY: "1,2"
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+    dependencies:
+      # The Live Activity's views; weak, so the launcher widgets still load
+      # on macOS 14, which has no ActivityKit for iPhone apps (issue 1877).
+      - sdk: ActivityKit.framework
+        weak: true
     postBuildScripts:
       - name: Strip draft localizations
         basedOnDependencyAnalysis: false
@@ -314,6 +333,7 @@ targets:
           - "Info.plist"
           - "ConduitShareExtension.entitlements"
       - path: Shared/ShareDraft
+      - path: Shared/DateOrder
       # The widgets' chat index, read only.
       - path: Shared/Widgets/WidgetSnapshot.swift
       - path: Shared/Widgets/WidgetSnapshotStore.swift

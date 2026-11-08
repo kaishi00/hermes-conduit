@@ -3,8 +3,9 @@
 //  Conduit
 //
 //  Voice settings for how live calls sound (#290): a greeting when a call
-//  connects, the tone, answer length, backchannels, and a look at what
-//  Conduit sends the voice model.
+//  connects, the tone, answer length, backchannels, the user's own
+//  instructions (issue 583), and a look at what Conduit sends the voice
+//  model.
 //
 
 import SwiftUI
@@ -15,8 +16,8 @@ struct LiveVoiceInstructionsPreviewContent: Equatable {
     var mode: String
     var instructions: String
     var openingTurn: String?
-    /// GPT-Live's host plugin asks for the greeting itself.
-    var openingIsHostSide = false
+
+    var isLocalLive: Bool { mode == "Local Live" }
 }
 
 /// What Voice settings needs to show the live call style.
@@ -40,10 +41,13 @@ struct LiveVoiceStyleSettingsSection: View {
     @State private var answerLength: LiveVoiceAnswerLength
     @State private var backchannels: Bool
     @State private var asksBeforeSending: Bool
+    @State private var extraInstructions: String
     @State private var showsPreview = false
     @State private var greetingSave: Task<Void, Never>?
     /// The typed greeting not saved yet, pinned to its style and profile.
     @State private var pendingSave: (() -> Void)?
+    /// The profile the pending save goes to.
+    @State private var pendingProfile: String?
     /// The style this view last saved, so its own change isn't mistaken
     /// for one made elsewhere (another profile).
     @State private var lastSaved: LiveVoiceStyle?
@@ -56,6 +60,7 @@ struct LiveVoiceStyleSettingsSection: View {
         _answerLength = State(initialValue: model.style.answerLength)
         _backchannels = State(initialValue: model.style.backchannels)
         _asksBeforeSending = State(initialValue: model.style.asksBeforeSending)
+        _extraInstructions = State(initialValue: model.style.extraInstructions ?? "")
     }
 
     private var style: LiveVoiceStyle {
@@ -64,8 +69,31 @@ struct LiveVoiceStyleSettingsSection: View {
             backchannels: backchannels,
             greeting: greets ? LiveVoiceStyle.cleanedGreeting(greeting) : nil,
             answerLength: answerLength,
-            asksBeforeSending: asksBeforeSending
+            asksBeforeSending: asksBeforeSending,
+            extraInstructions: LiveVoiceStyle.cleanedExtraInstructions(extraInstructions)
         )
+    }
+
+    /// Saves typed text once typing pauses, not on every keystroke: the
+    /// style as typed, to the profile it was typed in, even if the section
+    /// shows another one by then.
+    private func scheduleTypedSave() {
+        greetingSave?.cancel()
+        let pending = style
+        // Already stored (a resync after a profile switch, or typed back).
+        guard pending != model.style else {
+            pendingSave = nil
+            return
+        }
+        let setStyle = model.setStyle
+        lastSaved = pending
+        pendingProfile = model.profile
+        pendingSave = { setStyle(pending) }
+        greetingSave = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled else { return }
+            flushPendingSave()
+        }
     }
 
     /// Saves the typed greeting now, to the profile it was typed in.
@@ -105,24 +133,7 @@ struct LiveVoiceStyleSettingsSection: View {
                         if newValue.count > LiveVoiceStyle.maxGreetingCharacters {
                             greeting = String(newValue.prefix(LiveVoiceStyle.maxGreetingCharacters))
                         }
-                        // Saved once typing pauses, not on every keystroke:
-                        // the style as typed, to the profile it was typed in,
-                        // even if the section shows another one by then.
-                        greetingSave?.cancel()
-                        let pending = style
-                        // Already stored (a resync after a profile switch, or typed back).
-                        guard pending != model.style else {
-                            pendingSave = nil
-                            return
-                        }
-                        let setStyle = model.setStyle
-                        lastSaved = pending
-                        pendingSave = { setStyle(pending) }
-                        greetingSave = Task { @MainActor in
-                            try? await Task.sleep(for: .milliseconds(600))
-                            guard !Task.isCancelled else { return }
-                            flushPendingSave()
-                        }
+                        scheduleTypedSave()
                     }
                     .onSubmit {
                         // Shows what is saved and sent (one line, no double quotes).
@@ -180,6 +191,20 @@ struct LiveVoiceStyleSettingsSection: View {
             Text("The voice model tells you what it will send and waits for your OK before Hermes starts on it. Say “send it to Hermes” to skip the question. Change it during a call with the call screen's button or by asking. Applies to the next call.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
+            TextField(AppLocalization.string("Your instructions"), text: $extraInstructions, prompt: Text("Your instructions for the voice model"), axis: .vertical)
+                .lineLimit(3...8)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("voice.liveStyle.extraInstructions")
+                .onChange(of: extraInstructions) { _, newValue in
+                    if newValue.count > LiveVoiceStyle.maxExtraInstructionsCharacters {
+                        extraInstructions = String(newValue.prefix(LiveVoiceStyle.maxExtraInstructionsCharacters))
+                    }
+                    scheduleTypedSave()
+                }
+                .onDisappear { flushPendingSave() }
+            Text("Added to every live call after Conduit's own instructions: its personality, how it words things, or anything it should know about you. Conduit's instructions can't be shortened or replaced, because jobs, approvals and the call's tools depend on them, so where yours disagree, Conduit's come first. Applies to the next call.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
             Button {
                 // A greeting still being typed is saved first, so the
                 // preview shows it.
@@ -196,14 +221,23 @@ struct LiveVoiceStyleSettingsSection: View {
             // This view's own save: the fields already show it (and turning
             // the greeting off keeps its text for turning it back on).
             guard newValue != lastSaved else { return }
-            greets = newValue.greeting != nil
-            // Changed elsewhere (another profile's settings): never while the
-            // stored text is just this field's, cleaned.
-            if let stored = newValue.greeting {
-                if stored != LiveVoiceStyle.cleanedGreeting(greeting) { greeting = stored }
-            } else {
-                // Off (or another profile without one): its text mustn't carry over.
-                greeting = ""
+            // Text still being typed (a save is pending) stays as typed: a
+            // change made elsewhere meanwhile, such as Hermes setting the
+            // tone, is taken in and saved with it, so neither undoes the other.
+            let typing = pendingSave != nil
+            if !typing {
+                greets = newValue.greeting != nil
+                // Changed elsewhere (another profile's settings): never while the
+                // stored text is just this field's, cleaned.
+                if let stored = newValue.greeting {
+                    if stored != LiveVoiceStyle.cleanedGreeting(greeting) { greeting = stored }
+                } else {
+                    // Off (or another profile without one): its text mustn't carry over.
+                    greeting = ""
+                }
+                if newValue.extraInstructions != LiveVoiceStyle.cleanedExtraInstructions(extraInstructions) {
+                    extraInstructions = newValue.extraInstructions ?? ""
+                }
             }
             tone = newValue.tone?.rawValue ?? ""
             answerLength = newValue.answerLength
@@ -211,6 +245,10 @@ struct LiveVoiceStyleSettingsSection: View {
             asksBeforeSending = newValue.asksBeforeSending
             // Now in sync: coming back to an earlier profile resyncs again.
             lastSaved = newValue
+            // Only within the profile it was typed in: a profile switch in the
+            // same update flushes the pending save to that profile instead
+            // (onChange(of: model.profile)), whichever handler runs first.
+            if typing, pendingProfile == model.profile { scheduleTypedSave() }
         }
         .onChange(of: model.profile) { _, _ in
             // Another profile, even one with the same style: what was typed
@@ -223,6 +261,7 @@ struct LiveVoiceStyleSettingsSection: View {
             answerLength = style.answerLength
             backchannels = style.backchannels
             asksBeforeSending = style.asksBeforeSending
+            extraInstructions = style.extraInstructions ?? ""
             lastSaved = style
         }
         .sheet(isPresented: $showsPreview) {
@@ -244,7 +283,11 @@ struct LiveVoiceInstructionsPreview: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     if let preview {
-                        Text(AppLocalization.string("Conduit adds this to \(preview.mode)'s instructions for every call. Your Hermes server adds its own voice persona before it. Memory and personality are read when a call starts."))
+                        // Local Live's fast model gets this as all its instructions:
+                        // no server adds a persona of its own.
+                        Text(preview.isLocalLive
+                            ? AppLocalization.string("Conduit sends this to your fast model as its instructions for every call; nothing else is added before it. Personality is read when a call starts.")
+                            : AppLocalization.string("Conduit adds this to \(preview.mode)'s instructions for every call. Your Hermes server adds its own voice persona before it. Memory and personality are read when a call starts."))
                             .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                         Text(verbatim: preview.instructions)
@@ -252,13 +295,7 @@ struct LiveVoiceInstructionsPreview: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         if let opening = preview.openingTurn {
-                            Group {
-                                if preview.openingIsHostSide {
-                                    Text("Asked for when the call connects (an older notifier plugin sends it as the first turn):")
-                                } else {
-                                    Text("Sent as the call's first turn when it connects:")
-                                }
-                            }
+                            Text("Sent as the call's first turn when it connects:")
                                 .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
                             Text(verbatim: opening)

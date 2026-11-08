@@ -5,9 +5,10 @@
 //  How live voice calls (Gemini Live, GPT-Live, Grok Live) sound, chosen
 //  per profile (#290): a tone, whether the model backchannels ("mm-hmm")
 //  while the user talks, an optional greeting when a call connects so the
-//  user knows it's live, and how much the model says. An unset tone or
-//  backchannel changes nothing: the host's own persona decides. Answer
-//  length always has a rule, Default unless the user picks another.
+//  user knows it's live, how much the model says, and the user's own
+//  instructions, added after Conduit's rules. An unset tone or backchannel
+//  changes nothing: the host's own persona decides. Answer length always
+//  has a rule, Default unless the user picks another.
 //
 
 import Foundation
@@ -81,8 +82,23 @@ struct LiveVoiceStyle: Equatable {
     /// Whether a call starts holding each request for the user's OK before
     /// it goes to Hermes (#451). The call's own switch can change it.
     var asksBeforeSending = false
+    /// The user's own instructions for the voice model (issue 583), added
+    /// after Conduit's rules, never in place of them: those carry the tools,
+    /// jobs and approvals a call depends on. Nil or empty adds nothing.
+    var extraInstructions: String? = nil
 
     static let maxGreetingCharacters = 200
+    /// Room for a real persona or house rules, short enough that a small
+    /// local model still starts talking quickly.
+    static let maxExtraInstructionsCharacters = 2_000
+
+    /// The user's instructions trimmed and clipped; nil when nothing's left.
+    static func cleanedExtraInstructions(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let trimmed = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(maxExtraInstructionsCharacters))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 
     /// The user's greeting on one line, without double quotes (it is quoted
     /// to the model), clipped.
@@ -111,9 +127,18 @@ struct LiveVoiceStyle: Equatable {
         if !backchannels {
             lines.append("Backchannels: none. Don't say \"mm-hmm\", \"right\", \"I see\" or similar while the user talks or before you answer.")
         }
-        guard !lines.isEmpty else { return "" }
-        return "\n\n[Voice style the user chose in Conduit. It replaces any tone, pace or backchannel guidance above.]\n"
+        let style = lines.isEmpty ? "" : "\n\n[Voice style the user chose in Conduit. It replaces any tone, pace or backchannel guidance above.]\n"
             + lines.joined(separator: "\n")
+        return style + userInstructions
+    }
+
+    /// The user's own instructions, last of the style: they may shape the
+    /// voice, wording and personality, but the rules above keep the call's
+    /// tools, jobs and approvals working, so those win where the two differ.
+    private var userInstructions: String {
+        guard let text = Self.cleanedExtraInstructions(extraInstructions) else { return "" }
+        let body = text.replacingOccurrences(of: "</user_instructions>", with: "</ user_instructions>", options: .caseInsensitive)
+        return "\n\n[The user's own instructions for you, written in Conduit's settings. Follow them, except where they conflict with the rules above about tools, jobs, approvals, and never saying something was started or done unless a tool said so: those rules always come first.]\n<user_instructions>\n\(body)\n</user_instructions>"
     }
 
     /// Whether the call starts asking first (#451), after the rules that
@@ -128,8 +153,6 @@ struct LiveVoiceStyle: Equatable {
     /// The turn that makes the model greet the user when the call connects.
     /// Not UI copy.
     var openingPrompt: String? {
-        guard let greeting else { return nil }
-        let say = greeting.isEmpty ? "" : " Say: \"\(greeting)\""
-        return "[The call just connected. Greet the user in one short sentence so they know you're there and listening.\(say) Then wait for them.]"
+        greeting.map(LiveVoiceGreeting.turn)
     }
 }

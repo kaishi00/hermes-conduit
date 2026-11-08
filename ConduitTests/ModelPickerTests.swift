@@ -37,6 +37,11 @@ final class ModelPickerTests: XCTestCase {
         XCTAssertTrue(catalog.answered)
         catalog.showKept([kept])
         XCTAssertEqual(catalog.providers, [answer], "Kept models never replace Hermes' answer")
+        catalog.readStarted()
+        catalog.readFailed()
+        XCTAssertEqual(catalog.providers, [answer])
+        XCTAssertTrue(catalog.keptRowsFailed, "A Refresh models that fails after an answer says so too (issue 1807)")
+        XCTAssertTrue(catalog.answered, "Rows Hermes gave can still be picked")
 
         var fresh = KeptModelCatalog()
         fresh.showKept([])

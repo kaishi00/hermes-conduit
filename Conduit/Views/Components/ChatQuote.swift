@@ -130,11 +130,15 @@ struct ComposerReplyReference: Equatable {
     let text: String
     /// Worked out once: the chip re-renders with every composer update.
     let excerpt: String
+    /// A room message's thread: the reply goes in it, so the host reads it
+    /// as part of that conversation. Nil in a chat.
+    let threadID: String?
 
-    init(authorName: String, text: String) {
+    init(authorName: String, text: String, threadID: String? = nil) {
         self.authorName = authorName
         self.text = text
         self.excerpt = ChatQuote.excerpt(of: text)
+        self.threadID = threadID
     }
 
     /// The text to submit for `draft`. A slash command is left alone: the

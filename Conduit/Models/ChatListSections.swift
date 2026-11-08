@@ -123,38 +123,22 @@ enum ProjectChatsInChats: String, CaseIterable, Identifiable {
     case all
 
     static let key = "conduit.v2.projectChatsInChats"
-    /// Recent since #1317; an install from before keeps Off (`settleDefault`).
+    /// Recent, on every install that hasn't picked one (issue 1583). An
+    /// install from before #1317 kept Off without picking it, which left
+    /// today's project chats out of Chats with no Today to find them under.
     static let defaultValue = ProjectChatsInChats.recent
-    /// This device's default, settled once by `settleDefault`. Apart from
-    /// `key`, which syncs across devices: the default isn't a choice, so it
-    /// never overwrites one made on another device.
-    static let deviceDefaultKey = "conduit.v2.projectChatsDeviceDefault"
+    /// Where #1317 kept that Off. Read no more; cleared at launch.
+    static let retiredDeviceDefaultKey = "conduit.v2.projectChatsDeviceDefault"
 
     var id: String { rawValue }
 
-    static func stored(_ raw: String?, deviceDefault: String? = nil) -> ProjectChatsInChats {
-        raw.flatMap(ProjectChatsInChats.init(rawValue:))
-            ?? deviceDefault.flatMap(ProjectChatsInChats.init(rawValue:))
-            ?? defaultValue
+    static func stored(_ raw: String?) -> ProjectChatsInChats {
+        raw.flatMap(ProjectChatsInChats.init(rawValue:)) ?? defaultValue
     }
 
-    /// The choice, or this device's default when none was made.
+    /// The choice, or Recent when none was made.
     static func stored(in defaults: UserDefaults) -> ProjectChatsInChats {
-        stored(defaults.string(forKey: key), deviceDefault: defaults.string(forKey: deviceDefaultKey))
-    }
-
-    /// What Settings shows before a choice is made.
-    static func deviceDefault(in defaults: UserDefaults = .standard) -> ProjectChatsInChats {
-        stored(nil, deviceDefault: defaults.string(forKey: deviceDefaultKey))
-    }
-
-    /// An install from before Recent became the default saved nothing for
-    /// Off, which was the default then: it keeps Off rather than change
-    /// under its user. Runs once; a new install (no saved dashboards) keeps
-    /// Recent, even after it signs in.
-    static func settleDefault(in defaults: UserDefaults, existingInstall: Bool) {
-        guard defaults.string(forKey: deviceDefaultKey) == nil else { return }
-        defaults.set((existingInstall ? ProjectChatsInChats.hidden : defaultValue).rawValue, forKey: deviceDefaultKey)
+        stored(defaults.string(forKey: key))
     }
 
     /// Whether a project's chat with this last activity is listed. A chat

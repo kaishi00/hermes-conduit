@@ -1,3 +1,4 @@
+import AVFoundation
 import XCTest
 @testable import Conduit
 
@@ -55,6 +56,69 @@ final class MessageReadAloudControllerTests: XCTestCase {
         gateway.streams.last?.releaseAppendForTest()
         try? await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(controller.state, .idle)
+    }
+
+    func testTheMicrophoneBeingTakenEndsTheReading() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway(emitsPCM: true)
+        gateway.pauseAfterEmission = true
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.toggle(messageID: "message-a", content: "Streaming")
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(controller.state, .playing(messageID: "message-a"))
+        XCTAssertNotNil(playback.onTakenOverByCapture)
+        let stopsBefore = playback.stopCount
+
+        // Dictation or a voice message took the microphone (issue 1770).
+        playback.onTakenOverByCapture?()
+
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertEqual(playback.stopCount, stopsBefore + 1)
+        XCTAssertEqual(gateway.streams.last?.cancelCount, 1)
+    }
+
+    func testAReadingThatOpensUnderAHeldMicrophoneEndsWithoutPlaying() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway(emitsPCM: true)
+        gateway.pauseAfterEmission = true
+        var reported: [String] = []
+        let controller = MessageReadAloudController(
+            playback: playback,
+            gateway: gateway,
+            beginBackgroundActivity: { _ in {} },
+            nowPlaying: MockReadAloudNowPlaying(),
+            microphoneIsHeld: { true },
+            reportError: { reported.append($0) }
+        )
+
+        // Dictation started while the stream was opening (issue 1770).
+        controller.toggle(messageID: "message-a", content: "Streaming")
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertTrue(playback.startedSampleRates.isEmpty, "nothing reaches the microphone")
+        XCTAssertTrue(playback.enqueuedPCM.isEmpty)
+        XCTAssertTrue(reported.isEmpty, "a cancellation, not a failure")
+    }
+
+    func testAnEarlierReadingGivingWayLeavesTheNextOneAlone() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway(emitsPCM: true)
+        gateway.pauseAfterEmission = true
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.toggle(messageID: "message-a", content: "First")
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        let first = playback.onTakenOverByCapture
+        controller.toggle(messageID: "message-b", content: "Second")
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(controller.state, .playing(messageID: "message-b"))
+
+        first?()
+
+        XCTAssertEqual(controller.state, .playing(messageID: "message-b"))
+        controller.stop()
     }
 
     func testEachPlaybackStartsAtTheSpeedChosenWhenTapped() async {
@@ -604,6 +668,57 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertEqual(nowPlaying.endCount, 1)
     }
 
+    /// AirPods back in the case pause the reply instead of reading it out
+    /// loud from the speaker; other route changes play on (#1641).
+    func testHeadphonesRemovedPauseTheReply() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway(emitsPCM: true)
+        gateway.pauseAfterEmission = true
+        let nowPlaying = MockReadAloudNowPlaying()
+        let controller = makeController(playback: playback, gateway: gateway, nowPlaying: nowPlaying)
+
+        controller.toggle(messageID: "message-a", content: "Through the AirPods")
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(controller.state, .playing(messageID: "message-a"))
+
+        controller.routeChanged(reason: .newDeviceAvailable)
+        controller.routeChanged(reason: .categoryChange)
+        XCTAssertFalse(controller.isPaused, "a new device or a session change plays on")
+
+        controller.routeChanged(reason: .oldDeviceUnavailable)
+        XCTAssertTrue(controller.isPaused)
+        XCTAssertEqual(playback.pauseCount, 1)
+        XCTAssertEqual(nowPlaying.pausedUpdates, [true])
+        XCTAssertEqual(gateway.streams.last?.cancelCount, 0, "the reply is held, not stopped")
+
+        controller.resume()
+        XCTAssertFalse(controller.isPaused)
+        controller.stop()
+    }
+
+    /// Headphones out while the reply is still opening: its first audio
+    /// starts paused instead of on the speaker.
+    func testHeadphonesRemovedWhileOpeningPauseTheFirstAudio() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway(emitsPCM: true)
+        gateway.blocksOpen = true
+        gateway.pauseAfterEmission = true
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.toggle(messageID: "message-a", content: "Still opening")
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(controller.state, .preparing(messageID: "message-a"))
+        controller.routeChanged(reason: .oldDeviceUnavailable)
+        XCTAssertEqual(playback.pauseCount, 0)
+
+        gateway.resumeOpenForTest()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(controller.state, .playing(messageID: "message-a"))
+        XCTAssertTrue(controller.isPaused)
+        XCTAssertEqual(playback.pauseCount, 1)
+        controller.stop()
+    }
+
     func testPauseIsRefusedBeforeAudioPlays() async {
         let playback = MockReadAloudPlayback()
         let gateway = MockReadAloudGateway()
@@ -857,6 +972,7 @@ private final class MockReadAloudPlayback: SpeechPlaybackService {
     private(set) var stopCount = 0
     var isPlaying = false
     var ownershipIntent: VoiceAudioIntent = .standalonePlayback
+    var onTakenOverByCapture: (@MainActor () -> Void)?
     var playbackRate: Float = 1
     private(set) var startedRates: [Float] = []
     var keepsRateAdjustable = false
