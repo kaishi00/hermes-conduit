@@ -3907,17 +3907,26 @@ enum VoiceThreadRouting {
         return cjkRefusals.contains { folded.contains($0) }
     }
 
+    /// Whether the words name a refusal with its verb ("decline it",
+    /// "I refuse", "거절"), in the shipped languages with word breaks.
+    /// Not under a negation ("I wouldn't decline it") or in a question
+    /// whose "?" the transcript dropped ("should we decline it").
+    static func containsRefusalVerb(_ answer: String) -> Bool {
+        let words = fold(answer)
+            .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") })
+            .map(String.init)
+        guard !negates(words), !words.contains(where: { refusalVerbAskers.contains($0) }) else { return false }
+        return words.contains { answerRefusalVerbs.contains($0) || $0.hasPrefix("거절") || $0.hasPrefix("거부") }
+    }
+
+    /// Words that make a refusal verb a question or a maybe, not an answer.
+    private static let refusalVerbAskers: Set<String> = [
+        "should", "shall", "can", "could", "would", "will", "if", "whether", "why", "maybe", "might",
+    ]
+
     /// Verbs that refuse, in the shipped languages with word breaks
     /// (Korean is matched by its stem, Chinese and Japanese in
     /// `cjkRefusals`).
-    /// Whether the words name a refusal with its verb ("decline it",
-    /// "I refuse", "거절"), in the shipped languages with word breaks.
-    static func containsRefusalVerb(_ answer: String) -> Bool {
-        fold(answer)
-            .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") })
-            .contains { answerRefusalVerbs.contains(String($0)) || $0.hasPrefix("거절") || $0.hasPrefix("거부") }
-    }
-
     private static let answerRefusalVerbs: Set<String> = [
         "reject", "rejected", "deny", "denied", "refuse", "refused", "decline", "declined", "veto",
         "ablehnen", "lehne", "abgelehnt", "verweigern", "verweigere", "zurückweisen",

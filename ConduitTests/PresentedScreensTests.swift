@@ -180,8 +180,12 @@ extension AppStateVoiceCapabilityTests {
         // A question with a not in it asks; it doesn't answer.
         XCTAssertFalse(prompt.isDeclined(by: "shouldn't we check the address first?"))
         XCTAssertFalse(prompt.isDeclined(by: "can't we wait？"))
+        // A refusal verb under a not, or in a question missing its "?".
+        XCTAssertFalse(prompt.isDeclined(by: "I wouldn't decline it"))
+        XCTAssertFalse(prompt.isDeclined(by: "I never refuse"))
+        XCTAssertFalse(prompt.isDeclined(by: "should we decline it"))
         XCTAssertTrue(PresentVoiceTool.note(for: prompt).contains("with confirm or decline and its id"))
-        for no in ["no", "Not now.", "don't send it", "cancel", "decline", "nein", "不要"] {
+        for no in ["no", "Not now.", "don't send it", "cancel", "decline", "decline it", "I refuse", "nein", "不要"] {
             XCTAssertTrue(prompt.isDeclined(by: no), no)
         }
     }
