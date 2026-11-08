@@ -1426,6 +1426,47 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(VoiceResumeContext.continuing(long).recent.count, VoiceResumePlan.recentTurnCount)
     }
 
+    func testAChatCallIsSeededWithTheChatsLatestTurns() throws {
+        // Issue 1983: a call started from a chat sent GPT-Live 0 history items.
+        func row(_ id: String, _ role: MessageRole, _ text: String) -> ChatMessage {
+            ChatMessage(id: id, role: role, content: text, timestamp: "2026-11-08T00:00:00Z")
+        }
+        let messages = [
+            row("1", .user, "Plan the trip to Kyoto"),
+            row("2", .system, "Voice call"),
+            row("3", .assistant, "Here's the plan. [Open job](conduit://session/stored-1)\nMEDIA:/opt/data/cache/kyoto-plan.pdf"),
+            row("4", .assistant, "   "),
+            row("5", .user, "Book the hotel"),
+        ]
+        let context = try XCTUnwrap(VoiceResumeContext.chat(messages))
+        XCTAssertTrue(context.fromChat)
+        XCTAssertNil(context.summary)
+        // The question still waiting for its reply is left off the end.
+        XCTAssertEqual(context.recent.map(\.speaker), [.user, .assistant])
+        XCTAssertFalse(context.recent[1].text.contains("conduit://"))
+        XCTAssertFalse(context.recent[1].text.contains("/opt/data"), "a file is named, never given by its path")
+        XCTAssertTrue(context.recent[1].text.contains("kyoto-plan.pdf"))
+        XCTAssertEqual(context.gptLiveHistory.count, 2)
+
+        // The chat's turns are context the call follows on from; it can still
+        // open with its greeting.
+        let block = context.instructionBlock
+        XCTAssertTrue(block.contains("User: Plan the trip to Kyoto"))
+        XCTAssertFalse(block.contains("wait for the user to speak first"))
+        XCTAssertTrue(block.contains("attached to one of the user's Hermes chats"))
+        let gptBlock = context.summaryInstructionBlock
+        XCTAssertFalse(gptBlock.contains("Kyoto"), "GPT-Live has the turns as history")
+        XCTAssertFalse(gptBlock.contains("wait for the user to speak first"))
+
+        XCTAssertNil(VoiceResumeContext.chat([]))
+        XCTAssertNil(VoiceResumeContext.chat([row("1", .user, "Hello?")]), "nothing answered yet: no seed")
+        // A long chat keeps its newest turns within the word-for-word budget.
+        let long = (0..<60).map { row("\($0)", $0 % 2 == 0 ? .user : .assistant, "Turn \($0)") }
+        let recent = try XCTUnwrap(VoiceResumeContext.chat(long)).recent
+        XCTAssertEqual(recent.count, VoiceResumePlan.recentTurnCount)
+        XCTAssertEqual(recent.last?.text, "Turn 59")
+    }
+
     func testACallKeptWithItsChatShowsItsCardAndNeverOwnsTheChat() {
         let start = Date(timeIntervalSince1970: 1_000)
         var links = VoiceCallChatLinks()
