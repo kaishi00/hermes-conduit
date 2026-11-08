@@ -54,7 +54,7 @@ extension AppState {
         guard offlineChatPresentation == nil else { return nil }
         let sessionIDs = activeChatArtifactSessionIDs
         guard !sessionIDs.isEmpty,
-              let chat = RichCardActionContext.chat(profile: activeProfile, sessionID: activeSessionId) else { return nil }
+              let chat = richCardChat else { return nil }
         let profile = activeProfile
         let dashboardID = activeDashboardID
         let tap: (@MainActor ([String: Any], String) async throws -> Void)?
