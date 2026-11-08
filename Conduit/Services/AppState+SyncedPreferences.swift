@@ -200,7 +200,9 @@ extension AppState {
         return SyncedPreferenceSlot(key: "app.sessions_bar_projects", read: stored.read, write: { value in
             stored.write(value)
             if (value as? Bool) == false {
-                V2SessionsBarControls.clearStoredProjectsPage(defaults: defaults)
+                let usesV2 = defaults.object(forKey: V2ShellPreference.key) as? Bool
+                    ?? V2ShellPreference.defaultValue
+                V2SessionsBarControls.clearStoredProjectsPageForSyncedOff(usesV2: usesV2, defaults: defaults)
             }
         })
     }

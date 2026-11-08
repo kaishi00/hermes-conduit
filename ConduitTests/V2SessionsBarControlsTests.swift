@@ -156,6 +156,20 @@ extension SidebarLayoutTests {
         }
     }
 
+    /// A synced "off" only clears this device's page when this device has the
+    /// Sessions bar; the drawer shell shares the page key and has no Projects
+    /// switch of its own (DeepSeek, #2020).
+    func testSessionsBarSyncedProjectsOffLeavesTheDrawersPageAlone() {
+        withSessionsBarDefaults { defaults in
+            defaults.set("projects", forKey: V2ChatsView.presentationKey)
+            V2SessionsBarControls.clearStoredProjectsPageForSyncedOff(usesV2: false, defaults: defaults)
+            XCTAssertEqual(defaults.string(forKey: V2ChatsView.presentationKey), "projects")
+
+            V2SessionsBarControls.clearStoredProjectsPageForSyncedOff(usesV2: true, defaults: defaults)
+            XCTAssertEqual(defaults.string(forKey: V2ChatsView.presentationKey), "sessions")
+        }
+    }
+
     /// Clearing is only ever the Projects page: a Sessions page, or none, stays
     /// as it is.
     func testSessionsBarClearingTheStoredPageLeavesOtherPagesAlone() {

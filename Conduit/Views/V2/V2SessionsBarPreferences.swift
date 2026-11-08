@@ -79,6 +79,14 @@ struct V2SessionsBarControls: Equatable {
         defaults.set(Presentation.sessions.rawValue, forKey: V2ChatsView.presentationKey)
     }
 
+    /// A synced "off" clears this device's stored page only when this device
+    /// has the Sessions bar at all: the drawer shell shares the page key and
+    /// has no Projects switch, so another device's choice mustn't move it.
+    static func clearStoredProjectsPageForSyncedOff(usesV2: Bool, defaults: UserDefaults = .standard) {
+        guard usesV2 else { return }
+        clearStoredProjectsPage(defaults: defaults)
+    }
+
     /// Pulse remains inside the profile's own capability gate. Hidden
     /// Projects, or All profiles' chats-only list, resolves even an old value
     /// or another window's write to Sessions without writing during a render.
