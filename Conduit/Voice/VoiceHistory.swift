@@ -904,14 +904,21 @@ struct VoiceResumeContext: Equatable {
             message.tool == nil && message.approval == nil && message.clarify == nil && message.inputPrompt == nil
                 && (message.role == .user || message.role == .assistant)
         }
+        // A row that never reaches the seed, or reaches it empty.
+        func silent(_ message: ChatMessage) -> Bool {
+            !spoken(message) || (message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && (message.attachments ?? []).isEmpty)
+        }
         var kept = messages[...]
         if replyRunning {
-            // Back over the running turn: its steers and progress notes, and
-            // rows that never reach the seed. A completed reply ends it.
             var cut = kept.endIndex
+            // Messages queued behind the running turn.
+            while cut > kept.startIndex, silent(kept[cut - 1]) || kept[cut - 1].role == .user { cut -= 1 }
+            // Back over the running turn: its steers and progress notes. A
+            // completed reply ends it.
             while cut > kept.startIndex {
                 let message = kept[cut - 1]
-                guard !spoken(message) || message.isSteer || isProgressNote(message) else { break }
+                guard silent(message) || message.isSteer || isProgressNote(message) else { break }
                 cut -= 1
             }
             // The question that started it, when it was asked here.

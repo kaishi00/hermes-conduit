@@ -1469,6 +1469,10 @@ extension HermesVoiceGatewayTimeoutTests {
         let steered = try XCTUnwrap(VoiceResumeContext.chat(Array(running) + [steer], replyRunning: true)).recent
         XCTAssertEqual(steered.map(\.text).last, context.recent.last?.text)
         XCTAssertFalse(steered.contains { $0.text.contains("hotel") || $0.text.contains("station") })
+        // A message queued behind the running turn goes with it, and a
+        // blank row doesn't end the turn.
+        let queued = Array(running) + [row("13", .assistant, "  "), row("14", .user, "And a car?")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(queued, replyRunning: true)).recent.map(\.text), context.recent.map(\.text))
         // A turn typed on another device has no row here: the answered
         // exchange before it stays, and only its progress notes go.
         let answered = Array(messages.dropLast()) + [row("6", .user, "Book the hotel"), row("9", .assistant, "Booked the Kyoto Inn.")]
@@ -1523,6 +1527,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let onlyFiles = VoiceResumeContext.fitting("Look", naming: crowded)
         XCTAssertLessThanOrEqual(onlyFiles.count, VoiceResumePlan.turnCharacterLimit)
         XCTAssertTrue(onlyFiles.hasPrefix("[Attached: photo-0-from-the-trip.jpg (image)]"))
+        XCTAssertEqual(onlyFiles, crowded.prefix(25).joined(separator: " "))
 
         XCTAssertNil(VoiceResumeContext.chat([]))
         XCTAssertNil(VoiceResumeContext.chat([row("1", .user, "Hello?")]), "nothing answered yet: no seed")
