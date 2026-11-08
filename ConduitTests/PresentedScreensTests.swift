@@ -167,6 +167,10 @@ extension AppStateVoiceCapabilityTests {
         // A no-led yes isn't a no; a no, not now or don't send is.
         XCTAssertFalse(prompt.isDeclined(by: "No problem"))
         XCTAssertFalse(prompt.isDeclined(by: "send it"))
+        // A question with a not in it asks; it doesn't answer.
+        XCTAssertFalse(prompt.isDeclined(by: "shouldn't we check the address first?"))
+        XCTAssertFalse(prompt.isDeclined(by: "can't we wait？"))
+        XCTAssertTrue(PresentVoiceTool.note(for: prompt).contains("with confirm or decline and its id"))
         for no in ["no", "Not now.", "don't send it", "cancel", "decline", "nein", "不要"] {
             XCTAssertTrue(prompt.isDeclined(by: no), no)
         }

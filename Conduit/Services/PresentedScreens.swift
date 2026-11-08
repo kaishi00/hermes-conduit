@@ -247,7 +247,8 @@ struct PresentedConfirm: Identifiable, Equatable {
     /// neither do words with no refusal in them: the model's judgment, or
     /// something it read, can't answer for the user.
     func isDeclined(by words: String) -> Bool {
-        guard !VoiceCallDecisionOutcome.isYes(words) else { return false }
+        // A question ("can't we wait?") asks; it doesn't answer.
+        guard !words.contains("?"), !words.contains("？"), !VoiceCallDecisionOutcome.isYes(words) else { return false }
         return VoiceThreadRouting.containsRefusal(words)
     }
 
