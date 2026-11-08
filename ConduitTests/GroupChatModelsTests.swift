@@ -600,6 +600,15 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertTrue(runContinues)
         XCTAssertFalse(otherContinues)
         XCTAssertEqual(rows[4].kind, .room(.pending(text: "Plan the trip", members: members, isSending: true)))
+        // A message with files carries them on its row, in its room.
+        let picture = GroupRoomAttachment(attachmentID: "a1", kind: "image", name: "cat.png", size: 12, mime: "image/png")
+        let withFiles = GroupRoomTranscript.rows(
+            events: [], roomID: "room-1", members: members,
+            pending: GroupRoomOutbox.Pending(text: "", eventID: "conduit-f", attachments: [picture]),
+            isSending: true, responder: nil
+        )
+        guard case .room(.pending(_, _, _, _, let files)) = withFiles.last?.kind else { return XCTFail("\(withFiles)") }
+        XCTAssertEqual(files, [picture.attachment(roomID: "room-1")])
 
         // The send landed while its row still shows: the event's row, once.
         let landed = GroupRoomTranscript.rows(
