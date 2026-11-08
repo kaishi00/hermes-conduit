@@ -2,7 +2,7 @@
 //  PeopleSettingsViews.swift
 //  Conduit
 //
-//  Settings > People (designs/cross-owner-agents, C2): getting this Hermes
+//  Settings > Multiplayer (designs/cross-owner-agents, C2): getting this Hermes
 //  ready for rooms with other people's agents (RoomSetup.swift), the people
 //  it's linked with, and the invites still waiting (RoomLinks.swift). Link
 //  with someone makes an invite, and Scan and Paste open one someone sent
@@ -153,7 +153,7 @@ struct PeopleSettingsPage: View {
                 invitesSection(invites)
             }
         }
-        .navigationTitle(Text(AppLocalization.string("People")))
+        .navigationTitle(Text(AppLocalization.string("Multiplayer")))
         .task(id: key) { await load(key) }
         .task(id: waitingIDs) { await followWaitingLinks() }
         .confirmationDialog(unlinkTitle, isPresented: unlinkPresented, titleVisibility: .visible, presenting: unlinking) { link in

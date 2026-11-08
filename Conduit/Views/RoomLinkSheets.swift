@@ -477,13 +477,13 @@ struct RoomLinkOpenedSheet: View {
                 Label(AppLocalization.string("Linked with \(link.name)"), systemImage: "checkmark.circle.fill")
                     .scaledFont(.headline)
                     .foregroundStyle(.green)
-                Text(AppLocalization.string("Your agents and theirs can now join rooms together. Settings › People lists your Links."))
+                Text(AppLocalization.string("Your agents and theirs can now join rooms together. Settings › Multiplayer lists your Links."))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         } else if stillWaiting {
-            Text(AppLocalization.string("\(link.name)'s Hermes hasn't confirmed yet. It does once it reads its mailbox, and Settings › People shows when it has."))
+            Text(AppLocalization.string("\(link.name)'s Hermes hasn't confirmed yet. It does once it reads its mailbox, and Settings › Multiplayer shows when it has."))
                 .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

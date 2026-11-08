@@ -1279,7 +1279,7 @@ private struct SettingsHome: View {
                         settingsLink(.advanced, icon: "wrench.and.screwdriver", title: AppLocalization.string("Advanced"), detail: AppLocalization.string("Turn limits, terminal, and tool output"))
                         settingsLink(.capabilities, icon: "puzzlepiece.extension", title: AppLocalization.string("Capabilities"), detail: AppLocalization.string("Skills, tools, connectors, and plugins"))
                         if appState.canLinkRooms {
-                            settingsLink(.people, icon: "person.2", title: AppLocalization.string("People"), detail: AppLocalization.string("Rooms with other people's agents"), identifier: "settings.people")
+                            settingsLink(.people, icon: "person.2", title: AppLocalization.string("Multiplayer"), detail: AppLocalization.string("Rooms with other people's agents"), identifier: "settings.people")
                         }
                         // Where the plugin serves Pulse (AppState+Pulse.swift).
                         if appState.showsPulseSettings {
@@ -1463,7 +1463,7 @@ private struct SettingsHome: View {
             v2Link(.advanced, icon: "wrench.and.screwdriver", title: AppLocalization.string("Advanced"), detail: AppLocalization.string("Turn limits, terminal, and tool output"))
             v2Link(.capabilities, icon: "puzzlepiece.extension", title: AppLocalization.string("Capabilities"), detail: AppLocalization.string("Skills, tools, connectors, and plugins"))
             if appState.canLinkRooms {
-                v2Link(.people, icon: "person.2", title: AppLocalization.string("People"), detail: AppLocalization.string("Rooms with other people's agents"), identifier: "settings.people")
+                v2Link(.people, icon: "person.2", title: AppLocalization.string("Multiplayer"), detail: AppLocalization.string("Rooms with other people's agents"), identifier: "settings.people")
             }
             // Where the plugin serves Pulse (AppState+Pulse.swift).
             if appState.showsPulseSettings {

@@ -109,7 +109,7 @@ struct RoomDraftSheet: View {
                     }
                 }
                 if !draft.people.isEmpty {
-                    ConduitSettingsSection(title: AppLocalization.string("People"), symbol: "person.2", tint: .conduitAccent) {
+                    ConduitSettingsSection(title: AppLocalization.string("Invited"), symbol: "person.2", tint: .conduitAccent) {
                         ForEach(draft.people) { person in
                             personRow(person)
                         }

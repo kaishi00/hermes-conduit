@@ -517,6 +517,170 @@
         }
       }
     },
+    "Invited": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eingeladen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invitados"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invités"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diundang"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invitati"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "招待した人"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "초대한 사람"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zaproszeni"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Convidados"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приглашённые"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Davet edilenler"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已邀请"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已邀請"
+          }
+        }
+      }
+    },
+    "Multiplayer": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mehrspieler"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Multijugador"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Multijoueur"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Multipemain"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Multigiocatore"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "マルチプレイ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "멀티플레이"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tryb wieloosobowy"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Multijogador"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Мультиплеер"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çok Oyunculu"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "多人"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "多人"
+          }
+        }
+      }
+    },
     "Open the group chat": {
       "localizations": {
         "de": {
@@ -451228,84 +451392,84 @@
         }
       }
     },
-    "%@'s Hermes hasn't confirmed yet. It does once it reads its mailbox, and Settings › People shows when it has.": {
+    "%@'s Hermes hasn't confirmed yet. It does once it reads its mailbox, and Settings › Multiplayer shows when it has.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Hermes von %@ hat noch nicht bestätigt. Das passiert, sobald er sein Postfach liest, und „Einstellungen › Personen“ zeigt, wann es so weit ist."
+            "value": "Der Hermes von %@ hat noch nicht bestätigt. Das passiert, sobald er sein Postfach liest, und „Einstellungen › Mehrspieler“ zeigt, wann es so weit ist."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "El Hermes de %@ aún no ha confirmado. Lo hará en cuanto lea su buzón, y Ajustes › Personas mostrará cuándo lo haya hecho."
+            "value": "El Hermes de %@ aún no ha confirmado. Lo hará en cuanto lea su buzón, y Ajustes › Multijugador mostrará cuándo lo haya hecho."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Le Hermes de %@ n'a pas encore confirmé. Il le fera dès qu'il lira sa boîte aux lettres, et Réglages › Personnes indiquera quand c'est fait."
+            "value": "Le Hermes de %@ n'a pas encore confirmé. Il le fera dès qu'il lira sa boîte aux lettres, et Réglages › Multijoueur indiquera quand c'est fait."
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hermes milik %@ belum mengonfirmasi. Konfirmasi dikirim setelah Hermes itu membaca kotak suratnya, dan Pengaturan › Orang menampilkan saat sudah dikonfirmasi."
+            "value": "Hermes milik %@ belum mengonfirmasi. Konfirmasi dikirim setelah Hermes itu membaca kotak suratnya, dan Pengaturan › Multipemain menampilkan saat sudah dikonfirmasi."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "L'Hermes di %@ non ha ancora confermato. Lo farà appena leggerà la sua casella, e Impostazioni › Persone mostrerà quando l'avrà fatto."
+            "value": "L'Hermes di %@ non ha ancora confermato. Lo farà appena leggerà la sua casella, e Impostazioni › Multigiocatore mostrerà quando l'avrà fatto."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@のHermesはまだ確認していません。メールボックスを読むと確認され、確認されたかどうかは「設定」>「人」に表示されます。"
+            "value": "%@のHermesはまだ確認していません。メールボックスを読むと確認され、確認されたかどうかは「設定」>「マルチプレイ」に表示されます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@의 Hermes가 아직 확인하지 않았어요. 우편함을 읽으면 확인하고, 확인되면 ‘설정’ › ‘사람’에 표시돼요."
+            "value": "%@의 Hermes가 아직 확인하지 않았어요. 우편함을 읽으면 확인하고, 확인되면 ‘설정’ › ‘멀티플레이’에 표시돼요."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hermes użytkownika %@ jeszcze nie potwierdził. Zrobi to, gdy odczyta swoją skrzynkę, a sekcja Ustawienia › Osoby pokaże, kiedy to nastąpi."
+            "value": "Hermes użytkownika %@ jeszcze nie potwierdził. Zrobi to, gdy odczyta swoją skrzynkę, a sekcja Ustawienia › Tryb wieloosobowy pokaże, kiedy to nastąpi."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O Hermes de %@ ainda não confirmou. Ele confirma assim que ler a caixa postal, e Ajustes › Pessoas mostra quando isso acontecer."
+            "value": "O Hermes de %@ ainda não confirmou. Ele confirma assim que ler a caixa postal, e Ajustes › Multijogador mostra quando isso acontecer."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hermes пользователя %@ ещё не подтвердил. Он подтвердит, как только прочитает свой почтовый ящик, а в разделе «Настройки › Люди» будет видно, когда это произойдёт."
+            "value": "Hermes пользователя %@ ещё не подтвердил. Он подтвердит, как только прочитает свой почтовый ящик, а в разделе «Настройки › Мультиплеер» будет видно, когда это произойдёт."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ adlı kişinin Hermes'i henüz onaylamadı. Posta kutusunu okuduğunda onaylar; onayladığında Ayarlar › Kişiler bölümünde görünür."
+            "value": "%@ adlı kişinin Hermes'i henüz onaylamadı. Posta kutusunu okuduğunda onaylar; onayladığında Ayarlar › Çok Oyunculu bölümünde görünür."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 的 Hermes 还没有确认。它读取信箱后就会确认，确认后会显示在“设置 › 联系人”中。"
+            "value": "%@ 的 Hermes 还没有确认。它读取信箱后就会确认，确认后会显示在“设置 › 多人”中。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 的 Hermes 還沒有確認。它讀取信箱後就會確認，確認後會顯示在「設定」>「聯絡人」中。"
+            "value": "%@ 的 Hermes 還沒有確認。它讀取信箱後就會確認，確認後會顯示在「設定」>「多人」中。"
           }
         }
       }
@@ -454508,84 +454672,84 @@
         }
       }
     },
-    "Your agents and theirs can now join rooms together. Settings › People lists your Links.": {
+    "Your agents and theirs can now join rooms together. Settings › Multiplayer lists your Links.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Deine Agenten und die der anderen Person können jetzt gemeinsam Räumen beitreten. „Einstellungen › Personen“ listet deine Verknüpfungen auf."
+            "value": "Deine Agenten und die der anderen Person können jetzt gemeinsam Räumen beitreten. „Einstellungen › Mehrspieler“ listet deine Verknüpfungen auf."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tus agentes y los suyos ya pueden unirse juntos a salas. Ajustes › Personas muestra tus vínculos."
+            "value": "Tus agentes y los suyos ya pueden unirse juntos a salas. Ajustes › Multijugador muestra tus vínculos."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vos agents et les siens peuvent désormais rejoindre des salons ensemble. Réglages › Personnes liste vos liaisons."
+            "value": "Vos agents et les siens peuvent désormais rejoindre des salons ensemble. Réglages › Multijoueur liste vos liaisons."
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Agen Anda dan agennya kini bisa bergabung ke ruang bersama. Pengaturan › Orang menampilkan tautan Anda."
+            "value": "Agen Anda dan agennya kini bisa bergabung ke ruang bersama. Pengaturan › Multipemain menampilkan tautan Anda."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "I tuoi agenti e i suoi ora possono entrare insieme nelle stanze. Impostazioni › Persone elenca i tuoi collegamenti."
+            "value": "I tuoi agenti e i suoi ora possono entrare insieme nelle stanze. Impostazioni › Multigiocatore elenca i tuoi collegamenti."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "これで、あなたと相手のエージェントが一緒にグループに参加できます。リンクは「設定」>「人」に一覧表示されます。"
+            "value": "これで、あなたと相手のエージェントが一緒にグループに参加できます。リンクは「設定」>「マルチプレイ」に一覧表示されます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "이제 내 에이전트와 상대 에이전트가 함께 방에 참여할 수 있어요. 연결 목록은 ‘설정’ › ‘사람’에서 볼 수 있어요."
+            "value": "이제 내 에이전트와 상대 에이전트가 함께 방에 참여할 수 있어요. 연결 목록은 ‘설정’ › ‘멀티플레이’에서 볼 수 있어요."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Twoi agenci i agenci drugiej osoby mogą teraz razem dołączać do pokojów. Sekcja Ustawienia › Osoby pokazuje Twoje połączenia."
+            "value": "Twoi agenci i agenci drugiej osoby mogą teraz razem dołączać do pokojów. Sekcja Ustawienia › Tryb wieloosobowy pokazuje Twoje połączenia."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Seus agentes e os dessa pessoa agora podem entrar juntos em salas. Ajustes › Pessoas lista seus vínculos."
+            "value": "Seus agentes e os dessa pessoa agora podem entrar juntos em salas. Ajustes › Multijogador lista seus vínculos."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Теперь ваши агенты и агенты другого человека могут вместе входить в комнаты. Ваши связи перечислены в разделе «Настройки › Люди»."
+            "value": "Теперь ваши агенты и агенты другого человека могут вместе входить в комнаты. Ваши связи перечислены в разделе «Настройки › Мультиплеер»."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Artık sizin ve karşı tarafın ajanları odalara birlikte katılabilir. Bağlantılarınız Ayarlar › Kişiler bölümünde listelenir."
+            "value": "Artık sizin ve karşı tarafın ajanları odalara birlikte katılabilir. Bağlantılarınız Ayarlar › Çok Oyunculu bölümünde listelenir."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "现在你和对方的智能体可以一起加入群聊了。你的关联列在“设置 › 联系人”中。"
+            "value": "现在你和对方的智能体可以一起加入群聊了。你的关联列在“设置 › 多人”中。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "現在你和對方的代理程式可以一起加入群組了。你的連結列在「設定」>「聯絡人」中。"
+            "value": "現在你和對方的代理程式可以一起加入群組了。你的連結列在「設定」>「多人」中。"
           }
         }
       }
