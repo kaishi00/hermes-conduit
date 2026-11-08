@@ -51,6 +51,23 @@ struct CapabilityPluginsTab: View {
         }
     }
 
+    /// The catalog is being read, or its read failed, with none shown.
+    private var catalogUnread: Bool { store.pluginCatalogLoading || store.pluginCatalogFailed }
+
+    private var catalogStatusSection: some View {
+        CapabilitySection(
+            title: AppLocalization.string("Plugin catalog"),
+            symbol: "shippingbox",
+            tint: .conduitAura
+        ) {
+            if store.pluginCatalogLoading {
+                CapabilityLoadingRow()
+            } else {
+                CapabilityLoadFailedRow { await store.loadPlugins() }
+            }
+        }
+    }
+
     var body: some View {
         let rows = currentRows
         let installed = rows.installed
@@ -95,18 +112,8 @@ struct CapabilityPluginsTab: View {
                 // otherwise wait below every installed plugin.
                 if query.isEmpty, !store.pluginCatalog.isEmpty {
                     PluginCatalogShelf(store: store)
-                } else if query.isEmpty, store.pluginCatalogLoading || store.pluginCatalogFailed {
-                    CapabilitySection(
-                        title: AppLocalization.string("Plugin catalog"),
-                        symbol: "shippingbox",
-                        tint: .conduitAura
-                    ) {
-                        if store.pluginCatalogLoading {
-                            CapabilityLoadingRow()
-                        } else {
-                            CapabilityLoadFailedRow { await store.loadPlugins() }
-                        }
-                    }
+                } else if query.isEmpty, catalogUnread {
+                    catalogStatusSection
                 }
                 CapabilitySection(
                     title: AppLocalization.string("Installed"),
@@ -132,6 +139,10 @@ struct CapabilityPluginsTab: View {
                             }
                         }
                     }
+                }
+                if !query.isEmpty, store.pluginCatalog.isEmpty, catalogUnread {
+                    // A search says the catalog isn't read yet, after Installed.
+                    catalogStatusSection
                 }
                 if !query.isEmpty, !catalog.isEmpty {
                     CapabilitySection(
