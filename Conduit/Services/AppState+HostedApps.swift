@@ -60,6 +60,7 @@ extension AppState {
     /// A Hermes that has them off answers an empty, unavailable snapshot.
     func loadHostedApps() async throws -> HostedAppsSnapshot {
         let profile = activeProfile
+        let keptPolicy = keptHostedApps()?.policy
         return try await withHostedAppsClient { client in
             try await self.keepingRead(as: Self.hostedAppsRoute, profile: profile, owner: self.currentDashboardRuntimeOwner()) {
                 let list: (available: Bool, statuses: [HostedAppStatus])
@@ -83,6 +84,10 @@ extension AppState {
                     throw CancellationError()
                 } catch {
                     rulesFailed = true
+                    // The last rules read still show what the organization
+                    // turned off, read-only, and are kept with this answer
+                    // so the section reopens on them (issue 2014).
+                    policy = keptPolicy
                 }
                 return try await HostedAppsSnapshot(
                     available: true, catalog: catalog, statuses: list.statuses, accounts: accounts, policy: policy, rulesFailed: rulesFailed

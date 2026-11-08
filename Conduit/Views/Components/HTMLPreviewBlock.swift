@@ -241,7 +241,12 @@ struct HTMLPreviewBlock<Fallback: View>: View {
         // used to read and decode the file again (issue 1961).
         let documents = HTMLPreviewDocuments.shared
         let key = heightKey
-        let read: () async -> String? = { await gatewayMediaDataURL(path) }
+        let files = gatewayMediaFiles
+        // Said why a read found nothing where the row's files can say it.
+        let read: () async -> GatewayMediaRead = {
+            if let files { return await files.read(for: path) }
+            return await gatewayMediaDataURL(path).map(GatewayMediaRead.dataURL) ?? .gone
+        }
         if let kept = documents.kept(key) {
             if state != .loaded(kept.html) { show(kept.html) }
             guard !documents.isFresh(kept) else { return }
@@ -249,9 +254,10 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             guard !Task.isCancelled else { return }
             // The file is gone or can't be read any more: the file card,
             // as for a page never kept, rather than a dead file's page
-            // (issue 2003).
+            // (issue 2003). One Hermes couldn't be asked for just now keeps
+            // its page, and the next appearance asks again (issue 2015).
             guard let html else {
-                fallBack()
+                if documents.kept(key) == nil { fallBack() }
                 return
             }
             if html != kept.html { show(html) }
@@ -369,9 +375,10 @@ final class HTMLPreviewDocuments {
     private var pages: [String: Kept] = [:]
     /// Least recently read first.
     private var order: [String] = []
-    private var inFlight: [String: (id: UUID, task: Task<String?, Never>)] = [:]
+    private var inFlight: [String: (id: UUID, task: Task<(html: String?, gone: Bool), Never>)] = [:]
     /// Files that couldn't be read just now: not asked again until they're
-    /// `freshFor` old. A failed read drops the file's kept page too.
+    /// `freshFor` old. A file Hermes can't give drops its kept page too;
+    /// one it couldn't be asked for keeps it (issue 2015).
     private var failedAt: [String: Date] = [:]
     private let now: () -> Date
 
@@ -397,32 +404,58 @@ final class HTMLPreviewDocuments {
     /// The file's page from `fetch`'s data URL, decoded off the main
     /// thread. A read already running for `key` is joined, not repeated,
     /// and a page read within `freshFor` is answered as kept.
-    func read(_ key: String, fetch: @escaping () async -> String?) async -> String? {
-        if let running = inFlight[key] { return await running.task.value }
+    /// Nil when there's no page: the file's kept page is still there when
+    /// Hermes only couldn't be asked.
+    func read(_ key: String, fetch: @escaping () async -> GatewayMediaRead) async -> String? {
+        if let running = inFlight[key] { return await running.task.value.html }
         // A row that asks just after another's read finished takes its page.
         if let page = pages[key], isFresh(page) { return page.html }
         if let failed = failedAt[key], now().timeIntervalSince(failed) < Self.freshFor { return nil }
         let id = UUID()
-        let task = Task { () -> String? in
-            guard let dataURL = await fetch() else { return nil }
-            return await Task.detached(priority: .userInitiated) {
+        let task = Task { () -> (html: String?, gone: Bool) in
+            let answer = await fetch()
+            if case .gone = answer { return (nil, true) }
+            guard case .dataURL(let dataURL) = answer else { return (nil, false) }
+            let html = await Task.detached(priority: .userInitiated) {
                 HTMLPreviewPage.decodedDocument(fromDataURL: dataURL)
             }.value
+            return (html, html == nil)
         }
         inFlight[key] = (id, task)
-        let html = await task.value
+        let answer = await task.value
         if inFlight[key]?.id == id {
             inFlight[key] = nil
-            if let html {
+            if let html = answer.html {
                 keep(html, for: key)
             } else {
                 // A kept page of a file that no longer reads is dropped, so
-                // no row shows it again (issue 2003).
-                drop(key)
+                // no row shows it again (issue 2003); one Hermes couldn't
+                // be asked for stays (issue 2015).
+                if answer.gone { drop(key) }
                 failedAt[key] = now()
             }
         }
-        return html
+        return answer.html
+    }
+
+    /// Every page and read: they go with the saved chats, since the next
+    /// sign-in may be another account. Given a dashboard, only its pages
+    /// go, with any page not tied to a dashboard.
+    func removeAll(dashboardID: UUID? = nil) {
+        guard let dashboardID else {
+            pages.removeAll()
+            order.removeAll()
+            inFlight.removeAll()
+            failedAt.removeAll()
+            return
+        }
+        let tied = "preview|path|"
+        let its = tied + dashboardID.uuidString + "|"
+        let goes: (String) -> Bool = { $0.hasPrefix(its) || !$0.hasPrefix(tied) }
+        pages = pages.filter { !goes($0.key) }
+        order.removeAll(where: goes)
+        inFlight = inFlight.filter { !goes($0.key) }
+        failedAt = failedAt.filter { !goes($0.key) }
     }
 
     private func drop(_ key: String) {

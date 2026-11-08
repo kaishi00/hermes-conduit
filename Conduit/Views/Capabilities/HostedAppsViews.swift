@@ -278,8 +278,12 @@ struct HostedAppPage: View {
     private var rulesFailed: Bool { model.snapshot?.rulesFailed == true }
 
     private var rulesUnreadLine: some View {
+        rulesUnread(AppLocalization.string("Hermes couldn't read the rules just now, so these switches can't change."))
+    }
+
+    private func rulesUnread(_ text: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(AppLocalization.string("Hermes couldn't read the rules just now, so these switches can't change."))
+            Text(text)
                 .scaledFont(.footnote).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -292,6 +296,10 @@ struct HostedAppPage: View {
     }
 
     private var canAct: Bool { appState.isConnected && !model.showsKept && model.signingIn == nil && !model.browserClosing }
+    /// A new account needs the rules read: without them Conduit can't tell
+    /// whether the organization turned the app off (issue 2014). Signing an
+    /// account in again needs only `canAct`.
+    private var canAddAccount: Bool { canAct && !rulesFailed }
 
     var body: some View {
         SettingsDetailContainer {
@@ -331,6 +339,9 @@ struct HostedAppPage: View {
                 if let account = naming.account {
                     let renamed = try await appState.renameHostedAppAccount(account.connectionID, to: name)
                     model.take(account: renamed)
+                } else if rulesFailed {
+                    // The sheet keeps the name and says why (issue 2014).
+                    throw HostedAppRulesUnread(appTitle: app?.title ?? HostedApps.title(slug))
                 } else {
                     model.signIn(slug, alias: name, appState: appState)
                 }
@@ -374,6 +385,8 @@ struct HostedAppPage: View {
             if app.state == .offByOrganization {
                 Text(AppLocalization.string("Your organization turned \(app.title) off for Hermes."))
                     .scaledFont(.footnote).foregroundStyle(.secondary)
+                // From the last rules read: they can be read again here.
+                if rulesFailed { rulesUnreadLine }
             } else {
                 if app.connected {
                     Toggle(isOn: Binding(get: { app.state != .off }, set: { setEnabled($0) })) {
@@ -385,7 +398,7 @@ struct HostedAppPage: View {
                         }
                     }
                     .tint(.conduitAccent)
-                    .disabled(!canAct || writingRules || policy?.revision == nil)
+                    .disabled(!canAct || writingRules || rulesFailed || policy?.revision == nil)
                     // Once the tools list, it says so there, above the switches.
                     if rulesFailed, tools?.isEmpty != false { rulesUnreadLine }
                 }
@@ -393,6 +406,9 @@ struct HostedAppPage: View {
                     Text(verbatim: reason)
                         .scaledFont(.footnote).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+                if !app.connected, rulesFailed, !signingIn {
+                    rulesUnread(AppLocalization.string("Hermes couldn't read your organization's rules just now, so it can't tell yet whether \(app.title) is allowed."))
                 }
                 if !app.connected || app.needsReconnect || app.state == .connecting {
                     Button {
@@ -410,7 +426,7 @@ struct HostedAppPage: View {
                         .frame(minHeight: 44)
                     }
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
-                    .disabled(!canAct)
+                    .disabled(app.connected ? !canAct : !canAddAccount)
                     .accessibilityIdentifier("capabilities.apps.connect")
                     if signingIn {
                         Button(AppLocalization.string("Stop Waiting")) { model.cancelSignIn() }
@@ -484,7 +500,7 @@ struct HostedAppPage: View {
                 Label(AppLocalization.string("Add Another Account"), systemImage: "plus")
             }
             .buttonStyle(.settings)
-            .disabled(!canAct)
+            .disabled(!canAddAccount)
         }
     }
 
@@ -510,7 +526,9 @@ struct HostedAppPage: View {
                     Text(verbatim: AppLocalization.string("\(onCount) tools on") + " · " + AppLocalization.string("Hermes can't use a tool that's off."))
                         .scaledFont(.footnote).foregroundStyle(.secondary)
                     if rulesFailed {
-                        rulesUnreadLine
+                        // An app the organization turned off says it once,
+                        // in Connection.
+                        if app.state != .offByOrganization { rulesUnreadLine }
                     } else if policy?.revision == nil {
                         Text(AppLocalization.string("Your organization manages these switches."))
                             .scaledFont(.footnote).foregroundStyle(.secondary)
@@ -537,7 +555,7 @@ struct HostedAppPage: View {
                             }
                         }
                         .tint(.conduitAccent)
-                        .disabled(!canAct || writingRules || policy?.revision == nil || locked.contains(tool.slug))
+                        .disabled(!canAct || writingRules || rulesFailed || policy?.revision == nil || locked.contains(tool.slug))
                     }
                 }
             } else if let toolsError {
@@ -572,7 +590,7 @@ struct HostedAppPage: View {
     }
 
     private func setEnabled(_ enabled: Bool) {
-        guard !writingRules else { return }
+        guard !writingRules, !rulesFailed else { return }
         writingRules = true
         Haptics.selection()
         let rules = policy
@@ -590,7 +608,7 @@ struct HostedAppPage: View {
     }
 
     private func setTool(_ tool: String, on: Bool, off: Set<String>) {
-        guard !writingRules else { return }
+        guard !writingRules, !rulesFailed else { return }
         var next = off
         if on { next.remove(tool) } else { next.insert(tool) }
         let disabled = next.sorted()
@@ -641,6 +659,14 @@ extension HostedAppStyle {
 }
 
 /// Names a new account before its sign-in, or renames one.
+/// A new account asked for while the organization's rules are unread.
+private struct HostedAppRulesUnread: LocalizedError {
+    let appTitle: String
+    var errorDescription: String? {
+        AppLocalization.string("Hermes couldn't read your organization's rules just now, so it can't tell yet whether \(appTitle) is allowed.")
+    }
+}
+
 private struct HostedAccountNameSheet: View {
     let appTitle: String
     let account: HostedAppAccount?
