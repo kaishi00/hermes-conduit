@@ -2454,6 +2454,7 @@ and their README section
 
 **Open gaps**
 - A dropped folder's files aren't attached for the user; they drop the files themselves.
+- A Windows host's room files (a drive letter and backslashes) stay names in Conduit, on its own rooms and in copies of them: the views read only paths that start with `/` (the plugin and its carry take either).
 - A file over 16 MB sent into a room someone else hosts stays on the home's host: a guest's room draws it as a chip with the unavailable mark (a lone picture, its name with the mark), and their agents get the home's path.
 - A picture over 16 MB in a room shows as unavailable (by its name when it's the message's only one); Conduit stages photos as JPEG well under that. Any other file over 16 MB doesn't open from a room, nor from a chat: both read sent files as data URLs (a room takes up to 50 MB).
 
