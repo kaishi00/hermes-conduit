@@ -40,12 +40,15 @@ extension AppState {
             let receipt = try await client.replaceQueuedPrompt(
                 sessionID, admissionID: row.admissionID, text: words, submissionID: submissionID
             )
+            // The old words are settled: sending them again is a new message.
+            HermesClient.forgetUnansweredSubmission(row.inputID, for: sessionID)
             let kept = self.takeQueuedSendRow(admissionID: row.admissionID)
             self.authorityQueue.drop(row.admissionID)
             // The user's own message still comes back to the transcript when
             // its turn starts, now with the new words. A file it carried
-            // stays with it (Hermes keeps it on the edit's admission).
-            if !receipt.admissionID.isEmpty {
+            // stays with it (Hermes keeps it on the edit's admission). Only
+            // in its own chat: one opened meanwhile reads it from Hermes.
+            if !receipt.admissionID.isEmpty, self.authorityQueueIsOpenChat(sessionID) {
                 var edited = kept ?? self.localUserRow(words)
                 edited.content = words
                 edited.rawContent = nil
