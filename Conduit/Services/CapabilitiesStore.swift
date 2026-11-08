@@ -416,9 +416,9 @@ final class CapabilitiesStore {
         skillsEpoch &+= 1
         let epoch = skillsEpoch
         officialSkillsRead &+= 1
-        let read = officialSkillsRead
+        let skillsRead = officialSkillsRead
         officialSkillsLoading = true
-        defer { if token == generation, read == officialSkillsRead { officialSkillsLoading = false } }
+        defer { if token == generation, skillsRead == officialSkillsRead { officialSkillsLoading = false } }
         guard let response = try? await read(scoped(KeptRoute.officialSkills), keptAs: KeptRoute.officialSkills, in: answers) else { return }
         guard token == generation, epoch == skillsEpoch else { return }
         officialSkills = Self.officialSkills(from: response)
