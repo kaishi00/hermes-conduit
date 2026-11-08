@@ -50,7 +50,9 @@ a job. At most three jobs run at once.
   `start_job` kept in the chat, and GPT-Live's delegations. Until the
   bot's work has loaded, the app can't tell the chat is a workstream's: it
   first waits for that read, as a job does, and a chat turn then goes into
-  the chat as before.
+  the chat as before. Classic and Local Live's Hermes turns talk in the
+  chat itself, so their words answer its question or approval card as a tap
+  would (`answerWaitingBySpeech`), never as a turn behind it.
 - During a live call, the call screen shows each job the call started: the
   latest above the captions, and every one in the transcript panel where it
   started (`VoiceJobCallAnchor`). Tapping one shows its status and, once it
