@@ -495305,6 +495305,182 @@
           }
         }
       }
+    },
+    "Each run uses this model and reasoning. Profile default follows the profile's, so a change there reaches this job too." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeder Lauf nutzt dieses Modell und diese Denkstufe. Profilstandard folgt dem Profil, eine Änderung dort gilt also auch für diesen Job."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Each run uses this model and reasoning. Profile default follows the profile's, so a change there reaches this job too."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada ejecución usa este modelo y este razonamiento. Predeterminado del perfil sigue al perfil, así que un cambio allí también llega a este trabajo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chaque exécution utilise ce modèle et ce raisonnement. Par défaut du profil suit le profil : un changement là-bas s’applique aussi à cette tâche."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setiap jalannya memakai model dan penalaran ini. Default profil mengikuti profil, jadi perubahan di sana juga berlaku untuk tugas ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ogni esecuzione usa questo modello e questo ragionamento. Predefinito del profilo segue il profilo, quindi una modifica lì vale anche per questo job."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "各実行でこのモデルと推論レベルを使います。「プロファイルのデフォルト」はプロファイルの設定に従うため、そちらの変更はこのジョブにも反映されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실행할 때마다 이 모델과 추론 수준을 사용합니다. 프로필 기본값은 프로필 설정을 따르므로 그곳의 변경이 이 작업에도 적용됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Każde uruchomienie używa tego modelu i poziomu rozumowania. „Według profilu” podąża za profilem, więc zmiana tam dotyczy też tego zadania."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada execução usa este modelo e este raciocínio. Padrão do perfil segue o perfil, então uma mudança lá também vale para esta tarefa."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Каждый запуск использует эту модель и уровень рассуждений. «Как в профиле» следует профилю, поэтому изменение там применится и к этому заданию."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her çalıştırma bu modeli ve akıl yürütme düzeyini kullanır. Profil varsayılanı profili izler, yani oradaki bir değişiklik bu işe de yansır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次运行都使用此模型和推理级别。“配置默认”跟随配置，因此那里的更改也会应用到此任务。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次執行都使用此模型和推理等級。「設定檔預設」跟隨設定檔，因此那裡的變更也會套用到此任務。"
+          }
+        }
+      }
+    },
+    "The job is saved, but not its reasoning: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Job ist gespeichert, aber nicht seine Denkstufe: %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The job is saved, but not its reasoning: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El trabajo está guardado, pero no su razonamiento: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La tâche est enregistrée, mais pas son raisonnement : %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tugas tersimpan, tapi penalarannya belum: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il job è salvato, ma non il suo ragionamento: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ジョブは保存されましたが、推論レベルは保存されていません: %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "작업은 저장됐지만 추론 수준은 저장되지 않았습니다: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zadanie zapisano, ale nie jego poziom rozumowania: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A tarefa foi salva, mas não o raciocínio: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Задание сохранено, но не уровень рассуждений: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İş kaydedildi ama akıl yürütme düzeyi kaydedilmedi: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任务已保存，但未保存推理级别：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任務已儲存，但未儲存推理等級：%@"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
