@@ -314,7 +314,7 @@ struct PresentedConfirm: Identifiable, Equatable {
 
     /// A no that names its action: what follows it is what's turned down.
     private static let actionNos: [[String]] = [
-        "cancel", "stop", "abort", "drop", "scrap", "skip", "ditch", "abbrechen", "storniere", "cancela", "cancelar",
+        "don't", "dont", "do not", "never", "nicht", "cancel", "stop", "abort", "drop", "scrap", "skip", "ditch", "abbrechen", "storniere", "cancela", "cancelar",
         "annule", "annuler", "annulez", "anula", "anular", "annulla", "отмени", "отменить", "anuluj", "iptal",
         "batalkan", "batal", "取消", "キャンセル", "취소",
     ].map { words(in: $0) }
