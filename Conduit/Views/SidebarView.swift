@@ -2215,6 +2215,8 @@ struct CronList: View {
             if !jobs.isEmpty {
                 let shown = CronJobFilter.shownJobs(jobs, showAll: showAllJobs, isSearching: isSearching)
                 let zoneLabel = ProfileTimeZone.scheduleZoneLabel(profileSetting: appState.activeProfileTimeZoneSetting)
+                // Read once, for the model lines of jobs that pin one.
+                let providers = shown.contains(where: \.pinsModel) ? appState.keptModelProviders() : []
                 HStack {
                     Text("Jobs").scaledFont(.headline)
                     Spacer()
@@ -2225,7 +2227,7 @@ struct CronList: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
                 ForEach(shown) { job in
-                    Button { selectedJob = job } label: { CronJobRow(job: job, notifies: appState.cronJobNotifies(job), zoneLabel: zoneLabel) }
+                    Button { selectedJob = job } label: { CronJobRow(job: job, notifies: appState.cronJobNotifies(job), zoneLabel: zoneLabel, model: job.pinsModel ? job.modelSummary(in: providers) : nil) }
                         .buttonStyle(.plain)
                         .listRowBackground(Color.clear).listRowSeparator(.hidden)
                 }
@@ -2404,6 +2406,8 @@ private struct CronJobRow: View {
     var notifies = true
     /// The profile zone the schedule's times are in, when not this iPhone's.
     var zoneLabel: String? = nil
+    /// The model and reasoning of a job that pins its own.
+    var model: String? = nil
     var body: some View {
         HStack(spacing: 11) {
             Image(systemName: "clock")
@@ -2416,6 +2420,13 @@ private struct CronJobRow: View {
                 Text(CronScheduleText.describe(job, zoneLabel: zoneLabel) ?? AppLocalization.string("No schedule"))
                     .scaledFont(.caption).foregroundStyle(.secondary)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                if let model {
+                    Label(model, systemImage: "cpu")
+                        .labelStyle(.titleAndIcon)
+                        .scaledFont(.caption).foregroundStyle(.secondary)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                        .accessibilityLabel(AppLocalization.string("Model") + ", " + model)
+                }
             }
             Spacer()
             if !notifies {
@@ -2470,6 +2481,9 @@ struct CronJobDetailSheet: View {
                             SettingsMetricRow(label: AppLocalization.string("Next run"), value: job.isFinished ? "—" : runTime(job.nextRunAt))
                             SettingsMetricRow(label: AppLocalization.string("Last run"), value: runTime(job.lastRunAt))
                             SettingsMetricRow(label: AppLocalization.string("Delivery"), value: job.deliver ?? AppLocalization.string("Local"))
+                            if let model = job.modelSummary(in: appState.keptModelProviders(), withProvider: true) {
+                                SettingsMetricRow(label: AppLocalization.string("Model"), value: model)
+                            }
                         }
                         if appState.supportsCronNotifications {
                             ConduitSettingsSection(title: AppLocalization.string("Notifications"), symbol: "bell.fill", tint: .conduitAura) {

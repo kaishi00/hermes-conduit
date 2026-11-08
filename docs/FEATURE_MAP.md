@@ -2297,7 +2297,47 @@ Dynamic Type cap) · text for row wrapping (none: no captions or strings change)
 **Open gaps**
 - Without a dashboard, a run of Hermes' unified runtime (a `local-*` id) that `cron.runs` doesn't name a job for is left out of every job's history.
 
-**Checked:** 2026-11-08, #1924 (description and Siblings now record both scheduled-job rows, the copied chat-row rule, the scrolling detail sheet and unchanged text); 2026-11-07, #1924 (a job's name and schedule wrap to two lines at accessibility text sizes in the drawer's Cron list and Tasks › Scheduled, its next run too in Tasks, as a chat's row already does; Code now names CronJobRow and V2ScheduledList's row); 2026-11-03, #1712 (added, fixing #1707).
+**Checked:** 2026-11-08, #PRNUM (a pinned job's model line in both rows follows the same two-line rule at accessibility sizes; see A scheduled job's model); 2026-11-08, #1924 (description and Siblings now record both scheduled-job rows, the copied chat-row rule, the scrolling detail sheet and unchanged text); 2026-11-07, #1924 (a job's name and schedule wrap to two lines at accessibility text sizes in the drawer's Cron list and Tasks › Scheduled, its next run too in Tasks, as a chat's row already does; Code now names CronJobRow and V2ScheduledList's row); 2026-11-03, #1712 (added, fixing #1707).
+
+## A scheduled job's model
+
+A scheduled job runs on the profile's model and reasoning unless it pins its
+own. Edit job (and New job) has a Model row that opens the shared Model page,
+Profile default first, with the reasoning bars on top; Tasks › Scheduled and
+the drawer's Cron list show a pinned job's model and reasoning under its
+schedule, and the job's sheet always says what it runs on (Eric 2026-11-08:
+the Scheduled list didn't say which model a job used, and Edit job couldn't
+pin one).
+
+**Siblings:** the job editor, New and Edit (one `CronJobEditorSheet`, done) ·
+the Model page (done: the editor opens `ModelChooserPage` through
+`TaggedModelChooserLink`, see One Model page for every model setting) · the
+rows in Tasks › Scheduled and the drawer's Cron list (done: a pinned job's
+model line) · the job's sheet in both shells (done: one
+`CronJobDetailSheet`, a Model row) · a job that runs no agent (not needed:
+no model, so no row or line) · the blueprint form (not needed: Hermes
+creates the job from the blueprint, which has no model field; Edit pins one
+after) · Hermes' own cron tool and `hermes cron edit` (not needed: Hermes
+already takes `model`, `provider` and `reasoning_effort` there, and the
+editor reads what they wrote) · the notifier (not needed: the editor talks
+to the dashboard's own cron routes) · Watch, CarPlay and group rooms (not
+needed: no scheduled jobs there) · Text (done: the editor's caption and
+README.md's Scheduled jobs line)
+
+**Code**
+- App: `Conduit/Models/Models.swift` (CronJob's model, provider, baseURL, reasoningEffort), `Conduit/Models/CronJobDraft.swift` (CronJobDraft's modelTag, reasoning, runsAgent, createReasoningUpdate and modelFields; CronJob's modelTag, pinnedReasoningEffort, pinsModel, modelSummary), `Conduit/Views/V2/CronJobEditorSheet.swift` (modelSection, loadModels, the create's reasoning edit), `Conduit/Views/V2/V2TasksView.swift` (V2ScheduledList's row), `Conduit/Views/SidebarView.swift` (CronJobRow's model, CronJobDetailSheet's Model row)
+- Tests: `ConduitTests/CronJobDraftTests.swift` (testAJobsModelAndReasoningAreReadAndOnlyChangesSent, testANewJobsModelGoesInTheBodyAndItsReasoningFollows, testAJobSaysWhichModelItRunsOn)
+
+**Rulings**
+- The pin is Hermes' own per-job `model`, `provider` and `reasoning_effort` (v0.22.5 and later), sent through the dashboard's PUT /api/cron/jobs; Profile default clears them, so the job follows the profile's model again. A new pick clears `base_url`, an endpoint kept for the provider before, which would otherwise override the new provider's.
+- Hermes' create takes a model but no reasoning, so a new job's reasoning is saved as an edit right after; if that fails the job is kept and a banner says its reasoning wasn't saved.
+- Only a pinned job (a model, or a reasoning, of its own) gets a model line in the lists; the rest run on the profile's and say so in their sheet ("Profile default").
+- Every reasoning level Hermes' cron takes is offered, Ultra included.
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-08, #PRNUM (added)
 
 ## Links in messages
 
@@ -3997,7 +4037,8 @@ models (done) · Delegate fallback models and Subagent routing's route sheet
 one section) · Voice jobs (done) · Settings > Pulse's model (done) · a bot's
 Model page from New Bot and Edit Bot, and Edit Bot > Work's Workstream
 Model (done) · the Kanban model override, from the task composer and a
-task's page (done) · a custom endpoint's Model after Find models (done: its
+task's page (done) · a scheduled job's Model in its editor (done,
+#PRNUM: see A scheduled job's model) · a custom endpoint's Model after Find models (done: its
 models as one provider) · the composer's Model sheet (not needed: it
 switches the live session and keeps its own sheet; it shares Edit's editor,
 the bars and Quick picks) · a provider's page in Models & providers (not
@@ -4012,6 +4053,7 @@ menus)
 - Hidden models: `Conduit/Views/ModelVisibilityEditor.swift` (ModelVisibility.visible and isHidden, ModelVisibilityEditor, ModelVisibilityEditorPage), shared with `Conduit/Views/ModelPickerView.swift`
 - Reasoning: `Conduit/Views/Components/ReasoningEffortBars.swift` (levels, unsetTitle)
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (ProfileModelSettingsDetail, DelegationModelSettings, FallbackModelsSettings' chooser and addChooser), `Conduit/Views/DelegationRoutingViews.swift` (DelegationModelRouteSheet), `Conduit/Views/GeminiLiveViews.swift` (TaggedModelChoice, TaggedModelChooserLink, VoiceJobModelSettingsSection, VoiceReplyModelSettingsSection's pickers and warnings), `Conduit/Views/PulseSettingsViews.swift` (modelSection), `Conduit/Views/ProviderSettingsViews.swift` (CustomEndpointForm)
+- Scheduled jobs: `Conduit/Views/V2/CronJobEditorSheet.swift` (modelSection)
 - Bots and Kanban: `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotWorkSettingsView.swift`, `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (KanbanModelOverrideSheet's chooserCatalog)
 - Tests: `ConduitTests/ModelQuickPicksTests.swift`, `ConduitTests/HermesVoiceConfigurationServiceTests+KeptAnswers.swift` (testAPinnedProviderAndAnEndpointAreShownAndKept)
 
@@ -4025,7 +4067,7 @@ menus)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-08, #2002 (a bot's Model and Workstream Model rows name the catalog's model and provider, as every other row does; a provider-only pick is named by its row's title on the Model page's top card and on the tagged rows, Voice jobs, Voice replies, Helper models' pages and Pulse; the Helper models list's own summary, HelperModelSlot.value, keeps the saved spelling as it does for every pick, having no catalog); 2026-11-08, #1992 (entry added)
+**Checked:** 2026-11-08, #PRNUM (a scheduled job's Model row in Edit job and New job opens this page, Profile default first, with every reasoning level); 2026-11-08, #2002 (a bot's Model and Workstream Model rows name the catalog's model and provider, as every other row does; a provider-only pick is named by its row's title on the Model page's top card and on the tagged rows, Voice jobs, Voice replies, Helper models' pages and Pulse; the Helper models list's own summary, HelperModelSlot.value, keeps the saved spelling as it does for every pick, having no catalog); 2026-11-08, #1992 (entry added)
 
 ## The + that makes something new
 

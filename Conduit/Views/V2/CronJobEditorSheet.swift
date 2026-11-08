@@ -39,6 +39,13 @@ struct CronJobEditorSheet: View {
     /// report just shows there (cron_bot_chat).
     @State private var botActs = false
     @State private var originalBotActs = false
+    /// The profile's models for the Model page.
+    @State private var providers: [ProviderInfo] = []
+    /// Hermes answered the models read: only then is a model picked.
+    @State private var modelsAnswered = false
+    @State private var modelsFailed = false
+    /// Counts the models reads, so only the last one asked lands.
+    @State private var modelsRead = 0
 
     private var editedJob: CronJob? {
         if case .edit(let job) = target { return job }
@@ -83,6 +90,9 @@ struct CronJobEditorSheet: View {
                         .lineLimit(3...10)
                 }
                 CronScheduleEditor(schedule: $draft.schedule, zoneLabel: zoneLabel)
+                if draft.runsAgent {
+                    modelSection
+                }
                 deliverySection
                 if offersBotChoice {
                     botChoiceSection
@@ -110,6 +120,55 @@ struct CronJobEditorSheet: View {
         }
         .interactiveDismissDisabled(isSaving || (seeded && (draft != original || botChoiceChanged)))
         .task { await seed() }
+        .onAppear { if providers.isEmpty { providers = appState.keptModelProviders() } }
+        .task(id: appState.activeProfile) {
+            await loadModels()
+            // Hermes fetches a stale provider list in the background
+            // meanwhile (issue 1807).
+            await ModelCatalogSettle.readAgain { await loadModels() }
+        }
+    }
+
+    /// The job's model and reasoning, on the shared Model page; the
+    /// profile's by default, so a change there reaches the job too.
+    private var modelSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Model"), symbol: "cpu", tint: .conduitAccent) {
+            TaggedModelChooserLink(
+                defaultTitle: AppLocalization.string("Profile default"),
+                choice: TaggedModelChoice(defaultTag: "", selection: draft.modelTag),
+                catalog: ModelChooserCatalog(providers: providers, loaded: !providers.isEmpty || modelsAnswered, answered: modelsAnswered, failed: modelsFailed),
+                disabled: isSaving || !modelsAnswered,
+                retry: { Task { await loadModels() } },
+                onSelect: { draft.modelTag = $0 },
+                reasoning: ModelChooserReasoning(
+                    effort: draft.reasoning,
+                    inheritTitle: AppLocalization.string("Profile default"),
+                    disabled: isSaving,
+                    set: { draft.reasoning = $0 }
+                ),
+                reasoningTitle: draft.reasoning.isEmpty ? nil : ReasoningEffortLevel.displayTitle(for: draft.reasoning),
+                identifier: "cron.editor.model"
+            )
+            if modelsFailed {
+                // The models listed stay up; Hermes didn't answer.
+                ModelCatalogPlaceholder(state: .failed) { Task { await loadModels() } }
+            }
+            Text(AppLocalization.string("Each run uses this model and reasoning. Profile default follows the profile's, so a change there reaches this job too."))
+                .settingsCaption()
+        }
+    }
+
+    private func loadModels() async {
+        modelsRead += 1
+        let asked = modelsRead
+        let loaded = await appState.loadModelProviders()
+        // A read asked since (the read again, Try Again) has the newer answer.
+        guard asked == modelsRead else { return }
+        if let loaded {
+            providers = loaded
+            modelsAnswered = true
+        }
+        modelsFailed = loaded == nil
     }
 
     private var deliverySection: some View {
@@ -174,7 +233,22 @@ struct CronJobEditorSheet: View {
                     try await appState.updateCronJob(job, updates: draft.updates(from: original))
                     jobID = job.id
                 } else if let body = draft.createBody {
-                    jobID = try await appState.createCronJob(body)?.id
+                    let created = try await appState.createCronJob(body)
+                    jobID = created?.id
+                    // Hermes' create takes no reasoning; the new job gets it
+                    // as an edit. The job itself is saved, so the sheet
+                    // closes either way (a second Create would make it twice).
+                    if let reasoning = draft.createReasoningUpdate {
+                        do {
+                            guard let created else { throw HermesError.invalidResponse }
+                            try await appState.updateCronJob(created, updates: reasoning)
+                        } catch {
+                            Haptics.mutationCompleted(false)
+                            appState.errorMessage = AppLocalization.string("The job is saved, but not its reasoning: \(UserFacingError.message(for: error))")
+                            dismiss()
+                            return
+                        }
+                    }
                 }
                 // A new job just shows by default, so only "act" is sent for
                 // it, which needs the id Hermes gave it.
