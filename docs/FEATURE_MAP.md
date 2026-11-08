@@ -6526,6 +6526,7 @@ message
 - Agents that aren't Hermes (an A2A member) are left out.
 - A file over 16 MB sent into a room stays on the home's host: its copies draw it with the unavailable mark and a guest's agents get the home's path, which their Hermes can't open.
 - A guest's turn that names a room file never carried (over 16 MB, or swept on the home) waits the full 8 s for it before going with the home's path: no message says a file won't come.
+- A guest's Conduit reads a carried picture or file by its upload folder and name, whichever home sent it: the plugin keeps the first home's bytes under them and its turns name only their own home's copy, but a home linked to you that learned another's upload path before its carry arrived could show you its own bytes there.
 - An agent in a room, the home's or a guest's, sees a picture sent there only by calling `vision_analyze` (the auxiliary vision model when its own has no vision): Conduit names room files as `@file:` paths, which Hermes doesn't expand outside the workspace, and Hermes' own room attachments, which would hand the picture to the turn itself, don't cross its peer route (`accepts_attachments = False`).
 - An acceptor's Hermes that stays off for more than 7 days while its confirm waits at the mailbox leaves the inviter's side linked until its owner unlinks it (the notifier README says so).
 - Changing the tools rooms may use says the agent stops answering in rooms already started, but not in which.
