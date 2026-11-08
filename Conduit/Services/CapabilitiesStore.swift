@@ -145,6 +145,10 @@ final class CapabilitiesStore {
     /// refresh that answers late can't bring back an older list or undo a
     /// switch just flipped.
     @ObservationIgnored private var skillsEpoch = 0
+    /// Bumped by every hub read and every install or removal: an answer
+    /// asked before a newer one, or before a change, never puts back the
+    /// installed skills it saw.
+    @ObservationIgnored private var skillHubEpoch = 0
     @ObservationIgnored private var connectorsEpoch = 0
     /// The read whose list is showing.
     @ObservationIgnored private var connectorsShownEpoch = 0
@@ -428,6 +432,7 @@ final class CapabilitiesStore {
                 skillsEpoch &+= 1
                 officialSkills[index].installed = true
             }
+            skillHubEpoch &+= 1
             skillHub?.installed[identifier] = skillHub?.installed[identifier] ?? identifier
             if showsKept.contains(.officialSkills) { await loadOfficialSkills() }
             if skillHub != nil { await loadSkillHub() }
@@ -446,15 +451,17 @@ final class CapabilitiesStore {
     /// route has no hub to browse.
     func loadSkillHub() async {
         let token = generation
+        skillHubEpoch &+= 1
+        let epoch = skillHubEpoch
         do {
             let response = try await read(scoped(KeptRoute.skillHub), keptAs: KeptRoute.skillHub, in: answers, timeout: 45_000)
-            guard token == generation else { return }
+            guard token == generation, epoch == skillHubEpoch else { return }
             skillHub = SkillHubSnapshot(response)
             skillHubError = nil
             skillHubMissing = false
             showsKept.remove(.skillHub)
         } catch {
-            guard token == generation, !(error is CancellationError) else { return }
+            guard token == generation, epoch == skillHubEpoch, !(error is CancellationError) else { return }
             if Self.isMissingRoute(error) {
                 skillHubMissing = true
                 return
@@ -470,10 +477,11 @@ final class CapabilitiesStore {
         var path = "/api/skills/hub/search?q=\(Self.component(query))&limit=\(SkillHub.searchLimit)"
         if let source { path += "&source=\(Self.component(source))" }
         let token = generation
+        let epoch = skillHubEpoch
         let response = try await request(scoped(path), timeout: 45_000)
         let results = SkillHubResults(response)
         guard token == generation else { throw CancellationError() }
-        skillHub?.installed = results.installed
+        if epoch == skillHubEpoch { skillHub?.installed = results.installed }
         return results
     }
 
@@ -506,10 +514,22 @@ final class CapabilitiesStore {
                 return false
             }
             skillRemovals[name] = nil
+            skillHubEpoch &+= 1
             if let hub = skillHub {
                 skillHub?.installed = hub.installed.filter { $0.value != name }
             }
-            await loadSkillHub()
+            // An official skill removed here can be installed again from
+            // the catalog's list.
+            let answers = self.answers
+            await keepChange(KeptRoute.officialSkills, list: "skills", field: "installed", to: false, in: answers) {
+                OfficialSkill($0)?.name == name
+            }
+            if let index = officialSkills.firstIndex(where: { $0.name == name }) {
+                skillsEpoch &+= 1
+                officialSkills[index].installed = false
+            }
+            if skillHub != nil { await loadSkillHub() }
+            if !officialSkills.isEmpty { await loadOfficialSkills() }
             return true
         } catch {
             guard token == generation, !(error is CancellationError) else { return false }

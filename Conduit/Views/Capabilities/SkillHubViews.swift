@@ -185,7 +185,9 @@ struct SkillHubBrowsePage: View {
                 CapabilityEmptyState(
                     title: AppLocalization.string("No matching skills"),
                     symbol: "magnifyingglass",
-                    message: AppLocalization.string("Nothing matches “\(trimmedQuery)”.")
+                    message: [AppLocalization.string("Nothing matches “\(trimmedQuery)”."), timedOutNote(results)]
+                        .compactMap { $0 }
+                        .joined(separator: " ")
                 )
             } else {
                 CapabilitySection(
