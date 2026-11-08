@@ -205,81 +205,10 @@ struct V2PulsePage: View {
     }
 
     var body: some View {
-        ZStack {
-            V2Backdrop(drifts: false)
-            content
-        }
-        .navigationTitle(Text("Pulse"))
-        .navigationBarTitleDisplayMode(.large)
-        .toolbar { pageToolbar }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            // Stacked on the call bar, so it never covers the call's controls.
-            VStack(spacing: 0) {
-                if let undo {
-                    undoBar(undo)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 12)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-                MinimisedLiveVoiceBar()
-            }
-        }
-        .sheet(isPresented: $showsLearned) {
-            PulseLearnedSheet {
-                learnedNote = nil  // it may name a lesson just undone
-                Task { await load() }
-            }
-            .environmentObject(appState)
-        }
-        .sheet(isPresented: $showsLeftOut) {
-            PulseLeftOutSheet { card in
-                // It shows as new, at the card, once the sheet is down.
-                newCards?.insert(card)
-                Task {
-                    await load()
-                    focus(PulseOpenRequest(card: card))
-                }
-            }
-            .environmentObject(appState)
-        }
-        .confirmationDialog(
-            AppLocalization.string("What was wrong with it?"),
-            isPresented: Binding(get: { reasonCard != nil }, set: { if !$0 { reasonCard = nil } }),
-            titleVisibility: .visible,
-            presenting: reasonCard
-        ) { card in
-            ForEach(appState.pulseDownReasons) { reason in
-                Button(reason.title) { rate(card, up: false, reason: reason) }
-            }
-            Button(AppLocalization.string("Just thumbs down")) { rate(card, up: false, reason: nil) }
-        } message: { _ in
-            Text("A reason changes what Pulse does right away, and you can undo it under What Pulse learned. Just thumbs down only teaches Pulse.")
-        }
-        .confirmationDialog(
-            AppLocalization.string("Not now, until when?"),
-            isPresented: Binding(get: { restCard != nil }, set: { if !$0 { restCard = nil } }),
-            titleVisibility: .visible,
-            presenting: restCard
-        ) { card in
-            ForEach(PulseRest.choices(night: page?.night, brief: page?.briefTime)) { rest in
-                Button(rest.title) { dismiss(card, true, until: rest) }
-            }
-        } message: { _ in
-            Text("It comes back as new then, unless it got done meanwhile.")
-        }
-        .confirmationDialog(
-            undoCard?.proposal?.isEvent == false ? AppLocalization.string("Remove it from your reminders?")
-                : AppLocalization.string("Remove it from your calendar?"),
-            isPresented: Binding(get: { undoCard != nil }, set: { if !$0 { undoCard = nil } }),
-            titleVisibility: .visible,
-            presenting: undoCard
-        ) { card in
-            Button(AppLocalization.string("Remove"), role: .destructive) { undoProposal(card) }
-        } message: { card in
-            Text(verbatim: card.proposal?.line ?? card.title)
-        }
+        pageWithDialogs
         .task(id: PulseRefreshKey(dashboard: appState.activeDashboardID, active: isShown && scenePhase == .active,
-                                  served: appState.notifierPlugin.reports(PulseClient.feedCapability))) {
+                                  served: appState.notifierPlugin.reports(PulseClient.feedCapability),
+                                  available: appState.showsPulseScreen)) {
             guard isShown, scenePhase == .active else { return }
             // Cards that come in while the page is open show up too, and the
             // feed is read again once the plugin answers after a launch.
@@ -333,6 +262,90 @@ struct V2PulsePage: View {
         .onChange(of: appState.pulseOpenRequest) { _, request in
             // Only the page on screen: one covered by a chat leaves it to the one pushed over it.
             if let request, isShown { focus(request) }
+        }
+    }
+
+    private var pageWithDialogs: some View {
+        pageSheets
+        .confirmationDialog(
+            AppLocalization.string("What was wrong with it?"),
+            isPresented: Binding(get: { reasonCard != nil }, set: { if !$0 { reasonCard = nil } }),
+            titleVisibility: .visible,
+            presenting: reasonCard
+        ) { card in
+            ForEach(appState.pulseDownReasons) { reason in
+                Button(reason.title) { rate(card, up: false, reason: reason) }
+            }
+            Button(AppLocalization.string("Just thumbs down")) { rate(card, up: false, reason: nil) }
+        } message: { _ in
+            Text("A reason changes what Pulse does right away, and you can undo it under What Pulse learned. Just thumbs down only teaches Pulse.")
+        }
+        .confirmationDialog(
+            AppLocalization.string("Not now, until when?"),
+            isPresented: Binding(get: { restCard != nil }, set: { if !$0 { restCard = nil } }),
+            titleVisibility: .visible,
+            presenting: restCard
+        ) { card in
+            ForEach(PulseRest.choices(night: page?.night, brief: page?.briefTime)) { rest in
+                Button(rest.title) { dismiss(card, true, until: rest) }
+            }
+        } message: { _ in
+            Text("It comes back as new then, unless it got done meanwhile.")
+        }
+        .confirmationDialog(
+            undoCard?.proposal?.isEvent == false ? AppLocalization.string("Remove it from your reminders?")
+                : AppLocalization.string("Remove it from your calendar?"),
+            isPresented: Binding(get: { undoCard != nil }, set: { if !$0 { undoCard = nil } }),
+            titleVisibility: .visible,
+            presenting: undoCard
+        ) { card in
+            Button(AppLocalization.string("Remove"), role: .destructive) { undoProposal(card) }
+        } message: { card in
+            Text(verbatim: card.proposal?.line ?? card.title)
+        }
+    }
+
+    private var pageSheets: some View {
+        pageScaffold
+        .sheet(isPresented: $showsLearned) {
+            PulseLearnedSheet {
+                learnedNote = nil  // it may name a lesson just undone
+                Task { await load() }
+            }
+            .environmentObject(appState)
+        }
+        .sheet(isPresented: $showsLeftOut) {
+            PulseLeftOutSheet { card in
+                // It shows as new, at the card, once the sheet is down.
+                newCards?.insert(card)
+                Task {
+                    await load()
+                    focus(PulseOpenRequest(card: card))
+                }
+            }
+            .environmentObject(appState)
+        }
+    }
+
+    private var pageScaffold: some View {
+        ZStack {
+            V2Backdrop(drifts: false)
+            content
+        }
+        .navigationTitle(Text("Pulse"))
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar { pageToolbar }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            // Stacked on the call bar, so it never covers the call's controls.
+            VStack(spacing: 0) {
+                if let undo {
+                    undoBar(undo)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                MinimisedLiveVoiceBar()
+            }
         }
     }
 
