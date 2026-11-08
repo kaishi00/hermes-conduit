@@ -45,8 +45,9 @@ final class GatewayMediaDataURLResolver {
     enum Source: Equatable {
         /// Hermes' own file routes, as the profile.
         case hermes
-        /// Pictures sent into a group room, which the plugin stored
-        /// (`/room-files/data-url`): no other files, and only pictures.
+        /// Files sent into a group room, which the plugin stored
+        /// (`/room-files/data-url`): pictures since plugin 0.142, any type
+        /// since 0.143. Nothing else the host holds.
         case roomFiles
     }
 
