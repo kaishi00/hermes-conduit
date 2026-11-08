@@ -468,6 +468,30 @@ extension GroupChatModelsTests {
         XCTAssertNil(appState.linkedRoomInviteFollow, "nor start following them again")
     }
 
+    /// A 504 that lands after a disconnect cleared the invites starts no
+    /// follow either (issue 2040).
+    @MainActor
+    func testAStillSendingAnswerAfterADisconnectStartsNoFollow() async throws {
+        let routes = InvitesRoutes(invites: [invitesInvite("conduit-1")])
+        routes.answerTimesOut = true
+        let appState = invitesAppState(routes)
+        invitesConnect(appState)
+        await appState.refreshGroupChatSupport()
+        appState.applyNotifierPluginReport(invitesPluginReport)
+        await invitesWait("the invites read", until: { appState.linkedRoomInviteRows.map(\.roomID) == ["conduit-1"] })
+        let invite = try XCTUnwrap(appState.linkedRoomInviteRows.first)
+        let agents = try XCTUnwrap(RoomInviteAgent.agents(for: [invitesBot("default")], choices: invite.choices))
+
+        let answering = Task { @MainActor in await appState.answerLinkedRoomInvite(invite, agents: agents) }
+        await invitesWait("the held answer", until: { routes.answeringHeld })
+        appState.disconnect()
+        routes.releaseAnswer()
+        let result = await answering.value
+        guard case .sending = result else { return XCTFail("a 504 is still sending: \(result)") }
+        XCTAssertNil(appState.linkedRoomInvites)
+        XCTAssertNil(appState.linkedRoomInviteFollow, "no follow for a list a disconnect cleared")
+    }
+
     /// An invite's notification opens its card once the plugin's status
     /// is in; one the plugin no longer lists says so, and one from a
     /// dashboard this device doesn't know opens nothing.
@@ -527,6 +551,8 @@ private final class InvitesRoutes {
     private var released = false
     /// What an answer returns, once `releaseAnswer()` lets it.
     var answered: [String: Any]?
+    /// The held answer ends in a 504: still going to the host.
+    var answerTimesOut = false
     private(set) var answeringHeld = false
     private var answerReleased = false
 
@@ -546,6 +572,7 @@ private final class InvitesRoutes {
                 try? await Task.sleep(for: .milliseconds(10))
             }
             answeringHeld = false
+            if answerTimesOut { throw DashboardTicketBridgeError.http(status: 504, detail: "") }
             return ["ok": true, "invite": answered ?? [:]]
         }
         guard path == RoomInvitesClient.path, method == "GET" else { throw URLError(.fileDoesNotExist) }
