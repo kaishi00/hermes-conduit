@@ -151,7 +151,7 @@ struct AuthorityQueueDock: View {
 
     /// Whether the cut-off turn had words of its own, past its files.
     private func hasWordsToResend(_ row: QueuedPrompt) -> Bool {
-        !MessageNormalizer.visibleUserText(row.text).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !BotMentions.strippingAnnotation(MessageNormalizer.visibleUserText(row.text)).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func lostCard(_ row: QueuedPrompt) -> some View {
