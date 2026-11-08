@@ -659,7 +659,7 @@ struct BotEditorSheet: View {
                             let lines = ModelChooserLinkRow.lines(
                                 pick: ModelChooserPick(provider: provider, model: model),
                                 providers: appState.keptModelProviders(),
-                                defaultTitle: BotModelPicker.summary(model: "", allowsInherit: isCreating)
+                                defaultTitle: ""
                             )
                             ModelChooserLinkRow(title: AppLocalization.string("Model"), value: lines.value, detail: lines.detail)
                         }
