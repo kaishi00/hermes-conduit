@@ -307,16 +307,21 @@ final class RichCardFieldMemory {
     /// Least recently kept first, so the card being typed in stays.
     private var entries: [Entry] = []
 
-    func kept(card: RichCard, chat: String?) -> (values: [String: String], open: Bool)? {
+    /// `sameChat` finds what was kept under another of the chat's ids (a
+    /// new chat's runtime id before its durable one), even when the card
+    /// wasn't drawn as the id changed.
+    func kept(card: RichCard, chat: String?,
+              sameChat: @MainActor (String, String) -> Bool = { $0 == $1 }) -> (values: [String: String], open: Bool)? {
         guard let chat else { return nil }
         let json = card.normalizedJSON
-        return entries.last(where: { $0.card == json && $0.chat == chat }).map { ($0.values, $0.open) }
+        return entries.last(where: { $0.card == json && sameChat($0.chat, chat) }).map { ($0.values, $0.open) }
     }
 
-    func keep(card: RichCard, chat: String?, values: [String: String], open: Bool) {
+    func keep(card: RichCard, chat: String?, values: [String: String], open: Bool,
+              sameChat: @MainActor (String, String) -> Bool = { $0 == $1 }) {
         guard let chat else { return }
         let json = card.normalizedJSON
-        entries.removeAll { $0.card == json && $0.chat == chat }
+        entries.removeAll { $0.card == json && sameChat($0.chat, chat) }
         entries.append(Entry(card: json, chat: chat, values: values, open: open))
         if entries.count > Self.maxCards { entries.removeFirst(entries.count - Self.maxCards) }
     }
@@ -338,6 +343,20 @@ final class RichCardTapMemory: ObservableObject {
     /// tapped, and its taps are its own.
     static func key(card: RichCard, button: String, chat: String) -> String {
         "\(chat)\u{1F}\(card.normalizedJSON)\u{1F}\(button)"
+    }
+
+    /// A button's tap, found under any of its chat's ids: one started while
+    /// a new chat had its runtime id still shows (and holds the button)
+    /// once the durable id lands, so it can't be tapped twice.
+    func state(card: RichCard, button: String, chat: String,
+               sameChat: @MainActor (String, String) -> Bool = { $0 == $1 }, now: Date = .now) -> State? {
+        if let state = state(Self.key(card: card, button: button, chat: chat), now: now) { return state }
+        let suffix = "\u{1F}\(card.normalizedJSON)\u{1F}\(button)"
+        for key in taps.keys where key.hasSuffix(suffix) {
+            let other = String(key.dropLast(suffix.count))
+            if other != chat, sameChat(other, chat), let state = state(key, now: now) { return state }
+        }
+        return nil
     }
 
     func state(_ key: String, now: Date = .now) -> State? {

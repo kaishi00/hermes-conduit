@@ -106,6 +106,33 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(memory.state(mine), .sent, "another chat's failed tap leaves this one's alone")
     }
 
+    @MainActor
+    func testATapAndTypedValuesFollowTheChatToItsDurableId() throws {
+        let schema = try XCTUnwrap(RichCardSchema.bundled)
+        let card = try XCTUnwrap(RichCard.cards(raw: [emailCard], schema: schema).first)
+        let runtime = "d\u{1F}p\u{1F}runtime-a", durable = "d\u{1F}p\u{1F}stored-a", other = "d\u{1F}p\u{1F}stored-b"
+        let same: @MainActor (String, String) -> Bool = { lhs, rhs in
+            lhs == rhs || Set([lhs, rhs]) == Set([runtime, durable])
+        }
+        let taps = RichCardTapMemory()
+        taps.set(RichCardTapMemory.key(card: card, button: "send", chat: runtime), .sending)
+        XCTAssertEqual(taps.state(card: card, button: "send", chat: durable, sameChat: same), .sending,
+                       "a tap on its way keeps its spinner, and holds its button, once the chat gets its durable id")
+        XCTAssertNil(taps.state(card: card, button: "send", chat: durable), "only through the chat's own test")
+        XCTAssertNil(taps.state(card: card, button: "send", chat: other, sameChat: same))
+        taps.set(RichCardTapMemory.key(card: card, button: "send", chat: runtime), .sent)
+        XCTAssertEqual(taps.state(card: card, button: "send", chat: durable, sameChat: same), .sent)
+
+        let fields = RichCardFieldMemory()
+        fields.keep(card: card, chat: runtime, values: ["note": "typed"], open: true, sameChat: same)
+        XCTAssertEqual(fields.kept(card: card, chat: durable, sameChat: same)?.values, ["note": "typed"],
+                       "a card drawn again after the id changed, off screen meanwhile, keeps what was typed")
+        XCTAssertNil(fields.kept(card: card, chat: other, sameChat: same))
+        fields.keep(card: card, chat: durable, values: ["note": "more"], open: true, sameChat: same)
+        XCTAssertEqual(fields.kept(card: card, chat: runtime, sameChat: same)?.values, ["note": "more"],
+                       "one entry for the chat, not one per id")
+    }
+
     func testANumberFieldTakesOnlyANumberInRange() throws {
         let field = try XCTUnwrap(RichField(json: ["id": "seats", "input": "number", "min": 1, "max": 8]))
         XCTAssertEqual(field.numberText("3"), "3")

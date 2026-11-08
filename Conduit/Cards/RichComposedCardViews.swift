@@ -48,8 +48,9 @@ struct RichComposedCard: View {
         // another's tap. The same chat under its durable id keeps them.
         .onChange(of: context?.chat) { old, new in
             if let old, let new, context?.sameChat(old, new) == true {
-                if !values.isEmpty {
-                    RichCardFieldMemory.shared.keep(card: card, chat: new, values: values, open: open)
+                if !values.isEmpty || open {
+                    RichCardFieldMemory.shared.keep(card: card, chat: new, values: values, open: open,
+                                                    sameChat: sameChat)
                 }
                 return
             }
@@ -62,16 +63,19 @@ struct RichComposedCard: View {
             // a change to a filled card counts, so scrolling past cards
             // doesn't push out the one typed in.
             guard !old.isEmpty else { return }
-            RichCardFieldMemory.shared.keep(card: card, chat: chat, values: new, open: open)
+            RichCardFieldMemory.shared.keep(card: card, chat: chat, values: new, open: open, sameChat: sameChat)
         }
         .onChange(of: open) { _, new in
-            RichCardFieldMemory.shared.keep(card: card, chat: chat, values: values, open: new)
+            RichCardFieldMemory.shared.keep(card: card, chat: chat, values: values, open: new, sameChat: sameChat)
         }
     }
 
     /// Outside a chat (the saved copy, a room, the call screen) nothing
     /// typed is kept.
     private var chat: String? { context?.chat }
+
+    /// The open chat's test for one chat under two ids (AppState).
+    private var sameChat: @MainActor (String, String) -> Bool { context?.sameChat ?? { $0 == $1 } }
 
     private var shownSections: [RichSection] {
         open ? card.sections : card.sections.filter { !$0.more }
@@ -84,7 +88,7 @@ struct RichComposedCard: View {
     }
 
     private func startValues() {
-        if let kept = RichCardFieldMemory.shared.kept(card: card, chat: chat) {
+        if let kept = RichCardFieldMemory.shared.kept(card: card, chat: chat, sameChat: sameChat) {
             values = kept.values
             open = kept.open
         }
@@ -444,7 +448,7 @@ struct RichCardButtonRow: View {
     private func row(_ shown: [RichButton], draftEmpty: Bool, lines: Int?) -> some View {
         ForEach(Array(shown.enumerated()), id: \.offset) { _, button in
             let state = button.id.flatMap { id in
-                context.flatMap { taps.state(RichCardTapMemory.key(card: card, button: id, chat: $0.chat)) }
+                context.flatMap { taps.state(card: card, button: id, chat: $0.chat, sameChat: $0.sameChat) }
             }
             Button {
                 Haptics.light()
