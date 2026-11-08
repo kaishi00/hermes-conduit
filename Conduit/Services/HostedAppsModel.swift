@@ -38,6 +38,9 @@ final class HostedAppsModel {
     /// The Hermes a sign-in runs on: the dashboard and profile, whatever
     /// connection carries them. A reconnect keeps it.
     @ObservationIgnored private var hermes: String?
+    /// Which sign-in is the latest: one given up while Hermes started it
+    /// runs on, and never touches a newer one's state.
+    @ObservationIgnored private var attempt = 0
     @ObservationIgnored private var reads = 0
     @ObservationIgnored private var signInTask: Task<Void, Never>?
     @ObservationIgnored private var browserClosedAt: Date?
@@ -122,8 +125,10 @@ final class HostedAppsModel {
         notes[slug] = nil
         browserClosedAt = nil
         let hermes = self.hermes
+        attempt += 1
+        let attempt = self.attempt
         signInTask = Task { [weak self] in
-            await self?.runSignIn(slug, alias: alias, repairing: connectionID, hermes: hermes, appState: appState)
+            await self?.runSignIn(slug, alias: alias, repairing: connectionID, hermes: hermes, attempt: attempt, appState: appState)
         }
     }
 
@@ -162,10 +167,11 @@ final class HostedAppsModel {
         browser = nil
     }
 
-    private func runSignIn(_ slug: String, alias: String?, repairing: String?, hermes: String?, appState: AppState) async {
+    private func runSignIn(_ slug: String, alias: String?, repairing: String?, hermes: String?, attempt: Int, appState: AppState) async {
         var operation: HostedAppOperation?
+        var isLatest: Bool { hermes == self.hermes && attempt == self.attempt }
         defer {
-            if hermes == self.hermes, signingIn == slug {
+            if isLatest, signingIn == slug {
                 signingIn = nil
                 signInTask = nil
                 closeBrowser()
@@ -178,7 +184,7 @@ final class HostedAppsModel {
             var current = try await Task { try await appState.connectHostedApp(slug, alias: alias, repairing: repairing) }.value
             operation = current
             try Task.checkCancellation()
-            guard hermes == self.hermes else { return }
+            guard isLatest else { return }
             if current.target(slug)?.connected == true {
                 await finished(slug, appState: appState)
                 return
@@ -192,7 +198,7 @@ final class HostedAppsModel {
             var wokeHermes = false
             while true {
                 try await Task.sleep(for: Self.pollInterval)
-                guard hermes == self.hermes else { return }
+                guard isLatest else { return }
                 if browserClosedAt != nil, !wokeHermes {
                     wokeHermes = true
                     try? await appState.wakeHostedAppOperation(current.id)
@@ -205,7 +211,7 @@ final class HostedAppsModel {
                     continue
                 }
                 operation = current
-                guard hermes == self.hermes else { return }
+                guard isLatest else { return }
                 let target = current.target(slug)
                 if target?.connected == true {
                     await finished(slug, appState: appState)
@@ -231,7 +237,7 @@ final class HostedAppsModel {
                 Task { try? await appState.stopHostedAppSignIn(operation) }
             }
         } catch {
-            guard hermes == self.hermes else { return }
+            guard isLatest else { return }
             notes[slug] = UserFacingError.message(for: error)
             if let operation { try? await appState.stopHostedAppSignIn(operation) }
         }
