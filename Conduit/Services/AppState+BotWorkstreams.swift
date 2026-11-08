@@ -244,8 +244,9 @@ extension AppState {
 
     /// A request from a call kept with one of a bot's workstreams' chats
     /// (Eric 2026-11-02): it goes into the workstream's own session through
-    /// its bot's plugin, which takes it as an interrupt while the
-    /// workstream works and as its next turn otherwise; no job session is
+    /// its bot's plugin, which takes it as the answer to a question the
+    /// workstream waits on, as an interrupt while it works (behind an
+    /// approval it waits on) and as its next turn otherwise; no job session is
     /// made. What to tell the call (for the live model, not localized), or
     /// nil when the chat isn't a workstream's.
     func sendCallRequestToWorkstream(_ thread: VoiceThreadTarget, _ request: String) async -> String? {
@@ -288,7 +289,7 @@ extension AppState {
     }
 
     /// What a workstream's call is told once its request went in.
-    static let workstreamCallSent = "Sent to this workstream, in its own session: if it was waiting on the user's answer to its question, this answers it; if it was working, Hermes takes this as an interrupt and keeps its work so far; otherwise it starts on it now. Its reply shows in the workstream's chat and its bot's Work panel, not on this call, so don't guess it."
+    static let workstreamCallSent = "Sent to this workstream, in its own session: if it was waiting on the user's answer to its question, this answers it; if it was waiting on an approval, this waits until the user answers that in its chat or on its card; if it was working, Hermes takes this as an interrupt and keeps its work so far; otherwise it starts on it now. Its reply shows in the workstream's chat and its bot's Work panel, not on this call, so don't guess it."
 
     /// Sends a voice job's adopt, and once more after `wait` if that one
     /// fails: a dropped request would leave the job out of the panel for
