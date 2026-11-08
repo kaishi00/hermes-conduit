@@ -1,9 +1,9 @@
 {
-  "version": 6,
-  "about": "Conduit's rich cards: the one definition both the conduit_push plugin and Conduit read. Conduit ships a byte-identical copy (Conduit/Cards/card-schema.json) and its CI fails when the copy differs from this file on main. 'card' is a JSON Schema subset (type, enum, properties, required, items, minItems, maxItems, maxLength, minimum, maximum, format uri or line) that goes into the tool definitions as is, except that tools take a diff card's diff as 'inputs.diff' (a patch, a patch file or two texts), which the plugin reads into the card's diff. Text is cleaned the same way everywhere: control characters become spaces, and the invisible ones that can make text read differently from what it holds (U+202A to U+202E, U+2066 to U+2069, U+200B, U+2060 and U+FEFF) are dropped, except in a line, where each becomes U+FFFD so it shows. A line (format line) keeps its spaces: it is cut to maxLength, but it is never trimmed. Normalizing is the same on both sides: unknown keys are dropped, text is cleaned and cut to maxLength, an invalid optional value is dropped, an invalid list item is dropped, and an invalid required value makes its object invalid. Before that, a table's cells (and its column names) are made text: a string stays as it is, an empty one or anything that isn't text or a number becomes \u2013, and a number becomes its digits (a whole number with no decimal point, otherwise the shortest form that reads back as the same number). Then the rules in 'rules' apply. 'board' holds the shared definitions of a whole conduit_show call's layout and next, which tools offer beside the cards. cards/card-vectors.json holds the shared examples both test suites run.",
+  "version": 7,
+  "about": "Conduit's rich cards: the one definition both the conduit_push plugin and Conduit read. Conduit ships a byte-identical copy (Conduit/Cards/card-schema.json) and its CI fails when the copy differs from this file on main. 'card' is a JSON Schema subset (type, enum, properties, required, items, minItems, maxItems, maxLength, minimum, maximum, format uri or line) that goes into the tool definitions as is, except that tools take a diff card's diff as 'inputs.diff' (a patch, a patch file or two texts), which the plugin reads into the card's diff, and a review card's review as 'inputs.review' (options with their pages), which the plugin keeps on the host and reads into the card's review. Text is cleaned the same way everywhere: control characters become spaces, and the invisible ones that can make text read differently from what it holds (U+202A to U+202E, U+2066 to U+2069, U+200B, U+2060 and U+FEFF) are dropped, except in a line, where each becomes U+FFFD so it shows. A line (format line) keeps its spaces: it is cut to maxLength, but it is never trimmed. Normalizing is the same on both sides: unknown keys are dropped, text is cleaned and cut to maxLength, an invalid optional value is dropped, an invalid list item is dropped, and an invalid required value makes its object invalid. Before that, a table's cells (and its column names) are made text: a string stays as it is, an empty one or anything that isn't text or a number becomes \u2013, and a number becomes its digits (a whole number with no decimal point, otherwise the shortest form that reads back as the same number). Then the rules in 'rules' apply. 'board' holds the shared definitions of a whole conduit_show call's layout and next, which tools offer beside the cards. cards/card-vectors.json holds the shared examples both test suites run.",
   "max_cards": 12,
   "rules": [
-    "A card keeps only its own type's field (places for map, place and places; people for contact; stats, chart, weather, options, steps, media, status, table, timeline, checklist, list, progress, callout, diff or sections for the others), plus title, live and actions, source on every type but map, place and places, needs on steps and ranked on list; a card without its type's field is dropped.",
+    "A card keeps only its own type's field (places for map, place and places; people for contact; stats, chart, weather, options, steps, media, status, table, timeline, checklist, list, progress, callout, diff, review or sections for the others), plus title, live and actions, source on every type but map, place and places, needs on steps and ranked on list; a card without its type's field is dropped.",
     "A route is kept only on a map card, only when every place given survived, when 'to' (and 'from' if given) name places in the list, and when 'from' differs from 'to'.",
     "A place card keeps only its first place.",
     "A place's or person's photo is kept only when its url is https.",
@@ -24,7 +24,8 @@
     "An image element is kept only when its url is https.",
     "A field is dropped when its id, label or placeholder names a secret: read after NFKC normalization (so full-width letters read as their ASCII forms) in lower case with everything but letters (of any script) and digits as spaces, its words joined together hold password, passcode, secret, token, apikey, onetime, privatekey, recoverykey, licensekey, seedphrase, verificationcode, securitycode, authcode, backupcode, passphrase, totp, masterkey, credential, 2fa, twofactor, logincode, accesscode, unlockcode, securitykey, resetcode, recoverycode, activationcode, authkey, verificationkey or backupkey, or the same in another language (passwort, kennwort, contraseña, motdepasse, senha, пароль, hasło, şifre, katasandi, パスワード, 暗証番号, 認証コード, 密码, 密碼, 验证码, 驗證碼, 비밀번호, 인증번호, 인증코드, bestätigungscode, verifizierungscode, zugangscode, códigodeverificación, codigodeverificacion, códigodeverificação, codedevérification, codedeverification, codicediverifica, kodeverifikasi, doğrulamakodu, kodweryfikacyjny, кодподтверждения, clavedeacceso or contrasena), or one of its words is pin, otp, cvv, cvc, mfa, pincode or mfacode (a word also splitting where ASCII letters and digits meet another script's letters, so PIN码 reads as pin), when the card already has a field with that id, or when the card already has six fields. lines and placeholder go with text, options with choice, min and max with number. A choice field keeps only the first option with a given text, compared without regard to case, is dropped with fewer than two, and keeps a value only when it is one of them (compared without regard to case, written as the option); a toggle's value is kept only when it is on or off, a date's only when it is YYYY-MM-DD or YYYY-MM-DDTHH:MM naming a real day (year 1 or later, the month's days, leap years) and time (hours to 23, minutes to 59), a number's only when it reads as a number within min and max; min is dropped when it is above max.",
     "A button (an element or an action) needs id for tap and target for open, copy and send, and is dropped without it; a tap button keeps no target and the others keep no id. An open target is kept only when it starts with https://, maps:, tel:, sms:, mailto:, calshow: or x-apple-reminderkit: (compared without regard to case) and holds no spaces, quotes, backticks, backslashes or angle brackets; a send target only when it is a plain message, as a follow-up must be, and a tap button only when its label is one (the tap sends it). A tap button is dropped when the card already has one with that id. A card's first primary button stays primary; the others become plain.",
-    "A composed card is dropped when no section is left."
+    "A composed card is dropped when no section is left.",
+    "A review's id is kept only when it is rv- and 16 hex digits, and a review without one is dropped. A review's for is kept only when it is W and 1 to 6 digits. A decision is dropped when the review already has one with its id; an option is dropped when its decision already has one with its id. An image option keeps its url only when it is https, and is dropped without one; a page option keeps no url. A decision keeps only its first recommended option, and is dropped with fewer than two options; a review with no decision left is dropped. A settled entry's mark is approve or skip."
   ],
   "board": {
     "layout": {"type": "string", "enum": ["stack", "tabs"], "description": "How the cards are laid out: stack (the default) one under another, or tabs, one card at a time with each card's title as its tab. Conduit picks the columns on wide screens itself."},
@@ -40,11 +41,11 @@
   },
   "card": {
     "type": "object",
-    "description": "One card Conduit draws natively. map: a map with a pin per place, and a route when you give one. place: one place in detail. places: several places to swipe through. stats: a few big numbers. chart: a line, bar or pie chart. weather: a forecast. comparison: two to four options side by side. steps: instructions to follow, with timers. media: photos, videos or audio to look at or play. contact: a few people to call, message or email, or someone to text with a message you wrote for the user to send. status: how something in progress is going, like a delivery, a flight, a match or a job. table: rows and columns the user can sort. timeline: a plan by day or phase, each with its stops. checklist: things to tick off, kept across the user's devices. list: a ranked or plain list of things, each with a line and a value. progress: how far along goals are. callout: a tip, note or warning. diff: changes line by line. composed: anything else, built from sections of text, metrics, badges, icons, images, progress bars, fields and buttons, like an email ready to send, a day's agenda or an idea to act on.",
+    "description": "One card Conduit draws natively. map: a map with a pin per place, and a route when you give one. place: one place in detail. places: several places to swipe through. stats: a few big numbers. chart: a line, bar or pie chart. weather: a forecast. comparison: two to four options side by side. steps: instructions to follow, with timers. media: photos, videos or audio to look at or play. contact: a few people to call, message or email, or someone to text with a message you wrote for the user to send. status: how something in progress is going, like a delivery, a flight, a match or a job. table: rows and columns the user can sort. timeline: a plan by day or phase, each with its stops. checklist: things to tick off, kept across the user's devices. list: a ranked or plain list of things, each with a line and a value. progress: how far along goals are. callout: a tip, note or warning. diff: changes line by line. review: options for the user to look at and mark (a quick pick for one decision, a design review for several), kept on the host. composed: anything else, built from sections of text, metrics, badges, icons, images, progress bars, fields and buttons, like an email ready to send, a day's agenda or an idea to act on.",
     "properties": {
       "type": {
         "type": "string",
-        "enum": ["map", "place", "places", "stats", "chart", "weather", "comparison", "steps", "media", "contact", "status", "table", "timeline", "checklist", "list", "progress", "callout", "diff", "composed"],
+        "enum": ["map", "place", "places", "stats", "chart", "weather", "comparison", "steps", "media", "contact", "status", "table", "timeline", "checklist", "list", "progress", "callout", "diff", "review", "composed"],
         "description": "The kind of card; fill in its field: places for map, place and places, people for contact, otherwise the field named like the type (options for comparison, sections for composed)."
       },
       "title": {
@@ -527,6 +528,64 @@
         "required": ["files", "added", "removed"]
       }
 ,
+      "review": {
+        "type": "object",
+        "description": "review only: options for the user to look at and mark, as the plugin read them from the tool's review (inputs.review). Each option's page is kept on the host (GET /boards/reviews), so the card carries labels and ids; the user marks each decision Approve, Change or Skip and sends the marks, which reach Hermes as their message.",
+        "properties": {
+          "id": {"type": "string", "maxLength": 40, "description": "The review, kept on the host: rv- and 16 hex digits."},
+          "round": {"type": "integer", "minimum": 1, "maximum": 99, "description": "Which round of the review this is."},
+          "for": {"type": "string", "maxLength": 8, "description": "The workstream the review belongs to, like W3: the user's marks go to it."},
+          "decisions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 6,
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {"type": "string", "maxLength": 40},
+                "title": {"type": "string", "maxLength": 80},
+                "text": {"type": "string", "maxLength": 300},
+                "layout": {"type": "string", "enum": ["side", "switch", "before_after"], "description": "side: the options side by side where there's room. switch: one at a time. before_after: two options, the first the before."},
+                "options": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 6,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {"type": "string", "maxLength": 40},
+                      "label": {"type": "string", "maxLength": 60},
+                      "text": {"type": "string", "maxLength": 200},
+                      "recommended": {"type": "boolean"},
+                      "kind": {"type": "string", "enum": ["page", "image"], "description": "page: an HTML page kept on the host. image: a picture at url."},
+                      "url": {"type": "string", "format": "uri", "maxLength": 500}
+                    },
+                    "required": ["id", "label", "kind"]
+                  }
+                }
+              },
+              "required": ["id", "title", "options"]
+            }
+          },
+          "settled": {
+            "type": "array",
+            "maxItems": 12,
+            "description": "Decisions an earlier round settled, shown under this round.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": {"type": "string", "maxLength": 80},
+                "mark": {"type": "string", "enum": ["approve", "skip"]},
+                "choice": {"type": "string", "maxLength": 60},
+                "round": {"type": "integer", "minimum": 1, "maximum": 99}
+              },
+              "required": ["title", "mark"]
+            }
+          }
+        },
+        "required": ["id", "round", "decisions"]
+      }
+,
       "sections": {
         "type": "array",
         "minItems": 1,
@@ -596,6 +655,49 @@
     "required": ["type"]
   },
   "inputs": {
+    "review": {
+      "type": "object",
+      "description": "review only: options for the user to look at and mark, when they're easier to see than to describe. One decision with two to four options is a quick pick the user taps in the chat; several decisions open a review where they mark each Approve, Change or Skip, add notes and send. Give each option an HTML page (html, or file for a page or picture you wrote on the Hermes host) or a picture (image). To show the next round, give the review's id from the earlier card.",
+      "properties": {
+        "id": {"type": "string", "maxLength": 40, "description": "To show the next round of a review: its id (rv-...) from the earlier card. Leave it out to start a review."},
+        "for": {"type": "string", "maxLength": 8, "description": "Bot Chat only: the workstream that made the options, like W3. The user's marks go to it, and every round of the review stays with it."},
+        "decisions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 6,
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {"type": "string", "maxLength": 40, "description": "A short id, like layout; the same id in the next round for the same decision."},
+              "title": {"type": "string", "maxLength": 80, "description": "The decision, like Home layout."},
+              "text": {"type": "string", "maxLength": 300, "description": "A line on what to look for."},
+              "layout": {"type": "string", "enum": ["side", "switch", "before_after"], "description": "side (the default): side by side where there's room. switch: one at a time. before_after: two options, the first the before."},
+              "options": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 6,
+                "description": "Two or three is best; more only when they really differ.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {"type": "string", "maxLength": 40, "description": "Like A, B or grid."},
+                    "label": {"type": "string", "maxLength": 60, "description": "A few words, like Grid."},
+                    "text": {"type": "string", "maxLength": 200, "description": "A line on what sets it apart."},
+                    "recommended": {"type": "boolean", "description": "The one you'd pick; one at most."},
+                    "html": {"type": "string", "maxLength": 300000, "description": "A whole HTML page showing the option, with its CSS inline; it's shown at phone, tablet or desktop width and in light or dark."},
+                    "file": {"type": "string", "maxLength": 500, "description": "Instead of html: the absolute path of an .html page or a picture (.png, .jpg, .gif, .webp, .svg) on the Hermes host."},
+                    "image": {"type": "string", "maxLength": 500, "description": "Instead of html: a direct https link to a picture you actually found."}
+                  },
+                  "required": ["label"]
+                }
+              }
+            },
+            "required": ["title", "options"]
+          }
+        }
+      },
+      "required": ["decisions"]
+    },
     "diff": {
       "type": "object",
       "description": "diff only: changes to show line by line, in code, a config or any text: give patch, patch_file, or before and after. Conduit lists the files with the lines added and removed, and the user opens each to read its changes. Put the pull request or commit in source when there is one.",

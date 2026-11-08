@@ -79,6 +79,8 @@ struct RichCardView: View {
             RichCalloutCard(card: card)
         case .diff:
             RichDiffCard(card: card)
+        case .review:
+            RichReviewCard(card: card)
         case .composed:
             RichComposedCard(card: card)
         }
