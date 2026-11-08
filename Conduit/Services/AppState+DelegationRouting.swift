@@ -50,33 +50,51 @@ extension AppState {
     /// Saves `delegation.backend`. Hermes takes only Default or a mode that
     /// can run for the profile.
     func chooseDelegationMode(_ mode: String) async throws {
-        _ = try await writeRouting(path: "/api/delegation/backend", body: ["backend": mode])
+        _ = try await writeRouting(path: "/api/delegation/backend", body: ["backend": mode]) { kept, _ in
+            kept["configured"] = mode
+            kept["blocked_reason"] = NSNull()
+        }
     }
 
     /// Replaces the model routes and their default; Hermes' copy back.
     func saveDelegationModelRoutes(_ routing: DelegationRouting) async throws -> (routes: [DelegationRouting.ModelRoute], defaultRoute: String?) {
-        let answer = try await writeRouting(path: "/api/delegation/backends/model_map", body: routing.modelMapBody)
+        let answer = try await writeRouting(path: "/api/delegation/backends/model_map", body: routing.modelMapBody) { kept, answer in
+            if let block = answer["model_map"] { kept["model_map"] = block }
+        }
         let block = answer["model_map"] as? [String: Any] ?? [:]
         return (DelegationRouting.modelRoutes(from: block), (block["default"] as? String).flatMap { $0.isEmpty ? nil : $0 })
     }
 
     /// Replaces the profile routes and their default; Hermes' copy back.
     func saveDelegationProfileRoutes(_ routing: DelegationRouting) async throws -> (routes: [DelegationRouting.ProfileRoute], defaultRoute: String?) {
-        let answer = try await writeRouting(path: "/api/delegation/backends/profile_routes", body: routing.profileRoutesBody)
+        let answer = try await writeRouting(path: "/api/delegation/backends/profile_routes", body: routing.profileRoutesBody) { kept, answer in
+            if let block = answer["profile_routes"] { kept["profile_routes"] = block }
+        }
         let block = answer["profile_routes"] as? [String: Any] ?? [:]
         return (DelegationRouting.profileRoutes(from: block), (block["default"] as? String).flatMap { $0.isEmpty ? nil : $0 })
     }
 
     /// A write to the profile's config, in turn with Conduit's other config
-    /// saves, so one doesn't put back what another changed.
-    private func writeRouting(path: String, body: [String: Any]) async throws -> [String: Any] {
+    /// saves, so one doesn't put back what another changed. What Hermes
+    /// took is what the section opens on next (`keep` changes the kept
+    /// routing), even if the read after it never lands.
+    private func writeRouting(
+        path: String,
+        body: [String: Any],
+        keep: @escaping (inout [String: Any], [String: Any]) -> Void
+    ) async throws -> [String: Any] {
         let profile = activeProfile
         guard let owner = currentDashboardRuntimeOwner() else { throw DelegationRoutingError.notConnected }
-        return try await routingCall {
+        let answer = try await routingCall {
             try await ProfileConfigWriteQueue.runThrowing {
                 try await owner.bridge.requestJSON(path: DashboardPath.withProfile(path, profile: profile), method: "PUT", body: body)
             }
         }
+        if var kept = keptAnswer(Self.delegationRoutingRoute, profile: profile, on: owner) {
+            keep(&kept, answer)
+            _ = try? await keepingAnswer(profile: profile, owner: owner, keptAs: { _ in Self.delegationRoutingRoute }, writes: true) { kept }
+        }
+        return answer
     }
 
     /// A Hermes before the routing routes answers 404 or 405.

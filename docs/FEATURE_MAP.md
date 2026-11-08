@@ -4162,13 +4162,13 @@ routing's lines (done); README and docs don't describe these settings
 - Left out on purpose: `oneshot_max_children` (only `hermes chat -q` one-shot runs read it), and `base_url`, `api_key`, `api_mode` and `request_overrides` (an endpoint of the subagents' own, which Delegate model's provider covers; a key is never shown) (#1951).
 - Subagent routing shows only on a Hermes with the routing routes (a 404 hides it). It lists Default, Model routes, Profile routes, each other plugin's mode, then a saved mode nothing registers; a mode that can't run isn't offered, and a saved one that can't says Hermes refuses every subagent, with Switch to Default. Conduit doesn't install or turn on Advanced Delegation here: it points to Capabilities > Plugins (#1979).
 - A route's key is never shown or typed here: Hermes sends a preview, and the save sends the preview back so Hermes keeps the stored key (with `original_name` through a rename). Every key of a route the sheet doesn't show (fallbacks, an endpoint, Daybreak) goes back as Hermes sent it; Desktop's Daybreak switch is left out, since Conduit's catalog doesn't say which models offer it (#1979).
-- The kept routing has no key preview, so the section opens on it but changes nothing until Hermes answers (#1979).
+- The kept routing has no key preview, so the section opens on it but changes nothing until Hermes answers; a save Hermes took changes the kept routing at once, so the section opens on it even if the read after it never lands, and a read that fails says so with Try Again over what's shown (#1979).
 - Delegate fallback models show only when the schema has `delegation.fallback_providers`. Same as the chat writes null (a subagent on the chat's model takes the chat's fallbacks); Their own with none listed writes `[]`, which turns fallback off for subagents (#1979).
 
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-07, #1979 (Subagent routing with model and profile routes, and the subagents' own fallback models, closing both gaps); 2026-11-07, #1951 (the Delegation section has every setting a chat reads)
+**Checked:** 2026-11-07, #1981 (from #1979's reviews: a routing save is kept at once, a failed read says so over the routing shown, a route line typed during another save waits for it); 2026-11-07, #1979 (Subagent routing with model and profile routes, and the subagents' own fallback models, closing both gaps); 2026-11-07, #1951 (the Delegation section has every setting a chat reads)
 
 ## Profile config saves
 
