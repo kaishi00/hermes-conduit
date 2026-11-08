@@ -1118,6 +1118,10 @@ struct BotRosterView: View {
                     .padding(.top, 4)
                     .padding(.bottom, 16)
                     .modifier(HomeRoomLooksReader())
+                    // The rooms' rings tick here too, so a guest's room with
+                    // no bots of their own still follows its work (the read
+                    // is shared with the portraits' and runs once a tick).
+                    .modifier(BotsTalkingRoomsReader())
                     // Whether a room's menu offers Generate Group Picture,
                     // asked as the open room's menu asks it.
                     .task(id: "\(appState.isConnected)|\(appState.canSetGroupRoomPictures)|\(homeRooms.isEmpty)") {
