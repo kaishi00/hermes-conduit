@@ -1466,7 +1466,7 @@ extension HermesVoiceGatewayTimeoutTests {
 
         // A user turn names its attachments, never their paths.
         var shared = row("8", .user, "What's on this?")
-        shared.attachments = [Attachment(id: "a", name: "board.jpg", uri: "file:///private/board.jpg", mimeType: "image/jpeg", kind: .image)]
+        shared.attachments = [Attachment(id: "a", name: "/Users/me/Desktop/board.jpg", uri: "file:///private/board.jpg", mimeType: "image/jpeg", kind: .image)]
         let named = try XCTUnwrap(VoiceResumeContext.chat([shared, row("9", .assistant, "A to-do list.")])).recent[0].text
         XCTAssertEqual(named, "What's on this? [Attached: board.jpg (image)]")
 

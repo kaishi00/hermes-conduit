@@ -907,7 +907,7 @@ struct VoiceResumeContext: Equatable {
             default: return nil
             }
             let attached = speaker == .user
-                ? (message.attachments ?? []).map { "[Attached: \($0.name) (\($0.kind.rawValue))]" }
+                ? (message.attachments ?? []).map { "[Attached: \(($0.name as NSString).lastPathComponent) (\($0.kind.rawValue))]" }
                 : []
             let text = ([GatewayMediaTags.namingFiles(in: ConduitAppLink.removingLinks(from: message.content))] + attached)
                 .joined(separator: " ")
