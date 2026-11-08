@@ -549,7 +549,7 @@
                   "text": {"type": "string", "maxLength": 500, "description": "text and badge: what it says."},
                   "role": {"type": "string", "enum": ["heading", "body", "caption", "mono"], "description": "text: body if left out."},
                   "tone": {"type": "string", "enum": ["neutral", "accent", "good", "warning", "bad"], "description": "text, metric, badge, icon and progress: neutral if left out."},
-                  "value": {"type": "string", "maxLength": 2000, "description": "metric: the value, like 72% or $1.2M. field: what it starts filled in with (a toggle on or off, a choice one of options, a date YYYY-MM-DD or YYYY-MM-DDTHH:MM)."},
+                  "value": {"type": "string", "maxLength": 2000, "description": "metric: the value, like 72% or $1.2M. field: what it starts filled in with (a toggle on or off, a choice one of options, a date a real day as YYYY-MM-DD or YYYY-MM-DDTHH:MM)."},
                   "change": {"type": "string", "maxLength": 40, "description": "metric: how it moved, like +4%."},
                   "url": {"type": "string", "format": "uri", "maxLength": 500, "description": "image: a direct https image URL you actually found."},
                   "progress": {"type": "number", "minimum": 0, "maximum": 1, "description": "progress: how far along, 0 to 1."},
