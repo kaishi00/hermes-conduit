@@ -241,6 +241,16 @@ struct PresentedConfirm: Identifiable, Equatable {
         }
     }
 
+    /// Whether the user's own words turn it down: a no, cancel, wait or
+    /// don't in any shipped language, as the refusal veto above reads them.
+    /// A yes that starts with a no ("no problem") never declines, and
+    /// neither do words with no refusal in them: the model's judgment, or
+    /// something it read, can't answer for the user.
+    func isDeclined(by words: String) -> Bool {
+        guard !VoiceCallDecisionOutcome.isYes(words) else { return false }
+        return VoiceThreadRouting.containsRefusal(words)
+    }
+
     private static func words(in text: String) -> [String] {
         text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
     }
@@ -451,6 +461,25 @@ final class PresentedScreensSync: ObservableObject {
         seenCardIDs = nil
     }
 
+    /// Answers still waiting to reach a dashboard's host, a Say instead's
+    /// words included, go with its saved chats when it's signed out of or
+    /// removed (issue 2041): the next sign-in may be another account. Nil
+    /// forgets every dashboard's.
+    func forgetAnswers(dashboardID: UUID?) {
+        guard let dashboardID else {
+            defaults.removeObject(forKey: Self.resultsKey)
+            return
+        }
+        guard var all = defaults.dictionary(forKey: Self.resultsKey) as? [String: [[String: Any]]] else { return }
+        let prefix = "\(dashboardID.uuidString)|"
+        all = all.filter { !$0.key.hasPrefix(prefix) }
+        if all.isEmpty {
+            defaults.removeObject(forKey: Self.resultsKey)
+        } else {
+            defaults.set(all, forKey: Self.resultsKey)
+        }
+    }
+
     private func results(for scope: String) -> [[String: Any]] {
         let all = defaults.dictionary(forKey: Self.resultsKey) as? [String: [[String: Any]]] ?? [:]
         return all[scope] ?? []
@@ -475,7 +504,8 @@ enum PresentVoiceTool {
         name: name,
         description: "Confirmations Hermes is waiting on, shown on the user's screen as a panel. list: what's waiting. "
             + "confirm: only right after the user said yes or the confirming phrase out loud in this call; Conduit "
-            + "checks their words and refuses otherwise. decline: when the user says no or not now. Before asking, "
+            + "checks their words and refuses otherwise. decline: only right after the user said no or not now out "
+            + "loud in this call; Conduit checks their words too and refuses otherwise. Before asking, "
             + "tell the user in a sentence what it will do (from its title and preview).",
         parameters: [
             "type": "object",
@@ -516,7 +546,7 @@ enum PresentVoiceTool {
         let data = (try? JSONSerialization.data(withJSONObject: describe(prompt), options: [.sortedKeys])) ?? Data()
         let details = String(data: data, encoding: .utf8) ?? ""
         if !prompt.canConfirm {
-            return "[A linked person's Hermes asked the user something on their screen: \(details). At the next natural pause, tell the user in a sentence; they type their answer on the panel, or call \(name) with decline and its id if they say they won't answer. Don't interrupt the user for it.]"
+            return "[A linked person's Hermes asked the user something on their screen: \(details). At the next natural pause, tell the user in a sentence; they type their answer on the panel, or call \(name) with decline and its id if they say no, they won't answer. Don't interrupt the user for it.]"
         }
         return "[Hermes put a confirmation on the user's screen: \(details). At the next natural pause, tell the user in a sentence what it will do and ask whether to go ahead; then call \(name) with confirm or decline and its id. Don't interrupt the user for it.]"
     }
@@ -543,42 +573,65 @@ enum PresentVoiceTool {
             guard prompt.canConfirm else {
                 return ["error": "Nothing to confirm: it's their question. The user answers it on the panel with Say instead, or decline it if they don't want to."]
             }
-            // Their words reach Conduit a moment after the model heard them.
-            let shownAfter = sync.userTurnWhenShown[prompt.id]
-            let deadline = ContinuousClock.now + .seconds(2)
-            func stillWaiting() -> Bool { sync.prompts.contains { $0.id == prompt.id && !$0.isExpired() } }
-            func saidYes() -> Bool {
-                let turn = lastUserTurn()
-                // A turn from before the panel appeared answers something else.
-                if let shownAfter, turn.id == shownAfter { return false }
-                // Room work takes only its phrase ("start it"), never a bare yes.
-                return prompt.isConfirmed(by: turn.text, bareYes: prompt.room?.work != true)
-            }
-            while !saidYes() {
-                guard stillWaiting() else { return alreadyAnswered }
-                guard ContinuousClock.now < deadline else {
-                    // Room work takes only its phrase, so asking for a yes wouldn't do.
-                    if prompt.room?.work == true {
-                        guard let phrase = prompt.spokenYes.first else {
-                            return ["error": "Not confirmed. Ask the user to answer it on the screen."]
-                        }
-                        let what = prompt.actionLabel == "Send" ? "send to work" : "start work"
-                        return ["error": "Not confirmed: a plain yes doesn't \(what). Ask the user to say \"\(phrase)\", and confirm only after they do."]
+            // Room work takes only its phrase ("start it"), never a bare yes.
+            let bareYes = prompt.room?.work != true
+            guard await userSaid({ prompt.isConfirmed(by: $0, bareYes: bareYes) }, to: prompt, sync: sync,
+                                 lastUserTurn: lastUserTurn) else {
+                guard stillWaiting(prompt, sync: sync) else { return alreadyAnswered }
+                // Room work takes only its phrase, so asking for a yes wouldn't do.
+                if prompt.room?.work == true {
+                    guard let phrase = prompt.spokenYes.first else {
+                        return ["error": "Not confirmed. Ask the user to answer it on the screen."]
                     }
-                    return ["error": "Not confirmed: the user's own words weren't a yes. Ask them, and confirm only after they say yes."]
+                    let what = prompt.actionLabel == "Send" ? "send to work" : "start work"
+                    return ["error": "Not confirmed: a plain yes doesn't \(what). Ask the user to say \"\(phrase)\", and confirm only after they do."]
                 }
-                do { try await Task.sleep(for: .milliseconds(250)) } catch { return ["error": "Not confirmed."] }
+                return ["error": "Not confirmed: the user's own words weren't a yes. Ask them, and confirm only after they say yes."]
             }
             // Tapped while their words arrived: the tap stands.
-            guard stillWaiting() else { return alreadyAnswered }
+            guard stillWaiting(prompt, sync: sync) else { return alreadyAnswered }
             await answer(prompt, .confirmed)
             return ["result": "Confirmed. Hermes goes ahead."]
         case "decline":
-            guard sync.prompts.contains(where: { $0.id == prompt.id && !$0.isExpired() }) else { return alreadyAnswered }
+            // Like a confirm, a decline is the user's: their own no, said
+            // after it appeared. Else the panel stays for their tap.
+            guard await userSaid({ prompt.isDeclined(by: $0) }, to: prompt, sync: sync, lastUserTurn: lastUserTurn) else {
+                guard stillWaiting(prompt, sync: sync) else { return alreadyAnswered }
+                return ["error": "Not declined: the user's own words weren't a no. It stays on their screen for them to answer; ask them, and decline only after they say no."]
+            }
+            // Tapped while their words arrived: the tap stands.
+            guard stillWaiting(prompt, sync: sync) else { return alreadyAnswered }
             await answer(prompt, .declined)
             return ["result": "Declined. Hermes won't do it."]
         default:
             return ["error": "Unknown action."]
         }
+    }
+
+    private static func stillWaiting(_ prompt: PresentedConfirm, sync: PresentedScreensSync) -> Bool {
+        sync.prompts.contains { $0.id == prompt.id && !$0.isExpired() }
+    }
+
+    /// Whether the user's last turn, said after `prompt` appeared, answers
+    /// it as `answers` reads it. Their words reach Conduit a moment after
+    /// the model heard them, so they're waited for, up to 2 seconds, while
+    /// it still waits.
+    private static func userSaid(
+        _ answers: @MainActor (String) -> Bool, to prompt: PresentedConfirm, sync: PresentedScreensSync,
+        lastUserTurn: @MainActor () -> (id: UUID?, text: String)
+    ) async -> Bool {
+        let shownAfter = sync.userTurnWhenShown[prompt.id]
+        let deadline = ContinuousClock.now + .seconds(2)
+        func said() -> Bool {
+            let turn = lastUserTurn()
+            // A turn from before the panel appeared answers something else.
+            if let shownAfter, turn.id == shownAfter { return false }
+            return answers(turn.text)
+        }
+        while !said() {
+            guard stillWaiting(prompt, sync: sync), ContinuousClock.now < deadline else { return false }
+            do { try await Task.sleep(for: .milliseconds(250)) } catch { return false }
+        }
+        return true
     }
 }

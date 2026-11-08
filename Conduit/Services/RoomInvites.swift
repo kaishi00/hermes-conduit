@@ -492,14 +492,18 @@ extension AppState {
         }
     }
 
-    /// An invite that a request just answered, in the list it belongs to.
-    func adoptLinkedRoomInvite(_ invite: RoomInvite, from dashboardID: UUID?) {
-        guard activeDashboardID == dashboardID else { return }
-        var invites = linkedRoomInvites?.dashboardID == dashboardID
-            ? linkedRoomInvites ?? LinkedRoomInvites(dashboardID: dashboardID, invites: [])
-            : LinkedRoomInvites(dashboardID: dashboardID, invites: [])
+    /// An invite that a request just answered, in the list it belongs to,
+    /// and whether it was. Only into a list still there, as a draft is
+    /// adopted: one a sign-out or a disconnect cleared while the answer was
+    /// on its way stays cleared (issue 2040), and the next read lists it.
+    @discardableResult
+    func adoptLinkedRoomInvite(_ invite: RoomInvite, from dashboardID: UUID?) -> Bool {
+        guard activeDashboardID == dashboardID, var invites = linkedRoomInvites, invites.dashboardID == dashboardID else {
+            return false
+        }
         invites.adopt(invite)
         linkedRoomInvites = invites
+        return true
     }
 
     /// The join card's answer: your bots in `agents`, or none to decline. A
@@ -509,10 +513,10 @@ extension AppState {
         let client = roomInvitesClient
         do {
             let answered = try await client.answer(invite, agents: agents)
-            adoptLinkedRoomInvite(answered, from: client.dashboardID)
             // The room starts on the host when everyone has answered, maybe
-            // after the join card is closed.
-            if !agents.isEmpty { followLinkedRoomInvites() }
+            // after the join card is closed. Not followed when the invites
+            // were cleared meanwhile: that ended their follow.
+            if adoptLinkedRoomInvite(answered, from: client.dashboardID), !agents.isEmpty { followLinkedRoomInvites() }
             return .answered
         } catch {
             let message = RoomInvitesClient.answerRefusal(for: error, joining: !agents.isEmpty)

@@ -132,6 +132,92 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(all?["host|default"]?.first?["outcome"] as? String, "declined")
     }
 
+    /// A live call's decline is the user's too (issue 2039): the model
+    /// can't turn a confirmation down on its own judgment, or on words from
+    /// before the panel appeared, and the panel stays for their tap.
+    func testAVoiceDeclineNeedsTheUsersOwnNoFromAfterThePanel() async throws {
+        let suite = "present-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let sync = PresentedScreensSync(defaults: defaults)
+        await sync.sync(scope: "host|default", profile: "default", installationID: "install-1") { _, _ in
+            ["ok": true, "prompts": [["id": "p1", "title": "Send?", "preview": "Hi", "action_label": "Send",
+                                      "spoken_yes": ["send it"]]]]
+        }
+        let prompt = try XCTUnwrap(sync.prompts.first)
+        let earlier = UUID()
+        sync.noteShown(prompt.id, userTurn: earlier)
+        var declined = false
+
+        // Words with no no in them, or a no from before it appeared, decline nothing.
+        let unasked = await PresentVoiceTool.run(["action": "decline", "id": prompt.id], sync: sync,
+                                                 lastUserTurn: { (UUID(), "what's the weather like") }) { _, _ in declined = true }
+        XCTAssertNotNil(unasked["error"])
+        let stale = await PresentVoiceTool.run(["action": "decline", "id": prompt.id], sync: sync,
+                                               lastUserTurn: { (earlier, "no") }) { _, _ in declined = true }
+        XCTAssertNotNil(stale["error"])
+        XCTAssertFalse(declined)
+        XCTAssertEqual(sync.prompts.map(\.id), ["p1"], "it stays on screen for the user")
+
+        // So the user's tap still answers it.
+        sync.answer(prompt, outcome: .confirmed, via: .tap)
+        let all = defaults.dictionary(forKey: "conduit.presentedScreens.results.v1") as? [String: [[String: Any]]]
+        XCTAssertEqual(all?["host|default"]?.first?["outcome"] as? String, "confirmed")
+
+        // A no-led yes isn't a no; a no, not now or don't send is.
+        XCTAssertFalse(prompt.isDeclined(by: "No problem"))
+        XCTAssertFalse(prompt.isDeclined(by: "send it"))
+        for no in ["no", "Not now.", "don't send it", "cancel", "decline", "nein", "不要"] {
+            XCTAssertTrue(prompt.isDeclined(by: no), no)
+        }
+    }
+
+    /// A no said after the panel appeared declines it.
+    func testAVoiceDeclineTakesTheUsersNo() async throws {
+        let suite = "present-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let sync = PresentedScreensSync(defaults: defaults)
+        await sync.sync(scope: "host|default", profile: "default", installationID: "install-1") { _, _ in
+            ["ok": true, "prompts": [["id": "p1", "title": "Send?", "preview": "Hi", "action_label": "Send"]]]
+        }
+        let prompt = try XCTUnwrap(sync.prompts.first)
+        sync.noteShown(prompt.id, userTurn: UUID())
+        var outcome: PresentedConfirmOutcome?
+        let said = await PresentVoiceTool.run(["action": "decline", "id": prompt.id], sync: sync,
+                                              lastUserTurn: { (UUID(), "No, not now") }) { _, answer in outcome = answer }
+        XCTAssertEqual(said["result"], "Declined. Hermes won't do it.")
+        XCTAssertEqual(outcome, .declined)
+    }
+
+    /// Answers still waiting for a dashboard's host, Say instead's words
+    /// included, go when it's signed out of; another dashboard's stay
+    /// (issue 2041).
+    func testUnsentAnswersGoWithTheirDashboard() async throws {
+        let suite = "present-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let sync = PresentedScreensSync(defaults: defaults)
+        let leaving = UUID(), staying = UUID()
+        for dashboard in [leaving, staying] {
+            await sync.sync(scope: "\(dashboard.uuidString)|default", profile: "default", installationID: "install-1") { _, _ in
+                ["ok": true, "prompts": [["id": "p-\(dashboard.uuidString)", "title": "Share?", "preview": "",
+                                          "action_label": "Share"]]]
+            }
+            let prompt = try XCTUnwrap(sync.prompts.first)
+            sync.answer(prompt, outcome: .edit, via: .tap, editText: "Tell them Thursday")
+        }
+        func scopes() -> Set<String> {
+            Set((defaults.dictionary(forKey: "conduit.presentedScreens.results.v1") ?? [:]).keys)
+        }
+        XCTAssertEqual(scopes(), ["\(leaving.uuidString)|default", "\(staying.uuidString)|default"])
+
+        sync.forgetAnswers(dashboardID: leaving)
+        XCTAssertEqual(scopes(), ["\(staying.uuidString)|default"])
+        sync.forgetAnswers(dashboardID: nil)
+        XCTAssertNil(defaults.object(forKey: "conduit.presentedScreens.results.v1"))
+    }
+
     /// The request holds the dashboard bridge: a finished sync keeps
     /// nothing of it, like the agent settings sync.
     func testAFinishedSyncKeepsNoHoldOnItsRequest() async throws {
