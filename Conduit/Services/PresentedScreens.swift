@@ -241,30 +241,29 @@ struct PresentedConfirm: Identifiable, Equatable {
         }
     }
 
-    /// Whether the user's own words turn it down: a no, cancel, wait or
-    /// don't in any shipped language, as the refusal veto above reads them.
-    /// A yes that starts with a no ("no problem") never declines, and
-    /// neither do words with no refusal in them: the model's judgment, or
-    /// something it read, can't answer for the user.
+    /// Whether the user's own words turn it down: an answer led by a no, a
+    /// cancel, a don't or a wait, as the handset reads one in any shipped
+    /// language ("no", "don't send it", "not now", "我不想发"), or a
+    /// refusal said with its verb ("decline it"). Never a question, a yes
+    /// with more words ("yes, no problem"), not knowing, or a no somewhere
+    /// inside other words ("I have no problem with that"): the model's
+    /// judgment, or something it read, can't answer for the user, and
+    /// anything unclear leaves the panel for their tap.
     func isDeclined(by words: String) -> Bool {
         // A question ("can't we wait?") asks; it doesn't answer.
         guard !words.contains("?"), !words.contains("？"), !VoiceCallDecisionOutcome.isYes(words) else { return false }
-        // Not knowing, or agreeing, isn't a no ("I don't know", "send it, no problem").
+        // Not knowing isn't a no ("no idea", "not sure").
         let folded = words.lowercased().replacingOccurrences(of: "’", with: "'")
         guard !Self.unsure.contains(where: { folded.contains($0) }) else { return false }
         switch VoiceThreadRouting.heldRequestAnswer(words) {
-        // Led by a yes, more words or not ("No problem at all"): never a no.
-        case .yes: return false
         case .no, .notYet: return true
-        // "Don't send it", "cancel": a refusal anywhere in the words.
-        case .other: return VoiceThreadRouting.containsRefusal(words)
+        case .yes: return false
+        case .other: return VoiceThreadRouting.containsRefusalVerb(words)
         }
     }
 
-    /// Words with a no in them that agree or don't know: a hit only keeps
-    /// the panel up for the tap.
-    private static let unsure = ["don't know", "dont know", "do not know", "not sure", "no idea", "unsure", "no problem", "not a problem",
-                                 "no worries", "no rush"]
+    /// Led by a no but not one: a hit only keeps the panel up for the tap.
+    private static let unsure = ["not sure", "no idea", "no clue", "no problem", "no worries", "no rush"]
 
     private static func words(in text: String) -> [String] {
         text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)

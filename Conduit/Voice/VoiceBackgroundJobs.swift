@@ -3910,6 +3910,14 @@ enum VoiceThreadRouting {
     /// Verbs that refuse, in the shipped languages with word breaks
     /// (Korean is matched by its stem, Chinese and Japanese in
     /// `cjkRefusals`).
+    /// Whether the words name a refusal with its verb ("decline it",
+    /// "I refuse", "거절"), in the shipped languages with word breaks.
+    static func containsRefusalVerb(_ answer: String) -> Bool {
+        fold(answer)
+            .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") })
+            .contains { answerRefusalVerbs.contains(String($0)) || $0.hasPrefix("거절") || $0.hasPrefix("거부") }
+    }
+
     private static let answerRefusalVerbs: Set<String> = [
         "reject", "rejected", "deny", "denied", "refuse", "refused", "decline", "declined", "veto",
         "ablehnen", "lehne", "abgelehnt", "verweigern", "verweigere", "zurückweisen",
