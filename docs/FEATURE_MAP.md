@@ -2453,7 +2453,7 @@ and their README section
 
 **Open gaps**
 - A dropped folder's files aren't attached for the user; they drop the files themselves.
-- A file over 16 MB sent into a room someone else hosts stays on the home's host: a guest's room shows it by name and their agents get the home's path.
+- A file over 16 MB sent into a room someone else hosts stays on the home's host: a guest's room draws it as a chip with the unavailable mark (a lone picture, its name with the mark), and their agents get the home's path.
 - A picture over 16 MB in a room shows as unavailable (by its name when it's the message's only one); Conduit stages photos as JPEG well under that. Any other file over 16 MB doesn't open from a room, nor from a chat: both read sent files as data URLs (a room takes up to 50 MB).
 
 **Checked:** 2026-11-08, #2044 (a room someone else hosts draws its pictures and opens its files from your own host's copy, carried over the Link; notifier #629); 2026-11-08, #2043 (other files sent into a room open and play as a chat's; notifier #628); 2026-11-08, #2036 (pictures sent into a room show as pictures, issue 2035; notifier #625); 2026-11-05, #1821 (a dropped picture whose file fails is taken as its image object; pictures without a bitmap are drawn before they're written); 2026-11-04, #1766 (the "Drop to attach" outline clears when a drag ends on the field); 2026-11-03, #1695 (a file dropped on a composer field attaches instead of hanging the drop, issue 1689); 2026-11-02, #1631 (pictures reach the reply on the gateway's own listener; see Two Hermes servers); 2026-10-29, #1515 (long pastes become text attachments); 2026-10-28, #1422 (folder drops say why they aren't attached).
@@ -6522,7 +6522,7 @@ message
 - Deleting a copy your agents left finds their chats from its invite only (the copy's `yours` is empty then): when the invites can't be read it isn't deleted, but one whose invite the plugin forgot deletes the copy and leaves those chats on your Hermes.
 - A room still going can't be deleted from the app: Leave it first. A post still pending when Conduit quits isn't shown again (your Hermes still sends it). Only people with an agent in a room can post in it: bringing no agents ("Just me") isn't possible yet.
 - Agents that aren't Hermes (an A2A member) are left out.
-- A file over 16 MB sent into a room stays on the home's host: its copies show it by name and a guest's agents get the home's path, which their Hermes can't open.
+- A file over 16 MB sent into a room stays on the home's host: its copies draw it with the unavailable mark and a guest's agents get the home's path, which their Hermes can't open.
 - An agent in a room, the home's or a guest's, sees a picture sent there only by calling `vision_analyze` (the auxiliary vision model when its own has no vision): Conduit names room files as `@file:` paths, which Hermes doesn't expand outside the workspace, and Hermes' own room attachments, which would hand the picture to the turn itself, don't cross its peer route (`accepts_attachments = False`).
 - An acceptor's Hermes that stays off for more than 7 days while its confirm waits at the mailbox leaves the inviter's side linked until its owner unlinks it (the notifier README says so).
 - Changing the tools rooms may use says the agent stops answering in rooms already started, but not in which.
