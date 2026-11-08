@@ -3378,6 +3378,8 @@ final class AppState: ObservableObject {
     var turnSurfaceSender: (([String: Any]) async throws -> Void)?
     /// Seam for tests: takes the discards of failed sends' reports.
     var turnSurfaceDiscarder: (([String: Any]) async throws -> Void)?
+    /// Tests: the pauses before a failed discard is tried again.
+    var turnSurfaceDiscardRetryDelays: [Duration]?
     /// What the host holds as on screen for this device (ChatOnScreen.swift).
     var chatOnScreenTracker = ChatOnScreen.Tracker()
     /// Renews the hold while the open chat's turn runs.
