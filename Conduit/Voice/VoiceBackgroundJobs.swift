@@ -3933,7 +3933,7 @@ enum VoiceThreadRouting {
 
     /// Words that make a refusal verb a question or a maybe, not an answer.
     private static let refusalVerbAskers: Set<String> = [
-        "should", "shall", "can", "could", "would", "will", "if", "whether", "why", "how", "what", "do", "does", "did", "is", "are", "am", "was", "were", "have", "has", "maybe", "might",
+        "should", "shall", "can", "could", "would", "will", "if", "whether", "why", "how", "what", "do", "does", "did", "is", "are", "am", "was", "were", "have", "has", "had", "who", "where", "when", "which", "maybe", "might",
     ]
 
     /// Verbs that refuse, in the shipped languages with word breaks

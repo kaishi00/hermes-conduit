@@ -259,9 +259,11 @@ struct PresentedConfirm: Identifiable, Equatable {
         guard !Self.unsureWords.contains(where: { Self.range(of: $0, in: said) != nil }),
               !Self.cjkUnsure.contains(where: { words.contains($0) }) else { return false }
         switch VoiceThreadRouting.heldRequestAnswer(words) {
-        // A no with a change in it ("no, make it for Alex") asks for the
-        // change, which the panel's edit takes; a no on its own declines.
-        case .no(let change): return change == nil
+        // A bare no with a change after it ("no, make it for Alex") asks for
+        // the change, which the panel's edit takes. A no on its own, or one
+        // said with its action ("don't share", "cancel the email"), declines.
+        case .no(let change):
+            return change == nil || !Self.bareNos.contains(Self.words(in: words).first ?? "")
         // A wait holds; it doesn't refuse ("hold on"). "Not now" does, and
         // a not yet with a change in it ("wait, make it Wednesday") asks
         // for that change, not a no.
@@ -282,6 +284,11 @@ struct PresentedConfirm: Identifiable, Equatable {
         "nessuna idea", "nie wiem", "не знаю", "понятия не имею", "bilmiyorum", "emin değilim", "tidak tahu",
         "tak tahu", "nggak tahu", "gak tahu", "tidak yakin",
     ].map { words(in: $0) }
+    /// A no that says only no, so what follows it is the answer.
+    private static let bareNos: Set<String> = [
+        "no", "nope", "nah", "nein", "nee", "nö", "non", "não", "nao", "нет", "nie", "hayır", "hayir", "tidak",
+        "nggak", "gak", "いいえ", "いや", "不", "不是", "不对", "아니", "아니요", "아뇨",
+    ]
     /// A not yet whose not sits inside it ("先不", "还没", "先别", "まだ", "아직").
     private static let cjkNotYet = ["不", "没", "沒", "别", "別", "まだ", "아직"]
     private static let cjkUnsure = ["不知道", "不确定", "不確定", "わからない", "分からない", "わかりません", "分かりません", "모르겠", "몰라"]

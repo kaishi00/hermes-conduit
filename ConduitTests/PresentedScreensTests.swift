@@ -188,6 +188,7 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(prompt.isDeclined(by: "what about we decline it"))
         XCTAssertFalse(prompt.isDeclined(by: "do we decline it"))
         XCTAssertFalse(prompt.isDeclined(by: "have we declined it"))
+        XCTAssertFalse(prompt.isDeclined(by: "who declined it"))
         XCTAssertFalse(prompt.isDeclined(by: "可以拒绝吗"))
         XCTAssertFalse(prompt.isDeclined(by: "断ってもいいか"))
         XCTAssertFalse(prompt.isDeclined(by: "我不拒绝"))
@@ -203,7 +204,8 @@ extension AppStateVoiceCapabilityTests {
             XCTAssertFalse(prompt.isDeclined(by: unsure), unsure)
         }
         XCTAssertTrue(PresentVoiceTool.note(for: prompt).contains("with confirm or decline and its id"))
-        for no in ["no", "Not now.", "don't send it", "cancel", "decline", "decline it", "I refuse", "not yet", "nein", "不要", "拒绝", "先不"] {
+        for no in ["no", "Not now.", "don't send it", "cancel", "decline", "decline it", "I refuse", "not yet", "nein", "不要", "拒绝", "先不",
+                   "Don't share", "Don't answer", "Don't start", "Don't send the email", "Cancel the email", "No, forget it"] {
             XCTAssertTrue(prompt.isDeclined(by: no), no)
         }
     }
