@@ -181,12 +181,18 @@ struct PluginCatalogBrowsePage: View {
         .searchable(text: $query, prompt: Text("Search plugins"))
     }
 
+    private static func keeping(_ selected: String?, in values: [String]) -> [String] {
+        guard let selected, !values.contains(selected) else { return values }
+        return values + [selected]
+    }
+
     @ViewBuilder
     private func filters(_ catalog: [PluginCatalogEntry]) -> some View {
-        let tiers = CapabilityPluginFilter.tiers(in: catalog)
-        let categories = CapabilityPluginFilter.categories(in: catalog)
+        // A choice a refresh took away stays listed, so it can be cleared.
+        let tiers = Self.keeping(tier, in: CapabilityPluginFilter.tiers(in: catalog))
+        let categories = Self.keeping(category, in: CapabilityPluginFilter.categories(in: catalog))
         VStack(alignment: .leading, spacing: 10) {
-            if tiers.count > 1 {
+            if tiers.count > 1 || tier != nil {
                 Picker(selection: $tier) {
                     Text("All").tag(String?.none)
                     ForEach(tiers, id: \.self) { tier in
@@ -197,7 +203,7 @@ struct PluginCatalogBrowsePage: View {
                 }
                 .pickerStyle(.segmented)
             }
-            if categories.count > 1 {
+            if categories.count > 1 || category != nil {
                 Menu {
                     Picker(selection: $category) {
                         Text("All Categories").tag(String?.none)
@@ -417,6 +423,11 @@ struct PluginCatalogDetailPage: View {
             Text("Hermes installs plugins for the host's default profile. Switch to it to change them.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
+        }
+        if store.pluginsNeedRestart {
+            PluginRestartCard {
+                store.pluginsNeedRestart = false
+            }
         }
         if let message {
             Text(verbatim: message)

@@ -3601,7 +3601,7 @@ issues, its documentation and source, and Install. All from Hermes'
 **Siblings:** the Plugins tab's installed list (done: its tier pills read
 verified too) · an installed plugin's page (not needed: Update stays there,
 and the catalog page points to it) · the gateway restart card after an
-install (done: the same install sets it) · Screens that open on their last
+install (done: the same install sets it, and the plugin's page shows it) · Screens that open on their last
 answer (done: the kept catalog already holds every field) · Hermes Desktop's
 plugin catalog (upstream, the reference: its featured picks from
 catalog-curation.json, its tiers and pictures) · the chat card Hermes opens
