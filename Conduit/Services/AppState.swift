@@ -29702,6 +29702,16 @@ final class AppState: ObservableObject {
                     turnState = .running
                 }
                 turnStateIsStale = false
+                // A send docked behind a turn a restart cut off starts no
+                // turn: the chat reads idle, so the next message queues
+                // rather than steers. A newer lifecycle edge wins.
+                let dockRevision = turnLifecycleEvidence.revision
+                func idleIfHeldByLostTurn() {
+                    guard client.chatIsHeldByLostTurn(sessionId),
+                          turnLifecycleEvidence.revision == dockRevision,
+                          isCurrentComposerSubmission(submissionContext) else { return }
+                    turnState = .idle
+                }
                 switch outcome {
                 case .accepted:
                     if client.speaksSessionAuthority, let admission = HermesClient.admittedAdmissionID(for: sessionId) {
@@ -29712,6 +29722,7 @@ final class AppState: ObservableObject {
                             adoptOwnQueuedSends(authorityQueue.rows)
                             if messages.contains(where: { $0.id == userMessage.id }) == false {
                                 locallyOwnedInFlightTurn = nil
+                                idleIfHeldByLostTurn()
                                 break
                             }
                         }
@@ -29722,6 +29733,7 @@ final class AppState: ObservableObject {
                            queueChat == sessionId || knownSessionIDs(for: sessionId).contains(queueChat) {
                             locallyOwnedInFlightTurn = nil
                             moveQueuedSendToDock(rowID: userMessage.id, sessionID: sessionId)
+                            idleIfHeldByLostTurn()
                             break
                         }
                     }
@@ -30319,6 +30331,8 @@ final class AppState: ObservableObject {
             }
             return .acceptedRunning
         case .terminal:
+            // Settled: the same words sent again are a new message.
+            HermesClient.forgetUnansweredSubmission(submissionID, for: requestedSessionID)
             return nil
         }
     }
