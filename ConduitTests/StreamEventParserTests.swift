@@ -960,6 +960,20 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertNil(activity.details)
     }
 
+    /// Hermes' fixed English summaries read in the app's language; a
+    /// summary naming something (a skill) stays as Hermes wrote it.
+    func testFixedReviewSummariesGoThroughTheAppLanguage() {
+        let memory = AppLocalization.string("\(AppLocalization.string("Memory")) updated")
+        XCTAssertEqual(MessageNormalizer.reviewActivity(fromText: "💾 Self-improvement review: Memory updated")?.summary, memory)
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("User profile updated"),
+                       AppLocalization.string("\(AppLocalization.string("User profile")) updated"))
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · User profile updated"),
+                       AppLocalization.string("Memory and skills updated"))
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · Memory updated"), memory)
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("📝 Skill 'hermes-release' patched"), "📝 Skill 'hermes-release' patched")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · 📝 Skill 'x' created: y"), "Memory updated · 📝 Skill 'x' created: y")
+    }
+
     func testReviewSummaryWithEmptyTextReturnsNil() {
         let event = parse(#"""
         {"type": "review.summary", "session_id": "s1", "payload": {"text": "  💾  "}}
