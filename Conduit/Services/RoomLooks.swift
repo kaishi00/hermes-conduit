@@ -212,6 +212,21 @@ extension AppState {
     /// since it was last given on this dashboard: each bot's picture and
     /// the color it's drawn in (`botColor`, the glow first), and yours.
     func shareRoomLooksIfNeeded() async {
+        // One at a time: a change made while a share is on its way is
+        // shared after it, so the last one given is what's shown here.
+        if roomLooksSharing {
+            roomLooksShareAgain = true
+            return
+        }
+        roomLooksSharing = true
+        defer { roomLooksSharing = false }
+        repeat {
+            roomLooksShareAgain = false
+            await shareRoomLooksOnce()
+        } while roomLooksShareAgain
+    }
+
+    private func shareRoomLooksOnce() async {
         guard canShareRoomLooks, canInviteLinkedPeople, isConnected, let dashboard = activeDashboardID else { return }
         let bots = shownBotRoster
         guard !bots.isEmpty else { return }

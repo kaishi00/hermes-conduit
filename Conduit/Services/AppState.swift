@@ -12865,6 +12865,9 @@ final class AppState: ObservableObject {
     var activeRoomLooksReading: String?
     /// What was last given each dashboard's Hermes (`PUT /rooms/looks`).
     var sharedRoomLooks: [UUID: String] = [:]
+    /// A looks share is on its way, and another change waits for it.
+    var roomLooksSharing = false
+    var roomLooksShareAgain = false
     /// Each bot's picture as sent, by the image it was made from.
     var roomLookPictures: [String: (image: UIImage, data: Data?)] = [:]
     /// The picture you show in rooms over Links, kept on this phone.
@@ -14714,6 +14717,18 @@ final class AppState: ObservableObject {
         }
         // One whose opening read failed is polled until its tail comes, and
         // one with a post your Hermes hasn't settled until it does.
+        // Its last messages may have come after this tick's log read: read
+        // once more as it ends, and leave a gap to the next tick.
+        if latest.isOver, open.copy?.isOver != true, !activeRoomCopyNeedsTail,
+           latest.lastSeq > activeRoomReplay.cursor,
+           let page = try? await roomCopiesClient.log(
+               roomID: copy.roomID, sinceSeq: activeRoomReplay.sinceSeq, limit: RoomCopiesClient.maxLogLimit) {
+            guard groupRoomEpoch == epoch, activeRoomSurface?.copy?.id == copy.id else { return false }
+            if activeRoomReplay.hasGap || activeRoomReplay.pageSkipsAhead(page) { return true }
+            if page.events.contains(where: { $0.roomID == copy.roomID && $0.seq > activeRoomReplay.cursor }) {
+                activeRoomReplay.adopt(page: page)
+            }
+        }
         if latest.isOver, !activeRoomCopyNeedsTail, !activeRoomCopyPostUnsettled { stopRoomCopyPolling() }
         return true
     }
