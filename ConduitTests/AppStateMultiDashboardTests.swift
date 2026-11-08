@@ -1677,14 +1677,6 @@ extension AppStateMultiDashboardTests {
         XCTAssertFalse(GroupRoomFilesClient.isStoredFile(Attachment(
             id: "f", name: "photo.jpg", uri: "/w/conduit/room-files/photo.jpg", mimeType: "image/jpeg", kind: .image
         )), "a path outside an upload's folder keeps its name")
-        XCTAssertTrue(GroupRoomFilesClient.isStoredFile(Attachment(
-            id: "g", name: "photo.jpg", uri: #"C:\Users\furina\.hermes\conduit\room-files\20261108-c\photo.jpg"#,
-            mimeType: "image/jpeg", kind: .image
-        )), "a Windows host's upload is one too (Greptile on #2044)")
-        XCTAssertFalse(GroupRoomFilesClient.isStoredFile(Attachment(
-            id: "h", name: "photo.jpg", uri: #"C:\Users\furina\conduit\room-files\photo.jpg"#,
-            mimeType: "image/jpeg", kind: .image
-        )))
         let inline = await resolver.inlineImageDataURL(InlineImageRef(sessionId: "s", profile: "default", rowId: 1, index: 0))
         XCTAssertNil(inline, "room files hold no pictures inside messages")
 

@@ -29,16 +29,11 @@ final class GroupRoomFilesClient {
 
     /// Any file `/room-files` stored: only these are read back. The route
     /// reads only `room-files/<upload>/<name>`, so nothing else qualifies.
-    /// A Windows host names them with backslashes (`C:\…\conduit\room-files\…`),
-    /// which the route reads as they are, a Linked Room's guest from its copy.
     static func isStoredFile(_ file: Attachment) -> Bool {
-        let windows = file.uri.range(of: #"^[A-Za-z]:\\"#, options: .regularExpression) != nil
-        guard file.uri.hasPrefix("/") || windows else { return false }
-        let separator: Character = windows ? "\\" : "/"
-        let mark = windows ? #"\conduit\room-files\"# : "/conduit/room-files/"
-        guard let marker = file.uri.range(of: mark, options: .backwards) else { return false }
-        let parts = file.uri[marker.upperBound...].split(separator: separator, omittingEmptySubsequences: false)
-        return parts.count == 2 && !parts[0].isEmpty && !parts[1].isEmpty && !parts[1].contains("/")
+        guard file.uri.hasPrefix("/"),
+              let marker = file.uri.range(of: "/conduit/room-files/", options: .backwards) else { return false }
+        let parts = file.uri[marker.upperBound...].split(separator: "/", omittingEmptySubsequences: false)
+        return parts.count == 2 && !parts[0].isEmpty && !parts[1].isEmpty
     }
     /// Base64 of a file near the host's 50 MB cap takes a while to send.
     static let minimumTimeoutMilliseconds = 180_000
