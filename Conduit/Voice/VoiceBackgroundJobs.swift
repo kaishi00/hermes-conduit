@@ -316,8 +316,8 @@ struct VoiceBackgroundJobBackend {
                                     _ endedWith: String?, _ call: String?) -> Void = { _, _, _, _, _, _, _, _ in }
     /// A call kept with one of a bot's workstreams' chats stays in that
     /// session (Eric 2026-11-02): its requests go to the workstream, as the
-    /// answer to a question it waits on or an interrupt while it works, and
-    /// never make a job of their own. What to
+    /// answer to a question it waits on, behind an approval it waits on, or
+    /// as an interrupt while it works, and never make a job of their own. What to
     /// tell the call, or nil when the chat isn't a workstream's.
     var sendToCallWorkstream: @MainActor (_ thread: VoiceThreadTarget, _ request: String) async -> String? = { _, _ in nil }
     /// A call that kept a job with its chat (`callChat`) left it: when the
