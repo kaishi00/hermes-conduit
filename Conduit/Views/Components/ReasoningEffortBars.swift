@@ -1,0 +1,138 @@
+//
+//  ReasoningEffortBars.swift
+//  Conduit
+//
+//  The model sheet's reasoning control: one bar per level, rising from Off
+//  to Ultra (Eric, 2026-11-08). A finger slides across the strip and the
+//  level follows the column it's in, with a selection tick each time it
+//  crosses into another bar; the level is sent once, when the finger lifts.
+//
+
+import SwiftUI
+
+struct ReasoningEffortBars: View {
+    /// The runtime's effort word ("none" when off).
+    let effort: String
+    let disabled: Bool
+    /// The level the finger lifted on, or VoiceOver stepped to.
+    let onCommit: (ReasoningEffortLevel) -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+    /// The level under the finger while it's down.
+    @State private var dragLevel: ReasoningEffortLevel?
+
+    private static let levels = ReasoningEffortLevel.allCases
+    static let stripHeight: CGFloat = 50
+
+    /// The level whose column holds `x` across a strip `width` wide: each
+    /// level owns an equal column, the full strip high, and a finger past
+    /// either end stays on the end level.
+    static func level(atX x: CGFloat, width: CGFloat) -> ReasoningEffortLevel {
+        guard width > 0 else { return levels[0] }
+        let index = Int((x / width * CGFloat(levels.count)).rounded(.down))
+        return levels[min(max(index, 0), levels.count - 1)]
+    }
+
+    /// The level VoiceOver's swipe up or down lands on. A level Conduit
+    /// doesn't list steps from Medium.
+    static func level(stepping current: ReasoningEffortLevel?, by step: Int) -> ReasoningEffortLevel {
+        let index = current.flatMap { levels.firstIndex(of: $0) } ?? levels.firstIndex(of: .medium) ?? 0
+        return levels[min(max(index + step, 0), levels.count - 1)]
+    }
+
+    private var shownLevel: ReasoningEffortLevel? {
+        dragLevel ?? ReasoningEffortLevel(runtimeEffort: effort)
+    }
+
+    private var shownTitle: String {
+        dragLevel?.title ?? ReasoningEffortLevel.displayTitle(for: effort)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "brain.head.profile")
+                    .foregroundStyle(Color.conduitAura)
+                    .accessibilityHidden(true)
+                Text(AppLocalization.string("Reasoning"))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                Text(verbatim: shownTitle)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Color.conduitAccent)
+                    .contentTransition(.numericText())
+            }
+            .scaledFont(.subheadline)
+
+            GeometryReader { proxy in
+                HStack(alignment: .bottom, spacing: 0) {
+                    ForEach(Array(Self.levels.enumerated()), id: \.element) { index, level in
+                        bar(index: index, level: level, columnWidth: proxy.size.width / CGFloat(Self.levels.count))
+                    }
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .bottom)
+                // Every column is the strip's full height, gaps included,
+                // so a finger anywhere in it counts.
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                        .onChanged { value in
+                            guard !disabled else { return }
+                            let level = Self.level(atX: value.location.x, width: proxy.size.width)
+                            guard level != dragLevel else { return }
+                            dragLevel = level
+                            Haptics.selection()
+                        }
+                        .onEnded { value in
+                            guard !disabled, dragLevel != nil else {
+                                dragLevel = nil
+                                return
+                            }
+                            let level = Self.level(atX: value.location.x, width: proxy.size.width)
+                            dragLevel = nil
+                            onCommit(level)
+                        }
+                )
+            }
+            .frame(height: Self.stripHeight)
+            .animation(ConduitMotion.response, value: shownLevel)
+
+            HStack {
+                Text(ReasoningEffortLevel.off.title)
+                Spacer()
+                Text(ReasoningEffortLevel.ultra.title)
+            }
+            .scaledFont(.caption)
+            .foregroundStyle(.secondary)
+            .accessibilityHidden(true)
+        }
+        .opacity(disabled && dragLevel == nil ? 0.6 : 1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(AppLocalization.string("Reasoning")))
+        .accessibilityValue(Text(verbatim: shownTitle))
+        .accessibilityAdjustableAction { direction in
+            guard !disabled else { return }
+            switch direction {
+            case .increment: onCommit(Self.level(stepping: shownLevel, by: 1))
+            case .decrement: onCommit(Self.level(stepping: shownLevel, by: -1))
+            @unknown default: break
+            }
+        }
+        .accessibilityIdentifier("modelPicker.reasoningBars")
+    }
+
+    private func bar(index: Int, level: ReasoningEffortLevel, columnWidth: CGFloat) -> some View {
+        let shown = shownLevel.flatMap { Self.levels.firstIndex(of: $0) }
+        let fill: Color = {
+            guard let shown else { return Color.primary.opacity(0.14) }
+            if index == shown { return .conduitAccent }
+            if index < shown { return Color.conduitAccent.opacity(colorScheme == .dark ? 0.5 : 0.4) }
+            return Color.primary.opacity(0.14)
+        }()
+        let rise = CGFloat(index) / CGFloat(max(Self.levels.count - 1, 1))
+        return RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .fill(fill)
+            .frame(width: min(24, columnWidth * 0.6), height: 10 + rise * (Self.stripHeight - 14))
+            .frame(width: columnWidth, height: Self.stripHeight, alignment: .bottom)
+    }
+}
