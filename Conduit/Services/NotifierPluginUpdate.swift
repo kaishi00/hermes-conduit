@@ -375,8 +375,15 @@ struct NotifierPluginUpdater {
             } else {
                 // Nothing runs there: a host that manages the plugin now, unknown
                 // to the status this started from, never gets Hermes' own pull.
-                if let current = try? await request(NotifierPluginStatus.path, "GET", nil),
-                   let managedBy = NotifierPluginStatus.managedBy(from: current) {
+                // Nor does one that can't say: the pull would replace a pinned copy.
+                let current: [String: Any]
+                do {
+                    current = try await request(NotifierPluginStatus.path, "GET", nil)
+                } catch {
+                    if Task.isCancelled { return .idle }
+                    return .failed(detail: UserFacingError.message(for: error))
+                }
+                if let managedBy = NotifierPluginStatus.managedBy(from: current) {
                     report?(current)
                     return .failed(detail: NotifierPluginStatus.managedText(managedBy))
                 }

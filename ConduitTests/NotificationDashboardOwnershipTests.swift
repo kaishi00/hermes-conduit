@@ -638,6 +638,28 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertEqual(pairings.thisDashboard.map(\.id), ["gw-1"])
         XCTAssertEqual(pairings.otherDashboardsCount, 0)
     }
+
+    /// Settings > Notifications' Compatibility asks nobody to update a
+    /// pairing known to be a managed host's own: by relay id or by binding.
+    func testAPairingIsKnownToBeThisDashboardsByRelayIDOrBinding() {
+        func gateway(_ id: String, boundTo dashboardID: String?) -> RelayMetaInfo.Gateway {
+            RelayMetaInfo.Gateway(id: id, name: "VPS", pluginVersion: "0.53.1", pluginCapabilities: [],
+                                  lastEventAt: nil, dashboardID: dashboardID)
+        }
+        func known(_ pairing: RelayMetaInfo.Gateway, relayIDs: Set<String> = []) -> Bool {
+            NotificationDashboardPairings.isKnownToBeActiveDashboards(
+                pairing, activeDashboardID: dashboardA, activeDashboardGatewayIDs: relayIDs
+            )
+        }
+        XCTAssertTrue(known(gateway("gw-1", boundTo: nil), relayIDs: ["gw-1"]))
+        XCTAssertTrue(known(gateway("gw-2", boundTo: " \(dashboardA.uuidString) ")))
+        XCTAssertFalse(known(gateway("gw-3", boundTo: nil)))
+        XCTAssertFalse(known(gateway("gw-4", boundTo: dashboardB.uuidString)))
+        XCTAssertFalse(known(gateway("gw-5", boundTo: "not-a-uuid")))
+        XCTAssertFalse(NotificationDashboardPairings.isKnownToBeActiveDashboards(
+            gateway("gw-6", boundTo: dashboardA.uuidString), activeDashboardID: nil, activeDashboardGatewayIDs: []
+        ))
+    }
 }
 
 extension NotificationDashboardOwnershipTests {

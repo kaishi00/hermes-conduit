@@ -972,6 +972,20 @@ extension GatewayRestartTests {
         XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
     }
 
+    func testALostStartOnAHostThatCantSayWhoManagesItNeverFallsBackToHermesPull() async {
+        // The start's answer was lost, nothing runs there, and the
+        // capabilities read fails too: it may be a host that manages the plugin.
+        let host = PluginHost()
+        host.selfUpdateStartError = URLError(.timedOut)
+        host.capabilities = []
+        var updater = host.updater()
+        updater.onHost = true
+        let outcome = await updater.run { _ in }
+        guard case .failed = outcome else { return XCTFail("expected a failure, got \(outcome)") }
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
+    }
+
     func testAManagedHostsWaitingRestartRunsOnlyTheRestarts() async {
         let host = PluginHost()
         host.capabilities = [

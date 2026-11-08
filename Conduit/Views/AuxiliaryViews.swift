@@ -4778,7 +4778,11 @@ private struct NotificationsSettingsDetail: View {
     /// A pairing known to be this dashboard's, on a host that manages the
     /// plugin: nothing for Conduit to update there.
     private func managesPairing(_ gateway: RelayMetaInfo.Gateway) -> Bool {
-        appState.notifierPlugin.isManaged && appState.activeDashboardRelayGatewayIDs.contains(gateway.id)
+        appState.notifierPlugin.isManaged && NotificationDashboardPairings.isKnownToBeActiveDashboards(
+            gateway,
+            activeDashboardID: appState.activeDashboardID,
+            activeDashboardGatewayIDs: appState.activeDashboardRelayGatewayIDs
+        )
     }
 
     /// One relay pairing of the active dashboard: whether its notifier
