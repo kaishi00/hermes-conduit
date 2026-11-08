@@ -102,6 +102,9 @@ final class CapabilitiesStore {
     private(set) var officialSkills: [OfficialSkill] = []
     /// A read of the official skills is on its way, so the tab can say so.
     private(set) var officialSkillsLoading = false
+    /// The newest read of the official skills: only it clears the flag.
+    /// Its own count, since a change bumps `skillsEpoch` without a read.
+    @ObservationIgnored private var officialSkillsRead = 0
     private(set) var skillInstalls: [String: CapabilityInstallState] = [:]
     /// The skill hub, nil until read (or kept).
     private(set) var skillHub: SkillHubSnapshot?
@@ -134,6 +137,9 @@ final class CapabilitiesStore {
     private(set) var pluginCatalog: [PluginCatalogEntry] = []
     /// A read of the plugin catalog is on its way, so the tab can say so.
     private(set) var pluginCatalogLoading = false
+    /// The newest read of the catalog: only it clears the flag. Its own
+    /// count, since a change bumps `pluginsEpoch` without a read.
+    @ObservationIgnored private var pluginCatalogRead = 0
     private(set) var pluginsLoaded = false
     private(set) var pluginsError: String?
     private(set) var pluginBusy: Set<String> = []
@@ -409,8 +415,10 @@ final class CapabilitiesStore {
         let token = generation
         skillsEpoch &+= 1
         let epoch = skillsEpoch
+        officialSkillsRead &+= 1
+        let read = officialSkillsRead
         officialSkillsLoading = true
-        defer { if token == generation, epoch == skillsEpoch { officialSkillsLoading = false } }
+        defer { if token == generation, read == officialSkillsRead { officialSkillsLoading = false } }
         guard let response = try? await read(scoped(KeptRoute.officialSkills), keptAs: KeptRoute.officialSkills, in: answers) else { return }
         guard token == generation, epoch == skillsEpoch else { return }
         officialSkills = Self.officialSkills(from: response)
@@ -1121,8 +1129,10 @@ final class CapabilitiesStore {
         let token = generation
         pluginsEpoch &+= 1
         let epoch = pluginsEpoch
+        pluginCatalogRead &+= 1
+        let catalogRead = pluginCatalogRead
         pluginCatalogLoading = true
-        defer { if token == generation, epoch == pluginsEpoch { pluginCatalogLoading = false } }
+        defer { if token == generation, catalogRead == pluginCatalogRead { pluginCatalogLoading = false } }
         async let hubResponse = read(scoped(KeptRoute.plugins), keptAs: KeptRoute.plugins, in: answers)
         // The same for every profile: kept once per dashboard.
         async let catalogResponse = try? read(KeptRoute.pluginCatalog, keptAs: KeptRoute.pluginCatalog, in: dashboardAnswers)

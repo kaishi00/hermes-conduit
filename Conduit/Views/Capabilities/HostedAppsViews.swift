@@ -454,12 +454,10 @@ struct HostedAppPage: View {
                     Text(AppLocalization.string("Checking with Hermes…"))
                         .scaledFont(.footnote).foregroundStyle(.secondary)
                 }
-            } else if model.showsKept, appState.isConnected {
-                if let message = model.errorMessage {
-                    Text(verbatim: message)
-                        .scaledFont(.footnote).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            } else if model.showsKept, appState.isConnected, let message = model.errorMessage {
+                Text(verbatim: message)
+                    .scaledFont(.footnote).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 Button(AppLocalization.string("Try Again")) {
                     Task { await model.reload(appState) }
                 }

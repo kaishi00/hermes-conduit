@@ -489,6 +489,7 @@ extension KanbanTests {
         // A refresh leaves, then a newer one reads the list after a change.
         let older = Task { await store.loadPlugins() }
         while held == nil { await Task.yield() }
+        XCTAssertTrue(store.pluginCatalogLoading, "the tab says the catalog is loading while it's read")
         requester.responses["/api/dashboard/plugins/hub"] = ["plugins": [
             ["name": "Weather", "source": "git", "runtime_status": "enabled"],
             ["name": "Maps", "source": "git", "runtime_status": "enabled"],
@@ -499,6 +500,7 @@ extension KanbanTests {
 
         XCTAssertEqual(Set(store.plugins.map(\.name)), ["Weather", "Maps"], "the older answer arrived last but is older")
         XCTAssertEqual(store.plugins.first { $0.name == "Weather" }?.isEnabled, true)
+        XCTAssertFalse(store.pluginCatalogLoading, "the newest read cleared it, and the older one's end doesn't set it again")
     }
 
     /// A catalog connector's keys go to the profile's .env, only the
