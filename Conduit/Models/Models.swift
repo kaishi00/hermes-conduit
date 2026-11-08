@@ -24,6 +24,10 @@ enum MessageRole: String, Codable, Equatable {
     /// password, skill/setup secret, password-manager unlock, a website's
     /// login or its one-time code.
     case inputPrompt
+    /// Hermes connecting something for the model and waiting on the user:
+    /// an app sign-in, an MCP server's setup, a catalog install or the
+    /// apps directory (`connection.request`, ConnectionActivity).
+    case connection
 }
 
 enum SessionSource: String, Codable, CaseIterable {
@@ -818,6 +822,8 @@ struct ChatMessage: Identifiable, Equatable {
     var clarify: ClarifyActivity?
     var approval: ApprovalActivity?
     var inputPrompt: InputPromptActivity?
+    /// The connect card on a `.connection` row. Live-only, like inputPrompt.
+    var connection: ConnectionActivity?
     var attachments: [Attachment]?
     var code: String?
     /// Canonical Hermes `display_kind` when the persisted row arrived with
@@ -900,6 +906,7 @@ struct ChatMessage: Identifiable, Equatable {
             reactions: reactions
         )
         copy.stepDuration = stepDuration
+        copy.connection = connection
         return copy
     }
 
