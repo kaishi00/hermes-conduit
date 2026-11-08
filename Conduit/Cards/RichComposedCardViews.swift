@@ -413,7 +413,8 @@ struct RichCardButtonRow: View {
                                 isPresented: Binding(get: { asking != nil }, set: { if !$0 { asking = nil } }),
                                 titleVisibility: .visible, presenting: asking) { button in
                 Button(role: button.style == .destructive ? .destructive : nil) {
-                    guard context?.chat == askedChat else {
+                    // The same chat under its durable id is still where it was asked.
+                    guard let context, let askedChat, context.sameChat(askedChat, context.chat) else {
                         Haptics.error()
                         return
                     }

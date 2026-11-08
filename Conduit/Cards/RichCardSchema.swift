@@ -557,7 +557,16 @@ struct RichCardSchema {
         if controls.fields.contains(id) || controls.fields.count == maxFields { return nil }
         var field = field
         for (key, fits) in fieldExtras where fits != input { field[key] = nil }
-        if input == "choice", field["options"] == nil { return nil }
+        if input == "choice" {
+            // One of each, compared without regard to case: the picker
+            // names its rows by their text.
+            var options: [String] = []
+            for option in field["options"] as? [String] ?? [] where !options.contains(where: { $0.lowercased() == option.lowercased() }) {
+                options.append(option)
+            }
+            guard options.count >= 2 else { return nil }
+            field["options"] = options
+        }
         if let low = (field["min"] as? NSNumber)?.doubleValue, let high = (field["max"] as? NSNumber)?.doubleValue,
            low > high {
             field["min"] = nil
