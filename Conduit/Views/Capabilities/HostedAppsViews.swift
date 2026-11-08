@@ -320,6 +320,18 @@ struct HostedAppPage: View {
             guard app?.connected == true, tools == nil else { return }
             await loadTools(refresh: false)
         }
+        .task(id: appState.isConnected) {
+            // Opened on the kept apps: a read on its way (the tab's) is let
+            // finish, and if none replaced them (it was cut off), the page
+            // asks Hermes itself. A read that failed waits for Try Again.
+            // Not keyed on `loading`: the page's own read would cancel itself.
+            while model.loading {
+                try? await Task.sleep(for: .milliseconds(250))
+                if Task.isCancelled { return }
+            }
+            guard appState.isConnected, model.showsKept, model.errorMessage == nil else { return }
+            await model.reload(appState)
+        }
         .onDisappear {
             // Safari over the page isn't leaving it.
             if model.browser == nil, signingIn { model.cancelSignIn() }
@@ -439,12 +451,23 @@ struct HostedAppPage: View {
                     .scaledFont(.footnote).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if model.showsKept, appState.isConnected {
+            // Only while a read is on its way: one that failed or was cut
+            // off by leaving the tab left the kept copy up, and the page
+            // said it was checking for good.
+            if model.showsKept, appState.isConnected, model.loading {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text(AppLocalization.string("Checking with Hermes…"))
                         .scaledFont(.footnote).foregroundStyle(.secondary)
                 }
+            } else if model.showsKept, appState.isConnected, let message = model.errorMessage {
+                Text(verbatim: message)
+                    .scaledFont(.footnote).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(AppLocalization.string("Try Again")) {
+                    Task { await model.reload(appState) }
+                }
+                .buttonStyle(.settings)
             } else if !appState.isConnected {
                 Text(AppLocalization.string("Connect to Hermes to change this app."))
                     .scaledFont(.footnote).foregroundStyle(.secondary)
@@ -896,6 +919,10 @@ final class SVGLogoRenderer: NSObject, WKNavigationDelegate {
         view.isOpaque = false
         view.backgroundColor = .clear
         view.scrollView.backgroundColor = .clear
+        // Added to the key window at its top, the page would be pushed
+        // down by the status bar's safe area, leaving a 64 pt snapshot
+        // only the logo's bottom few points.
+        view.scrollView.contentInsetAdjustmentBehavior = .never
         view.isUserInteractionEnabled = false
         view.accessibilityElementsHidden = true
         view.navigationDelegate = self

@@ -100,6 +100,14 @@ final class CapabilitiesStore {
 
     // Skills
     private(set) var officialSkills: [OfficialSkill] = []
+    /// A read of the official skills is on its way, so the tab can say so.
+    private(set) var officialSkillsLoading = false
+    /// The newest read of the official skills: only it clears the flag.
+    /// Its own count, since a change bumps `skillsEpoch` without a read.
+    @ObservationIgnored private var officialSkillsRead = 0
+    /// The last read of the official skills failed: with none shown, the
+    /// tab says so with Try Again rather than "No skills yet".
+    private(set) var officialSkillsFailed = false
     private(set) var skillInstalls: [String: CapabilityInstallState] = [:]
     /// The skill hub, nil until read (or kept).
     private(set) var skillHub: SkillHubSnapshot?
@@ -130,6 +138,14 @@ final class CapabilitiesStore {
     // Plugins
     private(set) var plugins: [AgentPluginRow] = []
     private(set) var pluginCatalog: [PluginCatalogEntry] = []
+    /// A read of the plugin catalog is on its way, so the tab can say so.
+    private(set) var pluginCatalogLoading = false
+    /// The newest read of the catalog: only it clears the flag. Its own
+    /// count, since a change bumps `pluginsEpoch` without a read.
+    @ObservationIgnored private var pluginCatalogRead = 0
+    /// The last read of the catalog failed: with none shown, the tab says
+    /// so with Try Again rather than leaving the catalog out.
+    private(set) var pluginCatalogFailed = false
     private(set) var pluginsLoaded = false
     private(set) var pluginsError: String?
     private(set) var pluginBusy: Set<String> = []
@@ -182,6 +198,8 @@ final class CapabilitiesStore {
         self.dashboardAnswers = dashboardAnswers
         generation &+= 1
         officialSkills = []
+        officialSkillsLoading = false
+        officialSkillsFailed = false
         skillInstalls = [:]
         skillHub = nil
         hubInstalled = [:]
@@ -199,6 +217,8 @@ final class CapabilitiesStore {
         connectorInstalls = [:]
         plugins = []
         pluginCatalog = []
+        pluginCatalogLoading = false
+        pluginCatalogFailed = false
         pluginsLoaded = false
         pluginsError = nil
         pluginBusy = []
@@ -403,8 +423,17 @@ final class CapabilitiesStore {
         let token = generation
         skillsEpoch &+= 1
         let epoch = skillsEpoch
-        guard let response = try? await read(scoped(KeptRoute.officialSkills), keptAs: KeptRoute.officialSkills, in: answers) else { return }
-        guard token == generation, epoch == skillsEpoch else { return }
+        officialSkillsRead &+= 1
+        let skillsRead = officialSkillsRead
+        officialSkillsLoading = true
+        defer { if token == generation, skillsRead == officialSkillsRead { officialSkillsLoading = false } }
+        let answer = try? await read(scoped(KeptRoute.officialSkills), keptAs: KeptRoute.officialSkills, in: answers)
+        // Only the newest read that wasn't cut off says whether the catalog
+        // failed; one a change overtook can still say it was read.
+        if token == generation, skillsRead == officialSkillsRead, !Task.isCancelled {
+            if answer != nil { officialSkillsFailed = false } else if epoch == skillsEpoch { officialSkillsFailed = true }
+        }
+        guard let response = answer, token == generation, epoch == skillsEpoch else { return }
         officialSkills = Self.officialSkills(from: response)
         showsKept.remove(.officialSkills)
     }
@@ -1113,12 +1142,19 @@ final class CapabilitiesStore {
         let token = generation
         pluginsEpoch &+= 1
         let epoch = pluginsEpoch
+        pluginCatalogRead &+= 1
+        let catalogRead = pluginCatalogRead
+        pluginCatalogLoading = true
+        defer { if token == generation, catalogRead == pluginCatalogRead { pluginCatalogLoading = false } }
         async let hubResponse = read(scoped(KeptRoute.plugins), keptAs: KeptRoute.plugins, in: answers)
         // The same for every profile: kept once per dashboard.
         async let catalogResponse = try? read(KeptRoute.pluginCatalog, keptAs: KeptRoute.pluginCatalog, in: dashboardAnswers)
         do {
             let plugins = AgentPluginRow.list(from: try await hubResponse)
             let catalog = await catalogResponse
+            if token == generation, catalogRead == pluginCatalogRead, !Task.isCancelled {
+                if catalog != nil { pluginCatalogFailed = false } else if epoch == pluginsEpoch { pluginCatalogFailed = true }
+            }
             guard token == generation, epoch == pluginsEpoch else { return }
             self.plugins = plugins
             // A catalog read that fails keeps the catalog shown: a kept one
@@ -1130,7 +1166,10 @@ final class CapabilitiesStore {
             pluginsError = nil
             showsKept.remove(.plugins)
         } catch {
-            _ = await catalogResponse
+            let catalog = await catalogResponse
+            if token == generation, catalogRead == pluginCatalogRead, !Task.isCancelled {
+                if catalog != nil { pluginCatalogFailed = false } else if epoch == pluginsEpoch { pluginCatalogFailed = true }
+            }
             // A read cut off by leaving the tab isn't a failure: the tab
             // asks again when it next shows, as the Connectors tab does.
             guard token == generation, epoch == pluginsEpoch, !(error is CancellationError) else { return }
