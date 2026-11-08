@@ -533,6 +533,7 @@ caption, README.md's Apple Watch line)
 - A widget's Talk ends its launch once the call listens, or, under push to talk, once the call opens and waits for the press (a Shortcut's Talk has no launch to end past the call's open): its 30-second deadline never says the action expired over a call the user is in, and a press after it still listens (2026-11-07, #1940, issue 1934).
 
 **Open gaps**
+- A call attached to a chat the iPhone doesn't have open yet (a CarPlay pick past its 3-second wait) starts with none of the chat's turns, the same window the latest-reply block it replaced had; the model can still read the chat ("Read chat:", read_chat). Reading the chat from the host first would put a round trip before every call start (#1989).
 - A widget Talk whose first listen is dropped by the foreground gate (the scene went inactive while the launch prepared, so the call opened with its listen deferred) leaves its launch unconsumed, so it can still say the action expired over the open screen at 30 seconds. Consuming it there would block a later manual Listen once the launch expires (#1940, issue 1934).
 - Group rooms have no voice button setting, and the Watch and CarPlay don't follow it (#1134).
 - When a Classic call can't take over its chat, it shows a generic error (#1066).
