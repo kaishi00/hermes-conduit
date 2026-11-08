@@ -595,8 +595,8 @@ final class GroupChatModelsTests: XCTestCase {
             ["user:d1", "dmessage:2", "dmessage:3", "dmessage:4", landedID, GroupRoomTranscript.respondingID]
         )
         // A member's run shows its picture and name once.
-        guard case .room(.event(_, _, let runContinues, _)) = rows[2].kind,
-              case .room(.event(_, _, let otherContinues, _)) = rows[3].kind else { return XCTFail("\(rows)") }
+        guard case .room(.event(_, _, let runContinues, _, _)) = rows[2].kind,
+              case .room(.event(_, _, let otherContinues, _, _)) = rows[3].kind else { return XCTFail("\(rows)") }
         XCTAssertTrue(runContinues)
         XCTAssertFalse(otherContinues)
         XCTAssertEqual(rows[4].kind, .room(.pending(text: "Plan the trip", members: members, isSending: true)))
@@ -607,7 +607,7 @@ final class GroupChatModelsTests: XCTestCase {
             members: members, pending: pending, isSending: false, responder: nil
         )
         XCTAssertEqual(landed.map(\.id), ["user:d1", "dmessage:2", "dmessage:3", "dmessage:4", landedID])
-        guard case .room(.event(_, _, _, _)) = landed[4].kind else { return XCTFail("the event's row, not the pending one") }
+        guard case .room(.event(_, _, _, _, _)) = landed[4].kind else { return XCTFail("the event's row, not the pending one") }
 
         // Nothing in the room yet: its welcome.
         let empty = GroupRoomTranscript.rows(

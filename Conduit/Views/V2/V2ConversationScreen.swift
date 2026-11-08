@@ -109,6 +109,7 @@ struct V2ConversationScreen: View {
     @State private var chatTitlePendingRename: SessionSummary?
     @State private var chatTitlePendingDeletion: SessionSummary?
     @State private var confirmsRoomDisband = false
+    @State private var showsRoomInfo = false
     @State private var choosesRoomPicture: GroupRoomPictureRequest?
     @State private var showsRoomSettings = false
     /// The open chat's ids while its Artifacts sheet shows.
@@ -346,7 +347,8 @@ struct V2ConversationScreen: View {
             chatTitlePendingDeletion: $chatTitlePendingDeletion,
             confirmsRoomDisband: $confirmsRoomDisband,
             choosesRoomPicture: $choosesRoomPicture,
-            showsRoomSettings: $showsRoomSettings
+            showsRoomSettings: $showsRoomSettings,
+            showsRoomInfo: $showsRoomInfo
         ))
         // Group Settings asked for from a room's tile on Bots Home: once
         // that room is open here and Hermes has read its settings.
@@ -607,6 +609,7 @@ struct V2ConversationScreen: View {
             V2ConversationMenu(
                 onRename: { chatTitlePendingRename = $0 },
                 onDelete: { chatTitlePendingDeletion = $0 },
+                onShowRoomInfo: { showsRoomInfo = true },
                 onDisbandRoom: { confirmsRoomDisband = true },
                 onChooseRoomPicture: { choosesRoomPicture = $0 },
                 onRoomSettings: { showsRoomSettings = true },
@@ -643,7 +646,7 @@ struct V2ConversationScreen: View {
 }
 
 /// The conversation's rename sheet, delete alert, room picture picker, room
-/// settings and disband confirmation.
+/// settings and info, and disband confirmation.
 private struct ConversationDialogs: ViewModifier {
     @EnvironmentObject private var appState: AppState
     @Binding var chatTitlePendingRename: SessionSummary?
@@ -651,11 +654,16 @@ private struct ConversationDialogs: ViewModifier {
     @Binding var confirmsRoomDisband: Bool
     @Binding var choosesRoomPicture: GroupRoomPictureRequest?
     @Binding var showsRoomSettings: Bool
+    @Binding var showsRoomInfo: Bool
 
     func body(content: Content) -> some View {
         content
             .sheet(isPresented: $showsRoomSettings) {
                 GroupRoomSettingsSheet()
+                    .environmentObject(appState)
+            }
+            .sheet(isPresented: $showsRoomInfo) {
+                GroupRoomInfoSheet()
                     .environmentObject(appState)
             }
             .sheet(item: $chatTitlePendingRename) { session in
@@ -689,9 +697,7 @@ private struct ConversationDialogs: ViewModifier {
                 }
                 Button(AppLocalization.string("Cancel"), role: .cancel) {}
             } message: {
-                Text(AppLocalization.string(
-                    "The room, its history, and every member's session end permanently. This cannot be undone."
-                ))
+                Text(GroupRoomDisband.warning(members: appState.activeRoomSurface?.room.members ?? []))
             }
     }
 }
@@ -781,6 +787,7 @@ private struct V2ConversationMenu: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onRename: (SessionSummary) -> Void
     let onDelete: (SessionSummary) -> Void
+    let onShowRoomInfo: () -> Void
     let onDisbandRoom: () -> Void
     let onChooseRoomPicture: (GroupRoomPictureRequest) -> Void
     let onRoomSettings: () -> Void
@@ -822,6 +829,7 @@ private struct V2ConversationMenu: View {
         Menu {
             if appState.activeRoomSurface != nil {
                 GroupRoomActionItems(
+                    onShowInfo: onShowRoomInfo,
                     onDisband: onDisbandRoom, onChoosePicture: onChooseRoomPicture, onOpenSettings: onRoomSettings
                 )
             } else {

@@ -175,6 +175,11 @@ struct ChatResumeLifecycleOperations {
     /// cwd in, the created ids out. Not an init parameter: tests set it on
     /// the value.
     var createSession: (@MainActor (HermesClient, String?) async throws -> BranchResult)?
+    /// Test seams for a room's new chat (RoomChats.swift): `session.create`
+    /// in a profile (nil for the dashboard's), and its title, by the id it
+    /// runs under, in that profile. Not init parameters either.
+    var createRoomChat: (@MainActor (HermesClient, String?) async throws -> BranchResult)?
+    var titleRoomChat: (@MainActor (HermesClient, String, String, String?) async throws -> Void)?
     /// Test seams for the bot editor, client and profile in: its
     /// `profiles.describe`, its MCP page's `mcp.catalog` and
     /// `mcp.servers.list`, and a save's skills, tools and MCP sections
@@ -299,6 +304,9 @@ struct GroupChatLifecycleOperations {
     var stop: (@MainActor (HermesClient, String) async throws -> Int)?
     var approve: (@MainActor (HermesClient, String, GroupPendingApproval, String) async throws -> Bool)?
     var disband: (@MainActor (HermesClient, String) async throws -> Void)?
+    /// The plugin's rooms routes (the drafts and the Links), in place of
+    /// the dashboard bridge.
+    var roomRoute: RoomLinksClient.Request?
     /// Room, event id, settings, whether routing goes along.
     var context: (@MainActor (HermesClient, String, String, GroupRoomContext, Bool) async throws -> GroupRoomContext)?
     /// Room, discussion event id.
@@ -2511,6 +2519,16 @@ final class AppState: ObservableObject {
     /// (DashboardConnectLink.swift). RootView asks about it in a sheet,
     /// over the sign-in screen or a connected app alike.
     @Published var pendingConnectLink: DashboardConnectLink?
+    /// A Link invite that opened Conduit or was tapped in a chat
+    /// (RoomLinks.swift). RootView shows who it's from in a sheet, which
+    /// asks before linking.
+    @Published var pendingRoomLink: RoomLinkURL?
+    /// An invite to a room whose notification was tapped (RoomInvites.swift):
+    /// RootView shows its join card.
+    @Published var presentedRoomInvite: RoomInvite?
+    /// An approval in a room hosted elsewhere whose notification was tapped
+    /// (RoomApprovals.swift): RootView shows its card.
+    @Published var presentedRoomApproval: RoomApproval?
     /// Round 6: the classified failure of the most recent failed connection
     /// attempt (saved-credential reconnect, repair activation, or a failed
     /// explicit connect). Typed — never recovered from user-facing strings —
@@ -7256,6 +7274,8 @@ final class AppState: ObservableObject {
     // MARK: - Persistence
 
     private let defaults: UserDefaults
+    /// This AppState's defaults, for its extensions in other files.
+    var appDefaults: UserDefaults { defaults }
     /// Kept outside ChatResumeStore on purpose: the return surface is a
     /// presentation preference, not part of the resume schema.
     static let chatReturnSurfaceKey = "conduit.chatReturnSurface.v1"
@@ -7769,6 +7789,8 @@ final class AppState: ObservableObject {
             presentationCacheDebounceSuspension
             ?? { duration in try await Task.sleep(for: duration) }
         self.defaults = defaults
+        // The picture you show in rooms over Links (RoomLooks.swift).
+        self._roomPersonPicture = Published(wrappedValue: RoomLooksUpload.storedPersonPicture(defaults))
         let noticeChannel = NotifierPluginNoticeChannel.load(from: defaults)
         self.notifierPluginNoticeChannel = noticeChannel
         // The saved Update notices choice holds from the first status read.
@@ -12757,6 +12779,9 @@ final class AppState: ObservableObject {
         /// fenced out at the server boundary.
         let dashboardID: UUID
         let room: GroupRoom
+        /// Set for a room someone else hosts: the room screen reads your
+        /// Hermes' copy of it (RoomCopies.swift), and nothing is sent to it.
+        var copy: RoomCopy? = nil
 
         /// The thread a composer message starts: its own, named by its
         /// client event id, as Hermes Desktop sends one. The host routes and
@@ -12780,6 +12805,30 @@ final class AppState: ObservableObject {
     @Published private(set) var groupChatPhase: GroupChatPhase = .idle
     @Published private(set) var groupCapabilities: GroupCapabilities?
     @Published private(set) var groupRooms: [GroupRoom] = []
+    /// The rooms this Hermes hosts with people you've linked that Group
+    /// Chats lists until they start, and the people New Group Chat can
+    /// invite (RoomDrafts.swift).
+    @Published var linkedRoomDrafts: LinkedRoomDrafts?
+    /// The rooms people you've linked invited this Hermes to, which Group
+    /// Chats lists with the drafts (RoomInvites.swift).
+    @Published var linkedRoomInvites: LinkedRoomInvites?
+    /// Reads the invites again for a while after a Link is made
+    /// (RoomInvites.swift followLinkedRoomInvites).
+    var linkedRoomInviteFollow: Task<Void, Never>?
+    /// What your agents' turns in rooms other people host wait for you to
+    /// approve, which Group Chats lists first (RoomApprovals.swift).
+    @Published var linkedRoomApprovals: LinkedRoomApprovals?
+    /// The approvals answered here, by id: a read already under way when
+    /// one was answered can't bring its row or card back.
+    var answeredLinkedRoomApprovalIDs: Set<String> = []
+    /// The open copy's opening tail read failed: its next tick reads the
+    /// tail again.
+    private(set) var activeRoomCopyNeedsTail = false
+    /// Bumped by a copy's delete, so a copies read it overtook is dropped.
+    var linkedRoomCopiesGeneration = 0
+    /// Your Hermes' copies of the rooms other people host that your agents
+    /// joined, which Group Chats lists after your own (RoomCopies.swift).
+    @Published var linkedRoomCopies: LinkedRoomCopies?
     /// The hosted rooms whose bots are talking now (each room's driver is
     /// working), read while Bots Home shows (`refreshTalkingRooms`), for
     /// its live-rooms row and the "In <room>" pills.
@@ -12841,6 +12890,80 @@ final class AppState: ObservableObject {
     /// Tests read a room's boards here in place of the dashboard.
     var roomBoardsReadOverride: ((String) async throws -> [String: Any])?
     @Published private(set) var activeRoomDriverStatus: GroupDriverStatus?
+    /// In a room over Links, each member by id (`GET /rooms/people`): its
+    /// owner and whether it's out. Read when the room opens, when Group
+    /// Info does, and after taking one out.
+    @Published private(set) var activeRoomPeople: [String: RoomPerson] = [:]
+    /// How the open room's other people and their agents look, as their
+    /// own Conduits gave it (RoomLooks.swift).
+    @Published var activeRoomLooks = RoomLooks.empty
+    /// The open room's host, as your Link names them, in a room someone
+    /// else hosts (`GET /rooms/people`'s `home`).
+    @Published var activeRoomHomeName: String?
+    var activeRoomLooksReadAt: Date?
+    /// The room (epoch and id) whose looks are being read now.
+    var activeRoomLooksReading: String?
+    /// What was last given each dashboard's Hermes (`PUT /rooms/looks`).
+    var sharedRoomLooks: [UUID: String] = [:]
+    /// A looks share is on its way, and another change waits for it.
+    var roomLooksSharing = false
+    var roomLooksShareAgain = false
+    /// Each bot's picture as sent, by the image it was made from.
+    var roomLookPictures: [String: (image: UIImage, data: Data?)] = [:]
+    /// The picture you show in rooms over Links, kept on this phone.
+    @Published var roomPersonPicture: Data? = nil
+    /// The latest people read started: an older one that answers later is
+    /// dropped.
+    private var activeRoomPeopleRead = 0
+    /// A poll's people read for posts it brought is under way.
+    private var activeRoomPeopleRereading = false
+    /// A poll asked for another while one was under way: it runs next, so
+    /// a post that came in meanwhile is named too.
+    private var activeRoomPeopleRereadWanted = false
+    /// People reads this visit after one failed (in a copy, for your name),
+    /// up to `roomCopyNameReadLimit`.
+    private var activeRoomPeopleRetries = 0
+    /// The open room's last people read failed.
+    private var activeRoomPeopleReadFailed = false
+    static let roomCopyNameReadLimit = 5
+    /// Whose the open room's people's posted messages are (RoomPosts.swift).
+    @Published private(set) var activeRoomPostAttribution = RoomPostAttribution.none
+    /// In a room someone else hosts, how your pending post stands as your
+    /// Hermes last said; nil before it answers.
+    @Published private(set) var activeRoomCopyPost: RoomPost? {
+        didSet {
+            // Another post, or none: what was asked about the last is moot.
+            // The first answer about the same pending post isn't another.
+            if activeRoomCopyPost == nil || (oldValue != nil && activeRoomCopyPost?.eventID != oldValue?.eventID) {
+                activeRoomCopyPostAbsent = false
+                activeRoomCopyPostWaits = 0
+            }
+        }
+    }
+    /// Your Hermes was asked about the pending post and doesn't have it.
+    /// Published, as the waits are: either can change the pending row on a
+    /// tick that changes nothing else.
+    @Published private(set) var activeRoomCopyPostAbsent = false
+    /// Ticks the pending post has been asked about since its copy took no
+    /// more posts, or while your Hermes last said it's sending or posted,
+    /// up to `roomCopyPostWaitLimit`.
+    @Published private(set) var activeRoomCopyPostWaits = 0
+    static let roomCopyPostWaitLimit = 20
+    /// Between an ended copy's people reads for your name.
+    static let roomPeopleRetryDelay: Duration = .seconds(2)
+    /// A refused post's text, for the room composer to take back.
+    @Published private(set) var roomDraftHandBack: RoomDraftHandBack?
+
+    /// The open room's members, with their owners and who's out. In a copy,
+    /// your agents that are out are yours from its invite until the people
+    /// read says so.
+    var activeRoomMembers: [GroupMember] {
+        var members = activeRoomSurface?.room.members ?? []
+        if let copy = activeRoomSurface?.copy, let invite = linkedRoomInvite(copy.id), !invite.gone.isEmpty {
+            members = GroupRoomTurns.members(members, gone: invite.gone)
+        }
+        return GroupRoomTurns.members(members, people: activeRoomPeople)
+    }
 
     /// Where the user's answer to each of the open room's pending approvals
     /// stands, keyed by `GroupPendingApproval.id`. A sent answer stays for
@@ -12888,6 +13011,13 @@ final class AppState: ObservableObject {
         )
         roomResponderCache = (key, context, member)
         return member
+    }
+
+    /// Whether the open room's live member can answer: a member on another
+    /// Hermes reads as cut off or unreachable while its route says so.
+    var activeRoomResponderState: GroupResponderState {
+        guard let member = activeRoomResponder, let driver = activeRoomDriverStatus else { return .responding }
+        return driver.responderState(for: member, in: activeRoomSurface?.room.members ?? [])
     }
 
     /// Each member's pill under the open room's title, by `identityKey`
@@ -13030,6 +13160,18 @@ final class AppState: ObservableObject {
     /// The same for the bot roster's "Could not refresh bots".
     private var botRosterRetry = TransientReadRetry()
 
+    /// A rooms route of the plugin (the drafts, the Links): the injectable
+    /// seam first (tests), then the dashboard bridge.
+    func roomRouteJSON(path: String, method: String, body: [String: Any]?, timeoutMilliseconds: Int?)
+        async throws -> [String: Any] {
+        if let route = groupChatOperations.roomRoute { return try await route(path, method, body, timeoutMilliseconds) }
+        guard let bridge = dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        if let timeoutMilliseconds {
+            return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeoutMilliseconds)
+        }
+        return try await bridge.requestJSON(path: path, method: method, body: body)
+    }
+
     // Group Chat RPC routing: the injectable seam first (tests), then the
     // production client call.
     private func groupsCapabilities(_ client: HermesClient) async throws -> GroupCapabilities {
@@ -13098,6 +13240,18 @@ final class AppState: ObservableObject {
         groupRoomsListed = false
         groupRoomsComplete = false
         groupRooms = []
+        linkedRoomDrafts = nil
+        linkedRoomInvites = nil
+        linkedRoomInviteFollow?.cancel()
+        linkedRoomInviteFollow = nil
+        presentedRoomInvite = nil
+        linkedRoomApprovals = nil
+        answeredLinkedRoomApprovalIDs = []
+        presentedRoomApproval = nil
+        linkedRoomCopies = nil
+        // Shared again after a sign-in: that Hermes may have lost them.
+        sharedRoomLooks = [:]
+        roomLookPictures = [:]
         talkingRoomIDs = []
         desktopGroupChats = []
         groupRoomPictureData = [:]
@@ -13119,11 +13273,20 @@ final class AppState: ObservableObject {
         "\(dashboardID.uuidString)|\(roomID)"
     }
 
+    /// A room's key, by its Link too for a copy: room ids are only unique
+    /// per host.
+    private static func roomKey(for surface: GroupRoomSurface) -> String {
+        roomKey(dashboardID: surface.dashboardID, roomID: surface.copy?.id ?? surface.room.roomID)
+    }
+
     /// Move the open room's pending send (if any) into the parked store, and
     /// keep its events to show when it opens again.
     private func parkActiveRoomSend() {
         guard let surface = activeRoomSurface else { return }
-        let key = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
+        let key = Self.roomKey(for: surface)
+        if activeRoomReplay.roomID == surface.room.roomID, !activeRoomReplay.events.isEmpty {
+            keptRoomReplays[key] = activeRoomReplay
+        }
         if groupRoomOutbox.pending != nil {
             parkedRoomOutboxes[key] = groupRoomOutbox
         } else {
@@ -13172,8 +13335,14 @@ final class AppState: ObservableObject {
     private func pruneRoomStores(liveRoomIDs: Set<String>) {
         guard let dashboardID = activeDashboardID else { return }
         let prefix = "\(dashboardID.uuidString)|"
+        // Rooms other people host (keyed by Link and room, with a slash)
+        // are kept by their copies, not this list, and until those are read.
+        let copies = readLinkedRoomCopyIDs
         func isGone(_ key: String) -> Bool {
-            key.hasPrefix(prefix) && !liveRoomIDs.contains(String(key.dropFirst(prefix.count)))
+            guard key.hasPrefix(prefix) else { return false }
+            let id = String(key.dropFirst(prefix.count))
+            if id.contains("/") { return copies.map { !$0.contains(id) } ?? false }
+            return !liveRoomIDs.contains(id)
         }
         parkedRoomOutboxes = parkedRoomOutboxes.filter { !isGone($0.key) }
         groupRoomDrafts = groupRoomDrafts.filter { !isGone($0.key) }
@@ -13194,7 +13363,7 @@ final class AppState: ObservableObject {
     /// is parked for it, and its draft goes too — it can never be reopened.
     private func closeGoneRoomSurface() {
         if let surface = activeRoomSurface {
-            let key = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
+            let key = Self.roomKey(for: surface)
             parkedRoomOutboxes.removeValue(forKey: key)
             groupRoomDrafts.removeValue(forKey: key)
             keptRoomReplays.removeValue(forKey: key)
@@ -13240,7 +13409,9 @@ final class AppState: ObservableObject {
 
     /// Whether the open room takes a quote: one that is still running.
     func canQuoteIntoRoom() -> Bool {
-        activeRoomSurface?.room.isDisbanded == false
+        // A room someone else hosts has a composer while it takes your posts.
+        if activeRoomSurface?.copy != nil { return activeRoomCopyTakesPosts }
+        return activeRoomSurface?.room.isDisbanded == false
     }
 
     /// Selected room text goes into the room's draft as a `>` quote, with
@@ -13278,25 +13449,15 @@ final class AppState: ObservableObject {
         roomRecipientRequest = nil
     }
 
-    /// The roster bot a room member is: by profile, else (a Desktop group's
-    /// member, which has none) by name.
+    /// The roster bot a room member is (GroupRoomTurns.rosterBot).
     func groupMemberBot(_ member: GroupMember?, name: String) -> BotProfile? {
-        let roster = shownBotRoster
-        if let profile = member?.profile?.trimmingCharacters(in: .whitespacesAndNewlines), !profile.isEmpty,
-           let bot = roster.first(where: { $0.name == profile }) {
-            return bot
-        }
-        let label = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !label.isEmpty else { return nil }
-        // The id first, then a bot's own name over another's id capitalized.
-        return roster.first { $0.name == label }
-            ?? roster.first { $0.displayLabel == label && $0.displayLabel.lowercased() != $0.name.lowercased() }
-            ?? roster.first { $0.displayLabel == label }
+        GroupRoomTurns.rosterBot(for: member, name: name, in: shownBotRoster)
     }
 
     /// Each member's color by `identityKey`: its bot's glow on Bots Home
     /// (`botColor`: the color picked for it or drawn from its photo, else
-    /// its color in Hermes), else the hue its picture falls back to, so a
+    /// its color in Hermes), another person's agent's as their Conduit
+    /// draws it (RoomLooks), else the hue its picture falls back to, so a
     /// bot looks the same on its tile, in its name, its bubble and the tags
     /// that name it.
     func groupMemberTints(_ members: [GroupMember]) -> [String: CustomAccentColor] {
@@ -13307,6 +13468,11 @@ final class AppState: ObservableObject {
             guard !key.isEmpty, tints[key] == nil else { continue }
             let name = GroupRoomTurns.displayName(of: member)
             let bot = groupMemberBot(member, name: name)
+            // Another person's agent: the color its owner's Conduit draws it in.
+            if bot == nil, let tint = activeRoomLooks.member(member)?.tint {
+                tints[key] = tint
+                continue
+            }
             let color = UIColor(Self.groupMemberColor(bot: bot, name: name, glows: glows))
             var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
             guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { continue }
@@ -13331,14 +13497,14 @@ final class AppState: ObservableObject {
     /// The open room's unsent composer text.
     func activeRoomDraft() -> String {
         guard let surface = activeRoomSurface else { return "" }
-        return groupRoomDrafts[Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)] ?? ""
+        return groupRoomDrafts[Self.roomKey(for: surface)] ?? ""
     }
 
     /// Keep the open room's composer text so leaving and reopening the room
     /// restores it. Empty text drops the entry.
     func saveActiveRoomDraft(_ text: String) {
         guard let surface = activeRoomSurface else { return }
-        let key = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
+        let key = Self.roomKey(for: surface)
         if text.isEmpty {
             groupRoomDrafts.removeValue(forKey: key)
         } else {
@@ -13363,7 +13529,10 @@ final class AppState: ObservableObject {
               isOpen || groupRooms.contains(where: { $0.roomID == roomID && !$0.isDisbanded }) else {
             return false
         }
-        let key = Self.roomKey(dashboardID: dashboardID, roomID: roomID)
+        // The open room's own key: a room hosted elsewhere keeps its draft
+        // by its Link too, as its composer reads it.
+        let openKey = isOpen ? activeRoomSurface.map(Self.roomKey(for:)) : nil
+        let key = openKey ?? Self.roomKey(dashboardID: dashboardID, roomID: roomID)
         let text = ComposerDictation.draft(before: groupRoomDrafts[key] ?? "", dictated: words)
         guard !text.isEmpty else { return true }
         groupRoomDrafts[key] = text
@@ -13374,7 +13543,7 @@ final class AppState: ObservableObject {
     /// The files staged in the open room's composer.
     func activeRoomAttachments() -> [Attachment] {
         guard let surface = activeRoomSurface else { return [] }
-        return groupRoomAttachments[Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)] ?? []
+        return groupRoomAttachments[Self.roomKey(for: surface)] ?? []
     }
 
     /// Keep the open room's staged files with its text, so leaving and
@@ -13382,7 +13551,7 @@ final class AppState: ObservableObject {
     /// copy of a file it removes or sends.
     func saveActiveRoomAttachments(_ attachments: [Attachment]) {
         guard let surface = activeRoomSurface else { return }
-        let key = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
+        let key = Self.roomKey(for: surface)
         if attachments.isEmpty {
             groupRoomAttachments.removeValue(forKey: key)
         } else {
@@ -13413,6 +13582,14 @@ final class AppState: ObservableObject {
         chatErrorBehindRoom = nil
         activeRoomReplay = GroupRoomReplay(roomID: "")
         activeRoomDriverStatus = nil
+        activeRoomPeople = [:]
+        activeRoomLooks = .empty
+        activeRoomHomeName = nil
+        activeRoomLooksReadAt = nil
+        activeRoomPeopleRetries = 0
+        activeRoomPeopleReadFailed = false
+        activeRoomPostAttribution = .none
+        activeRoomCopyPost = nil
         roomApprovalAnswers = [:]
         activeRoomSendInFlight = false
         groupRoomOutbox.discard()
@@ -13421,15 +13598,18 @@ final class AppState: ObservableObject {
         // A quote or drop the closed room's composer never took must not
         // land in the next room opened.
         roomQuoteRequest = nil
+        roomDraftHandBack = nil
         roomDropRequest = nil
     }
 
     /// Probe `groups.capabilities` and, when the foundation methods are
-    /// advertised, refresh the room list. Called alongside the bot roster
-    /// refresh; a gateway that lacks the method is a supported outcome, not
-    /// an error. The response is epoch- AND dashboard-fenced: an in-flight
-    /// probe must never resurrect the outgoing server's phase on the new
-    /// dashboard's surface.
+    /// advertised, refresh the room list, then the drafts of rooms with
+    /// people you've linked (not with each room list read, which a room's
+    /// send and poll make). Called alongside the bot roster refresh; a
+    /// gateway that lacks the method is a supported outcome, not an error.
+    /// The response is epoch- AND dashboard-fenced: an in-flight probe must
+    /// never resurrect the outgoing server's phase on the new dashboard's
+    /// surface.
     func refreshGroupChatSupport() async {
         guard let client, isConnected else {
             groupChatPhase = .idle
@@ -13449,6 +13629,10 @@ final class AppState: ObservableObject {
             }
             groupChatPhase = .available
             await refreshGroupRooms()
+            await refreshLinkedRoomDrafts()
+            await refreshLinkedRoomInvites()
+            await refreshLinkedRoomApprovals()
+            await refreshLinkedRoomCopies()
         } catch is CancellationError {
             return
         } catch {
@@ -13500,6 +13684,8 @@ final class AppState: ObservableObject {
             // Keep the last known room list; the roster surfaces the probe
             // failure path, and a stale room row is safer than an empty one.
         }
+        // How your bots and you look in rooms over Links, when that changed.
+        await shareRoomLooksIfNeeded()
     }
 
     /// The most rooms Bots Home asks after at once: the ones talked in
@@ -13684,6 +13870,15 @@ final class AppState: ObservableObject {
         activeRoomReplay = keptRoomReplays[Self.roomKey(dashboardID: dashboardID, roomID: room.roomID)]
             ?? GroupRoomReplay(roomID: room.roomID)
         activeRoomDriverStatus = nil
+        activeRoomPeople = [:]
+        activeRoomLooks = .empty
+        activeRoomHomeName = nil
+        activeRoomLooksReadAt = nil
+        activeRoomPeopleRetries = 0
+        activeRoomPeopleReadFailed = false
+        activeRoomPostAttribution = .none
+        activeRoomCopyPost = nil
+        roomDraftHandBack = nil
         roomApprovalAnswers = [:]
         // A send parked when this room was left comes back with its retry
         // key; the tail below settles it if it landed meanwhile.
@@ -13708,6 +13903,9 @@ final class AppState: ObservableObject {
             }
             activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: state)
             activeRoomDriverStatus = driver
+            if state.members.contains(where: \.isPeer) {
+                Task { await self.readActiveRoomPeople(epoch: epoch) }
+            }
             let latest = state.latestSeq ?? 0
             let start = max(0, latest - window)
             let page = try await groupsLog(
@@ -13789,6 +13987,10 @@ final class AppState: ObservableObject {
               let surface = activeRoomSurface,
               groupRoomEpoch == epoch,
               surface.dashboardID == activeDashboardID else { return }
+        if surface.copy != nil {
+            await pollActiveRoomCopyOnce(epoch: epoch)
+            return
+        }
         do {
             let page = try await groupsLog(
                 client,
@@ -13811,6 +14013,8 @@ final class AppState: ObservableObject {
                 activeRoomReplay.adopt(page: page)
                 settlePendingRoomSend(from: fresh)
             }
+            rereadActiveRoomPeopleForPosts(fresh)
+            readActiveRoomLooksIfDue()
             // Driver status tracks the DRIVER, not the log: refresh even on
             // an eventless tick, or a settled room keeps offering Stop and
             // showing "working…" until the next unrelated event.
@@ -13861,7 +14065,8 @@ final class AppState: ObservableObject {
     func sendGroupRoomMessage(_ rawText: String, threadID: String? = nil) async -> Bool {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return false }
-        guard let surface = activeRoomSurface, let client, isConnected,
+        if activeRoomSurface?.copy != nil { return await postInActiveRoomCopy(text) }
+        guard let surface = activeRoomSurface, surface.copy == nil, let client, isConnected,
               groupCapabilities?.supports("groups.send") == true,
               !activeRoomSendInFlight else { return false }
         guard surface.room.isDisbanded == false else { return false }
@@ -13879,7 +14084,7 @@ final class AppState: ObservableObject {
             "conduit-\(UUID().uuidString.lowercased())"
         }
         pendingRoomMessage = groupRoomOutbox.pending
-        let sendKey = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
+        let sendKey = Self.roomKey(for: surface)
         activeRoomSendInFlight = true
         let sendToken = UUID()
         inFlightRoomSendTokens[sendKey] = sendToken
@@ -13891,7 +14096,7 @@ final class AppState: ObservableObject {
             if inFlightRoomSendTokens[sendKey] == sendToken {
                 inFlightRoomSendTokens.removeValue(forKey: sendKey)
                 if let open = activeRoomSurface,
-                   Self.roomKey(dashboardID: open.dashboardID, roomID: open.room.roomID) == sendKey {
+                   Self.roomKey(for: open) == sendKey {
                     activeRoomSendInFlight = false
                 }
             }
@@ -13918,7 +14123,7 @@ final class AppState: ObservableObject {
                         groupRoomOutbox.accept(eventID: logical.eventID)
                         pendingRoomMessage = groupRoomOutbox.pending
                     } else {
-                        let key = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
+                        let key = Self.roomKey(for: surface)
                         parkedRoomOutboxes[key]?.accept(eventID: logical.eventID)
                         if parkedRoomOutboxes[key]?.pending == nil {
                             parkedRoomOutboxes.removeValue(forKey: key)
@@ -13947,6 +14152,8 @@ final class AppState: ObservableObject {
             if result.driverStarted {
                 // The driver took the message on: show it working now rather
                 // than waiting for the next poll's status, which corrects it.
+                // Its routes hold until then; who answers first is the
+                // log's to say, since the live turns predate the message.
                 activeRoomDriverStatus = activeRoomDriverStatus?.with(running: true, working: true)
                     ?? GroupDriverStatus(running: true, working: true, blocked: false, counts: [:], pendingActions: [])
             }
@@ -14008,7 +14215,7 @@ final class AppState: ObservableObject {
 
     /// Stop the open room's queued or running work (`groups.stop`).
     func stopActiveRoomWork() async {
-        guard let surface = activeRoomSurface, let client, isConnected,
+        guard let surface = activeRoomSurface, surface.copy == nil, let client, isConnected,
               groupCapabilities?.supports("groups.stop") == true else { return }
         let epoch = groupRoomEpoch
         do {
@@ -14097,7 +14304,7 @@ final class AppState: ObservableObject {
     /// (`groups.approve`). The room's driver resumes the member's turn on
     /// its own; the poll that follows picks up the new status.
     func respondToRoomApproval(_ approval: GroupPendingApproval, choice: String) async {
-        guard let surface = activeRoomSurface, let client, isConnected,
+        guard let surface = activeRoomSurface, surface.copy == nil, let client, isConnected,
               groupCapabilities?.supports("groups.approve") == true,
               approval.allows(choice),
               roomApprovalAnswers[approval.id] != .submitting,
@@ -14138,8 +14345,9 @@ final class AppState: ObservableObject {
 
     /// Permanently disband the open room (destructive; the view confirms).
     func disbandActiveRoom() async {
-        guard let roomID = activeRoomSurface?.room.roomID else { return }
-        await disbandGroupRoom(roomID, opened: true)
+        // A room someone else hosts is theirs to disband.
+        guard let surface = activeRoomSurface, surface.copy == nil else { return }
+        await disbandGroupRoom(surface.room.roomID, opened: true)
     }
 
     /// Permanently disband a room, open or not: from its own menu, or its
@@ -14165,7 +14373,7 @@ final class AppState: ObservableObject {
             return message
         }
         guard self.client === client else { return nil }
-        if activeRoomSurface?.room.roomID == roomID { closeGoneRoomSurface() }
+        if activeRoomSurface?.copy == nil, activeRoomSurface?.room.roomID == roomID { closeGoneRoomSurface() }
         await refreshGroupRooms()
         return nil
     }
@@ -14174,8 +14382,424 @@ final class AppState: ObservableObject {
     /// open, or this call's inverse, owns the viewport transition.
     func closeGroupRoom() {
         closeRoomSurfaceBackToChat()
-        Task { await self.refreshGroupRooms() }
+        Task {
+            await self.refreshGroupRooms()
+            await self.refreshLinkedRoomCopies()
+        }
     }
+
+    /// Who's who in the open room over Links: the other people's agents'
+    /// owners, and who left or was taken out. A read that fails keeps the
+    /// last (unnamed at first: "On another Hermes"); one another room
+    /// overtook is dropped.
+    private func readActiveRoomPeople(epoch: Int) async {
+        guard canInviteLinkedPeople, let surface = activeRoomSurface,
+              let room = DashboardPath.encodedQueryComponent(surface.room.roomID) else { return }
+        let dashboard = activeDashboardID
+        // One for a room already left mustn't drop the open room's read.
+        guard groupRoomEpoch == epoch else { return }
+        activeRoomPeopleRead &+= 1
+        let read = activeRoomPeopleRead
+        let response = try? await roomRouteJSON(
+            path: "\(RoomPeople.path)?room_id=\(room)", method: "GET", body: nil, timeoutMilliseconds: nil)
+        guard read == activeRoomPeopleRead, groupRoomEpoch == epoch, activeDashboardID == dashboard,
+              activeRoomSurface?.room.roomID == surface.room.roomID else { return }
+        guard let response, response["ok"] as? Bool == true else {
+            activeRoomPeopleReadFailed = true
+            return
+        }
+        activeRoomPeopleReadFailed = false
+        let people = RoomPeople.people(response)
+        if people != activeRoomPeople { activeRoomPeople = people }
+        let home = (response["home"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if home != activeRoomHomeName { activeRoomHomeName = home }
+        // How they look comes with who they are (RoomLooks.swift).
+        Task { await self.readActiveRoomLooks(epoch: epoch) }
+        let attribution = RoomPostAttribution(
+            isCopy: surface.copy != nil, you: RoomPeople.you(response), posts: RoomPeople.posts(response))
+        if attribution != activeRoomPostAttribution { activeRoomPostAttribution = attribution }
+    }
+
+    /// A poll's events ask for the people again: in a room you host with
+    /// linked people, a user message they don't name, which may be one of
+    /// their posts, or any tick after a read failed while one isn't named
+    /// (your own messages count, as the people never name them; a few
+    /// times a visit);
+    /// in a copy, your posts while the name the home gives you isn't known
+    /// yet (the opening read failed). One read at a time, and one asked for
+    /// meanwhile runs after it.
+    private func rereadActiveRoomPeopleForPosts(_ events: [GroupEvent]) {
+        guard let surface = activeRoomSurface else { return }
+        let attribution = activeRoomPostAttribution
+        if surface.copy != nil {
+            // Each tick until it's known, a few times a visit.
+            guard attribution.you == nil, activeRoomPeopleReadFailed, activeRoomPeopleRetries < Self.roomCopyNameReadLimit,
+                  activeRoomReplay.events.contains(where: { attribution.poster(of: $0) == .you }) else { return }
+            activeRoomPeopleRetries += 1
+        } else {
+            guard surface.room.members.contains(where: \.isPeer) else { return }
+            if attribution.names(events) {
+                guard activeRoomPeopleReadFailed, activeRoomPeopleRetries < Self.roomCopyNameReadLimit,
+                      !attribution.names(activeRoomReplay.events) else { return }
+                activeRoomPeopleRetries += 1
+            }
+        }
+        guard !activeRoomPeopleRereading else {
+            activeRoomPeopleRereadWanted = true
+            return
+        }
+        activeRoomPeopleRereading = true
+        Task {
+            repeat {
+                self.activeRoomPeopleRereadWanted = false
+                await self.readActiveRoomPeople(epoch: self.groupRoomEpoch)
+            } while self.activeRoomPeopleRereadWanted
+            self.activeRoomPeopleRereading = false
+        }
+    }
+
+    /// Who's who in the open room, read now (Group Info, and after taking
+    /// one out).
+    func refreshActiveRoomPeople() async {
+        guard let surface = activeRoomSurface, surface.copy != nil || surface.room.members.contains(where: \.isPeer)
+        else { return }
+        await readActiveRoomPeople(epoch: groupRoomEpoch)
+    }
+
+    /// Posts `text` in the open room someone else hosts, through your
+    /// Hermes (RoomPosts.swift). The room's outbox holds it as in your own
+    /// rooms: one at a time, its event id kept for a retry, which your
+    /// Hermes keeps as the same post. False when nothing took the text.
+    private func postInActiveRoomCopy(_ text: String) async -> Bool {
+        guard let surface = activeRoomSurface, let copy = surface.copy, isConnected, activeRoomCopyTakesPosts,
+              !activeRoomSendInFlight else { return false }
+        guard groupRoomOutbox.accepts(text: text) else {
+            showRoomSendError(AppLocalization.string(
+                "Your previous message is still pending. Retry it from the room, or wait for it to deliver."
+            ))
+            return false
+        }
+        let epoch = groupRoomEpoch
+        let logical = groupRoomOutbox.beginSend(text: text) {
+            "conduit-\(UUID().uuidString.lowercased())"
+        }
+        pendingRoomMessage = groupRoomOutbox.pending
+        // Sent again, it's sending until your Hermes answers.
+        activeRoomCopyPost = nil
+        activeRoomSendInFlight = true
+        let client = roomPostsClient
+        defer {
+            if groupRoomEpoch == epoch { activeRoomSendInFlight = false }
+        }
+        do {
+            let post = try await client.post(roomID: copy.roomID, eventID: logical.eventID, text: logical.text)
+            guard groupRoomEpoch == epoch, activeRoomSurface?.copy?.id == copy.id else { return true }
+            clearRoomSendError()
+            adoptActiveRoomCopyPost(post)
+        } catch is CancellationError {
+            return true
+        } catch {
+            guard groupRoomEpoch == epoch, groupRoomOutbox.pending?.eventID == logical.eventID else { return true }
+            // It may not have reached your Hermes: kept, with its id, to retry.
+            showRoomSendError(RoomPostText.postFailure(error))
+        }
+        return true
+    }
+
+    /// How the pending post stands, as your Hermes says. Posted, it's the
+    /// room's message once the copy's log has it; until then it shows as
+    /// sending. In a copy that takes no more posts, once its log has all
+    /// it will (or it was waited on long enough), posted is settled as it
+    /// is.
+    private func adoptActiveRoomCopyPost(_ post: RoomPost) {
+        guard groupRoomOutbox.pending?.eventID == post.eventID else { return }
+        if case .posted(let seq) = post.status, activeRoomReplay.cursor >= seq || activeRoomCopyLogIsComplete {
+            groupRoomOutbox.accept(eventID: post.eventID)
+            pendingRoomMessage = groupRoomOutbox.pending
+            activeRoomCopyPost = nil
+            return
+        }
+        if post != activeRoomCopyPost { activeRoomCopyPost = post }
+    }
+
+    /// Asks your Hermes how the open copy's pending post stands (each tick
+    /// while one is pending, and when the room opens).
+    private func refreshActiveRoomCopyPost(epoch: Int) async {
+        guard let copy = activeRoomSurface?.copy, let pending = groupRoomOutbox.pending, canPostInRoomCopies,
+              !activeRoomSendInFlight, groupRoomEpoch == epoch else { return }
+        if !activeRoomCopyTakesPosts || activeRoomCopyPostIsUnanswered { activeRoomCopyPostWaits += 1 }
+        guard let posts = try? await roomPostsClient.list(roomID: copy.roomID), groupRoomEpoch == epoch,
+              activeRoomSurface?.copy?.id == copy.id, !activeRoomSendInFlight,
+              groupRoomOutbox.pending?.eventID == pending.eventID else { return }
+        guard let post = posts.first(where: { $0.eventID == pending.eventID }) else {
+            activeRoomCopyPostAbsent = true
+            return
+        }
+        adoptActiveRoomCopyPost(post)
+    }
+
+    /// Your Hermes last said the pending post is sending, or posted at a seq
+    /// the copy's log hasn't reached.
+    private var activeRoomCopyPostIsUnanswered: Bool {
+        switch activeRoomCopyPost?.status {
+        case .sending?, .posted?: return true
+        case .refused?, nil: return false
+        }
+    }
+
+    /// The pending post was asked about `roomCopyPostWaitLimit` ticks
+    /// without settling: Copy and Dismiss, saying it may still be posted.
+    var activeRoomCopyPostWaitedOut: Bool {
+        guard groupRoomOutbox.pending != nil, canPostInRoomCopies,
+              activeRoomCopyPostWaits >= Self.roomCopyPostWaitLimit else { return false }
+        if case .refused? = activeRoomCopyPost?.status { return false }
+        return activeRoomCopyPost != nil || !activeRoomCopyPostAbsent
+    }
+
+    /// The open copy takes no more posts and its log has all it will: the
+    /// room ended (its last event is in), or the pending post was waited on
+    /// long enough.
+    private var activeRoomCopyLogIsComplete: Bool {
+        guard let copy = activeRoomSurface?.copy, !activeRoomCopyTakesPosts else { return false }
+        return activeRoomCopyPostWaits >= Self.roomCopyPostWaitLimit
+            || (copy.isOver && activeRoomReplay.cursor >= copy.lastSeq)
+    }
+
+    /// A refused post's Edit: it leaves the room screen, and its text goes
+    /// back into the composer. Only while there is one: in a room that
+    /// takes no more posts the row offers Copy and Dismiss instead.
+    func editActiveRoomCopyPost() {
+        guard activeRoomCopyTakesPosts, let pending = groupRoomOutbox.pending,
+              case .refused(_)? = activeRoomCopyPost?.status else { return }
+        groupRoomOutbox.discard()
+        pendingRoomMessage = nil
+        activeRoomCopyPost = nil
+        clearRoomSendError()
+        roomDraftHandBack = RoomDraftHandBack(text: pending.text)
+    }
+
+    /// Dismiss: a pending post in a copy that takes no more posts, or one
+    /// waited on long enough, leaves the room screen, and isn't kept for
+    /// when it opens again.
+    func dismissActiveRoomCopyPost() {
+        guard activeRoomSurface?.copy != nil, !activeRoomSendInFlight, groupRoomOutbox.pending != nil,
+              activeRoomCopyPostWaitedOut || (!activeRoomCopyTakesPosts && !activeRoomCopyPostUnsettled) else { return }
+        groupRoomOutbox.discard()
+        pendingRoomMessage = nil
+        activeRoomCopyPost = nil
+        clearRoomSendError()
+    }
+
+    /// The room composer took the text back.
+    func consumeRoomDraftHandBack(_ id: UUID) {
+        if roomDraftHandBack?.id == id { roomDraftHandBack = nil }
+    }
+
+    /// Open a room someone else hosts, from your Hermes' copy of it: the
+    /// room built from the copy, a bounded tail of its log, and what it's
+    /// doing from its state. Polled as a room is, until it's over.
+    func openRoomCopy(_ copy: RoomCopy) async {
+        guard isConnected, canReadRoomCopies, let dashboardID = activeDashboardID else {
+            errorMessage = AppLocalization.string("Connect to Hermes to open group chats.")
+            return
+        }
+        widgetLaunchCoordinator.supersede()
+        groupRoomEpoch &+= 1
+        let epoch = groupRoomEpoch
+        groupRoomPollTask?.cancel()
+        groupRoomPollTask = nil
+        errorMessage = nil
+        roomSendErrorMessage = nil
+        parkActiveRoomSend()
+        activeRoomSendInFlight = false
+        roomQuoteRequest = nil
+        activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: copy.room, copy: copy)
+        activeRoomReplay = GroupRoomReplay(roomID: copy.roomID)
+        activeRoomDriverStatus = copy.state
+        activeRoomPeople = [:]
+        activeRoomLooks = .empty
+        activeRoomHomeName = nil
+        activeRoomLooksReadAt = nil
+        activeRoomPeopleRetries = 0
+        activeRoomPeopleReadFailed = false
+        // Its events say whose each post is; the people read names yours.
+        activeRoomPostAttribution = RoomPostAttribution(isCopy: true, you: nil, posts: [:])
+        activeRoomCopyPost = nil
+        roomDraftHandBack = nil
+        activeRoomCopyNeedsTail = false
+        roomApprovalAnswers = [:]
+        // A post parked when this room was left comes back with its retry
+        // key; your Hermes says below how it stands now.
+        groupRoomOutbox = parkedRoomOutboxes.removeValue(
+            forKey: Self.roomKey(dashboardID: dashboardID, roomID: copy.id)
+        ) ?? GroupRoomOutbox()
+        pendingRoomMessage = groupRoomOutbox.pending
+        let client = roomCopiesClient
+        do {
+            let window = GroupRoomReplay.tailWindow
+            let page = try await client.log(roomID: copy.roomID, sinceSeq: max(0, copy.lastSeq - window), limit: window)
+            guard groupRoomEpoch == epoch else { return }
+            var replay = GroupRoomReplay(roomID: copy.roomID)
+            replay.adoptInitialTail(page: page)
+            activeRoomReplay = replay
+        } catch is CancellationError {
+            return
+        } catch {
+            guard groupRoomEpoch == epoch else { return }
+            if RoomCopiesClient.isNoCopy(error) {
+                closeGoneRoomSurface()
+                await refreshLinkedRoomCopies()
+                return
+            }
+            errorMessage = AppLocalization.string("Could not load this group chat: \(UserFacingError.message(for: error))")
+            activeRoomCopyNeedsTail = true
+        }
+        Task {
+            await self.readActiveRoomPeople(epoch: epoch)
+            // One that's over isn't polled: your name is asked again here.
+            guard copy.isOver else { return }
+            while self.activeRoomPeopleRetries < Self.roomCopyNameReadLimit, self.groupRoomEpoch == epoch,
+                  self.activeRoomPostAttribution.you == nil, self.activeRoomPeopleReadFailed,
+                  self.activeRoomReplay.events.contains(where: { self.activeRoomPostAttribution.poster(of: $0) == .you }) {
+                self.activeRoomPeopleRetries += 1
+                try? await Task.sleep(for: Self.roomPeopleRetryDelay)
+                await self.readActiveRoomPeople(epoch: epoch)
+            }
+        }
+        await refreshActiveRoomCopyPost(epoch: epoch)
+        // One whose opening read failed is polled until its tail comes.
+        if !copy.isOver || activeRoomCopyNeedsTail || activeRoomCopyPostUnsettled { startRoomPolling() }
+    }
+
+    /// One tick of a copy's room screen: the log after the cursor, then,
+    /// when it brought nothing new, the copy again for what the room is
+    /// doing, and your agents' approvals in it. A copy that's over stops
+    /// the polling; one that's gone closes the room.
+    private func pollActiveRoomCopyOnce(epoch: Int) async {
+        guard let surface = activeRoomSurface, let copy = surface.copy, groupRoomEpoch == epoch else { return }
+        let client = roomCopiesClient
+        do {
+            // The opening tail read failed: read the tail again, not the
+            // room from its first event.
+            if activeRoomCopyNeedsTail {
+                let window = GroupRoomReplay.tailWindow
+                let tail = try await client.log(
+                    roomID: copy.roomID, sinceSeq: max(0, copy.lastSeq - window), limit: window)
+                guard groupRoomEpoch == epoch, activeRoomSurface?.copy?.id == copy.id else { return }
+                var replay = GroupRoomReplay(roomID: copy.roomID)
+                replay.adoptInitialTail(page: tail)
+                activeRoomReplay = replay
+                activeRoomCopyNeedsTail = false
+                errorMessage = nil
+                // As it stands now: it may have ended, or been left, since;
+                // a post that may still settle keeps it polled.
+                if activeRoomSurface?.copy?.isOver == true, !activeRoomCopyPostUnsettled { stopRoomCopyPolling() }
+                return
+            }
+            let page = try await client.log(
+                roomID: copy.roomID, sinceSeq: activeRoomReplay.sinceSeq, limit: RoomCopiesClient.maxLogLimit)
+            guard groupRoomEpoch == epoch, activeRoomSurface?.copy?.id == copy.id else { return }
+            let fresh = page.events.filter { $0.roomID == copy.roomID && $0.seq > activeRoomReplay.cursor }
+            if activeRoomReplay.hasGap || activeRoomReplay.pageSkipsAhead(page) {
+                let window = GroupRoomReplay.tailWindow
+                let tail = try await client.log(
+                    roomID: copy.roomID, sinceSeq: max(0, page.latestSeq - window), limit: window)
+                guard groupRoomEpoch == epoch else { return }
+                var replay = GroupRoomReplay(roomID: copy.roomID)
+                replay.adoptInitialTail(page: tail)
+                activeRoomReplay = replay
+            } else if !fresh.isEmpty {
+                activeRoomReplay.adopt(page: page)
+            }
+            rereadActiveRoomPeopleForPosts(fresh)
+            readActiveRoomLooksIfDue()
+            await refreshActiveRoomCopyPost(epoch: epoch)
+            if fresh.isEmpty || activeRoomReplay.cursor >= page.latestSeq {
+                guard await refreshActiveRoomCopy(epoch: epoch) else { return }
+            }
+            await refreshLinkedRoomApprovals()
+        } catch is CancellationError {
+            return
+        } catch {
+            guard groupRoomEpoch == epoch else { return }
+            if RoomCopiesClient.isNoCopy(error) {
+                closeGoneRoomSurface()
+                await refreshLinkedRoomCopies()
+            }
+            // Otherwise a transient failure: the next tick tries again.
+        }
+    }
+
+    /// The open copy read again: what the room is doing and how it stands.
+    /// One deleted elsewhere closes the room, and one that's over stops the
+    /// polling. False when the room closed or another took its place.
+    @discardableResult
+    func refreshActiveRoomCopy(epoch: Int? = nil) async -> Bool {
+        let epoch = epoch ?? groupRoomEpoch
+        guard let copy = activeRoomSurface?.copy, groupRoomEpoch == epoch else { return false }
+        guard let copies = await readLinkedRoomCopies() else { return true }
+        guard groupRoomEpoch == epoch, let open = activeRoomSurface, open.copy?.id == copy.id else { return false }
+        guard let latest = copies.first(where: { $0.id == copy.id }) else {
+            // Deleted elsewhere: it can't be read any more.
+            closeGoneRoomSurface()
+            return false
+        }
+        // A quiet tick leaves the room screen as it is.
+        if latest != open.copy {
+            activeRoomSurface = GroupRoomSurface(dashboardID: open.dashboardID, room: latest.room, copy: latest)
+        }
+        if latest.state != activeRoomDriverStatus { activeRoomDriverStatus = latest.state }
+        // A post pending as it ended is asked about once more: posted, it
+        // settles, as the polling stops here.
+        if latest.isOver, open.copy?.isOver != true, groupRoomOutbox.pending != nil {
+            await refreshActiveRoomCopyPost(epoch: epoch)
+            guard groupRoomEpoch == epoch, activeRoomSurface?.copy?.id == copy.id else { return false }
+        }
+        // One whose opening read failed is polled until its tail comes, and
+        // one with a post your Hermes hasn't settled until it does.
+        // Its last messages may have come after this tick's log read: read
+        // once more as it ends, and leave a gap to the next tick.
+        if latest.isOver, open.copy?.isOver != true, !activeRoomCopyNeedsTail,
+           latest.lastSeq > activeRoomReplay.cursor,
+           let page = try? await roomCopiesClient.log(
+               roomID: copy.roomID, sinceSeq: activeRoomReplay.sinceSeq, limit: RoomCopiesClient.maxLogLimit) {
+            guard groupRoomEpoch == epoch, activeRoomSurface?.copy?.id == copy.id else { return false }
+            if activeRoomReplay.hasGap || activeRoomReplay.pageSkipsAhead(page) { return true }
+            if page.events.contains(where: { $0.roomID == copy.roomID && $0.seq > activeRoomReplay.cursor }) {
+                activeRoomReplay.adopt(page: page)
+            }
+        }
+        if latest.isOver, !activeRoomCopyNeedsTail, !activeRoomCopyPostUnsettled { stopRoomCopyPolling() }
+        return true
+    }
+
+    /// The open copy's pending post may still settle: your Hermes last said
+    /// it's sending or posted, or hasn't been asked yet. Not once it was
+    /// waited on long enough in a copy that takes no more posts.
+    var activeRoomCopyPostUnsettled: Bool {
+        // Without the posts routes nothing can be asked: it's as it is.
+        guard groupRoomOutbox.pending != nil, canPostInRoomCopies,
+              activeRoomCopyPostWaits < Self.roomCopyPostWaitLimit else { return false }
+        switch activeRoomCopyPost?.status {
+        case .sending?, .posted?: return true
+        case .refused?: return false
+        case nil: return !activeRoomCopyPostAbsent
+        }
+    }
+
+    private func stopRoomCopyPolling() {
+        groupRoomPollTask?.cancel()
+        groupRoomPollTask = nil
+    }
+
+    /// One poll of the open room now, as the poller's tick runs it (tests,
+    /// and a pull to refresh).
+    func pollActiveRoom() async {
+        await pollActiveRoomOnce(epoch: groupRoomEpoch)
+    }
+
+    /// Whether the open room is polled.
+    var isPollingActiveRoom: Bool { groupRoomPollTask != nil }
 
     /// Create a hosted room from bots on the CURRENT gateway. Member rows
     /// carry `{member_id, profile, handle, display_name}`: identity is the
@@ -14204,29 +14828,19 @@ final class AppState: ObservableObject {
         // The create sheet renders the shared errorMessage: clear the last
         // attempt's (or an unrelated surface's) failure before this one.
         errorMessage = nil
-        // `@user` is the room's human handoff: a member claiming it would be
-        // styled as the human, never as the agent.
-        var usedHandles = Set<String>(["all", "everyone", "user"])
-        var members: [[String: Any]] = []
-        for bot in bots {
-            var handle = BotMentions.mentionTag(for: bot)
-            if usedHandles.contains(handle.lowercased()) {
-                handle = BotMentions.handle(for: bot)
-            }
-            guard BotMentions.isValidMentionToken(handle),
-                  !usedHandles.contains(handle.lowercased()) else {
-                errorMessage = AppLocalization.string(
-                    "Two of these bots would claim the same @handle. Rename one bot's title, then try again."
-                )
-                return false
-            }
-            usedHandles.insert(handle.lowercased())
-            members.append([
+        guard let handles = BotMentions.roomHandles(for: bots) else {
+            errorMessage = AppLocalization.string(
+                "Two of these bots would claim the same @handle. Rename one bot's title, then try again."
+            )
+            return false
+        }
+        let members: [[String: Any]] = zip(bots, handles).map { bot, handle in
+            [
                 "member_id": bot.name,
                 "profile": bot.name,
                 "handle": handle,
                 "display_name": bot.displayLabel,
-            ])
+            ]
         }
         do {
             let room = try await groupsCreate(client, roomID: roomID, name: trimmedName, members: members)
@@ -14600,6 +15214,8 @@ final class AppState: ObservableObject {
         guard profileGlowPicks[profile] != hex else { return }
         profileAppearanceStore.saveGlowColor(hex, for: profile, dashboardID: activeDashboardID)
         profileGlowPicks[profile] = hex
+        // Rooms over Links draw the bot in it on other people's Conduits too.
+        Task { await shareRoomLooksIfNeeded() }
     }
 
     func saveDefaultProfileName(_ name: String) {
@@ -21389,6 +22005,8 @@ final class AppState: ObservableObject {
             LocationSharingController.shared.appBecameActive()
             Task { await runPhoneSync(reason: .foreground) }
             Task { await syncPresentedScreens() }
+            // An invite that came while Conduit was away, its push missed.
+            Task { await refreshLinkedRoomInvites() }
             scheduleWakeRefresh()
             // Voice gates. The capture gate additionally requires a Voice
             // surface (the phone sheet, or CarPlay), so it can be false here
@@ -24620,6 +25238,8 @@ final class AppState: ObservableObject {
             botAvatarFetchedGeneration[name] = generation
             botAvatarImages[name] = image
             mirrorHermesPicture(data, for: name, dashboardID: dashboardID)
+            // Rooms over Links show it too (digest-gated, RoomLooks.swift).
+            Task { await self.shareRoomLooksIfNeeded() }
             return true
         } catch {
             // Not pinned to the generation, so the caller can retry; whatever
@@ -25530,6 +26150,7 @@ final class AppState: ObservableObject {
             botAvatarImages[name] = image
             botAvatarFetchedGeneration[name] = max(botAvatarFetchedGeneration[name] ?? generation, generation)
             mirrorHermesPicture(png, for: name, dashboardID: dashboardID)
+            Task { await self.shareRoomLooksIfNeeded() }
         }
         return true
     }
@@ -25669,6 +26290,9 @@ final class AppState: ObservableObject {
             }
         }
         await refreshBotRoster()
+        // A picture removed, a bot deleted or renamed: rooms over Links show
+        // the roster as it now is (digest-gated, RoomLooks.swift).
+        await shareRoomLooksIfNeeded()
     }
 
     func openWidgetConversation(
@@ -25917,6 +26541,70 @@ final class AppState: ObservableObject {
             )
         }
         return outcome == .opened
+    }
+
+    /// A room's new chat (RoomChats.swift), in `profile` (nil for the
+    /// dashboard's).
+    func createRoomChatSession(
+        using client: HermesClient,
+        profile: String?
+    ) async throws -> ChatResumeLifecycleOperations.BranchResult {
+        if let createRoomChat = chatResumeLifecycleOperations.createRoomChat {
+            return try await createRoomChat(client, profile)
+        }
+        return try await client.createSession(inProfile: profile)
+    }
+
+    /// A room's new chat titled, by the id it runs under.
+    func titleRoomChatSession(_ runtimeID: String, title: String, using client: HermesClient,
+                              profile: String?) async throws {
+        if let titleRoomChat = chatResumeLifecycleOperations.titleRoomChat {
+            try await titleRoomChat(client, runtimeID, title, profile)
+        } else {
+            try await client.setSessionTitle(runtimeID, title: title, profile: profile)
+        }
+    }
+
+    /// Opens a room's chat (RoomChats.swift) as an ordinary chat of
+    /// `profile`: here, or in another profile than the dashboard's through
+    /// a chat link's route, which switches to it first, as All's other
+    /// profiles' chats open. Never as a Bot Chat, whose registry would
+    /// route its pushes to the bot's own chat and hide it from its
+    /// profile's list. A chat Hermes refused (gone, or another one) reads
+    /// gone, and the restore error the refusal left is put back: the
+    /// opener replaces the chat.
+    func openRoomChatSession(_ chatID: String, profile: String, title: String) async -> RoomChatOpenOutcome {
+        let shownError = errorMessage
+        guard !profilesMatch(profile, activeProfile) else {
+            let result = await performSessionOpenNotingRefusal(
+                chatID,
+                reusing: nil,
+                preferredTitle: title
+            )
+            switch result.outcome {
+            case .opened: return .opened
+            case .superseded: return .superseded
+            case .failed:
+                guard result.refused else { return .failed }
+                errorMessage = shownError
+                return .gone
+            }
+        }
+        let outcome = await openNotificationTargetOutcome(
+            ConduitNotificationTarget(
+                profile: profile, sessionId: chatID, dashboardID: activeDashboardID, type: nil, isChatLink: true
+            )
+        )
+        switch outcome {
+        case .opened: return .opened
+        case .failed:
+            // Gone only once the route reached the chat's profile and Hermes refused it there: a dashboard
+            // that couldn't be reached, or a call that started meanwhile, is no answer about the chat.
+            guard !isVoiceCallInProgress, profilesMatch(profile, activeProfile) else { return .failed }
+            errorMessage = shownError
+            return .gone
+        case .retry, .unverified, .afterCall: return .failed
+        }
     }
 
     /// Creates the bot's ONE forever chat (lookup confirmed absence): hidden,
@@ -26791,6 +27479,24 @@ final class AppState: ObservableObject {
                 errorMessage = AppLocalization.string("This notification predates multi-dashboard pairing. Update the notifier on the sending gateway and pair it again to continue.")
             }
             return .failed
+        }
+        // An approval one of your agents waits for in a room someone else
+        // hosts: its notification names the hidden chat the turn runs in,
+        // which approval.respond can't answer for, so its card opens
+        // instead (RoomApprovals.swift). It can't open over a call's screen.
+        if case .approval(let sessionKey, _, _) = target.decision, target.call == nil, canAnswerRoomApprovals {
+            traceStage = "room approval check"
+            let keys = [sessionKey, target.durableSessionID, target.sessionId].compactMap { $0 }
+            if let approval = await roomApproval(matching: keys) {
+                // A newer tap or a reconnect started this route over meanwhile.
+                guard !Task.isCancelled else { return .retry }
+                guard !isVoiceCallInProgress else {
+                    showCallRefusal(AppLocalization.string("This approval opens when the call ends."))
+                    return callOutcome
+                }
+                presentedRoomApproval = approval
+                return .opened
+            }
         }
         if await opensPulseScreen(for: target) {
             traceStage = "pulse"
@@ -28931,12 +29637,15 @@ final class AppState: ObservableObject {
         guard bridge === dashboardTicketBridge, generation > notifierPluginStatusAcceptedGeneration,
               state != .unknown else { return }
         notifierPluginStatusAcceptedGeneration = generation
+        let couldInviteLinkedPeople = canInviteLinkedPeople
+        let couldAnswerRoomApprovals = canAnswerRoomApprovals
         // A failed list read keeps what this host's list said before.
         notifierPlugin.hostCopy = state == .predatesCapabilities
             ? hostCopy ?? (notifierPlugin.state == .predatesCapabilities ? notifierPlugin.hostCopy : nil)
             : nil
         notifierPlugin.state = state
         notifierPlugin.runtime = runtime
+        linkedRoomInvitesReported(before: couldInviteLinkedPeople, approvals: couldAnswerRoomApprovals)
         Task { await refreshLatestNotifierPluginVersion() }
         clearSettledNotifierPluginUpdateOutcome()
         // Calls declined or missed while this host was out of reach.
@@ -28971,9 +29680,12 @@ final class AppState: ObservableObject {
         guard state != .unknown else { return }
         notifierPluginStatusGeneration += 1
         notifierPluginStatusAcceptedGeneration = notifierPluginStatusGeneration
+        let couldInviteLinkedPeople = canInviteLinkedPeople
+        let couldAnswerRoomApprovals = canAnswerRoomApprovals
         notifierPlugin.hostCopy = nil
         notifierPlugin.state = state
         notifierPlugin.runtime = NotifierPluginStatus.runtime(from: json)
+        linkedRoomInvitesReported(before: couldInviteLinkedPeople, approvals: couldAnswerRoomApprovals)
         clearSettledNotifierPluginUpdateOutcome()
     }
 
@@ -43246,5 +43958,47 @@ extension AppState {
             showSessionMutationNotice(SessionRenameOperation.failureMessage(error))
             return false
         }
+    }
+}
+
+// MARK: - Linked Rooms' drafts removed from Group Chats
+
+extension AppState {
+    private static let dismissedRoomDraftsKey = "conduit.roomDrafts.dismissed.v1"
+
+    /// The ended drafts removed from Group Chats (RoomDrafts.swift). Room
+    /// ids are unique, so one list serves every dashboard; it keeps the
+    /// newest 200.
+    var dismissedRoomDraftIDs: Set<String> {
+        Set(defaults.stringArray(forKey: Self.dismissedRoomDraftsKey) ?? [])
+    }
+
+    func dismissRoomDraft(_ roomID: String) {
+        var ids = defaults.stringArray(forKey: Self.dismissedRoomDraftsKey) ?? []
+        guard !ids.contains(roomID) else { return }
+        objectWillChange.send()
+        ids.append(roomID)
+        defaults.set(Array(ids.suffix(200)), forKey: Self.dismissedRoomDraftsKey)
+    }
+}
+
+// MARK: - Linked Rooms' invites removed from Group Chats
+
+extension AppState {
+    private static let dismissedRoomInvitesKey = "conduit.roomInvites.dismissed.v1"
+
+    /// The invites removed from Group Chats once they started or ended
+    /// (RoomInvites.swift), by their Link and room. One list serves every
+    /// dashboard; it keeps the newest 200.
+    var dismissedRoomInviteIDs: Set<String> {
+        Set(defaults.stringArray(forKey: Self.dismissedRoomInvitesKey) ?? [])
+    }
+
+    func dismissRoomInvite(_ id: String) {
+        var ids = defaults.stringArray(forKey: Self.dismissedRoomInvitesKey) ?? []
+        guard !ids.contains(id) else { return }
+        objectWillChange.send()
+        ids.append(id)
+        defaults.set(Array(ids.suffix(200)), forKey: Self.dismissedRoomInvitesKey)
     }
 }

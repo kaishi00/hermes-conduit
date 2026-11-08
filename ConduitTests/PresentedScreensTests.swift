@@ -173,7 +173,170 @@ extension AppStateVoiceCapabilityTests {
             sent = body
             return ["ok": true, "prompts": []]
         }
-        XCTAssertEqual(sent["features"] as? [String], ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards", "text-drafts", "board-cards", "room-boards", "diff-cards", "composed-cards"])
+        XCTAssertEqual(sent["features"] as? [String], ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards", "text-drafts", "board-cards", "room-boards", "diff-cards", "composed-cards", "room-asks", "link-asks", "room-work"])
+    }
+
+    func testRunWorksAskIsARoomsAskToStartWork() throws {
+        let prompt = try XCTUnwrap(PresentedConfirm(json: [
+            "id": "w1", "title": "Start “Compare flights”?", "preview": "Compare the three flights.",
+            "action_label": "Start", "spoken_yes": ["start it"], "session_id": "room_abc",
+            "room": ["id": "zoo-trip", "name": "Zoo trip", "work": true],
+        ]))
+        XCTAssertEqual(prompt.room, PresentedRoom(id: "zoo-trip", name: "Zoo trip", work: true))
+        XCTAssertTrue(prompt.isAsk, "answered with Change it, never an Edit into the room's hidden chat")
+        XCTAssertEqual(PresentVoiceTool.describe(prompt)["starts_work_for_room"] as? String, "Zoo trip")
+        XCTAssertNil(PresentVoiceTool.describe(prompt)["room"])
+        XCTAssertEqual(PresentedConfirm(json: ["id": "p", "title": "Share?", "room": ["id": "r", "work": "yes"]])?.room?.work,
+                       false, "only a true work flag")
+        XCTAssertEqual(PresentVoiceTool.describe(prompt)["plain_yes_counts"] as? Bool, false)
+        // A plain yes may have answered something else: work starts only on its phrase.
+        XCTAssertFalse(prompt.isConfirmed(by: "yes", bareYes: false))
+        XCTAssertTrue(prompt.isConfirmed(by: "Yes, start it"))
+        XCTAssertEqual(SpokenApprovals.answer("Yes", waiting: SpokenApprovals.Waiting(presented: [prompt]))?.approve, nil)
+        XCTAssertEqual(SpokenApprovals.answer("Start it", waiting: SpokenApprovals.Waiting(presented: [prompt]))?.approve, true)
+        XCTAssertEqual(SpokenApprovals.answer("Don't start.", waiting: SpokenApprovals.Waiting(presented: [prompt]))?.approve, false)
+        XCTAssertNil(SpokenApprovals.answer("Don't start, look at trains", waiting: SpokenApprovals.Waiting(presented: [prompt])))
+        let send = try XCTUnwrap(PresentedConfirm(json: [
+            "id": "w2", "title": "Send to W1?", "preview": "Add the toilets.", "action_label": "Send",
+            "spoken_yes": ["send it"], "session_id": "room_abc", "room": ["id": "zoo-trip", "name": "Zoo trip", "work": true],
+        ]))
+        XCTAssertEqual(PresentVoiceTool.describe(send)["sends_to_work_for_room"] as? String, "Zoo trip")
+        XCTAssertNil(PresentVoiceTool.describe(send)["starts_work_for_room"])
+        XCTAssertEqual(SpokenApprovals.answer("don't send it", waiting: SpokenApprovals.Waiting(presented: [send]))?.approve, false)
+    }
+
+    func testAVoiceConfirmOfRoomWorkNeedsItsPhrase() async throws {
+        let suite = "present-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let sync = PresentedScreensSync(defaults: defaults)
+        await sync.sync(scope: "host|default", profile: "default", installationID: "install-1") { _, _ in
+            ["ok": true, "prompts": [["id": "w1", "title": "Start “Compare flights”?", "preview": "Compare them.",
+                                      "action_label": "Start", "spoken_yes": ["start it"], "session_id": "room_abc",
+                                      "room": ["id": "zoo-trip", "name": "Zoo trip", "work": true]]]]
+        }
+        let prompt = try XCTUnwrap(sync.prompts.first)
+        sync.noteShown(prompt.id, userTurn: UUID())
+        var outcome: PresentedConfirmOutcome?
+        let plain = await PresentVoiceTool.run(["action": "confirm", "id": prompt.id], sync: sync,
+                                               lastUserTurn: { (UUID(), "yes") }) { _, answer in outcome = answer }
+        XCTAssertEqual(plain["error"], "Not confirmed: a plain yes doesn't start work. Ask the user to say \"start it\", and confirm only after they do.",
+                       "a plain yes never starts work")
+        XCTAssertNil(outcome)
+        let said = await PresentVoiceTool.run(["action": "confirm", "id": prompt.id], sync: sync,
+                                              lastUserTurn: { (UUID(), "start it") }) { _, answer in outcome = answer }
+        XCTAssertNil(said["error"])
+        XCTAssertEqual(outcome, .confirmed)
+    }
+
+    func testARoomsAskNamesItsRoomAndSaysInsteadWithTheWords() async throws {
+        let prompt = try XCTUnwrap(PresentedConfirm(json: [
+            "id": "p1", "title": "Laifu asks whether you're free on the 22nd", "preview": "You're free all day.",
+            "action_label": "Share", "spoken_yes": ["share it"], "session_id": "room_abc",
+            "room": ["id": "zoo-trip", "name": " Zoo trip "],
+        ]))
+        XCTAssertEqual(prompt.room, PresentedRoom(id: "zoo-trip", name: "Zoo trip"))
+        XCTAssertTrue(prompt.isConfirmed(by: "Share it."))
+        // A room without an id is still a room's ask (no Edit into the room's hidden chat).
+        XCTAssertEqual(PresentedConfirm(json: ["id": "p2", "title": "Send?", "room": ["name": "No id"]])?.room,
+                       PresentedRoom(id: "", name: "No id"))
+        let unnamed = try XCTUnwrap(PresentedConfirm(json: ["id": "p4", "title": "Send?", "room": ["id": "r"]]))
+        XCTAssertEqual(PresentVoiceTool.describe(unnamed)["room"] as? String, "a room")
+        XCTAssertNil(PresentedConfirm(json: ["id": "p3", "title": "Send?"])?.room)
+        XCTAssertEqual(PresentVoiceTool.describe(prompt)["room"] as? String, "Zoo trip")
+
+        let suite = "present-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let sync = PresentedScreensSync(defaults: defaults)
+        var bodies: [[String: Any]] = []
+        let room: [String: Any] = ["id": "zoo-trip", "name": "Zoo trip"]
+        let listed: [[String: Any]] = [
+            ["id": "p1", "title": "Laifu asks", "action_label": "Share", "room": room],
+            ["id": "p2", "title": "Mona asks", "action_label": "Share", "room": room],
+            ["id": "p3", "title": "Noor asks", "action_label": "Share", "room": room],
+        ]
+        let exchange: PresentedScreensSync.Request = { _, body in
+            bodies.append(body)
+            let prompts: [[String: Any]] = bodies.count == 1 ? listed : []
+            return ["ok": true, "prompts": prompts]
+        }
+        await sync.sync(scope: "host|default", profile: "default", installationID: "i", request: exchange)
+        let first = try XCTUnwrap(sync.prompts.first { $0.id == "p1" })
+        let second = try XCTUnwrap(sync.prompts.first { $0.id == "p2" })
+        let third = try XCTUnwrap(sync.prompts.first { $0.id == "p3" })
+        sync.answer(first, outcome: .edit, via: .tap, editText: "  Only the afternoon.  ")
+        // Say instead with nothing typed sends no words (the host reads it as Don't share).
+        sync.answer(second, outcome: .edit, via: .tap, editText: "   ")
+        sync.answer(third, outcome: .edit, via: .tap, editText: String(repeating: "a", count: 2_500))
+        await sync.sync(scope: "host|default", profile: "default", installationID: "i", request: exchange)
+        let results = try XCTUnwrap(bodies.last?["results"] as? [[String: Any]])
+        XCTAssertEqual(results.first { $0["id"] as? String == "p1" }?["edit_text"] as? String, "Only the afternoon.")
+        XCTAssertEqual(results.first { $0["id"] as? String == "p1" }?["outcome"] as? String, "edit")
+        XCTAssertNil(results.first { $0["id"] as? String == "p2" }?["edit_text"])
+        XCTAssertEqual((results.first { $0["id"] as? String == "p3" }?["edit_text"] as? String)?.count, 2_000)
+    }
+
+    func testALinksAskNamesThemAndSharesOnlyAnAnswerThereIs() async throws {
+        let answer = try XCTUnwrap(PresentedConfirm(json: [
+            "id": "p1", "title": "Free on 2026-11-22?", "preview": "Busy 22:00-24:00 on 2026-11-22.",
+            "action_label": "Share", "spoken_yes": ["share it"],
+            "link": ["id": "lnk_1", "name": " Laifu ", "share": true],
+        ]))
+        XCTAssertEqual(answer.link, PresentedLink(id: "lnk_1", name: "Laifu", share: true))
+        XCTAssertTrue(answer.isAsk)
+        XCTAssertTrue(answer.canConfirm)
+        XCTAssertTrue(answer.isConfirmed(by: "Share it."))
+        XCTAssertEqual(PresentVoiceTool.describe(answer)["asked_by"] as? String, "Laifu's Hermes")
+        XCTAssertNil(PresentVoiceTool.describe(answer)["can_confirm"])
+
+        // Their question has no answer to Share: no yes confirms it, by voice or otherwise.
+        let question = try XCTUnwrap(PresentedConfirm(json: [
+            "id": "p2", "title": "Laifu's Hermes asks", "preview": "Can Laifu borrow the tent?",
+            "action_label": "Share", "link": ["id": "lnk_1", "name": "Laifu", "share": false],
+        ]))
+        XCTAssertFalse(question.canConfirm)
+        XCTAssertFalse(question.isConfirmed(by: "yes"))
+        XCTAssertEqual(PresentVoiceTool.describe(question)["can_confirm"] as? Bool, false)
+        XCTAssertTrue(PresentVoiceTool.note(for: question).contains("they type their answer on the panel"))
+        // A Link that doesn't say there's something to share has nothing to Share.
+        XCTAssertEqual(PresentedConfirm(json: ["id": "p3", "title": "Asks", "link": ["id": "l"]])?.canConfirm, false)
+        // A Link that can't be read is still a Link's ask, with nothing to Share.
+        XCTAssertEqual(PresentedConfirm(json: ["id": "p5", "title": "Asks", "link": "lnk_1"])?.link,
+                       PresentedLink(id: "", name: "", share: false))
+        XCTAssertNil(PresentedConfirm(json: ["id": "p6", "title": "Send?", "link": NSNull()])?.link)
+        XCTAssertNil(PresentedConfirm(json: ["id": "p4", "title": "Send?"])?.link)
+        XCTAssertEqual(PresentedConfirm(json: ["id": "p4", "title": "Send?"])?.canConfirm, true)
+
+        let suite = "present-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let sync = PresentedScreensSync(defaults: defaults)
+        await sync.sync(scope: "host|default", profile: "default", installationID: "i") { _, _ in
+            ["ok": true, "prompts": [["id": "p2", "title": "Laifu's Hermes asks", "preview": "Tent?", "action_label": "Share",
+                                      "link": ["id": "lnk_1", "name": "Laifu", "share": false]]]]
+        }
+        let listed = try XCTUnwrap(sync.prompts.first)
+        sync.noteShown(listed.id, userTurn: UUID())
+        var confirmed = false
+        let refused = await PresentVoiceTool.run(["action": "confirm", "id": listed.id], sync: sync,
+                                                 lastUserTurn: { (UUID(), "yes") }) { _, _ in confirmed = true }
+        XCTAssertNotNil(refused["error"])
+        XCTAssertFalse(confirmed)
+        XCTAssertEqual(sync.prompts.map(\.id), ["p2"])
+        // Nothing sends a Share for it, whoever asks.
+        sync.answer(listed, outcome: .confirmed, via: .tap)
+        XCTAssertEqual(sync.prompts.map(\.id), ["p2"])
+        // Say instead answers it with their words.
+        var bodies: [[String: Any]] = []
+        sync.answer(listed, outcome: .edit, via: .tap, editText: " Yes, it's in the garage. ")
+        await sync.sync(scope: "host|default", profile: "default", installationID: "i") { _, body in
+            bodies.append(body)
+            return ["ok": true, "prompts": []]
+        }
+        let results = try XCTUnwrap(bodies.last?["results"] as? [[String: Any]])
+        XCTAssertEqual(results.first?["edit_text"] as? String, "Yes, it's in the garage.")
+        XCTAssertEqual(results.first?["outcome"] as? String, "edit")
     }
 
     func testMapsOpensWithDirectionsFromALinkOnlyItMade() throws {

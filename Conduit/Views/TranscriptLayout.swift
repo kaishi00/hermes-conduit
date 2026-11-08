@@ -452,14 +452,17 @@ final class TranscriptLayout: UICollectionViewLayout {
     /// its name and buttons around it; a caption is a line.
     private static func estimatedHeight(of row: GroupRoomRow, width: CGFloat) -> CGFloat {
         switch row {
-        case .event(let event, _, _, let boards):
+        case .event(let event, _, _, let boards, let byline):
             let boardsHeight = CGFloat(boards.count) * 280
             // A scheduled job's post draws on the members' side, under its name, text or not.
             guard let text = event.workUpdateText ?? event.messageText ?? (event.isScheduledPost ? "" : nil)
             else { return 24 + boardsHeight }
-            if event.isUserMessage && !event.isScheduledPost { return textHeight(text, width: width * 0.8) }
+            // A person's message in a room over Links draws on the members' side.
+            if event.isUserMessage && !event.isScheduledPost && byline.host == nil && byline.attribution == .none {
+                return textHeight(text, width: width * 0.8)
+            }
             return textHeight(text, width: width - 70) + 44 + boardsHeight
-        case .pending(let text, _, _):
+        case .pending(let text, _, _, _):
             return textHeight(text, width: width * 0.8)
         case .responding:
             return 60
