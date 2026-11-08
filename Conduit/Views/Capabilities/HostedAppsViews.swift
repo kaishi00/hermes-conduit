@@ -320,10 +320,11 @@ struct HostedAppPage: View {
             guard app?.connected == true, tools == nil else { return }
             await loadTools(refresh: false)
         }
-        .task(id: appState.isConnected) {
+        .task(id: [appState.isConnected, model.loading]) {
             // Opened on the kept apps with no read on its way (the tab's
-            // was cut off or failed): ask Hermes here.
-            guard appState.isConnected, model.showsKept, !model.loading else { return }
+            // was cut off), or one that ends without replacing them: ask
+            // Hermes here. A read that failed waits for Try Again.
+            guard appState.isConnected, model.showsKept, !model.loading, model.errorMessage == nil else { return }
             await model.reload(appState)
         }
         .onDisappear {

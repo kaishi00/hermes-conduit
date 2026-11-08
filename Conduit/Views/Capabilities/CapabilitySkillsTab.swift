@@ -104,7 +104,7 @@ struct CapabilitySkillsTab: View {
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity)
             }
-            if available.isEmpty, store.officialSkillsLoading || store.officialSkillsFailed, query.isEmpty {
+            if available.isEmpty, store.officialSkillsLoading || store.officialSkillsFailed {
                 CapabilitySection(
                     title: AppLocalization.string("Available to install"),
                     symbol: "arrow.down.circle",
