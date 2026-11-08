@@ -5084,7 +5084,7 @@ final class HermesClient: ObservableObject {
             "groups.attachment.download",
             params: ["room_id": roomID, "event_id": eventID, "attachment_id": attachmentID],
             // Its base64 at 64 KB a second, as the upload.
-            timeout: max(Self.roomAttachmentTimeout, TimeInterval(size) * 4 / 3 / 65_536),
+            timeout: max(Self.roomAttachmentTimeout, TimeInterval(min(max(size, 0), GroupRoomAttachment.maxBytes)) * 4 / 3 / 65_536),
             scoped: false
         )
         guard let object = result.objectValue,
