@@ -6212,9 +6212,9 @@ the width or the color
 - The user's own bubble keeps 48 pt on its leading side: the gap marks it as theirs. Boards under a message keep their own 560 pt cap.
 
 **Open gaps**
-- None.
+- Hermes Desktop's read-only group sheet, a mirror outside the room's transcript, shows a message's sent files by name, as it keeps bots' `MEDIA:` tags as text: it has no room resolver (#2043).
 
-**Checked:** 2026-11-08, #2043 (the user and member bubbles draw the room's pictures and files as a chat's, with #2036; see Attaching files); 2026-11-08, #2000 (`linked-rooms` merged into main for 2.4.0, as its PRs left this entry); 2026-11-07, #1973 (on `linked-rooms`, another person's agent's bubble takes its owner's picture and color, with an owner chip); 2026-11-07, #1932 (from #1916's reviews: a scheduled post's gallery pages only the pictures its bubble shows, a textless one is guessed as a bubble, an unnamed job's header carries its job id); 2026-11-07, #1916 (a scheduled job's post under its name on the members' side, a work update's lines only); 2026-11-07, #1914 (a bot's `MEDIA:` pictures and files show in its bubble, see Pictures in messages); 2026-11-06, #1874 (picture by the name, colors from the glow).
+**Checked:** 2026-11-08, #2043 (the user and member bubbles draw the room's pictures and files as a chat's in a room, with #2036; see Attaching files; the Desktop sheet keeps names, a gap); 2026-11-08, #2000 (`linked-rooms` merged into main for 2.4.0, as its PRs left this entry); 2026-11-07, #1973 (on `linked-rooms`, another person's agent's bubble takes its owner's picture and color, with an owner chip); 2026-11-07, #1932 (from #1916's reviews: a scheduled post's gallery pages only the pictures its bubble shows, a textless one is guessed as a bubble, an unnamed job's header carries its job id); 2026-11-07, #1916 (a scheduled job's post under its name on the members' side, a work update's lines only); 2026-11-07, #1914 (a bot's `MEDIA:` pictures and files show in its bubble, see Pictures in messages); 2026-11-06, #1874 (picture by the name, colors from the glow).
 
 ## Who answers in a group chat
 

@@ -2438,7 +2438,9 @@ struct UserDocumentAttachmentChip: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(failed
+        .accessibilityLabel(loading
+            ? AppLocalization.string("Loading \(AttachmentTypePolicy.displayName(for: attachment))…")
+            : failed
             ? AppLocalization.string("\(AttachmentTypePolicy.displayName(for: attachment)) unavailable")
             : AttachmentTypePolicy.displayName(for: attachment))
         .scaledFont(.caption.weight(.medium))
@@ -2446,7 +2448,8 @@ struct UserDocumentAttachmentChip: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(onAccent ? Color.white.opacity(0.13) : Color.primary.opacity(0.05), in: Capsule())
-        .opensMediaPreview(open)
+        // A tap on a file that couldn't be read asks again.
+        .opensMediaPreview(open, hint: failed ? Text("Try again") : nil)
     }
 
     /// The clip's bytes: the local file while it is still on this device,
