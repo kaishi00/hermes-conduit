@@ -310,6 +310,7 @@ extension GatewayRestartTests {
         XCTAssertEqual(FinishSetupStatus.plugin(status, updating: false), .done)
         XCTAssertEqual(FinishSetupStatus.pluginDoneNote(status), .managed)
         XCTAssertEqual(NotifierPluginStatus.managedText(status.managedBy), "Family farm keeps the plugin up to date.")
+        XCTAssertEqual(NotifierPluginSummary.detail(status, update: .idle), "9.0.0 · Managed by the host")
         status.state = .reported(version: "0.1.0", capabilities: [])
         XCTAssertFalse(status.updateRecommended)
         XCTAssertFalse(status.updateAvailable)
@@ -317,6 +318,8 @@ extension GatewayRestartTests {
         status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "0.0.9", restartNeeded: true, bootID: nil)
         XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .restart)
         XCTAssertTrue(status.needsAttention)
+        // The restart it waits on wins over "managed" in the Settings row.
+        XCTAssertEqual(NotifierPluginSummary.detail(status, update: .idle), "0.0.9 · Restart to finish updating")
     }
 
     func testOnlyAHostThatSaysSoIsManaged() {

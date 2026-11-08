@@ -2155,8 +2155,9 @@ private struct NotifierPluginUpdateNotice: View {
 
     var body: some View {
         ConduitSettingsSection(
-            // Missing, or on the host but not running: there's nothing to update.
-            title: status.offersInstall || status.isNotServed
+            // Missing, on the host but not running, or managed by the host:
+            // there's nothing to update.
+            title: status.offersInstall || status.isNotServed || status.isManaged
                 ? AppLocalization.string("Conduit plugin")
                 : AppLocalization.string("Update the Conduit plugin"),
             symbol: "arrow.down.circle",
@@ -4444,7 +4445,9 @@ private struct NotificationsSettingsDetail: View {
                     // when it needs attention.
                     if appState.notifierPlugin.needsAttention {
                         // Missing, or on the host but not running: nothing to update.
+                        // A managed host's only offer is its restart: nothing to update.
                         pluginPageLink(appState.notifierPlugin.offersInstall || appState.notifierPlugin.isNotServed
+                            || appState.notifierPlugin.isManaged
                             ? AppLocalization.string("Open Conduit plugin")
                             : AppLocalization.string("Update the Conduit plugin"))
                     }
