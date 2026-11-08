@@ -92,7 +92,7 @@ extension GroupChatModelsTests {
                                     authorityGatewayID: "gw-a", authorityEpoch: 1)
             },
             send: { _, roomID, eventID, _, _ in
-                let event = GroupDecoders.event(AnyCodable.from([
+                guard let event = GroupDecoders.event(AnyCodable.from([
                     "room_id": roomID,
                     "seq": 1,
                     "event_id": eventID,
@@ -100,7 +100,10 @@ extension GroupChatModelsTests {
                     "actor": ["kind": "user", "id": "human"],
                     "payload": ["text": "", "thread_id": "main"],
                     "created_at": 1.0,
-                ] as [String: Any]))!
+                ] as [String: Any])) else {
+                    XCTFail("the fake send's event didn't decode")
+                    throw RpcError(code: -1, message: "fixture")
+                }
                 return GroupSendResult(event: event, accepted: true, driverStarted: false)
             }
         )
