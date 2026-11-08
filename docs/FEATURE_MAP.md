@@ -3599,8 +3599,9 @@ issues, its documentation and source, and Install. All from Hermes'
 (`/api/dashboard/agent-plugins/install` by catalog name).
 
 **Siblings:** the Plugins tab's installed list (done: its tier pills read
-verified too) · an installed plugin's page (not needed: Update stays there,
-and the catalog page points to it) · the gateway restart card after an
+verified too) · an installed plugin's page (Update stays there,
+and the catalog page points to it; done in #2018: its switch, Update and
+Uninstall read the store's profile live, as Install does) · the gateway restart card after an
 install (done: the same install sets it, and the plugin's page shows it) · Screens that open on their last
 answer (done: the kept catalog already holds every field) · Hermes Desktop's
 plugin catalog (upstream, the reference: its featured picks from
@@ -3620,12 +3621,13 @@ the pages' captions and README.md's Capabilities line (done)
 - Pictures load only from GitHub's hosts over https, as Hermes' catalog check and Desktop's browser allow; any other address shows the plugin's glyph (#2009).
 - The shelf leads with Desktop's curated picks, then official plugins with a picture; Browse All lists official, then verified, then community, A-Z within each, installed ones marked (#2009).
 - Install asks first with what the plugin adds, as the tab does; the keys it needs are listed, never asked for or kept (#2009).
+- A plugin's pages read the store's profile live: Install, and an installed plugin's switch, Update and Uninstall, open up once the store serves the default profile, without reopening a page pushed on another one (#2018).
 
 **Open gaps**
 - The curated picks are Desktop's list as of 2026-11-08, written into Conduit: Hermes' catalog route doesn't carry them.
 - A plugin's README (Desktop's docs page) isn't shown.
 
-**Checked:** 2026-11-08, #2011 (README's Capabilities line also names each plugin's own settings, see Plugin settings); 2026-11-08, #2010 (kept filters keep their place, the rule in CapabilityPluginFilter; the Category menu reads its selection to VoiceOver); 2026-11-08, #2009 (the shelf, Browse All, the plugin page)
+**Checked:** 2026-11-08, #2018 (the pages read the store's profile live, not the one they were pushed on); 2026-11-08, #2011 (README's Capabilities line also names each plugin's own settings, see Plugin settings); 2026-11-08, #2010 (kept filters keep their place, the rule in CapabilityPluginFilter; the Category menu reads its selection to VoiceOver); 2026-11-08, #2009 (the shelf, Browse All, the plugin page)
 
 ## Plugin settings
 
@@ -3666,7 +3668,7 @@ Capabilities line (done)
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-08, #2011 (the form, saving, secrets to `.env`)
+**Checked:** 2026-11-08, #2018 (the page around the form reads the store's profile live too, see Plugin catalog); 2026-11-08, #2011 (the form, saving, secrets to `.env`)
 
 ## Reply progress signals
 
