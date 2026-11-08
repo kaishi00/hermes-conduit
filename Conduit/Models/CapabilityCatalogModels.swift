@@ -46,6 +46,12 @@ struct OfficialSkill: Identifiable, Equatable {
     }
 }
 
+struct OfficialSkillGroup: Identifiable, Equatable {
+    var id: String { category }
+    let category: String
+    let skills: [OfficialSkill]
+}
+
 enum CapabilitySkillOrdering {
     /// Hermes Desktop's order: the most used first (or least, flipped), then
     /// by name.
@@ -80,6 +86,29 @@ enum CapabilitySkillOrdering {
                     || entry.tags.contains { $0.localizedCaseInsensitiveContains(query) }
             }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// The categories the skills to install fall in, by their shown name,
+    /// and `keeping` while it's picked even if none of them is in it.
+    static func categories(_ skills: [OfficialSkill], keeping: String? = nil) -> [String] {
+        Array(Set(skills.map(\.category) + [keeping].compactMap { $0 }))
+            .sorted { lhs, rhs in
+                // Two spellings can share a shown name: the raw one breaks the tie.
+                switch prettyCategory(lhs).localizedCaseInsensitiveCompare(prettyCategory(rhs)) {
+                case .orderedAscending: return true
+                case .orderedDescending: return false
+                case .orderedSame: return lhs < rhs
+                }
+            }
+    }
+
+    /// The skills to install by category, the categories A-Z by their shown
+    /// name and each one's skills in the order given; only `category`'s
+    /// when one is picked.
+    static func grouped(_ skills: [OfficialSkill], category: String?) -> [OfficialSkillGroup] {
+        categories(skills)
+            .filter { category == nil || $0 == category }
+            .map { name in OfficialSkillGroup(category: name, skills: skills.filter { $0.category == name }) }
     }
 
     /// `software_development` reads "Software Development".

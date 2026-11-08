@@ -43,7 +43,16 @@ a job. At most three jobs run at once.
   runs its jobs on that bot, as the coordinator's own workstreams, and the
   coordinator reports each in the Bot Chat once the call is saved. A call
   kept with a workstream's chat makes no jobs at all: every request goes to
-  the workstream through its plugin, interrupting it while it works.
+  the workstream through its plugin, interrupting it while it works. While
+  the workstream waits on its question, the request answers it; while it
+  waits on an approval, the request waits until that's answered. That
+  includes what would be the chat's next turn elsewhere: `ask_thread`, a
+  `start_job` kept in the chat, and GPT-Live's delegations. Until the
+  bot's work has loaded, the app can't tell the chat is a workstream's: it
+  first waits for that read, as a job does, and a chat turn then goes into
+  the chat as before. Classic and Local Live's Hermes turns talk in the
+  chat itself, so their words answer its question or approval card as a tap
+  would (`answerWaitingBySpeech`), never as a turn behind it.
 - During a live call, the call screen shows each job the call started: the
   latest above the captions, and every one in the transcript panel where it
   started (`VoiceJobCallAnchor`). Tapping one shows its status and, once it

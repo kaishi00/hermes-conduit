@@ -378,3 +378,45 @@ enum CapabilityFormat {
         "×" + count.formatted(.number.notation(.compactName))
     }
 }
+
+/// A section's one row while its list is read: a catalog that answers
+/// slowly says so rather than showing nothing.
+struct CapabilityLoadingRow: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+            Text("Loading…")
+                .scaledFont(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 12)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// A section's one row when its list couldn't be read and none is shown:
+/// why, and Try Again.
+struct CapabilityLoadFailedRow: View {
+    let retry: () async -> Void
+    @State private var retrying = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("Couldn't load the catalog.")
+                .scaledFont(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(AppLocalization.string("Try Again")) {
+                retrying = true
+                Task {
+                    await retry()
+                    retrying = false
+                }
+            }
+            .buttonStyle(.settings)
+            .disabled(retrying)
+        }
+        .padding(.vertical, 12)
+    }
+}

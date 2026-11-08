@@ -21,6 +21,7 @@ final class WebKitNavigationPolicyConformanceTests: XCTestCase {
         ("MarkupWebView.Coordinator", MarkupWebView.Coordinator.self),
         ("SafeMarkupWebView.Coordinator", SafeMarkupWebView.Coordinator.self),
         ("RemoteImageWebView.Coordinator", RemoteImageWebView.Coordinator.self),
+        ("SVGLogoRenderer", SVGLogoRenderer.self),
     ]
 
     func testTheSelectorIsWebKitsPolicyRequirement() {

@@ -1110,12 +1110,18 @@ struct BotRosterView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 2)
                     .padding(.bottom, 16)
+                    // So the last linked room's faces go when it does.
+                    .modifier(HomeRoomLooksReader())
             } else {
                 BotRoomGrid(onDropAtEnd: { dropRoom($0, onto: nil) }) { homeRoomTiles }
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
                     .padding(.bottom, 16)
                     .modifier(HomeRoomLooksReader())
+                    // The rooms' rings tick here too, so a guest's room with
+                    // no bots of their own still follows its work (the read
+                    // is shared with the portraits' and runs once a tick).
+                    .modifier(BotsTalkingRoomsReader())
                     // Whether a room's menu offers Generate Group Picture,
                     // asked as the open room's menu asks it.
                     .task(id: "\(appState.isConnected)|\(appState.canSetGroupRoomPictures)|\(homeRooms.isEmpty)") {
