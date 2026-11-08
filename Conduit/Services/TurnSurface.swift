@@ -42,7 +42,7 @@ struct TurnSurface: Equatable {
     static let discardRetryDelays: [Duration] = [.seconds(1), .seconds(3), .seconds(9)]
 
     /// Whether a discard that failed with `error` may still go on a later
-    /// try: not one the plugin refused (the body, or a route it lacks), and
+    /// try: not one the plugin refused (a 4xx other than 408 and 429), and
     /// not one the old dashboard answered after a switch (it was dropped).
     static func discardMayGoLater(_ error: Error) -> Bool {
         switch error as? DashboardTicketBridgeError {

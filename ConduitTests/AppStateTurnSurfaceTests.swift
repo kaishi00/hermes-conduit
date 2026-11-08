@@ -160,6 +160,25 @@ final class AppStateTurnSurfaceTests: XCTestCase {
         XCTAssertTrue(TurnSurface.discardMayGoLater(DashboardTicketBridgeError.http(status: 0, detail: "")))
         XCTAssertTrue(TurnSurface.discardMayGoLater(DashboardTicketBridgeError.signInRequired))
         XCTAssertTrue(TurnSurface.discardMayGoLater(URLError(.timedOut)))
+        XCTAssertTrue(TurnSurface.discardMayGoLater(DashboardTicketBridgeError.http(status: 408, detail: "")))
+        XCTAssertTrue(TurnSurface.discardMayGoLater(DashboardTicketBridgeError.http(status: 429, detail: "")))
+        XCTAssertFalse(TurnSurface.discardMayGoLater(DashboardTicketBridgeError.oversizedResponse(limit: 0)))
+    }
+
+    func testARefusedDiscardIsSentOnce() async {
+        let recorder = TurnSurfaceRecorder()
+        recorder.sendError = RpcError(code: 4001, message: "invalid_params")
+        recorder.discardErrors = [DashboardTicketBridgeError.http(status: 400, detail: "")]
+        let harness = makeHarness(recorder: recorder)
+        harness.appState.turnSurfaceDiscardRetryDelays = [.milliseconds(1), .milliseconds(1), .milliseconds(1)]
+        openChat("rt-refused-discard", in: harness)
+
+        _ = await harness.appState.submitComposer(text: "yes")
+
+        for _ in 0..<200 where recorder.discardTries == 0 { try? await Task.sleep(for: .milliseconds(5)) }
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(recorder.discardTries, 1, "The plugin refused it: trying again changes nothing")
+        XCTAssertEqual(recorder.discards, [])
     }
 
     func testASendWhoseReplyWasLostKeepsItsReport() async {
