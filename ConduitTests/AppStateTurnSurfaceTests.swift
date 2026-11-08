@@ -135,6 +135,33 @@ final class AppStateTurnSurfaceTests: XCTestCase {
                        "No turn of it is coming: the same words from another client mustn't take its line")
     }
 
+    func testADiscardThatFailedToGoIsTriedAgain() async {
+        // Notifier issue 610: a discard lost to a passing failure left the
+        // report for another client's turn of the same words.
+        let recorder = TurnSurfaceRecorder()
+        recorder.sendError = RpcError(code: 4001, message: "invalid_params")
+        recorder.discardErrors = [URLError(.timedOut), DashboardTicketBridgeError.http(status: 503, detail: "")]
+        let harness = makeHarness(recorder: recorder)
+        harness.appState.turnSurfaceDiscardRetryDelays = [.milliseconds(1), .milliseconds(1), .milliseconds(1)]
+        openChat("rt-retry", in: harness)
+
+        _ = await harness.appState.submitComposer(text: "yes")
+
+        for _ in 0..<200 where recorder.discards.isEmpty { try? await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(recorder.discardTries, 3)
+        XCTAssertEqual(recorder.discards, ["rt-retry \(recorder.digests.first ?? "?")"])
+    }
+
+    func testADiscardThePluginRefusedIsNotTriedAgain() {
+        XCTAssertFalse(TurnSurface.discardMayGoLater(DashboardTicketBridgeError.http(status: 400, detail: "")))
+        XCTAssertFalse(TurnSurface.discardMayGoLater(DashboardTicketBridgeError.http(status: 404, detail: "")))
+        XCTAssertFalse(TurnSurface.discardMayGoLater(DashboardTicketBridgeError.answeredAfterSwitch),
+                       "The old dashboard took it")
+        XCTAssertTrue(TurnSurface.discardMayGoLater(DashboardTicketBridgeError.http(status: 0, detail: "")))
+        XCTAssertTrue(TurnSurface.discardMayGoLater(DashboardTicketBridgeError.signInRequired))
+        XCTAssertTrue(TurnSurface.discardMayGoLater(URLError(.timedOut)))
+    }
+
     func testASendWhoseReplyWasLostKeepsItsReport() async {
         let recorder = TurnSurfaceRecorder()
         recorder.sendError = URLError(.networkConnectionLost)
@@ -185,6 +212,8 @@ final class AppStateTurnSurfaceTests: XCTestCase {
         if let recorder {
             appState.turnSurfaceSender = { body in try await recorder.report(body) }
             appState.turnSurfaceDiscarder = { body in
+                recorder.discardTries += 1
+                if !recorder.discardErrors.isEmpty { throw recorder.discardErrors.removeFirst() }
                 recorder.discards.append("\(body["session_id"] as? String ?? "?") \(body["text_sha256"] as? String ?? "?")")
             }
         }
@@ -220,6 +249,8 @@ private final class TurnSurfaceRecorder {
     var reportError: Error?
     var sendError: Error?
     var discards: [String] = []
+    var discardErrors: [Error] = []
+    var discardTries = 0
 
     func report(_ body: [String: Any]) async throws {
         if let reportDelay { try await Task.sleep(for: reportDelay) }
