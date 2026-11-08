@@ -2908,6 +2908,7 @@ Screen and Done, Carry On; see Bot Screen)
 - A work update or ask that comes in as a hidden turn as Hermes compacts the Bot Chat still reaches the bot's model, rather than ending on Hermes' "Context was compacted" line, and that line never pushes (2026-11-06, #1849, notifier 0.133.4).
 
 **Open gaps**
+- A workstream call's request that goes through the workstream's send leaves no "Asked the chat" line in the saved call, as the startJob route never did; that line would link the workstream's chat, where its reply shows (#2023, from DeepSeek's review).
 - A work update posted in a room shows on Hermes Desktop as the whole post, the note to the bot included; Conduit shows only its lines.
 - A workstream may still call the memory provider's tools, retain included, though it can't call `memory` (its coordinator decides what to remember): a provider's tools don't say which of them write.
 - An ask from another bot reaches the Bot Chat as a hidden turn, so the asked bot's transcript shows no "Furina asks" card; the ask is listed in its Work panel instead.

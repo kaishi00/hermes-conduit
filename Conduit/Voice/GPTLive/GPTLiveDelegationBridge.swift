@@ -496,7 +496,8 @@ final class GPTLiveDelegationBridge {
         if supervisor.liveThread != nil, !VoiceThreadRouting.wantsBackgroundJob(routingWords) {
             // A workstream's chat: its session takes the request, never a
             // chat turn queued behind the question it waits on.
-            let said = await supervisor.sendToWorkstream(instructions)
+            // Only the request: an answer to its question is taken as written.
+            let said = await supervisor.sendToWorkstream(routingWords.trimmingCharacters(in: .whitespacesAndNewlines))
             guard callGeneration == call, !isEnding else { return [] }
             if let said {
                 // Not passed on (busy, unreachable): the user's retry isn't
