@@ -499,6 +499,12 @@ final class GPTLiveDelegationBridge {
             let said = await supervisor.sendToWorkstream(instructions)
             guard callGeneration == call, !isEnding else { return [] }
             if let said {
+                // Not passed on (busy, unreachable): the user's retry isn't
+                // "already sent".
+                if said != AppState.workstreamCallSent {
+                    if confirmed { lastSentAt = nil }
+                    lastUntaken = id
+                }
                 return [.delegationReply(delegationID: id, text: Self.relay(said), channel: .speakable)]
             }
             let sent = supervisor.startThreadTurn(request: instructions)
