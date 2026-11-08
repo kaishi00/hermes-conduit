@@ -3672,11 +3672,11 @@ caption describes the lists)
 **Code**
 - Bot's Model page: `Conduit/Views/BotModelPicker.swift` (providerRow, expandedProviders, openPickedProvider)
 - Menus: `Conduit/Views/AuxiliaryViews.swift` (ConduitMenuGroup, ConduitMenuPicker's groups), `Conduit/Views/GeminiLiveViews.swift` (VoiceJobModelSettingsSection.modelMenuGroups), used by `Conduit/Views/PulseSettingsViews.swift` (modelSection) and `Conduit/Views/HelperModelViews.swift` (through VoiceReplyModelSettingsSection)
-- Model sheet: `Conduit/Views/ModelPickerView.swift` (providerCard, allProvidersPage)
+- Model sheet: `Conduit/Views/ModelPickerView.swift` (providerCard, allProvidersPage, openHeldProvider)
 - Tests: `ConduitTests/HermesVoiceConfigurationServiceTests+KeptAnswers.swift` (testAPinnedProviderAndAnEndpointAreShownAndKept)
 
 **Rulings**
-- Providers start closed; a bot's Model page opens the one holding the pick, once, and a menu marks that provider's name with a check (Eric 2026-11-05, #1787).
+- Providers start closed; a bot's Model page and the model sheet's All providers page open the one holding the pick, once, and a menu marks that provider's name with a check (Eric 2026-11-05, #1787; the All providers page is part of the sheet redesign Eric picked 2026-11-08, #1984).
 - A menu's default choice and a held model the catalog doesn't list sit above the providers, outside any submenu; the row names a pick as "model · provider" (#1787).
 - A pick saved under another spelling of a listed provider (an alias, `custom:<key>`) is that provider's row, checked there, never a held row above it (#1788).
 

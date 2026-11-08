@@ -778,6 +778,8 @@ struct ModelPickerView: View {
     /// Pins a model to Quick picks, or unpins it.
     private func pinButton(_ model: ModelInfo, provider: ProviderInfo) -> some View {
         let pinned = appState.modelQuickPicks.isPinned(model: model.id, provider: provider)
+        // Several providers serve one model, so VoiceOver names both.
+        let name = "\(model.id), \(provider.title)"
         return Button {
             togglePin(model, provider: provider)
         } label: {
@@ -790,8 +792,8 @@ struct ModelPickerView: View {
         .buttonStyle(.plain)
         .padding(.trailing, 4)
         .accessibilityLabel(Text(verbatim: pinned
-            ? AppLocalization.string("Unpin \(model.id)")
-            : AppLocalization.string("Pin \(model.id)")))
+            ? AppLocalization.string("Unpin \(name)")
+            : AppLocalization.string("Pin \(name)")))
     }
 
     private func togglePin(_ model: ModelInfo, provider: ProviderInfo) {
@@ -879,10 +881,17 @@ struct ModelPickerView: View {
                 .tint(.conduitAccent)
             }
         }
-        .onAppear {
-            if let held = visibleProviders.first(where: { $0.matches(selectedProvider) }) {
-                expandedProvider = held.name
-            }
+        // Opens the provider holding the pick, once: also when the list
+        // arrives after the page did.
+        .onAppear(perform: openHeldProvider)
+        .onChange(of: visibleProviders.map(\.name)) { _, _ in
+            if expandedProvider == nil { openHeldProvider() }
+        }
+    }
+
+    private func openHeldProvider() {
+        if let held = visibleProviders.first(where: { $0.matches(selectedProvider) }) {
+            expandedProvider = held.name
         }
     }
 
@@ -1437,6 +1446,7 @@ struct ModelPickerView: View {
             || ReasoningEffortLevel(runtimeEffort: reasoningEffort) != level else { return }
         reasoningEffort = level.rawValue
         reasoningError = nil
+        let sessionId = appState.activeSessionId
         isApplyingReasoning = true
         defer { isApplyingReasoning = false }
         let result = await appState.setReasoningEffort(level.rawValue)
@@ -1451,6 +1461,11 @@ struct ModelPickerView: View {
         if let next = queuedReasoning {
             queuedReasoning = nil
             isApplyingReasoning = false
+            // A level picked for another chat never reaches this one.
+            guard appState.activeSessionId == sessionId else {
+                reasoningEffort = appState.runtime.reasoningEffort.isEmpty ? "none" : appState.runtime.reasoningEffort
+                return
+            }
             await applyReasoning(next)
         }
     }
