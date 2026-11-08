@@ -378,3 +378,19 @@ enum CapabilityFormat {
         "×" + count.formatted(.number.notation(.compactName))
     }
 }
+
+/// A section's one row while its list is read: a catalog that answers
+/// slowly says so rather than showing nothing.
+struct CapabilityLoadingRow: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+            Text("Loading…")
+                .scaledFont(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 12)
+        .accessibilityElement(children: .combine)
+    }
+}

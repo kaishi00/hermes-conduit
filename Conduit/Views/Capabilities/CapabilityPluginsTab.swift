@@ -91,6 +91,19 @@ struct CapabilityPluginsTab: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 16)
                 }
+                // The catalog leads, as Apps does on Connectors: it would
+                // otherwise wait below every installed plugin.
+                if query.isEmpty, !store.pluginCatalog.isEmpty {
+                    PluginCatalogShelf(store: store)
+                } else if query.isEmpty, store.pluginCatalogLoading {
+                    CapabilitySection(
+                        title: AppLocalization.string("Plugin catalog"),
+                        symbol: "shippingbox",
+                        tint: .conduitAura
+                    ) {
+                        CapabilityLoadingRow()
+                    }
+                }
                 CapabilitySection(
                     title: AppLocalization.string("Installed"),
                     symbol: "puzzlepiece.extension",
@@ -116,9 +129,7 @@ struct CapabilityPluginsTab: View {
                         }
                     }
                 }
-                if query.isEmpty, !store.pluginCatalog.isEmpty {
-                    PluginCatalogShelf(store: store)
-                } else if !catalog.isEmpty {
+                if !query.isEmpty, !catalog.isEmpty {
                     CapabilitySection(
                         title: AppLocalization.string("Plugin catalog"),
                         symbol: "shippingbox",

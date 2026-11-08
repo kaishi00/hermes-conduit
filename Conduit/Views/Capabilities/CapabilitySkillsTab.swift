@@ -4,7 +4,8 @@
 //
 //  Settings > Capabilities > Skills, as Hermes Desktop's Skills tab: the
 //  profile's skills, most used first, each with its switch and its own
-//  page (SKILL.md), then the official catalog's skills to install.
+//  page (SKILL.md), under the Skill Hub, then the official catalog's
+//  skills to install by category.
 //
 
 import SwiftUI
@@ -17,6 +18,8 @@ struct CapabilitySkillsTab: View {
     let refresh: () async -> Void
     @AppStorage("capabilities.skills.mostUsedFirst") private var mostUsedFirst = true
     @State private var bulkRunning = false
+    /// The category the skills to install are filtered to, if one.
+    @State private var availableCategory: String?
     @State private var rowsMemo = CapabilityListMemo<RowsInput, Rows>()
 
     private struct RowsInput: Equatable {
@@ -60,12 +63,23 @@ struct CapabilitySkillsTab: View {
             await refresh()
             await store.loadOfficialSkills()
         }) {
-            if installed.isEmpty && available.isEmpty {
+            if installed.isEmpty && available.isEmpty && !store.officialSkillsLoading {
                 CapabilityEmptyState(
                     title: query.isEmpty ? AppLocalization.string("No skills yet") : AppLocalization.string("No matching skills"),
                     symbol: "puzzlepiece.extension",
                     message: query.isEmpty ? nil : AppLocalization.string("Nothing matches “\(query)”.")
                 )
+            }
+            // The hub leads, as Apps does on Connectors: it would
+            // otherwise wait below every installed skill.
+            if query.isEmpty, !store.skillHubMissing {
+                CapabilitySection(
+                    title: AppLocalization.string("Skill Hub"),
+                    symbol: "bag",
+                    tint: .conduitAura
+                ) {
+                    SkillHubEntryRow(store: store, reload: refresh)
+                }
             }
             if !installed.isEmpty {
                 CapabilitySection(
@@ -90,25 +104,43 @@ struct CapabilitySkillsTab: View {
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity)
             }
-            if query.isEmpty, !store.skillHubMissing {
+            if available.isEmpty, store.officialSkillsLoading, query.isEmpty {
                 CapabilitySection(
-                    title: AppLocalization.string("Skill Hub"),
-                    symbol: "bag",
+                    title: AppLocalization.string("Available to install"),
+                    symbol: "arrow.down.circle",
                     tint: .conduitAura
                 ) {
-                    SkillHubEntryRow(store: store, reload: refresh)
+                    CapabilityLoadingRow()
                 }
             }
             if !available.isEmpty {
+                let categories = CapabilitySkillOrdering.categories(available)
+                let chosen = availableCategory.flatMap { categories.contains($0) ? $0 : nil }
+                let groups = CapabilitySkillOrdering.grouped(available, category: chosen)
                 CapabilitySection(
                     title: AppLocalization.string("Available to install"),
                     symbol: "arrow.down.circle",
                     tint: .conduitAura,
                     footer: AppLocalization.string("From Hermes' official skills catalog. Hermes scans each skill before it installs.")
                 ) {
-                    ForEach(Array(available.enumerated()), id: \.element.id) { index, skill in
-                        CapabilityCardRow(divided: index > 0) {
-                            OfficialSkillRow(skill: skill, store: store, reload: refresh)
+                    if categories.count > 1 {
+                        categoryMenu(categories, chosen: chosen)
+                    }
+                } content: {
+                    ForEach(groups) { group in
+                        if groups.count > 1 {
+                            Text(verbatim: CapabilitySkillOrdering.prettyCategory(group.category))
+                                .scaledFont(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.top, 12)
+                                .padding(.bottom, 2)
+                                .accessibilityAddTraits(.isHeader)
+                        }
+                        ForEach(Array(group.skills.enumerated()), id: \.element.id) { index, skill in
+                            CapabilityCardRow(divided: index > 0) {
+                                OfficialSkillRow(skill: skill, store: store, reload: refresh)
+                            }
                         }
                     }
                 }
@@ -117,6 +149,35 @@ struct CapabilitySkillsTab: View {
         .task(id: store.profile) {
             if store.officialSkills.isEmpty || store.showsKept.contains(.officialSkills) { await store.loadOfficialSkills() }
         }
+    }
+
+    /// The skills to install by category, as the plugin catalog's
+    /// Browse All filters by one.
+    private func categoryMenu(_ categories: [String], chosen: String?) -> some View {
+        let title = chosen.map(CapabilitySkillOrdering.prettyCategory) ?? AppLocalization.string("All Categories")
+        return Menu {
+            Picker(selection: $availableCategory) {
+                Text("All Categories").tag(String?.none)
+                ForEach(categories, id: \.self) { category in
+                    Text(verbatim: CapabilitySkillOrdering.prettyCategory(category)).tag(String?.some(category))
+                }
+            } label: {
+                Text("Category")
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .accessibilityHidden(true)
+                Text(verbatim: title)
+                    .scaledFont(.subheadline.weight(.semibold))
+                Image(systemName: "chevron.down")
+                    .scaledFont(.caption2.weight(.semibold))
+                    .accessibilityHidden(true)
+            }
+            .foregroundStyle(Color.conduitAccent)
+        }
+        .accessibilityLabel(Text("Category"))
+        .accessibilityValue(Text(verbatim: title))
     }
 
     private var optionsMenu: some View {

@@ -46,6 +46,12 @@ struct OfficialSkill: Identifiable, Equatable {
     }
 }
 
+struct OfficialSkillGroup: Identifiable, Equatable {
+    var id: String { category }
+    let category: String
+    let skills: [OfficialSkill]
+}
+
 enum CapabilitySkillOrdering {
     /// Hermes Desktop's order: the most used first (or least, flipped), then
     /// by name.
@@ -80,6 +86,21 @@ enum CapabilitySkillOrdering {
                     || entry.tags.contains { $0.localizedCaseInsensitiveContains(query) }
             }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// The categories the skills to install fall in, by their shown name.
+    static func categories(_ skills: [OfficialSkill]) -> [String] {
+        Array(Set(skills.map(\.category)))
+            .sorted { prettyCategory($0).localizedCaseInsensitiveCompare(prettyCategory($1)) == .orderedAscending }
+    }
+
+    /// The skills to install by category, the categories A-Z by their shown
+    /// name and each one's skills in the order given; only `category`'s
+    /// when one is picked.
+    static func grouped(_ skills: [OfficialSkill], category: String?) -> [OfficialSkillGroup] {
+        categories(skills)
+            .filter { category == nil || $0 == category }
+            .map { name in OfficialSkillGroup(category: name, skills: skills.filter { $0.category == name }) }
     }
 
     /// `software_development` reads "Software Development".

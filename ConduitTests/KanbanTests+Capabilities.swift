@@ -44,6 +44,14 @@ extension KanbanTests {
         XCTAssertEqual(OfficialSkill(["name": "solo"])?.identifier, "solo")
         XCTAssertEqual(CapabilitySkillOrdering.prettyCategory("software_development"), "Software Development")
         XCTAssertEqual(CapabilitySkillOrdering.prettyCategory(nil), "General")
+        let available = CapabilitySkillOrdering.available(catalog, installedNames: [], query: "")
+        XCTAssertEqual(CapabilitySkillOrdering.categories(available), ["general", "research"])
+        XCTAssertEqual(
+            CapabilitySkillOrdering.grouped(available, category: nil).map { "\($0.category): \($0.skills.map(\.name))" },
+            ["general: [\"notes\", \"pdf-tools\"]", "research: [\"arxiv\"]"],
+            "Categories A-Z by their shown name, each one's skills A-Z"
+        )
+        XCTAssertEqual(CapabilitySkillOrdering.grouped(available, category: "research").map(\.category), ["research"])
     }
 
     func testCapabilitySkillFrontmatterKeepsTopLevelFields() {

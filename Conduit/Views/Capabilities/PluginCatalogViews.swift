@@ -42,21 +42,25 @@ struct PluginCatalogArtwork: View {
     var cornerRadius: CGFloat = 12
 
     var body: some View {
-        ZStack {
-            Rectangle().fill(Color.conduitAura.opacity(0.12))
-            if let url {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFill()
-                    } else {
-                        placeholder
+        // The picture fills an overlay, so its own size never sizes the
+        // frame: in a ZStack a wide banner stretched the page past the
+        // screen.
+        Rectangle()
+            .fill(Color.conduitAura.opacity(0.12))
+            .overlay {
+                if let url {
+                    AsyncImage(url: url) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFill()
+                        } else {
+                            placeholder
+                        }
                     }
+                } else {
+                    placeholder
                 }
-            } else {
-                placeholder
             }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .accessibilityHidden(true)
     }
 
