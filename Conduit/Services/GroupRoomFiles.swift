@@ -277,7 +277,8 @@ extension AppState {
             return await roomAttachmentRead(roomID: attachment.roomID, attachmentID: attachment.attachmentID)
         }
         // The resolver can be Hermes' alone: a plugin file needs the plugin.
-        guard notifierPlugin.reports(GroupRoomFilesClient.pictureCapability),
+        guard notifierPlugin.reports(GroupRoomFilesClient.pictureCapability)
+                || notifierPlugin.reports(GroupRoomFilesClient.readCapability),
               let encodedPath = DashboardPath.encodedQueryComponent(path) else { return .gone }
         return await dataURLRead(endpoint: "\(GroupRoomFilesClient.readPath)?path=\(encodedPath)")
     }
