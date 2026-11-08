@@ -3585,7 +3585,7 @@ marketplace) · Text: the page's captions and README.md's Capabilities line
 - The hub's taps (adding a GitHub repository as a source, Desktop's Sources) aren't on the page.
 - A skill the scan would have Hermes ask about installs with Hermes' `--yes`, as Desktop's Install does; the page shows the findings first.
 
-**Checked:** 2026-11-08, #NUM (the plugin catalog named as a sibling; wording); 2026-11-08, #1999 (the page, the scan, install, remove and update)
+**Checked:** 2026-11-08, #2009 (the plugin catalog named as a sibling; wording); 2026-11-08, #1999 (the page, the scan, install, remove and update)
 
 ## Plugin catalog: browse and install
 
@@ -3617,15 +3617,15 @@ the pages' captions and README.md's Capabilities line (done)
 - Tests: `ConduitTests/PluginCatalogBrowseTests.swift`
 
 **Rulings**
-- Pictures load only from GitHub's hosts over https, as Hermes' catalog check and Desktop's browser allow; any other address shows the plugin's glyph (#NUM).
-- The shelf leads with Desktop's curated picks, then official plugins with a picture; Browse All lists official, then verified, then community, A-Z within each, installed ones marked (#NUM).
-- Install asks first with what the plugin adds, as the tab does; the keys it needs are listed, never asked for or kept (#NUM).
+- Pictures load only from GitHub's hosts over https, as Hermes' catalog check and Desktop's browser allow; any other address shows the plugin's glyph (#2009).
+- The shelf leads with Desktop's curated picks, then official plugins with a picture; Browse All lists official, then verified, then community, A-Z within each, installed ones marked (#2009).
+- Install asks first with what the plugin adds, as the tab does; the keys it needs are listed, never asked for or kept (#2009).
 
 **Open gaps**
 - The curated picks are Desktop's list as of 2026-11-08, written into Conduit: Hermes' catalog route doesn't carry them.
 - A plugin's README (Desktop's docs page) isn't shown.
 
-**Checked:** 2026-11-08, #NUM (the shelf, Browse All, the plugin page)
+**Checked:** 2026-11-08, #2009 (the shelf, Browse All, the plugin page)
 
 ## Reply progress signals
 
