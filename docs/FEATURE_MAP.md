@@ -3654,13 +3654,13 @@ Capabilities line (done)
 - Tests: `ConduitTests/PluginSettingsTests.swift` (an extension of PluginCatalogBrowseTests: the unit suite is at its 224-class cap)
 
 **Rulings**
-- A secret is write-only: the form never shows its value, even if Hermes sent one, and a secret left blank stays as it is (#NUM).
-- A save sends only what changed; a Hermes without `plugins.manage` shows no section (#NUM).
+- A secret is write-only: the form never shows its value, even if Hermes sent one, and a secret left blank stays as it is (#2011).
+- A save sends only what changed; a Hermes without `plugins.manage` shows no section (#2011).
 
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-08, #NUM (the form, saving, secrets to `.env`)
+**Checked:** 2026-11-08, #2011 (the form, saving, secrets to `.env`)
 
 ## Reply progress signals
 
