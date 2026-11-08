@@ -895,7 +895,7 @@ enum GroupRoomImageGallery {
                 : event.isUserMessage ? (GroupRoomReplyQuote.parse(parts.text)?.message ?? parts.text) : parts.text
             // Its files come first, as its bubble draws them.
             let sent = files.map { files in
-                shownParts.files.filter { $0.kind == .image }.compactMap { ImageGalleryItem.attachment($0, resolver: files) }
+                shownParts.files.filter(GroupRoomFilesClient.isStoredPicture).compactMap { ImageGalleryItem.attachment($0, resolver: files) }
             } ?? []
             let media = event.isMemberMessage ? resolver(event) : nil
             return sent + ChatImageGallery.markdownItems(shown, resolver: media, recognizesGatewayMedia: media != nil)
@@ -925,7 +925,7 @@ private struct GroupMessageFiles: View {
     @Environment(\.roomFilePictures) private var pictureFiles
 
     var body: some View {
-        let pictures = pictureFiles == nil ? [] : files.filter { $0.kind == .image }
+        let pictures = pictureFiles == nil ? [] : files.filter(GroupRoomFilesClient.isStoredPicture)
         if pictures.count > 1 {
             let shown = PictureGrid.shownCount(pictures.count)
             let more = PictureGrid.moreCount(total: pictures.count)
@@ -938,7 +938,7 @@ private struct GroupMessageFiles: View {
         } else if let picture = pictures.first {
             UserImageAttachmentPreview(attachment: picture, gatewayResolver: pictureFiles, onAccent: onAccent)
         }
-        ForEach(pictures.isEmpty ? files : files.filter { $0.kind != .image }) { file in
+        ForEach(pictures.isEmpty ? files : files.filter { !GroupRoomFilesClient.isStoredPicture($0) }) { file in
             HStack(spacing: 8) {
                 Image(systemName: AttachmentTypePolicy.symbolName(for: file))
                     .scaledFont(.callout)

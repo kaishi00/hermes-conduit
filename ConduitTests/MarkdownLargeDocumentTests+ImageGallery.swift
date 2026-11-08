@@ -125,6 +125,35 @@ extension MarkdownLargeDocumentTests {
         ], "any other scheduled post pages its whole post's pictures")
     }
 
+    /// Pictures sent into the room page first in their message, read from
+    /// the room's files, only where those can be read (issue 2035); a
+    /// picture `/room-files` didn't store, and any other file, don't.
+    @MainActor
+    func testRoomGalleryListsAMessagesSentPicturesFirst() throws {
+        let appState = try galleryAppState()
+        let files = GatewayMediaDataURLResolver(appState: appState, profile: "room-files", source: .roomFiles)
+        let sent = GroupEvent(
+            roomID: "room", seq: 1, eventID: "e1", kind: "message.user",
+            actor: GroupActor(kind: "user", id: "user", profile: nil, displayName: nil, connectionID: nil),
+            authorityEpoch: nil,
+            payload: ["text": .string(
+                "@file:/h/conduit/room-files/20261108-a/photo.jpg\n@file:/h/elsewhere/other.jpg\n"
+                    + "@file:/h/conduit/room-files/20261108-b/notes.pdf\n\nLook ![web](https://example.com/w.png)"
+            )],
+            createdAt: 0
+        )
+        XCTAssertEqual(GroupRoomImageGallery.items(in: [sent], files: files).map(\.id), [
+            ImageGalleryItem.mediaID(path: "/h/conduit/room-files/20261108-a/photo.jpg"),
+            ImageGalleryItem.webID("https://example.com/w.png"),
+        ])
+        XCTAssertTrue(GroupRoomFilesClient.isStoredPicture(Attachment(
+            id: "a", name: "photo.jpg", uri: "/h/conduit/room-files/20261108-a/photo.jpg", mimeType: "image/jpeg", kind: .image
+        )))
+        XCTAssertEqual(GroupRoomImageGallery.items(in: [sent]).map(\.id), [
+            ImageGalleryItem.webID("https://example.com/w.png"),
+        ], "where the room's files can't be read, its pictures stay names")
+    }
+
     @MainActor
     func testRoomGalleryListsAMembersMediaPicturesThroughItsResolver() throws {
         let appState = try galleryAppState()

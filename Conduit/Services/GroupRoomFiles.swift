@@ -12,6 +12,13 @@ final class GroupRoomFilesClient {
     /// draws it instead of its name.
     static let pictureCapability = "room-file-pictures"
     static let picturePath = "/api/plugins/conduit_push/room-files/data-url"
+
+    /// A picture `/room-files` stored (`<hermes home>/conduit/room-files/
+    /// <upload>/<name>`): only these are read back. Any other `@file:`
+    /// picture keeps its name, since the route would refuse it.
+    static func isStoredPicture(_ file: Attachment) -> Bool {
+        file.kind == .image && file.uri.hasPrefix("/") && file.uri.contains("/conduit/room-files/")
+    }
     /// Base64 of a file near the host's 50 MB cap takes a while to send.
     static let minimumTimeoutMilliseconds = 180_000
 
