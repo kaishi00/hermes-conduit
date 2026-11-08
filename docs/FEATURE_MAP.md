@@ -5312,7 +5312,7 @@ files, hunks and lines. The chat shows the files and totals; a tap opens a
 sheet with every file, line numbers, colored lines and the changed words.
 Presenting only: no Git operations.
 
-A composed card (issue 1946, plugin 0.138) is one Hermes builds itself for
+A composed card (issue 1946, plugin 0.140) is one Hermes builds itself for
 whatever it's doing: up to 8 sections, stacked or as a row, some folded
 under Show more, of text, metrics, badges, icons, pictures, progress bars,
 dividers, fields (text, choice, toggle, date, number) and buttons. Any card
