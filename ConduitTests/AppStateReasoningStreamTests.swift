@@ -381,6 +381,21 @@ final class AppStateReasoningStreamTests: XCTestCase {
         ])
     }
 
+    /// A call's chat seed leaves out the running turn's notes by the rows
+    /// it sealed (#1991): each interim row is kept while the turn runs and
+    /// forgotten when it settles, even when the reply takes over the row.
+    func testTheRunningTurnKeepsTheNotesItSealedUntilItSettles() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
+        state.handleStreamEvent(.messageInterim(sessionId: "stored-a", text: "Checking", alreadyStreamed: false))
+        XCTAssertEqual(state.runningTurnNoteIDs.count, 1)
+        let note = state.runningTurnNoteIDs.first
+        XCTAssertEqual(state.messages.first { $0.id == note }?.content, "Checking")
+        state.handleStreamEvent(.messageComplete(sessionId: "stored-a", messageId: nil, content: "Done.", reasoning: nil))
+        XCTAssertTrue(state.runningTurnNoteIDs.isEmpty)
+    }
+
     /// A turn Voice cancelled can stream a few words after its cancel; once
     /// the next question owns the chat they'd read as its reply (#1696).
     /// They're held back by the turn they name, and the next turn's events

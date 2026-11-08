@@ -894,28 +894,54 @@ struct VoiceResumeContext: Equatable {
     /// file is named, never given by its path. A question still waiting for
     /// its reply is left off the end, so a model seeded with it as history
     /// doesn't answer it in Hermes' place: while Hermes is still answering
-    /// (`replyRunning`), the last question goes with the progress notes
-    /// after it. A user turn names its attachments, never their paths. Nil
-    /// when nothing is left.
-    static func chat(_ messages: [ChatMessage], replyRunning: Bool = false) -> VoiceResumeContext? {
-        var said: [VoiceResumeTurn] = messages.compactMap { message in
-            guard message.tool == nil, message.approval == nil, message.clarify == nil, message.inputPrompt == nil else { return nil }
-            let speaker: VoiceConversationTranscriptEntry.Speaker
-            switch message.role {
-            case .user: speaker = .user
-            case .assistant: speaker = .assistant
-            default: return nil
+    /// (`runningNotes`, the ids of the progress notes the running turn has
+    /// sealed so far; after a reread, stored commentary whose reply isn't
+    /// written yet), the running turn's rows go (its progress notes and
+    /// steers, and the question that started it when it was asked here). A
+    /// turn typed on another device has no row here, so the answered
+    /// exchange before it stays. A turn names its files even when its text
+    /// is clipped. Nil when nothing is left.
+    static func chat(_ messages: [ChatMessage], runningNotes: Set<String>? = nil) -> VoiceResumeContext? {
+        func spoken(_ message: ChatMessage) -> Bool {
+            message.tool == nil && message.approval == nil && message.clarify == nil && message.inputPrompt == nil
+                && (message.role == .user || message.role == .assistant)
+        }
+        // A row that never reaches the seed, or reaches it empty.
+        func silent(_ message: ChatMessage) -> Bool {
+            !spoken(message) || (message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && (message.attachments ?? []).isEmpty)
+        }
+        var kept = messages[...]
+        if let runningNotes {
+            // A reread transcript gives the running turn's notes as stored
+            // commentary (`<reply>-commentary-<n>`) whose reply isn't
+            // written yet: no row, or an empty one.
+            let written = Set(messages.filter { !silent($0) }.map(\.id))
+            func runningNote(_ message: ChatMessage) -> Bool {
+                if runningNotes.contains(message.id) { return true }
+                guard message.role == .assistant, let mark = message.id.range(of: "-commentary-", options: .backwards) else { return false }
+                return !written.contains(String(message.id[..<mark.lowerBound]))
             }
+            // Back to the last completed reply: everything after it is the
+            // running turn (its question when it was asked here, steers,
+            // progress notes) or messages queued behind it, in any order.
+            var cut = kept.endIndex
+            while cut > kept.startIndex {
+                let message = kept[cut - 1]
+                guard silent(message) || message.role == .user || runningNote(message) else { break }
+                cut -= 1
+            }
+            kept = kept[..<cut]
+        }
+        var said: [VoiceResumeTurn] = kept.compactMap { message in
+            guard spoken(message) else { return nil }
+            let speaker: VoiceConversationTranscriptEntry.Speaker = message.role == .user ? .user : .assistant
+            let body = GatewayMediaTags.namingFiles(in: ConduitAppLink.removingLinks(from: message.content))
             let attached = speaker == .user
                 ? (message.attachments ?? []).map { "[Attached: \($0.name.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? $0.name) (\($0.kind.rawValue))]" }
                 : []
-            let text = ([GatewayMediaTags.namingFiles(in: ConduitAppLink.removingLinks(from: message.content))] + attached)
-                .joined(separator: " ")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = fitting(body, naming: attached)
             return text.isEmpty ? nil : VoiceResumeTurn(speaker: speaker, text: text)
-        }
-        if replyRunning, let question = said.lastIndex(where: { $0.speaker == .user }) {
-            said.removeSubrange(question...)
         }
         while said.last?.speaker == .user { said.removeLast() }
         guard !said.isEmpty else { return nil }
@@ -923,6 +949,33 @@ struct VoiceResumeContext: Equatable {
         case .verbatim(let recent), .summarized(_, let recent), .needsSummary(_, _, let recent):
             return VoiceResumeContext(summary: nil, recent: recent, fromChat: true)
         }
+    }
+
+    /// A turn's text within `VoiceResumePlan.turnCharacterLimit`, with the
+    /// files it names that fit: a long text is clipped before its
+    /// attachments, and a file named past the cut is named again after it.
+    static func fitting(_ body: String, naming attached: [String]) -> String {
+        let collapsed = body.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        let whole = ([collapsed] + attached).filter { !$0.isEmpty }.joined(separator: " ")
+        let limit = VoiceResumePlan.turnCharacterLimit
+        guard whole.count > limit else { return whole }
+        let matches = collapsed.matches(of: #/\(a file in the chat: (?:[^()\n]|\([^()\n]*\))*\)/#)
+        let named = matches.map { String($0.output) }
+        let reserved = (named + attached).reduce(0) { $0 + $1.count + 1 }
+        // No room for any text: as many of the files as fit.
+        guard reserved + 1 < limit else {
+            var kept: [String] = []
+            for marker in named + attached where (kept + [marker]).joined(separator: " ").count <= limit { kept.append(marker) }
+            return kept.isEmpty ? VoiceResumePlan.clip(whole) : kept.joined(separator: " ")
+        }
+        var cut = collapsed.index(collapsed.startIndex, offsetBy: limit - reserved - 1)
+        // A file's name the cut lands in goes whole after it instead.
+        if let straddling = matches.first(where: { $0.range.lowerBound < cut && cut < $0.range.upperBound }) {
+            cut = straddling.range.lowerBound
+        }
+        let clipped = collapsed[..<cut].trimmingCharacters(in: .whitespaces) + "…"
+        let cutOff = named.filter { !clipped.contains($0) }
+        return ([clipped] + cutOff + attached).joined(separator: " ")
     }
 
     /// GPT-Live's seeded history (the Codex frameless `initial_items`).

@@ -1345,6 +1345,12 @@ enum TurnState: Equatable {
         self == .running
     }
 
+    /// Running, or still being read back (a sync, a reconnect), so a reply
+    /// may be running: a chat call's seed leaves the running turn off.
+    var mayBeRunning: Bool {
+        self == .running || self == .synchronizing || self == .reconnecting
+    }
+
     static func fromGatewayRunning(_ running: Bool?) -> TurnState {
         guard let running else { return .unsupportedGateway }
         return running ? .running : .idle
