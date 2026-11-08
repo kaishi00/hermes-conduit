@@ -450,7 +450,7 @@ struct RichCardSchema {
                                       "codedevérification", "codedeverification", "codicediverifica",
                                       "kodeverifikasi", "doğrulamakodu", "kodweryfikacyjny", "кодподтверждения",
                                       "clavedeacceso", "contrasena"]
-    private static let secretWords: Set<String> = ["pin", "otp", "cvv", "cvc"]
+    private static let secretWords: Set<String> = ["pin", "otp", "cvv", "cvc", "mfa", "pincode", "mfacode"]
     private static let datePattern = try! NSRegularExpression(pattern: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2})?$"#)
     private static let numberPattern = try! NSRegularExpression(pattern: #"^-?[0-9]+(\.[0-9]+)?$"#)
     /// What an open button may open: web pages and the links iOS hands to
@@ -466,16 +466,49 @@ struct RichCardSchema {
     }
 
     /// Whether a field's id, label or placeholder asks for a secret (the
-    /// plugin's names_secret): read in lower case with everything but
-    /// letters of any script and digits as spaces.
+    /// plugin's names_secret): read after NFKC, so full-width ＰＩＮ reads as
+    /// pin, in lower case with everything but letters of any script and
+    /// digits as spaces.
     static func namesSecret(_ text: String) -> Bool {
         var spaced = String.UnicodeScalarView()
-        for scalar in text.lowercased().unicodeScalars {
+        for scalar in text.precomposedStringWithCompatibilityMapping.lowercased().unicodeScalars {
             spaced.append(CharacterSet.alphanumerics.contains(scalar) ? scalar : " ")
         }
         let words = String(spaced).split(separator: " ").map(String.init)
         let joined = words.joined()
-        return secretParts.contains { joined.contains($0) } || words.contains { secretWords.contains($0) }
+        return secretParts.contains { joined.contains($0) } || words.flatMap(scriptPieces).contains { secretWords.contains($0) }
+    }
+
+    /// A word split where ASCII letters and digits meet another script's
+    /// letters, so "pin码" reads as pin and 码 (the plugin's _SCRIPT_SEAM).
+    private static func scriptPieces(_ word: String) -> [String] {
+        var pieces: [String] = []
+        var piece = String.UnicodeScalarView()
+        var pieceIsASCII: Bool?
+        for scalar in word.unicodeScalars {
+            if let pieceIsASCII, pieceIsASCII != scalar.isASCII {
+                pieces.append(String(piece))
+                piece = String.UnicodeScalarView()
+            }
+            piece.append(scalar)
+            pieceIsASCII = scalar.isASCII
+        }
+        if !piece.isEmpty { pieces.append(String(piece)) }
+        return pieces
+    }
+
+    /// Whether a date value with the shape names a real day and time (the
+    /// plugin's _real_date), so the picker shows what a tap sends.
+    static func isRealDate(_ value: String) -> Bool {
+        guard matches(datePattern, value) else { return false }
+        let digits = Array(value)
+        func number(_ range: Range<Int>) -> Int { Int(String(digits[range])) ?? -1 }
+        let year = number(0..<4), month = number(5..<7), day = number(8..<10)
+        guard year >= 1, (1...12).contains(month) else { return false }
+        let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+        let days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+        guard (1...days).contains(day) else { return false }
+        return digits.count == 10 || (number(11..<13) <= 23 && number(14..<16) <= 59)
     }
 
     /// A message a tap may send as the user's: never a command, a file
@@ -552,7 +585,7 @@ struct RichCardSchema {
         case "toggle":
             return ["on", "off"].contains(value.lowercased()) ? value.lowercased() : nil
         case "date":
-            return matches(datePattern, value) ? value : nil
+            return isRealDate(value) ? value : nil
         case "number":
             guard matches(numberPattern, value), let number = Double(value) else { return nil }
             if let low = (field["min"] as? NSNumber)?.doubleValue, number < low { return nil }
