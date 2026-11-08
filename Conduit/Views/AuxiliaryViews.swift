@@ -4507,8 +4507,8 @@ private struct NotificationsSettingsDetail: View {
                         // behind.
                         // Not on a host that manages the plugin: it isn't
                         // Conduit's to update there.
-                        if !appState.notifierPlugin.needsAttention, !appState.notifierPlugin.isManaged,
-                           pairings.thisDashboard.contains(where: Self.isOutdated) {
+                        if !appState.notifierPlugin.needsAttention,
+                           pairings.thisDashboard.contains(where: { Self.isOutdated($0) && !managesPairing($0) }) {
                             pluginPageLink(AppLocalization.string("Update the Conduit plugin"))
                         }
                         ForEach(pairings.unscoped) { gateway in
@@ -4775,6 +4775,12 @@ private struct NotificationsSettingsDetail: View {
             || (gateway.pluginVersion != nil && !(gateway.supportsApprovalCards && gateway.supportsClarifyCards))
     }
 
+    /// A pairing known to be this dashboard's, on a host that manages the
+    /// plugin: nothing for Conduit to update there.
+    private func managesPairing(_ gateway: RelayMetaInfo.Gateway) -> Bool {
+        appState.notifierPlugin.isManaged && appState.activeDashboardRelayGatewayIDs.contains(gateway.id)
+    }
+
     /// One relay pairing of the active dashboard: whether its notifier
     /// sends decision cards, from the plugin version its last push carried.
     @ViewBuilder
@@ -4782,8 +4788,10 @@ private struct NotificationsSettingsDetail: View {
         let isSupported = gateway.supportsApprovalCards && gateway.supportsClarifyCards
         let isOutdated = Self.isOutdated(gateway)
         // A host that manages the plugin updates it itself: say what's
-        // missing without asking for an update.
-        let managed = isOutdated && appState.notifierPlugin.isManaged
+        // missing without asking for an update. Only for a pairing known to
+        // be this dashboard's (`managesPairing`): a legacy one may belong to
+        // another host.
+        let managed = isOutdated && managesPairing(gateway)
         compatibilityRow(
             title: gateway.name,
             version: gateway.pluginVersion,
